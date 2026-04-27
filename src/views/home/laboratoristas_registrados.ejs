@@ -1,0 +1,67 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Laboratoristas registrados</h1>
+    <p class="app-page-subtitle">Supervisa el equipo activo por facultad y administra retiros desde una tabla más limpia.</p>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header text-center">
+      <h5>Equipo activo</h5>
+    </div>
+    <div class="card-body">
+      <% if (successMessage) { %>
+        <div class="alert alert-success" role="alert"><%= successMessage %></div>
+      <% } %>
+      <div class="table-responsive">
+        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+          <thead class="thead-dark text-center">
+            <tr>
+              <th>Nombres y Apellidos</th>
+              <th>Cédula</th>
+              <th>Correo</th>
+              <th>Laboratorio</th> <!-- cambiado de UAL a Laboratorio -->
+              <th>Facultad</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
+            </tr>
+          </thead>
+          <tbody class="text-center text-light">
+            <% laboratoristas.forEach(laboratorista => { %>
+              <tr>
+                <td><%= laboratorista.con_nombre %></td>
+                <td><%= laboratorista.con_documento %></td>
+                <td data-email-cell="true"><%= laboratorista.con_correo %></td>
+                <td><%= laboratorista.con_ual %></td> <!-- nombre del laboratorio -->
+                <td><%= laboratorista.con_facultad %></td> <!-- nombre de la facultad -->
+                <td>
+                  <a
+                    class="btn btn-sm btn-outline-primary"
+                    href="/milab/api/laboratoristas_registrados/editar?documento=<%= encodeURIComponent(laboratorista.con_documento) %>"
+                  >
+                    Editar
+                  </a>
+                </td>
+                <td>
+                  <form action="/milab/api/laboratoristas_registrados/eliminar" method="POST" onsubmit="return confirmDelete('laboratorista')">
+                    <input type="hidden" name="documento" value="<%= laboratorista.con_documento %>">
+                    <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+<!-- Confirmación de eliminación -->
+<script>
+  function confirmDelete(type) {
+    return confirm(`¿Está seguro que desea eliminar este ${type}?`);
+  }
+</script>
+
+<%- include('../partials/footer'); -%>

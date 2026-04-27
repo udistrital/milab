@@ -1,0 +1,40 @@
+<%- include('../partials/header'); -%>
+<main class="container app-page-shell">
+    <section class="card message-card col-xl-6 col-lg-7 col-md-9 mx-auto p-4" role="alert">
+        <div class="text-center">
+            <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill"></i></h1>
+            <h3><%- message -%></h3>
+            <h4 class="app-page-subtitle"><%- message2 -%></h4>
+        </div>
+        <% if (!limit){ %>
+        <% } else if(limit === 'noSession'){ %>
+            <div class="text-center mt-3">
+                <a href="/milab/" class="btn btn-perso">Volver a inicio</a>
+            </div> 
+        <% } else if(limit === 'loginOnly'){ %>
+            <div class="text-center mt-3">
+                <a href="/milab/auth/login" class="btn btn-perso">Volver a iniciar sesion</a>
+            </div>
+        <% } %>
+        <div class="app-inline-note mt-4 text-center">
+            Si tiene problemas, envíe un ticket a la coordinación de laboratorios.
+        </div>
+        <% if (limit !== 'loginOnly') { %>
+        <div class="d-grid gap-2 d-sm-flex justify-content-center mt-4">
+            <button class="btn btn-outline-secondary btn-lg px-4 gap-3" type="button" onclick="goBack()">
+                <i class="bi bi-arrow-left-circle"></i> Volver atrás
+            </button>
+            <button class="btn btn-perso btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
+                <i class="bi bi-headset"></i> Soporte al usuario
+            </button>
+        </div>
+        <% } %>
+    </section>
+</main>
+
+<script>
+    function goBack() {
+        window.history.back();
+    }
+</script>
+<%- include('../partials/footer'); -%>

@@ -1,0 +1,309 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Menus y permisos</h1>
+    <p class="app-page-subtitle">Administra modulos, submodulos y permisos por rol.</p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-xl-11">
+
+      <% if (error) { %>
+        <div class="alert alert-danger"><%= error %></div>
+      <% } %>
+
+      <% if (success) { %>
+        <div class="alert alert-success"><%= success %></div>
+      <% } %>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5">Crear menu</h2>
+          <form method="POST" action="/milab/api/admin/menus" class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label">Seccion</label>
+              <select class="form-select" name="section" required>
+                <option value="primary">Primary</option>
+                <option value="secondary">Secondary</option>
+                <option value="account">Account</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Etiqueta</label>
+              <input class="form-control" name="label" required />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Ruta</label>
+              <input class="form-control" name="route" placeholder="/milab/api/..." />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Icono</label>
+              <input class="form-control" name="icon" placeholder="bi-..." />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Padre</label>
+              <select class="form-select" name="parent_id">
+                <option value="">Sin padre</option>
+                <% menuItems.forEach(function(item) { %>
+                  <% if (!item.parent_id && item.section === 'secondary') { %>
+                    <option value="<%= item.id %>"><%= item.label %></option>
+                  <% } %>
+                <% }) %>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Orden</label>
+              <input class="form-control" type="number" name="order_index" value="0" />
+            </div>
+            <div class="col-md-2 d-flex align-items-center">
+              <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" name="is_active" id="is_active" checked>
+                <label class="form-check-label" for="is_active">Activo</label>
+              </div>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary">Guardar menu</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <%
+        const primaryItems = [];
+        const accountItems = [];
+        const secondaryParents = [];
+        const childrenByParent = {};
+        const permissionMap = new Set();
+
+        permissions.forEach(function(permission) {
+          if (permission.can_view) {
+            permissionMap.add(`${permission.role_id}:${permission.menu_item_id}`);
+          }
+        });
+
+        menuItems.forEach(function(item) {
+          if (item.section === 'primary') {
+            primaryItems.push(item);
+            return;
+          }
+
+          if (item.section === 'account') {
+            accountItems.push(item);
+            return;
+          }
+
+          if (item.section === 'secondary') {
+            if (!item.parent_id) {
+              secondaryParents.push(item);
+              return;
+            }
+
+            if (!childrenByParent[item.parent_id]) {
+              childrenByParent[item.parent_id] = [];
+            }
+            childrenByParent[item.parent_id].push(item);
+          }
+        });
+      %>
+
+      <div class="card shadow-sm border-0 mb-4 admin-modules-card">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+            <div>
+              <h2 class="h5 mb-1">Modulos primarios</h2>
+              <p class="text-muted mb-0">Expande cada modulo para ver submenus y permisos.</p>
+            </div>
+          </div>
+
+          <div class="accordion admin-modules-accordion" id="adminMenuAccordion">
+            <% if (!secondaryParents.length) { %>
+              <p class="text-muted mb-0">No hay modulos secundarios registrados.</p>
+            <% } %>
+
+            <% secondaryParents.forEach(function(parent) { %>
+              <% const children = childrenByParent[parent.id] || []; %>
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="moduleHeading<%= parent.id %>">
+                  <button
+                    class="accordion-button collapsed"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#moduleCollapse<%= parent.id %>"
+                    aria-expanded="false"
+                    aria-controls="moduleCollapse<%= parent.id %>"
+                  >
+                    <div class="admin-module-summary">
+                      <span class="admin-module-icon" aria-hidden="true">
+                        <i class="bi <%= parent.icon || 'bi-grid-1x2' %>"></i>
+                      </span>
+                      <div class="admin-module-title">
+                        <span class="admin-module-name"><%= parent.label %></span>
+                        <span class="admin-module-meta"><%= parent.route || 'Sin ruta' %></span>
+                      </div>
+                      <span class="admin-module-count"><%= children.length %> submenus</span>
+                    </div>
+                  </button>
+                </h2>
+                <div
+                  id="moduleCollapse<%= parent.id %>"
+                  class="accordion-collapse collapse"
+                  aria-labelledby="moduleHeading<%= parent.id %>"
+                  data-bs-parent="#adminMenuAccordion"
+                >
+                  <div class="accordion-body">
+                    <div class="table-responsive admin-permissions-table">
+                      <table class="table align-middle">
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Ruta</th>
+                            <% roles.forEach(function(role) { %>
+                              <th class="text-center"><%= role.name %></th>
+                            <% }) %>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr class="admin-module-root">
+                            <td>
+                              <strong><%= parent.label %></strong>
+                              <div class="text-muted small">Modulo principal</div>
+                            </td>
+                            <td class="text-muted"><%= parent.route || '-' %></td>
+                            <% roles.forEach(function(role) { %>
+                              <% const permissionKey = `${role.id}:${parent.id}`; %>
+                              <td class="text-center">
+                                <input
+                                  type="checkbox"
+                                  class="form-check-input permission-toggle"
+                                  data-role-id="<%= role.id %>"
+                                  data-menu-id="<%= parent.id %>"
+                                  <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
+                                />
+                              </td>
+                            <% }) %>
+                          </tr>
+                          <% if (!children.length) { %>
+                            <tr>
+                              <td colspan="<%= roles.length + 2 %>" class="text-muted">
+                                Sin submenus asociados.
+                              </td>
+                            </tr>
+                          <% } %>
+                          <% children.forEach(function(item) { %>
+                            <tr>
+                              <td>
+                                <strong><%= item.label %></strong>
+                              </td>
+                              <td class="text-muted"><%= item.route || '-' %></td>
+                              <% roles.forEach(function(role) { %>
+                                <% const permissionKey = `${role.id}:${item.id}`; %>
+                                <td class="text-center">
+                                  <input
+                                    type="checkbox"
+                                    class="form-check-input permission-toggle"
+                                    data-role-id="<%= role.id %>"
+                                    data-menu-id="<%= item.id %>"
+                                    <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
+                                  />
+                                </td>
+                              <% }) %>
+                            </tr>
+                          <% }) %>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Menus principales y cuenta</h2>
+          <p class="text-muted mb-3">Accesos directos del header y perfil.</p>
+          <div class="table-responsive admin-permissions-table">
+            <table class="table align-middle">
+              <thead>
+                <tr>
+                  <th>Menu</th>
+                  <th>Ruta</th>
+                  <% roles.forEach(function(role) { %>
+                    <th class="text-center"><%= role.name %></th>
+                  <% }) %>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!primaryItems.length && !accountItems.length) { %>
+                  <tr>
+                    <td colspan="<%= roles.length + 2 %>" class="text-muted">
+                      No hay menus principales registrados.
+                    </td>
+                  </tr>
+                <% } %>
+                <% primaryItems.concat(accountItems).forEach(function(item) { %>
+                  <tr>
+                    <td>
+                      <%= item.section %>
+                      <strong><%= item.label %></strong>
+                    </td>
+                    <td class="text-muted"><%= item.route || '-' %></td>
+                    <% roles.forEach(function(role) { %>
+                      <% const permissionKey = `${role.id}:${item.id}`; %>
+                      <td class="text-center">
+                        <input
+                          type="checkbox"
+                          class="form-check-input permission-toggle"
+                          data-role-id="<%= role.id %>"
+                          data-menu-id="<%= item.id %>"
+                          <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
+                        />
+                      </td>
+                    <% }) %>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  document.querySelectorAll('.permission-toggle').forEach(function(checkbox) {
+    checkbox.addEventListener('change', async function(event) {
+      const roleId = event.target.getAttribute('data-role-id');
+      const menuId = event.target.getAttribute('data-menu-id');
+      const enabled = event.target.checked;
+
+      try {
+        const response = await fetch('/milab/api/admin/menus/permissions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            role_id: roleId,
+            menu_item_id: menuId,
+            enabled,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.message || 'Error al actualizar permisos.');
+        }
+      } catch (error) {
+        alert(error.message || 'Error al actualizar permisos.');
+        event.target.checked = !enabled;
+      }
+    });
+  });
+</script>
+
+<%- include('../partials/footer'); -%>

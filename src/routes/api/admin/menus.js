@@ -1,0 +1,157 @@
+const express = require('express');
+const pool = require('../../../libs/db');
+const { requireRoles } = require('../../middlewares/auth');
+
+const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
+
+const requireAdmin = requireRoles('admin', {
+  message: 'Acceso denegado',
+  message2: 'Solo los administradores pueden gestionar los menus.',
+  limit: 'loginOnly',
+});
+
+async function loadMenuData() {
+  const roles = (await pool.query('SELECT id, name FROM roles ORDER BY name')).rows;
+  const menuItems = (
+    await pool.query(
+      `
+        SELECT mi.id,
+               mi.parent_id,
+               mi.section,
+               mi.label,
+               mi.route,
+               mi.icon,
+               mi.order_index,
+               mi.is_active,
+               parent.label AS parent_label
+        FROM menu_items mi
+        LEFT JOIN menu_items parent ON parent.id = mi.parent_id
+        ORDER BY mi.section, mi.parent_id NULLS FIRST, mi.order_index, mi.label
+      `
+    )
+  ).rows;
+
+  const permissions = (
+    await pool.query('SELECT role_id, menu_item_id, can_view, can_use FROM role_permissions')
+  ).rows;
+
+  return { roles, menuItems, permissions };
+}
+
+router.get('/', requireAdmin, async (req, res) => {
+  try {
+    const { roles, menuItems, permissions } = await loadMenuData();
+
+    return res.render('home/admin_menus', {
+      roles,
+      menuItems,
+      permissions,
+      error: null,
+      success: null,
+    });
+  } catch (error) {
+    console.error('Error cargando menus:', error);
+    return res.render('home/message_error', {
+      message: '¡Algo ha salido mal!',
+      message2: 'No fue posible cargar los menus.',
+      limit: null,
+    });
+  }
+});
+
+router.post('/', requireAdmin, async (req, res) => {
+  const {
+    section,
+    label,
+    route,
+    icon,
+    parent_id: parentIdRaw,
+    order_index: orderIndexRaw,
+    is_active: isActiveRaw,
+  } = req.body;
+
+  if (!section || !label) {
+    const { roles, menuItems, permissions } = await loadMenuData();
+    return res.render('home/admin_menus', {
+      roles,
+      menuItems,
+      permissions,
+      error: 'Seccion y etiqueta son obligatorias.',
+      success: null,
+    });
+  }
+
+  const parentId = parentIdRaw ? Number(parentIdRaw) : null;
+  const orderIndex = orderIndexRaw ? Number(orderIndexRaw) : 0;
+  const isActive = isActiveRaw === 'on' || isActiveRaw === true;
+
+  try {
+    await pool.query(
+      `
+        INSERT INTO menu_items (section, parent_id, label, route, icon, order_index, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (section, parent_id, label, route) DO NOTHING
+      `,
+      [section, parentId, label, route || null, icon || null, orderIndex, isActive]
+    );
+
+    const { roles, menuItems, permissions } = await loadMenuData();
+    return res.render('home/admin_menus', {
+      roles,
+      menuItems,
+      permissions,
+      error: null,
+      success: 'Menu creado o actualizado.',
+    });
+  } catch (error) {
+    console.error('Error creando menu:', error);
+    const { roles, menuItems, permissions } = await loadMenuData();
+    return res.render('home/admin_menus', {
+      roles,
+      menuItems,
+      permissions,
+      error: 'No fue posible crear el menu.',
+      success: null,
+    });
+  }
+});
+
+router.post('/permissions', requireAdmin, async (req, res) => {
+  const { role_id: roleIdRaw, menu_item_id: menuItemIdRaw, enabled } = req.body;
+  const roleId = Number(roleIdRaw);
+  const menuItemId = Number(menuItemIdRaw);
+  const isEnabled = enabled === true || enabled === 'true' || enabled === 'on' || enabled === 1;
+
+  if (!roleId || !menuItemId) {
+    return res.status(400).json({ ok: false, message: 'Parametros invalidos.' });
+  }
+
+  try {
+    if (isEnabled) {
+      await pool.query(
+        `
+          INSERT INTO role_permissions (role_id, menu_item_id, can_view, can_use)
+          VALUES ($1, $2, TRUE, TRUE)
+          ON CONFLICT (role_id, menu_item_id) DO UPDATE
+          SET can_view = TRUE, can_use = TRUE
+        `,
+        [roleId, menuItemId]
+      );
+    } else {
+      await pool.query('DELETE FROM role_permissions WHERE role_id = $1 AND menu_item_id = $2', [
+        roleId,
+        menuItemId,
+      ]);
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error actualizando permisos:', error);
+    return res.status(500).json({ ok: false, message: 'No fue posible actualizar permisos.' });
+  }
+});
+
+module.exports = router;

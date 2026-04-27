@@ -1,0 +1,163 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Registro de coordinador</h1>
+    <p class="app-page-subtitle">Configura el acceso, la información institucional y las facultades asociadas al nuevo coordinador.</p>
+  </section>
+
+  <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
+    <div class="card-body">
+      <form
+        method="get"
+        action="/milab/api/registro_coordinador/load_info"
+        class="row g-2 justify-content-center align-items-end app-form-grid mb-4"
+      >
+        <div class="col-12 col-md-8 mx-auto text-center">
+          <label for="documento_lookup" class="form-label">Consulta en OATI por documento</label>
+          <div class="input-group justify-content-center">
+            <input
+              type="text"
+              inputmode="numeric"
+              class="form-control"
+              id="documento_lookup"
+              name="documento"
+              placeholder="Ej: 90000000"
+              value="<%= lookupDocumento || '' %>"
+            >
+            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <small class="form-text text-muted">Si existe en OATI se precargan nombre y correo.</small>
+        </div>
+      </form>
+
+      <% if (lookupMessage) { %>
+        <div class="alert alert-<%= lookupStatus || 'warning' %>" role="alert">
+          <%= lookupMessage %>
+        </div>
+      <% } %>
+
+      <form method="post" action="/milab/api/registro_coordinador" 
+        class="row g-3 mx-auto d-flex justify-content-center app-form-grid" 
+        onsubmit="return validarCorreo() && validarCampos()">
+        
+    <p class="app-page-subtitle mb-2"><em>Ingresa los datos del coordinador y define su acceso institucional.</em></p>
+
+    <div class="col-md-6">
+      <label for="nombre" class="form-label">Nombre Completo</label>
+      <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" required>
+    </div>
+
+    <div class="col-md-6">
+      <label for="documento" class="form-label">Número de Documento</label>
+      <input
+        type="text"
+        inputmode="numeric"
+        class="form-control"
+        id="documento"
+        name="documento"
+        value="<%= lookupData?.documento || '' %>"
+        required
+      >
+    </div>
+
+    <div class="col-md-12">
+      <label for="correo" class="form-label">Correo electrónico</label>
+      <input type="email" class="form-control" id="correo" name="correo" value="<%= lookupData?.correo || '' %>" required>
+    </div>
+
+    <div class="col-md-12">
+      <label class="form-label">- Seleccione Sedes / Facultades (una o varias) -</label>
+      <div class="row">
+        <% for (var i = 0; i < facultades.length; i++) { %>
+          <div class="col-md-6 mb-2">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="facultad_<%= facultades[i].id_facultad %>" name="id_facultades" value="<%= facultades[i].id_facultad %>">
+              <label class="form-check-label" for="facultad_<%= facultades[i].id_facultad %>"><%= facultades[i].nombre %></label>
+            </div>
+          </div>
+        <% } %>
+      </div>
+      <small class="form-text text-muted">Elija al menos una facultad. La primera seleccionada será la principal para compatibilidad.</small>
+    </div>
+
+    <!-- NUEVOS CAMPOS -->
+    <div class="col-md-6">
+      <label for="numero_resolucion_coordinador" class="form-label">Número y año de Resolución del encargo de coordinación</label>
+      <input type="text" class="form-control" id="numero_resolucion_coordinador" name="numero_resolucion_coordinador" required>
+    </div>
+
+    <div class="col-md-6">
+      <label for="soporte_resolucion" class="form-label">Soporte Resolución (URL) del sistema sgral </label>
+      <input type="url" class="form-control" id="soporte_resolucion" name="soporte_resolucion" required>
+    </div>
+
+    <div id="mensajeError" class="col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
+
+    <% if (error) { %>
+      <div class="alert alert-danger" role="alert">
+        <%= error %>
+      </div>
+    <% } %>
+
+    <div class="col-md-12 mb-2 justify-content-center d-flex">
+      <button class="btn btn-perso col-md-11" type="submit" id="abrirModal">Registrar</button>
+    </div>
+
+    <% if (confirmacion) { include('./confirm_create_account.ejs') } %>
+  </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
+
+<script>
+  function validarCorreo() {
+    var correoInput = document.getElementById('correo');
+    var correo = correoInput.value.toLowerCase();
+    var mensajeError = document.getElementById("mensajeError");
+    mensajeError.classList.add("d-none");
+    mensajeError.innerHTML = "";
+
+    if (!correo.endsWith('@udistrital.edu.co')) {
+      mensajeError.classList.remove("d-none");
+      mensajeError.innerHTML = "<p>El correo debe ser institucional (@udistrital.edu.co).</p>";
+      correoInput.value = '';
+      return false;
+    }
+    return true;
+  }
+
+  function validarCampos() {
+    var nombre = document.getElementById("nombre").value;
+    var documento = document.getElementById("documento").value;
+    var mensajeError = document.getElementById("mensajeError");
+    mensajeError.classList.add("d-none");
+    mensajeError.innerHTML = "";
+
+    if (!/^[A-Za-zÀ-ÿ\s'.-]+$/.test(nombre)) {
+      mensajeError.classList.remove("d-none");
+      mensajeError.innerHTML += "<p>El nombre solo debe contener letras.</p>";
+      return false;
+    }
+
+    if (!(/^\d+[1-9]\d*$/.test(documento))) {
+      mensajeError.classList.remove("d-none");
+      mensajeError.innerHTML += "<p>El documento debe ser un número válido y positivo.</p>";
+      return false;
+    }
+
+    // Validar selección de al menos una facultad
+    var checks = document.querySelectorAll('input[name="id_facultades"]:checked');
+    if (checks.length === 0) {
+      mensajeError.classList.remove("d-none");
+      mensajeError.innerHTML += "<p>Debe seleccionar al menos una sede/facultad.</p>";
+      return false;
+    }
+
+    return true;
+  }
+</script>

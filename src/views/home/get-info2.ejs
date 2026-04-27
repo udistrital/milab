@@ -1,0 +1,89 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'estudiante' && locals.tipo !== 'docente' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
+  <script>
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Solicitud de expedición de paz y salvos</h1>
+    <p class="app-page-subtitle">Verifica tus datos y selecciona el motivo para generar el certificado.</p>
+  </section>
+
+  <section class="card app-form-panel col-md-8 mx-auto d-flex justify-content-center text-light">
+    <div class="card-body">
+      <p class="lead mb-2"><em>- Verifique sus datos -</em></p>   
+  <% 
+    let actionUrl = "/milab/api/get-data";
+    if (locals.tipo === 'laboratorista' || locals.tipo === 'coordinador' || locals.tipo === 'admin') {
+      actionUrl = "/milab/api/generate_cert_estudiante_lab";
+    }
+    const isStaffRequester = locals.tipo === 'laboratorista' || locals.tipo === 'coordinador' || locals.tipo === 'admin';
+  %>
+  <form method="POST" action="<%= actionUrl %>" class="row g-3 mx-auto d-flex justify-content-center">
+    <div class="col-md-6">
+      <label for="con_nombre" class="form-label">Nombre</label>
+      <input type="text" value="<%= locals.nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>
+    </div>
+  
+    <% 
+      const isLabRole = (locals.tipo === 'laboratorista' || locals.tipo === 'coordinador' || locals.tipo === 'admin');
+      const hideDocumento = isLabRole && (!locals.documento || locals.documento === '0');
+    %>
+    <% if (hideDocumento) { %>
+      <input type="hidden" value="<%= locals.documento %>" id="numero_documento_identificacion" name="numero_documento_identificacion">
+    <% } else { %>
+      <div class="col-md-6">
+        <label for="con_documento" class="form-label">Número de Documento</label>
+        <input type="text" value="<%= locals.documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" readonly>
+      </div>
+    <% } %>
+  
+    <div class="col-md-6">
+      <label for="con_carrera" class="form-label">Programa académico</label>
+      <input type="text" value="<%= locals.carrera %>" class="form-control" id="con_carrera" name="con_carrera" readonly>
+    </div>
+  
+    <div class="col-md-6">
+      <label for="con_estado" class="form-label">Estado del estudiante</label>
+      <input type="text" value="<%= locals.estado %>" class="form-control" id="con_estado" name="con_estado" readonly>
+    </div>
+  
+    <div class="col-md-6">
+      <label for="con_codigo" class="form-label">Código</label>
+      <input type="text" value="<%= locals.codigo %>" class="form-control" id="con_codigo" name="con_codigo" readonly>
+    </div>
+
+    <% if (isStaffRequester) { %>
+      <input type="hidden" value="<%= locals.correo || '' %>" id="correo" name="correo">
+    <% } else { %>
+      <div class="col-md-6">
+        <label for="correo" class="form-label">Correo electrónico</label>
+        <input type="email" value="<%= locals.correo || '' %>" class="form-control" id="correo" name="correo" placeholder="usuario@udistrital.edu.co" required>
+      </div>
+    <% } %>
+
+    <div class="col-md-12">
+      <label for="motivo_exp" class="form-label">Motivo de expedición:</label>
+      <select class="form-select" id="motivo_exp" name="motivo_exp" required>
+        <option value="">Selecciona una opción</option>
+        <option value="Grado">Grado</option>
+        <option value="Retiro Permanente">Retiro Permanente</option>
+        <option value="Retiro Temporal">Retiro Temporal</option>
+        <option value="Aplazamiento de semestre">Aplazamiento de semestre</option>
+        <option value="Cancelación de semestre">Cancelación de semestre</option>
+      
+        <option value="Otro">Otro</option>
+      </select>
+    </div>    
+  
+    <div class="col-md-12 justify-content-center d-flex">
+      <button class="btn btn-perso mb-2 col-md-11" type="submit" id="button-addon1">Generar certificado</button>
+    </div>
+  </form>
+    </div>
+  </section>
+</main>
+
+    <%- include('../partials/footer'); -%>
+<% } %>

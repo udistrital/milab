@@ -1,0 +1,43 @@
+</div>
+<br><br>
+  <!-- Shared scripts -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.js"></script>
+  <script>
+    (function() {
+      if (!window.jQuery || !window.bootstrap) {
+        return;
+      }
+
+      if (typeof window.jQuery.fn.modal !== 'function') {
+        window.jQuery.fn.modal = function(action) {
+          return this.each(function() {
+            const modal = window.bootstrap.Modal.getOrCreateInstance(this);
+
+            if (action === 'hide') {
+              modal.hide();
+              return;
+            }
+
+            if (action === 'toggle') {
+              modal.toggle();
+              return;
+            }
+
+            modal.show();
+          });
+        };
+      }
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
+  <script src="/milab/public/js/scripts.js"></script>
+<footer class="footer bg-custom text-white py-4">
+  <div class="container footer-note-shell">
+    <div class="footer-note-divider" aria-hidden="true"></div>
+    <span class="footer-note-meta">MiLab v1.0.0 · © 2026</span>
+    <span class="footer-note-support">Coordinación General de Laboratorios · <a href="mailto:sistemalaboratorios@udistrital.edu.co">sistemalaboratorios@udistrital.edu.co</a></span>
+  </div>
+  </footer> 
+</body>
+</html>

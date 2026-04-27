@@ -1,0 +1,151 @@
+<%- include('../partials/header'); -%>
+
+<style>
+  .profile-locked input[readonly],
+  .profile-locked textarea[readonly] {
+    background-color: #f1f3f5;
+    color: #6c757d;
+  }
+</style>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Perfil</h1>
+    <p class="app-page-subtitle">Complete o actualice la información necesaria para usar MiLab con su correo institucional.</p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-xl-8 col-lg-9">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4 p-lg-5">
+
+          <% const roleProfiles = Array.isArray(locals.roleProfiles) ? locals.roleProfiles : []; %>
+
+          <% if (roleProfiles.length > 1) { %>
+            <div class="app-profile-tabs mb-4">
+              <ul class="nav nav-tabs app-profile-tabs-nav" role="tablist">
+                <% roleProfiles.forEach(function(profile, index) { %>
+                  <li class="nav-item" role="presentation">
+                    <button
+                      class="nav-link <%= index === 0 ? 'active' : '' %>"
+                      id="role-tab-<%= profile.role %>"
+                      data-bs-toggle="tab"
+                      data-bs-target="#role-panel-<%= profile.role %>"
+                      type="button"
+                      role="tab"
+                      aria-controls="role-panel-<%= profile.role %>"
+                      aria-selected="<%= index === 0 ? 'true' : 'false' %>"
+                    >
+                      <%= profile.label %>
+                    </button>
+                  </li>
+                <% }) %>
+              </ul>
+
+              <div class="tab-content app-profile-tabs-content">
+                <% roleProfiles.forEach(function(profile, index) { %>
+                  <div
+                    class="tab-pane fade <%= index === 0 ? 'show active' : '' %>"
+                    id="role-panel-<%= profile.role %>"
+                    role="tabpanel"
+                    aria-labelledby="role-tab-<%= profile.role %>"
+                    tabindex="0"
+                  >
+                    <div class="row g-3 app-profile-fields">
+                      <% profile.fields.forEach(function(field) { %>
+                        <div class="col-md-6">
+                          <div class="app-profile-field">
+                            <div class="app-profile-field-label"><%= field.label %></div>
+                            <div class="app-profile-field-value"><%= field.value %></div>
+                          </div>
+                        </div>
+                      <% }) %>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+          <% } %>
+
+          <% if (error) { %>
+            <div class="alert alert-danger" role="alert"><%= error %></div>
+          <% } %>
+
+          <% if (success) { %>
+            <div class="alert alert-success" role="alert"><%= success %></div>
+          <% } %>
+
+          <form method="POST" action="/milab/api/profile" class="row g-3 <%= profileLocked ? 'profile-locked' : '' %>">
+            <input type="hidden" name="modo" value="<%= modo %>">
+
+            <div class="col-md-6">
+              <label for="nombre" class="form-label">Nombre</label>
+              <input type="text" class="form-control" id="nombre" name="nombre" value="<%= nombre || '' %>" <%= profileLocked ? 'readonly' : (readonly ? 'readonly' : '') %> required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="correo" class="form-label">Correo institucional</label>
+              <input type="email" class="form-control" id="correo" name="correo" value="<%= correo || '' %>" readonly required>
+            </div>
+
+            <div class="col-md-6">
+              <label for="tipo_usuario" class="form-label">Tipo de usuario</label>
+              <input type="text" class="form-control text-capitalize" value="<%= tipo_usuario || '' %>" readonly>
+              <input type="hidden" id="tipo_usuario" name="tipo_usuario" value="<%= tipo_usuario || '' %>">
+            </div>
+
+            <div class="col-md-6">
+              <label for="documento" class="form-label">Documento</label>
+              <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
+            </div>
+
+            <div class="col-md-6 student-only">
+              <label for="codigo" class="form-label">Código</label>
+              <input type="text" class="form-control" id="codigo" name="codigo" value="<%= codigo || '' %>" <%= readonly ? 'readonly' : '' %>>
+            </div>
+
+            <div class="col-md-6">
+              <label for="estado" class="form-label">Estado</label>
+              <input type="text" class="form-control" id="estado" name="estado" value="<%= estado || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %> required>
+            </div>
+
+            <div class="col-12 student-only">
+              <label for="carrera" class="form-label">Carrera</label>
+              <input type="text" class="form-control" id="carrera" name="carrera" value="<%= carrera || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+            </div>
+
+            <div class="col-12 d-flex justify-content-center gap-2 pt-2">
+              <% if (readonly) { %>
+                <a class="btn btn-primary px-4" href="/milab/inicio">Volver al inicio</a>
+              <% } else { %>
+                <button class="btn btn-primary px-4" type="submit">Guardar perfil</button>
+              <% } %>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  function toggleStudentFields() {
+    var tipoUsuario = document.getElementById('tipo_usuario');
+    var studentFields = document.querySelectorAll('.student-only');
+    var isStudent = !tipoUsuario || tipoUsuario.value === 'estudiante';
+
+    studentFields.forEach(function(field) {
+      field.style.display = isStudent ? '' : 'none';
+    });
+
+    var codigo = document.getElementById('codigo');
+    var carrera = document.getElementById('carrera');
+
+    if (codigo) codigo.required = isStudent;
+    if (carrera) carrera.required = isStudent;
+  }
+
+  document.addEventListener('DOMContentLoaded', toggleStudentFields);
+</script>
+
+<%- include('../partials/footer'); -%>

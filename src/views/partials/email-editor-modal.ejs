@@ -1,0 +1,65 @@
+<div class="alert alert-success d-none" role="alert" data-email-editor-page-feedback="true"></div>
+
+<div
+  class="modal fade"
+  id="emailEditorModal"
+  tabindex="-1"
+  aria-labelledby="emailEditorModalLabel"
+  aria-hidden="true"
+  data-email-editor-modal="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="<%= actionUrl %>" data-email-editor-form="true">
+        <input type="hidden" name="documento" value="" data-email-editor-hidden-document="true">
+
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="emailEditorModalLabel" data-email-editor-title="true">Editar correo</h5>
+            <p class="text-muted mb-0 small" data-email-editor-subtitle="true">Actualiza el correo institucional asociado a esta cuenta.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="alert alert-danger d-none" role="alert" data-email-editor-feedback="true"></div>
+
+          <div class="mb-3">
+            <label class="form-label" for="emailEditorName">Nombre</label>
+            <input type="text" class="form-control" id="emailEditorName" readonly data-email-editor-name="true">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="emailEditorDocument">Documento</label>
+            <input type="text" class="form-control" id="emailEditorDocument" readonly data-email-editor-document="true">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="emailEditorCurrent">Correo actual</label>
+            <input type="text" class="form-control" id="emailEditorCurrent" readonly data-email-editor-current="true">
+          </div>
+
+          <div>
+            <label class="form-label" for="emailEditorInput">Nuevo correo institucional</label>
+            <input
+              type="email"
+              class="form-control"
+              id="emailEditorInput"
+              name="correo"
+              required
+              autocomplete="off"
+              pattern="^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$"
+              data-email-editor-input="true"
+            >
+            <div class="form-text">Solo se permiten correos institucionales con dominio @udistrital.edu.co.</div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" data-email-editor-save="true">Guardar correo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,128 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
+  <script>
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Gestión de sanciones estudiantiles</h1>
+    <p class="app-page-subtitle">Consulta por documento o código y continúa con el flujo para registrar o retirar sanciones activas de estudiantes con estado académico vigente.</p>
+  </section>
+
+  <section class="app-inline-note" role="note">
+    La búsqueda se hace por documento de identidad o código institucional y valida la información académica del estudiante antes de permitir cambios sobre sus sanciones.
+  </section>
+
+  <section class="app-grid-2 app-fine-actions-grid">
+    <section class="card app-form-panel h-100">
+      <div class="card-body">
+        <p class="app-home-welcome-kicker">Registro</p>
+        <h2 class="app-panel-title mb-2">Ingresar sanción</h2>
+        <p class="app-page-subtitle mb-4">Localiza al estudiante y abre el formulario para registrar una nueva sanción asociada a su código institucional.</p>
+
+        <form method="POST" action="/milab/api/get-info-multa" class="row g-3 app-form-grid">
+          <div class="col-12">
+            <label for="tipo_busqueda_registro" class="form-label">Tipo de búsqueda</label>
+            <select
+              class="form-select"
+              id="tipo_busqueda_registro"
+              name="tipo_busqueda"
+              onchange="actualizarPlaceholder('registro')"
+              required
+            >
+              <option value="">Seleccionar tipo...</option>
+              <option value="documento">Documento de identidad</option>
+              <option value="codigo">Código institucional</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label for="valor_busqueda_registro" class="form-label" id="label_valor_registro">Valor a buscar</label>
+            <input
+              type="text"
+              class="form-control"
+              id="valor_busqueda_registro"
+              name="valor_busqueda"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="Selecciona un tipo de búsqueda"
+              required
+            >
+          </div>
+
+          <div class="col-12 d-grid">
+            <button class="btn btn-perso" type="submit">Continuar con registro</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card app-form-panel h-100">
+      <div class="card-body">
+        <p class="app-home-welcome-kicker">Retiro</p>
+        <h2 class="app-panel-title mb-2">Quitar sanción</h2>
+        <p class="app-page-subtitle mb-4">Busca sanciones activas del estudiante y avanza al paso de revisión antes de retirarlas del historial operativo.</p>
+
+        <form method="POST" action="/milab/api/get-info-erase-multa" class="row g-3 app-form-grid">
+          <div class="col-12">
+            <label for="tipo_busqueda_retiro" class="form-label">Tipo de búsqueda</label>
+            <select
+              class="form-select"
+              id="tipo_busqueda_retiro"
+              name="tipo_busqueda"
+              onchange="actualizarPlaceholder('retiro')"
+              required
+            >
+              <option value="">Seleccionar tipo...</option>
+              <option value="documento">Documento de identidad</option>
+              <option value="codigo">Código institucional</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label for="valor_busqueda_retiro" class="form-label" id="label_valor_retiro">Valor a buscar</label>
+            <input
+              type="text"
+              class="form-control"
+              id="valor_busqueda_retiro"
+              name="valor_busqueda"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="Selecciona un tipo de búsqueda"
+              required
+            >
+          </div>
+
+          <div class="col-12 d-grid">
+            <button class="btn btn-perso" type="submit">Continuar con retiro</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </section>
+</main>
+
+<script>
+  function actualizarPlaceholder(tipo) {
+    const select = document.getElementById(`tipo_busqueda_${tipo}`);
+    const input = document.getElementById(`valor_busqueda_${tipo}`);
+    const label = document.getElementById(`label_valor_${tipo}`);
+    const valor = select.value;
+
+    if (valor === 'documento') {
+      input.placeholder = 'Ej: 1020304050';
+      label.textContent = 'Documento de identidad';
+    } else if (valor === 'codigo') {
+      input.placeholder = 'Ej: 20241001';
+      label.textContent = 'Código institucional';
+    } else {
+      input.placeholder = 'Selecciona un tipo de búsqueda';
+      label.textContent = 'Valor a buscar';
+    }
+    input.value = '';
+  }
+</script>
+
+<%- include('../partials/footer'); -%>
+<% } %>

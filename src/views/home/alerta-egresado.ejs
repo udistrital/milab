@@ -1,0 +1,30 @@
+<%- include('../partials/header'); -%>
+
+<div class="container mt-5">
+  <div class="alert alert-danger" role="alert">
+    <h4 class="alert-heading">
+      <i class="bi bi-exclamation-triangle-fill"></i> Error: Un egresado no puede generar certificado
+    </h4>
+    <p>Lo sentimos, pero los egresados de la Universidad no tienen la capacidad de generar certificados. Si el error persiste, por favor consulte al administrador del sistema.</p>
+    <hr>
+    <p class="mb-3">Si tiene problemas, por favor <strong>envíe</strong> un ticket a la coordinación de laboratorios.</p>
+    <div class="d-grid gap-2 d-sm-flex justify-content-sm-start mt-4">
+      <button class="btn btn-primary btn-lg px-4 gap-3" type="button" onclick="goBack()">
+        <i class="bi bi-arrow-left-circle"></i> Volver Atrás
+      </button>
+      <button class="btn btn-outline-secondary btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
+        <i class="bi bi-headset"></i> Soporte al usuario
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function goBack() {
+    window.history.back();
+  }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+
+<%- include('../partials/footer'); -%>

@@ -1,0 +1,77 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador' ) { %>
+  <script>
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Gestión de sanciones docentes</h1>
+    <p class="app-page-subtitle">Consulta por documento y administra sanciones activas para docentes.</p>
+  </section>
+
+  <section class="app-inline-note" role="note">
+    La búsqueda se realiza por documento del docente y valida su estado académico antes de permitir registrar o retirar sanciones.
+  </section>
+
+  <section class="app-grid-2 app-fine-actions-grid">
+    <section class="card app-form-panel h-100">
+      <div class="card-body">
+        <p class="app-home-welcome-kicker">Registro</p>
+        <h2 class="app-panel-title mb-2">Ingresar sanción</h2>
+        <p class="app-page-subtitle mb-4">Localiza al docente y abre el formulario para registrar una nueva sanción.</p>
+
+        <form method="POST" action="/milab/api/get-info-multa-docente" class="row g-3 app-form-grid">
+          <div class="col-12">
+            <label for="numero_documento_identificacion" class="form-label">Documento del docente</label>
+            <input
+              type="text"
+              class="form-control"
+              id="numero_documento_identificacion"
+              name="numero_documento_identificacion"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="Ej: 1020304050"
+              required
+            >
+          </div>
+
+          <div class="col-12 d-grid">
+            <button class="btn btn-perso" type="submit">Continuar con registro</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card app-form-panel h-100">
+      <div class="card-body">
+        <p class="app-home-welcome-kicker">Retiro</p>
+        <h2 class="app-panel-title mb-2">Quitar sanción</h2>
+        <p class="app-page-subtitle mb-4">Busca sanciones activas del docente y avanza al paso de revisión antes de retirarlas.</p>
+
+        <form method="POST" action="/milab/api/get-info-erase-multa-docente" class="row g-3 app-form-grid">
+          <div class="col-12">
+            <label for="numero_documento_identificacion_retiro" class="form-label">Documento del docente</label>
+            <input
+              type="text"
+              class="form-control"
+              id="numero_documento_identificacion_retiro"
+              name="numero_documento_identificacion"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="Ej: 1020304050"
+              required
+            >
+          </div>
+
+          <div class="col-12 d-grid">
+            <button class="btn btn-perso" type="submit">Continuar con retiro</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
+    <% } %>

@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiLab - Sistema de Laboratorios</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --page-bg: #faf8f2;
+      --page-bg-deep: #f4efe4;
+      --text-main: #101010;
+      --header-side-width: min(350px, 35vw);
+      --brand-red: #ea1010;
+      --brand-red-dark: #b80d0d;
+      --brand-yellow: #ffbf00;
+      --brand-yellow-dark: #f0aa00;
+      --surface: rgba(255, 255, 255, 0.76);
+      --surface-border: rgba(255, 255, 255, 0.58);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 16% 20%, rgba(255, 191, 0, 0.12), transparent 24%),
+        radial-gradient(circle at 82% 16%, rgba(234, 16, 16, 0.12), transparent 28%),
+        linear-gradient(180deg, #fffdf8 0%, var(--page-bg) 58%, var(--page-bg-deep) 100%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: "Manrope", "Segoe UI", sans-serif;
+    }
+
+    .index2-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .index2-shell::marker {
+      display: none;
+    }
+
+    .index2-shell::before,
+    .index2-shell::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      pointer-events: none;
+      filter: blur(8px);
+      opacity: 0.35;
+    }
+
+    .index2-shell::before {
+      inset: 0;
+      border-radius: 0;
+      opacity: 0.42;
+      filter: none;
+      background-image:
+        linear-gradient(rgba(16, 16, 16, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(16, 16, 16, 0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    .index2-shell::after {
+      top: auto;
+      left: auto;
+      right: -8rem;
+      bottom: -8rem;
+      width: 22rem;
+      height: 22rem;
+      background: radial-gradient(circle, rgba(255, 191, 0, 0.18), rgba(255, 191, 0, 0));
+    }
+
+    .brand-header {
+      padding: 0.75rem 1.2rem 0;
+      display: grid;
+      grid-template-columns: var(--header-side-width) var(--header-side-width);
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-header-brand {
+      width: var(--header-side-width);
+      display: flex;
+      align-items: center;
+    }
+
+    .brand-header img {
+      width: 92%;
+      max-width: 320px;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 10px 18px rgba(255, 255, 255, 0.46));
+    }
+
+    .brand-header-copy {
+      width: var(--header-side-width);
+      min-height: 70px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      text-align: right;
+      padding-top: 0.9rem;
+    }
+
+    .brand-header-title {
+      margin: 0;
+      max-width: 19ch;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.16rem;
+      line-height: 1;
+      font-family: "Sora", "Manrope", sans-serif;
+      letter-spacing: -0.035em;
+      color: #202020;
+    }
+
+    .brand-header-title-top {
+      font-size: clamp(1.02rem, 1.24vw, 1.22rem);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6a6a6a;
+      white-space: nowrap;
+    }
+
+    .brand-header-title-main {
+      font-size: clamp(2.15rem, 3.45vw, 3.18rem);
+      font-weight: 800;
+      color: #171717;
+      letter-spacing: -0.045em;
+    }
+
+    .brand-header-accent {
+      width: 5.5rem;
+      height: 1px;
+      margin-top: 0.1rem;
+      background: linear-gradient(90deg, rgba(184, 13, 13, 0.15), rgba(184, 13, 13, 0.85), rgba(255, 191, 0, 0.65));
+    }
+
+    .status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      backdrop-filter: none;
+      box-shadow: none;
+    }
+
+    .status-indicator {
+      width: 0.68rem;
+      height: 0.68rem;
+      margin-top: 0.28rem;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #c5c5c5;
+      box-shadow: 0 0 0 0 rgba(149, 149, 149, 0.28);
+    }
+
+    .status-banner.is-loading .status-indicator {
+      background: #9a9a9a;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    .status-banner.is-up .status-indicator {
+      background: #15803d;
+      box-shadow: 0 0 0 5px rgba(21, 128, 61, 0.1);
+    }
+
+    .status-banner.is-down .status-indicator {
+      background: var(--brand-red);
+      box-shadow: 0 0 0 5px rgba(198, 40, 40, 0.1);
+    }
+
+    .status-content {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.1rem;
+      text-align: center;
+    }
+
+    .status-title {
+      margin: 0;
+      color: #161616;
+      font-size: 0.82rem;
+      font-weight: 700;
+      line-height: 1.2;
+      font-family: "Sora", "Manrope", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .status-message {
+      display: none;
+    }
+
+    .status-meta {
+      margin: 0;
+      color: #686868;
+      font-size: 0.68rem;
+      line-height: 1.35;
+      white-space: normal;
+    }
+
+    .hero {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.15rem 1.5rem 4.4rem;
+    }
+
+    .hero-card {
+      width: min(100%, 720px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0;
+      padding: 1.45rem 1.8rem 1.3rem;
+      border: 1px solid var(--surface-border);
+      border-radius: 36px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.5));
+      backdrop-filter: blur(14px);
+      box-shadow: 0 30px 80px rgba(28, 22, 13, 0.08);
+      transform: translateY(0);
+      animation: fadeUp 620ms ease-out;
+    }
+
+    .hero-lockup {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      position: relative;
+    }
+
+    .hero-lockup::before {
+      content: "";
+      position: absolute;
+      inset: auto 12% -1.15rem;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(16, 16, 16, 0.12), transparent);
+    }
+
+    .hero-logo {
+      width: min(100%, 560px);
+      height: auto;
+      display: block;
+      margin-top: 0.1rem;
+      margin-bottom: 0;
+      animation: floatLogo 5.2s ease-in-out infinite;
+    }
+
+    .login-btn {
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--brand-red) 0%, var(--brand-red-dark) 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+      font-family: "Sora", "Manrope", sans-serif;
+      padding: 1rem 2.8rem;
+      min-width: 280px;
+      letter-spacing: 0.015em;
+      box-shadow: 0 24px 38px rgba(234, 16, 16, 0.26);
+      transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+      margin-top: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .login-btn::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.25) 45%, transparent 80%);
+      transform: translateX(-120%);
+      transition: transform 320ms ease;
+    }
+
+    .login-btn:hover,
+    .login-btn:focus {
+      color: #1a1a1a;
+      background: linear-gradient(180deg, var(--brand-yellow) 0%, var(--brand-yellow-dark) 100%);
+      transform: translateY(-3px) scale(1.01);
+      box-shadow: 0 26px 42px rgba(255, 191, 0, 0.28);
+    }
+
+    .login-btn:hover::before,
+    .login-btn:focus::before {
+      transform: translateX(120%);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.7rem;
+      margin-top: -0.15rem;
+    }
+
+    .guest-consult-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 16, 16, 0.12);
+      background: rgba(255, 255, 255, 0.78);
+      color: #1a1a1a;
+      text-decoration: none;
+      font-size: 0.98rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 0.95rem 1.5rem;
+      min-width: 280px;
+      box-shadow: 0 18px 32px rgba(16, 16, 16, 0.08);
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, color 180ms ease;
+    }
+
+    .guest-consult-btn:hover,
+    .guest-consult-btn:focus {
+      color: var(--brand-red-dark);
+      border-color: rgba(184, 13, 13, 0.25);
+      transform: translateY(-2px);
+      box-shadow: 0 22px 36px rgba(184, 13, 13, 0.12);
+    }
+
+    .page-note {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.28rem;
+      padding: 0.35rem 1rem 0.38rem;
+      text-align: center;
+      color: #262626;
+      border-top: 1px solid rgba(16, 16, 16, 0.08);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(247, 242, 232, 0.92));
+      backdrop-filter: blur(12px);
+      box-shadow: 0 -8px 24px rgba(20, 16, 10, 0.04);
+      font-family: "Manrope", "Segoe UI", sans-serif;
+    }
+
+    .page-note-meta {
+      font-size: 0.66rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6a6a6a;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes floatLogo {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-6px);
+      }
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(149, 149, 149, 0.28);
+      }
+      70% {
+        box-shadow: 0 0 0 8px rgba(149, 149, 149, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(149, 149, 149, 0);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .brand-header {
+        padding: 0.7rem 0.95rem 0;
+        align-items: center;
+        grid-template-columns: 1fr;
+        justify-content: initial;
+        gap: 0.55rem;
+      }
+
+      .brand-header-brand {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .brand-header img {
+        width: min(260px, 60vw);
+        max-width: none;
+      }
+
+      .brand-header-copy {
+        width: 100%;
+        min-height: auto;
+        justify-content: center;
+        text-align: center;
+        align-items: center;
+        padding-top: 0.1rem;
+      }
+
+      .brand-header-title {
+        max-width: none;
+        align-items: center;
+      }
+
+      .brand-header-title-top {
+        white-space: normal;
+      }
+
+      .hero {
+        padding: 0.45rem 1.1rem 3.8rem;
+      }
+
+      .hero-card {
+        gap: 0.15rem;
+        padding: 1.05rem 0.95rem 0.95rem;
+        border-radius: 28px;
+      }
+
+      .hero-lockup {
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .hero-lockup::before {
+        inset: auto 10% -0.95rem;
+      }
+
+      .hero-logo {
+        width: min(100%, 420px);
+        margin-top: 0;
+      }
+
+      .page-note {
+        position: static;
+        margin-top: auto;
+        align-items: center;
+        padding: 0.95rem 1rem 1.1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="index2-shell">
+    <header class="brand-header">
+      <div class="brand-header-brand">
+        <img
+          src="/milab/public/img/Logo_Escudo_Acreditacion_Horizontal.png"
+          alt="Universidad Distrital Francisco Jose de Caldas"
+        />
+      </div>
+      <div class="brand-header-copy" aria-label="Coordinación General de Laboratorios">
+        <p class="brand-header-title">
+          <span class="brand-header-title-top">Coordinación General de</span>
+          <span class="brand-header-title-main">Laboratorios</span>
+          <span class="brand-header-accent" aria-hidden="true"></span>
+        </p>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-card">
+        <div class="hero-lockup" aria-label="MiLab - Sistema de Laboratorios">
+          <img
+            class="hero-logo"
+            src="/milab/public/img/milab_logo.png"
+            alt="MiLab Sistema de Laboratorios"
+          />
+        </div>
+
+        <div class="hero-actions">
+          <a class="login-btn" href="/milab/auth/login">Ingresar al sistema</a>
+          <a class="guest-consult-btn" href="/milab/api/consulta-invit">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <span>Consulta invitado</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <aside class="page-note">
+      <div id="service-status-banner" class="status-banner is-loading" aria-live="polite">
+        <span class="status-indicator" aria-hidden="true"></span>
+        <div class="status-content">
+          <p id="service-status-title" class="status-title">Verificando servicios académicos</p>
+          <p id="service-status-message" class="status-message">Consultando el estado actual del portal.</p>
+          <p id="service-status-meta" class="status-meta">Servicio: Gestión Académica - UD</p>
+        </div>
+      </div>
+      <span class="page-note-meta">MiLab v1.0.0 · © 2026</span>
+    </aside>
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const banner = document.getElementById('service-status-banner');
+      const title = document.getElementById('service-status-title');
+      const message = document.getElementById('service-status-message');
+      const meta = document.getElementById('service-status-meta');
+
+      function setBannerState(state) {
+        banner.classList.remove('is-loading', 'is-up', 'is-down');
+        banner.classList.add(state);
+      }
+
+      function formatTimestamp(timestamp) {
+        return new Date(timestamp).toLocaleString('es-CO');
+      }
+
+      fetch('/milab/api/check-services')
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          const lastCheck = data.timestamp ? formatTimestamp(data.timestamp) : 'sin registro';
+
+          if (data.servicesAreUp) {
+            setBannerState('is-up');
+            title.textContent = 'Servicios de Gestión Académica en línea';
+            message.textContent = 'El portal está funcionando con normalidad. Todos los servicios se encuentran disponibles.';
+          } else {
+            setBannerState('is-down');
+            title.textContent = 'Servicio interrumpido';
+            message.textContent = 'Se detectaron problemas en la disponibilidad del servicio. El equipo está revisándolo.';
+          }
+
+          meta.textContent = 'Servicio: Gestión Académica - UD | Última verificación: ' + lastCheck;
+        })
+        .catch(() => {
+          setBannerState('is-down');
+          title.textContent = 'No fue posible verificar el estado';
+          message.textContent = 'No se pudo consultar el estado del servicio en este momento.';
+          meta.textContent = 'Servicio: Gestión Académica - UD | Última verificación: ' + new Date().toLocaleString('es-CO');
+        });
+    });
+  </script>
+</body>
+</html>

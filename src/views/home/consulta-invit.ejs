@@ -1,0 +1,254 @@
+<%- include('../partials/header') %>
+
+<style>
+  .guest-check-page {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+  }
+
+  .guest-check-shell {
+    max-width: 1040px;
+    margin: 0 auto;
+  }
+
+  .guest-check-header {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .guest-check-header .app-page-subtitle {
+    max-width: 62ch;
+  }
+
+  .guest-check-panel,
+  .guest-check-result,
+  .guest-check-error {
+    overflow: hidden;
+  }
+
+  .guest-check-form {
+    gap: 1.15rem;
+  }
+
+  .guest-check-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.15rem;
+  }
+
+  .guest-check-note i,
+  .guest-check-state-icon {
+    color: var(--app-accent);
+  }
+
+  .guest-check-note p {
+    margin: 0;
+    text-align: left;
+  }
+
+  .guest-check-field .form-label {
+    margin-bottom: 0.45rem;
+  }
+
+  .guest-check-field .form-control {
+    padding-inline: 1rem;
+    font-size: 1.05rem;
+  }
+
+  .guest-check-captcha-shell {
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 20px;
+    background: var(--app-surface-strong);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .guest-check-actions {
+    display: grid;
+  }
+
+  .guest-check-actions .btn {
+    min-height: 52px;
+  }
+
+  .guest-check-result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .guest-check-result-header h4 {
+    margin: 0;
+    font-family: var(--app-font-display);
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .guest-check-result--multado {
+    border-color: rgba(223, 27, 27, 0.18);
+    background: linear-gradient(180deg, rgba(255, 240, 240, 0.95), rgba(255, 255, 255, 0.82));
+  }
+
+  .guest-check-result--multado .guest-check-state-icon,
+  .guest-check-result--multado h4 {
+    color: #b42318;
+  }
+
+  .guest-check-result--ok {
+    border-color: rgba(21, 128, 61, 0.18);
+    background: linear-gradient(180deg, rgba(237, 248, 239, 0.96), rgba(255, 255, 255, 0.82));
+  }
+
+  .guest-check-result--ok .guest-check-state-icon,
+  .guest-check-result--ok h4 {
+    color: #1f6a35;
+  }
+
+  .guest-check-support {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 1.1rem;
+  }
+
+  .guest-check-error {
+    border: 1px solid rgba(223, 27, 27, 0.18);
+    background: linear-gradient(180deg, rgba(255, 240, 240, 0.96), rgba(255, 255, 255, 0.82));
+  }
+
+  .guest-check-error .app-panel-body {
+    color: #9b2020;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  html[data-bs-theme='dark'] .guest-check-captcha-shell {
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: none;
+  }
+
+  html[data-bs-theme='dark'] .guest-check-result--multado,
+  html[data-bs-theme='dark'] .guest-check-result--ok,
+  html[data-bs-theme='dark'] .guest-check-error {
+    background: var(--app-surface);
+  }
+
+  @media (max-width: 768px) {
+    .guest-check-page {
+      padding-top: 1rem;
+      padding-bottom: 2rem;
+    }
+
+    .guest-check-captcha-shell {
+      padding-inline: 0.4rem;
+      overflow-x: auto;
+      justify-content: flex-start;
+    }
+
+    .guest-check-result-header {
+      align-items: flex-start;
+    }
+
+    .guest-check-support {
+      display: grid;
+    }
+  }
+</style>
+
+<section class="container guest-check-page">
+  <div class="app-page-shell guest-check-shell">
+    <div class="app-page-header guest-check-header">
+      <h2 class="app-page-title">Consultar Estado del Usuario</h2>
+      <p class="app-page-subtitle">
+        Consulte aquí si un usuario se encuentra <strong>sancionado</strong> o a <strong>paz y salvo</strong> dentro del sistema de laboratorios.
+      </p>
+    </div>
+
+    <div class="row justify-content-center g-4">
+      <div class="col-12 col-lg-8">
+        <div class="app-panel app-form-panel guest-check-panel">
+          <div class="app-panel-body">
+            <form method="POST" action="/milab/api/consulta-invit" class="app-form-grid guest-check-form">
+              <div class="app-inline-note guest-check-note">
+                <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+                <p>
+                  Ingrese el código del usuario y complete el reCAPTCHA para validar el estado actual en el sistema.
+                </p>
+              </div>
+
+              <div class="guest-check-field">
+                <label class="form-label" for="documento">Código</label>
+                <input type="text" class="form-control" id="documento" name="documento" placeholder="Ingrese código" required>
+              </div>
+
+              <div class="guest-check-captcha-shell">
+                <div class="g-recaptcha d-inline-block" data-sitekey="<%= siteKey %>"></div>
+              </div>
+
+              <div class="guest-check-actions">
+                <button type="submit" class="btn btn-perso btn-lg">Consultar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <% if (estadoResultado) { %>
+        <% const isMultado = estadoSinFormato.toLowerCase().includes("multado"); %>
+
+        <div class="col-12 col-lg-8">
+          <div class="app-panel guest-check-result <%= isMultado ? 'guest-check-result--multado' : 'guest-check-result--ok' %>">
+            <div class="app-panel-body">
+              <div class="guest-check-result-header">
+                <i class="bi <%= isMultado ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill' %> guest-check-state-icon" aria-hidden="true"></i>
+                <h4><%= isMultado ? 'El usuario está sancionado' : 'El usuario está a paz y salvo' %></h4>
+              </div>
+
+              <% if (isMultado) { %>
+                <p>Lo sentimos, pero el usuario se encuentra sancionado. Por favor acérquese a la coordinación o laboratorio. Si el error persiste, contacte al administrador del sistema.</p>
+              <% } else { %>
+                <p>El usuario no tiene sanciones registradas.</p>
+              <% } %>
+
+              <p class="app-page-subtitle mb-0">Si tiene dudas o inconvenientes, envíe un ticket a la coordinación de laboratorios.</p>
+
+              <div class="guest-check-support">
+                <button class="btn btn-outline-secondary btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
+                  <i class="bi bi-headset"></i> Soporte al usuario
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (error) { %>
+        <div class="col-12 col-lg-8">
+          <div class="app-panel guest-check-error">
+            <div class="app-panel-body"><%= error %></div>
+          </div>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</section>
+
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector("form");
+    form.addEventListener("submit", function (e) {
+      const response = grecaptcha.getResponse();
+      if (!response) {
+        e.preventDefault();
+        alert("Por favor completa el reCAPTCHA.");
+      }
+    });
+  });
+</script>
+
+<%- include('../partials/footer') %>

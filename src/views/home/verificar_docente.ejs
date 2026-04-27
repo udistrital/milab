@@ -1,0 +1,39 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Verificar docente</h1>
+    <p class="app-page-subtitle">Consulta el estado de paz y salvo del docente mediante su documento de identidad.</p>
+  </section>
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card shadow-sm app-form-panel">
+        <div class="card-header text-center">
+          <h3 class="mb-0">Consultar estado</h3>
+        </div>
+        <div class="card-body">
+            <p class="text-center mb-4 app-page-subtitle">Ingrese el número de documento del docente para verificar su estado de paz y salvo.</p>
+            
+            <% if (locals.error) { %>
+                <div class="alert alert-danger text-center" role="alert">
+                    <%= error %>
+                </div>
+            <% } %>
+
+            <form method="POST" action="/milab/api/verificar_docente" class="row g-3 justify-content-center">
+                <div class="col-md-10">
+                  <label for="documento" class="form-label">Número de Documento</label>
+                  <input type="number" class="form-control" id="documento" name="documento" required placeholder="Ingrese documento de identidad">
+                </div>
+              
+                <div class="col-md-10 d-grid gap-2">
+                  <button class="btn btn-perso" type="submit">Verificar</button>
+                </div>
+            </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<%- include('../partials/footer'); -%>

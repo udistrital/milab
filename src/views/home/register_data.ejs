@@ -1,0 +1,160 @@
+<%- include('../partials/header'); -%>
+<style>
+  .hidden {
+    display: none;
+  }
+</style>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Registro de estudiante</h1>
+    <p class="app-page-subtitle">Confirma tus datos y crea tu cuenta institucional.</p>
+  </section>
+
+  <section class="card app-form-panel text-light col-md-8 mx-auto d-flex">
+    <div class="card-body">
+    <form method="post" action="/milab/api/register/email_verification" class="row g-3 mx-auto d-flex justify-content-center" onsubmit="return validarCorreo() && validarContraseñas()">
+     <br>
+      <h2 class="text-xl font-semibold text-blue-300">¡Hola, <%= con_nombre %>!</h2>
+            <p class="text-gray-300">Confirme que sus datos son correctos y finalice su registro creando una cuenta nueva.</p>  
+      
+      <p class="lead mb-2 fw-bold" ><em>- Datos del Estudiante -</em></p>
+      <div class="col-md-6">
+        <label for="con_nombre" class="form-label">Nombre</label>
+        <input type="text" value="<%= con_nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>
+      </div>
+  
+      <div class="col-md-6">
+        <label for="con_documento" class="form-label">Número de Documento</label>
+        <input type="text" value="<%= con_documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" readonly>
+      </div>
+  
+      <div class="col-md-6">
+        <label for="con_codigo" class="form-label">Código</label>
+        <input type="text" value="<%= con_codigo %>" class="form-control" id="con_codigo" name="con_codigo" readonly>
+      </div>
+
+      <div class="col-md-6">
+        <label for="con_estado" class="form-label">Estado del estudiante</label>
+        <input type="text" value="<%= con_estado %>" class="form-control" id="con_estado" name="con_estado" readonly>
+      </div>
+
+      <div class="col-md-12">
+        <label for="con_carrera" class="form-label">Programa académico</label>
+        <input type="text" value="<%= con_carrera %>" class="form-control" id="con_carrera" name="con_carrera" readonly>
+      </div>
+      <input type="hidden" name="tipo_usuario" value="estudiante">
+
+      <p class="lead mt-4 fw-bold"><em>- Complete sus datos para continuar -</em></p>
+      <div class="col-md-12">
+        <label for="correo" class="form-label">Correo electrónico institucional</label>
+        <input type="email" class="form-control" id="correo" name="correo">
+        <small id="requisitosCorreo1" class="form-text text-muted">El sistema únicamente funciona con correos institucionales activos en el dominio @udistrital.edu.co</small>
+
+      </div>
+
+      <div class="col-md-6">
+        <label for="password" class="form-label">Contraseña</label>
+        <div class="input-group">
+            <input type="password" class="form-control" id="password" name="password" oninput="validarRequisitosContrasena()">
+            <button type="button" class="btn btn-outline-secondary" onclick="mostrarContrasena('password', 'eye-icon-password')">
+                <i id="eye-icon-password" class="bi bi-eye"></i>
+            </button>
+        </div>
+        <small id="requisitosContraseña" class="form-text text-muted">La contraseña debe tener al menos 8 caracteres, incluyendo una letra minúscula, una mayúscula y un carácter especial.</small>
+      </div>
+
+      <div class="col-md-6">
+        <label for="confirmar_password" class="form-label">Confirmar Contraseña</label>
+        <div class="input-group">
+            <input type="password" class="form-control" id="confirmar_password" name="confirmar_password">
+            <button type="button" class="btn btn-outline-secondary" onclick="mostrarContrasena('confirmar_password', 'eye-icon-confirmar')">
+                <i id="eye-icon-confirmar" class="bi bi-eye"></i>
+            </button>
+        </div>
+        <small id="requisitosContrasena2" class="form-text text-muted">La contraseña debe ser igual en ambos campos.</small>
+
+      </div>
+      <div id="mensajeError" class="col-md-11 mt-3 alert alert-danger d-none" role="alert"></div>
+      <% if (error) { %>
+        <div class="alert alert-danger" role="alert">
+          <%= error %>
+        </div>
+      <% } %>
+      <div class="col-md-11 justify-content-center d-flex">
+          <button class="btn btn-perso col-md-12 mb-2" type="submit" id="abrirModal">Registrar cuenta</button>
+      </div>
+      <%
+        if (confirmacion){
+          include('./confirm_create_account.ejs')
+        }
+      %>
+    </form>
+    </div>
+  </section>
+</main>
+
+  <script>
+    function mostrarContrasena(idCampo, idIcono) {
+          var campo = document.getElementById(idCampo);
+          var tipo = campo.getAttribute("type");
+          var icono = document.getElementById(idIcono);
+  
+          if (tipo === "password") {
+              campo.setAttribute("type", "text");
+              icono.classList.remove("bi-eye");
+              icono.classList.add("bi-eye-slash");
+          } else {
+              campo.setAttribute("type", "password");
+              icono.classList.remove("bi-eye-slash");
+              icono.classList.add("bi-eye");
+          }
+    }
+    function validarContraseñas() {
+      var password = document.getElementById("password").value;
+      var confirmarPassword = document.getElementById("confirmar_password").value;
+      var mensajeError = document.getElementById("mensajeError");
+      mensajeError.classList.add("d-none");
+      mensajeError.innerHTML = "";
+      if (password.length < 8) {
+          mensajeError.innerHTML += "<p>La contraseña debe tener al menos 8 caracteres.</p>";
+      }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password)) {
+          mensajeError.innerHTML += "<p>La contraseña debe contener al menos una letra mayúscula y una minúscula.</p>";
+      }
+      if (!/\d/.test(password)) {
+          mensajeError.innerHTML += "<p>La contraseña debe contener al menos un número.</p>";
+      }
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+          mensajeError.innerHTML += "<p>La contraseña debe contener al menos un carácter especial.</p>";
+      }
+      if (password !== confirmarPassword) {
+          mensajeError.innerHTML += "<p>Las contraseñas no coinciden.</p>";
+      }
+      if (mensajeError.innerHTML !== "") {
+          mensajeError.classList.remove("d-none");
+          return false;
+      } else {
+          mensajeError.classList.add("d-none");
+          return true;
+      }
+    }
+    function validarCorreo() {
+        var correoInput = document.getElementById('correo');
+        var correo = correoInput.value.toLowerCase();
+        var mensajeError2 = document.getElementById("mensajeError");
+        mensajeError2.classList.add("d-none");
+        mensajeError.innerHTML = "";
+        if (correo.endsWith('@udistrital.edu.co')) {
+          
+          return true;
+        } else {
+          mensajeError2.classList.remove("d-none");
+          mensajeError2.innerHTML = "<p>Por favor, ingresa un correo de la Universidad Distrital (ej. ejemplo@udistrital.edu.co)</p>";
+          correoInput.value = '';
+          return false;
+        }
+    }
+  </script>
+
+<%- include('../partials/footer'); -%>

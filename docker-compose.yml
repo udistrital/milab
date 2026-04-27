@@ -1,0 +1,52 @@
+services:
+  milabud:
+    image: milabud
+    container_name: milabud
+    ports:
+      - '3000:3000'
+    networks:
+      - web
+    env_file:
+      - Docker/.env
+    restart: always
+    depends_on:
+      - dbpostgres
+    #labels:
+    #- "traefik.enable=true"
+    #- "traefik.docker.network=proxy"
+    #- "traefik.http.routers.milabud.entrypoints=websecure"
+    #- "traefik.http.routers.milabud.rule=PathPrefix(`/milab`)"
+    #- "traefik.http.routers.milabud.rule=Host(`milab.localhost`)"
+
+  dbpostgres:
+    image: postgres:latest
+    container_name: dbpostgres
+    restart: always
+    env_file:
+      - Docker/.env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_ROOT_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+    ports:
+      # <Port exposed> : < Port running inside container>
+      - '5432:5432'
+    networks:
+      - web
+    expose:
+      # Opens port 3306 on the container
+      - '5432'
+      # Where our data will be persisted
+    volumes:
+      - ./sql-scripts/db_structure.sql:/docker-entrypoint-initdb.d/01_db_structure.sql:ro
+      - ./sql-scripts/db_seed_system.sql:/docker-entrypoint-initdb.d/02_db_seed_system.sql:ro
+      - my-db6:/var/lib/postgresql/data
+
+# Names our volume
+volumes:
+  my-db6:
+
+networks:
+  web:
+    external: true

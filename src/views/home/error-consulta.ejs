@@ -1,0 +1,29 @@
+<%- include('../partials/header'); -%>
+
+<div class="container mt-5">
+  <div class="alert alert-danger" role="alert">
+    <h4 class="alert-heading">
+      <i class="bi bi-exclamation-triangle-fill"></i> El número de cédula ingresada no pertenece a un estudiante de la Universidad.
+    </h4>
+    <p>Lo sentimos, por favor verifique el número de CC y consulte nuevamente. Si el error persiste, por favor consulte al administrador del sistema.</p>
+    <hr>
+    <p class="mb-3">Si tiene problemas, por favor <strong>envíe</strong> un ticket a la coordinación de laboratorios.</p>
+    <div class="d-grid gap-2 d-sm-flex justify-content-sm-start mt-4">
+      <button class="btn btn-primary btn-lg px-4 gap-3" type="button" onclick="goBack()">
+        <i class="bi bi-arrow-left-circle"></i> Volver Atrás
+      </button>
+      <button class="btn btn-outline-secondary btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
+        <i class="bi bi-headset"></i> Soporte al usuario
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function goBack() {
+    window.history.back();
+  }
+</script>
+
+<%- include('../partials/footer'); -%>
+

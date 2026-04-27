@@ -1,0 +1,257 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Registro de laboratorista</h1>
+    <p class="app-page-subtitle">Crea cuentas operativas por facultad con una selección controlada de UAL y un flujo coherente para acceso directo con token.</p>
+  </section>
+
+  <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
+    <div class="card-body">
+      <form
+        method="get"
+        action="/milab/api/register_labs/load_info"
+        class="row g-2 justify-content-center align-items-end app-form-grid mb-4"
+      >
+        <div class="col-12 col-md-8 mx-auto text-center">
+          <label for="documento_lookup" class="form-label">Consulta en OATI por documento</label>
+          <div class="input-group justify-content-center">
+            <input
+              type="text"
+              inputmode="numeric"
+              class="form-control"
+              id="documento_lookup"
+              name="documento"
+              placeholder="Ej: 90000000"
+              value="<%= lookupDocumento || '' %>"
+            >
+            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <small class="form-text text-muted">Si existe en OATI se precargan nombre y correo.</small>
+        </div>
+      </form>
+
+      <% if (lookupMessage) { %>
+        <div class="alert alert-<%= lookupStatus || 'warning' %>" role="alert">
+          <%= lookupMessage %>
+        </div>
+      <% } %>
+
+      <form
+        method="post"
+        action="/milab/api/register_labs"
+        class="row g-3 mx-auto d-flex justify-content-center app-form-grid"
+        onsubmit="return validarCorreo() && validarCampos() && validarUales()"
+      >
+        <p class="app-page-subtitle mb-2">
+          <em>Ingresa los datos del laboratorista y asigna su facultad, uno o varios laboratorios y el acceso inicial.</em>
+        </p>
+
+        <div class="col-md-6">
+          <label for="nombre" class="form-label">Nombre completo</label>
+          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required>
+        </div>
+
+        <div class="col-md-6">
+          <label for="documento" class="form-label">Número de documento</label>
+          <input
+            type="text"
+            class="form-control"
+            id="documento"
+            name="documento"
+            inputmode="numeric"
+            value="<%= lookupData?.documento || '' %>"
+            required
+          >
+        </div>
+
+        <div class="col-md-12">
+          <label for="contrato" class="form-label">Número de contrato y vigencia</label>
+          <input type="text" class="form-control" id="contrato" name="contrato" placeholder="Ej: 8151-2025" required>
+        </div>
+
+        <div class="col-md-12">
+          <label for="correo" class="form-label">Correo electrónico institucional</label>
+          <input type="email" class="form-control" id="correo" name="correo" value="<%= lookupData?.correo || '' %>" autocomplete="email" required>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Asignación institucional</label>
+          <p class="form-text mt-0">Selecciona la sede o facultad y luego uno o varios laboratorios asociados.</p>
+        </div>
+
+        <div class="col-md-6">
+          <label for="facultad" class="form-label">Sede / Facultad</label>
+          <select class="form-select" id="facultad" name="facultad" required>
+            <option value="">Selecciona una sede</option>
+            <% facultades.forEach(function(facultad) { %>
+              <option value="<%= facultad.id_facultad %>"><%= facultad.nombre %></option>
+            <% }); %>
+          </select>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Laboratorios asignados</label>
+          <p class="form-text mt-0">Selecciona uno o varios laboratorios. Todos deben pertenecer a la misma facultad elegida.</p>
+          <div class="row g-2" id="ualOptions">
+            <% uals.forEach(function(ual) { %>
+              <div class="col-md-6" data-ual-option="true" data-facultad="<%= ual.id_facultad %>">
+                <label class="form-check app-check-card w-100 h-100 p-3 border rounded-3">
+                  <input
+                    class="form-check-input me-2"
+                    type="checkbox"
+                    name="id_uales"
+                    value="<%= ual.id_ual %>"
+                    data-ual-checkbox="true"
+                    data-facultad="<%= ual.id_facultad %>"
+                  >
+                  <span class="form-check-label"><%= ual.nombre %></span>
+                </label>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+
+        <div id="mensajeError" class="col-md-12 alert alert-danger d-none mb-0" role="alert"></div>
+
+        <% if (error) { %>
+          <div class="col-md-12 alert alert-danger mb-0" role="alert">
+            <%= error %>
+          </div>
+        <% } %>
+
+        <div class="col-md-12 d-flex flex-wrap justify-content-center gap-3 pt-2">
+          <button class="btn btn-perso col-md-6" type="submit" id="abrirModal">Registrar</button>
+          <% if (tipo === 'admin' || tipo === 'coordinador') { %>
+            <a href="/milab/api/register_labs/token" class="btn btn-outline-secondary col-md-5">Generar enlace con token</a>
+          <% } %>
+        </div>
+
+        <% if (confirmacion) { include('./confirm_create_account.ejs') } %>
+      </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
+
+<script>
+  const tipoUsuario = '<%= tipo %>';
+  const idFacultadSesion = '<%= facultades[0]?.id_facultad || "" %>';
+
+  function filtrarUalsPorFacultad(selectedFacultadId) {
+    const items = document.querySelectorAll('#ual .ual-item');
+    items.forEach(item => {
+      const fac = item.getAttribute('data-facultad');
+      if (!selectedFacultadId || String(fac) === String(selectedFacultadId)) {
+        item.style.display = '';
+      } else {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = false;
+        item.style.display = 'none';
+      }
+    });
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    const facultadSelect = document.getElementById('facultad');
+    const optionRows = document.querySelectorAll('[data-ual-option="true"]');
+    const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+
+    if (!facultadSelect) {
+      return;
+    }
+
+    if (tipoUsuario === 'coordinador' && idFacultadSesion) {
+      facultadSelect.value = idFacultadSesion;
+      filtrarUalsPorFacultad(idFacultadSesion, optionRows, checkboxes);
+      return;
+    }
+
+    filtrarUalsPorFacultad(facultadSelect.value, optionRows, checkboxes);
+  });
+
+  document.getElementById('facultad').addEventListener('change', function () {
+    filtrarUalsPorFacultad(
+      this.value,
+      document.querySelectorAll('[data-ual-option="true"]'),
+      document.querySelectorAll('[data-ual-checkbox="true"]')
+    );
+  });
+
+  function filtrarUalsPorFacultad(selectedFacultadId, optionRows, checkboxes) {
+    optionRows.forEach(function (row) {
+      const belongsToFaculty = row.getAttribute('data-facultad') === selectedFacultadId;
+      row.hidden = !belongsToFaculty;
+    });
+
+    checkboxes.forEach(function (checkbox) {
+      const belongsToFaculty = checkbox.getAttribute('data-facultad') === selectedFacultadId;
+
+      if (!belongsToFaculty) {
+        checkbox.checked = false;
+      }
+    });
+  }
+
+  function validarCorreo() {
+    var correoInput = document.getElementById('correo');
+    var correo = correoInput.value.toLowerCase();
+    var mensajeError = document.getElementById('mensajeError');
+    mensajeError.classList.add('d-none');
+    mensajeError.innerHTML = '';
+
+    if (correo.endsWith('@udistrital.edu.co')) {
+      return true;
+    }
+
+    mensajeError.classList.remove('d-none');
+    mensajeError.innerHTML = '<p>Por favor, ingresa un correo institucional @udistrital.edu.co.</p>';
+    correoInput.value = '';
+    return false;
+  }
+
+  function validarCampos() {
+    var nombre = document.getElementById('nombre').value;
+    var documento = document.getElementById('documento').value;
+    var mensajeError = document.getElementById('mensajeError');
+    mensajeError.classList.add('d-none');
+    mensajeError.innerHTML = '';
+
+    if (!/^[A-Za-zÀ-ÿ\s]+$/.test(nombre)) {
+      mensajeError.classList.remove('d-none');
+      mensajeError.innerHTML += '<p>El nombre debe contener solamente letras.</p>';
+      return false;
+    }
+
+    if (!/^\d*[1-9]\d*$/.test(documento)) {
+      mensajeError.classList.remove('d-none');
+      mensajeError.innerHTML += '<p>El número de documento debe ser positivo y contener solo dígitos.</p>';
+      return false;
+    }
+
+    return true;
+  }
+
+  function validarUales() {
+    var facultad = document.getElementById('facultad').value;
+    var seleccionadas = document.querySelectorAll('[data-ual-checkbox="true"]:checked');
+    var mensajeError = document.getElementById('mensajeError');
+
+    if (!facultad) {
+      mensajeError.classList.remove('d-none');
+      mensajeError.innerHTML = '<p>Debes seleccionar una facultad.</p>';
+      return false;
+    }
+
+    if (seleccionadas.length === 0) {
+      mensajeError.classList.remove('d-none');
+      mensajeError.innerHTML = '<p>Debes seleccionar al menos un laboratorio.</p>';
+      return false;
+    }
+
+    return true;
+  }
+</script>

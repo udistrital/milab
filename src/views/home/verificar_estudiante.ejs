@@ -1,0 +1,63 @@
+<%- include('../partials/header'); -%>
+
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
+  <script>
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Verificar estudiante</h1>
+    <p class="app-page-subtitle">Consulta el estado del estudiante mediante documento o código institucional.</p>
+  </section>
+
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <section class="card shadow-sm app-form-panel">
+        <div class="card-header text-center">
+          <h3 class="mb-0">Consultar estado</h3>
+        </div>
+        <div class="card-body">
+          <p class="text-center mb-4 app-page-subtitle">Seleccione el tipo de búsqueda e ingrese el valor para verificar el estado del estudiante.</p>
+
+          <form method="POST" action="/milab/api/verificar_estudiante" class="row g-3 justify-content-center">
+            <div class="col-md-10">
+              <div class="app-choice-group d-flex gap-3 justify-content-center flex-wrap">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="tipo_busqueda" id="buscar_documento" value="documento" checked>
+                  <label class="form-check-label" for="buscar_documento">Documento</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="tipo_busqueda" id="buscar_codigo" value="codigo">
+                  <label class="form-check-label" for="buscar_codigo">Código</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-10">
+              <label for="valor_busqueda" class="form-label">Número de documento o código</label>
+              <input type="text" class="form-control" id="valor_busqueda" name="valor_busqueda" required placeholder="Ingrese documento o código">
+            </div>
+
+            <div class="col-md-10 d-grid gap-2">
+              <button class="btn btn-perso" type="submit">Verificar</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<% if (locals.error) { %>
+  <div class="container mt-1">
+    <div class="alert alert-danger text-center" role="alert">
+      <%= error %>
+    </div>
+  </div>
+<% } %>
+
+</main>
+
+<%- include('../partials/footer'); -%>
+<% } %>

@@ -1,0 +1,116 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Editar laboratorista</h1>
+    <p class="app-page-subtitle">Actualiza los datos operativos del laboratorista y asigna uno o varios laboratorios dentro de la facultad seleccionada.</p>
+  </section>
+
+  <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
+    <div class="card-body">
+      <form method="POST" action="/milab/api/laboratoristas_registrados/editar" class="row g-3 app-form-grid">
+        <input type="hidden" name="documento" value="<%= laboratorista.documento %>">
+
+        <div class="col-md-6">
+          <label class="form-label" for="documento">Documento</label>
+          <input class="form-control" id="documento" type="text" value="<%= laboratorista.documento %>" readonly>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="n_usuario">Nombre de usuario</label>
+          <input class="form-control" id="n_usuario" type="text" value="<%= laboratorista.n_usuario %>" readonly>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="nombre">Nombre completo</label>
+          <input class="form-control" id="nombre" name="nombre" type="text" value="<%= laboratorista.nombre %>" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="contrato">Contrato</label>
+          <input class="form-control" id="contrato" name="contrato" type="text" value="<%= laboratorista.contrato || '' %>" required>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label" for="correo">Correo institucional</label>
+          <input
+            class="form-control"
+            id="correo"
+            name="correo"
+            type="email"
+            value="<%= laboratorista.correo %>"
+            pattern="^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$"
+            required
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label" for="facultad">Facultad</label>
+          <select class="form-select" id="facultad" name="facultad" required>
+            <% facultades.forEach(function(facultad) { %>
+              <option value="<%= facultad.id_facultad %>" <%= Number(laboratorista.id_facultad) === Number(facultad.id_facultad) ? 'selected' : '' %>><%= facultad.nombre %></option>
+            <% }); %>
+          </select>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Laboratorios asignados</label>
+          <p class="form-text mt-0">Selecciona uno o varios laboratorios. Todos deben pertenecer a la misma facultad elegida.</p>
+          <div class="row g-2" id="ualOptions">
+            <% uals.forEach(function(ual) { %>
+              <div class="col-md-6" data-ual-option="true" data-facultad="<%= ual.id_facultad %>">
+                <label class="form-check app-check-card w-100 h-100 p-3 border rounded-3">
+                  <input
+                    class="form-check-input me-2"
+                    type="checkbox"
+                    name="id_uales"
+                    value="<%= ual.id_ual %>"
+                    data-ual-checkbox="true"
+                    data-facultad="<%= ual.id_facultad %>"
+                    <%= assignedUalIds.includes(Number(ual.id_ual)) ? 'checked' : '' %>
+                  >
+                  <span class="form-check-label"><%= ual.nombre %></span>
+                </label>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+
+        <div class="col-md-12 d-flex flex-wrap justify-content-center gap-3 pt-2">
+          <button class="btn btn-perso col-md-6" type="submit">Guardar cambios</button>
+          <a class="btn btn-outline-secondary col-md-4" href="/milab/api/laboratoristas_registrados">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
+
+<script>
+  window.addEventListener('DOMContentLoaded', function () {
+    const facultySelect = document.getElementById('facultad');
+    const optionRows = document.querySelectorAll('[data-ual-option="true"]');
+    const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+
+    function refreshUalOptions() {
+      const selectedFaculty = facultySelect.value;
+
+      optionRows.forEach(function (row) {
+        const belongsToFaculty = row.getAttribute('data-facultad') === selectedFaculty;
+        row.hidden = !belongsToFaculty;
+      });
+
+      checkboxes.forEach(function (checkbox) {
+        const belongsToFaculty = checkbox.getAttribute('data-facultad') === selectedFaculty;
+
+        if (!belongsToFaculty) {
+          checkbox.checked = false;
+        }
+      });
+    }
+
+    facultySelect.addEventListener('change', refreshUalOptions);
+    refreshUalOptions();
+  });
+</script>

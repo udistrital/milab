@@ -1,0 +1,85 @@
+<%- include('../partials/header'); -%>
+
+<div class="container mt-5">
+  <div class="alert alert-danger" role="alert">
+    <h4 class="alert-heading">No se puede generar certificado, el usuario actualmente se encuentra Sancionado</h4>
+    <p>El usuario actualmente tiene las siguientes sanciones:</p>
+
+
+
+    <style>
+      table, th, td {
+        border-collapse: collapse;
+        border-spacing: 20px;
+      }
+    </style>
+    
+    <div class="card">
+      <div class="card-header">
+        <div class="row">
+          <div class="encabezado-tabla col text-center">Registro de sanciones activas en la Universidad</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive table">
+          <table class="table table-bordered" style="width:100%">
+            <tr>
+              <th>ID</th>
+              <th>Categoría de la sanción</th>
+              <th>Nombre del laboratorista</th>
+              <th>Código del sancionado</th>
+              <th>UAL</th>
+              <th>Fecha de la sanción</th>
+              <th>Observaciones</th>
+            </tr>
+            <% if(multaInfo.length > 0) { %>
+              <% multaInfo.forEach(function(data){ %>
+                <tr>
+                  <td><%= data.id %></td>
+                  <td><%= data.cat_multa %></td>
+                  <td><%= data.nombre_laboratorista %></td>
+                  <td><%= data.cod_multado %></td>
+                  <td><%= data.ual %></td>
+                  <td><%= data.fecha_multa %></td>
+                  <td><%= data.obs_multa %></td>
+                </tr>
+              <% }); %>
+            <% } else { %>
+              <tr>
+                <td colspan="8">No hay registros en la base de datos</td>
+              </tr>
+            <% } %>
+          </table>
+        </div>
+      </div>
+    </div>
+    <br>
+    
+
+    <hr>
+    <h4>Información de la sanción</h4>
+  
+    <p>
+      Para poder saldar su estado, acérquese a la Unidad Académica de Laboratorio (UAL) y Facultad donde fue Sancionado y solucione su situación.
+    </p>
+    <button class="btn btn-primary" onclick="goBack()">Volver Atrás</button>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+ 
+
+
+  <script>
+    function goBack() {
+      window.history.back();
+    }
+  </script>
+<%- include('../partials/footer'); -%>
+

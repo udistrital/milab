@@ -1,0 +1,226 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
+  <script>
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+
+<main class="container app-page-shell">
+  <style>
+    .app-detail-modal {
+      z-index: 3000 !important;
+    }
+
+    .modal-backdrop.show {
+      z-index: 2990 !important;
+    }
+  </style>
+  <section class="app-page-header">
+    <h1 class="app-page-title">Retiro de sanciones docentes</h1>
+    <p class="app-page-subtitle">Verifica la información del docente y elimina sanciones activas cuando corresponda.</p>
+  </section>
+
+  <section class="card app-form-panel text-light mx-auto justify-content-center d-flex col-lg-10">
+    <div class="card-body">
+      <p class="app-page-subtitle mb-3"><em>- Datos del docente sancionado - </em></p>
+      <table class="table table-bordered">
+        <tbody class="text-light">
+          <tr>
+            <th scope="row" class="col-md-4">Nombre</th>
+            <td class="col-md-8"><%= con_nombre %></td>
+          </tr>
+          <tr>
+            <th scope="row" class="col-md-4">Documento</th>
+            <td class="col-md-8"><%= con_documento %></td>
+          </tr>
+          <tr>
+            <th scope="row" class="col-md-4">Estado del docente</th>
+            <td class="col-md-8"><%= con_estado %></td>
+          </tr>
+          <tr>
+            <th scope="row" class="col-md-4">Cantidad de sanciones</th>
+            <td class="col-md-8"><%= multaInfo.length %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mx-auto justify-content-center d-flex mt-4">
+    <div class="card-header">
+      <div class="row">
+        <div class="encabezado-tabla text-center"><h5>Registro de sanciones activas en UAL</h5></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-bordered table-striped app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+          <thead class="text-light">
+            <tr>
+              <th>ID</th>
+              <th>Documento</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if(multaInfo.length > 0) { %>
+              <% multaInfo.forEach(function(data){ %>
+                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (data.n_usuario === locals.documento || locals.tipo === 'admin' || locals.tipo === 'coordinador'); %>
+                <tr class="text-light">
+                  <td><%= data.id %></td>
+                  <td><%= data.cod_multado %></td>
+                  <td><%= new Date(data.fecha_multa).toLocaleDateString('es-CO') %></td>
+                  <td><%= data.con_estado_multa %></td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn btn-outline-info btn-sm app-detail-button"
+                      data-bs-toggle="modal"
+                      data-bs-target="#detalleSancionModal"
+                      data-sancion-id="<%= data.id %>"
+                      data-sancion-documento="<%= data.cod_multado %>"
+                      data-sancion-fecha="<%= new Date(data.fecha_multa).toLocaleDateString('es-CO') %>"
+                      data-sancion-estado="<%= data.con_estado_multa %>"
+                      data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
+                      data-sancion-ual="<%= data.ual %>"
+                      data-sancion-categoria="<%= data.cat_multa %>"
+                      data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
+                      data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
+                      data-sancion-can-remove="<%= canRemove ? 'true' : 'false' %>"
+                    >
+                      <i class="bi bi-eye"></i>
+                      Ver detalle
+                    </button>
+                  </td>
+                </tr>
+              <% }); %>
+            <% } else { %>
+              <tr>
+                <td colspan="5">No hay registros en la base de datos</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div class="modal fade app-detail-modal" id="detalleSancionModal" tabindex="-1" aria-labelledby="detalleSancionLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="detalleSancionLabel">Detalle de la sanción</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="text-muted small">ID</div>
+              <div class="fw-semibold" data-detail-field="id"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Estado</div>
+              <div class="fw-semibold" data-detail-field="estado"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Documento</div>
+              <div class="fw-semibold" data-detail-field="documento"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Fecha</div>
+              <div class="fw-semibold" data-detail-field="fecha"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Laboratorista</div>
+              <div class="fw-semibold" data-detail-field="laboratorista"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">UAL</div>
+              <div class="fw-semibold" data-detail-field="ual"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Categoría de la sanción</div>
+              <div class="fw-semibold" data-detail-field="categoria"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Tipo de sanción</div>
+              <div class="fw-semibold" data-detail-field="tipo"></div>
+            </div>
+            <div class="col-12">
+              <div class="text-muted small">Observaciones</div>
+              <div class="fw-semibold" data-detail-field="observaciones"></div>
+            </div>
+          </div>
+
+          <div class="border-top pt-3 mt-3 d-none" data-detail-action="remove">
+            <h6 class="mb-3">Quitar sanción</h6>
+            <form action="/milab/api/quitar-multa" method="post" class="row g-3">
+              <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
+              <div class="col-12 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
+                <button class="btn btn-perso" type="submit">Quitar sanción</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="border-top pt-3 mt-3 d-none" data-detail-action="no-remove">
+            <div class="alert alert-info mb-0">No tienes permisos para quitar esta sanción.</div>
+            <div class="d-flex justify-content-end mt-3">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('.app-detail-button');
+
+    if (!trigger) {
+      return;
+    }
+
+    const fields = {
+      id: trigger.getAttribute('data-sancion-id'),
+      documento: trigger.getAttribute('data-sancion-documento'),
+      fecha: trigger.getAttribute('data-sancion-fecha'),
+      estado: trigger.getAttribute('data-sancion-estado'),
+      laboratorista: trigger.getAttribute('data-sancion-laboratorista'),
+      ual: trigger.getAttribute('data-sancion-ual'),
+      categoria: trigger.getAttribute('data-sancion-categoria'),
+      tipo: trigger.getAttribute('data-sancion-tipo'),
+      observaciones: trigger.getAttribute('data-sancion-observaciones'),
+    };
+
+    Object.keys(fields).forEach(function (key) {
+      const target = document.querySelector(`[data-detail-field="${key}"]`);
+      if (target) {
+        target.textContent = fields[key] || '-';
+      }
+    });
+
+    const canRemove = trigger.getAttribute('data-sancion-can-remove') === 'true';
+    const removeSection = document.querySelector('[data-detail-action="remove"]');
+    const noRemoveSection = document.querySelector('[data-detail-action="no-remove"]');
+
+    if (removeSection) {
+      removeSection.classList.toggle('d-none', !canRemove);
+    }
+    if (noRemoveSection) {
+      noRemoveSection.classList.toggle('d-none', canRemove);
+    }
+
+    const idInput = document.querySelector('[data-detail-input="con_id"]');
+    if (idInput) {
+      idInput.value = fields.id || '';
+    }
+  });
+</script>
+
+<%- include('../partials/footer'); -%>
+<% } %>

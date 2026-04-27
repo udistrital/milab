@@ -1,0 +1,280 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Administrar facultades y UAL</h1>
+    <p class="app-page-subtitle">Gestiona facultades, laboratorios y movimientos de UAL con una disposición homogénea y más legible.</p>
+  </section>
+
+  <section class="app-grid-2">
+    <!-- Columna Facultades -->
+    <div>
+      <div class="card app-table-panel text-light">
+        <div class="card-header text-center">
+          <h5>Facultades</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-striped table-hover app-table-compact table-facultad js-data-grid" data-grid-page-length="10" data-grid-scroll-x="false">
+              <thead class="text-center">
+                <tr>
+                  <th>Nombre</th>
+                  <th data-grid-filter="false" data-grid-orderable="false">Ver UALs</th>
+                  <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+                  <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
+                </tr>
+              </thead>
+              <tbody class="text-center text-light">
+                <% facultades.forEach(f => { %>
+                  <tr>
+                    <td><%= f.nombre %></td>
+                    <td>
+                      <a class="btn btn-sm btn-primary" href="/milab/api/facultad?id_facultad=<%= f.id_facultad %>">Seleccionar</a>
+                    </td>
+                    <td>
+                      <% if (locals.tipo === 'admin') { %>
+                        <button type="button" class="btn btn-sm btn-warning btn-edit-facultad" data-id="<%= f.id_facultad %>" data-nombre="<%= f.nombre %>">Editar</button>
+                      <% } else { %>
+                        <span class="text-muted">No permitido</span>
+                      <% } %>
+                    </td>
+                    <td>
+                      <% if (locals.tipo === 'admin') { %>
+                        <form action="/milab/api/facultad/eliminar" method="POST" onsubmit="return confirmDelete('facultad')">
+                          <input type="hidden" name="id_facultad" value="<%= f.id_facultad %>">
+                          <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                      <% } else { %>
+                        <span class="text-muted">No permitido</span>
+                      <% } %>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <% if (locals.tipo === 'admin') { %>
+            <hr>
+            <h6 class="mb-3">Agregar Facultad</h6>
+            <form action="/milab/api/facultad/add" method="POST">
+              <div class="input-group">
+                <input type="text" name="nombre" class="form-control" placeholder="Nombre de la facultad" required>
+                <button type="submit" class="btn btn-success">Agregar</button>
+              </div>
+            </form>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna UALs -->
+    <div>
+      <div class="card app-table-panel text-light">
+        <div class="card-header text-center">
+          <h5>UALs <%= selectedFacultad ? ('de ' + selectedFacultad.nombre) : '' %></h5>
+        </div>
+        <div class="card-body">
+          <% if (!selectedFacultad) { %>
+            <p class="text-center">Seleccione una facultad para ver sus UALs.</p>
+          <% } else { %>
+            <div class="table-responsive mb-3">
+              <table id="myTable" class="table table-bordered table-striped table-hover app-table-compact table-facultad js-data-grid" data-grid-page-length="10" data-grid-scroll-x="false">
+                <thead class="text-center">
+                  <tr>
+                    <th>Nombre</th>
+                    <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+                    <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
+                  </tr>
+                </thead>
+                <tbody class="text-center text-light">
+                  <% uals.forEach(u => { %>
+                    <tr>
+                      <td><%= u.nombre %></td>
+                      <td>
+                        <% if (locals.tipo === 'admin') { %>
+                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.id_ual %>" data-nombre="<%= u.nombre %>" data-facultad="<%= selectedFacultad.id_facultad %>">Editar</button>
+                        <% } else { %>
+                          <span class="text-muted">No permitido</span>
+                        <% } %>
+                      </td>
+                      <td>
+                        <% if (locals.tipo === 'admin') { %>
+                          <form action="/milab/api/facultad/ual/eliminar" method="POST" onsubmit="return confirmDelete('UAL')">
+                            <input type="hidden" name="id_ual" value="<%= u.id_ual %>">
+                            <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                          </form>
+                        <% } else { %>
+                          <span class="text-muted">No permitido</span>
+                        <% } %>
+
+                      </td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+
+             <% if (locals.tipo === 'admin') { %>
+              <hr>
+              <h6 class="mb-3">Agregar UAL a <%= selectedFacultad.nombre %></h6>
+              <form action="/milab/api/facultad/ual/add" method="POST">
+                <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
+                <div class="input-group">
+                  <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
+                  <button type="submit" class="btn btn-success">Agregar</button>
+                </div>
+              </form>
+            <% } %>
+
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Modal Editar Facultad -->
+<div class="modal fade" id="editarFacultadModal" tabindex="-1" aria-labelledby="editarFacultadModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editarFacultadModalLabel">Editar Facultad</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form action="/milab/api/facultad/editar" method="POST">
+        <div class="modal-body">
+          <input type="hidden" name="id_facultad" id="edit_facultad_id">
+          <div class="mb-3">
+            <label for="edit_facultad_nombre" class="form-label">Nombre</label>
+            <input type="text" class="form-control" name="nombre" id="edit_facultad_nombre" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar UAL -->
+<div class="modal fade" id="editarUalModal" tabindex="-1" aria-labelledby="editarUalModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editarUalModalLabel">Editar UAL</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form action="/milab/api/facultad/ual/editar" method="POST">
+        <div class="modal-body">
+          <input type="hidden" name="id_ual" id="edit_ual_id">
+          <input type="hidden" name="id_facultad" id="edit_ual_facultad">
+          <div class="mb-3">
+            <label for="edit_ual_nombre" class="form-label">Nombre</label>
+            <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+          </div>
+          <% if (locals.tipo === 'admin') { %>
+          <div class="mb-3">
+            <label for="edit_ual_facultad_select" class="form-label">Cambiar Facultad</label>
+            <select class="form-select" name="new_id_facultad" id="edit_ual_facultad_select">
+              <% facultades.forEach(f => { %>
+                <option value="<%= f.id_facultad %>"><%= f.nombre %></option>
+              <% }) %>
+            </select>
+            <small class="form-text text-muted">Solo administradores pueden mover UAL entre facultades.</small>
+          </div>
+          <% } %>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function confirmDelete(type) {
+    return confirm(`¿Está seguro que desea eliminar esta ${type}?`);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    function hoistModalToBody(id) {
+      var modalElement = document.getElementById(id);
+
+      if (modalElement && modalElement.parentElement !== document.body) {
+        document.body.appendChild(modalElement);
+      }
+
+      return modalElement;
+    }
+
+    var facultadModalElement = hoistModalToBody('editarFacultadModal');
+    var ualModalElement = hoistModalToBody('editarUalModal');
+    var facultadModal = facultadModalElement && window.bootstrap
+      ? window.bootstrap.Modal.getOrCreateInstance(facultadModalElement)
+      : null;
+    var ualModal = ualModalElement && window.bootstrap
+      ? window.bootstrap.Modal.getOrCreateInstance(ualModalElement)
+      : null;
+
+    document.querySelectorAll('.btn-edit-facultad').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var id = button.getAttribute('data-id');
+        var nombre = button.getAttribute('data-nombre');
+        var idInput = document.getElementById('edit_facultad_id');
+        var nombreInput = document.getElementById('edit_facultad_nombre');
+
+        if (idInput) {
+          idInput.value = id || '';
+        }
+
+        if (nombreInput) {
+          nombreInput.value = nombre || '';
+        }
+
+        if (facultadModal) {
+          facultadModal.show();
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-edit-ual').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var id = button.getAttribute('data-id');
+        var nombre = button.getAttribute('data-nombre');
+        var idFac = button.getAttribute('data-facultad');
+        var idInput = document.getElementById('edit_ual_id');
+        var nombreInput = document.getElementById('edit_ual_nombre');
+        var facultadInput = document.getElementById('edit_ual_facultad');
+        var facultadSelect = document.getElementById('edit_ual_facultad_select');
+
+        if (idInput) {
+          idInput.value = id || '';
+        }
+
+        if (nombreInput) {
+          nombreInput.value = nombre || '';
+        }
+
+        if (facultadInput) {
+          facultadInput.value = idFac || '';
+        }
+
+        if (facultadSelect) {
+          facultadSelect.value = idFac || '';
+        }
+
+        if (ualModal) {
+          ualModal.show();
+        }
+      });
+    });
+  });
+</script>
+
+<%- include('../partials/footer'); -%>

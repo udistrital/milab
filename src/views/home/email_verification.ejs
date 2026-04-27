@@ -1,0 +1,86 @@
+<%- include('../partials/header'); -%>
+
+  <div class="card col-md-5 row g-3 mx-auto d-flex justify-content-center mt-2 text-white">
+    <form id="verificacionForm" action="/milab/api/register/create_account" method="POST" class="row g-3 mx-auto d-flex justify-content-center">
+      <!--  -->
+      <div class="card-header text-center"><h4>Verificación de correo institucional</h4></div> 
+      <div class="col-md-10">
+        <label for="correo">Correo institucional ingresado:</label>
+        <input class="form-control" id="correo" type="correo" name="correo" value="<%- correo -%>" readonly/>
+      </div>
+      <div class="col-md-4 mt-5">
+        <button class="btn btn-primary col-md-12" id="btn_enviar_codigo" type="button" onclick="enviarCodigo()">Clic para enviar código</button>
+        <span id="countdown" style="display:none;"></span>
+      </div>
+      <div class="col-md-6">
+        <label for="codigo_verificacion" class="mb-2">Ingrese el código de verificación enviado al correo, recuerde revisar la carpeta de SPAM</label>
+        <input class="form-control" id="codigo_verificacion" type="number" name="codigo_verificacion" required />
+      </div>
+     
+      <br>
+      <div class="col-md-10 mt-3 mb-3">
+        <!-- Cambiado a tipo 'submit' para enviar el formulario -->
+        <button class="btn btn-perso col-md-12 mt-3" id="btn_aceptar" type="submit">Verificar</button>
+      </div>
+    </form>
+  </div>
+  <script>
+    function enviarCodigo() {
+    const button = document.getElementById('btn_enviar_codigo');
+    button.disabled = true;
+
+    const countdownSpan = document.getElementById('countdown');
+    countdownSpan.style.display = 'inline';
+
+    let seconds = obtenerTiempoRestante();
+    const codigoVerificacion = document.getElementById('codigo_verificacion').value;
+      const countdownInterval = setInterval(function() {
+        seconds--;
+        countdownSpan.textContent = `Próximo envío en ${seconds} segundos`;
+
+        if (seconds <= 0) {
+          button.disabled = false;
+          countdownSpan.style.display = 'none';
+          clearInterval(countdownInterval);
+        }
+      }, 1000); 
+    if(seconds !== 60){
+      alert("Demasiados intentos en poco tiempo. Espere un momento antes de intentar nuevamente.");
+    }else{
+      // Hacer una solicitud AJAX para enviar el código al servidor
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/milab/api/register/enviar-codigo', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            alert(xhr.responseText);
+          } else {
+            alert('Error al enviar el correo.');
+          }
+        }
+      };
+      xhr.send(JSON.stringify({ codigoVerificacion }));
+    } 
+  }
+  function obtenerTiempoRestante() {
+    const tiempoInicial = sessionStorage.getItem('tiempoInicial');
+    const ahora = Date.now();
+    const tiempoTranscurrido = ahora - tiempoInicial;
+
+    if (!tiempoInicial) {
+      sessionStorage.setItem('tiempoInicial', ahora);
+      return 60;
+    }
+    const tiempoRestante = 60 - Math.floor(tiempoTranscurrido / 1000);
+    
+    if (tiempoRestante <= 0) {
+      sessionStorage.setItem('tiempoInicial', ahora);
+      return 60;
+    }
+
+    return tiempoRestante;
+  }
+  </script>
+  
+<%- include('../partials/footer'); -%></br>

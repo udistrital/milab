@@ -1,0 +1,106 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Coordinadores registrados</h1>
+    <p class="app-page-subtitle">Administra el estado operativo de los coordinadores y consulta su asignación institucional.</p>
+  </section>
+
+  <section class="card app-table-panel">
+    <div class="card-header text-center">
+      <h5>Equipo de coordinación</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+          <thead class="text-light">
+            <tr>
+              <th>Nombres y Apellidos</th>
+              <th>Cédula</th>
+              <th>Correo</th>
+              <th>Facultad</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+              <th>Estado actual</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
+              <% if (false) { %>
+                <th>Eliminar</th>
+              <% } %>
+            </tr>
+          </thead>
+          <tbody>
+            <% coordinadores.forEach(coordinador => { %>
+              <tr>
+                <td><%= coordinador.con_nombre %></td>
+                <td><%= coordinador.con_documento %></td>
+                <td data-email-cell="true"><%= coordinador.con_correo %></td>
+                <td><%= coordinador.facultad_nombre %></td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-email-editor-trigger="true"
+                    data-email-editor-endpoint="/milab/api/coordinadores_registrados/actualizar-correo"
+                    data-email-editor-document="<%= coordinador.con_documento %>"
+                    data-email-editor-name="<%= coordinador.con_nombre %>"
+                    data-email-editor-current-email="<%= coordinador.con_correo %>"
+                    data-email-editor-label="coordinador"
+                  >
+                    Editar
+                  </button>
+                </td>
+                <td>
+                  <span class="badge <%= coordinador.tipo === 'coordinador' ? 'text-bg-success' : 'text-bg-secondary' %>">
+                    <%= coordinador.tipo === 'coordinador' ? 'Activo' : 'Inactivo' %>
+                  </span>
+                </td>
+                <td>
+                  <form action="/milab/api/coordinadores_registrados/toggle-estado" method="POST">
+                    <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
+                    <button type="submit" class="btn btn-sm <%= coordinador.tipo === 'coordinador' ? 'btn-outline-danger' : 'btn-outline-success' %>">
+                      <%= coordinador.tipo === 'coordinador' ? 'Inactivar' : 'Activar' %>
+                    </button>
+                  </form>
+                </td>
+                <% if (false) { %>
+                  <td>
+                    <form action="/milab/api/coordinadores_registrados/eliminar" method="POST" onsubmit="return confirmDelete('coordinador')">
+                      <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
+                      <button type="submit" class="btn btn-danger">Eliminar</button>
+                    </form>
+                  </td>
+                <% } %>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <%- include('../partials/email-editor-modal', {
+    actionUrl: '/milab/api/coordinadores_registrados/actualizar-correo'
+  }) %>
+
+<div class="px-3">
+  <div class="card mt-1 mx-auto app-inline-note" style="max-width: 1000px;">
+    <div class="card-body p-3">
+      <div class="mb-0 text-center" role="alert">
+        <strong>Información:</strong> La columna <strong>Estado actual</strong> muestra si el coordinador está activo o inactivo.
+        <br>Usa la columna <strong>Activar / Inactivar</strong> para cambiar su estado operativo.
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script>
+  function confirmDelete(type) {
+    if (confirm(`¿Está seguro que desea eliminar este ${type}?`)) {
+      alert(`${type.charAt(0).toUpperCase() + type.slice(1)} eliminado`);
+      return true;
+    }
+    return false;
+  }
+</script>
+
+<%- include('../partials/footer'); -%>

@@ -1,0 +1,42 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Listado de logs</h1>
+    <p class="app-page-subtitle">Audita acciones realizadas por los distintos perfiles dentro del sistema y sigue su trazabilidad.</p>
+  </section>
+
+  <section class="card app-table-panel">
+    <div class="card-header text-center">
+      <h5>Actividad registrada</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table id="myTable" class="table table-bordered table-striped app-table-compact table-logs js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+          <thead class="text-light">
+            <tr>
+              <th>tipo usuario</th>
+              <th>Documento</th>
+              <th>Fecha y Hora</th>
+              <th>Acción</th>
+              <th>Usuario</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% logs.forEach(log => { %>
+              <tr>
+                <td><%= log.nombre %></td>
+                <td><%= log.documento %></td>
+                <td><%= log.fecha_hora %></td>
+                <td><%= log.accion %></td>
+                <td><%= log.persona %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

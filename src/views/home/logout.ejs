@@ -1,0 +1,72 @@
+<div class="modal fade" id="confirmarCerrarSesionModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="exampleModalLabel">Cerrar sesión</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p>¿Deseas finalizar la sesión actual y salir del panel interno de MiLab?</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <!-- Boton de confirmación -->
+          <button type="button" class="btn btn-danger" id="confirmarCerrarSesion">Sí, cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Script para la función del botón-->
+  <script>
+    const logoutTriggers = document.querySelectorAll('[data-logout-trigger]');
+    const logoutConfirm = document.getElementById('confirmarCerrarSesion');
+    const logoutModalElement = document.getElementById('confirmarCerrarSesionModal');
+
+    function getLogoutModal() {
+      if (!logoutModalElement || !window.bootstrap) {
+        return null;
+      }
+
+      return window.bootstrap.Modal.getOrCreateInstance(logoutModalElement);
+    }
+
+    function showLogoutModal() {
+      const modal = getLogoutModal();
+      if (modal) {
+        modal.show();
+      }
+    }
+
+    function hideLogoutModal() {
+      const modal = getLogoutModal();
+      if (modal) {
+        modal.hide();
+      }
+    }
+
+    if (logoutTriggers.length && logoutConfirm && logoutModalElement) {
+      logoutTriggers.forEach(function(trigger) {
+        trigger.addEventListener('click', function(event) {
+          event.preventDefault();
+
+          const offcanvasElement = trigger.closest('.offcanvas.show');
+          if (offcanvasElement && window.bootstrap) {
+            offcanvasElement.addEventListener('hidden.bs.offcanvas', function handleHidden() {
+              showLogoutModal();
+            }, { once: true });
+
+            window.bootstrap.Offcanvas.getOrCreateInstance(offcanvasElement).hide();
+            return;
+          }
+
+          showLogoutModal();
+        });
+      });
+
+      logoutConfirm.addEventListener('click', function() {
+        hideLogoutModal();
+        window.location.href = "/milab/auth/logout";
+      });
+    }
+  </script>

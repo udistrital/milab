@@ -1,0 +1,65 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Docentes y estudiantes registrados</h1>
+    <p class="app-page-subtitle">Consulta la base consolidada de usuarios académicos registrados en la plataforma.</p>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header text-center">
+      <h5>Base académica</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+          <thead class="text-light">
+            <tr>
+              <th>Nombres y Apellidos</th>
+              <th>Tipo</th>
+              <th>Cédula</th>
+              <th>Código</th>
+              <th>Programa</th>
+              <th>Estado</th>
+              <th>Correo</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% estudiantes.forEach(estudiante => { %>
+              <tr>
+                <td><%= estudiante.con_nombre %></td>
+                <td><%= estudiante.con_tipo %></td>
+                <td><%= estudiante.con_documento %></td>
+                <td><%= estudiante.con_codigo || 'N/A' %></td>
+                <td><%= estudiante.con_carrera || 'N/A' %></td>
+                <td><%= estudiante.con_estado %></td>
+                <td data-email-cell="true"><%= estudiante.con_correo %></td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    data-email-editor-trigger="true"
+                    data-email-editor-endpoint="/milab/api/estudiantes_registrados/actualizar-correo"
+                    data-email-editor-document="<%= estudiante.con_documento %>"
+                    data-email-editor-name="<%= estudiante.con_nombre %>"
+                    data-email-editor-current-email="<%= estudiante.con_correo %>"
+                    data-email-editor-label="<%= estudiante.con_tipo %>"
+                  >
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <%- include('../partials/email-editor-modal', {
+    actionUrl: '/milab/api/estudiantes_registrados/actualizar-correo'
+  }) %>
+</main>
+
+<%- include('../partials/footer'); -%>

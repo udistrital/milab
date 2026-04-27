@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+  <script src="/milab/public/js/theme-branding.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe" crossorigin="anonymous"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css">
+  <script src="https://www.google.com/recaptcha/api.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.css">
+  <link rel="stylesheet" href="/milab/public/css/styles.css">
+<%
+  const navigation = locals.appNavigation || {};
+  const isAuthenticated = typeof locals.isAuthenticated === 'boolean'
+    ? locals.isAuthenticated
+    : Boolean(locals.tipo || navigation.role);
+  const sessionRole = locals.sessionRoleLabel || navigation.roleLabel || 'Invitado';
+  const sessionName = locals.nombre || '';
+  const sessionDocument = locals.documento || '';
+  const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  const shouldShowSanctionsBadge = (link) =>
+    pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
+  const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
+  const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
+  const activeRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  const helpManualsGeneralUrl = 'https://udistritaleduco-my.sharepoint.com/:f:/g/personal/laboratoriosgeneral_udistrital_edu_co/IgDBJFgDwv7HSogEaqdp0roXAdwuFV8JMJQ6aKDHSIe9mK4?e=Ms7JNz';
+  const helpManualsStudentTeacherUrl = 'https://udistritaleduco-my.sharepoint.com/personal/laboratoriosgeneral_udistrital_edu_co/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Flaboratoriosgeneral%5Fudistrital%5Fedu%5Fco%2FDocuments%2FmanualesGlab%2FManual%2Destudiante%2Ddocente&viewid=65e40934%2D07d6%2D488a%2Dbbf2%2D2942f72e8667';
+  const helpManualsCoordinatorLabUrl = 'https://udistritaleduco-my.sharepoint.com/personal/laboratoriosgeneral_udistrital_edu_co/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Flaboratoriosgeneral%5Fudistrital%5Fedu%5Fco%2FDocuments%2FmanualesGlab%2FManual%2Dcoordinador%2Dlaboratorista&viewid=65e40934%2D07d6%2D488a%2Dbbf2%2D2942f72e8667';
+  const helpManualsConfigByRole = {
+    estudiante: {
+      url: helpManualsStudentTeacherUrl,
+      label: 'Abrir manuales de estudiante y docente',
+    },
+    docente: {
+      url: helpManualsStudentTeacherUrl,
+      label: 'Abrir manuales de estudiante y docente',
+    },
+    coordinador: {
+      url: helpManualsCoordinatorLabUrl,
+      label: 'Abrir manuales de coordinador y laboratorista',
+    },
+    laboratorista: {
+      url: helpManualsCoordinatorLabUrl,
+      label: 'Abrir manuales de coordinador y laboratorista',
+    },
+    admin: {
+      url: helpManualsCoordinatorLabUrl,
+      label: 'Abrir manuales de coordinador y laboratorista',
+    },
+  };
+  const helpManualsConfig = helpManualsConfigByRole[activeRole] || {
+    url: helpManualsGeneralUrl,
+    label: 'Abrir manuales',
+  };
+  const helpManualsUrl = helpManualsConfig.url;
+  const helpManualsLabel = helpManualsConfig.label;
+  const navigationGuideMap = {
+    'Solicitar certificado': 'nav-solicitar-certificado',
+    'Autorizaciones': 'nav-autorizaciones',
+    'Registro': 'nav-registro',
+    'Registro de coordinadores': 'nav-registro-coordinadores',
+    'Registro de laboratoristas': 'nav-registro-laboratoristas',
+    'Consulta y control': 'nav-consulta-control',
+    'Consulta masiva': 'nav-consulta-masiva',
+    'Estudiantes y docentes registrados': 'nav-estudiantes-docentes-registrados',
+    'Laboratoristas registrados': 'nav-laboratoristas-registrados',
+    'Sanciones': 'nav-sanciones',
+    'Paz y Salvos': 'nav-paz-y-salvos',
+    'Verificar estudiante': 'nav-verificar-estudiante',
+    'Verificar docente': 'nav-verificar-docente',
+    'Administración': 'nav-administracion',
+    'Sanciones de estudiantes': 'nav-sanciones-estudiantes',
+    'Sanciones de docentes': 'nav-sanciones-docentes',
+  };
+  function getNavigationGuideAttribute(label) {
+    const key = navigationGuideMap[label];
+    return key ? `data-guide="${key}"` : '';
+  }
+%>
+
+</head>
+
+<body class="app-shell" data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>">
+  <header class="app-header">
+    <div class="app-header-shell">
+      <div class="app-header-brand-row">
+        <a class="app-header-brand app-header-brand--ud" href="/milab/" aria-label="Universidad Distrital Francisco Jose de Caldas">
+          <img
+            class="app-header-brand-logo"
+            data-theme-logo="true"
+            data-logo-light="/milab/public/img/Logo_Escudo_Acreditacion_Horizontal.png"
+            data-logo-dark="/milab/public/img/Logo_Escudo_Acreditacion_Horizontal_Blanco.png"
+            src="/milab/public/img/Logo_Escudo_Acreditacion_Horizontal.png"
+            alt="Universidad Distrital Francisco Jose de Caldas"
+          />
+        </a>
+
+        <a class="app-header-brand app-header-brand--milab" href="/milab/" aria-label="MiLab - Sistema de Laboratorios">
+          <span class="app-header-brand-title"><span class="app-brand-mi">Mi</span><span class="app-brand-lab">Lab</span></span>
+        </a>
+
+        <div class="app-header-brand app-header-brand--labs" aria-label="Coordinación General de Laboratorios">
+          <span class="app-header-brand-overline">Coordinación General de</span>
+          <span class="app-header-brand-side-title">Laboratorios</span>
+        </div>
+      </div>
+
+      <nav class="navbar navbar-expand-xl app-navbar" aria-label="Navegación principal" data-guide="main-navigation">
+        <div class="container-fluid app-navbar-inner">
+          <button class="navbar-toggler app-navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavbarNav" aria-controls="appNavbarNav" aria-expanded="false" aria-label="Mostrar navegación">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <div class="collapse navbar-collapse" id="appNavbarNav">
+            <ul class="navbar-nav app-nav-inline">
+              <% primaryLinks.forEach(function(link) { %>
+                <li class="nav-item">
+                  <a class="nav-link" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
+                    <i class="bi <%= link.icon %>" aria-hidden="true"></i>
+                    <span><%= link.label %></span>
+                    <% if (shouldShowSanctionsBadge(link)) { %>
+                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
+                    <% } %>
+                  </a>
+                </li>
+              <% }) %>
+
+              <% secondaryGroups.forEach(function(group, index) { %>
+                <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle" href="#" id="appDropdown<%= index %>" role="button" data-bs-toggle="dropdown" aria-expanded="false" <%- getNavigationGuideAttribute(group.title) %>>
+                    <i class="bi <%= group.icon %>" aria-hidden="true"></i>
+                    <span><%= group.title %></span>
+                  </a>
+                  <ul class="dropdown-menu" aria-labelledby="appDropdown<%= index %>">
+                    <% group.items.forEach(function(item) { %>
+                      <li>
+                        <a class="dropdown-item" href="<%= item.href %>" <%- getNavigationGuideAttribute(item.label) %>>
+                          <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                          <span><%= item.label %></span>
+                          <% if (shouldShowSanctionsBadge(item)) { %>
+                            <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
+                          <% } %>
+                        </a>
+                      </li>
+                    <% }) %>
+                  </ul>
+                </li>
+              <% }) %>
+            </ul>
+          </div>
+
+          <div class="app-navbar-actions">
+            <% if (isAuthenticated) { %>
+              <div class="app-user-tools d-none d-xl-flex">
+                <div class="dropdown">
+                  <button
+                    class="btn app-user-card app-user-card--icon app-user-menu dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-guide="account-menu"
+                    aria-expanded="false"
+                    aria-label="Abrir opciones de cuenta"
+                  >
+                    <span class="app-user-card-icon" aria-hidden="true">
+                      <i class="bi bi-person-badge"></i>
+                    </span>
+                    <span class="visually-hidden">Cuenta</span>
+                  </button>
+
+                  <ul class="dropdown-menu dropdown-menu-end app-user-menu-dropdown">
+                    <li class="app-user-menu-summary">
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Nombre</span>
+                        <span class="app-user-menu-value"><%= sessionName || 'Sin nombre' %></span>
+                      </div>
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Documento</span>
+                        <span class="app-user-menu-value"><%= sessionDocument || 'Sin documento' %></span>
+                      </div>
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Roles</span>
+                        <span class="app-user-menu-value"><%= sessionRole %></span>
+                      </div>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+
+                    <% if (accountLinks.length) { %>
+                      <% accountLinks.forEach(function(item) { %>
+                        <li>
+                          <a class="dropdown-item" href="<%= item.href %>">
+                            <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                            <span><%= item.label %></span>
+                          </a>
+                        </li>
+                      <% }) %>
+                      <li><hr class="dropdown-divider"></li>
+                    <% } %>
+
+                    <li>
+                      <button
+                        class="dropdown-item app-user-menu-action app-user-menu-theme"
+                        type="button"
+                        data-theme-toggle
+                        data-guide="theme-toggle"
+                        aria-label="Cambiar tema"
+                        title="Cambiar tema"
+                      ></button>
+                    </li>
+                    <li>
+                      <button
+                        class="dropdown-item app-user-menu-action app-user-menu-logout"
+                        type="button"
+                        data-logout-trigger="true"
+                        data-guide="logout-action"
+                        aria-label="Cerrar sesion"
+                        title="Cerrar sesion"
+                      >
+                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                        <span>Cerrar sesion</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="dropdown">
+                  <button
+                    class="btn app-help-pill app-user-card app-user-card--icon app-user-menu dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-guide="help-manuals"
+                    aria-expanded="false"
+                    aria-label="Abrir menu de ayuda"
+                    title="Abrir menu de ayuda"
+                  >
+                    <span class="app-user-card-icon" aria-hidden="true">
+                      <i class="bi bi-question-circle"></i>
+                    </span>
+                    <span class="visually-hidden">Ayuda</span>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end app-user-menu-dropdown app-help-menu-dropdown">
+                    <li>
+                      <button class="dropdown-item" type="button" data-guide-restart="true">
+                        <i class="bi bi-stars" aria-hidden="true"></i>
+                        <span>Ver tour guiado</span>
+                      </button>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="<%= helpManualsUrl %>" target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-journal-text" aria-hidden="true"></i>
+                        <span><%= helpManualsLabel %></span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="app-user-tools d-xl-none">
+                <div class="dropdown">
+                  <button
+                    class="btn app-user-chip app-user-chip--icon app-user-menu dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-guide="account-menu-mobile"
+                    aria-expanded="false"
+                    aria-label="Abrir opciones de cuenta"
+                  >
+                    <i class="bi bi-person-circle" aria-hidden="true"></i>
+                    <span class="visually-hidden">Cuenta</span>
+                  </button>
+
+                  <ul class="dropdown-menu dropdown-menu-end app-user-menu-dropdown">
+                    <li class="app-user-menu-summary">
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Nombre</span>
+                        <span class="app-user-menu-value"><%= sessionName || 'Sin nombre' %></span>
+                      </div>
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Documento</span>
+                        <span class="app-user-menu-value"><%= sessionDocument || 'Sin documento' %></span>
+                      </div>
+                      <div class="app-user-menu-item">
+                        <span class="app-user-menu-label">Roles</span>
+                        <span class="app-user-menu-value"><%= sessionRole %></span>
+                      </div>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+
+                    <% if (accountLinks.length) { %>
+                      <% accountLinks.forEach(function(item) { %>
+                        <li>
+                          <a class="dropdown-item" href="<%= item.href %>">
+                            <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                            <span><%= item.label %></span>
+                          </a>
+                        </li>
+                      <% }) %>
+                      <li><hr class="dropdown-divider"></li>
+                    <% } %>
+
+                    <li>
+                      <button
+                        class="dropdown-item app-user-menu-action app-user-menu-theme"
+                        type="button"
+                        data-theme-toggle
+                        data-guide="theme-toggle"
+                        aria-label="Cambiar tema"
+                        title="Cambiar tema"
+                      ></button>
+                    </li>
+                    <li>
+                      <button
+                        class="dropdown-item app-user-menu-action app-user-menu-logout"
+                        type="button"
+                        data-logout-trigger="true"
+                        data-guide="logout-action"
+                        aria-label="Cerrar sesion"
+                        title="Cerrar sesion"
+                      >
+                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                        <span>Cerrar sesion</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="dropdown">
+                  <button
+                    class="btn app-help-pill app-user-chip app-user-chip--icon app-user-menu dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-guide="help-manuals-mobile"
+                    aria-expanded="false"
+                    aria-label="Abrir menu de ayuda"
+                    title="Abrir menu de ayuda"
+                  >
+                    <i class="bi bi-question-circle" aria-hidden="true"></i>
+                    <span class="visually-hidden">Ayuda</span>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end app-user-menu-dropdown app-help-menu-dropdown">
+                    <li>
+                      <button class="dropdown-item" type="button" data-guide-restart="true">
+                        <i class="bi bi-stars" aria-hidden="true"></i>
+                        <span>Ver tour guiado</span>
+                      </button>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="<%= helpManualsUrl %>" target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-journal-text" aria-hidden="true"></i>
+                        <span><%= helpManualsLabel %></span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            <% } %>
+
+            <% if (!isAuthenticated) { %>
+              <button class="btn app-theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema"></button>
+            <% } %>
+
+            <% if (!isAuthenticated) { %>
+              <a class="btn app-login-pill" href="/milab/auth/login">
+                <i class="bi bi-box-arrow-in-right"></i>
+                <span>Ingresar</span>
+              </a>
+            <% } %>
+          </div>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <% if (isAuthenticated) { %>
+    <%- include('../home/logout') %>
+  <% } %>
+
+  <div class="app-frame">
+
+  <script>
+    function openMicrosoftLoginPopup(url) {
+      const width = 600;
+      const height = 400;
+      const left = window.innerWidth / 2 - width / 2;
+      const top = window.innerHeight / 2 - height / 2;
+      window.open(url, 'MicrosoftLogin', `width=${width},height=${height},left=${left},top=${top}`);
+    }
+  </script>
+  <script>
+    (function() {
+      function getThemeLabel(mode) {
+        if (mode === 'dark') {
+          return '<i class="bi bi-sun"></i>';
+        }
+        return '<i class="bi bi-moon-stars"></i>';
+      }
+
+      function syncThemeLogos(mode) {
+        var logos = document.querySelectorAll('[data-theme-logo]');
+        logos.forEach(function(logo) {
+          var lightSrc = logo.getAttribute('data-logo-light');
+          var darkSrc = logo.getAttribute('data-logo-dark');
+          var nextSrc = mode === 'dark' ? darkSrc : lightSrc;
+
+          if (nextSrc && logo.getAttribute('src') !== nextSrc) {
+            logo.setAttribute('src', nextSrc);
+          }
+        });
+      }
+
+      function syncThemeButtons(mode) {
+        var buttons = document.querySelectorAll('[data-theme-toggle]');
+        buttons.forEach(function(btn) {
+          btn.innerHTML = getThemeLabel(mode);
+          btn.classList.toggle('is-dark', mode === 'dark');
+          btn.setAttribute('title', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+          btn.setAttribute('aria-label', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+        });
+      }
+
+      function applyTheme(mode) {
+        if (window.MiLabThemeBranding && typeof window.MiLabThemeBranding.applyThemeState === 'function') {
+          window.MiLabThemeBranding.applyThemeState(mode);
+        } else {
+          document.documentElement.setAttribute('data-bs-theme', mode);
+        }
+        try { localStorage.setItem('theme', mode); } catch(e) {}
+        syncThemeButtons(mode);
+      }
+
+      var saved = 'light';
+      try { saved = localStorage.getItem('theme') || 'light'; } catch(e) {}
+      applyTheme(saved);
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var buttons = document.querySelectorAll('[data-theme-toggle]');
+        buttons.forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            var next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+          });
+        });
+      });
+    })();
+  </script>

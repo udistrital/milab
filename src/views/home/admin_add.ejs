@@ -1,0 +1,90 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Agregar admin</h1>
+    <p class="app-page-subtitle">Busca por documento en OATI o diligencia manualmente los datos para habilitar un nuevo administrador.</p>
+  </section>
+
+  <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
+    <div class="card-body">
+      <form
+        method="get"
+        action="/milab/api/admins/load_info"
+        class="row g-2 justify-content-center align-items-end app-form-grid mb-4"
+      >
+        <div class="col-12 col-md-8 mx-auto text-center">
+          <label for="documento_lookup" class="form-label">Consulta en OATI por documento</label>
+          <div class="input-group justify-content-center">
+            <input
+              type="text"
+              inputmode="numeric"
+              class="form-control"
+              id="documento_lookup"
+              name="documento"
+              placeholder="Ej: 90000000"
+              value="<%= lookupDocumento || '' %>"
+            >
+            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <small class="form-text text-muted">Si existe en OATI se precargan nombre y correo.</small>
+        </div>
+      </form>
+
+      <% if (lookupMessage) { %>
+        <div class="alert alert-<%= lookupStatus || 'warning' %>" role="alert">
+          <%= lookupMessage %>
+        </div>
+      <% } %>
+
+      <form method="post" action="/milab/api/admins" class="row g-3 mx-auto d-flex justify-content-center app-form-grid">
+        <p class="app-page-subtitle mb-2">
+          <em>Confirma la información y asigna el rol de administrador.</em>
+        </p>
+
+        <div class="col-md-6">
+          <label for="nombre" class="form-label">Nombre completo</label>
+          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= formData?.nombre || '' %>" required>
+        </div>
+
+        <div class="col-md-6">
+          <label for="documento" class="form-label">Número de documento</label>
+          <input
+            type="text"
+            inputmode="numeric"
+            class="form-control"
+            id="documento"
+            name="documento"
+            value="<%= formData?.documento || '' %>"
+            required
+          >
+        </div>
+
+        <div class="col-md-12">
+          <label for="correo" class="form-label">Correo institucional</label>
+          <input type="email" class="form-control" id="correo" name="correo" value="<%= formData?.correo || '' %>" required>
+        </div>
+
+        <% if (error) { %>
+          <div class="col-12 alert alert-danger mb-0" role="alert">
+            <%= error %>
+          </div>
+        <% } %>
+
+        <% if (success) { %>
+          <div class="col-12 alert alert-success mb-0" role="alert">
+            <%= success %>
+          </div>
+        <% } %>
+
+        <div class="col-12 d-flex justify-content-center pt-2">
+          <button class="btn btn-perso px-4" type="submit">Guardar admin</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

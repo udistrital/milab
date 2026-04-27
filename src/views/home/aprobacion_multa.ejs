@@ -1,0 +1,248 @@
+<%- include('../partials/header'); -%>
+<main class="container app-page-shell">
+  <style>
+    .app-detail-modal {
+      z-index: 3000;
+    }
+
+    .modal-backdrop.show {
+      z-index: 2990;
+    }
+  </style>
+  <section class="app-page-header">
+    <h1 class="app-page-title">Autorizaciones de sanciones</h1>
+    <p class="app-page-subtitle">Gestiona el paso de sanciones pendientes a activas o saldadas desde una lectura más clara del estado actual.</p>
+  </section>
+  <section class="card app-table-panel p-0">
+  <div class="card-body">
+  
+  <% if (multas.length === 0) { %>
+    <div class="alert alert-info text-center">No hay sanciones pendientes asociadas a tu facultad.</div>
+  <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover table-light app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+        <thead class="table-dark text-center">
+          <tr>
+            <th>ID</th>
+            <th>Documento sancionado</th>
+            <th>Fecha de la sanción</th>
+            <th>Estado</th>
+            <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% multas.forEach(multa => { %>
+            <tr>
+              <td><%= multa.id %></td>
+              <td><%= multa.documento_sancionado %></td>
+              <td><%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %></td>
+              <td><%= multa.con_estado_multa %></td>
+              <td class="text-center">
+                <button
+                  type="button"
+                  class="btn btn-outline-info btn-sm app-detail-button"
+                  data-bs-toggle="modal"
+                  data-bs-target="#detalleSancionModal"
+                  data-sancion-id="<%= multa.id %>"
+                  data-sancion-documento="<%= multa.documento_sancionado %>"
+                  data-sancion-fecha="<%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %>"
+                  data-sancion-fecha-iso="<%= new Date(multa.fecha_multa).toISOString() %>"
+                  data-sancion-estado="<%= multa.con_estado_multa %>"
+                  data-sancion-laboratorista="<%= multa.nombre_laboratorista %>"
+                  data-sancion-ual="<%= multa.ual %>"
+                  data-sancion-categoria="<%= multa.cat_multa %>"
+                  data-sancion-tipo="<%= multa.tipo_sancion || 'Por definir' %>"
+                  data-sancion-observaciones="<%= multa.obs_multa || 'Sin observaciones' %>"
+                  data-sancion-cod="<%= multa.cod_multado %>"
+                >
+                  <i class="bi bi-eye"></i>
+                  Ver detalle
+                </button>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+  </section>
+</main>
+
+<div class="modal fade app-detail-modal" id="detalleSancionModal" tabindex="-1" aria-labelledby="detalleSancionLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detalleSancionLabel">Detalle de la sanción</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="text-muted small">ID</div>
+            <div class="fw-semibold" data-detail-field="id"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Estado</div>
+            <div class="fw-semibold" data-detail-field="estado"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Nombre sancionado</div>
+            <div class="fw-semibold" data-detail-field="nombre"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Documento</div>
+            <div class="fw-semibold" data-detail-field="documento"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Fecha de la sanción</div>
+            <div class="fw-semibold" data-detail-field="fecha"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Laboratorista</div>
+            <div class="fw-semibold" data-detail-field="laboratorista"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">UAL</div>
+            <div class="fw-semibold" data-detail-field="ual"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Categoría de la sanción</div>
+            <div class="fw-semibold" data-detail-field="categoria"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Tipo de sanción</div>
+            <div class="fw-semibold" data-detail-field="tipo"></div>
+          </div>
+          <div class="col-12">
+            <div class="text-muted small">Observaciones</div>
+            <div class="fw-semibold" data-detail-field="observaciones"></div>
+          </div>
+        </div>
+
+        <div class="border-top pt-3 mt-3" data-detail-action="activate">
+          <h6 class="mb-3">Aplicar sanción</h6>
+          <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3">
+            <input type="hidden" name="cod_multado" data-detail-input="cod_multado">
+            <input type="hidden" name="fecha_multa" data-detail-input="fecha_multa">
+            <div class="col-12">
+              <label class="form-label" for="tipo_sancion_detalle">Tipo de sanción</label>
+              <select id="tipo_sancion_detalle" name="tipo_sancion" class="form-select" required>
+                <option value="">Selecciona tipo de sanción</option>
+                <option value="Suspensión temporal del acceso al laboratorio">Suspensión temporal del acceso al laboratorio</option>
+                <option value="Realizar cursos de buenas prácticas o seguridad">Realizar cursos de buenas prácticas o seguridad</option>
+                <option value="Amonestación verbal o escrita">Amonestación verbal o escrita</option>
+                <option value="Firma de compromiso de buen uso">Firma de compromiso de buen uso</option>
+                <option value="Apoyo en organización del laboratorio">Apoyo en organización del laboratorio</option>
+                <option value="Reposición de materiales o insumos">Reposición de materiales o insumos</option>
+                <option value="Reemplazar exactamente lo que dañó o perdió">Reemplazar exactamente lo que dañó o perdió</option>
+              </select>
+            </div>
+            <div class="col-12 d-flex justify-content-end gap-2">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
+              <button type="submit" class="btn btn-success">Activar sanción</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="border-top pt-3 mt-3 d-none" data-detail-action="saldar">
+          <h6 class="mb-3">Marcar sanción como saldada</h6>
+          <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3">
+            <input type="hidden" name="cod_multado" data-detail-input="cod_multado">
+            <input type="hidden" name="fecha_multa" data-detail-input="fecha_multa">
+            <div class="col-12 d-flex justify-content-end gap-2">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
+              <button type="submit" class="btn btn-primary">Marcar como saldada</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('.app-detail-button');
+
+    if (!trigger) {
+      return;
+    }
+
+    const fields = {
+      id: trigger.getAttribute('data-sancion-id'),
+      documento: trigger.getAttribute('data-sancion-documento'),
+      fecha: trigger.getAttribute('data-sancion-fecha'),
+      estado: trigger.getAttribute('data-sancion-estado'),
+      laboratorista: trigger.getAttribute('data-sancion-laboratorista'),
+      ual: trigger.getAttribute('data-sancion-ual'),
+      categoria: trigger.getAttribute('data-sancion-categoria'),
+      tipo: trigger.getAttribute('data-sancion-tipo'),
+      observaciones: trigger.getAttribute('data-sancion-observaciones'),
+    };
+
+    Object.keys(fields).forEach(function (key) {
+      const target = document.querySelector(`[data-detail-field="${key}"]`);
+      if (target) {
+        target.textContent = fields[key] || '-';
+      }
+    });
+
+    const nombreTarget = document.querySelector('[data-detail-field="nombre"]');
+    if (nombreTarget) {
+      nombreTarget.textContent = 'Cargando...';
+    }
+
+    const documento = fields.documento || '';
+    if (documento) {
+      fetch(`/milab/api/get_list_multas/resolve_name?documento=${encodeURIComponent(documento)}`)
+        .then((response) => response.json())
+        .then((data) => {
+          if (nombreTarget) {
+            nombreTarget.textContent = data && data.nombre ? data.nombre : 'Sin nombre';
+          }
+        })
+        .catch(() => {
+          if (nombreTarget) {
+            nombreTarget.textContent = 'Sin nombre';
+          }
+        });
+    }
+
+    const codMultadoInputs = document.querySelectorAll('[data-detail-input="cod_multado"]');
+    const fechaInputs = document.querySelectorAll('[data-detail-input="fecha_multa"]');
+    const fechaIso = trigger.getAttribute('data-sancion-fecha-iso');
+    const codMultado = trigger.getAttribute('data-sancion-cod') || '';
+
+    codMultadoInputs.forEach(function (input) {
+      input.value = codMultado;
+    });
+
+    fechaInputs.forEach(function (input) {
+      input.value = fechaIso || '';
+    });
+
+    const select = document.getElementById('tipo_sancion_detalle');
+    const tipoActual = trigger.getAttribute('data-sancion-tipo');
+    if (select) {
+      select.value = tipoActual && tipoActual !== 'Por definir' ? tipoActual : '';
+    }
+
+    const estado = (fields.estado || '').toUpperCase();
+    const activarSection = document.querySelector('[data-detail-action="activate"]');
+    const saldarSection = document.querySelector('[data-detail-action="saldar"]');
+
+    if (estado === 'PENDIENTE') {
+      activarSection?.classList.remove('d-none');
+      saldarSection?.classList.add('d-none');
+    } else if (estado === 'POR SALDAR') {
+      activarSection?.classList.add('d-none');
+      saldarSection?.classList.remove('d-none');
+    } else {
+      activarSection?.classList.add('d-none');
+      saldarSection?.classList.add('d-none');
+    }
+  });
+</script>
+<%- include('../partials/footer'); -%>
+

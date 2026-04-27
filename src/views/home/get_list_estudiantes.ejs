@@ -1,0 +1,86 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin') { %>
+    <script>
+    window.location.href = '/milab/auth/login';
+    </script>
+  <% } else { %>
+
+<main class="container app-page-shell">
+    <section class="app-page-header">
+        <h1 class="app-page-title">Certificados generados</h1>
+        <p class="app-page-subtitle">Consulta el histórico generado para estudiantes y docentes, identifica el tipo de registro y filtra la vista según necesites.</p>
+    </section>
+
+    <section class="card app-form-panel">
+        <div class="card-body">
+            <form method="GET" action="/milab/api/get_list_estudiantes" class="row g-3 align-items-end">
+                <div class="col-md-4 col-lg-3">
+                    <label for="tipo" class="form-label">Mostrar certificados de</label>
+                    <select id="tipo" name="tipo" class="form-select" onchange="this.form.submit()">
+                        <option value="todos" <%= selectedType === 'todos' ? 'selected' : '' %>>Todos</option>
+                        <option value="estudiante" <%= selectedType === 'estudiante' ? 'selected' : '' %>>Estudiantes</option>
+                        <option value="docente" <%= selectedType === 'docente' ? 'selected' : '' %>>Docentes</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card app-table-panel">
+        <div class="card-header text-center">
+            <h5>Listado consolidado</h5>
+        </div>
+        <div class="card-body">
+            <% if (sampleData1.length === 0) { %>
+                <div class="alert alert-light border text-center mb-3" role="status">
+                    No hay registros en la base de datos para el filtro seleccionado.
+                </div>
+            <% } %>
+            <div class="table-responsive">
+                <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+                    <thead class="text-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Tipo</th>
+                            <th>Nombres y apellidos</th>
+                            <th>Cédula</th>
+                            <th>Código</th>
+                            <th>Programa</th>
+                            <th>Estado</th>
+                            <th>Fecha de creación</th>
+                            <th>Fecha de vencimiento</th>
+                            <th>Certificado</th>
+                            <th>Correo</th>
+                            <th>Motivo</th>
+                            <th>Sanciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if (sampleData1.length > 0) { %>
+                            <% sampleData1.forEach(function(data) { %>
+                                <tr>
+                                    <td class="text-light"><%= data.id %></td>
+                                    <td class="text-light text-capitalize"><%= data.tipo_registro %></td>
+                                    <td class="text-light"><%= data.nombre %></td>
+                                    <td class="text-light"><%= data.documento %></td>
+                                    <td class="text-light"><%= data.codigo || 'N/A' %></td>
+                                    <td class="text-light"><%= data.programa || 'N/A' %></td>
+                                    <td class="text-light"><%= data.estado || 'N/A' %></td>
+                                    <td class="text-light"><%= data.fecha_creacion ? new Date(data.fecha_creacion).toLocaleDateString() : 'N/A' %></td>
+                                    <td class="text-light"><%= data.fecha_vencimiento ? new Date(data.fecha_vencimiento).toLocaleDateString() : 'N/A' %></td>
+                                    <td class="text-light"><%= data.id_certificado %></td>
+                                    <td class="text-light"><%= data.correo %></td>
+                                    <td class="text-light"><%= data.motivo_exp || 'N/A' %></td>
+                                    <td class="text-light"><%= data.multa || 'N/A' %></td>
+                                </tr>
+                            <% }); %>
+                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+<br>
+  <%- include('../partials/footer'); -%>
+<% } %>

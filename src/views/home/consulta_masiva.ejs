@@ -1,0 +1,150 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador'  ) { %>
+    <script>
+    window.location.href = '/milab/auth/login';
+    </script>
+  <% } else { %>
+
+<main class="container app-page-shell">
+    <section class="app-page-header">
+        <h1 class="app-page-title">Consulta masiva de estudiantes</h1>
+        <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y UAL asociada.</p>
+    </section>
+
+<section class="card app-form-panel justify-content-center mx-auto">
+    <div class="card-body text-light mt-2 mx-auto">
+        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="row col-md-11 justify-content-center d-flex mx-auto app-form-grid" onsubmit="return verificarEntrada()">
+            <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos de los estudiantes a consultar separados por coma (máximo 20 estudiantes)</label>
+            <input type="text" class="col-md-12 mt-1" id="consulta_masiva" name="consulta_masiva"  required>
+            <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1">Consultar</button>
+        </form>
+        <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
+        <% if (error) {%>
+        <div class="alert alert-danger mt-3" role="alert">
+            <%- error -%>
+        </div>
+        <% } %>
+    </div>
+    <div class="card-header col-md-11 mt-3 mx-auto text-center">
+        <h5>Resultados del lote</h5>
+    </div>
+    <div class="card-body col-md-11 mx-auto pt-0">
+            <div class="table-responsive">
+                <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+                    <thead class="text-light">
+                        <tr>
+                            <th>Código estudiante</th>
+                            <th>Motivo de sanción</th>
+                            <th>Estado de la sanción</th>
+                            <th>Fecha de la sanción</th>
+                            <th>Observación</th>
+                            <th>Nombre del laboratorista</th>
+                            <th>UAL</th>
+                            
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% if(sampleData1.length > 0) {
+                            sampleData1.forEach(function(data) { %>
+                                <% data.multas.forEach(function(multa) { %>
+                                <tr>
+                                    
+                                        <td class="text-light"><%= data.cod_multado_convert %></td>
+                                        <% if (multa === null) { %>
+                                            <td class="text-light">
+                                                <em>El estudiante no tiene multas</em>
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <% } else if (multa === 'unknown') { %>
+                                                <td class="text-light">
+                                                    <em>Este código no se encuentra registrado</em>
+                                                </td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            <% } else { %>
+                                                <td class="text-light">
+                                                    <em><%= multa.cat_multa %></em>
+                                                </td>                                     
+                                                <td class="text-light"><%= multa.con_estado_multa %></td>
+                                                <td class="text-light"><%= multa.fecha_multa %></td>
+                                                <td class="text-light"><%= multa.obs_multa %></td>   
+                                                <td class="text-light"><%= multa.nombre_laboratorista %></td>
+                                                <td class="text-light"><%= multa.ual %></td>
+                                            <% } %> 
+                                                                 
+                                </tr>
+                                <% }) %>  
+                            <% });
+                        } else { %>
+                            <tr>
+                                <td colspan="7" class="text-center">No hay registros en la base de datos</td>
+                                <td class="ocultar-columna"></td>
+                                <td class="ocultar-columna"></td>
+                                <td class="ocultar-columna"></td>
+                                <td class="ocultar-columna"></td>
+                                <td class="ocultar-columna"></td>
+                                <td class="ocultar-columna"></td>                             
+                            </tr>
+                        <% } %>
+                    </tbody>
+                </table>
+                <% if(sampleData1.length > 0) { %>
+                    <div class="justify-content-center d-flex">
+                        
+                    <a href="/milab/api/get_list_estudiantes/generate_pdf?data=<%= encodeURIComponent(JSON.stringify(sampleData1)) %>" class="btn btn-perso mt-2 mb-2 col-md-11">Generar PDF</a>
+                    </div>
+                <% } %>
+
+            </div>
+    </div>
+    <br>
+</section>
+</main>
+<br>
+<!-- Include Bootstrap JS and jQuery -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script>
+    function verificarEntrada() {
+    var input = document.getElementById("consulta_masiva").value;
+    var mensajeError = document.getElementById("mensajeError");
+    mensajeError.classList.add("d-none");
+    mensajeError.innerHTML = "";
+
+    const numeros = input.split(",");
+    for (let i = 0; i < numeros.length; i++) {
+        if (isNaN(numeros[i])){
+            mensajeError.classList.remove("d-none");
+            mensajeError.innerHTML += "<p>Los códigos deben contener solamente números</p>";
+            return false;
+        }
+        if(parseFloat(numeros[i]) < 0) {
+            mensajeError.classList.remove("d-none");
+            mensajeError.innerHTML += "<p>Los códigos no pueden ser negativos</p>";
+            return false;
+        }
+    }
+    const max = input.split(',').map(Number);
+        if (max.length > 20) {
+            mensajeError.classList.remove("d-none");
+            mensajeError.innerHTML += "<p>Has excedido el límite de 20 estudiantes, Intentalo nuevamente</p>";
+            return false;
+        }
+    return true;
+}
+</script>
+  
+ 
+
+
+
+  <%- include('../partials/footer'); -%>
+  <% } %>

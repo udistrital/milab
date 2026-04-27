@@ -1,0 +1,39 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Completar registro</h1>
+    <p class="app-page-subtitle">Ingresa tu número de documento para consultar tu perfil en OATI.</p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-xl-7 col-lg-8">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-4 p-lg-5">
+
+          <% if (error) { %>
+            <div class="alert alert-danger" role="alert"><%= error %></div>
+          <% } %>
+
+          <form method="POST" action="/milab/api/profile/identify" class="row g-3">
+            <div class="col-12">
+              <label for="correo" class="form-label">Correo institucional</label>
+              <input type="email" class="form-control" id="correo" value="<%= correo || '' %>" readonly>
+            </div>
+
+            <div class="col-12">
+              <label for="documento" class="form-label">Número de documento</label>
+              <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" required>
+            </div>
+
+            <div class="col-12 d-flex justify-content-center pt-2">
+              <button class="btn btn-primary px-4" type="submit">Continuar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
