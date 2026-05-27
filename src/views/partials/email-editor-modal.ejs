@@ -11,6 +11,7 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form method="POST" action="<%= actionUrl %>" data-email-editor-form="true">
+        <%- include('./csrf_field') %>
         <input type="hidden" name="documento" value="" data-email-editor-hidden-document="true">
 
         <div class="modal-header">

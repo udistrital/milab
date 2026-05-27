@@ -41,6 +41,7 @@
                     <td>
                       <% if (locals.tipo === 'admin') { %>
                         <form action="/milab/api/facultad/eliminar" method="POST" onsubmit="return confirmDelete('facultad')">
+                          <%- include('../partials/csrf_field') %>
                           <input type="hidden" name="id_facultad" value="<%= f.id_facultad %>">
                           <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                         </form>
@@ -58,6 +59,7 @@
             <hr>
             <h6 class="mb-3">Agregar Facultad</h6>
             <form action="/milab/api/facultad/add" method="POST">
+              <%- include('../partials/csrf_field') %>
               <div class="input-group">
                 <input type="text" name="nombre" class="form-control" placeholder="Nombre de la facultad" required>
                 <button type="submit" class="btn btn-success">Agregar</button>
@@ -101,6 +103,7 @@
                       <td>
                         <% if (locals.tipo === 'admin') { %>
                           <form action="/milab/api/facultad/ual/eliminar" method="POST" onsubmit="return confirmDelete('UAL')">
+                            <%- include('../partials/csrf_field') %>
                             <input type="hidden" name="id_ual" value="<%= u.id_ual %>">
                             <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
                             <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
@@ -120,6 +123,7 @@
               <hr>
               <h6 class="mb-3">Agregar UAL a <%= selectedFacultad.nombre %></h6>
               <form action="/milab/api/facultad/ual/add" method="POST">
+                <%- include('../partials/csrf_field') %>
                 <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
                 <div class="input-group">
                   <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
@@ -144,6 +148,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <form action="/milab/api/facultad/editar" method="POST">
+        <%- include('../partials/csrf_field') %>
         <div class="modal-body">
           <input type="hidden" name="id_facultad" id="edit_facultad_id">
           <div class="mb-3">
@@ -169,6 +174,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <form action="/milab/api/facultad/ual/editar" method="POST">
+        <%- include('../partials/csrf_field') %>
         <div class="modal-body">
           <input type="hidden" name="id_ual" id="edit_ual_id">
           <input type="hidden" name="id_facultad" id="edit_ual_facultad">
@@ -197,7 +203,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="<%= cspNonce %>">
   function confirmDelete(type) {
     return confirm(`¿Está seguro que desea eliminar esta ${type}?`);
   }

@@ -38,6 +38,8 @@ const { installConsoleBridge, installProcessHandlers, logger } = require('./libs
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const { createApplicationErrorHandler } = require('./routes/middlewares/error-handler');
+const { csrfTokenMiddleware, verifyCsrfToken } = require('./routes/middlewares/csrf');
+const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 
 installConsoleBridge();
 installProcessHandlers();
@@ -72,6 +74,12 @@ const generateRandomSecret = () => {
   return crypto.randomBytes(64).toString('hex');
 };
 const sessionSecret = process.env.SESSION_SECRET || generateRandomSecret();
+if (!process.env.SESSION_SECRET) {
+  logger.warn(
+    '[SECURITY] SESSION_SECRET no está definido — se usará un secreto aleatorio. ' +
+      'Todas las sesiones activas se invalidarán cada vez que el servidor se reinicie.'
+  );
+}
 let sessionCookieSecure = process.env.SESSION_SECURE
   ? process.env.SESSION_SECURE === 'true'
   : process.env.NODE_ENV === 'production';
@@ -85,6 +93,11 @@ if (sessionSameSite === 'none') {
   sessionCookieSecure = true;
 }
 //Middleware
+// Genera un nonce criptográfico por solicitud para CSP scriptSrc
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -92,7 +105,7 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
-          "'unsafe-inline'",
+          (req, res) => `'nonce-${res.locals.cspNonce}'`,
           'code.jquery.com',
           'https://code.jquery.com',
           'cdn.jsdelivr.net',
@@ -192,7 +205,11 @@ const limiter2 = rateLimit({
   },
 });
 //app.use(limiter);
+app.use(ipBlockMiddleware);
 app.use(limiter2);
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 app.use(
   session({
@@ -208,6 +225,7 @@ app.use(
   })
 );
 
+app.use(csrfTokenMiddleware);
 app.use(navigationMiddleware);
 app.use((req, res, next) => {
   res.locals.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY || '';
@@ -237,8 +255,8 @@ app.use(legacyBasePath, (req, res, next) => {
   next();
 });
 
-app.use(canonicalBasePath, require('./milab_routes'));
-app.use(legacyBasePath, require('./milab_routes'));
+app.use(canonicalBasePath, verifyCsrfToken, require('./milab_routes'));
+app.use(legacyBasePath, verifyCsrfToken, require('./milab_routes'));
 app.use(createApplicationErrorHandler(logger));
 
 //app.use("/auth", loginRouter);

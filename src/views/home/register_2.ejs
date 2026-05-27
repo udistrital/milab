@@ -569,7 +569,7 @@
 </head>
 <body>
   <% if (locals.tipo) { %>
-    <script>
+    <script nonce="<%= cspNonce %>">
       window.location.href = '/milab/';
     </script>
   <% } else { %>
@@ -626,6 +626,7 @@
                 <p id="lookup-description">Disponible únicamente para estudiantes activos en un programa académico de la Universidad.</p>
 
                 <form id="lookup-form" method="POST" action="/milab/api/get-data1">
+                  <%- include('../partials/csrf_field') %>
                   <div class="field">
                     <label for="lookup-doc-id">Número de identificación</label>
                     <div class="input-shell">
@@ -660,7 +661,7 @@
       </aside>
     </main>
 
-    <script>
+    <script nonce="<%= cspNonce %>">
       document.addEventListener('DOMContentLoaded', function () {
         const banner = document.getElementById('service-status-banner');
         const title = document.getElementById('service-status-title');

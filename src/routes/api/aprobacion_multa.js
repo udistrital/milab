@@ -5,6 +5,7 @@ const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 } = require('../../libs/email-layout');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
@@ -56,6 +57,7 @@ async function sendSanctionActivationEmail({
   if (!correo) return;
 
   const safeNombre = nombre || 'estudiante';
+  const h = escapeHtml;
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
@@ -86,16 +88,16 @@ async function sendSanctionActivationEmail({
                 <tr>
                   <td style="padding:0 30px 20px 30px;">
                     <p style="font-size:16px;line-height:1.6;color:#5f6368;margin:0;">
-                      Hola ${safeNombre},
+                      Hola ${h(safeNombre)},
                     </p>
                     <p style="font-size:15px;line-height:1.6;color:#5f6368;margin-top:16px;">
-                      Se ha activado una sanción asociada a tu registro con código <strong>${codigo}</strong>.
+                      Se ha activado una sanción asociada a tu registro con código <strong>${h(codigo)}</strong>.
                     </p>
                     <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #e53935;margin-top:16px;">
-                      <p style="margin:0;font-size:14px;color:#202124;"><strong>Tipo de sanción:</strong> ${tipoSancion}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Laboratorio:</strong> ${laboratorio || 'N/A'}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Fecha:</strong> ${fecha || 'N/A'}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Observaciones:</strong> ${observaciones || 'Sin observaciones'}</p>
+                      <p style="margin:0;font-size:14px;color:#202124;"><strong>Tipo de sanción:</strong> ${h(tipoSancion)}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Laboratorio:</strong> ${h(laboratorio || 'N/A')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Fecha:</strong> ${h(fecha || 'N/A')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Observaciones:</strong> ${h(observaciones || 'Sin observaciones')}</p>
                     </div>
                     <p style="font-size:14px;line-height:1.6;color:#5f6368;margin-top:18px;">
                       Si tienes dudas, comunícate con la coordinación de laboratorios.

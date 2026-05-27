@@ -121,6 +121,7 @@
         <div class="border-top pt-3 mt-3" data-detail-action="activate">
           <h6 class="mb-3">Aplicar sanción</h6>
           <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3">
+            <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <div class="col-12">
               <label class="form-label" for="tipo_sancion_detalle">Tipo de sanción</label>
@@ -145,6 +146,7 @@
         <div class="border-top pt-3 mt-3 d-none" data-detail-action="saldar">
           <h6 class="mb-3">Marcar sanción como saldada</h6>
           <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3">
+            <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
@@ -157,7 +159,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="<%= cspNonce %>">
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('.app-detail-button');
 

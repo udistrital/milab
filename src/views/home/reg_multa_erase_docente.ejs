@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -159,6 +159,7 @@
           <div class="border-top pt-3 mt-3 d-none" data-detail-action="remove">
             <h6 class="mb-3">Quitar sanción</h6>
             <form action="/milab/api/quitar-multa" method="post" class="row g-3">
+              <%- include('../partials/csrf_field') %>
               <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
               <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
@@ -179,7 +180,7 @@
   </div>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('.app-detail-button');
 

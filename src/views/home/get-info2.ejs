@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'estudiante' && locals.tipo !== 'docente' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -21,6 +21,7 @@
     const isStaffRequester = locals.tipo === 'laboratorista' || locals.tipo === 'coordinador' || locals.tipo === 'admin';
   %>
   <form method="POST" action="<%= actionUrl %>" class="row g-3 mx-auto d-flex justify-content-center">
+    <%- include('../partials/csrf_field') %>
     <div class="col-md-6">
       <label for="con_nombre" class="form-label">Nombre</label>
       <input type="text" value="<%= locals.nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>

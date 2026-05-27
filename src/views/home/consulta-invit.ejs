@@ -173,6 +173,7 @@
         <div class="app-panel app-form-panel guest-check-panel">
           <div class="app-panel-body">
             <form method="POST" action="/milab/api/consulta-invit" class="app-form-grid guest-check-form">
+              <%- include('../partials/csrf_field') %>
               <div class="app-inline-note guest-check-note">
                 <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
                 <p>
@@ -238,7 +239,7 @@
 </section>
 
 <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-<script>
+<script nonce="<%= cspNonce %>">
   document.addEventListener("DOMContentLoaded", function () {
     const form = document.querySelector("form");
     form.addEventListener("submit", function (e) {

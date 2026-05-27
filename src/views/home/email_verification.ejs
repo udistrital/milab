@@ -2,6 +2,7 @@
 
   <div class="card col-md-5 row g-3 mx-auto d-flex justify-content-center mt-2 text-white">
     <form id="verificacionForm" action="/milab/api/register/create_account" method="POST" class="row g-3 mx-auto d-flex justify-content-center">
+      <%- include('../partials/csrf_field') %>
       <!--  -->
       <div class="card-header text-center"><h4>Verificación de correo institucional</h4></div> 
       <div class="col-md-10">
@@ -24,7 +25,7 @@
       </div>
     </form>
   </div>
-  <script>
+  <script nonce="<%= cspNonce %>">
     function enviarCodigo() {
     const button = document.getElementById('btn_enviar_codigo');
     button.disabled = true;

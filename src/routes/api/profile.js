@@ -10,6 +10,19 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
 
+function regenerateSession(req) {
+  return new Promise((resolve) => {
+    if (!req.session) return resolve(false);
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error('Failed to regenerate session after profile login:', err);
+        return resolve(false);
+      }
+      return resolve(true);
+    });
+  });
+}
+
 function emptyProfileData() {
   return {
     modo: 'crear',
@@ -622,8 +635,11 @@ router.post('/identify', async (req, res) => {
       return denyAccess('No fue posible validar el acceso en MILab.');
     }
 
-    req.session.user = buildSessionUser(usuario);
-    req.session.microsoftProfile = null;
+    await regenerateSession(req);
+    if (req.session) {
+      req.session.user = buildSessionUser(usuario);
+      req.session.microsoftProfile = null;
+    }
     return res.redirect('/milab/inicio');
   }
 
@@ -819,8 +835,11 @@ router.post('/', async (req, res) => {
     });
 
     const refreshed = await fetchUserByEmail(formData.correo);
-    req.session.user = buildSessionUser(refreshed);
-    req.session.microsoftProfile = null;
+    await regenerateSession(req);
+    if (req.session) {
+      req.session.user = buildSessionUser(refreshed);
+      req.session.microsoftProfile = null;
+    }
 
     return res.redirect('/milab/inicio');
   } catch (error) {

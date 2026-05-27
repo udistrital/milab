@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin') { %>
-    <script>
+    <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
     </script>
   <% } else { %>

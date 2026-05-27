@@ -34,6 +34,8 @@ async function obtenerRegistrosTabla1() {
 //   }
 // }
 
-// Ejemplo de uso
-obtenerRegistrosTabla1();
-//obtenerRegistrosTabla2();
+// Ejemplo de uso — sólo al ejecutar directamente: node db_read.js
+if (require.main === module) {
+  obtenerRegistrosTabla1();
+  //obtenerRegistrosTabla2();
+}

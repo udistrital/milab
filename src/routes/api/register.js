@@ -5,6 +5,7 @@ const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 } = require('../../libs/email-layout');
 require('dotenv').config();
 const { body, validationResult } = require('express-validator');
@@ -303,12 +304,12 @@ router.post('/enviar-codigo', async (req, res) => {
                                     <tr>
                                         <td style="padding: 24px 30px 10px 30px;">
                                             <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin: 0;">
-                                                Hola ${usuario.nombre || 'usuario'},
+                                                Hola ${escapeHtml(usuario.nombre || 'usuario')},
                                             </p>
                                           ${
                                             registrationEmailOverrideActive
                                               ? `<p class="fallback-font" style="font-size: 14px; line-height: 1.6; color: #b3261e; margin-top: 12px;">
-                                            Este correo fue redirigido a un buzón de pruebas. Destinatario original: ${usuario.correo}
+                                            Este correo fue redirigido a un buzón de pruebas. Destinatario original: ${escapeHtml(usuario.correo)}
                                           </p>`
                                               : ''
                                           }
@@ -323,7 +324,7 @@ router.post('/enviar-codigo', async (req, res) => {
                                         <td align="center" style="padding: 10px 30px;">
                                             <div style="background-color: #e8f0fe; border-radius: 8px; text-align: center; padding: 12px 20px;">
                                                 <p class="fallback-font" style="font-size: 36px; font-weight: 700; letter-spacing: 5px; color: #1967d2; margin: 0;">
-                                                    ${usuario.codigoVerificacion}
+                                                    ${escapeHtml(usuario.codigoVerificacion)}
                                                 </p>
                                             </div>
                                         </td>

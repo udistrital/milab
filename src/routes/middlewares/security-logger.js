@@ -77,7 +77,7 @@ function securityLogger(req, res, next) {
   if (req.body && req.body.correo && !req.body.correo.endsWith('@udistrital.edu.co')) {
     logSecurityEvent(
       'NON_INSTITUTIONAL_EMAIL_ATTEMPT',
-      `Attempt to use non-institutional email: ${req.body.correo}`,
+      `Attempt to use non-institutional email: ${maskIdentifier(req.body.correo)}`,
       req
     );
   }

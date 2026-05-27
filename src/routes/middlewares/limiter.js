@@ -1,6 +1,18 @@
 const rateLimit = require('express-rate-limit');
 const ipBlockList = new Set();
 
+const ipBlockMiddleware = (req, res, next) => {
+  if (ipBlockList.has(req.ip)) {
+    res.set('X-IP-BLOCKED', 'true');
+    return res.status(429).render('home/message_error', {
+      message: 'Demasiadas solicitudes',
+      message2: 'Por favor, espera un momento antes de intentarlo de nuevo.',
+      limit: null,
+    });
+  }
+  next();
+};
+
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 4,
@@ -42,3 +54,4 @@ const limiter = rateLimit({
 });
 
 module.exports = limiter;
+module.exports.ipBlockMiddleware = ipBlockMiddleware;

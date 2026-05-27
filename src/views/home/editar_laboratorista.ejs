@@ -9,6 +9,7 @@
   <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
     <div class="card-body">
       <form method="POST" action="/milab/api/laboratoristas_registrados/editar" class="row g-3 app-form-grid">
+        <%- include('../partials/csrf_field') %>
         <input type="hidden" name="documento" value="<%= laboratorista.documento %>">
 
         <div class="col-md-6">
@@ -87,7 +88,7 @@
 
 <%- include('../partials/footer'); -%>
 
-<script>
+<script nonce="<%= cspNonce %>">
   window.addEventListener('DOMContentLoaded', function () {
     const facultySelect = document.getElementById('facultad');
     const optionRows = document.querySelectorAll('[data-ual-option="true"]');

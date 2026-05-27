@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -22,6 +22,7 @@
         <p class="app-page-subtitle mb-4">Localiza al estudiante y abre el formulario para registrar una nueva sanción asociada a su código institucional.</p>
 
         <form method="POST" action="/milab/api/get-info-multa" class="row g-3 app-form-grid align-items-end">
+          <%- include('../partials/csrf_field') %>
           <div class="col-12 col-md-6">
             <label for="tipo_busqueda_registro" class="form-label">Tipo de búsqueda</label>
             <select
@@ -65,6 +66,7 @@
         <p class="app-page-subtitle mb-4">Busca sanciones activas del estudiante y avanza al paso de revisión antes de retirarlas del historial operativo.</p>
 
         <form method="POST" action="/milab/api/get-info-erase-multa" class="row g-3 app-form-grid align-items-end">
+          <%- include('../partials/csrf_field') %>
           <div class="col-12 col-md-6">
             <label for="tipo_busqueda_retiro" class="form-label">Tipo de búsqueda</label>
             <select
@@ -103,7 +105,7 @@
   </section>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   function actualizarPlaceholder(tipo) {
     const select = document.getElementById(`tipo_busqueda_${tipo}`);
     const input = document.getElementById(`valor_busqueda_${tipo}`);

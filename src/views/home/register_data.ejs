@@ -14,6 +14,7 @@
   <section class="card app-form-panel text-light col-md-8 mx-auto d-flex">
     <div class="card-body">
     <form method="post" action="/milab/api/register/email_verification" class="row g-3 mx-auto d-flex justify-content-center" onsubmit="return validarCorreo() && validarContraseñas()">
+     <%- include('../partials/csrf_field') %>
      <br>
       <h2 class="text-xl font-semibold text-blue-300">¡Hola, <%= con_nombre %>!</h2>
             <p class="text-gray-300">Confirme que sus datos son correctos y finalice su registro creando una cuenta nueva.</p>  
@@ -94,7 +95,7 @@
   </section>
 </main>
 
-  <script>
+  <script nonce="<%= cspNonce %>">
     function mostrarContrasena(idCampo, idIcono) {
           var campo = document.getElementById(idCampo);
           var tipo = campo.getAttribute("type");

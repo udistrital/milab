@@ -92,7 +92,7 @@
   </section>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   const rawData = <%- JSON.stringify(chartsData) %>;
   const chartsData = {
     ...rawData,
@@ -106,7 +106,7 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
+<script nonce="<%= cspNonce %>">
   let chartInstance = null;
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
 

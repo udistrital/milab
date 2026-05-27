@@ -76,6 +76,7 @@
           <% } %>
 
           <form method="POST" action="/milab/api/profile" class="row g-3 <%= profileLocked ? 'profile-locked' : '' %>">
+            <%- include('../partials/csrf_field') %>
             <input type="hidden" name="modo" value="<%= modo %>">
 
             <div class="col-md-6">
@@ -128,7 +129,7 @@
   </section>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   function toggleStudentFields() {
     var tipoUsuario = document.getElementById('tipo_usuario');
     var studentFields = document.querySelectorAll('.student-only');

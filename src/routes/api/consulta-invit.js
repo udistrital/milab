@@ -1,8 +1,8 @@
 const express = require('express');
-const axios = require('axios');
 const router = express.Router();
-const { buildAppUrl } = require('../../libs/app-url');
 const { verifyRecaptchaToken } = require('../../libs/recaptcha');
+const pool = require('../../libs/db');
+const { resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
@@ -26,6 +26,15 @@ router.post('/', async (req, res) => {
     return res.render('home/consulta-invit', {
       siteKey: process.env.RECAPTCHA_SITE_KEY,
       error: 'Debes ingresar un documento para realizar la consulta.',
+      estadoResultado: null,
+      estadoSinFormato: null,
+    });
+  }
+
+  if (!/^\d{1,20}$/.test(documento)) {
+    return res.render('home/consulta-invit', {
+      siteKey: process.env.RECAPTCHA_SITE_KEY,
+      error: 'El documento ingresado no es válido.',
       estadoResultado: null,
       estadoSinFormato: null,
     });
@@ -55,10 +64,15 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const apiUrl = buildAppUrl(`/api/get-estado-multa/${documento}`);
-    const apiResponse = await axios.get(apiUrl);
-
-    const estado = apiResponse.data.estado;
+    const usuarioId = await resolveUsuarioIdForStudent({ documento: null, codigo: documento });
+    let estado = 'PAZYSALVO';
+    if (usuarioId) {
+      const result = await pool.query(
+        `SELECT 1 FROM multa WHERE usuario_id_sancionado = $1 AND con_estado_multa = 'ACTIVA' LIMIT 1`,
+        [usuarioId]
+      );
+      if (result.rows.length > 0) estado = 'MULTADO';
+    }
 
     res.render('home/consulta-invit', {
       siteKey: process.env.RECAPTCHA_SITE_KEY,
@@ -68,22 +82,12 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error en consulta o verificación:', error.message);
-
-    if (error.response && error.response.status === 404) {
-      res.render('home/consulta-invit', {
-        siteKey: process.env.RECAPTCHA_SITE_KEY,
-        error: 'No se encontró información para el documento ingresado.',
-        estadoResultado: null,
-        estadoSinFormato: null,
-      });
-    } else {
-      res.status(500).render('home/consulta-invit', {
-        siteKey: process.env.RECAPTCHA_SITE_KEY,
-        error: 'Ocurrió un error al procesar la solicitud.',
-        estadoResultado: null,
-        estadoSinFormato: null,
-      });
-    }
+    res.status(500).render('home/consulta-invit', {
+      siteKey: process.env.RECAPTCHA_SITE_KEY,
+      error: 'Ocurrió un error al procesar la solicitud.',
+      estadoResultado: null,
+      estadoSinFormato: null,
+    });
   }
 });
 

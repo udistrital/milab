@@ -3,6 +3,15 @@ const path = require('path');
 const HEADER_LOGO_CID = 'milab-header-logo';
 const FOOTER_LOGO_CID = 'ud-footer-logo';
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 function buildBrandedEmailAttachments(extraAttachments = []) {
   return [
     ...extraAttachments,
@@ -52,4 +61,5 @@ module.exports = {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 };

@@ -7,6 +7,7 @@ const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 } = require('../../libs/email-layout');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { appBaseUrl, buildAppUrl } = require('../../libs/app-url');
@@ -218,7 +219,7 @@ router.get('/token', requireCoordinatorTokenAccess, async function (req, res) {
       limit: null,
     });
   }
-  const token = jwt.sign({ userId: '11', role: 'laboratorista' }, secretKey, { expiresIn: 604800 });
+  const token = jwt.sign({ userId: req.session.user?.id, role: 'laboratorista' }, secretKey, { expiresIn: 604800 });
   res.render('home/message_success', {
     message: '¡Token generado con éxito!',
     message2: buildAppUrl(`/api/register_labs/verify_token?token=${token}`),
@@ -246,16 +247,8 @@ router.get('/verify_token', async function (req, res) {
   }
   try {
     jwt.verify(token, secretKey);
-    const viewContext = await buildRegisterLabsViewContext(null);
-    return res.render('home/register_labs', {
-      error: null,
-      confirmacion: null,
-      lookupData: null,
-      lookupMessage: null,
-      lookupStatus: null,
-      lookupDocumento: '',
-      ...viewContext,
-    });
+    req.session.registrationTokenVerified = true;
+    return res.redirect(`${req.baseUrl}/new`);
   } catch {
     return res.render('home/message_error', {
       message: '¡Algo ha salido mal!',
@@ -263,6 +256,30 @@ router.get('/verify_token', async function (req, res) {
       limit: 'noSession',
     });
   }
+});
+
+router.get('/new', async function (req, res) {
+  const hasTokenGrant = req.session.registrationTokenVerified === true;
+  const hasRole = ['coordinador', 'admin'].includes(req.session.user?.tipo);
+
+  if (!hasTokenGrant && !hasRole) {
+    return res.render('home/message_error', {
+      message: '¡Algo ha salido mal!',
+      message2: 'Inténtalo nuevamente',
+      limit: 'noSession',
+    });
+  }
+
+  const viewContext = await buildRegisterLabsViewContext(req.session.user || null);
+  return res.render('home/register_labs', {
+    error: null,
+    confirmacion: null,
+    lookupData: null,
+    lookupMessage: null,
+    lookupStatus: null,
+    lookupDocumento: '',
+    ...viewContext,
+  });
 });
 
 router.get('/load_info', requireAdminOrCoordinatorLoadInfo, async function (req, res) {
@@ -638,7 +655,7 @@ MILab - Coordinación General de Laboratorios`,
                           <tr>
                               <td style="padding: 30px 30px 20px 30px;">
                                   <p class="fallback-font" style="font-size: 18px; line-height: 1.6; color: #202124; margin: 0;">
-                                      Estimad@ <strong>${datosLaboratorista.nombre}</strong>,
+                                      Estimad@ <strong>${escapeHtml(datosLaboratorista.nombre)}</strong>,
                                   </p>
                                   <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin-top: 16px;">
                                       ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital! Su cuenta ha sido creada exitosamente.
@@ -654,23 +671,23 @@ MILab - Coordinación General de Laboratorios`,
                                       <table width="100%" border="0" cellspacing="0" cellpadding="0">
                                           <tr>
                                               <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368; width: 40%;"><strong>Nombre:</strong></td>
-                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosLaboratorista.nombre}</td>
+                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosLaboratorista.nombre)}</td>
                                           </tr>
                                           <tr>
                                               <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Documento:</strong></td>
-                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosLaboratorista.documento}</td>
+                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosLaboratorista.documento)}</td>
                                           </tr>
                                           <tr>
                                               <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Correo:</strong></td>
-                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosLaboratorista.correo}</td>
+                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosLaboratorista.correo)}</td>
                                           </tr>
                                           <tr>
                                               <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Facultad:</strong></td>
-                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosLaboratorista.facultad_nombre}</td>
+                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosLaboratorista.facultad_nombre)}</td>
                                           </tr>
                                           <tr>
                                               <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Laboratorios:</strong></td>
-                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosLaboratorista.ual_nombres}</td>
+                                              <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosLaboratorista.ual_nombres)}</td>
                                           </tr>
                                       </table>
                                   </div>

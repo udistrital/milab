@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador'  ) { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -13,6 +13,7 @@
   <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
     <div class="card-body">
       <form method="post" action="/milab/api/submit" class="row g-3 mx-auto d-flex justify-content-center app-form-grid">
+        <%- include('../partials/csrf_field') %>
         <div class="col-12 text-center mb-2">
           <p class="app-home-welcome-kicker mb-2">Validacion previa</p>
           <h2 class="app-panel-title mb-2">Confirma la informacion del estudiante</h2>
@@ -98,7 +99,7 @@
 <%- include('../partials/footer'); -%>
 <% } %>
 
-<script>
+<script nonce="<%= cspNonce %>">
   (function () {
     const fechaInput = document.getElementById('fecha_multa');
     if (!fechaInput) {

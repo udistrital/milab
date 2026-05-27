@@ -40,6 +40,7 @@
       <% } %>
 
       <form method="post" action="/milab/api/admins" class="row g-3 mx-auto d-flex justify-content-center app-form-grid">
+        <%- include('../partials/csrf_field') %>
         <p class="app-page-subtitle mb-2">
           <em>Confirma la información y asigna el rol de administrador.</em>
         </p>

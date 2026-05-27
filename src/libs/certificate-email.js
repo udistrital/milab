@@ -5,6 +5,7 @@ const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 } = require('./email-layout');
 const transporter = require('./mail');
 
@@ -60,7 +61,7 @@ async function sendCertificateEmail({
     ? `\n\nEste correo fue redirigido a un buzón de pruebas. Destinatario original: ${originalRecipient}`
     : '';
   const overrideNoticeHtml = overrideActive
-    ? `<p style="font-size: 14px; line-height: 1.6; color: #b3261e; margin-top: 12px;">Este correo fue redirigido a un buzón de pruebas. Destinatario original: ${originalRecipient}</p>`
+    ? `<p style="font-size: 14px; line-height: 1.6; color: #b3261e; margin-top: 12px;">Este correo fue redirigido a un buzón de pruebas. Destinatario original: ${escapeHtml(originalRecipient)}</p>`
     : '';
 
   const mailOptions = {
@@ -91,8 +92,8 @@ async function sendCertificateEmail({
                 </tr>
                 <tr>
                   <td style="padding: 8px 30px 12px 30px; color: #5f6368; font-size: 16px; line-height: 1.6;">
-                    <p style="margin: 0;">Hola ${safeOwnerName},</p>
-                    <p style="margin: 16px 0 0 0;">Adjuntamos tu certificado de paz y salvo generado con el motivo <strong>${safeMotivo}</strong> para ${safeReferenceType} <strong>${safeReference}</strong>.</p>
+                    <p style="margin: 0;">Hola ${escapeHtml(safeOwnerName)},</p>
+                    <p style="margin: 16px 0 0 0;">Adjuntamos tu certificado de paz y salvo generado con el motivo <strong>${escapeHtml(safeMotivo)}</strong> para ${escapeHtml(safeReferenceType)} <strong>${escapeHtml(safeReference)}</strong>.</p>
                     ${overrideNoticeHtml}
                   </td>
                 </tr>

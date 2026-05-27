@@ -42,6 +42,7 @@
       <form method="post" action="/milab/api/registro_coordinador" 
         class="row g-3 mx-auto d-flex justify-content-center app-form-grid" 
         onsubmit="return validarCorreo() && validarCampos()">
+        <%- include('../partials/csrf_field') %>
         
     <p class="app-page-subtitle mb-2"><em>Ingresa los datos del coordinador y define su acceso institucional.</em></p>
 
@@ -114,7 +115,7 @@
 
 <%- include('../partials/footer'); -%>
 
-<script>
+<script nonce="<%= cspNonce %>">
   function validarCorreo() {
     var correoInput = document.getElementById('correo');
     var correo = correoInput.value.toLowerCase();

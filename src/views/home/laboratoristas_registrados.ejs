@@ -45,6 +45,7 @@
                 </td>
                 <td>
                   <form action="/milab/api/laboratoristas_registrados/eliminar" method="POST" onsubmit="return confirmDelete('laboratorista')">
+                    <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= laboratorista.con_documento %>">
                     <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                   </form>
@@ -58,7 +59,7 @@
   </section>
 </main>
 <!-- Confirmación de eliminación -->
-<script>
+<script nonce="<%= cspNonce %>">
   function confirmDelete(type) {
     return confirm(`¿Está seguro que desea eliminar este ${type}?`);
   }

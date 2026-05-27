@@ -1,7 +1,7 @@
 <%- include('../partials/header'); -%>
 
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -22,6 +22,7 @@
           <p class="text-center mb-4 app-page-subtitle">Seleccione el tipo de búsqueda e ingrese el valor para verificar el estado del estudiante.</p>
 
           <form method="POST" action="/milab/api/verificar_estudiante" class="row g-3 justify-content-center">
+            <%- include('../partials/csrf_field') %>
             <div class="col-md-10">
               <div class="app-choice-group d-flex gap-3 justify-content-center flex-wrap">
                 <div class="form-check">

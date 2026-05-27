@@ -55,6 +55,7 @@
                 </td>
                 <td>
                   <form action="/milab/api/coordinadores_registrados/toggle-estado" method="POST">
+                    <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
                     <button type="submit" class="btn btn-sm <%= coordinador.tipo === 'coordinador' ? 'btn-outline-danger' : 'btn-outline-success' %>">
                       <%= coordinador.tipo === 'coordinador' ? 'Inactivar' : 'Activar' %>
@@ -64,6 +65,7 @@
                 <% if (false) { %>
                   <td>
                     <form action="/milab/api/coordinadores_registrados/eliminar" method="POST" onsubmit="return confirmDelete('coordinador')">
+                      <%- include('../partials/csrf_field') %>
                       <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
                       <button type="submit" class="btn btn-danger">Eliminar</button>
                     </form>
@@ -93,7 +95,7 @@
 </div>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   function confirmDelete(type) {
     if (confirm(`¿Está seguro que desea eliminar este ${type}?`)) {
       alert(`${type.charAt(0).toUpperCase() + type.slice(1)} eliminado`);

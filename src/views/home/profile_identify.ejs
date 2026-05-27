@@ -16,6 +16,7 @@
           <% } %>
 
           <form method="POST" action="/milab/api/profile/identify" class="row g-3">
+            <%- include('../partials/csrf_field') %>
             <div class="col-12">
               <label for="correo" class="form-label">Correo institucional</label>
               <input type="email" class="form-control" id="correo" value="<%= correo || '' %>" readonly>

@@ -33,6 +33,8 @@ async function insertarRegistroTabla1(usuario_id, fecha_creacion, id_Certificado
 //   }
 // }
 
-// Ejemplo de uso
-insertarRegistroTabla1(1, '2023_07_04', '783483yehxbkew', 'andres@m2', '2');
-//insertarRegistroTabla2('Descripción del registro', '2023-07-04');
+// Ejemplo de uso — sólo al ejecutar directamente: node db_write.js
+if (require.main === module) {
+  insertarRegistroTabla1(1, '2023_07_04', '783483yehxbkew', 'andres@m2', '2');
+  //insertarRegistroTabla2('Descripción del registro', '2023-07-04');
+}

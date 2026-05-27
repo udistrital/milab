@@ -45,6 +45,7 @@
         class="row g-3 mx-auto d-flex justify-content-center app-form-grid"
         onsubmit="return validarCorreo() && validarCampos() && validarUales()"
       >
+        <%- include('../partials/csrf_field') %>
         <p class="app-page-subtitle mb-2">
           <em>Ingresa los datos del laboratorista y asigna su facultad, uno o varios laboratorios y el acceso inicial.</em>
         </p>
@@ -137,7 +138,7 @@
 
 <%- include('../partials/footer'); -%>
 
-<script>
+<script nonce="<%= cspNonce %>">
   const tipoUsuario = '<%= tipo %>';
   const idFacultadSesion = '<%= facultades[0]?.id_facultad || "" %>';
 

@@ -17,11 +17,12 @@
 
                 <% if (locals.autoDownloadAction && locals.autoDownloadFields) { %>
                         <form id="autoDownloadForm" action="<%= autoDownloadAction %>" method="POST" class="d-none">
+                                <%- include('../partials/csrf_field') %>
                                 <% Object.entries(autoDownloadFields).forEach(([fieldName, fieldValue]) => { %>
                                         <input type="hidden" name="<%= fieldName %>" value="<%= fieldValue %>">
                                 <% }) %>
                         </form>
-                        <script>
+                        <script nonce="<%= cspNonce %>">
                             document.addEventListener('DOMContentLoaded', function () {
                                 var form = document.getElementById('autoDownloadForm');
 

@@ -7,6 +7,7 @@ const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  escapeHtml,
 } = require('../../libs/email-layout');
 const { normalizeLogDocument } = require('../../libs/account-email');
 const { appBaseUrl, buildAppUrl } = require('../../libs/app-url');
@@ -507,7 +508,7 @@ MILab - Coordinación General de Laboratorios`,
                                 <tr>
                                     <td style="padding: 30px 30px 20px 30px;">
                                         <p class="fallback-font" style="font-size: 18px; line-height: 1.6; color: #202124; margin: 0;">
-                                            Estimad@ <strong>${datosCoordinador.nombre}</strong>,
+                                            Estimad@ <strong>${escapeHtml(datosCoordinador.nombre)}</strong>,
                                         </p>
                                         <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin-top: 16px;">
                                             ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital! Su cuenta como <strong>Coordinador de Laboratorio</strong> ha sido creada exitosamente.
@@ -523,23 +524,23 @@ MILab - Coordinación General de Laboratorios`,
                                             <table width="100%" border="0" cellspacing="0" cellpadding="0">
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368; width: 40%;"><strong>Nombre:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosCoordinador.nombre}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.nombre)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Documento:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosCoordinador.documento}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.documento)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Correo:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosCoordinador.correo}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.correo)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Facultades:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosCoordinador.facultades_nombres}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.facultades_nombres)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Resolución:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${datosCoordinador.numero_resolucion_coordinador}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.numero_resolucion_coordinador)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Rol:</strong></td>
@@ -648,7 +649,7 @@ router.get('/token', requireAdminCoordinatorRegistration, async function (req, r
       limit: null,
     });
   }
-  const token = jwt.sign({ userId: '11', role: 'coordinador' }, secretKey, {
+  const token = jwt.sign({ userId: req.session.user?.id, role: 'coordinador' }, secretKey, {
     expiresIn: 604800,
   });
 
@@ -681,16 +682,8 @@ router.get('/verify_token', async function (req, res) {
 
   try {
     jwt.verify(token, secretKey);
-    const result = await pool.query('SELECT * FROM facultad');
-    return res.render('home/registro_coordinador', {
-      error: null,
-      confirmacion: null,
-      facultades: result.rows,
-      lookupData: null,
-      lookupMessage: null,
-      lookupStatus: null,
-      lookupDocumento: '',
-    });
+    req.session.registrationTokenVerified = true;
+    return res.redirect(`${req.baseUrl}/new`);
   } catch {
     return res.render('home/message_error', {
       message: '¡Algo ha salido mal!',
@@ -698,6 +691,30 @@ router.get('/verify_token', async function (req, res) {
       limit: 'noSession',
     });
   }
+});
+
+router.get('/new', async function (req, res) {
+  const hasTokenGrant = req.session.registrationTokenVerified === true;
+  const hasRole = ['coordinador', 'admin'].includes(req.session.user?.tipo);
+
+  if (!hasTokenGrant && !hasRole) {
+    return res.render('home/message_error', {
+      message: '¡Algo ha salido mal!',
+      message2: 'Inténtalo nuevamente',
+      limit: 'noSession',
+    });
+  }
+
+  const result = await pool.query('SELECT * FROM facultad');
+  return res.render('home/registro_coordinador', {
+    error: null,
+    confirmacion: null,
+    facultades: result.rows,
+    lookupData: null,
+    lookupMessage: null,
+    lookupStatus: null,
+    lookupDocumento: '',
+  });
 });
 
 module.exports = router;

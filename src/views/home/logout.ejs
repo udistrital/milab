@@ -18,7 +18,7 @@
   </div>
   
   <!-- Script para la función del botón-->
-  <script>
+  <script nonce="<%= cspNonce %>">
     const logoutTriggers = document.querySelectorAll('[data-logout-trigger]');
     const logoutConfirm = document.getElementById('confirmarCerrarSesion');
     const logoutModalElement = document.getElementById('confirmarCerrarSesionModal');

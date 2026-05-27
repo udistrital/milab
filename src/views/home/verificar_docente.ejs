@@ -21,6 +21,7 @@
             <% } %>
 
             <form method="POST" action="/milab/api/verificar_docente" class="row g-3 justify-content-center">
+                <%- include('../partials/csrf_field') %>
                 <div class="col-md-10">
                   <label for="documento" class="form-label">Número de Documento</label>
                   <input type="number" class="form-control" id="documento" name="documento" required placeholder="Ingrese documento de identidad">

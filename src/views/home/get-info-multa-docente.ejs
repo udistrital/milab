@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador' ) { %>
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
   </script>
 <% } else { %>
@@ -22,6 +22,7 @@
         <p class="app-page-subtitle mb-4">Localiza al docente y abre el formulario para registrar una nueva sanción.</p>
 
         <form method="POST" action="/milab/api/get-info-multa-docente" class="row g-3 app-form-grid">
+          <%- include('../partials/csrf_field') %>
           <div class="col-12">
             <label for="numero_documento_identificacion" class="form-label">Documento del docente</label>
             <input
@@ -50,6 +51,7 @@
         <p class="app-page-subtitle mb-4">Busca sanciones activas del docente y avanza al paso de revisión antes de retirarlas.</p>
 
         <form method="POST" action="/milab/api/get-info-erase-multa-docente" class="row g-3 app-form-grid">
+          <%- include('../partials/csrf_field') %>
           <div class="col-12">
             <label for="numero_documento_identificacion_retiro" class="form-label">Documento del docente</label>
             <input

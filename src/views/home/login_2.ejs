@@ -651,7 +651,7 @@
 </head>
 <body>
   <% if (locals.tipo) { %>
-    <script>
+    <script nonce="<%= cspNonce %>">
       window.location.href = '/milab/';
     </script>
   <% } else { %>
@@ -734,7 +734,7 @@
       </aside>
     </main>
 
-    <script>
+    <script nonce="<%= cspNonce %>">
       document.addEventListener('DOMContentLoaded', function () {
         const banner = document.getElementById('service-status-banner');
         const title = document.getElementById('service-status-title');

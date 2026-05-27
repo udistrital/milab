@@ -1,6 +1,6 @@
 <%- include('../partials/header'); -%>
 <% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador'  ) { %>
-    <script>
+    <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
     </script>
   <% } else { %>
@@ -29,6 +29,7 @@
 <section class="card app-form-panel justify-content-center mx-auto">
     <div class="card-body text-light mt-2 mx-auto">
         <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="row col-md-11 justify-content-center d-flex mx-auto app-form-grid" onsubmit="return verificarEntrada()">
+            <%- include('../partials/csrf_field') %>
             <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
             <input type="text" class="col-md-12 mt-1" id="consulta_masiva" name="consulta_masiva"  required>
             <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1">Consultar</button>
@@ -201,7 +202,7 @@
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-<script>
+<script nonce="<%= cspNonce %>">
     document.addEventListener('click', function (event) {
         const trigger = event.target.closest('.app-detail-button');
 

@@ -21,6 +21,7 @@
         <div class="card-body">
           <h2 class="h5">Crear menu</h2>
           <form method="POST" action="/milab/api/admin/menus" class="row g-3">
+            <%- include('../partials/csrf_field') %>
             <div class="col-md-3">
               <label class="form-label">Seccion</label>
               <select class="form-select" name="section" required>
@@ -274,7 +275,7 @@
   </section>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   document.querySelectorAll('.permission-toggle').forEach(function(checkbox) {
     checkbox.addEventListener('change', async function(event) {
       const roleId = event.target.getAttribute('data-role-id');
@@ -286,6 +287,7 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('input[name="_csrf"]')?.value || '',
           },
           body: JSON.stringify({
             role_id: roleId,
