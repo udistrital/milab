@@ -3,6 +3,8 @@
 
 ### dotenv ###
 .env
+.env.*
+Docker/.env
 .venv/
 
 ### macOS ###

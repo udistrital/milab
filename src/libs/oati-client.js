@@ -9,7 +9,7 @@ let cachedTokenExpiresAt = 0;
 const httpsAgent = new https.Agent({
   rejectUnauthorized: config.oatiRejectUnauthorized,
 });
-const oatiRetryDelaysMs = [500, 1500, 3000];
+const oatiRetryDelaysMs = [500, 1500, 3000].slice(0, config.oatiMaxRetries);
 
 function ensureOatiCredentials() {
   if (!config.oatiClientId || !config.oatiSecret) {
@@ -69,7 +69,7 @@ async function fetchAccessToken() {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         httpsAgent,
-        timeout: 15000,
+        timeout: config.oatiTokenTimeoutMs,
       }
     )
   );
@@ -81,7 +81,20 @@ async function fetchAccessToken() {
   return cachedToken;
 }
 
+async function requestOatiPublic(pathname) {
+  const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
+  const response = await axios.get(url, {
+    httpsAgent,
+    timeout: config.oatiRequestTimeoutMs,
+  });
+  return response.data;
+}
+
 async function requestOati(pathname) {
+  if (config.oatiUsePublic) {
+    return requestOatiPublic(pathname);
+  }
+
   const accessToken = await fetchAccessToken();
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
 
@@ -91,7 +104,7 @@ async function requestOati(pathname) {
         Authorization: `Bearer ${accessToken}`,
       },
       httpsAgent,
-      timeout: 20000,
+      timeout: config.oatiRequestTimeoutMs,
     })
   );
 

@@ -231,6 +231,9 @@ app.use((req, res, next) => {
   res.locals.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY || '';
   res.locals.environmentName = (process.env.NODE_ENV || 'development').trim();
   res.locals.isNonProductionEnvironment = res.locals.environmentName !== 'production';
+  res.locals.isDevEnvironment = ['dev', 'development', 'local'].includes(
+    res.locals.environmentName.toLowerCase()
+  );
   next();
 });
 app.use(requestLogger);

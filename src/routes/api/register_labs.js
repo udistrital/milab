@@ -1,6 +1,6 @@
 // --- ARCHIVO JS ACTUALIZADO (Node.js / Express) ---
 const express = require('express');
-const axios = require('axios');
+const { requestOati, getAcademicServicePath } = require('../../libs/oati-client');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
@@ -60,13 +60,11 @@ function resolveOatiEmail(payload) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const respuesta = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/consultar_estado_docente/' +
-        documento
+    const data = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
     );
 
-    const docente = respuesta.data?.docentesCollection?.docente?.[0];
+    const docente = data?.docentesCollection?.docente?.[0];
     if (!docente) return null;
 
     return {
@@ -81,13 +79,11 @@ async function lookupTeacherByDocumento(documento) {
 
 async function lookupStudentByDocumento(documento) {
   try {
-    const respuesta = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        documento
+    const data = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
     );
 
-    const collection = respuesta.data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
+    const collection = data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
     if (!collection.length) return null;
 
     const item = collection[collection.length - 1];

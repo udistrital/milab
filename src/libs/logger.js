@@ -40,11 +40,14 @@ function parseNumber(value, defaultValue) {
   return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
+const DEV_ENVS = new Set(['dev', 'development', 'local']);
+const isDevEnvironment = DEV_ENVS.has((process.env.NODE_ENV || '').toLowerCase());
+
 const loggerConfig = {
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL || (isDevEnvironment ? 'silent' : 'info'),
   destination: process.env.LOG_DESTINATION || 'stdout',
   filePath: process.env.LOG_FILE_PATH || path.join(process.cwd(), 'logs', 'app.log'),
-  requestLoggingEnabled: parseBoolean(process.env.LOG_REQUESTS, true),
+  requestLoggingEnabled: parseBoolean(process.env.LOG_REQUESTS, !isDevEnvironment),
   slowRequestMs: parseNumber(process.env.LOG_SLOW_REQUEST_MS, 1000),
   requestSampleRate: Math.max(
     0,

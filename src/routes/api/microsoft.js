@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const passport = require('passport');
-const axios = require('axios');
+const { requestOati, getAcademicServicePath } = require('../../libs/oati-client');
 const pool = require('../../libs/db');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
@@ -39,13 +39,11 @@ function isActiveStudentRecord(record) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const respuesta = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/consultar_estado_docente/' +
-        documento
+    const data = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
     );
 
-    const rawDocentes = respuesta.data?.docentesCollection?.docente;
+    const rawDocentes = data?.docentesCollection?.docente;
     const docentes = Array.isArray(rawDocentes) ? rawDocentes : rawDocentes ? [rawDocentes] : [];
     if (!docentes.length) return null;
 
@@ -57,13 +55,11 @@ async function lookupTeacherByDocumento(documento) {
 
 async function lookupStudentByDocumento(documento) {
   try {
-    const respuesta = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        documento
+    const data = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
     );
 
-    const collection = respuesta.data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
+    const collection = data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
     if (!collection.length) return null;
 
     return collection.find((item) => isActiveStudentRecord(item)) || null;

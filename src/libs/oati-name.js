@@ -1,4 +1,4 @@
-const axios = require('axios');
+const { requestOati, getAcademicServicePath } = require('./oati-client');
 
 function extractOasStudentRecords(payload) {
   if (!payload) return [];
@@ -22,18 +22,14 @@ async function fetchOatiStudentName(identifier) {
   }
 
   const endpoints = [
-    'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-      'servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-      value,
-    'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-      'servicios_academicos_produccion/datos_basicos_estudiante/' +
-      value,
+    getAcademicServicePath(`datos_basicos_activos_cedula/${value}`),
+    getAcademicServicePath(`datos_basicos_estudiante/${value}`),
   ];
 
-  for (const url of endpoints) {
+  for (const pathname of endpoints) {
     try {
-      const response = await axios.get(url, { timeout: 6000 });
-      const records = extractOasStudentRecords(response.data);
+      const data = await requestOati(pathname);
+      const records = extractOasStudentRecords(data);
       const record = records[records.length - 1];
       const name = record?.nombre ? String(record.nombre).trim() : '';
 
@@ -56,12 +52,10 @@ async function fetchOatiTeacherName(documento) {
   }
 
   try {
-    const url =
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-      'servicios_academicos_produccion/consultar_estado_docente/' +
-      value;
-    const response = await axios.get(url, { timeout: 6000 });
-    const docente = response.data?.docentesCollection?.docente?.[0];
+    const data = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${value}`)
+    );
+    const docente = data?.docentesCollection?.docente?.[0];
     return docente?.nombre ? String(docente.nombre).trim() : '';
   } catch {
     return '';
