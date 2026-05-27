@@ -1,90 +1,126 @@
 # Mapa De Acceso A Rutas
 
-Este documento resume como se controla hoy el acceso a las rutas principales del sistema.
+Este documento resume el control de acceso actual de MILab para las rutas principales y el comportamiento del menú según rol.
 
 ## Flujo Base
 
-1. El login toma el rol desde `auth.tipo`.
-2. El usuario autenticado se guarda en `req.session.user`.
-3. `src/app.js` copia esa sesión a `res.locals`.
-4. El header compartido arma el menú según `locals.tipo`.
-5. La seguridad real depende de los chequeos de backend por ruta.
+1. El login institucional resuelve identidad y roles desde `usuario` + `usuario_rol`.
+2. La sesión autenticada se guarda en `req.session.user`.
+3. `src/app.js` expone la sesión en `res.locals`.
+4. El menú preferente se resuelve desde `menu_item` + `rol_permiso`.
+5. Si el menú persistido no está disponible, `src/routes/middlewares/navigation.js` construye un menú estático de respaldo.
+6. La seguridad efectiva depende siempre del backend de cada ruta y de `requireUser(...)` / `requireRoles(...)`.
 
-## Rutas Web Publicas
+## Rutas Web Públicas
 
 Base: `/milab/`
 
-| Ruta                | Acceso actual                                                        | Archivo                  |
-| ------------------- | -------------------------------------------------------------------- | ------------------------ |
-| `/`                 | Público; si hay sesión redirige al home del rol                      | `src/routes/web/home.js` |
-| `/auth/login`       | Público; si hay sesión redirige                                      | `src/routes/web/home.js` |
-| `/consulta-invit`   | Público                                                              | `src/routes/web/home.js` |
-| `/register`         | Público                                                              | `src/routes/web/home.js` |
-| `/forgot_password`  | Público                                                              | `src/routes/web/home.js` |
-| `/cambiar-password` | Público a nivel de vista; el flujo real depende de `tempUser` en API | `src/routes/web/home.js` |
+| Ruta | Acceso actual | Archivo |
+| --- | --- | --- |
+| `/` | Pública; si hay sesión redirige al home del rol | `src/routes/web/home.js` |
+| `/auth/login` | Pública; redirige a Microsoft si no hay sesión | `src/routes/web/home.js` |
+| `/consulta-invit` | Pública | `src/routes/web/home.js` |
+| `/register` | Pública | `src/routes/web/home.js` |
+| `/forgot_password` | Pública | `src/routes/web/home.js` |
+| `/cambiar-password` | Pública a nivel de vista; el flujo real depende de estado temporal en API | `src/routes/web/home.js` |
 
-## Rutas Del Menu Por Rol
+## Rutas Principales Del Sistema
 
 Base API: `/milab/api/`
 
-| Ruta                                       | Métodos                 | Roles permitidos hoy                    | Archivo                                        |
-| ------------------------------------------ | ----------------------- | --------------------------------------- | ---------------------------------------------- |
-| `/dashboard`                               | `GET`                   | `admin`                                 | `src/routes/api/dashboard.js`                  |
-| `/logs`                                    | `GET`                   | `admin`                                 | `src/routes/api/logs.js`                       |
-| `/facultad`                                | `GET`, `POST`           | `admin`                                 | `src/routes/api/facultad.js`                   |
-| `/coordinadores_registrados`               | `GET`                   | `admin`                                 | `src/routes/api/coordinadores_registrados.js`  |
-| `/coordinadores_registrados/eliminar`      | `POST`                  | `admin`, `laboratorista`                | `src/routes/api/coordinadores_registrados.js`  |
-| `/coordinadores_registrados/toggle-estado` | `POST`                  | `admin`, `laboratorista`                | `src/routes/api/coordinadores_registrados.js`  |
-| `/estudiantes_registrados`                 | `GET`                   | `admin`, `coordinador`                  | `src/routes/api/estudiantes_registrados.js`    |
-| `/laboratoristas_registrados`              | `GET`, `POST /eliminar` | `admin`, `coordinador`                  | `src/routes/api/laboratoristas_registrados.js` |
-| `/registro_coordinador/load_info`          | `GET`                   | `admin`                                 | `src/routes/api/registro_coordinador.js`       |
-| `/registro_coordinador`                    | `POST`                  | `admin`                                 | `src/routes/api/registro_coordinador.js`       |
-| `/registro_coordinador/token`              | `GET`                   | `admin`                                 | `src/routes/api/registro_coordinador.js`       |
-| `/register_labs/load_info`                 | `GET`                   | `admin`, `coordinador`                  | `src/routes/api/register_labs.js`              |
-| `/register_labs/token`                     | `GET`                   | `coordinador`                           | `src/routes/api/register_labs.js`              |
-| `/get_list_multas`                         | `GET`                   | `admin`, `laboratorista`, `coordinador` | `src/routes/api/get_list_multas.js`            |
-| `/get_list_estudiantes`                    | `GET`                   | `admin`                                 | `src/routes/api/get_list_estudiantes.js`       |
-| `/get_list_estudiantes/get_consulta`       | `GET`                   | `admin`, `laboratorista`, `coordinador` | `src/routes/api/get_list_estudiantes.js`       |
-| `/get_list_estudiantes/consulta_masiva`    | `POST`                  | `admin`, `laboratorista`, `coordinador` | `src/routes/api/get_list_estudiantes.js`       |
-| `/get_list_estudiantes/generate_pdf`       | `GET`                   | `admin`, `laboratorista`, `coordinador` | `src/routes/api/get_list_estudiantes.js`       |
-| `/aprobacion_multa`                        | `GET`                   | `coordinador`                           | `src/routes/api/aprobacion_multa.js`           |
-| `/aprobacion_multa/activar`                | `POST`                  | `coordinador`                           | `src/routes/api/aprobacion_multa.js`           |
-| `/aprobacion_multa/saldar`                 | `POST`                  | `coordinador`                           | `src/routes/api/aprobacion_multa.js`           |
-| `/verificar_estudiante`                    | `GET`, `POST`           | `admin`, `laboratorista`, `coordinador` | `src/routes/api/verificar_estudiante.js`       |
-| `/verificar_docente`                       | `GET`, `POST`           | `admin`, `laboratorista`, `coordinador` | `src/routes/api/verificar_docente.js`          |
-| `/get-data1/verificacion`                  | `GET`                   | `admin`, `estudiante`                   | `src/routes/api/get-data1.js`                  |
-| `/get-data1`                               | `POST`                  | `admin`, `estudiante`                   | `src/routes/api/get-data1.js`                  |
-| `/verifica_multa_docente/verificacion`     | `GET`                   | `admin`, `docente`                      | `src/routes/api/verifica_multa_docente.js`     |
-| `/verifica_multa_docente`                  | `POST`                  | `admin`, `docente`                      | `src/routes/api/verifica_multa_docente.js`     |
+| Ruta | Métodos | Roles permitidos | Alcance actual | Archivo |
+| --- | --- | --- | --- | --- |
+| `/dashboard` | `GET` | `admin`, `coordinador`, `laboratorista` | `admin`: global; `coordinador`: facultades asignadas; `laboratorista`: UAL asignadas | `src/routes/api/dashboard.js` |
+| `/aprobacion_multa` | `GET` | `coordinador` | Facultades del coordinador | `src/routes/api/aprobacion_multa.js` |
+| `/aprobacion_multa/activar` | `POST` | `coordinador` | Facultades del coordinador | `src/routes/api/aprobacion_multa.js` |
+| `/aprobacion_multa/saldar` | `POST` | `coordinador` | Facultades del coordinador | `src/routes/api/aprobacion_multa.js` |
+| `/registro_coordinador/load_info` | `GET` | `admin` | Global | `src/routes/api/registro_coordinador.js` |
+| `/registro_coordinador` | `POST` | `admin` | Global | `src/routes/api/registro_coordinador.js` |
+| `/register_labs/load_info` | `GET` | `admin`, `coordinador` | `admin`: global; `coordinador`: su alcance | `src/routes/api/register_labs.js` |
+| `/register_labs` | `POST` | `admin`, `coordinador` | `admin`: global; `coordinador`: su alcance | `src/routes/api/register_labs.js` |
+| `/register_labs/token` | `GET` | `coordinador` | Facultades del coordinador | `src/routes/api/register_labs.js` |
+| `/get_list_multas` | `GET` | `admin`, `coordinador`, `laboratorista` | Global o restringido por rol | `src/routes/api/get_list_multas.js` |
+| `/get_list_estudiantes` | `GET` | `admin` | Global | `src/routes/api/get_list_estudiantes.js` |
+| `/get_list_estudiantes/get_consulta` | `GET` | `admin`, `coordinador`, `laboratorista` | Global o restringido por rol | `src/routes/api/get_list_estudiantes.js` |
+| `/get_list_estudiantes/consulta_masiva` | `POST` | `admin`, `coordinador`, `laboratorista` | Global o restringido por rol | `src/routes/api/get_list_estudiantes.js` |
+| `/coordinadores_registrados` | `GET` | `admin` | Global | `src/routes/api/coordinadores_registrados.js` |
+| `/laboratoristas_registrados` | `GET` | `admin`, `coordinador` | Global o facultades asignadas | `src/routes/api/laboratoristas_registrados.js` |
+| `/estudiantes_registrados` | `GET` | `admin`, `coordinador` | Global o facultades asignadas | `src/routes/api/estudiantes_registrados.js` |
+| `/facultad` | `GET`, `POST` | `admin` | Global | `src/routes/api/facultad.js` |
+| `/logs` | `GET` | `admin` | Global | `src/routes/api/logs.js` |
+| `/admins/load_info` | `GET` | `admin` | Global | `src/routes/api/admins.js` |
+| `/admins` | `POST` | `admin` | Global | `src/routes/api/admins.js` |
+| `/get-info-multa/get` | `GET` | `laboratorista` | UAL asignadas por operación | `src/routes/api/get-info-multa.js` |
+| `/get-info-multa` | `POST` | `laboratorista` | UAL asignadas por operación | `src/routes/api/get-info-multa.js` |
+| `/get-info-erase-multa` | `POST` | `laboratorista` | UAL asignadas por operación | `src/routes/api/get-info-erase-multa.js` |
+| `/submit` | `POST` | `laboratorista` | UAL asignadas por operación | `src/routes/api/submit.js` |
+| `/get-info-multa-docente/get` | `GET` | `admin`, `laboratorista` | Global o UAL asignadas | `src/routes/api/get-info-multa-docente.js` |
+| `/get-info-multa-docente` | `POST` | `admin`, `laboratorista` | Global o UAL asignadas | `src/routes/api/get-info-multa-docente.js` |
+| `/get-info-erase-multa-docente` | `POST` | `laboratorista` | UAL asignadas por operación | `src/routes/api/get-info-erase-multa-docente.js` |
+| `/submit_docente` | `POST` | `laboratorista` | UAL asignadas por operación | `src/routes/api/submit_docente.js` |
+| `/verificar_estudiante` | `GET`, `POST` | `admin`, `laboratorista`, `coordinador` | Global o restringido por rol | `src/routes/api/verificar_estudiante.js` |
+| `/verificar_docente` | `GET`, `POST` | `admin`, `laboratorista`, `coordinador` | Global o restringido por rol | `src/routes/api/verificar_docente.js` |
+| `/get-data1/verificacion` | `GET` | `admin`, `estudiante` | Propio para estudiante; global para admin | `src/routes/api/get-data1.js` |
+| `/get-data1` | `POST` | `admin`, `estudiante` | Propio para estudiante; global para admin | `src/routes/api/get-data1.js` |
+| `/verifica_multa_docente/verificacion` | `GET` | `admin`, `docente`, `coordinador` | Propio para docente; operativo para coordinador/admin | `src/routes/api/verifica_multa_docente.js` |
+| `/verifica_multa_docente` | `POST` | `admin`, `docente`, `coordinador` | Propio para docente; operativo para coordinador/admin | `src/routes/api/verifica_multa_docente.js` |
 
-## Rutas Publicas O Sensibles A Revisar
+## Monitoreo Por Rol
 
-| Ruta                                    | Observación                                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `/milab/api/consulta-invit`             | Pública por diseño; protegida con reCAPTCHA                                                            |
-| `/milab/api/get-estado-multa/:codigo`   | Pública por diseño; ahora con rate limit y validación numérica                                         |
-| `/milab/api/validateqr/:codigo`         | Pública por diseño; ahora con rate limit y validación del identificador                                |
-| `/milab/api/validateqr-docente/:codigo` | Pública por diseño; ahora con rate limit y validación del identificador                                |
-| `/milab/api/generate`                   | Ya no debe quedar pública; exige sesión con `requireUser(...)`                                         |
-| `/milab/api/generatepdf`                | Ya no debe quedar pública; exige sesión con `requireUser(...)`                                         |
-| `/milab/api/download-pdf`               | Exige roles `admin`, `estudiante`, `laboratorista`, `coordinador` y valida ownership para `estudiante` |
-| `/milab/api/download-pdf-docente`       | Exige roles `admin`, `docente`, `laboratorista`, `coordinador` y valida ownership para `docente`       |
+La ruta `/milab/api/dashboard` ya no es admin-only.
+
+| Rol | Vista | Indicadores disponibles |
+| --- | --- | --- |
+| `admin` | Global | `estudiantes`, `docentes`, `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas`, `coordinadores`, `usuariosRegistrados` |
+| `coordinador` | Facultades asignadas | `estudiantes`, `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas`, `coordinadores`, `usuariosRegistrados` |
+| `laboratorista` | UAL asignadas | `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas` |
+
+El alcance operativo se resuelve con:
+
+- `resolveCoordinatorScope(...)` para coordinadores.
+- `laboratorista` + `laboratorista_ual` para laboratoristas.
+
+## Menú Persistido En BD
+
+El seed canónico actual en `sql-scripts/db_seed_system.sql` deja esta estructura principal:
+
+- `primary`
+  - `Inicio` para todos los roles autenticados.
+  - `Monitoreo` para `admin`, `coordinador` y `laboratorista`.
+  - `Autorizaciones` para `coordinador`.
+  - `Solicitar certificado estudiante` para `estudiante`.
+  - `Solicitar certificado docente` para `docente`.
+- `secondary`
+  - `Registro`
+  - `Consulta y control`
+  - `Paz y Salvos`
+  - `Sanciones`
+  - `Administración`
+  - `Configuración`
+
+Nota: el menú estático de respaldo en `src/routes/middlewares/navigation.js` todavía conserva algunos labels legacy para laboratorista (`Consultas`, `Administración`). La seguridad de rutas no depende de esos labels sino de los middlewares de backend.
+
+## Rutas Públicas O Sensibles
+
+| Ruta | Observación |
+| --- | --- |
+| `/milab/api/consulta-invit` | Pública por diseño; protegida con reCAPTCHA |
+| `/milab/api/get-estado-multa/:codigo` | Pública por diseño; con rate limit y validación numérica |
+| `/milab/api/validateqr/:codigo` | Pública por diseño; con rate limit y validación del identificador |
+| `/milab/api/validateqr-docente/:codigo` | Pública por diseño; con rate limit y validación del identificador |
+| `/milab/api/generate` | Requiere sesión (`requireUser(...)`) |
+| `/milab/api/generatepdf` | Requiere sesión (`requireUser(...)`) |
+| `/milab/api/download-pdf` | Exige roles y valida ownership para `estudiante` |
+| `/milab/api/download-pdf-docente` | Exige roles y valida ownership para `docente` |
 
 ## Middleware Centralizado
 
-Se agregó `src/routes/middlewares/auth.js` con dos utilidades:
+El control de acceso reutilizable vive en `src/routes/middlewares/auth.js`:
 
 - `requireUser(...)`
 - `requireRoles(...)`
 
-Estas funciones permiten mover el control de acceso fuera del cuerpo de cada handler y reducir el riesgo de olvidar chequeos al crear nuevas rutas.
+El control de navegación por menú persistido vive en:
 
-## Validación Local Reciente
-
-- `GET /milab/` respondió `200`.
-- `GET /pazysalvos/` respondió `301` hacia `/milab/`.
-- `GET /milab/api/consulta-invit` respondió `200` y cargó la vista pública.
-- `GET /milab/api/get-estado-multa/abc` respondió `400` con validación de entrada.
-- `GET /milab/api/get-estado-multa/123456` respondió `200` con JSON válido.
-- `GET /milab/api/validateqr/invalid` respondió `400` con vista de error, sin caída del servidor.
-- `POST /milab/api/download-pdf` sin sesión respondió la vista de bloqueo esperada.
+- `src/routes/middlewares/menu-permissions.js`
+- `src/routes/middlewares/navigation.js`

@@ -50,11 +50,12 @@ test('verifyRecaptchaToken returns verification payload from fetch response', as
     },
   });
 
-  assert.equal(
-    calledUrl,
-    'https://www.google.com/recaptcha/api/siteverify?secret=secret&response=token'
-  );
-  assert.deepEqual(calledOptions, { method: 'POST' });
+  assert.equal(calledUrl, 'https://www.google.com/recaptcha/api/siteverify');
+  assert.deepEqual(calledOptions, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'secret=secret&response=token',
+  });
   assert.deepEqual(result, { success: true, score: 0.9 });
 });
 

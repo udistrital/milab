@@ -1,0 +1,60 @@
+<%
+  const bannerEnvironmentName = (locals.environmentName || 'development').toString().trim();
+  const shouldShowEnvironmentBanner = Boolean(locals.isNonProductionEnvironment);
+%>
+<% if (shouldShowEnvironmentBanner) { %>
+  <style>
+    .app-environment-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.7rem;
+      margin: 0 1rem;
+      padding: 0.78rem 1rem;
+      border: 1px solid rgba(130, 63, 10, 0.22);
+      background: linear-gradient(90deg, #fff3d1, #ffd98a 54%, #ffe7ad);
+      color: #6b3d00;
+      box-shadow: 0 10px 24px rgba(163, 104, 18, 0.12);
+      text-align: center;
+      position: relative;
+      z-index: 1100;
+    }
+
+    .app-environment-banner--attached {
+      border-bottom: none;
+    }
+
+    .app-environment-banner-label {
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .app-environment-banner-separator {
+      opacity: 0.55;
+    }
+
+    .app-environment-banner-text {
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    @media (max-width: 767.98px) {
+      .app-environment-banner {
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 0.7rem 0.85rem;
+      }
+
+      .app-environment-banner-separator {
+        display: none;
+      }
+    }
+  </style>
+  <div class="app-environment-banner <%= locals.environmentBannerAttached ? 'app-environment-banner--attached' : '' %>" role="status" aria-live="polite">
+    <span class="app-environment-banner-label">Ambiente no productivo</span>
+    <span class="app-environment-banner-separator" aria-hidden="true">•</span>
+    <span class="app-environment-banner-text">Estás navegando en <strong><%= bannerEnvironmentName %></strong>. La información y las acciones pueden ser de prueba.</span>
+  </div>
+<% } %>

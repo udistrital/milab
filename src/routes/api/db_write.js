@@ -3,30 +3,10 @@ require('dotenv').config();
 const pool = require('../../libs/db');
 
 // Función para insertar un registro en la tabla1
-async function insertarRegistroTabla1(
-  nombre,
-  cc,
-  codigo,
-  programa,
-  estado_estudiante,
-  fecha_creacion,
-  id_Certificado,
-  correo,
-  multa
-) {
+async function insertarRegistroTabla1(usuario_id, fecha_creacion, id_Certificado, correo, multa) {
   const query =
-    'INSERT INTO estudiante (nombre, cc, codigo, programa, estado_estudiante, fecha_creacion,id_Certificado, correo, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)';
-  const values = [
-    nombre,
-    cc,
-    codigo,
-    programa,
-    estado_estudiante,
-    fecha_creacion,
-    id_Certificado,
-    correo,
-    multa,
-  ];
+    'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, id_Certificado, correo, multa) VALUES ($1, $2, $3, $4, $5)';
+  const values = [usuario_id, fecha_creacion, id_Certificado, correo, multa];
 
   try {
     const client = await pool.connect();
@@ -54,15 +34,5 @@ async function insertarRegistroTabla1(
 // }
 
 // Ejemplo de uso
-insertarRegistroTabla1(
-  'John Wick 3',
-  1032431632,
-  20062005102,
-  'Ingenieria electronica',
-  'A',
-  '2023_07_04',
-  '783483yehxbkew',
-  'andres@m2',
-  '2'
-);
+insertarRegistroTabla1(1, '2023_07_04', '783483yehxbkew', 'andres@m2', '2');
 //insertarRegistroTabla2('Descripción del registro', '2023-07-04');

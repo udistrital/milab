@@ -1,6 +1,6 @@
 # Gua de instalacion BD (DBA)
 
-Este documento describe como instalar el esquema y la precarga base de MiLab en PostgreSQL.
+Este documento describe como instalar el esquema y la precarga base de MILab en PostgreSQL.
 
 ## Requisitos
 
@@ -47,12 +47,16 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
 Consultas sugeridas despues de ejecutar los scripts:
 
 - Tablas base:
-  SELECT COUNT(_) FROM roles;
-  SELECT COUNT(_) FROM menu_items;
-  SELECT COUNT(\*) FROM role_permissions;
+  SELECT COUNT(*) FROM rol;
+  SELECT COUNT(*) FROM menu_item;
+  SELECT COUNT(*) FROM rol_permiso;
 
 - Usuarios admin:
-  SELECT documento, tipo, correo FROM auth WHERE tipo = 'admin';
+  SELECT u.documento, u.correo, r.nombre AS rol
+  FROM usuario u
+  JOIN usuario_rol ur ON ur.usuario_id = u.id
+  JOIN rol r ON r.id = ur.rol_id
+  WHERE r.nombre = 'admin';
 
 ## Alcance
 

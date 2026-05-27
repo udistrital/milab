@@ -19,6 +19,10 @@ function extractMicrosoftEmail(profile) {
     .trim();
 }
 
+function normalizeEmail(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
 function normalizeEstado(value) {
   return (value || '').toString().trim().toUpperCase();
 }
@@ -70,13 +74,118 @@ async function lookupStudentByDocumento(documento) {
 
 async function ensureRoleAssignment(userId, roleName) {
   await pool.query(
-    `INSERT INTO usuario_roles (usuario_id, role_id)
-     SELECT $1, id FROM roles WHERE name = $2
-     ON CONFLICT (usuario_id, role_id) DO UPDATE
+    `INSERT INTO usuario_rol (usuario_id, rol_id)
+     SELECT $1, id FROM rol WHERE nombre = $2
+    ON CONFLICT (usuario_id, rol_id) DO UPDATE
      SET activo = TRUE,
-         updated_at = CURRENT_TIMESTAMP`,
+       fecha_modificacion = CURRENT_TIMESTAMP`,
     [userId, roleName]
   );
+}
+
+async function findRegisteredCoordinator(usuario) {
+  const documento = (usuario?.documento || '').toString().trim();
+  const correo = normalizeEmail(usuario?.correo);
+
+  const result = await pool.query(
+    `SELECT documento, usuario_id, nombre_u, correo
+     FROM coordinador
+     WHERE ($1::text <> '' AND (documento = $1::text OR nombre_u = $1::text))
+        OR ($2::text <> '' AND LOWER(COALESCE(correo, '')) = $2::text)
+     LIMIT 1`,
+    [documento, correo]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findRegisteredLaboratorista(usuario) {
+  const documento = (usuario?.documento || '').toString().trim();
+  const correo = normalizeEmail(usuario?.correo);
+
+  const result = await pool.query(
+    `SELECT documento, usuario_id, n_usuario, correo
+     FROM laboratorista
+     WHERE ($1::text <> '' AND (documento = $1::text OR n_usuario = $1::text))
+        OR ($2::text <> '' AND LOWER(COALESCE(correo, '')) = $2::text)
+     LIMIT 1`,
+    [documento, correo]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function ensureCoordinatorRoleForUser(usuario, currentRoles) {
+  const coordinator = await findRegisteredCoordinator(usuario);
+
+  if (!coordinator) {
+    return false;
+  }
+
+  await pool.query(
+    `UPDATE coordinador
+     SET usuario_id = $1,
+         nombre_u = CASE
+           WHEN nombre_u IS NULL OR TRIM(nombre_u) = '' THEN $2
+           ELSE nombre_u
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3`,
+    [usuario.id, usuario.documento, coordinator.documento]
+  );
+
+  if (!currentRoles.includes('coordinador')) {
+    await ensureRoleAssignment(usuario.id, 'coordinador');
+    return true;
+  }
+
+  return coordinator.usuario_id !== usuario.id;
+}
+
+async function ensureLaboratoristaRoleForUser(usuario, currentRoles) {
+  const laboratorista = await findRegisteredLaboratorista(usuario);
+
+  if (!laboratorista) {
+    return false;
+  }
+
+  await pool.query(
+    `UPDATE laboratorista
+     SET usuario_id = $1,
+         n_usuario = CASE
+           WHEN n_usuario IS NULL OR TRIM(n_usuario) = '' THEN $2
+           ELSE n_usuario
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3`,
+    [usuario.id, usuario.documento, laboratorista.documento]
+  );
+
+  if (!currentRoles.includes('laboratorista')) {
+    await ensureRoleAssignment(usuario.id, 'laboratorista');
+    return true;
+  }
+
+  return laboratorista.usuario_id !== usuario.id;
+}
+
+async function ensureRegisteredSystemRolesForUser(usuario) {
+  const currentRoles = normalizeRoles(usuario?.roles || []);
+  let changed = false;
+
+  if (await ensureCoordinatorRoleForUser(usuario, currentRoles)) {
+    changed = true;
+  }
+
+  if (await ensureLaboratoristaRoleForUser(usuario, currentRoles)) {
+    changed = true;
+  }
+
+  if (!changed) {
+    return usuario;
+  }
+
+  return fetchUserByEmail(usuario.correo);
 }
 
 async function ensureOatiRolesForUser(usuario) {
@@ -100,6 +209,11 @@ async function ensureOatiRolesForUser(usuario) {
   }
 
   return fetchUserByEmail(usuario.correo);
+}
+
+async function ensureAssociatedRolesForUser(usuario) {
+  const withRegisteredRoles = await ensureRegisteredSystemRolesForUser(usuario);
+  return ensureOatiRolesForUser(withRegisteredRoles);
 }
 
 function regenerateSession(req) {
@@ -131,7 +245,7 @@ router.get(
 router.get(
   '/microsoft/callback',
   passport.authenticate('auth-microsoft', {
-    failureRedirect: '/milab/login',
+    failureRedirect: '/milab/',
     session: false,
   }),
   async (req, res) => {
@@ -158,7 +272,7 @@ router.get(
       const usuario = await fetchUserByEmail(correo);
 
       if (usuario) {
-        const enriched = await ensureOatiRolesForUser(usuario);
+        const enriched = await ensureAssociatedRolesForUser(usuario);
         await regenerateSession(req);
         if (req.session) {
           req.session.user = buildSessionUser(enriched || usuario);

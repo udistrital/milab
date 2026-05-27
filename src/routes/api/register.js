@@ -1,6 +1,5 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const bcrypt = require('bcrypt');
 const transporter = require('../../libs/mail');
 const {
   buildBrandedEmailAttachments,
@@ -12,6 +11,9 @@ const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 function buildRegistrationTemplateState(tipoUsuario, session) {
   if (tipoUsuario === 'estudiante' && session.studentData) {
@@ -251,7 +253,7 @@ router.post('/enviar-codigo', async (req, res) => {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: recipient,
-      subject: 'Verificación de correo - Sistema Paz y Salvos Laboratorios UD',
+      subject: 'Verificación de correo - MILab Laboratorios UD',
       //text: `Hola Tu código de verificación es: ${usuario.codigoVerificacion}`
       text: `Hola ${usuario.nombre || 'usuario'},
 
@@ -264,7 +266,7 @@ router.post('/enviar-codigo', async (req, res) => {
             Por tu seguridad, nunca compartas este código. Si no solicitaste esto, puedes ignorar este mensaje.
             
             Atentamente,
-            El equipo de [Tu Nombre de Aplicación/Empresa]`,
+            Equipo MILab`,
 
       // 3. Versión HTML (la plantilla mejorada)
       // Usamos template literals (comillas invertidas ``) para insertar el HTML y las variables fácilmente.
@@ -293,7 +295,7 @@ router.post('/enviar-codigo', async (req, res) => {
                                     <!-- Título Principal -->
                                     <tr>
                                         <td align="center" style="padding: 0 30px;">
-                                            <h1 class="fallback-font" style="font-size: 28px; font-weight: 700; color: #202124; margin: 0;">Código de Verificación del sistema de Paz y Salvos</h1>
+                                            <h1 class="fallback-font" style="font-size: 28px; font-weight: 700; color: #202124; margin: 0;">Código de Verificación de MILab</h1>
                                         </td>
                                     </tr>
                                     
@@ -311,7 +313,7 @@ router.post('/enviar-codigo', async (req, res) => {
                                               : ''
                                           }
                                             <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin-top: 16px;">
-                                               Use el siguiente código para completar el inicio de sesión en el sistema de paz y salvos de la coordinación general de laboratorios.
+                                               Use el siguiente código para completar el inicio de sesión en MILab de la Coordinación General de Laboratorios.
                                             </p>
                                         </td>
                                     </tr>
@@ -354,7 +356,7 @@ router.post('/enviar-codigo', async (req, res) => {
                         <tr>
                             <td align="center" style="padding: 20px 0;">
                                  <p class="fallback-font" style="font-size: 12px; color: #9aa0a6; text-align: center;">
-                                    © 2025 Sistema Paz y Salvos / Coordinación General de Laboratorios - CILUD. Todos los derechos reservados.<br>
+                                    © 2025 MILab / Coordinación General de Laboratorios - CILUD. Todos los derechos reservados.<br>
                                     Universidad Distrital Francisco José de Caldas, Bogotá D.C.
                                 </p>
                             </td>
@@ -438,26 +440,37 @@ async function create_account(data) {
   const correo = data.correo;
   const estado = data.estado;
   const carrera = data.carrera;
-  const password = data.password;
   const tipo = data.tipo;
-
-  //Encriptar contraseña
-  const hashedPassword = await bcrypt.hash(password.toString(), 12);
   try {
-    const query1 =
-      'INSERT INTO usuario (documento, codigo, nombre, correo, estado, carrera) VALUES ($1, $2, $3, $4, $5, $6);';
-    const values1 = [documento, codigo, nombre, correo, estado, carrera];
-    const result1 = await pool.query(query1, values1);
+    const result1 = await pool.query(
+      `INSERT INTO usuario (documento, codigo, nombre, correo, estado, carrera)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (documento) DO UPDATE
+       SET codigo = EXCLUDED.codigo,
+           nombre = EXCLUDED.nombre,
+           correo = EXCLUDED.correo,
+           estado = EXCLUDED.estado,
+           carrera = EXCLUDED.carrera,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       RETURNING id`,
+      [documento, codigo, nombre, correo, estado, carrera]
+    );
 
-    if (result1.rowCount !== undefined && result1.rowCount >= 0) {
-      const query2 =
-        'INSERT INTO auth (documento, password, tipo, password_cambiado, correo) VALUES ($1, $2, $3, $4, $5)';
-      const values2 = [documento, hashedPassword, tipo, true, correo];
-      const result2 = await pool.query(query2, values2);
-      return result2;
-    } else {
-      throw new Error('Error al intentar agregar el usuario');
+    const userId = result1.rows[0]?.id;
+    if (!userId) {
+      throw new Error('No fue posible crear el usuario');
     }
+
+    await pool.query(
+      `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
+       SELECT $1, id, TRUE FROM rol WHERE nombre = $2
+       ON CONFLICT (usuario_id, rol_id) DO UPDATE
+       SET activo = TRUE,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [userId, tipo]
+    );
+
+    return result1;
   } catch (error) {
     console.error('Error en la función create_account:', error);
   }

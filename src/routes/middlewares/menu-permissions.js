@@ -28,9 +28,9 @@ async function menuPermissionMiddleware(req, res, next) {
     const menuResult = await pool.query(
       `
         SELECT id
-        FROM menu_items
+        FROM menu_item
         WHERE route = ANY($1)
-          AND is_active = TRUE
+          AND activo = TRUE
         LIMIT 1
       `,
       [candidates]
@@ -62,11 +62,11 @@ async function menuPermissionMiddleware(req, res, next) {
     const permissionResult = await pool.query(
       `
         SELECT 1
-        FROM role_permissions rp
-        JOIN roles r ON r.id = rp.role_id
+        FROM rol_permiso rp
+        JOIN rol r ON r.id = rp.rol_id
         WHERE rp.menu_item_id = $1
           AND rp.can_view = TRUE
-          AND r.name = ANY($2)
+          AND r.nombre = ANY($2)
         LIMIT 1
       `,
       [menuId, roles]

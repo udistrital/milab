@@ -1,10 +1,11 @@
-const axios = require('axios');
 const express = require('express');
 
 const pool = require('../../libs/db');
 const { verifyRecaptchaToken } = require('../../libs/recaptcha');
+const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const limiter = require('../middlewares/limiter');
 const { requireRoles } = require('../middlewares/auth');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 
 // Variables de entorno
 require('dotenv').config();
@@ -12,6 +13,9 @@ require('dotenv').config();
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 const requireStudentSelfServiceAccess = requireRoles(['admin', 'estudiante'], {
   message: '¡Algo ha salido mal!',
@@ -30,19 +34,6 @@ async function resolveStudentEmailForSession(documento, codigo) {
         FROM usuario u
         WHERE u.documento = $1::text
           OR ($2::text IS NOT NULL AND u.codigo::text = $2::text)
-
-        UNION ALL
-
-        SELECT a.correo, 2 AS priority
-        FROM auth a
-        WHERE a.documento = $1::text
-
-        UNION ALL
-
-        SELECT e.correo, 3 AS priority
-        FROM estudiante e
-          WHERE e.cc::text = $1::text
-            OR ($2::text IS NOT NULL AND e.codigo::text = $2::text)
       ) candidates
       WHERE correo IS NOT NULL
         AND correo <> ''
@@ -72,22 +63,32 @@ router.get('/verificacion', requireStudentSelfServiceAccess, async function (req
 
   console.log('Resultado query: ' + con_codigo);
 
-  const sanctionKeys = [
-    String(req.session.user.documento || '').trim(),
-    String(con_codigo || '').trim(),
-  ].filter(Boolean);
+  let usuarioId = await resolveUsuarioIdForStudent({
+    documento: req.session.user.documento,
+    codigo: con_codigo,
+  });
+  if (!usuarioId && profileRow?.documento) {
+    usuarioId = await ensurePerfilEstudiante({
+      documento: profileRow.documento,
+      nombre: profileRow.nombre || req.session.user?.nombre || '',
+      codigo: profileRow.codigo || con_codigo,
+      programa: profileRow.carrera || '',
+      estado: profileRow.estado || '',
+      correo: profileRow.correo || '',
+    });
+  }
   const query =
-    "SELECT COUNT(*) AS multado FROM multas WHERE cod_multado::text = ANY($1::text[]) AND con_estado_multa='ACTIVA'";
-  const values = [sanctionKeys];
+    "SELECT COUNT(*) AS multado FROM multa WHERE usuario_id_sancionado = $1 AND con_estado_multa='ACTIVA'";
+  const values = [usuarioId];
 
   const result = await pool.query(query, values);
   const con_multado = result.rows[0].multado > 0;
 
   let multaInfo = null;
-  if (con_multado) {
+  if (con_multado && usuarioId) {
     const queryMultaInfo =
-      "SELECT * FROM multas WHERE cod_multado::text = ANY($1::text[]) AND con_estado_multa='ACTIVA'";
-    const valuesMultaInfo = [sanctionKeys];
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa='ACTIVA'";
+    const valuesMultaInfo = [usuarioId];
 
     const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
     multaInfo = resultMultaInfo.rows;
@@ -169,11 +170,9 @@ router.post('/', limiter, async function (req, res) {
   }
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
-    const respuesta1 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        numero_documento_identificacion
+    const dato1 = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
     );
-    const dato1 = respuesta1.data; // Obtener los datos de la respuesta 1
     // dataString removed (was unused)
     var cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
@@ -185,20 +184,12 @@ router.post('/', limiter, async function (req, res) {
     con_carrera = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
     con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
 
-    const respuesta2 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-        con_estado
-    );
-    const dato2 = respuesta2.data; // Obtener los datos de la respuesta 2
+    const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
     //      console.log( dato2.estado.nombre + " Estado1");
     //      con_estado = dato2.estado.nombre[0].estado_nombre ;
     con_estado = dato2.estado.nombre;
 
-    const respuesta3 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-        con_carrera
-    );
-    const dato3 = respuesta3.data; // Obtener los datos de la respuesta 3
+    const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
     con_carrera = dato3.carrerasCollection.carrera[0].nombre;
 
     console.log('con_codigo ' + con_codigo);
@@ -211,7 +202,7 @@ router.post('/', limiter, async function (req, res) {
 
     // client removed (was unused)
     /*await client.connect();
-    const query = "SELECT COUNT(*) AS multado FROM multas WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
+    const query = "SELECT COUNT(*) AS multado FROM multa WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
     const values = [con_codigo]; 
 
     const result = await client.query(query, values);
@@ -219,7 +210,7 @@ router.post('/', limiter, async function (req, res) {
 
     let multaInfo = null;
     if (con_multado) {
-      const queryMultaInfo = "SELECT * FROM multas WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
+      const queryMultaInfo = "SELECT * FROM multa WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
       const valuesMultaInfo = [con_codigo];
 
       const resultMultaInfo = await client.query(queryMultaInfo, valuesMultaInfo);

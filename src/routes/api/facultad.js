@@ -6,6 +6,9 @@ const { requireRoles } = require('../middlewares/auth');
 
 const router = express.Router();
 
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+
 const requireAdminFacultyAccess = requireRoles('admin', {
   message: '¡Acceso denegado!',
   message2: 'No tienes permisos para esta acción',
@@ -66,7 +69,7 @@ router.post('/add', async (req, res) => {
   try {
     await pool.query('INSERT INTO facultad (nombre) VALUES ($1)', [nombre.trim()]);
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'agregar facultad', nombre.trim()]
     );
     return res.redirect('/milab/api/facultad');
@@ -100,7 +103,7 @@ router.post('/eliminar', async (req, res) => {
       [id_facultad]
     );
     const depCoord = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM coordinador_laboratorio WHERE id_facultad = $1',
+      'SELECT COUNT(*)::int AS c FROM coordinador WHERE id_facultad = $1',
       [id_facultad]
     );
 
@@ -119,7 +122,7 @@ router.post('/eliminar', async (req, res) => {
 
     await pool.query('DELETE FROM facultad WHERE id_facultad = $1', [id_facultad]);
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar facultad', facName]
     );
     return res.redirect('/milab/api/facultad');
@@ -150,7 +153,7 @@ router.post('/ual/add', async (req, res) => {
       id_facultad,
     ]);
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'agregar UAL', nombre.trim()]
     );
     return res.redirect(`/milab/api/facultad?id_facultad=${id_facultad}`);
@@ -219,7 +222,7 @@ router.post('/ual/editar', async (req, res) => {
     }
 
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         getLogActorDocument(req),
@@ -271,7 +274,7 @@ router.post('/ual/eliminar', async (req, res) => {
     const ualName = ualNameRes.rows[0] ? ualNameRes.rows[0].nombre : String(id_ual);
     await pool.query('DELETE FROM ual WHERE id_ual = $1', [id_ual]);
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar UAL', ualName]
     );
     return res.redirect(`/milab/api/facultad?id_facultad=${id_facultad || ''}`);
@@ -306,7 +309,7 @@ router.post('/editar', async (req, res) => {
       id_facultad,
     ]);
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         getLogActorDocument(req),

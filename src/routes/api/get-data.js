@@ -1,21 +1,25 @@
 const pool = require('../../libs/db');
-const axios = require('axios');
 const express = require('express');
 const QRCode = require('qrcode');
 const { format } = require('date-fns');
 const { buildAppUrl } = require('../../libs/app-url');
 const { buildGeneratePath } = require('../../libs/generate-path');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const {
   buildCertificateEmailFailureFeedback,
   buildCertificateEmailFeedback,
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
+const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
 require('dotenv').config();
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 const requireStudentCertificateAccess = requireRoles(['admin', 'estudiante'], {
   message: '¡Algo ha salido mal!',
@@ -190,11 +194,9 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   async function consultarEndpointAnidado() {
     try {
-      const respuesta1 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-          numero_documento_identificacion
+      const dato1 = await requestOati(
+        getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
       );
-      const dato1 = respuesta1.data; // Obtener los datos de la respuesta 1
       // dataString removed (was never used)
       var cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
@@ -230,18 +232,10 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       uniqueId1 = uniqueId;
       console.log(qr_name);
 
-      const respuesta2 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-          con_estado
-      );
-      const dato2 = respuesta2.data; // Obtener los datos de la respuesta 2
+      const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
       con_estado = dato2.estado.nombre;
 
-      const respuesta3 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-          con_carrera
-      );
-      const dato3 = respuesta3.data; // Obtener los datos de la respuesta 3
+      const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
       con_carrera = dato3.carrerasCollection.carrera[0].nombre;
 
       console.log('con_codigo ' + con_codigo);
@@ -252,12 +246,25 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
 
       // Guardar en la base de datos la solicitud de certificado
 
-      let data_to_submit = {
+      const usuarioId = await ensurePerfilEstudiante({
+        documento: con_documento,
         nombre: con_nombre,
-        cc: con_documento,
         codigo: con_codigo,
         programa: con_carrera,
-        estado_estudiante: con_estado,
+        estado: con_estado,
+        correo,
+      });
+
+      if (!usuarioId) {
+        return res.render('home/message_error', {
+          message: 'No se pudo registrar el perfil del estudiante.',
+          message2: 'Verifica los datos e intenta nuevamente.',
+          limit: null,
+        });
+      }
+
+      let data_to_submit = {
+        usuario_id: usuarioId,
         fecha_creacion: con_fecha,
         fecha_vencimiento: fechaVencimiento,
         id_certificado: uniqueId,
@@ -554,7 +561,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         })
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .text(
-          ' y entregado en Bogotá D.C, a través del sistema de generación de Paz y Salvos el ' +
+          ' y entregado en Bogotá D.C, a través del sistema de información de laboratorios de la Universidad Distrital - MILab en el módulo de generación de Paz y Salvos el ' +
             con_fecha,
           {
             width: doc.page.width - 80,
@@ -566,7 +573,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       doc
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .text(
-          'Expedido por: Sistema de Paz y Salvos de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
+          'Expedido por: MILab de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
           40,
           doc.y,
           {
@@ -577,46 +584,35 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
 
       jumpLine(doc, 1);
 
-      const qrSize = 130;
-      const bottomHeight = doc.y + 70; // Margen superior para el texto y el QR
+      const qrSize = 110;
+      const qrTop = doc.y + 28;
 
       // ID único — centrado arriba del QR
       doc
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .fontSize(10)
         .fill('#021c27')
-        .text(`ID único de validación ${uniqueId1}`, 40, bottomHeight - 30, {
+        .text(`ID único de validación ${uniqueId1}`, 40, qrTop - 22, {
           width: doc.page.width - 80,
           align: 'center',
           link: buildAppUrl(`/api/validateqr/${uniqueId1}`),
         });
 
       // QR — centrado
-      doc.image(
-        buildGeneratePath(`${con_codigo}.png`),
-        (doc.page.width - qrSize) / 2,
-        bottomHeight,
-        {
-          fit: [qrSize, qrSize],
-        }
-      );
+      doc.image(buildGeneratePath(`${con_codigo}.png`), (doc.page.width - qrSize) / 2, qrTop, {
+        fit: [qrSize, qrSize],
+      });
 
-      // Posición del texto de vencimiento, al lado derecho
-      const afterQRPosition = bottomHeight + qrSize + 20;
+      const expirationTextY = qrTop + qrSize + 12;
 
       doc
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .fontSize(10)
         .fill('#021c27')
-        .text(
-          'Fecha de vencimiento del certificado ' + fechaVencimiento,
-          doc.page.width / 2 + 50,
-          afterQRPosition + 50,
-          {
-            width: doc.page.width / 2 - 60,
-            align: 'left',
-          }
-        );
+        .text('Fecha de vencimiento del certificado ' + fechaVencimiento, 40, expirationTextY, {
+          width: doc.page.width - 80,
+          align: 'center',
+        });
 
       doc.end();
 
@@ -653,11 +649,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
     // Usar pool centralizado
 
     const {
-      nombre,
-      cc,
-      codigo,
-      programa,
-      estado_estudiante,
+      usuario_id,
       fecha_creacion,
       fecha_vencimiento,
       id_certificado,
@@ -666,20 +658,8 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       multa,
     } = req;
     pool.query(
-      'INSERT INTO estudiante (nombre, cc, codigo, programa, estado_estudiante, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
-      [
-        nombre,
-        cc,
-        codigo,
-        programa,
-        estado_estudiante,
-        fecha_creacion,
-        fecha_vencimiento,
-        id_certificado,
-        correo,
-        motivo_exp,
-        multa,
-      ],
+      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, multa) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, multa],
       (error) => {
         if (error) {
           throw error;

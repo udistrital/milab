@@ -421,7 +421,7 @@ INSERT INTO tmp_seed_multas (
 VALUES
 {sanction_values};
 
-UPDATE coordinador_laboratorio c
+UPDATE coordinador c
 SET nombre = s.nombre,
     correo = s.correo,
     id_facultad = f.id_facultad,
@@ -433,7 +433,7 @@ JOIN facultad f ON f.nombre = s.facultad_nombre
 WHERE c.documento = s.documento
     AND NOT EXISTS (
             SELECT 1
-            FROM coordinador_laboratorio c_conflict
+            FROM coordinador c_conflict
             WHERE c_conflict.documento <> c.documento
                 AND (
                         LOWER(c_conflict.correo) = LOWER(s.correo)
@@ -441,7 +441,7 @@ WHERE c.documento = s.documento
                 )
     );
 
-INSERT INTO coordinador_laboratorio (
+INSERT INTO coordinador (
     documento,
     nombre,
     correo,
@@ -460,9 +460,9 @@ SELECT
     s.nombre_u
 FROM tmp_seed_coordinadores s
 JOIN facultad f ON f.nombre = s.facultad_nombre
-LEFT JOIN coordinador_laboratorio by_document ON by_document.documento = s.documento
-LEFT JOIN coordinador_laboratorio by_email ON LOWER(by_email.correo) = LOWER(s.correo)
-LEFT JOIN coordinador_laboratorio by_user ON by_user.nombre_u = s.nombre_u
+LEFT JOIN coordinador by_document ON by_document.documento = s.documento
+LEFT JOIN coordinador by_email ON LOWER(by_email.correo) = LOWER(s.correo)
+LEFT JOIN coordinador by_user ON by_user.nombre_u = s.nombre_u
 WHERE by_document.documento IS NULL
   AND by_email.documento IS NULL
   AND by_user.documento IS NULL;

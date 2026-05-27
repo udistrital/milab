@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:25-slim
 # Directorio de la APP en el Contenedor
 WORKDIR /usr/src/app
 # Copia package y lo ejecuta, instala dependencias del codigo

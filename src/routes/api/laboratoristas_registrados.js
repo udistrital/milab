@@ -43,17 +43,16 @@ async function resolveActorDocumentForLogs(req, client) {
     return req.session?.user?.documento;
   }
 
-  const result = await client.query(
-    'SELECT documento FROM coordinador_laboratorio WHERE nombre_u = $1',
-    [req.session.user.documento]
-  );
+  const result = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+    req.session.user.documento,
+  ]);
 
   return result.rows[0]?.documento || req.session.user.documento;
 }
 
 async function resolveCoordinatorFacultyIds(client, authDocument) {
   const coordInfoRes = await client.query(
-    'SELECT documento, id_facultad FROM coordinador_laboratorio WHERE nombre_u = $1',
+    'SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1',
     [authDocument]
   );
 
@@ -110,7 +109,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     } else if (req.session.user.tipo === 'coordinador') {
       // Obtener el documento real del coordinador y su facultad principal (compatibilidad)
       const coordInfoRes = await pool.query(
-        `SELECT documento, id_facultad FROM coordinador_laboratorio WHERE nombre_u = $1`,
+        `SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1`,
         [req.session.user.documento]
       );
 
@@ -341,7 +340,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
       });
     }
 
-    const conflict = await findEmailConflict(client, correo, laboratorista.n_usuario);
+    const conflict = await findEmailConflict(client, correo, laboratorista.documento);
 
     if (conflict) {
       client.release();
@@ -367,25 +366,21 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
       `,
       [nombre, correo, selectedFacultyId, primaryUalId, contrato, documento]
     );
-    await client.query('UPDATE auth SET correo = $1 WHERE documento = $2', [
-      correo,
-      laboratorista.n_usuario,
-    ]);
     if (laboratorista.usuario_id) {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             nombre = $2,
-             updated_at = CURRENT_TIMESTAMP
+           nombre = $2,
+           fecha_modificacion = CURRENT_TIMESTAMP
          WHERE id = $3`,
         [correo, nombre, laboratorista.usuario_id]
       );
     } else {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             nombre = $2,
-             updated_at = CURRENT_TIMESTAMP
+           nombre = $2,
+           fecha_modificacion = CURRENT_TIMESTAMP
          WHERE documento = $3`,
         [correo, nombre, documento]
       );
@@ -398,7 +393,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
 
     const actorDocument = await resolveActorDocumentForLogs(req, client);
     await client.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         normalizeLogDocument(actorDocument),
@@ -486,7 +481,7 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
       }
     }
 
-    const conflict = await findEmailConflict(client, correo, laboratorista.n_usuario);
+    const conflict = await findEmailConflict(client, correo, laboratorista.documento);
 
     if (conflict) {
       client.release();
@@ -501,23 +496,19 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
       correo,
       documento,
     ]);
-    await client.query('UPDATE auth SET correo = $1 WHERE documento = $2', [
-      correo,
-      laboratorista.n_usuario,
-    ]);
     if (laboratorista.usuario_id) {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             updated_at = CURRENT_TIMESTAMP
+           fecha_modificacion = CURRENT_TIMESTAMP
          WHERE id = $2`,
         [correo, laboratorista.usuario_id]
       );
     } else {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             updated_at = CURRENT_TIMESTAMP
+           fecha_modificacion = CURRENT_TIMESTAMP
          WHERE documento = $2`,
         [correo, documento]
       );
@@ -526,7 +517,7 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
     const actorDocument = await resolveActorDocumentForLogs(req, client);
 
     await client.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         normalizeLogDocument(actorDocument),
@@ -582,7 +573,8 @@ router.post('/eliminar', requireAdminOrCoordinadorLabAction, async (req, res) =>
   }
 
   try {
-    const checkQuery = 'SELECT documento, n_usuario FROM laboratorista WHERE documento = $1';
+    const checkQuery =
+      'SELECT documento, n_usuario, correo, usuario_id FROM laboratorista WHERE documento = $1';
     const checkResult = await pool.query(checkQuery, [documento]);
 
     if (checkResult.rows.length === 0) {
@@ -593,28 +585,49 @@ router.post('/eliminar', requireAdminOrCoordinadorLabAction, async (req, res) =>
       });
     }
 
-    const n_usuario = checkResult.rows[0].n_usuario;
+    const laboratorista = checkResult.rows[0];
+    const userIdResult = await pool.query(
+      `SELECT id
+       FROM usuario
+       WHERE id = $1
+          OR documento = $2
+          OR documento = $3
+          OR (correo IS NOT NULL AND LOWER(correo) = LOWER($4))
+       LIMIT 1`,
+      [laboratorista.usuario_id || 0, documento, laboratorista.n_usuario, laboratorista.correo]
+    );
+    const userId = userIdResult.rows[0]?.id || null;
 
     await pool.query('BEGIN');
 
     try {
       await pool.query('DELETE FROM laboratorista WHERE documento = $1', [documento]);
-      await pool.query('DELETE FROM auth WHERE documento = $1', [n_usuario]);
+      if (userId) {
+        await pool.query(
+          `UPDATE usuario_rol ur
+           SET activo = FALSE,
+               fecha_modificacion = CURRENT_TIMESTAMP
+           FROM rol r
+           WHERE ur.usuario_id = $1
+             AND ur.rol_id = r.id
+             AND r.nombre = 'laboratorista'`,
+          [userId]
+        );
+      }
 
       let documentoReal = req.session.user.documento;
 
       if (req.session.user.tipo === 'coordinador') {
-        const result = await pool.query(
-          'SELECT documento FROM coordinador_laboratorio WHERE nombre_u = $1',
-          [req.session.user.documento]
-        );
+        const result = await pool.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+          req.session.user.documento,
+        ]);
         if (result.rows.length > 0) {
           documentoReal = result.rows[0].documento;
         }
       }
 
       await pool.query(
-        'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+        'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
         [req.session.user.tipo, documentoReal, 'Eliminar laboratorista', documento]
       );
 

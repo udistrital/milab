@@ -1,17 +1,24 @@
 <%- include('../partials/header'); -%>
 
-<main class="container py-4 dashboard-page dashboard-page--simplified">
-  <section class="dashboard-topbar">
+<main class="container py-4 dashboard-page dashboard-page--simplified dashboard-page--compact">
+  <section class="dashboard-topbar dashboard-topbar--compact">
     <div class="dashboard-topbar-copy">
-      <h1 class="dashboard-simple-title">Monitoreo plataforma</h1>
-      <p class="dashboard-simple-subtitle">
-        Una vista más directa para revisar el comportamiento del sistema y cambiar el indicador principal cuando lo necesites.
-      </p>
+      <span class="dashboard-panel-badge dashboard-panel-badge--scope"><%= scopePresentation.badge %></span>
+      <h1 class="dashboard-simple-title"><%= scopePresentation.title %></h1>
+      <p class="dashboard-simple-subtitle"><%= scopePresentation.subtitle %></p>
+
+      <% if (scopePresentation.chips && scopePresentation.chips.length) { %>
+        <div class="dashboard-scope-chip-row">
+          <% scopePresentation.chips.forEach(function(chip) { %>
+            <span class="dashboard-scope-chip"><%= chip %></span>
+          <% }) %>
+        </div>
+      <% } %>
     </div>
 
-    <div class="dashboard-toolbar-inline">
+    <div class="dashboard-toolbar-inline dashboard-toolbar-inline--compact">
       <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
-        <label for="filtro">Agrupar por:</label>
+        <label for="filtro">Agrupar por</label>
         <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
         <div class="dashboard-select-shell">
           <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select">
@@ -25,17 +32,12 @@
       </form>
 
       <div class="dashboard-control-group">
-        <label for="tipoGrafico">Mostrar:</label>
+        <label for="tipoGrafico">Indicador</label>
         <div class="dashboard-select-shell">
           <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select">
-            <option value="estudiantes" <%= selectedChart === 'estudiantes' ? 'selected' : '' %>>Certificados de estudiantes</option>
-            <option value="docentes" <%= selectedChart === 'docentes' ? 'selected' : '' %>>Certificados de docentes</option>
-            <option value="sanciones" <%= selectedChart === 'sanciones' ? 'selected' : '' %>>Sanciones totales</option>
-            <option value="sancionesActivas" <%= selectedChart === 'sancionesActivas' ? 'selected' : '' %>>Sanciones activas</option>
-            <option value="sancionesSaldadas" <%= selectedChart === 'sancionesSaldadas' ? 'selected' : '' %>>Sanciones saldadas</option>
-            <option value="laboratoristas" <%= selectedChart === 'laboratoristas' ? 'selected' : '' %>>Laboratoristas</option>
-            <option value="coordinadores" <%= selectedChart === 'coordinadores' ? 'selected' : '' %>>Coordinadores</option>
-            <option value="usuariosRegistrados" <%= selectedChart === 'usuariosRegistrados' ? 'selected' : '' %>>Usuarios registrados</option>
+            <% availableCharts.forEach(function(chart) { %>
+              <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
+            <% }) %>
           </select>
           <i class="bi bi-bar-chart-line"></i>
         </div>
@@ -43,13 +45,22 @@
     </div>
   </section>
 
-  <section class="dashboard-main-card dashboard-chart-card">
-    <div class="dashboard-main-header">
+  <section class="dashboard-overview-grid">
+    <% scopeCounters.forEach(function(counter) { %>
+      <article class="dashboard-overview-card">
+        <span class="dashboard-overview-label"><%= counter.label %></span>
+        <strong class="dashboard-overview-value"><%= counter.value %></strong>
+      </article>
+    <% }) %>
+  </section>
+
+  <section class="dashboard-main-card dashboard-chart-card dashboard-main-card--compact">
+    <div class="dashboard-main-header dashboard-main-header--compact">
       <div>
         <span class="dashboard-panel-kicker">Serie principal</span>
-        <h2 id="tituloGrafico">Certificados de estudiantes</h2>
+        <h2 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h2>
         <p id="dashboardChartHint" class="dashboard-main-subtitle">
-          Revisa la tendencia general del indicador seleccionado y detecta cambios por periodo.
+          <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
         </p>
       </div>
 
@@ -62,63 +73,36 @@
       </div>
     </div>
 
-    <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple">
+    <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple dashboard-canvas-wrap--compact">
       <canvas id="chartDinamico"></canvas>
     </div>
   </section>
 
-  <section class="dashboard-stats-grid dashboard-stats-grid--simplified">
-    <button type="button" class="dashboard-stat-card tone-students is-active" data-chart-target="estudiantes">
-      <span class="dashboard-stat-label">Certificado estudiantes</span>
-      <strong id="totalEstudiantes" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-teachers" data-chart-target="docentes">
-      <span class="dashboard-stat-label">Certificado docentes</span>
-      <strong id="totalDocentes" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-sanctions" data-chart-target="sanciones">
-      <span class="dashboard-stat-label">Sanciones</span>
-      <strong id="totalSanciones" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-alert" data-chart-target="sancionesActivas">
-      <span class="dashboard-stat-label">Sanciones activas</span>
-      <strong id="totalSancionesActivas" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-info" data-chart-target="sancionesSaldadas">
-      <span class="dashboard-stat-label">Sanciones saldadas</span>
-      <strong id="totalSancionesSaldadas" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-labs" data-chart-target="laboratoristas">
-      <span class="dashboard-stat-label">Laboratoristas</span>
-      <strong id="totalLaboratoristas" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-coords" data-chart-target="coordinadores">
-      <span class="dashboard-stat-label">Coordinadores</span>
-      <strong id="totalCoordinadores" class="dashboard-stat-value">0</strong>
-    </button>
-
-    <button type="button" class="dashboard-stat-card tone-users" data-chart-target="usuariosRegistrados">
-      <span class="dashboard-stat-label">Usuarios</span>
-      <strong id="totalUsuariosRegistrados" class="dashboard-stat-value">0</strong>
-    </button>
+  <section class="dashboard-stats-grid dashboard-stats-grid--simplified dashboard-stats-grid--compact">
+    <% availableCharts.forEach(function(chart) { %>
+      <button
+        type="button"
+        class="dashboard-stat-card <%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
+        data-chart-target="<%= chart.id %>"
+      >
+        <span class="dashboard-stat-label"><%= chart.cardLabel %></span>
+        <strong class="dashboard-stat-value"><%= chart.total %></strong>
+      </button>
+    <% }) %>
   </section>
 </main>
 
 <script>
   const rawData = <%- JSON.stringify(chartsData) %>;
-
   const chartsData = {
     ...rawData,
     sanciones: rawData.multas,
     sancionesActivas: rawData.multasActivas,
-    sancionesSaldadas: rawData.multasSaldadas
+    sancionesSaldadas: rawData.multasSaldadas,
   };
+
+  const availableCharts = <%- JSON.stringify(availableCharts) %>;
+  const chartDefinitions = Object.fromEntries(availableCharts.map((chart) => [chart.id, chart]));
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -126,61 +110,36 @@
   let chartInstance = null;
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
 
-  const configGraficos = {
+  const chartVisualConfig = {
     estudiantes: {
-      titulo: 'Certificados de estudiantes',
-      resumen: 'Mide la emisión de certificados de estudiantes y detecta picos por periodo.',
       color: '#1f7aec',
       backgroundColor: 'rgba(31, 122, 236, 0.18)',
-      modo: 'Línea acumulada'
     },
     docentes: {
-      titulo: 'Certificados de docentes',
-      resumen: 'Visualiza el comportamiento de los certificados emitidos para docentes.',
       color: '#219653',
       backgroundColor: 'rgba(33, 150, 83, 0.18)',
-      modo: 'Línea acumulada'
     },
-    sanciones: {
-      titulo: 'Sanciones totales',
-      resumen: 'Compara el total de sanciones con sus estados activos y saldados en el mismo periodo.',
-      modo: 'Comparativo múltiple'
-    },
+    sanciones: {},
     sancionesActivas: {
-      titulo: 'Sanciones activas',
-      resumen: 'Enfoca la lectura en los casos que continúan abiertos y requieren seguimiento.',
       color: '#e63946',
       backgroundColor: 'rgba(230, 57, 70, 0.18)',
-      modo: 'Línea acumulada'
     },
     sancionesSaldadas: {
-      titulo: 'Sanciones saldadas',
-      resumen: 'Evalúa el ritmo de cierre y normalización de sanciones registradas en la plataforma.',
       color: '#28b6d8',
       backgroundColor: 'rgba(40, 182, 216, 0.18)',
-      modo: 'Línea acumulada'
     },
     laboratoristas: {
-      titulo: 'Laboratoristas',
-      resumen: 'Sigue el crecimiento operativo de los perfiles responsables del registro y validación.',
       color: '#2a2f36',
       backgroundColor: 'rgba(42, 47, 54, 0.18)',
-      modo: 'Línea acumulada'
     },
     coordinadores: {
-      titulo: 'Coordinadores',
-      resumen: 'Observa la evolución de los perfiles con capacidad de autorización y gestión académica.',
       color: '#8b949e',
       backgroundColor: 'rgba(139, 148, 158, 0.18)',
-      modo: 'Línea acumulada'
     },
     usuariosRegistrados: {
-      titulo: 'Usuarios registrados',
-      resumen: 'Consolida la expansión de cuentas persistentes disponibles para operar dentro de MiLab.',
       color: '#ff7a00',
       backgroundColor: 'rgba(255, 122, 0, 0.18)',
-      modo: 'Línea acumulada'
-    }
+    },
   };
 
   function getChartTheme() {
@@ -189,7 +148,7 @@
       text: styles.getPropertyValue('--app-text-main').trim() || '#171717',
       muted: styles.getPropertyValue('--app-text-muted').trim() || '#5f5a53',
       grid: styles.getPropertyValue('--app-chart-grid').trim() || 'rgba(23, 23, 23, 0.1)',
-      surface: styles.getPropertyValue('--app-surface-strong').trim() || '#fffaf3'
+      surface: styles.getPropertyValue('--app-surface-strong').trim() || '#fffaf3',
     };
   }
 
@@ -197,16 +156,19 @@
     if (!chartsData[tipo]) {
       return 0;
     }
-    return chartsData[tipo].data.reduce((sum, val) => sum + val, 0);
+
+    return chartsData[tipo].data.reduce((sum, val) => sum + Number(val || 0), 0);
   }
 
   function updateSummary(tipo) {
-    const config = configGraficos[tipo];
-    const chartHint = document.getElementById('dashboardChartHint');
-    const chartTotal = document.getElementById('dashboardChartTotal');
+    const config = chartDefinitions[tipo];
+    if (!config) {
+      return;
+    }
 
-    chartHint.textContent = config.resumen;
-    chartTotal.textContent = getTotal(tipo).toLocaleString();
+    document.getElementById('tituloGrafico').textContent = config.title;
+    document.getElementById('dashboardChartHint').textContent = config.summary;
+    document.getElementById('dashboardChartTotal').textContent = getTotal(tipo).toLocaleString();
 
     document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
       card.classList.toggle('is-active', card.dataset.chartTarget === tipo);
@@ -234,14 +196,17 @@
     currentChartType = tipo;
     syncChartSelection(tipo);
     const ctx = document.getElementById('chartDinamico');
-    const config = configGraficos[tipo];
+    const config = chartDefinitions[tipo];
     const theme = getChartTheme();
+
+    if (!config || !ctx) {
+      return;
+    }
 
     if (chartInstance) {
       chartInstance.destroy();
     }
 
-    document.getElementById('tituloGrafico').textContent = config.titulo;
     updateSummary(tipo);
 
     if (tipo === 'sanciones') {
@@ -251,56 +216,56 @@
           labels: chartsData.sanciones.labels,
           datasets: [
             {
-              label: 'Total Sanciones',
+              label: 'Total sanciones',
               data: chartsData.sanciones.data,
               fill: false,
               borderColor: '#ffbf1f',
               backgroundColor: 'rgba(255, 191, 31, 0.18)',
-              tension: 0.4,
+              tension: 0.35,
               pointBackgroundColor: '#ffbf1f',
               pointBorderColor: theme.surface,
               pointBorderWidth: 2,
-              pointRadius: 4,
-              borderWidth: 3
+              pointRadius: 3,
+              borderWidth: 3,
             },
             {
-              label: 'Sanciones Activas',
+              label: 'Sanciones activas',
               data: chartsData.sancionesActivas.data,
               fill: false,
               borderColor: '#e63946',
               backgroundColor: 'rgba(230, 57, 70, 0.18)',
-              tension: 0.4,
+              tension: 0.35,
               pointBackgroundColor: '#e63946',
               pointBorderColor: theme.surface,
               pointBorderWidth: 2,
-              pointRadius: 4,
-              borderWidth: 2
+              pointRadius: 3,
+              borderWidth: 2,
             },
             {
-              label: 'Sanciones Saldadas',
+              label: 'Sanciones saldadas',
               data: chartsData.sancionesSaldadas.data,
               fill: false,
               borderColor: '#28b6d8',
               backgroundColor: 'rgba(40, 182, 216, 0.18)',
-              tension: 0.4,
+              tension: 0.35,
               pointBackgroundColor: '#28b6d8',
               pointBorderColor: theme.surface,
               pointBorderWidth: 2,
-              pointRadius: 4,
-              borderWidth: 2
-            }
-          ]
+              pointRadius: 3,
+              borderWidth: 2,
+            },
+          ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { labels: { color: theme.text }, display: true }
+            legend: { labels: { color: theme.text }, display: true },
           },
           scales: {
             x: {
               ticks: { color: theme.muted },
-              grid: { color: theme.grid }
+              grid: { color: theme.grid },
             },
             y: {
               ticks: {
@@ -308,73 +273,68 @@
                 stepSize: 1,
                 callback: function(value) {
                   return Number.isInteger(value) ? value : '';
-                }
+                },
               },
               beginAtZero: true,
-              grid: { color: theme.grid }
-            }
-          }
-        }
+              grid: { color: theme.grid },
+            },
+          },
+        },
       });
-    } else {
-      const data = chartsData[tipo];
-      chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: data.labels,
-          datasets: [{
-            label: config.titulo,
+      return;
+    }
+
+    const data = chartsData[tipo] || { labels: [], data: [] };
+    const visual = chartVisualConfig[tipo] || chartVisualConfig.sancionesActivas;
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          {
+            label: config.title,
             data: data.data,
             fill: true,
-            borderColor: config.color,
-            backgroundColor: config.backgroundColor,
-            tension: 0.4,
-            pointBackgroundColor: config.color,
+            borderColor: visual.color,
+            backgroundColor: visual.backgroundColor,
+            tension: 0.35,
+            pointBackgroundColor: visual.color,
             pointBorderColor: theme.surface,
             pointBorderWidth: 2,
-            pointRadius: 4
-          }]
+            pointRadius: 3,
+            borderWidth: 2.5,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: theme.text } },
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: theme.text } } },
-          scales: {
-            x: {
-              ticks: { color: theme.muted },
-              grid: { color: theme.grid }
-            },
-            y: {
-              ticks: {
-                color: theme.muted,
-                stepSize: 1,
-                callback: function(value) {
-                  return Number.isInteger(value) ? value : '';
-                }
+        scales: {
+          x: {
+            ticks: { color: theme.muted },
+            grid: { color: theme.grid },
+          },
+          y: {
+            ticks: {
+              color: theme.muted,
+              stepSize: 1,
+              callback: function(value) {
+                return Number.isInteger(value) ? value : '';
               },
-              beginAtZero: true,
-              grid: { color: theme.grid }
-            }
-          }
-        }
-      });
-    }
+            },
+            beginAtZero: true,
+            grid: { color: theme.grid },
+          },
+        },
+      },
+    });
   }
 
   function cambiarGrafico() {
-    const tipoSeleccionado = document.getElementById('tipoGrafico').value;
-    renderChart(tipoSeleccionado);
-  }
-
-  function calcularTotales() {
-    Object.keys(chartsData).forEach(tipo => {
-      const total = chartsData[tipo].data.reduce((sum, val) => sum + val, 0);
-      const elementoId = 'total' + tipo.charAt(0).toUpperCase() + tipo.slice(1);
-      const elemento = document.getElementById(elementoId);
-      if (elemento) {
-        elemento.textContent = total.toLocaleString();
-      }
-    });
+    renderChart(document.getElementById('tipoGrafico').value);
   }
 
   document.addEventListener('DOMContentLoaded', function() {
@@ -387,7 +347,6 @@
     });
 
     renderChart(currentChartType);
-    calcularTotales();
 
     const themeObserver = new MutationObserver(function() {
       renderChart(currentChartType);
@@ -395,7 +354,7 @@
 
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-bs-theme']
+      attributeFilter: ['data-bs-theme'],
     });
   });
 </script>

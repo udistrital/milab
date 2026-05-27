@@ -1,8 +1,12 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const axios = require('axios');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
 
 const requireTeacherVerificationAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Acceso denegado!',
@@ -21,18 +25,14 @@ async function resolveTeacherEmail(documento) {
     `
       SELECT correo
       FROM (
-        SELECT d.correo, 1 AS priority
-        FROM docente d
-        WHERE d.cc::text = $1
-
-        UNION ALL
-
-        SELECT a.correo, 2 AS priority
-        FROM auth a
-        WHERE a.documento = $1
+        SELECT u.correo, u.documento, 1 AS priority
+        FROM usuario u
+        WHERE u.documento = $1::text
       ) candidates
       WHERE correo IS NOT NULL
         AND correo <> ''
+        AND LOWER(correo) <> LOWER(documento::text || '@udistrital.edu.co')
+        AND LOWER(correo) NOT LIKE 'no-email+%@placeholder.milab.local'
       ORDER BY priority
       LIMIT 1
     `,
@@ -47,7 +47,8 @@ router.get('/', requireTeacherVerificationAccess, (req, res) => {
 });
 
 router.post('/', requireTeacherVerificationAction, async (req, res) => {
-  const { documento } = req.body;
+  const requestBody = req.body || {};
+  const { documento } = requestBody;
 
   if (!documento) {
     return res.render('home/verificar_docente', {
@@ -57,11 +58,9 @@ router.post('/', requireTeacherVerificationAction, async (req, res) => {
 
   try {
     // 1. Consultar OAS para obtener datos del docente
-    const oasUrl =
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/consultar_estado_docente/' +
-      documento;
-    const oasResponse = await axios.get(oasUrl);
-    const datosDocente = oasResponse.data;
+    const datosDocente = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
+    );
 
     if (
       !datosDocente ||
@@ -79,9 +78,23 @@ router.post('/', requireTeacherVerificationAction, async (req, res) => {
     const con_estado = docente.estado_docente;
     const con_documento = documento;
 
+    const usuarioId = await ensurePerfilDocente({
+      documento: con_documento,
+      nombre: con_nombre,
+      estado: con_estado,
+      correo: null,
+    });
+
+    if (!usuarioId) {
+      return res.render('home/verificar_docente', {
+        error: 'No fue posible registrar el perfil del docente.',
+      });
+    }
+
     // 2. Consultar Multas en BD local
-    const queryMultas = "SELECT * FROM multas WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
-    const resultMultas = await pool.query(queryMultas, [con_documento]);
+    const queryMultas =
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa='ACTIVA'";
+    const resultMultas = await pool.query(queryMultas, [usuarioId]);
 
     if (resultMultas.rows.length > 0) {
       // Tiene multas activas

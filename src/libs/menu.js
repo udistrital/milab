@@ -22,14 +22,14 @@ async function getMenuForRoles(roles) {
         mi.route,
         mi.icon,
         mi.order_index
-      FROM menu_items mi
-      JOIN role_permissions rp
+      FROM menu_item mi
+      JOIN rol_permiso rp
         ON rp.menu_item_id = mi.id
        AND rp.can_view = TRUE
-      JOIN roles r
-        ON r.id = rp.role_id
-      WHERE r.name = ANY($1)
-        AND mi.is_active = TRUE
+      JOIN rol r
+        ON r.id = rp.rol_id
+      WHERE r.nombre = ANY($1)
+        AND mi.activo = TRUE
       ORDER BY mi.section, mi.order_index, mi.label
     `,
     [normalizedRoles]

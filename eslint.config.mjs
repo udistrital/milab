@@ -10,6 +10,7 @@ export default defineConfig([
     ignores: [
       'package-lock.json',
       'node_modules/**',
+      '.venv/**',
       'coverage/**',
       'dist/**',
       'Docker/**',

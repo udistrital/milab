@@ -7,14 +7,23 @@ function buildRecaptchaVerificationUrl(secretKey, token) {
   return `${RECAPTCHA_VERIFY_URL}?secret=${secret}&response=${response}`;
 }
 
-async function verifyRecaptchaToken({ secretKey, token, fetchImpl = global.fetch } = {}) {
+async function verifyRecaptchaToken({ secretKey, token, remoteIp, fetchImpl = global.fetch } = {}) {
   if (!secretKey || !token || typeof fetchImpl !== 'function') {
     return { success: false };
   }
 
   try {
-    const response = await fetchImpl(buildRecaptchaVerificationUrl(secretKey, token), {
+    const body = new URLSearchParams();
+    body.set('secret', secretKey);
+    body.set('response', token);
+    if (remoteIp) {
+      body.set('remoteip', remoteIp);
+    }
+
+    const response = await fetchImpl(RECAPTCHA_VERIFY_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
     });
 
     if (!response || typeof response.json !== 'function') {

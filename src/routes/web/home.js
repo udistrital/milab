@@ -2,10 +2,6 @@ var express = require('express');
 
 var router = express.Router();
 
-const bp = require('body-parser');
-router.use(bp.json());
-router.use(bp.urlencoded({ extended: true }));
-
 function getAuthenticatedHomePath(user) {
   return user?.tipo ? '/milab/inicio' : null;
 }
@@ -25,8 +21,7 @@ router.get('/', function (req, res) {
     return res.redirect(authenticatedHomePath);
   }
 
-  // console.log("hello I'm on the start page");
-  res.render('home/index_2');
+  return res.render('home/index_2');
 });
 
 router.get('/inicio', function (req, res) {
@@ -97,7 +92,10 @@ router.get('/auth/login', function (req, res) {
     return res.redirect(authenticatedHomePath);
   }
 
-  res.render('home/login_2', { error: null, confirmacion: null });
+  return res.render('home/login_2', {
+    error: null,
+    confirmacion: null,
+  });
 });
 
 router.get('/auth/login_2', function (req, res) {
@@ -117,7 +115,7 @@ router.get('/login_2', function (req, res) {
 });*/
 
 router.get('/register', function (req, res) {
-  return res.redirect('/milab/auth/login');
+  return res.redirect('/milab/auth/microsoft');
 });
 
 router.get('/register_2', function (req, res) {

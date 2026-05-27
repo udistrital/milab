@@ -1,8 +1,12 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const axios = require('axios');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
 
 const requireVerificationAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Acceso denegado!',
@@ -49,12 +53,10 @@ async function fetchStudentRecordsByDocumento(documento) {
   if (!documento || documento === '0') return [];
 
   try {
-    const response = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        documento
+    const response = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
     );
-    return extractOasStudentRecords(response.data);
+    return extractOasStudentRecords(response);
   } catch {
     return [];
   }
@@ -67,27 +69,15 @@ async function resolveStudentEmail(documento, codigo) {
     `
       SELECT correo
       FROM (
-        SELECT u.correo, 1 AS priority
+        SELECT u.correo, u.documento, 1 AS priority
         FROM usuario u
         WHERE ($1::text <> '0' AND u.documento = $1::text)
           OR ($2::text IS NOT NULL AND u.codigo::text = $2::text)
-
-        UNION ALL
-
-        SELECT a.correo, 2 AS priority
-        FROM auth a
-        WHERE $1::text <> '0'
-          AND a.documento = $1::text
-
-        UNION ALL
-
-        SELECT e.correo, 3 AS priority
-        FROM estudiante e
-          WHERE ($1::text <> '0' AND e.cc::text = $1::text)
-            OR ($2::text IS NOT NULL AND e.codigo::text = $2::text)
       ) candidates
       WHERE correo IS NOT NULL
         AND correo <> ''
+        AND LOWER(correo) <> LOWER(documento::text || '@udistrital.edu.co')
+        AND LOWER(correo) NOT LIKE 'no-email+%@placeholder.milab.local'
       ORDER BY priority
       LIMIT 1
     `,
@@ -102,7 +92,8 @@ router.get('/', requireVerificationAccess, (req, res) => {
 });
 
 router.post('/', requireVerificationAction, async (req, res) => {
-  const { tipo_busqueda, valor_busqueda } = req.body;
+  const requestBody = req.body || {};
+  const { tipo_busqueda, valor_busqueda } = requestBody;
 
   if (!valor_busqueda) {
     return res.render('home/verificar_estudiante', {
@@ -112,19 +103,14 @@ router.post('/', requireVerificationAction, async (req, res) => {
 
   try {
     // 1. Consultar OAS para obtener datos del estudiante
-    let oasUrl;
+    let servicePath;
     if (tipo_busqueda === 'codigo') {
-      oasUrl =
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_estudiante/' +
-        valor_busqueda;
+      servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
     } else {
-      oasUrl =
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        valor_busqueda;
+      servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
     }
 
-    const oasResponse = await axios.get(oasUrl);
-    const datosEstudiante = oasResponse.data;
+    const datosEstudiante = await requestOati(servicePath);
 
     const studentRecords = extractOasStudentRecords(datosEstudiante);
 
@@ -153,24 +139,22 @@ router.post('/', requireVerificationAction, async (req, res) => {
     let con_estado_nombre = con_estado_code;
 
     try {
-      const carreraResponse = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-          con_carrera_code
+      const carreraResponse = await requestOati(
+        getAcademicServicePath(`carrera/${con_carrera_code}`)
       );
       if (
-        carreraResponse.data &&
-        carreraResponse.data.carrerasCollection &&
-        carreraResponse.data.carrerasCollection.carrera
+        carreraResponse &&
+        carreraResponse.carrerasCollection &&
+        carreraResponse.carrerasCollection.carrera
       ) {
-        con_carrera_nombre = carreraResponse.data.carrerasCollection.carrera[0].nombre;
+        con_carrera_nombre = carreraResponse.carrerasCollection.carrera[0].nombre;
       }
 
-      const estadoResponse = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-          con_estado_code
+      const estadoResponse = await requestOati(
+        getAcademicServicePath(`estados_codigo/${con_estado_code}`)
       );
-      if (estadoResponse.data && estadoResponse.data.estado && estadoResponse.data.estado.nombre) {
-        con_estado_nombre = estadoResponse.data.estado.nombre;
+      if (estadoResponse && estadoResponse.estado && estadoResponse.estado.nombre) {
+        con_estado_nombre = estadoResponse.estado.nombre;
       }
     } catch (apiError) {
       console.error('Error consultando detalles de carrera/estado:', apiError);
@@ -199,12 +183,30 @@ router.post('/', requireVerificationAction, async (req, res) => {
       codigoList = [String(con_codigo)];
     }
 
-    const sanctionKeys = [String(documento || '').trim(), ...codigoList].filter(Boolean);
+    let usuarioId = null;
+    if (documento && documento !== '0') {
+      usuarioId = await ensurePerfilEstudiante({
+        documento,
+        nombre: con_nombre,
+        codigo: con_codigo,
+        programa: con_carrera_nombre,
+        estado: con_estado_nombre,
+        correo: null,
+      });
+    } else {
+      usuarioId = await resolveUsuarioIdForStudent({ documento: null, codigo: con_codigo });
+    }
+
+    if (!usuarioId) {
+      return res.render('home/verificar_estudiante', {
+        error: 'No fue posible resolver el perfil del estudiante.',
+      });
+    }
 
     // 2. Consultar Multas en BD local
     const queryMultas =
-      "SELECT * FROM multas WHERE cod_multado::text = ANY($1::text[]) AND con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
-    const resultMultas = await pool.query(queryMultas, [sanctionKeys]);
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
+    const resultMultas = await pool.query(queryMultas, [usuarioId]);
 
     if (resultMultas.rows.length > 0) {
       // Tiene multas activas

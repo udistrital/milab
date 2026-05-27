@@ -1,7 +1,7 @@
 {
   "name": "milabud",
   "version": "1.0.0",
-  "description": "App version alpha MiLab estudiantes UD",
+  "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {
     "test": "node --test tests/unit/**/*.test.js",
@@ -19,7 +19,7 @@
   "license": "ISC",
   "dependencies": {
     "@mapbox/node-pre-gyp": "^2.0.3",
-    "axios": "^1.4.0",
+    "axios": "^1.16.0",
     "bcrypt": "^6.0.0",
     "body-parser": "^1.20.2",
     "cookie-parser": "^1.4.6",

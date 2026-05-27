@@ -1,177 +1,641 @@
 const express = require('express');
 
 const pool = require('../../libs/db');
+const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
+
 const router = express.Router();
 
-const requireAdminDashboardAccess = requireRoles('admin', {
+const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratorista'], {
   message: '¡Acceso denegado!',
   message2: 'No tienes permisos para ver el dashboard',
   limit: 'noSession',
 });
 
-router.get('/', requireAdminDashboardAccess, async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
+const CHART_DEFINITIONS = {
+  estudiantes: {
+    id: 'estudiantes',
+    optionLabel: 'Certificados de estudiantes',
+    cardLabel: 'Certificados estudiantes',
+    tone: 'tone-students',
+    title: 'Certificados de estudiantes',
+    summary:
+      'Mide la emisión de certificados de estudiantes dentro del alcance disponible para tu rol.',
+  },
+  docentes: {
+    id: 'docentes',
+    optionLabel: 'Certificados de docentes',
+    cardLabel: 'Certificados docentes',
+    tone: 'tone-teachers',
+    title: 'Certificados de docentes',
+    summary:
+      'Visualiza el comportamiento de los certificados emitidos para docentes en el periodo elegido.',
+  },
+  sanciones: {
+    id: 'sanciones',
+    optionLabel: 'Sanciones totales',
+    cardLabel: 'Sanciones',
+    tone: 'tone-sanctions',
+    title: 'Sanciones totales',
+    summary:
+      'Compara el total de sanciones con sus estados activos y saldados dentro del alcance actual.',
+  },
+  sancionesActivas: {
+    id: 'sancionesActivas',
+    optionLabel: 'Sanciones activas',
+    cardLabel: 'Sanciones activas',
+    tone: 'tone-alert',
+    title: 'Sanciones activas',
+    summary: 'Enfoca la lectura en los casos que continúan abiertos y requieren seguimiento.',
+  },
+  sancionesSaldadas: {
+    id: 'sancionesSaldadas',
+    optionLabel: 'Sanciones saldadas',
+    cardLabel: 'Sanciones saldadas',
+    tone: 'tone-info',
+    title: 'Sanciones saldadas',
+    summary: 'Evalúa el ritmo de cierre y normalización de sanciones registradas.',
+  },
+  laboratoristas: {
+    id: 'laboratoristas',
+    optionLabel: 'Laboratoristas',
+    cardLabel: 'Laboratoristas',
+    tone: 'tone-labs',
+    title: 'Laboratoristas',
+    summary: 'Sigue los perfiles laboratoristas disponibles en el alcance consultado.',
+  },
+  coordinadores: {
+    id: 'coordinadores',
+    optionLabel: 'Coordinadores',
+    cardLabel: 'Coordinadores',
+    tone: 'tone-coords',
+    title: 'Coordinadores',
+    summary: 'Observa la cobertura de coordinación asociada al alcance consultado.',
+  },
+  usuariosRegistrados: {
+    id: 'usuariosRegistrados',
+    optionLabel: 'Usuarios registrados',
+    cardLabel: 'Usuarios',
+    tone: 'tone-users',
+    title: 'Usuarios registrados',
+    summary: 'Consolida las cuentas registradas relacionadas con el alcance actual.',
+  },
+};
 
-  const filtro = req.query.filtro || 'dia';
-  const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
-  const selectedChart = [
-    'estudiantes',
-    'docentes',
-    'sanciones',
-    'sancionesActivas',
-    'sancionesSaldadas',
-    'laboratoristas',
-    'coordinadores',
-    'usuariosRegistrados',
-  ].includes(requestedChart)
-    ? requestedChart
-    : 'estudiantes';
+function getDashboardRole(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('coordinador')) return 'coordinador';
+  if (roles.includes('laboratorista')) return 'laboratorista';
+  return '';
+}
 
-  let dateTrunc;
-  let labelFormat;
-
-  switch (filtro) {
-    case 'anio':
-      dateTrunc = 'year';
-      labelFormat = 'Año';
-      break;
-    case 'mes':
-      dateTrunc = 'month';
-      labelFormat = 'Mes';
-      break;
-    case 'semana':
-      dateTrunc = 'week';
-      labelFormat = 'Semana';
-      break;
-    case 'dia':
-    default:
-      dateTrunc = 'day';
-      labelFormat = 'Día';
-      break;
+function getAvailableChartIds(role) {
+  if (role === 'admin') {
+    return [
+      'estudiantes',
+      'docentes',
+      'sanciones',
+      'sancionesActivas',
+      'sancionesSaldadas',
+      'laboratoristas',
+      'coordinadores',
+      'usuariosRegistrados',
+    ];
   }
 
+  if (role === 'coordinador') {
+    return [
+      'estudiantes',
+      'sanciones',
+      'sancionesActivas',
+      'sancionesSaldadas',
+      'laboratoristas',
+      'coordinadores',
+      'usuariosRegistrados',
+    ];
+  }
+
+  return ['sanciones', 'sancionesActivas', 'sancionesSaldadas', 'laboratoristas'];
+}
+
+function getStartOfBucket(rawDate, filtro) {
+  const date = new Date(rawDate);
+  if (Number.isNaN(date.getTime())) return null;
+
+  if (filtro === 'anio') {
+    return new Date(date.getFullYear(), 0, 1);
+  }
+
+  if (filtro === 'mes') {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  if (filtro === 'semana') {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    const day = normalized.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    normalized.setDate(normalized.getDate() + diff);
+    return normalized;
+  }
+
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+}
+
+function formatBucketLabel(bucketDate, filtro) {
+  if (filtro === 'anio') {
+    return bucketDate.getFullYear().toString();
+  }
+
+  if (filtro === 'mes') {
+    return bucketDate.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: '2-digit',
+    });
+  }
+
+  if (filtro === 'semana') {
+    const startOfYear = new Date(bucketDate.getFullYear(), 0, 1);
+    const daysFromStart = Math.floor((bucketDate - startOfYear) / (24 * 60 * 60 * 1000));
+    const weekNumber = Math.ceil((daysFromStart + startOfYear.getDay() + 1) / 7);
+    return `S${weekNumber}/${bucketDate.getFullYear()}`;
+  }
+
+  return bucketDate.toLocaleDateString('es-CO', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
+function buildSeriesFromDates(rawDates, filtro) {
+  const buckets = new Map();
+
+  rawDates.forEach((rawDate) => {
+    const bucketDate = getStartOfBucket(rawDate, filtro);
+    if (!bucketDate) return;
+
+    const bucketKey = bucketDate.getTime();
+    buckets.set(bucketKey, (buckets.get(bucketKey) || 0) + 1);
+  });
+
+  const sortedKeys = Array.from(buckets.keys()).sort((a, b) => a - b);
+  return {
+    labels: sortedKeys.map((key) => formatBucketLabel(new Date(Number(key)), filtro)),
+    data: sortedKeys.map((key) => buckets.get(key)),
+  };
+}
+
+function totalFromSeries(series) {
+  return (series?.data || []).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+
+function normalizeIntegerArray(values) {
+  return Array.isArray(values)
+    ? values.map((value) => Number(value)).filter((value) => Number.isInteger(value))
+    : [];
+}
+
+async function resolveLaboratoristaScope(client, authDocument) {
+  const laboratoristaRes = await client.query(
+    'SELECT documento, id_ual, id_facultad FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    [authDocument]
+  );
+
+  if (!laboratoristaRes.rows.length) {
+    return {
+      laboratoristaDocument: null,
+      ualIds: [],
+      facultyIds: [],
+      ualNames: [],
+      facultyNames: [],
+    };
+  }
+
+  const laboratorista = laboratoristaRes.rows[0];
+  const assignedUalsRes = await client.query(
+    'SELECT id_ual FROM laboratorista_ual WHERE documento = $1 ORDER BY id_ual ASC',
+    [laboratorista.documento]
+  );
+
+  const ualIds = assignedUalsRes.rows.map((row) => Number(row.id_ual)).filter(Boolean);
+  if (!ualIds.length && laboratorista.id_ual) {
+    ualIds.push(Number(laboratorista.id_ual));
+  }
+
+  let ualNames = [];
+  let facultyIds = [];
+  let facultyNames = [];
+
+  if (ualIds.length) {
+    const ualInfoRes = await client.query(
+      'SELECT id_ual, nombre, id_facultad FROM ual WHERE id_ual = ANY($1::int[]) ORDER BY nombre ASC',
+      [ualIds]
+    );
+    ualNames = ualInfoRes.rows.map((row) => row.nombre).filter(Boolean);
+    facultyIds = [
+      ...new Set(ualInfoRes.rows.map((row) => Number(row.id_facultad)).filter(Boolean)),
+    ];
+  }
+
+  if (!facultyIds.length && laboratorista.id_facultad) {
+    facultyIds.push(Number(laboratorista.id_facultad));
+  }
+
+  if (facultyIds.length) {
+    const facultyInfoRes = await client.query(
+      'SELECT nombre FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC',
+      [facultyIds]
+    );
+    facultyNames = facultyInfoRes.rows.map((row) => row.nombre).filter(Boolean);
+  }
+
+  return {
+    laboratoristaDocument: laboratorista.documento,
+    ualIds: [...new Set(ualIds)],
+    facultyIds: [...new Set(facultyIds)],
+    ualNames: [...new Set(ualNames)],
+    facultyNames: [...new Set(facultyNames)],
+  };
+}
+
+function buildScopePresentation(role, scope) {
+  if (role === 'admin') {
+    return {
+      badge: 'Vista global',
+      title: 'Monitoreo plataforma',
+      subtitle:
+        'Estadísticas generales del sistema con capacidad de filtrar todos los indicadores disponibles.',
+      chips: ['Toda la plataforma'],
+    };
+  }
+
+  if (role === 'coordinador') {
+    return {
+      badge: 'Vista por facultad',
+      title: 'Monitoreo de facultades asignadas',
+      subtitle:
+        'La información se limita a las facultades asociadas al coordinador y a los registros derivados de ese alcance.',
+      chips: scope.facultyNames.length ? scope.facultyNames : ['Sin facultades asignadas'],
+    };
+  }
+
+  return {
+    badge: 'Vista por laboratorio',
+    title: 'Monitoreo de laboratorios asignados',
+    subtitle:
+      'La información se limita a los laboratorios asignados al laboratorista y a los eventos vinculados a esas UAL.',
+    chips: scope.ualNames.length ? scope.ualNames : ['Sin laboratorios asignados'],
+  };
+}
+
+async function fetchStudentCertificateRows(client) {
+  const result = await client.query(
+    `SELECT ce.fecha_creacion, u.carrera
+     FROM certificado_estudiante ce
+     JOIN usuario u ON u.id = ce.usuario_id
+     WHERE ce.fecha_creacion IS NOT NULL`
+  );
+  return result.rows;
+}
+
+async function fetchTeacherCertificateRows(client) {
+  const result = await client.query(
+    `SELECT cd.fecha_creacion
+     FROM certificado_docente cd
+     WHERE cd.fecha_creacion IS NOT NULL`
+  );
+  return result.rows;
+}
+
+async function fetchSanctionRows(client) {
+  const result = await client.query(
+    `SELECT m.fecha_multa, m.con_estado_multa, u.id_ual, u.id_facultad
+     FROM multa m
+     JOIN ual u ON u.id_ual = m.id_ual
+     WHERE m.fecha_multa IS NOT NULL`
+  );
+  return result.rows;
+}
+
+async function fetchLaboratoristaRows(client) {
+  const result = await client.query(
+    `SELECT
+       l.documento,
+       l.fecha_creacion,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(lu.id_ual, l.id_ual)), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(u.id_facultad, l.id_facultad)), NULL) AS faculty_ids
+     FROM laboratorista l
+     LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
+     LEFT JOIN ual u ON u.id_ual = COALESCE(lu.id_ual, l.id_ual)
+     GROUP BY l.documento, l.fecha_creacion`
+  );
+  return result.rows;
+}
+
+async function fetchCoordinatorRows(client) {
+  const result = await client.query(
+    `SELECT
+       c.documento,
+       c.fecha_creacion,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(cf.id_facultad, c.id_facultad)), NULL) AS faculty_ids
+     FROM coordinador c
+     LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
+     GROUP BY c.documento, c.fecha_creacion`
+  );
+  return result.rows;
+}
+
+async function fetchUsuarioRows(client) {
+  const result = await client.query(
+    `SELECT
+       u.documento,
+       u.fecha_creacion,
+       u.carrera,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.id_facultad), NULL) AS coordinator_faculty_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.id_facultad, l.id_facultad)), NULL) AS laboratorista_faculty_ids
+     FROM usuario u
+     LEFT JOIN coordinador c ON c.usuario_id = u.id
+     LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
+     LEFT JOIN laboratorista l ON l.usuario_id = u.id
+     LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
+     LEFT JOIN ual ON ual.id_ual = COALESCE(lu.id_ual, l.id_ual)
+     GROUP BY u.documento, u.fecha_creacion, u.carrera`
+  );
+  return result.rows;
+}
+
+function filterStudentRowsByScope(rows, role, scope) {
+  if (role === 'admin') {
+    return rows;
+  }
+
+  const facultyNamesSet = new Set(
+    (scope.facultyNames || []).map((name) => String(name || '').trim())
+  );
+  return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
+}
+
+function filterSanctionRowsByScope(rows, role, scope) {
+  if (role === 'admin') {
+    return rows;
+  }
+
+  if (role === 'coordinador') {
+    const facultyIds = new Set(scope.facultyIds || []);
+    return rows.filter((row) => facultyIds.has(Number(row.id_facultad)));
+  }
+
+  const ualIds = new Set(scope.ualIds || []);
+  return rows.filter((row) => ualIds.has(Number(row.id_ual)));
+}
+
+function filterLaboratoristaRowsByScope(rows, role, scope) {
+  if (role === 'admin') {
+    return rows;
+  }
+
+  if (role === 'coordinador') {
+    const facultyIds = new Set(scope.facultyIds || []);
+    return rows.filter((row) =>
+      normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
+    );
+  }
+
+  const ualIds = new Set(scope.ualIds || []);
+  return rows.filter((row) =>
+    normalizeIntegerArray(row.ual_ids).some((ualId) => ualIds.has(ualId))
+  );
+}
+
+function filterCoordinatorRowsByScope(rows, role, scope) {
+  if (role === 'admin') {
+    return rows;
+  }
+
+  if (role !== 'coordinador') {
+    return [];
+  }
+
+  const facultyIds = new Set(scope.facultyIds || []);
+  return rows.filter((row) =>
+    normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
+  );
+}
+
+function filterUsuarioRowsByScope(rows, role, scope) {
+  if (role === 'admin') {
+    return rows;
+  }
+
+  if (role !== 'coordinador') {
+    return [];
+  }
+
+  const facultyIds = new Set(scope.facultyIds || []);
+  const facultyNamesSet = new Set(
+    (scope.facultyNames || []).map((name) => String(name || '').trim())
+  );
+
+  return rows.filter((row) => {
+    const studentFaculty = resolveAcademicFacultyName(row.carrera || '');
+    return (
+      facultyNamesSet.has(studentFaculty) ||
+      normalizeIntegerArray(row.coordinator_faculty_ids).some((facultyId) =>
+        facultyIds.has(facultyId)
+      ) ||
+      normalizeIntegerArray(row.laboratorista_faculty_ids).some((facultyId) =>
+        facultyIds.has(facultyId)
+      )
+    );
+  });
+}
+
+router.get('/', requireDashboardAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const filtro = ['dia', 'semana', 'mes', 'anio'].includes(req.query.filtro)
+    ? req.query.filtro
+    : 'dia';
+  const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
+  const dashboardRole = getDashboardRole(req.session?.user);
+
+  let labelFormat = 'Día';
+  if (filtro === 'semana') labelFormat = 'Semana';
+  if (filtro === 'mes') labelFormat = 'Mes';
+  if (filtro === 'anio') labelFormat = 'Año';
+
+  let client;
   try {
-    async function getData(query, fieldName = 'fecha') {
-      const result = await pool.query(query, [dateTrunc]);
+    client = await pool.connect();
 
-      let labels, data;
+    let scope = {
+      facultyIds: [],
+      facultyNames: [],
+      ualIds: [],
+      ualNames: [],
+    };
 
-      if (result.rows.length === 0) {
-        labels = [];
-        data = [];
-      } else {
-        labels = result.rows.map((row) => {
-          const fecha = new Date(row[fieldName]);
-          switch (filtro) {
-            case 'anio':
-              return fecha.getFullYear().toString();
-            case 'mes':
-              return fecha.toLocaleDateString('es-CO', {
-                year: 'numeric',
-                month: '2-digit',
-              });
-            case 'semana': {
-              const inicioAnio = new Date(fecha.getFullYear(), 0, 1);
-              const diasDesdeInicio = Math.floor((fecha - inicioAnio) / (24 * 60 * 60 * 1000));
-              const numeroSemana = Math.ceil((diasDesdeInicio + inicioAnio.getDay() + 1) / 7);
-              return `S${numeroSemana}/${fecha.getFullYear()}`;
-            }
-            case 'dia':
-            default:
-              return fecha.toLocaleDateString('es-CO', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-              });
-          }
+    if (dashboardRole === 'coordinador') {
+      const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      scope.facultyIds = coordinatorScope.facultyIds || [];
+
+      if (!coordinatorScope.coordinatorDocument || scope.facultyIds.length === 0) {
+        return res.render('home/message_error', {
+          message: 'No tienes alcance para monitoreo.',
+          message2: 'El coordinador no tiene facultades asociadas.',
+          limit: null,
         });
-        data = result.rows.map((row) => parseInt(row.cantidad) || 0);
       }
 
-      return { labels, data };
+      const facultiesRes = await client.query(
+        'SELECT nombre FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC',
+        [scope.facultyIds]
+      );
+      scope.facultyNames = facultiesRes.rows.map((row) => row.nombre).filter(Boolean);
     }
 
-    const estudiantes = await getData(`
-      SELECT date_trunc($1, fecha_creacion) AS fecha, COUNT(*) AS cantidad
-      FROM estudiante
-      WHERE fecha_creacion IS NOT NULL
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    if (dashboardRole === 'laboratorista') {
+      scope = await resolveLaboratoristaScope(client, req.session.user.documento);
 
-    const docentes = await getData(`
-      SELECT date_trunc($1, fecha_creacion) AS fecha, COUNT(*) AS cantidad
-      FROM docente
-      WHERE fecha_creacion IS NOT NULL
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+      if (!scope.laboratoristaDocument || scope.ualIds.length === 0) {
+        return res.render('home/message_error', {
+          message: 'No tienes alcance para monitoreo.',
+          message2: 'El laboratorista no tiene laboratorios asignados.',
+          limit: null,
+        });
+      }
+    }
 
-    const multas = await getData(`
-      SELECT date_trunc($1, fecha_multa) AS fecha, COUNT(*) AS cantidad
-      FROM multas
-      WHERE fecha_multa IS NOT NULL
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const availableChartIds = getAvailableChartIds(dashboardRole);
+    const selectedChart = availableChartIds.includes(requestedChart)
+      ? requestedChart
+      : availableChartIds[0];
 
-    // Nuevas consultas para multas por estado
-    const multasActivas = await getData(`
-      SELECT date_trunc($1, fecha_multa) AS fecha, COUNT(*) AS cantidad
-      FROM multas
-      WHERE fecha_multa IS NOT NULL AND con_estado_multa = 'ACTIVA'
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const [
+      studentRows,
+      teacherRows,
+      sanctionRows,
+      laboratoristaRows,
+      coordinatorRows,
+      usuarioRows,
+    ] = await Promise.all([
+      availableChartIds.includes('estudiantes')
+        ? fetchStudentCertificateRows(client)
+        : Promise.resolve([]),
+      availableChartIds.includes('docentes')
+        ? fetchTeacherCertificateRows(client)
+        : Promise.resolve([]),
+      fetchSanctionRows(client),
+      fetchLaboratoristaRows(client),
+      availableChartIds.includes('coordinadores')
+        ? fetchCoordinatorRows(client)
+        : Promise.resolve([]),
+      availableChartIds.includes('usuariosRegistrados')
+        ? fetchUsuarioRows(client)
+        : Promise.resolve([]),
+    ]);
 
-    const multasSaldadas = await getData(`
-      SELECT date_trunc($1, fecha_multa) AS fecha, COUNT(*) AS cantidad
-      FROM multas
-      WHERE fecha_multa IS NOT NULL AND con_estado_multa = 'SALDADO'
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
+    const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
+    const filteredLaboratoristas = filterLaboratoristaRowsByScope(
+      laboratoristaRows,
+      dashboardRole,
+      scope
+    );
+    const filteredCoordinators = filterCoordinatorRowsByScope(
+      coordinatorRows,
+      dashboardRole,
+      scope
+    );
+    const filteredUsuarios = filterUsuarioRowsByScope(usuarioRows, dashboardRole, scope);
 
-    const laboratoristas = await getData(`
-      SELECT date_trunc($1, CURRENT_DATE) AS fecha, COUNT(*) AS cantidad
-      FROM laboratorista
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const chartsData = {
+      estudiantes: buildSeriesFromDates(
+        filteredStudents.map((row) => row.fecha_creacion),
+        filtro
+      ),
+      docentes: buildSeriesFromDates(
+        teacherRows.map((row) => row.fecha_creacion),
+        filtro
+      ),
+      multas: buildSeriesFromDates(
+        filteredSanctions.map((row) => row.fecha_multa),
+        filtro
+      ),
+      multasActivas: buildSeriesFromDates(
+        filteredSanctions
+          .filter((row) => String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA')
+          .map((row) => row.fecha_multa),
+        filtro
+      ),
+      multasSaldadas: buildSeriesFromDates(
+        filteredSanctions
+          .filter((row) =>
+            ['SALDADA', 'SALDADO'].includes(String(row.con_estado_multa || '').toUpperCase())
+          )
+          .map((row) => row.fecha_multa),
+        filtro
+      ),
+      laboratoristas: buildSeriesFromDates(
+        filteredLaboratoristas.map((row) => row.fecha_creacion),
+        filtro
+      ),
+      coordinadores: buildSeriesFromDates(
+        filteredCoordinators.map((row) => row.fecha_creacion),
+        filtro
+      ),
+      usuariosRegistrados: buildSeriesFromDates(
+        filteredUsuarios.map((row) => row.fecha_creacion),
+        filtro
+      ),
+    };
 
-    const coordinadores = await getData(`
-      SELECT date_trunc($1, CURRENT_DATE) AS fecha, COUNT(*) AS cantidad
-      FROM coordinador_laboratorio
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const availableCharts = availableChartIds.map((chartId) => ({
+      ...CHART_DEFINITIONS[chartId],
+      total: totalFromSeries(
+        chartId === 'sanciones'
+          ? chartsData.multas
+          : chartId === 'sancionesActivas'
+            ? chartsData.multasActivas
+            : chartId === 'sancionesSaldadas'
+              ? chartsData.multasSaldadas
+              : chartsData[chartId]
+      ),
+    }));
 
-    const usuariosRegistrados = await getData(`
-      SELECT date_trunc($1, CURRENT_DATE) AS fecha, COUNT(documento) AS cantidad
-      FROM usuario
-      GROUP BY fecha
-      ORDER BY fecha ASC
-    `);
+    const scopePresentation = buildScopePresentation(dashboardRole, scope);
+    const scopeCounters = [
+      dashboardRole === 'admin'
+        ? { label: 'Cobertura', value: 'General' }
+        : dashboardRole === 'coordinador'
+          ? { label: 'Facultades', value: String(scope.facultyIds.length) }
+          : { label: 'Laboratorios', value: String(scope.ualIds.length) },
+      { label: 'Indicadores', value: String(availableCharts.length) },
+      { label: 'Sanciones visibles', value: String(totalFromSeries(chartsData.multas)) },
+    ];
 
-    res.render('home/dashboard', {
+    return res.render('home/dashboard', {
       filtro,
       labelFormat,
       selectedChart,
-      chartsData: {
-        estudiantes,
-        docentes,
-        multas,
-        multasActivas,
-        multasSaldadas,
-        laboratoristas,
-        coordinadores,
-        usuariosRegistrados,
-      },
+      availableCharts,
+      dashboardRole,
+      scopePresentation,
+      scopeCounters,
+      chartsData,
     });
   } catch (error) {
     console.error('Error en dashboard:', error);
-    res.status(500).send('Error en dashboard');
+    return res.status(500).send('Error en dashboard');
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 });
 

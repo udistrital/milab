@@ -21,8 +21,8 @@
         <h2 class="app-panel-title mb-2">Ingresar sanción</h2>
         <p class="app-page-subtitle mb-4">Localiza al estudiante y abre el formulario para registrar una nueva sanción asociada a su código institucional.</p>
 
-        <form method="POST" action="/milab/api/get-info-multa" class="row g-3 app-form-grid">
-          <div class="col-12">
+        <form method="POST" action="/milab/api/get-info-multa" class="row g-3 app-form-grid align-items-end">
+          <div class="col-12 col-md-6">
             <label for="tipo_busqueda_registro" class="form-label">Tipo de búsqueda</label>
             <select
               class="form-select"
@@ -37,7 +37,7 @@
             </select>
           </div>
 
-          <div class="col-12">
+          <div class="col-12 col-md-6">
             <label for="valor_busqueda_registro" class="form-label" id="label_valor_registro">Valor a buscar</label>
             <input
               type="text"
@@ -64,8 +64,8 @@
         <h2 class="app-panel-title mb-2">Quitar sanción</h2>
         <p class="app-page-subtitle mb-4">Busca sanciones activas del estudiante y avanza al paso de revisión antes de retirarlas del historial operativo.</p>
 
-        <form method="POST" action="/milab/api/get-info-erase-multa" class="row g-3 app-form-grid">
-          <div class="col-12">
+        <form method="POST" action="/milab/api/get-info-erase-multa" class="row g-3 app-form-grid align-items-end">
+          <div class="col-12 col-md-6">
             <label for="tipo_busqueda_retiro" class="form-label">Tipo de búsqueda</label>
             <select
               class="form-select"
@@ -80,7 +80,7 @@
             </select>
           </div>
 
-          <div class="col-12">
+          <div class="col-12 col-md-6">
             <label for="valor_busqueda_retiro" class="form-label" id="label_valor_retiro">Valor a buscar</label>
             <input
               type="text"

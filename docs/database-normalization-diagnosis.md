@@ -2,396 +2,268 @@
 
 ## Objetivo
 
-Este documento resume el estado actual del modelo de datos de MiLab, identifica redundancias y relaciones débiles, y propone un modelo objetivo más normalizado y mantenible.
+Este documento resume el estado actual del modelo de datos de MILab, identifica la deuda de normalización que sigue vigente y separa los problemas ya resueltos de los que todavía requieren trabajo.
 
-La evaluación se basó en dos fuentes:
-
-- El esquema canónico declarado en [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql).
-- La base local en ejecución `dbpazysalvo` dentro del contenedor `local_db`, consultada en modo solo lectura.
+La referencia principal es el esquema canónico en `sql-scripts/db_structure.sql`.
 
 ## Resumen Ejecutivo
 
-El modelo actual funciona, pero mezcla tres conceptos distintos en varias tablas:
+El modelo canónico mejoró de forma importante frente al estado histórico del proyecto.
 
-- Identidad de la persona.
-- Cuenta de autenticación.
-- Asignaciones operativas a facultades, UAL y sanciones.
+Hoy, las mejoras más relevantes ya consolidadas son estas:
 
-El principal problema de normalización no es simplemente que existan "tablas solas", sino que algunas relaciones del dominio están representadas de forma duplicada o mediante columnas de texto que deberían ser claves foráneas.
+1. La identidad autenticable se resuelve con `usuario` + `usuario_rol`.
+2. `multa` ya no depende de texto libre para todas sus relaciones críticas: ahora usa claves foráneas hacia `laboratorista`, `usuario` y `ual`.
+3. Las asignaciones múltiples de alcance ya existen de forma explícita en `coordinador_facultad` y `laboratorista_ual`.
+4. El modelo de certificados ya se expresa con `certificado_estudiante` y `certificado_docente`, vinculados a `usuario`.
 
-Los hallazgos más importantes son estos:
+La deuda de normalización que sigue abierta ya no es principalmente de integridad referencial básica, sino de duplicidad semántica y compatibilidad con legado:
 
-1. `multas` es la tabla más desnormalizada del sistema: guarda referencias operativas como texto libre y no tiene claves foráneas.
-2. `laboratorista` y `coordinador_laboratorio` duplican relaciones que ya existen en tablas de unión (`laboratorista_ual` y `coordinador_facultad`).
-3. `auth` no representa de forma limpia la identidad autenticable: para estudiante y admin usa un identificador, pero para laboratorista y coordinador usa otro (`n_usuario` o `nombre_u`).
-4. `logs.documento` está modelado como numérico, aunque el sistema ya maneja múltiples identificadores alfanuméricos.
-5. No todas las tablas sin FK son un problema: `schema_migrations` puede quedar aislada por diseño, y `logs` puede quedar parcialmente desacoplada por auditoría. El problema es distinguir aislamiento intencional de desnormalización accidental.
+1. `coordinador` y `laboratorista` todavía conservan columnas que duplican relaciones también representadas en tablas de unión.
+2. Persisten identificadores operativos legacy (`nombre_u`, `n_usuario`) que mezclan identidad de persona con identidad de cuenta.
+3. `log.documento` sigue modelado como numérico, aunque la aplicación ya maneja identificadores alfanuméricos.
+4. Existen rutas y consultas que todavía cargan supuestos heredados del modelo antiguo, sobre todo alrededor de estudiantes, docentes y sanciones.
 
-## Inventario Actual De Tablas
+## Estado Actual Del Modelo
 
-### Tablas de identidad y acceso
+### Núcleo de identidad y acceso
 
-- `auth`
 - `usuario`
-- `estudiante`
-- `docente`
-- `laboratorista`
-- `coordinador_laboratorio`
+- `rol`
+- `usuario_rol`
+- `perfil_estudiante`
+- `perfil_docente`
 
-### Tablas maestras
+Este núcleo ya refleja una dirección más limpia: la persona autenticable vive en `usuario` y los privilegios se asignan en `usuario_rol`.
+
+### Catálogos y alcance operativo
 
 - `facultad`
 - `ual`
+- `coordinador`
+- `laboratorista`
+- `coordinador_facultad`
+- `laboratorista_ual`
 
-### Tablas de relación
+El sistema ya soporta alcance múltiple para coordinadores y laboratoristas mediante tablas de unión.
+
+### Operación transaccional
+
+- `certificado_estudiante`
+- `certificado_docente`
+- `multa`
+- `log`
+
+## Relaciones Que Ya Quedaron Bien Encaminadas
+
+### 1. Sanciones (`multa`)
+
+La tabla `multa` dejó atrás el modelo más frágil del sistema.
+
+Hoy las relaciones principales son:
+
+1. `multa.documento_laboratorista -> laboratorista.documento`
+2. `multa.usuario_id_sancionado -> usuario.id`
+3. `multa.id_ual -> ual.id_ual`
+
+Esto resuelve una parte crítica de la deuda histórica:
+
+- La UAL ya no se representa como texto libre.
+- La persona sancionada ya no depende de un documento o código suelto dentro de la tabla.
+- El laboratorista que registra la sanción ya no se referencia solo por username o nombre textual.
+
+Conclusión: `multa` ya no es la tabla más desnormalizada del sistema. La deuda restante en sanciones es más bien semántica y de compatibilidad con consultas heredadas.
+
+### 2. Certificados
+
+El modelo canónico usa:
+
+- `certificado_estudiante(usuario_id)`
+- `certificado_docente(usuario_id)`
+
+Esto fija una relación explícita entre certificados y la identidad canónica del usuario.
+
+### 3. Alcance múltiple
+
+Las relaciones:
 
 - `coordinador_facultad`
 - `laboratorista_ual`
 
-### Tablas operativas y de soporte
+ya expresan correctamente que el alcance operativo puede ser múltiple, algo clave para monitoreo, autorizaciones y consultas.
 
-- `multas`
-- `logs`
-- `schema_migrations`
+## Deuda Que Sigue Vigente
 
-## Relaciones Declaradas Hoy
+### 1. Doble fuente de verdad en coordinadores
 
-Las claves foráneas declaradas en [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql) cubren estas relaciones:
+`coordinador` conserva `id_facultad`, pero el sistema también tiene `coordinador_facultad`.
 
-1. `ual.id_facultad -> facultad.id_facultad`
-2. `laboratorista.id_facultad -> facultad.id_facultad`
-3. `laboratorista.id_ual -> ual.id_ual`
-4. `coordinador_laboratorio.id_facultad -> facultad.id_facultad`
-5. `coordinador_facultad.documento -> coordinador_laboratorio.documento`
-6. `coordinador_facultad.id_facultad -> facultad.id_facultad`
-7. `laboratorista_ual.documento -> laboratorista.documento`
-8. `laboratorista_ual.id_ual -> ual.id_ual`
+Eso crea dos niveles posibles de verdad:
 
-## Tablas Sin Relaciones Declaradas
+- relación simple embebida en `coordinador.id_facultad`
+- relación múltiple real en `coordinador_facultad`
 
-En la base local actual, estas tablas no tienen FK entrantes ni salientes:
+Estado recomendado:
 
-- `auth`
-- `usuario`
-- `estudiante`
-- `docente`
-- `logs`
-- `multas`
-- `schema_migrations`
+- `coordinador_facultad` debe tratarse como relación autoritativa.
+- `coordinador.id_facultad` debería quedar como dato de compatibilidad, derivado o candidato a remoción futura.
 
-Esto no significa automáticamente que todas estén mal modeladas.
+### 2. Doble fuente de verdad en laboratoristas
 
-### Aislamiento aceptable o esperable
+`laboratorista` conserva `id_ual` e `id_facultad`, pero el alcance real puede ser múltiple vía `laboratorista_ual`.
 
-1. `schema_migrations`
-   Se espera que quede aislada.
-2. `logs`
-   Puede admitir desacoplamiento parcial si se quiere preservar trazabilidad incluso cuando una entidad operativa sea eliminada.
+Estado recomendado:
 
-### Aislamiento que sí representa deuda técnica
+- `laboratorista_ual` debe ser la relación autoritativa para asignación de laboratorios.
+- `laboratorista.id_ual` e `id_facultad` deberían tratarse como campos legacy o de compatibilidad.
 
-1. `multas`
-   Contiene referencias de negocio a personas y UAL, pero sin integridad referencial.
-2. `auth`
-   Es una tabla central del sistema y hoy depende de convenciones de aplicación, no de restricciones de base.
-3. `usuario`, `estudiante` y `docente`
-   Representan identidad académica y operativa, pero no están conectadas de manera explícita con `auth` ni con las entidades de sanciones.
+### 3. Identificadores legacy de cuenta
 
-## Hallazgos Sobre Redundancia
+Persisten dos columnas con semántica híbrida:
 
-### 1. Redundancia en coordinadores
+- `laboratorista.n_usuario`
+- `coordinador.nombre_u`
 
-`coordinador_laboratorio` tiene una columna `id_facultad`, pero también existe la tabla `coordinador_facultad` para representar la relación entre coordinador y facultad.
+Estas columnas todavía obligan a lógica condicional en varios flujos y mantienen viva una mezcla indeseable entre:
 
-Esto genera dos fuentes potenciales de verdad:
+- documento o identidad humana
+- username o identificador operativo
 
-- Relación directa en `coordinador_laboratorio.id_facultad`
-- Relación múltiple en `coordinador_facultad`
+Estado recomendado:
 
-En la base local actual ambas coinciden, pero el diseño es redundante. Si el sistema soporta múltiples facultades por coordinador, entonces la fuente de verdad debe ser `coordinador_facultad` y `id_facultad` debería quedar como dato derivado temporal o eliminarse.
+- `usuario` debe seguir siendo la identidad canónica.
+- `n_usuario` y `nombre_u` deben considerarse legado operativo, no la base del modelo de identidad.
 
-### 2. Redundancia en laboratoristas
+### 4. Auditoría con tipo insuficiente
 
-`laboratorista` conserva `id_ual` e `id_facultad`, pero el sistema ya tiene `laboratorista_ual` para asignación a uno o varios laboratorios.
+`log.documento` sigue siendo `NUMERIC(16,0)`.
 
-Eso produce dos niveles de representación:
+Ese tipo ya no representa bien el sistema real, porque hoy existen identificadores y actores que pueden no ser puramente numéricos.
 
-- Asignación simple embebida en `laboratorista`
-- Asignación relacional en `laboratorista_ual`
+Estado recomendado:
 
-Si el negocio ya permite múltiples UAL por laboratorista, la fuente de verdad debe ser `laboratorista_ual`. En ese escenario, `laboratorista.id_ual` sobra como dato permanente, y `laboratorista.id_facultad` también puede inferirse desde la UAL si todas las UAL asignadas pertenecen a una misma facultad.
-
-### 3. Redundancia e inconsistencia en identidad autenticable
-
-El modelo actual usa `auth.documento` como identificador de la cuenta, pero no siempre representa el mismo concepto:
-
-- En `usuario`, `auth.documento` coincide con el documento.
-- En `laboratorista`, la cuenta en `auth` se relaciona con `n_usuario`.
-- En `coordinador_laboratorio`, la cuenta en `auth` se relaciona con `nombre_u`.
-
-Esto obliga al código a usar reglas condicionales y `COALESCE`, por ejemplo en flujos de correo y recuperación de contraseña.
-
-En otras palabras, `auth.documento` no es realmente siempre un documento. A veces es documento y a veces es username. Ese es un síntoma clásico de modelo desalineado.
-
-### 4. Auditoría con tipo de dato inconsistente
-
-`logs.documento` está definido como `NUMERIC(16,0)`, pero el sistema maneja documentos y nombres de usuario como `VARCHAR(50)`.
-
-Ese desacople ya causó un error real: una acción podía ejecutar el cambio de negocio y luego fallar al insertar la auditoría cuando el actor autenticado tenía un identificador alfanumérico.
-
-## Hallazgos Sobre Relaciones Débiles u Orfandad
-
-## Base local inspeccionada
-
-Conteos observados:
-
-- `auth`: 110
-- `usuario`: 100
-- `facultad`: 9
-- `ual`: 345
-- `multas`: 37
-- `coordinador_laboratorio`: 8
-- `coordinador_facultad`: 8
-- `laboratorista`: 0
-- `laboratorista_ual`: 0
-- `estudiante`: 0
-- `docente`: 0
-- `logs`: 0
-
-### Relaciones con FK efectivas
-
-En la base local, las relaciones que hoy sí tienen FK no mostraron huérfanos efectivos.
-
-### Tabla `multas`
-
-`multas` concentra la mayor parte de la deuda estructural.
-
-Problemas detectados:
-
-1. `ual` se guarda como texto, no como `id_ual`.
-2. `cod_multado` no está ligado por FK a una entidad académica consolidada.
-3. `n_usuario` parece representar al actor que registra la multa, pero tampoco tiene FK.
-
-Hallazgos en la base local:
-
-1. Hay 6 valores en `multas.ual` que no empatan con `ual.nombre`, incluyendo diferencias de codificación como `Astron¢mico` frente a `Astronómico`.
-2. Los 37 registros de `multas.cod_multado` no encuentran correspondencia en `estudiante.codigo`, porque la tabla `estudiante` está vacía en la base local.
-3. `multas.n_usuario` sí coincide con valores existentes de usuario en el seed local, pero esa validez depende del dato, no del modelo.
-
-Conclusión: `multas` funciona hoy por convención de aplicación, no por integridad relacional.
+- cambiar `log.documento` a `VARCHAR(50)`, o
+- separar `actor_documento` y `actor_identifier` si se quiere más precisión semántica.
 
 ## Diagnóstico Por Tabla
-
-### `auth`
-
-Estado actual:
-
-- Tabla central de autenticación.
-- No tiene FK.
-- Usa `documento` como PK, pero ese campo no siempre representa documento real.
-
-Problema:
-
-- Mezcla identidad de login con identidad civil o académica.
-
-Objetivo recomendado:
-
-- Separar el identificador de cuenta del identificador de persona.
-- A nivel mínimo, renombrar semánticamente el campo o introducir un `username` explícito.
-- A nivel ideal, usar una tabla de cuenta con PK propia y relaciones 1:1 o 1:N hacia perfiles de dominio.
 
 ### `usuario`
 
 Estado actual:
 
-- Funciona como perfil académico de estudiante o docente para buena parte de los flujos.
-- Está 1:1 con `auth` para estudiantes en la base local.
+- Es la identidad principal del sistema.
+- Se relaciona con roles, perfiles, certificados y sanciones.
 
-Problema:
+Diagnóstico:
 
-- Convive con `estudiante` y `docente`, lo que difumina cuál tabla es la fuente oficial del sujeto académico.
+- Buen punto de consolidación.
+- Debe seguir siendo la referencia principal para operaciones autenticadas.
 
-Objetivo recomendado:
-
-- Definir si `usuario` será la entidad académica canónica o si `estudiante` y `docente` deben absorber ese rol.
-- Si `usuario` sigue siendo la fuente principal para estudiantes/docentes autenticados, `estudiante` y `docente` deberían tratarse como snapshots externos o eliminarse como tablas transaccionales.
-
-### `estudiante` y `docente`
+### `usuario_rol`
 
 Estado actual:
 
-- No tienen FK.
-- Están vacías en la base local.
+- Resuelve asignación múltiple de roles por usuario.
 
-Problema:
+Diagnóstico:
 
-- No es claro si son catálogos importados, snapshots temporales o entidades vivas del dominio.
+- Está bien normalizada.
+- Es la base correcta para RBAC persistido.
 
-Objetivo recomendado:
-
-- Definir explícitamente su rol.
-- Si son snapshots de integración externa, su aislamiento puede ser válido, pero deben documentarse como tal.
-- Si se quieren usar como entidades de negocio, necesitan relación fuerte con el resto del modelo.
-
-### `laboratorista`
+### `perfil_estudiante` y `perfil_docente`
 
 Estado actual:
 
-- Tiene identidad propia (`documento`) y también un identificador autenticable (`n_usuario`).
-- Guarda `id_ual` e `id_facultad` además de existir `laboratorista_ual`.
+- Permiten separar atributos específicos del perfil sin romper la identidad base.
 
-Problema:
+Diagnóstico:
 
-- Mezcla perfil, cuenta y asignación operativa.
+- Son consistentes con la dirección actual del modelo.
+- Deben mantenerse alineadas con `usuario` para evitar duplicaciones innecesarias.
 
-Objetivo recomendado:
-
-- Mantener en `laboratorista` solo datos del perfil.
-- Dejar las asignaciones a laboratorios exclusivamente en `laboratorista_ual`.
-- Derivar facultad desde `ual` o desde una tabla de relación si el negocio lo requiere.
-
-### `coordinador_laboratorio`
+### `coordinador` y `coordinador_facultad`
 
 Estado actual:
 
-- Tiene identidad propia (`documento`) y también un identificador autenticable (`nombre_u`).
-- Guarda `id_facultad` además de existir `coordinador_facultad`.
+- El sistema puede resolver coordinadores por documento y por usuario vinculado.
+- El alcance real ya se proyecta mejor desde `coordinador_facultad`.
 
-Problema:
+Diagnóstico:
 
-- Igual que en laboratorista, mezcla perfil, cuenta y asignación.
+- La duplicidad con `id_facultad` persiste.
+- El modelo correcto ya existe, pero convive con legado.
 
-Objetivo recomendado:
-
-- Mantener en `coordinador_laboratorio` solo datos del perfil del coordinador.
-- Representar facultades únicamente en `coordinador_facultad` si el negocio ya soporta múltiples asociaciones.
-
-### `multas`
+### `laboratorista` y `laboratorista_ual`
 
 Estado actual:
 
-- Es una tabla transaccional crítica.
-- No tiene FKs.
-- Usa texto libre para parte del vínculo con UAL.
+- El sistema soporta laboratoristas con una o varias UAL.
+- El alcance operativo del dashboard y de varias consultas depende de esa relación.
 
-Problema:
+Diagnóstico:
 
-- Es la principal fuente de riesgo de datos huérfanos, diferencias de codificación, y consultas ambiguas.
+- La tabla de unión es la pieza correcta.
+- Las columnas simples en `laboratorista` deben considerarse auxiliares o legacy.
 
-Objetivo recomendado:
-
-- Sustituir `ual` por `id_ual`.
-- Relacionar el actor que registra la multa con un identificador consistente de cuenta o persona.
-- Relacionar la persona sancionada con una entidad académica consistente.
-- Mantener campos denormalizados de auditoría solo como snapshot opcional, no como clave de navegación.
-
-### `logs`
+### `multa`
 
 Estado actual:
 
-- Tabla de auditoría.
-- Sin FK.
-- `documento` numérico.
+- Ya está anclada por FKs a actor, sujeto sancionado y UAL.
+- Sigue siendo una tabla transaccional central.
 
-Problema:
+Diagnóstico:
 
-- El tipo del actor no refleja la realidad actual del sistema.
+- La deuda estructural principal ya fue reducida.
+- La prioridad ahora es mantener todas las consultas de aplicación alineadas con estas FKs y evitar volver a introducir joins por texto libre.
 
-Objetivo recomendado:
+### `log`
 
-- Cambiar `documento` a `VARCHAR(50)` o separar `actor_identifier` y `actor_documento`.
-- Mantener la tabla sin FK si se prioriza durabilidad de auditoría, pero con tipos correctos.
+Estado actual:
 
-## Relación Objetivo Recomendada
+- Sigue desacoplada por diseño del resto del dominio.
 
-La propuesta objetivo no tiene que implementarse de una sola vez, pero sí conviene tomarla como dirección arquitectónica.
+Diagnóstico:
 
-### Núcleo de identidad
+- Ese desacoplamiento es aceptable para auditoría.
+- El problema no es la ausencia de FKs, sino el tipo de dato de `documento`.
 
-1. Una entidad de persona o perfil base con documento textual.
-2. Una entidad de cuenta (`auth`) separada del concepto de documento.
-3. Una relación clara entre cuenta y perfil humano.
+## Dirección Objetivo Recomendada
 
-En términos prácticos, eso significa dejar de usar el mismo campo para estas dos cosas:
+La dirección arquitectónica recomendada hoy es esta:
 
-- Documento legal o académico.
-- Username o identificador de login.
+1. `usuario` como identidad canónica.
+2. `usuario_rol` como asignación explícita de capacidades.
+3. `coordinador_facultad` como fuente de verdad para facultades de coordinador.
+4. `laboratorista_ual` como fuente de verdad para UAL de laboratorista.
+5. `multa` siempre referenciada por claves foráneas reales, no por textos descriptivos.
 
-### Asignaciones operativas
+## Orden Recomendado De Trabajo
 
-1. `facultad` como catálogo maestro.
-2. `ual` como hijo de `facultad`.
-3. `coordinador_facultad` como única fuente de verdad para coordinadores.
-4. `laboratorista_ual` como única fuente de verdad para laboratoristas.
+### Fase 1. Cerrar deuda de tipos y legado
 
-### Operación y sanciones
+1. Cambiar `log.documento` a un tipo textual.
+2. Reducir dependencias funcionales de `n_usuario` y `nombre_u`.
 
-1. `multas.id_ual -> ual.id_ual`
-2. Referencia consistente al actor que registra la multa.
-3. Referencia consistente al sujeto sancionado.
+### Fase 2. Declarar fuentes de verdad explícitas
 
-Si el sistema debe sancionar tanto estudiantes como docentes, la opción más limpia no es seguir con campos ambiguos, sino unificar el sujeto sancionable mediante una entidad académica común o una capa explícita de tipado.
+1. Tratar `coordinador_facultad` como relación autoritativa.
+2. Tratar `laboratorista_ual` como relación autoritativa.
+3. Dejar `id_facultad` e `id_ual` embebidos solo como compatibilidad temporal si todavía se necesitan.
 
-## Modelo Objetivo En Términos Prácticos
+### Fase 3. Alinear aplicación y esquema
 
-Sin fijar todavía nombres definitivos, la dirección recomendada es esta:
+1. Revisar rutas y consultas para asegurar que usen `multa.usuario_id_sancionado`, `multa.documento_laboratorista` y `multa.id_ual`.
+2. Seguir retirando supuestos heredados donde el documento o el código se trataban como sustituto de una FK.
 
-1. `auth`
-   Debe representar cuenta, no documento.
-2. `usuario` o `persona`
-   Debe representar identidad de la persona.
-3. `coordinador_facultad`
-   Debe ser la relación autoritativa coordinador-facultad.
-4. `laboratorista_ual`
-   Debe ser la relación autoritativa laboratorista-UAL.
-5. `multas`
-   Debe depender de claves foráneas reales, no de nombres de UAL ni usernames en texto.
+## Conclusión
 
-## Orden Recomendado De Normalización
+El diagnóstico actualizado ya no es “la base está masivamente desnormalizada”.
 
-No conviene intentar una migración total en un solo paso. El orden recomendado es este:
+La situación real es más precisa:
 
-### Fase 1. Corregir inconsistencias de bajo riesgo
+- la integridad relacional central mejoró bastante,
+- el modelo de identidad ya tiene una base canónica,
+- y la deuda más importante ahora está en columnas legacy, relaciones duplicadas y compatibilidad entre esquema nuevo y consultas heredadas.
 
-1. Cambiar `logs.documento` a `VARCHAR(50)`.
-2. Corregir codificación y catálogos base que hoy impiden empates exactos por texto.
-3. Documentar cuáles tablas son snapshots externos y cuáles son entidades de negocio.
-
-### Fase 2. Consolidar relaciones duplicadas
-
-1. Declarar `coordinador_facultad` como fuente de verdad.
-2. Declarar `laboratorista_ual` como fuente de verdad.
-3. Backfill y validaciones para que las columnas duplicadas queden solo como legado temporal.
-
-### Fase 3. Reestructurar identidad
-
-1. Separar username de documento en autenticación.
-2. Formalizar la relación entre cuenta y perfil humano.
-
-### Fase 4. Normalizar `multas`
-
-1. Introducir `id_ual`.
-2. Introducir referencias consistentes a actor y sujeto.
-3. Dejar texto descriptivo solo como snapshot de auditoría.
-
-## Riesgos De Implementación
-
-1. Muchas rutas hoy dependen de joins implícitos y convenciones de aplicación, sobre todo en recuperación de contraseña, correos y gestión de roles.
-2. Normalizar sin pruebas primero puede romper login, flujos de sanción y generación de certificados.
-3. La base local no representa todo el volumen ni todas las variantes de producción, así que antes de imponer nuevas FK conviene correr diagnósticos equivalentes sobre el ambiente de pruebas o una copia controlada.
-
-## Recomendación Final
-
-La primera deuda estructural a ejecutar no debería ser una reescritura completa del esquema, sino una combinación de dos pasos:
-
-1. Crear una red mínima de pruebas automatizadas sobre autenticación, recuperación, correo y permisos.
-2. Empezar la normalización por `logs`, relaciones duplicadas y `multas`.
-
-En términos de impacto y retorno técnico, el orden sugerido es:
-
-1. Tipos e identidad de auditoría.
-2. Relaciones duplicadas de coordinador y laboratorista.
-3. Normalización de `multas`.
-4. Rediseño formal de identidad entre cuenta y persona.
-
-Ese orden permite mejorar integridad y mantenibilidad sin bloquear el sistema en una migración demasiado grande.
+La prioridad técnica debe enfocarse en consolidar las fuentes de verdad que ya existen, no en rediseñar desde cero un modelo que ya avanzó en la dirección correcta.

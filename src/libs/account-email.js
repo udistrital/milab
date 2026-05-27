@@ -24,12 +24,6 @@ async function findEmailConflict(client, correo, excludedAuthDocument) {
   const query = `
     SELECT source, auth_document
     FROM (
-      SELECT 'auth' AS source, documento AS auth_document, LOWER(TRIM(correo)) AS correo
-      FROM auth
-      WHERE correo IS NOT NULL AND TRIM(correo) <> ''
-
-      UNION ALL
-
       SELECT 'usuario' AS source, documento AS auth_document, LOWER(TRIM(correo)) AS correo
       FROM usuario
       WHERE correo IS NOT NULL AND TRIM(correo) <> ''
@@ -42,20 +36,8 @@ async function findEmailConflict(client, correo, excludedAuthDocument) {
 
       UNION ALL
 
-      SELECT 'coordinador_laboratorio' AS source, nombre_u AS auth_document, LOWER(TRIM(correo)) AS correo
-      FROM coordinador_laboratorio
-      WHERE correo IS NOT NULL AND TRIM(correo) <> ''
-
-      UNION ALL
-
-      SELECT 'estudiante' AS source, cc::VARCHAR(50) AS auth_document, LOWER(TRIM(correo)) AS correo
-      FROM estudiante
-      WHERE correo IS NOT NULL AND TRIM(correo) <> ''
-
-      UNION ALL
-
-      SELECT 'docente' AS source, cc::VARCHAR(50) AS auth_document, LOWER(TRIM(correo)) AS correo
-      FROM docente
+      SELECT 'coordinador' AS source, nombre_u AS auth_document, LOWER(TRIM(correo)) AS correo
+      FROM coordinador
       WHERE correo IS NOT NULL AND TRIM(correo) <> ''
     ) existing_accounts
     WHERE correo = $1

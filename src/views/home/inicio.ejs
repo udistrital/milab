@@ -1,16 +1,168 @@
 <%- include('../partials/header'); -%>
 
+<%
+  const sessionName = (locals.nombre || 'usuario').toString().trim();
+  const firstName = sessionName.split(' ').filter(Boolean)[0] || 'usuario';
+  const sessionRole = (locals.sessionRoleLabel || locals.tipo || 'Usuario').toString().trim();
+  const navigation = locals.appNavigation || {};
+  const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
+  const quickLinks = primaryLinks.filter((link) => link && link.href !== '/milab/inicio').slice(0, 3);
+  const newsItems = [
+    {
+      title: 'Ventana de verificación operativa',
+      body: 'Consulta el estado de paz y salvo, revisa sanciones y confirma datos clave antes de emitir soportes o autorizaciones.',
+      tag: 'Operación diaria',
+      accent: 'amber',
+    },
+    {
+      title: 'Gestión centralizada de sanciones',
+      body: 'Coordinadores y laboratoristas pueden seguir el ciclo de sanciones desde registro hasta aprobación y saldado en un solo flujo.',
+      tag: 'Seguimiento',
+      accent: 'red',
+    },
+    {
+      title: 'Acceso institucional y trazabilidad',
+      body: 'El sistema prioriza el ingreso con cuenta institucional y deja trazabilidad de acciones relevantes para soporte y auditoría.',
+      tag: 'Seguridad',
+      accent: 'teal',
+    },
+  ];
+%>
+
 <main class="container app-page-shell app-home-welcome-page">
-  <section class="app-home-welcome-panel">
-    <p class="app-home-welcome-kicker">Sistema de Laboratorios UD</p>
-    <h1 class="app-home-welcome-title">¡Bienvenido al Sistema de Laboratorios UD!</h1>
-    <p class="app-home-welcome-subtitle">
-      Sistema de Información de la Coordinación General Laboratorios -Mecanismo TIC-
-    </p>
-    <p class="app-home-welcome-version">
-      Versión 1.0.0 - Módulo de gestión y consulta del certificado paz y salvo con las Unidades Académicas de Laboratorios (UAL).
-    </p>
+  <section class="app-home-hero">
+    <div class="app-home-welcome-panel">
+      <h1 class="app-home-welcome-title">
+        <span class="app-home-welcome-title-line">Bienvenid@</span>
+        <span class="app-home-welcome-title-line app-home-welcome-title-line--name"><%= sessionName %></span>
+      </h1>
+      <p class="app-home-welcome-subtitle">
+        <span class="app-home-welcome-subtitle-line">Ingresaste como <strong><%= sessionRole %></strong>.</span>
+        <span class="app-home-welcome-subtitle-line">Desde aquí puedes continuar tus tareas frecuentes y mantener visibilidad del estado operativo del sistema.</span>
+      </p>
+      <p class="app-home-welcome-version">
+        MILab centraliza certificados, sanciones, verificaciones y control operativo de las Unidades Académicas de Laboratorios.
+      </p>
+
+      <% if (quickLinks.length) { %>
+        <div class="app-home-quick-links">
+          <% quickLinks.forEach(function(link) { %>
+            <a class="app-home-quick-link" href="<%= link.href %>">
+              <span class="app-home-quick-link-icon"><i class="bi <%= link.icon %>" aria-hidden="true"></i></span>
+              <span class="app-home-quick-link-copy">
+                <span class="app-home-quick-link-label"><%= link.label %></span>
+                <span class="app-home-quick-link-helper">Abrir módulo</span>
+              </span>
+            </a>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+
+    <aside class="app-home-news-panel" aria-label="Noticias destacadas">
+      <div class="app-home-news-head">
+        <p class="app-home-news-kicker">Noticias</p>
+      </div>
+
+      <div class="app-home-news-rotator" data-news-rotator>
+        <% newsItems.forEach(function(item, index) { %>
+          <article
+            class="app-home-news-item <%= index === 0 ? 'is-active' : '' %> app-home-news-item--<%= item.accent %>"
+            data-news-item
+            aria-hidden="<%= index === 0 ? 'false' : 'true' %>"
+          >
+            <span class="app-home-news-tag"><%= item.tag %></span>
+            <h3 class="app-home-news-item-title"><%= item.title %></h3>
+            <p class="app-home-news-item-body"><%= item.body %></p>
+          </article>
+        <% }) %>
+
+        <div class="app-home-news-controls">
+          <button type="button" class="app-home-news-control" data-news-prev aria-label="Noticia anterior">
+            <i class="bi bi-arrow-left"></i>
+          </button>
+          <div class="app-home-news-dots" role="tablist" aria-label="Selector de noticias">
+            <% newsItems.forEach(function(item, index) { %>
+              <button
+                type="button"
+                class="app-home-news-dot <%= index === 0 ? 'is-active' : '' %>"
+                data-news-dot="<%= index %>"
+                aria-label="Mostrar noticia <%= index + 1 %>"
+                aria-selected="<%= index === 0 ? 'true' : 'false' %>"
+              ></button>
+            <% }) %>
+          </div>
+          <button type="button" class="app-home-news-control" data-news-next aria-label="Siguiente noticia">
+            <i class="bi bi-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
   </section>
 </main>
+
+<script>
+  (function () {
+    const rotator = document.querySelector('[data-news-rotator]');
+
+    if (!rotator) {
+      return;
+    }
+
+    const items = Array.from(rotator.querySelectorAll('[data-news-item]'));
+    const dots = Array.from(rotator.querySelectorAll('[data-news-dot]'));
+    const previousButton = rotator.querySelector('[data-news-prev]');
+    const nextButton = rotator.querySelector('[data-news-next]');
+    let activeIndex = items.findIndex((item) => item.classList.contains('is-active'));
+
+    if (activeIndex < 0) {
+      activeIndex = 0;
+    }
+
+    function render(index) {
+      activeIndex = (index + items.length) % items.length;
+
+      items.forEach(function (item, itemIndex) {
+        const isActive = itemIndex === activeIndex;
+        item.classList.toggle('is-active', isActive);
+        item.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+      });
+
+      dots.forEach(function (dot, dotIndex) {
+        const isActive = dotIndex === activeIndex;
+        dot.classList.toggle('is-active', isActive);
+        dot.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+    }
+
+    const goNext = function () {
+      render(activeIndex + 1);
+    };
+
+    let intervalId = window.setInterval(goNext, 5500);
+
+    function restartInterval() {
+      window.clearInterval(intervalId);
+      intervalId = window.setInterval(goNext, 5500);
+    }
+
+    previousButton?.addEventListener('click', function () {
+      render(activeIndex - 1);
+      restartInterval();
+    });
+
+    nextButton?.addEventListener('click', function () {
+      goNext();
+      restartInterval();
+    });
+
+    dots.forEach(function (dot) {
+      dot.addEventListener('click', function () {
+        render(Number(dot.getAttribute('data-news-dot') || 0));
+        restartInterval();
+      });
+    });
+  })();
+</script>
 
 <%- include('../partials/footer'); -%>

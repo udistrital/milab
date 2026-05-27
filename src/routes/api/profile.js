@@ -1,13 +1,14 @@
-const crypto = require('crypto');
 const express = require('express');
-const axios = require('axios');
-const bcrypt = require('bcrypt');
 
 const pool = require('../../libs/db');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
 
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 function emptyProfileData() {
   return {
@@ -124,18 +125,18 @@ function diceCoefficient(nameA, nameB) {
 
 async function ensureUserIdentity({ correo, documento, nombre }) {
   const existing = await pool.query(
-    'SELECT id FROM usuarios WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
+    'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
     [correo, documento]
   );
 
   if (existing.rows.length) {
     const userId = existing.rows[0].id;
     await pool.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET correo = $1,
            documento = $2,
            nombre = $3,
-           updated_at = CURRENT_TIMESTAMP
+           fecha_modificacion = CURRENT_TIMESTAMP
        WHERE id = $4`,
       [correo, documento, nombre, userId]
     );
@@ -143,7 +144,7 @@ async function ensureUserIdentity({ correo, documento, nombre }) {
   }
 
   const inserted = await pool.query(
-    'INSERT INTO usuarios (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
+    'INSERT INTO usuario (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
     [correo, documento, nombre]
   );
   return inserted.rows[0].id;
@@ -151,8 +152,8 @@ async function ensureUserIdentity({ correo, documento, nombre }) {
 
 async function ensureRoleAssignment(userId, roleName) {
   await pool.query(
-    `INSERT INTO usuario_roles (usuario_id, role_id)
-     SELECT $1, id FROM roles WHERE name = $2
+    `INSERT INTO usuario_rol (usuario_id, rol_id)
+     SELECT $1, id FROM rol WHERE nombre = $2
      ON CONFLICT DO NOTHING`,
     [userId, roleName]
   );
@@ -167,7 +168,7 @@ async function upsertStudentProfile(userId, documento, codigo, programa, estado)
          codigo = EXCLUDED.codigo,
          programa = EXCLUDED.programa,
          estado = EXCLUDED.estado,
-         updated_at = CURRENT_TIMESTAMP`,
+         fecha_modificacion = CURRENT_TIMESTAMP`,
     [userId, documento, codigo, programa, estado]
   );
 }
@@ -179,7 +180,7 @@ async function upsertTeacherProfile(userId, documento, estado) {
      ON CONFLICT (usuario_id) DO UPDATE
      SET documento = EXCLUDED.documento,
          estado = EXCLUDED.estado,
-         updated_at = CURRENT_TIMESTAMP`,
+         fecha_modificacion = CURRENT_TIMESTAMP`,
     [userId, documento, estado]
   );
 }
@@ -213,12 +214,11 @@ async function upsertLegacyUsuario({ documento, codigo, nombre, correo, estado, 
 
 async function lookupStudentByDocumento(documento) {
   try {
-    const respuesta1 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        documento
+    const studentData = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
     );
 
-    const collection = respuesta1.data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
+    const collection = studentData?.datosEstudianteCollection?.datosBasicosEstudiante || [];
     if (!collection.length) return null;
 
     const item = collection[collection.length - 1];
@@ -228,22 +228,16 @@ async function lookupStudentByDocumento(documento) {
     const nombre = item.nombre || '';
     const correo = resolveOatiEmail(item);
 
-    const respuesta2 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-        estadoCodigo
-    );
+    const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${estadoCodigo}`));
 
-    const respuesta3 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-        carreraCodigo
-    );
+    const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
 
     return {
       tipo_usuario: 'estudiante',
       documento,
       codigo,
-      estado: respuesta2.data?.estado?.nombre || estadoCodigo || '',
-      carrera: respuesta3.data?.carrerasCollection?.carrera?.[0]?.nombre || '',
+      estado: estadoData?.estado?.nombre || estadoCodigo || '',
+      carrera: carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '',
       nombre,
       correo,
     };
@@ -254,12 +248,11 @@ async function lookupStudentByDocumento(documento) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const respuesta = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/consultar_estado_docente/' +
-        documento
+    const teacherData = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
     );
 
-    const docente = respuesta.data?.docentesCollection?.docente?.[0];
+    const docente = teacherData?.docentesCollection?.docente?.[0];
     if (!docente) return null;
 
     return {
@@ -342,7 +335,7 @@ async function loadStudentProfile(documento) {
        pe.codigo,
        pe.programa AS carrera,
        pe.estado
-     FROM usuarios u
+    FROM usuario u
      LEFT JOIN perfil_estudiante pe ON pe.usuario_id = u.id
      WHERE u.documento = $1
      LIMIT 1`,
@@ -373,7 +366,7 @@ async function loadTeacherProfile(documento) {
        u.nombre,
        u.correo,
        pd.estado
-     FROM usuarios u
+    FROM usuario u
      LEFT JOIN perfil_docente pd ON pd.usuario_id = u.id
      WHERE u.documento = $1
      LIMIT 1`,
@@ -428,7 +421,7 @@ async function loadCoordinadorProfile(documento) {
 
   const result = await pool.query(
     `SELECT documento, nombre, correo
-     FROM coordinador_laboratorio
+    FROM coordinador
      WHERE nombre_u = $1 OR documento = $1
      LIMIT 1`,
     [documento]
@@ -593,7 +586,7 @@ router.post('/identify', async (req, res) => {
       (await loadLaboratoristaProfile(documento)) || (await loadCoordinadorProfile(documento));
 
     if (!staffProfile) {
-      return denyAccess('El documento no esta asociado para ingresar a MiLab.');
+      return denyAccess('El documento no esta asociado para ingresar a MILab.');
     }
 
     if (
@@ -626,7 +619,7 @@ router.post('/identify', async (req, res) => {
 
     const usuario = await fetchUserByEmail(correo);
     if (!usuario) {
-      return denyAccess('No fue posible validar el acceso en MiLab.');
+      return denyAccess('No fue posible validar el acceso en MILab.');
     }
 
     req.session.user = buildSessionUser(usuario);
@@ -635,7 +628,7 @@ router.post('/identify', async (req, res) => {
   }
 
   if (profileData.estado === 'EGRESADO') {
-    return denyAccess('El documento no esta asociado para ingresar a MiLab.');
+    return denyAccess('El documento no esta asociado para ingresar a MILab.');
   }
 
   if (
@@ -738,11 +731,11 @@ router.post('/', async (req, res) => {
 
       if (userId) {
         await pool.query(
-          `UPDATE usuarios
+          `UPDATE usuario
            SET nombre = $1,
                correo = $2,
                documento = $3,
-               updated_at = CURRENT_TIMESTAMP
+               fecha_modificacion = CURRENT_TIMESTAMP
            WHERE id = $4`,
           [formData.nombre, formData.correo, formData.documento, userId]
         );
@@ -783,7 +776,7 @@ router.post('/', async (req, res) => {
     }
 
     const existe = await pool.query(
-      `SELECT id FROM usuarios WHERE documento = $1 OR LOWER(correo) = LOWER($2)`,
+      `SELECT id FROM usuario WHERE documento = $1 OR LOWER(correo) = LOWER($2)`,
       [formData.documento, formData.correo]
     );
 
@@ -793,9 +786,6 @@ router.post('/', async (req, res) => {
         error: 'Ya existe un usuario registrado con ese documento o correo.',
       });
     }
-
-    const passwordTemporal = crypto.randomBytes(24).toString('hex');
-    const hashedPassword = await bcrypt.hash(passwordTemporal, 12);
 
     const userId = await ensureUserIdentity({
       correo: formData.correo,
@@ -827,15 +817,6 @@ router.post('/', async (req, res) => {
       estado: formData.estado,
       carrera: isStudent ? formData.carrera : null,
     });
-
-    await pool.query(
-      `INSERT INTO auth (documento, password, tipo, password_cambiado, correo)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (documento) DO UPDATE
-       SET correo = EXCLUDED.correo,
-           tipo = EXCLUDED.tipo`,
-      [formData.documento, hashedPassword, formData.tipo_usuario, true, formData.correo]
-    );
 
     const refreshed = await fetchUserByEmail(formData.correo);
     req.session.user = buildSessionUser(refreshed);

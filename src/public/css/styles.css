@@ -371,6 +371,13 @@ body.app-shell .app-header {
   padding: 0;
 }
 
+html[data-bs-theme='dark'] body.app-shell .app-environment-banner {
+  border-color: rgba(255, 196, 107, 0.26);
+  background: linear-gradient(90deg, rgba(114, 72, 9, 0.94), rgba(143, 87, 9, 0.96));
+  color: #ffeabf;
+  box-shadow: none;
+}
+
 body.app-shell .app-header-shell {
   margin: 0 1rem;
   padding: 1rem 1.2rem 0.9rem;
@@ -1203,19 +1210,28 @@ body.app-shell .app-page-subtitle {
 
 body.app-shell .app-home-welcome-page {
   min-height: calc(100vh - 220px);
-  align-content: center;
+  align-content: start;
+}
+
+body.app-shell .app-home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.95fr);
+  gap: 1.25rem;
+  align-items: stretch;
 }
 
 body.app-shell .app-home-welcome-panel {
   display: grid;
-  justify-items: center;
-  gap: 0.9rem;
+  justify-items: start;
+  gap: 0.95rem;
   padding: clamp(2rem, 4vw, 3.2rem);
   border: 1px solid var(--app-border);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.5);
+  background:
+    radial-gradient(circle at top right, rgba(255, 191, 0, 0.14), transparent 30%),
+    rgba(255, 255, 255, 0.62);
   box-shadow: var(--app-shadow);
-  text-align: center;
+  text-align: left;
 }
 
 body.app-shell .app-home-welcome-kicker {
@@ -1231,30 +1247,245 @@ body.app-shell .app-home-welcome-kicker {
 body.app-shell .app-home-welcome-title {
   margin: 0;
   font-family: var(--app-font-display);
-  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  font-size: clamp(1.7rem, 2.9vw, 2.45rem);
   font-weight: 800;
   line-height: 1.02;
   letter-spacing: -0.06em;
   color: #111111 !important;
 }
 
+body.app-shell .app-home-welcome-title-line,
+body.app-shell .app-home-welcome-subtitle-line {
+  display: block;
+}
+
+body.app-shell .app-home-welcome-title-line--name {
+  margin-top: 0.18rem;
+  font-size: 0.94em;
+}
+
 body.app-shell .app-home-welcome-subtitle {
   margin: 0;
-  max-width: 52ch;
+  max-width: 54ch;
   font-family: var(--app-font-body);
-  font-size: clamp(1.1rem, 1.8vw, 1.38rem);
+  font-size: clamp(1rem, 1.45vw, 1.16rem);
   font-weight: 700;
   line-height: 1.5;
   color: #171717 !important;
+}
+
+body.app-shell .app-home-welcome-subtitle-line + .app-home-welcome-subtitle-line {
+  margin-top: 0.3rem;
 }
 
 body.app-shell .app-home-welcome-version {
   margin: 0;
   max-width: 64ch;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(1rem, 1.35vw, 1.12rem);
+  font-size: clamp(0.94rem, 1.1vw, 1.02rem);
   line-height: 1.75;
   color: #222222 !important;
+}
+
+body.app-shell .app-home-quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+  width: 100%;
+  margin-top: 0.65rem;
+}
+
+body.app-shell .app-home-quick-link {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(63, 96, 106, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--app-text-main);
+  text-decoration: none;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+body.app-shell .app-home-quick-link:hover,
+body.app-shell .app-home-quick-link:focus {
+  transform: translateY(-2px);
+  border-color: rgba(72, 111, 122, 0.24);
+  box-shadow: 0 14px 26px rgba(56, 88, 97, 0.12);
+  color: var(--app-text-main);
+}
+
+body.app-shell .app-home-quick-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  background: linear-gradient(180deg, rgba(80, 123, 135, 0.18), rgba(80, 123, 135, 0.06));
+  color: #376f7d;
+}
+
+body.app-shell .app-home-quick-link-icon i {
+  font-size: 1.1rem;
+}
+
+body.app-shell .app-home-quick-link-copy {
+  display: grid;
+  gap: 0.12rem;
+}
+
+body.app-shell .app-home-quick-link-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+body.app-shell .app-home-quick-link-helper {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .app-home-news-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.55rem;
+  border: 1px solid var(--app-border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 250, 251, 0.95));
+  box-shadow: var(--app-shadow);
+}
+
+body.app-shell .app-home-news-head {
+  display: grid;
+  gap: 0.3rem;
+}
+
+body.app-shell .app-home-news-kicker {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7d5a15 !important;
+}
+
+body.app-shell .app-home-news-title {
+  margin: 0;
+  font-family: var(--app-font-display);
+  font-size: clamp(1.4rem, 2vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--app-text-main) !important;
+}
+
+body.app-shell .app-home-news-rotator {
+  display: grid;
+  gap: 1rem;
+}
+
+body.app-shell .app-home-news-item {
+  display: none;
+  gap: 0.85rem;
+  min-height: 260px;
+  align-content: start;
+  padding: 1.2rem;
+  border: 1px solid rgba(63, 96, 106, 0.12);
+  background: #ffffff;
+}
+
+body.app-shell .app-home-news-item.is-active {
+  display: grid;
+}
+
+body.app-shell .app-home-news-item--amber {
+  background: linear-gradient(180deg, rgba(255, 248, 229, 0.95), #ffffff 75%);
+}
+
+body.app-shell .app-home-news-item--red {
+  background: linear-gradient(180deg, rgba(255, 239, 239, 0.95), #ffffff 75%);
+}
+
+body.app-shell .app-home-news-item--teal {
+  background: linear-gradient(180deg, rgba(235, 246, 248, 0.95), #ffffff 75%);
+}
+
+body.app-shell .app-home-news-tag {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.32rem 0.58rem;
+  background: rgba(20, 51, 58, 0.08);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #34545d;
+}
+
+body.app-shell .app-home-news-item-title {
+  margin: 0;
+  font-family: var(--app-font-display);
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: #111111 !important;
+}
+
+body.app-shell .app-home-news-item-body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #34474e !important;
+}
+
+body.app-shell .app-home-news-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+body.app-shell .app-home-news-control {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(63, 96, 106, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #34545d;
+}
+
+body.app-shell .app-home-news-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+body.app-shell .app-home-news-dot {
+  width: 0.78rem;
+  height: 0.78rem;
+  border: none;
+  background: rgba(52, 71, 78, 0.2);
+}
+
+body.app-shell .app-home-news-dot.is-active {
+  background: #34545d;
+}
+
+@media (max-width: 991.98px) {
+  body.app-shell .app-home-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767.98px) {
+  body.app-shell .app-home-welcome-page {
+    min-height: auto;
+  }
+
+  body.app-shell .app-home-news-controls {
+    grid-template-columns: 1fr;
+  }
 }
 
 body.app-shell .container > h1.display-5,
@@ -1342,9 +1573,13 @@ body.app-shell .mensaje-container {
   word-wrap: break-word;
 }
 
-body.app-shell .app-form-grid {
+body.app-shell .app-form-grid:not(.row) {
   display: grid;
   gap: 1rem;
+}
+
+body.app-shell .row.app-form-grid {
+  row-gap: 1rem;
 }
 
 body.app-shell .form-label {
@@ -1370,6 +1605,10 @@ body.app-shell .dashboard-topbar {
   margin-top: 1rem;
 }
 
+body.app-shell .dashboard-topbar--compact {
+  align-items: start;
+}
+
 body.app-shell .dashboard-topbar-copy {
   min-width: 0;
 }
@@ -1383,6 +1622,12 @@ body.app-shell .dashboard-simple-title {
   letter-spacing: -0.06em;
 }
 
+body.app-shell .dashboard-panel-badge--scope {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 0.75rem;
+}
+
 body.app-shell .dashboard-simple-subtitle {
   margin: 0.65rem 0 0;
   max-width: 60ch;
@@ -1394,6 +1639,60 @@ body.app-shell .dashboard-toolbar-inline {
   display: grid;
   grid-template-columns: repeat(2, minmax(200px, 1fr));
   gap: 1rem;
+}
+
+body.app-shell .dashboard-toolbar-inline--compact {
+  min-width: min(100%, 420px);
+}
+
+body.app-shell .dashboard-scope-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+body.app-shell .dashboard-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(63, 96, 106, 0.14);
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #35515a;
+}
+
+body.app-shell .dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 0;
+}
+
+body.app-shell .dashboard-overview-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(23, 23, 23, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+body.app-shell .dashboard-overview-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5e7178;
+}
+
+body.app-shell .dashboard-overview-value {
+  font-family: var(--app-font-display);
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  color: #14262c;
 }
 
 body.app-shell .dashboard-page--simplified .dashboard-control-group {
@@ -1421,6 +1720,10 @@ body.app-shell .dashboard-page--simplified .dashboard-main-card {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.18);
   box-shadow: none;
+}
+
+body.app-shell .dashboard-main-card--compact {
+  padding: 0.9rem 1rem 0.75rem;
 }
 
 body.app-shell .dashboard-main-header {
@@ -1485,10 +1788,19 @@ body.app-shell .dashboard-canvas-wrap--simple {
   min-height: 260px;
 }
 
+body.app-shell .dashboard-canvas-wrap--compact {
+  min-height: 220px;
+}
+
 body.app-shell .dashboard-stats-grid--simplified {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 0;
+}
+
+body.app-shell .dashboard-stats-grid--compact {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.8rem;
 }
 
 body.app-shell .dashboard-page--simplified .dashboard-stat-card {
@@ -1499,6 +1811,11 @@ body.app-shell .dashboard-page--simplified .dashboard-stat-card {
   align-content: space-between;
   box-shadow: none;
   color: #111111 !important;
+}
+
+body.app-shell .dashboard-page--compact .dashboard-stat-card {
+  min-height: 98px;
+  padding: 0.8rem 0.9rem;
 }
 
 body.app-shell .dashboard-page--simplified .dashboard-stat-card:hover,
@@ -1570,6 +1887,10 @@ body.app-shell .dashboard-page--simplified .tone-users {
     grid-template-columns: 1fr;
   }
 
+  body.app-shell .dashboard-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
   body.app-shell .dashboard-stats-grid--simplified {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1580,12 +1901,12 @@ body.app-shell .dashboard-page--simplified .tone-users {
     flex-direction: column;
   }
 
-  body.app-shell .app-fine-actions-grid {
-    grid-template-columns: 1fr;
-  }
-
   body.app-shell .dashboard-main-meta {
     justify-items: start;
+  }
+
+  body.app-shell .app-fine-actions-grid {
+    grid-template-columns: 1fr;
   }
 
   body.app-shell .dashboard-stats-grid--simplified {

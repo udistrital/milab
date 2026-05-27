@@ -16,7 +16,8 @@ router.get('/:codigo', publicPageLimiter, async (req, res) => {
   // console.log("este" +codigo)
 
   try {
-    const query = 'SELECT * FROM estudiante WHERE id_certificado = $1';
+    const query =
+      'SELECT pe.nombre FROM certificado_estudiante ce LEFT JOIN perfil_estudiante pe ON pe.usuario_id = ce.usuario_id WHERE ce.id_certificado = $1';
     const values = [codigo];
     const result = await pool.query(query, values);
 

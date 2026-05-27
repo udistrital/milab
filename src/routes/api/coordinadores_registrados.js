@@ -35,20 +35,53 @@ const requireAdminCoordinatorEmailEdit = requireJsonRoles('admin', {
   message: 'No tienes permisos para actualizar este correo.',
 });
 
+async function resolveCoordinatorUserId(client, coordinador) {
+  if (coordinador?.usuario_id) {
+    return coordinador.usuario_id;
+  }
+
+  const result = await client.query(
+    `SELECT id
+     FROM usuario
+     WHERE documento = $1
+        OR documento = $2
+        OR (correo IS NOT NULL AND LOWER(correo) = LOWER($3))
+     LIMIT 1`,
+    [coordinador?.documento || '', coordinador?.nombre_u || '', coordinador?.correo || '']
+  );
+
+  return result.rows[0]?.id || null;
+}
+
 router.get('/', requireAdminCoordinadoresView, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
   try {
     const query = `
-      SELECT c.nombre AS con_nombre, 
-             c.documento AS con_documento, 
+      SELECT c.nombre AS con_nombre,
+             c.documento AS con_documento,
              c.correo AS con_correo,
-             c.id_facultad AS con_facultad, 
-             f.nombre AS facultad_nombre, 
-             a.tipo
-      FROM coordinador_laboratorio c
-      JOIN auth a ON c.nombre_u = a.documento
+             c.id_facultad AS con_facultad,
+             f.nombre AS facultad_nombre,
+             CASE WHEN COALESCE(role_state.activo, FALSE)
+               THEN 'coordinador'
+               ELSE 'inactivo'
+             END AS tipo
+      FROM coordinador c
       JOIN facultad f ON c.id_facultad = f.id_facultad
+      LEFT JOIN usuario u
+        ON u.id = c.usuario_id
+        OR u.documento = c.documento
+        OR (c.nombre_u IS NOT NULL AND u.documento = c.nombre_u)
+        OR (c.correo IS NOT NULL AND LOWER(u.correo) = LOWER(c.correo))
+      LEFT JOIN LATERAL (
+        SELECT ur.activo
+        FROM usuario_rol ur
+        JOIN rol r ON r.id = ur.rol_id
+        WHERE ur.usuario_id = u.id
+          AND r.nombre = 'coordinador'
+        LIMIT 1
+      ) role_state ON true
     `;
     const result = await pool.query(query);
     const coordinadores = result.rows;
@@ -83,7 +116,7 @@ router.post('/actualizar-correo', requireAdminCoordinatorEmailEdit, async (req, 
     client = await pool.connect();
 
     const coordinatorResult = await client.query(
-      'SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador_laboratorio WHERE documento = $1',
+      'SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1',
       [documento]
     );
 
@@ -96,7 +129,11 @@ router.post('/actualizar-correo', requireAdminCoordinatorEmailEdit, async (req, 
     }
 
     const coordinador = coordinatorResult.rows[0];
-    const conflict = await findEmailConflict(client, correo, coordinador.nombre_u);
+    const conflict = await findEmailConflict(
+      client,
+      correo,
+      coordinador.documento || coordinador.nombre_u
+    );
 
     if (conflict) {
       client.release();
@@ -107,33 +144,29 @@ router.post('/actualizar-correo', requireAdminCoordinatorEmailEdit, async (req, 
     }
 
     await client.query('BEGIN');
-    await client.query('UPDATE coordinador_laboratorio SET correo = $1 WHERE documento = $2', [
+    await client.query('UPDATE coordinador SET correo = $1 WHERE documento = $2', [
       correo,
       documento,
     ]);
-    await client.query('UPDATE auth SET correo = $1 WHERE documento = $2', [
-      correo,
-      coordinador.nombre_u,
-    ]);
     if (coordinador.usuario_id) {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             updated_at = CURRENT_TIMESTAMP
+            fecha_modificacion = CURRENT_TIMESTAMP
          WHERE id = $2`,
         [correo, coordinador.usuario_id]
       );
     } else {
       await client.query(
-        `UPDATE usuarios
+        `UPDATE usuario
          SET correo = $1,
-             updated_at = CURRENT_TIMESTAMP
+            fecha_modificacion = CURRENT_TIMESTAMP
          WHERE documento = $2`,
         [correo, documento]
       );
     }
     await client.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         normalizeLogDocument(req.session.user.documento),
@@ -182,7 +215,7 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
   try {
     client = await pool.connect();
     const checkResult = await client.query(
-      'SELECT nombre_u FROM coordinador_laboratorio WHERE documento = $1',
+      'SELECT documento, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1',
       [documento]
     );
     if (checkResult.rows.length === 0) {
@@ -193,12 +226,24 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
         limit: 'noSession',
       });
     }
-    const nombreU = checkResult.rows[0].nombre_u;
+    const coordinador = checkResult.rows[0];
+    const userId = await resolveCoordinatorUserId(client, coordinador);
     await client.query('BEGIN');
-    await client.query('DELETE FROM coordinador_laboratorio WHERE documento = $1', [documento]);
-    await client.query('DELETE FROM auth WHERE documento = $1', [nombreU]);
+    await client.query('DELETE FROM coordinador WHERE documento = $1', [documento]);
+    if (userId) {
+      await client.query(
+        `UPDATE usuario_rol ur
+         SET activo = FALSE,
+             fecha_modificacion = CURRENT_TIMESTAMP
+         FROM rol r
+         WHERE ur.usuario_id = $1
+           AND ur.rol_id = r.id
+           AND r.nombre = 'coordinador'`,
+        [userId]
+      );
+    }
     await client.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         'admin',
         normalizeLogDocument(req.session.user.documento),
@@ -223,7 +268,7 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
   }
 });
 
-// POST cambiar estado en tabla auth
+// POST cambiar estado del rol coordinador
 router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, res) => {
   const { documento } = req.body;
 
@@ -231,7 +276,7 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
   try {
     client2 = await pool.connect();
     const coordRes = await client2.query(
-      'SELECT nombre_u FROM coordinador_laboratorio WHERE documento = $1',
+      'SELECT documento, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1',
       [documento]
     );
     if (coordRes.rows.length === 0) {
@@ -242,25 +287,58 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
         limit: 'noSession',
       });
     }
-    const nombreU = coordRes.rows[0].nombre_u;
-    const result = await client2.query('SELECT tipo FROM auth WHERE documento = $1', [nombreU]);
-    if (result.rows.length === 0) {
+    const coordinador = coordRes.rows[0];
+    const userId = await resolveCoordinatorUserId(client2, coordinador);
+    if (!userId) {
       client2.release();
       return res.render('home/message_error', {
-        message: 'Datos inválidos. Verifique la información e inténtelo nuevamente.',
-        message2: 'Revise los datos ingresados',
+        message: 'No se encontró usuario asociado al coordinador.',
+        message2: 'Verifique los datos del coordinador.',
         limit: 'noSession',
       });
     }
-    const tipoActual = result.rows[0].tipo;
-    const nuevoTipo = tipoActual === 'coordinador' ? 'inactivo' : 'coordinador';
-    await client2.query('UPDATE auth SET tipo = $1 WHERE documento = $2', [nuevoTipo, nombreU]);
+
+    const result = await client2.query(
+      `SELECT ur.activo
+       FROM usuario_rol ur
+       JOIN rol r ON r.id = ur.rol_id
+       WHERE ur.usuario_id = $1
+         AND r.nombre = 'coordinador'`,
+      [userId]
+    );
+
+    let nuevoEstado = true;
+    if (result.rows.length > 0) {
+      nuevoEstado = !result.rows[0].activo;
+      await client2.query(
+        `UPDATE usuario_rol ur
+         SET activo = $2,
+             fecha_modificacion = CURRENT_TIMESTAMP
+         FROM rol r
+         WHERE ur.usuario_id = $1
+           AND ur.rol_id = r.id
+           AND r.nombre = 'coordinador'`,
+        [userId, nuevoEstado]
+      );
+    } else {
+      await client2.query(
+        `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
+         SELECT $1, id, TRUE FROM rol WHERE nombre = 'coordinador'
+         ON CONFLICT (usuario_id, rol_id) DO UPDATE
+         SET activo = TRUE,
+             fecha_modificacion = CURRENT_TIMESTAMP`,
+        [userId]
+      );
+      nuevoEstado = true;
+    }
+
+    const estadoLabel = nuevoEstado ? 'coordinador' : 'inactivo';
     await client2.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         'admin',
         normalizeLogDocument(req.session.user.documento),
-        `cambiar tipo auth a ${nuevoTipo}`,
+        `cambiar estado coordinador a ${estadoLabel}`,
         documento,
       ]
     );

@@ -11,10 +11,25 @@
         <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y UAL asociada.</p>
     </section>
 
+<%
+    function resumirTexto(valor, limite) {
+        const texto = typeof valor === 'string' ? valor.trim() : '';
+        if (!texto) {
+            return '-';
+        }
+
+        if (texto.length <= limite) {
+            return texto;
+        }
+
+        return `${texto.slice(0, limite).trim()}...`;
+    }
+%>
+
 <section class="card app-form-panel justify-content-center mx-auto">
     <div class="card-body text-light mt-2 mx-auto">
         <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="row col-md-11 justify-content-center d-flex mx-auto app-form-grid" onsubmit="return verificarEntrada()">
-            <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos de los estudiantes a consultar separados por coma (máximo 20 estudiantes)</label>
+            <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
             <input type="text" class="col-md-12 mt-1" id="consulta_masiva" name="consulta_masiva"  required>
             <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1">Consultar</button>
         </form>
@@ -33,14 +48,15 @@
                 <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
                     <thead class="text-light">
                         <tr>
-                            <th>Código estudiante</th>
+                            <th>Documento</th>
+                            <th>Código</th>
                             <th>Motivo de sanción</th>
                             <th>Estado de la sanción</th>
                             <th>Fecha de la sanción</th>
                             <th>Observación</th>
                             <th>Nombre del laboratorista</th>
                             <th>UAL</th>
-                            
+                            <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -49,7 +65,8 @@
                                 <% data.multas.forEach(function(multa) { %>
                                 <tr>
                                     
-                                        <td class="text-light"><%= data.cod_multado_convert %></td>
+                                        <td class="text-light"><%= data.documento || '-' %></td>
+                                        <td class="text-light"><%= data.codigo || data.identificador || '-' %></td>
                                         <% if (multa === null) { %>
                                             <td class="text-light">
                                                 <em>El estudiante no tiene multas</em>
@@ -59,6 +76,7 @@
                                             <td></td>
                                             <td></td>
                                             <td></td>
+                                            <td class="text-center">-</td>
                                             <% } else if (multa === 'unknown') { %>
                                                 <td class="text-light">
                                                     <em>Este código no se encuentra registrado</em>
@@ -68,15 +86,34 @@
                                                 <td></td>
                                                 <td></td>
                                                 <td></td>
+                                                <td class="text-center">-</td>
                                             <% } else { %>
                                                 <td class="text-light">
-                                                    <em><%= multa.cat_multa %></em>
-                                                </td>                                     
+                                                    <em><%= resumirTexto(multa.cat_multa, 72) %></em>
+                                                </td>
                                                 <td class="text-light"><%= multa.con_estado_multa %></td>
                                                 <td class="text-light"><%= multa.fecha_multa %></td>
-                                                <td class="text-light"><%= multa.obs_multa %></td>   
+                                                <td class="text-light"><%= resumirTexto(multa.obs_multa, 52) %></td>
                                                 <td class="text-light"><%= multa.nombre_laboratorista %></td>
                                                 <td class="text-light"><%= multa.ual %></td>
+                                                <td class="text-center">
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline-info btn-sm app-detail-button"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#detalleConsultaMasivaModal"
+                                                        data-detalle-documento="<%= data.documento || '-' %>"
+                                                        data-detalle-codigo="<%= data.codigo || data.identificador || '-' %>"
+                                                        data-detalle-categoria="<%= multa.cat_multa || '-' %>"
+                                                        data-detalle-estado="<%= multa.con_estado_multa || '-' %>"
+                                                        data-detalle-fecha="<%= multa.fecha_multa || '-' %>"
+                                                        data-detalle-observacion="<%= multa.obs_multa || 'Sin observaciones' %>"
+                                                        data-detalle-laboratorista="<%= multa.nombre_laboratorista || '-' %>"
+                                                        data-detalle-ual="<%= multa.ual || '-' %>"
+                                                    >
+                                                        Ver detalle
+                                                    </button>
+                                                </td>
                                             <% } %> 
                                                                  
                                 </tr>
@@ -84,13 +121,15 @@
                             <% });
                         } else { %>
                             <tr>
-                                <td colspan="7" class="text-center">No hay registros en la base de datos</td>
-                                <td class="ocultar-columna"></td>
-                                <td class="ocultar-columna"></td>
-                                <td class="ocultar-columna"></td>
-                                <td class="ocultar-columna"></td>
-                                <td class="ocultar-columna"></td>
-                                <td class="ocultar-columna"></td>                             
+                                <td class="text-center">No hay registros en la base de datos</td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
                             </tr>
                         <% } %>
                     </tbody>
@@ -107,12 +146,88 @@
     <br>
 </section>
 </main>
+
+<div class="modal fade app-detail-modal" id="detalleConsultaMasivaModal" tabindex="-1" aria-labelledby="detalleConsultaMasivaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detalleConsultaMasivaLabel">Detalle de la sanción</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="text-muted small">Documento</div>
+                        <div class="fw-semibold" data-detail-field="documento"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Código</div>
+                        <div class="fw-semibold" data-detail-field="codigo"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Estado</div>
+                        <div class="fw-semibold" data-detail-field="estado"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Fecha</div>
+                        <div class="fw-semibold" data-detail-field="fecha"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Laboratorista</div>
+                        <div class="fw-semibold" data-detail-field="laboratorista"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">UAL</div>
+                        <div class="fw-semibold" data-detail-field="ual"></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Motivo de la sanción</div>
+                        <div class="fw-semibold" data-detail-field="categoria"></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Observación</div>
+                        <div class="fw-semibold" data-detail-field="observacion"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
 <br>
 <!-- Include Bootstrap JS and jQuery -->
 <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script>
+    document.addEventListener('click', function (event) {
+        const trigger = event.target.closest('.app-detail-button');
+
+        if (!trigger) {
+            return;
+        }
+
+        const fields = {
+            documento: trigger.getAttribute('data-detalle-documento'),
+            codigo: trigger.getAttribute('data-detalle-codigo'),
+            categoria: trigger.getAttribute('data-detalle-categoria'),
+            estado: trigger.getAttribute('data-detalle-estado'),
+            fecha: trigger.getAttribute('data-detalle-fecha'),
+            observacion: trigger.getAttribute('data-detalle-observacion'),
+            laboratorista: trigger.getAttribute('data-detalle-laboratorista'),
+            ual: trigger.getAttribute('data-detalle-ual'),
+        };
+
+        Object.keys(fields).forEach(function (key) {
+            const target = document.querySelector(`[data-detail-field="${key}"]`);
+            if (target) {
+                target.textContent = fields[key] || '-';
+            }
+        });
+    });
+
     function verificarEntrada() {
     var input = document.getElementById("consulta_masiva").value;
     var mensajeError = document.getElementById("mensajeError");

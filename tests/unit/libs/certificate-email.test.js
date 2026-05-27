@@ -163,6 +163,20 @@ test('buildCertificateEmailFeedback and buildCertificateEmailFailureFeedback ret
           'El certificado se generó correctamente, pero no se envió por correo porque no se indicó una dirección de correo.',
       }
     );
+    assert.deepEqual(
+      loaded.buildCertificateEmailFeedback(
+        { status: 'skipped', reason: 'missing-recipient' },
+        {
+          missingRecipientMessage:
+            'El certificado se generó correctamente, pero no se envió por correo porque no se tiene registrado el email del estudiante en MILab.',
+        }
+      ),
+      {
+        variant: 'warning',
+        message:
+          'El certificado se generó correctamente, pero no se envió por correo porque no se tiene registrado el email del estudiante en MILab.',
+      }
+    );
     assert.deepEqual(loaded.buildCertificateEmailFailureFeedback(), {
       variant: 'warning',
       message:

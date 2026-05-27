@@ -1,9 +1,18 @@
 <%- include('../partials/header'); -%>
 
+<%
+  const alertHeading = typeof message === 'string' && message.trim()
+    ? message.trim()
+    : 'No se encontraron sanciones en el sistema';
+  const alertBody = typeof message2 === 'string' && message2.trim()
+    ? message2.trim()
+    : 'Lo sentimos, verifica nuevamente el número de identificación.';
+%>
+
 <div class="container mt-5">
     <div class="alert alert-danger" role="alert">
-      <h4 class="alert-heading">Error: el estudiante no registra sanciones en el sistema</h4>
-      <p>Lo sentimos, verifique nuevamente el número de identificación.</p>
+      <h4 class="alert-heading"><%= alertHeading %></h4>
+      <p><%= alertBody %></p>
       <hr>
       <button class="btn btn-primary" onclick="goBack()">Volver Atrás</button>
     </div>

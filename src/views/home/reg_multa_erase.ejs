@@ -75,10 +75,12 @@
           <tbody>
             <% if(multaInfo.length > 0) { %>
               <% multaInfo.forEach(function(data){ %>
-                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (data.n_usuario === locals.documento || locals.tipo === 'admin' || locals.tipo === 'coordinador'); %>
+                <% const documentoSession = locals.documento_real || locals.documento; %>
+                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (data.documento_laboratorista === documentoSession || locals.tipo === 'admin' || locals.tipo === 'coordinador'); %>
+                <% const referenciaSancionado = data.documento_sancionado || data.usuario_id_sancionado; %>
                 <tr class="text-light">
                   <td><%= data.id %></td>
-                  <td><%= data.cod_multado %></td>
+                  <td><%= referenciaSancionado %></td>
                   <td><%= new Date(data.fecha_multa).toLocaleDateString('es-CO') %></td>
                   <td><%= data.con_estado_multa %></td>
                   <td>
@@ -88,7 +90,7 @@
                       data-bs-toggle="modal"
                       data-bs-target="#detalleSancionModal"
                       data-sancion-id="<%= data.id %>"
-                      data-sancion-documento="<%= data.cod_multado %>"
+                      data-sancion-documento="<%= referenciaSancionado %>"
                       data-sancion-fecha="<%= new Date(data.fecha_multa).toLocaleDateString('es-CO') %>"
                       data-sancion-estado="<%= data.con_estado_multa %>"
                       data-sancion-laboratorista="<%= data.nombre_laboratorista %>"

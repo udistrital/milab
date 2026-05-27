@@ -14,7 +14,7 @@ const requireAdmin = requireRoles('admin', {
 });
 
 async function loadMenuData() {
-  const roles = (await pool.query('SELECT id, name FROM roles ORDER BY name')).rows;
+  const roles = (await pool.query('SELECT id, nombre AS name FROM rol ORDER BY nombre')).rows;
   const menuItems = (
     await pool.query(
       `
@@ -25,17 +25,17 @@ async function loadMenuData() {
                mi.route,
                mi.icon,
                mi.order_index,
-               mi.is_active,
+               mi.activo AS is_active,
                parent.label AS parent_label
-        FROM menu_items mi
-        LEFT JOIN menu_items parent ON parent.id = mi.parent_id
+        FROM menu_item mi
+        LEFT JOIN menu_item parent ON parent.id = mi.parent_id
         ORDER BY mi.section, mi.parent_id NULLS FIRST, mi.order_index, mi.label
       `
     )
   ).rows;
 
   const permissions = (
-    await pool.query('SELECT role_id, menu_item_id, can_view, can_use FROM role_permissions')
+    await pool.query('SELECT rol_id AS role_id, menu_item_id, can_view, can_use FROM rol_permiso')
   ).rows;
 
   return { roles, menuItems, permissions };
@@ -91,7 +91,7 @@ router.post('/', requireAdmin, async (req, res) => {
   try {
     await pool.query(
       `
-        INSERT INTO menu_items (section, parent_id, label, route, icon, order_index, is_active)
+        INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (section, parent_id, label, route) DO NOTHING
       `,
@@ -133,15 +133,15 @@ router.post('/permissions', requireAdmin, async (req, res) => {
     if (isEnabled) {
       await pool.query(
         `
-          INSERT INTO role_permissions (role_id, menu_item_id, can_view, can_use)
+          INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use)
           VALUES ($1, $2, TRUE, TRUE)
-          ON CONFLICT (role_id, menu_item_id) DO UPDATE
+          ON CONFLICT (rol_id, menu_item_id) DO UPDATE
           SET can_view = TRUE, can_use = TRUE
         `,
         [roleId, menuItemId]
       );
     } else {
-      await pool.query('DELETE FROM role_permissions WHERE role_id = $1 AND menu_item_id = $2', [
+      await pool.query('DELETE FROM rol_permiso WHERE rol_id = $1 AND menu_item_id = $2', [
         roleId,
         menuItemId,
       ]);

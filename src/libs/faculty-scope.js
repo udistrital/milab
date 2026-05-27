@@ -127,7 +127,7 @@ function resolveAcademicFacultyName(programName) {
 
 async function resolveCoordinatorScope(client, authDocument) {
   const coordInfoRes = await client.query(
-    'SELECT documento, id_facultad FROM coordinador_laboratorio WHERE nombre_u = $1',
+    'SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1',
     [authDocument]
   );
 

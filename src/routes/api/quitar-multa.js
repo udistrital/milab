@@ -1,9 +1,13 @@
 // ...existing code...
 const express = require('express');
 const pool = require('../../libs/db');
+const { fetchUserById } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 const requireFineRemovalAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
@@ -17,8 +21,10 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const con_estado_saldado = 'POR SALDAR';
 
   try {
-    // Primero obtenemos el cod_multado de la base de datos
-    const multaResult = await pool.query('SELECT cod_multado FROM multas WHERE id = $1', [con_id]);
+    // Primero obtenemos el usuario sancionado de la multa
+    const multaResult = await pool.query('SELECT usuario_id_sancionado FROM multa WHERE id = $1', [
+      con_id,
+    ]);
 
     if (multaResult.rows.length === 0) {
       return res.render('home/message_error', {
@@ -28,10 +34,12 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       });
     }
 
-    const cod_multado_db = multaResult.rows[0].cod_multado;
+    const usuarioSancionadoId = multaResult.rows[0].usuario_id_sancionado;
+    const usuarioSancionado = await fetchUserById(usuarioSancionadoId);
+    const referenciaSancionado = usuarioSancionado?.documento || 'desconocido';
 
     // Actualizamos el estado de la multa
-    await pool.query('UPDATE multas SET con_estado_multa = $1 WHERE id = $2', [
+    await pool.query('UPDATE multa SET con_estado_multa = $1 WHERE id = $2', [
       con_estado_saldado,
       con_id,
     ]);
@@ -39,22 +47,28 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
 
     let documentoReal = req.session.user.documento;
     if (req.session.user.tipo === 'laboratorista') {
-      const result = await pool.query('SELECT documento FROM laboratorista WHERE n_usuario = $1', [
-        req.session.user.documento,
-      ]);
+      const result = await pool.query(
+        'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
+        [req.session.user.documento]
+      );
       if (result.rows.length > 0) {
         documentoReal = result.rows[0].documento;
       }
     }
 
     await pool.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
-      [req.session.user.tipo, documentoReal, 'Cambiar estado de multa a SALDADO', cod_multado_db]
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session.user.tipo,
+        documentoReal,
+        'Cambiar estado de multa a SALDADO',
+        referenciaSancionado,
+      ]
     );
 
     return res.render('home/message_success', {
       message: 'Multa actualizada correctamente',
-      message2: `Documento sancionado: ${cod_multado_db}`,
+      message2: `Sancionado registrado: ${referenciaSancionado}`,
     });
   } catch (error) {
     console.error('Error:', error);

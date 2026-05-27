@@ -11,6 +11,9 @@ const { requireRoles } = require('../middlewares/auth');
 
 const router = express.Router();
 
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
+
 const SANCTION_TYPES = [
   'Suspensión temporal del acceso al laboratorio',
   'Realizar cursos de buenas prácticas o seguridad',
@@ -25,33 +28,17 @@ function normalizeSanctionType(value) {
   return (value || '').toString().trim();
 }
 
-async function resolveStudentContactByCodigo(codigo) {
-  const codigoParam = codigo ? String(codigo).trim() : '';
-
-  if (!codigoParam) {
-    return null;
-  }
+async function resolveStudentContactByUsuarioId(usuarioId) {
+  if (!usuarioId) return null;
 
   const result = await pool.query(
     `
-      SELECT nombre, documento, correo
-      FROM (
-        SELECT u.nombre, u.documento, u.correo, 1 AS priority
-        FROM usuario u
-        WHERE u.codigo::text = $1
-
-        UNION ALL
-
-        SELECT e.nombre, e.cc::text AS documento, e.correo, 2 AS priority
-        FROM estudiante e
-        WHERE e.codigo::text = $1
-      ) candidates
-      WHERE correo IS NOT NULL
-        AND correo <> ''
-      ORDER BY priority
+      SELECT u.nombre, u.documento, u.codigo, u.correo
+      FROM usuario u
+      WHERE u.id = $1
       LIMIT 1
     `,
-    [codigoParam]
+    [usuarioId]
   );
 
   return result.rows[0] || null;
@@ -73,7 +60,7 @@ async function sendSanctionActivationEmail({
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: correo,
-    subject: 'Notificación de sanción activada - MiLab Laboratorios UD',
+    subject: 'Notificación de sanción activada - MILab Laboratorios UD',
     text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\nSi tienes dudas, comunícate con la coordinación de laboratorios.`,
     html: `
       <!DOCTYPE html>
@@ -117,7 +104,7 @@ async function sendSanctionActivationEmail({
                 </tr>
                 ${buildEmailFooterHtml(`
                   <p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">
-                    Sistema de Paz y Salvos - Coordinación General de Laboratorios
+                    MILab - Coordinación General de Laboratorios
                   </p>
                 `)}
               </table>
@@ -171,60 +158,23 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     const result = await pool.query(
       `SELECT 
         m.id,
-        COALESCE(sancionado.documento, m.cod_multado::text) AS documento_sancionado,
-        m.nombre_laboratorista,
+        m.usuario_id_sancionado,
+        COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
+        us.codigo AS codigo_sancionado,
+        l.nombre AS nombre_laboratorista,
         m.cat_multa,
-        m.cod_multado, 
-        m.ual, 
+        u.nombre AS ual, 
         m.fecha_multa, 
         m.con_estado_multa, 
         m.obs_multa,
         m.tipo_sancion
-      FROM multas m
-      INNER JOIN ual u ON m.ual = u.nombre
-      LEFT JOIN LATERAL (
-        SELECT documento
-        FROM (
-         SELECT u2.documento, 0 AS priority
-         FROM usuarios u2
-         WHERE u2.documento = m.cod_multado::text
-
-         UNION ALL
-
-         SELECT pe.documento, 1 AS priority
-         FROM perfil_estudiante pe
-         WHERE pe.documento = m.cod_multado::text
-           OR pe.codigo::text = m.cod_multado::text
-
-         UNION ALL
-
-         SELECT pd.documento, 2 AS priority
-         FROM perfil_docente pd
-         WHERE pd.documento = m.cod_multado::text
-
-         UNION ALL
-
-         SELECT u.documento, 3 AS priority
-         FROM usuario u
-         WHERE u.documento = m.cod_multado::text
-           OR u.codigo::text = m.cod_multado::text
-
-         UNION ALL
-
-         SELECT e.cc::text AS documento, 4 AS priority
-         FROM estudiante e
-         WHERE e.cc::text = m.cod_multado::text
-           OR e.codigo::text = m.cod_multado::text
-
-         UNION ALL
-
-         SELECT d.cc::text AS documento, 5 AS priority
-         FROM docente d
-         WHERE d.cc::text = m.cod_multado::text
-        ) candidates
-        ORDER BY priority
-        LIMIT 1
-      ) sancionado ON true
+      FROM multa m
+      INNER JOIN ual u ON u.id_ual = m.id_ual
+      LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
+      LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
+      LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
+      LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
         AND u.id_facultad = ANY($1::int[])`,
       [scope.facultyIds]
@@ -249,8 +199,9 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
 
 // POST: Activar sanción (de Pendiente a ACTIVA)
 router.post('/activar', requireCoordinadorApprovalAction, async function (req, res) {
-  const { cod_multado, fecha_multa } = req.body;
-  const tipo_sancion = normalizeSanctionType(req.body.tipo_sancion);
+  const body = req.body || {};
+  const { multa_id } = body;
+  const tipo_sancion = normalizeSanctionType(body.tipo_sancion);
 
   if (!SANCTION_TYPES.includes(tipo_sancion)) {
     return res.render('home/message_error', {
@@ -273,17 +224,16 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
 
     const result = await pool.query(
       `
-      UPDATE multas AS m
+      UPDATE multa AS m
       SET con_estado_multa = 'ACTIVA',
-          tipo_sancion = $4
+          tipo_sancion = $2
       FROM ual u
-      WHERE m.cod_multado = $1
-        AND m.fecha_multa = $2::date
+      WHERE m.id = $1
         AND m.con_estado_multa = 'Pendiente'
-        AND u.nombre = m.ual
+        AND u.id_ual = m.id_ual
         AND u.id_facultad = ANY($3::int[])
     `,
-      [cod_multado, fecha_multa, scope.facultyIds, tipo_sancion]
+      [multa_id, tipo_sancion, scope.facultyIds]
     );
 
     if (result.rowCount === 0) {
@@ -294,34 +244,35 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
       });
     }
 
-    await pool.query(
-      `
-      INSERT INTO logs (nombre, documento, accion, persona)
-      VALUES ($1, $2, $3, $4)
-    `,
-      [
-        req.session.user.tipo,
-        scope.coordinatorDocument,
-        'Cambiar estado de multa a ACTIVA',
-        cod_multado,
-      ]
-    );
-
     try {
       const multaInfo = await pool.query(
-        'SELECT cod_multado, ual, obs_multa FROM multas WHERE cod_multado = $1 AND fecha_multa = $2::date',
-        [cod_multado, fecha_multa]
+        'SELECT m.usuario_id_sancionado, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.id_ual = m.id_ual WHERE m.id = $1',
+        [multa_id]
       );
-      const studentInfo = await resolveStudentContactByCodigo(cod_multado);
+      const usuarioId = multaInfo.rows[0]?.usuario_id_sancionado;
+      const studentInfo = await resolveStudentContactByUsuarioId(usuarioId);
+      const referencia = studentInfo?.codigo || studentInfo?.documento || '';
+      await pool.query(
+        `
+        INSERT INTO log (nombre, documento, accion, persona)
+        VALUES ($1, $2, $3, $4)
+      `,
+        [
+          req.session.user.tipo,
+          scope.coordinatorDocument,
+          'Cambiar estado de multa a ACTIVA',
+          referencia || String(multa_id),
+        ]
+      );
       if (studentInfo?.correo) {
         await sendSanctionActivationEmail({
           correo: studentInfo.correo,
           nombre: studentInfo.nombre,
-          codigo: cod_multado,
+          codigo: referencia,
           tipoSancion: tipo_sancion,
           observaciones: multaInfo.rows[0]?.obs_multa,
           laboratorio: multaInfo.rows[0]?.ual,
-          fecha: fecha_multa,
+          fecha: multaInfo.rows[0]?.fecha_multa,
         });
       }
     } catch (emailError) {
@@ -341,7 +292,8 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
 
 // POST: Marcar sanción como SALDADA (de POR SALDAR a SALDADA)
 router.post('/saldar', requireCoordinadorApprovalAction, async function (req, res) {
-  const { cod_multado, fecha_multa } = req.body;
+  const body = req.body || {};
+  const { multa_id } = body;
 
   try {
     const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
@@ -356,16 +308,15 @@ router.post('/saldar', requireCoordinadorApprovalAction, async function (req, re
 
     const result = await pool.query(
       `
-      UPDATE multas AS m
+      UPDATE multa AS m
       SET con_estado_multa = 'SALDADA'
       FROM ual u
-      WHERE m.cod_multado = $1
-        AND m.fecha_multa = $2::date
+      WHERE m.id = $1
         AND m.con_estado_multa = 'POR SALDAR'
-        AND u.nombre = m.ual
-        AND u.id_facultad = ANY($3::int[])
+        AND u.id_ual = m.id_ual
+        AND u.id_facultad = ANY($2::int[])
     `,
-      [cod_multado, fecha_multa, scope.facultyIds]
+      [multa_id, scope.facultyIds]
     );
 
     if (result.rowCount === 0) {
@@ -376,16 +327,22 @@ router.post('/saldar', requireCoordinadorApprovalAction, async function (req, re
       });
     }
 
+    const sancionadoResult = await pool.query(
+      'SELECT u.documento FROM multa m LEFT JOIN usuario u ON u.id = m.usuario_id_sancionado WHERE m.id = $1',
+      [multa_id]
+    );
+    const documentoSancionado = sancionadoResult.rows[0]?.documento || String(multa_id);
+
     await pool.query(
       `
-      INSERT INTO logs (nombre, documento, accion, persona)
+      INSERT INTO log (nombre, documento, accion, persona)
       VALUES ($1, $2, $3, $4)
     `,
       [
         req.session.user.tipo,
         scope.coordinatorDocument,
         'Cambiar estado de multa a SALDADA',
-        cod_multado,
+        documentoSancionado,
       ]
     );
 

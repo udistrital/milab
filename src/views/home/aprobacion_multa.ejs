@@ -46,14 +46,12 @@
                   data-sancion-id="<%= multa.id %>"
                   data-sancion-documento="<%= multa.documento_sancionado %>"
                   data-sancion-fecha="<%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %>"
-                  data-sancion-fecha-iso="<%= new Date(multa.fecha_multa).toISOString() %>"
                   data-sancion-estado="<%= multa.con_estado_multa %>"
                   data-sancion-laboratorista="<%= multa.nombre_laboratorista %>"
                   data-sancion-ual="<%= multa.ual %>"
                   data-sancion-categoria="<%= multa.cat_multa %>"
                   data-sancion-tipo="<%= multa.tipo_sancion || 'Por definir' %>"
                   data-sancion-observaciones="<%= multa.obs_multa || 'Sin observaciones' %>"
-                  data-sancion-cod="<%= multa.cod_multado %>"
                 >
                   <i class="bi bi-eye"></i>
                   Ver detalle
@@ -123,8 +121,7 @@
         <div class="border-top pt-3 mt-3" data-detail-action="activate">
           <h6 class="mb-3">Aplicar sanción</h6>
           <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3">
-            <input type="hidden" name="cod_multado" data-detail-input="cod_multado">
-            <input type="hidden" name="fecha_multa" data-detail-input="fecha_multa">
+            <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <div class="col-12">
               <label class="form-label" for="tipo_sancion_detalle">Tipo de sanción</label>
               <select id="tipo_sancion_detalle" name="tipo_sancion" class="form-select" required>
@@ -148,8 +145,7 @@
         <div class="border-top pt-3 mt-3 d-none" data-detail-action="saldar">
           <h6 class="mb-3">Marcar sanción como saldada</h6>
           <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3">
-            <input type="hidden" name="cod_multado" data-detail-input="cod_multado">
-            <input type="hidden" name="fecha_multa" data-detail-input="fecha_multa">
+            <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
               <button type="submit" class="btn btn-primary">Marcar como saldada</button>
@@ -209,17 +205,11 @@
         });
     }
 
-    const codMultadoInputs = document.querySelectorAll('[data-detail-input="cod_multado"]');
-    const fechaInputs = document.querySelectorAll('[data-detail-input="fecha_multa"]');
-    const fechaIso = trigger.getAttribute('data-sancion-fecha-iso');
-    const codMultado = trigger.getAttribute('data-sancion-cod') || '';
+    const multaIdInputs = document.querySelectorAll('[data-detail-input="multa_id"]');
+    const multaId = trigger.getAttribute('data-sancion-id') || '';
 
-    codMultadoInputs.forEach(function (input) {
-      input.value = codMultado;
-    });
-
-    fechaInputs.forEach(function (input) {
-      input.value = fechaIso || '';
+    multaIdInputs.forEach(function (input) {
+      input.value = multaId;
     });
 
     const select = document.getElementById('tipo_sancion_detalle');

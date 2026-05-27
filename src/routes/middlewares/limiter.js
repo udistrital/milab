@@ -24,7 +24,10 @@ const limiter = rateLimit({
         limit: null,
       };
 
-      if (req.originalUrl.includes('/auth/login')) {
+      if (req.originalUrl.includes('/auth/recaptcha-login')) {
+        errorTemplate = 'home/index_2';
+        templateData.recaptchaError = templateData.error;
+      } else if (req.originalUrl.includes('/auth/login')) {
         errorTemplate = 'home/login_2';
       } else if (req.originalUrl.includes('/api/get-data1')) {
         errorTemplate = 'home/register_2';

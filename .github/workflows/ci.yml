@@ -1,0 +1,101 @@
+name: CI - Lint, Formato y Auditoría
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  Analisis:
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --no-deprecation
+      NPM_CONFIG_LOGLEVEL: error
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+      - name: Usar Node.js 25.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: '25.x'
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Ejecutar análisis de formato, lint y auditoría
+        run: npm run ci:check
+
+  pruebas_unitarias:
+    name: Pruebas unitarias
+    needs: Analisis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+      - name: Usar Node.js 25.x
+        uses: actions/setup-node@v5
+        with:
+          node-version: '25.x'
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Ejecutar pruebas unitarias
+        run: npm test
+
+  despliegue_pruebas:
+    name: Despliegue a pruebas
+    needs: pruebas_unitarias
+    if: github.ref == 'refs/heads/prestamos' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on:
+      - self-hosted
+      - laboratorios_ec2
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v5
+
+      - name: Crear directorio de despliegue
+        run: |
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p /opt/milab
+          else
+            mkdir -p /opt/milab
+          fi
+
+      - name: Copiar fuentes al runner
+        run: |
+          if command -v sudo >/dev/null 2>&1; then
+            sudo rsync -a --delete --exclude '.git/' ./ /opt/milab/
+          else
+            rsync -a --delete --exclude '.git/' ./ /opt/milab/
+          fi
+
+      - name: Copiar archivo de entorno
+        run: |
+          if [ ! -f /opt/.env ]; then
+            echo 'No se encontró el archivo /opt/.env en el runner' >&2
+            exit 1
+          fi
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo install -m 600 /opt/.env /opt/milab/Docker/.env
+          else
+            install -m 600 /opt/.env /opt/milab/Docker/.env
+          fi
+
+      - name: Actualizar imagenes base de pruebas
+        run: |
+          cd /home/ubuntu/prod
+          sudo docker compose pull dbpostgres dbseed
+
+      - name: Recrear contenedores de pruebas
+        run: |
+          cd /home/ubuntu/prod
+          sudo docker compose up -d --build --force-recreate dbpostgres milabud
+
+      - name: Verificar servicios desplegados
+        run: |
+          cd /home/ubuntu/prod
+          sudo docker compose ps dbpostgres milabud

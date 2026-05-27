@@ -1,21 +1,25 @@
 const pool = require('../../libs/db');
-const axios = require('axios');
 const express = require('express');
 const QRCode = require('qrcode');
 const { format } = require('date-fns');
 const { buildAppUrl } = require('../../libs/app-url');
 const { buildGeneratePath } = require('../../libs/generate-path');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const {
   buildCertificateEmailFailureFeedback,
   buildCertificateEmailFeedback,
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
+const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
 require('dotenv').config();
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
 
 const requireStaffTeacherCertificateAccess = requireRoles(
   ['admin', 'laboratorista', 'coordinador'],
@@ -27,7 +31,17 @@ const requireStaffTeacherCertificateAccess = requireRoles(
 );
 
 router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
-  const { numero_documento_identificacion, motivo_exp, correo } = req.body;
+  const requestBody = req.body || {};
+  const { numero_documento_identificacion, motivo_exp, correo } = requestBody;
+
+  if (!numero_documento_identificacion || !motivo_exp) {
+    return res.render('home/message_error', {
+      message: 'No fue posible procesar la solicitud.',
+      message2: 'Verifica los datos del formulario e inténtalo nuevamente.',
+      limit: null,
+    });
+  }
+
   var con_estado;
   var con_documento;
   var con_nombre;
@@ -76,11 +90,9 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
   // Función para obtener la info del docente mediante CC segun consultas a la OAS
   async function consultarEndpointAnidado() {
     try {
-      const respuesta1 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/consultar_estado_docente/' +
-          numero_documento_identificacion
+      const dato1 = await requestOati(
+        getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
       );
-      const dato1 = respuesta1.data; // Obtener los datos de la respuesta 1
       const docenteData = dato1.docentesCollection.docente[0];
       con_estado = docenteData.estado_docente;
       con_documento = numero_documento_identificacion;
@@ -103,14 +115,29 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
 
       // const req_consultar_multas = await consultar_multas(con_documento); // Removed: never used
 
+      const usuarioId = await ensurePerfilDocente({
+        documento: con_documento,
+        nombre: con_nombre,
+        estado: con_estado,
+        correo: correo_to_save,
+      });
+
+      if (!usuarioId) {
+        return res.render('home/message_error', {
+          message: 'No se pudo registrar el perfil del docente.',
+          message2: 'Verifica los datos e intenta nuevamente.',
+          limit: null,
+        });
+      }
+
       // Consultar si el usuario está multado
       let con_multado = 0;
       try {
-        const result = await pool.query('SELECT * FROM multas WHERE cod_multado = $1', [
-          con_documento,
-        ]);
+        const result = await pool.query(
+          'SELECT 1 FROM multa WHERE usuario_id_sancionado = $1 LIMIT 1',
+          [usuarioId]
+        );
         if (result.rows.length > 0) {
-          console.table(result.rows);
           console.log('EL USUARIO ESTA MULTADO');
           con_multado = 1;
         } else {
@@ -122,9 +149,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
 
       // Guardar en la base de datos la solicitud de certificado
       let data_to_submit = {
-        nombre: con_nombre,
-        cc: con_documento,
-        estado_docente: con_estado,
+        usuario_id: usuarioId,
         fecha_creacion: con_fecha,
         id_certificado: uniqueId,
         correo: correo_to_save,
@@ -148,7 +173,10 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
             referenceType: 'documento',
             motivo: motivo_exp,
           });
-          emailFeedback = buildCertificateEmailFeedback(emailResult);
+          emailFeedback = buildCertificateEmailFeedback(emailResult, {
+            missingRecipientMessage:
+              'El certificado se generó correctamente, pero no se envió por correo porque no se tiene registrado el email del docente en el sistema.',
+          });
         } catch (emailError) {
           console.error('Error al enviar certificado de docente por correo:', emailError);
           emailFeedback = buildCertificateEmailFailureFeedback();
@@ -403,7 +431,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
         })
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .text(
-          ' y entregado en Bogotá D.C, a través del sistema de generación de Paz y Salvos el ' +
+          ' y entregado en Bogotá D.C, a través del sistema de información de laboratorios de la Universidad Distrital - MILab en el módulo de generación de Paz y Salvos el ' +
             con_fecha,
           {
             width: doc.page.width - 80,
@@ -432,7 +460,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
         .fontSize(12)
         .fill('#021c27')
         .text(
-          'Expedido por: Sistema de Paz y Salvos de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
+          'Expedido por: MILab de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
           40,
           doc.y,
           {
@@ -512,6 +540,11 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
     return res.render('home/message_success', {
       message: 'Certificado generado correctamente',
       message2: emailFeedback?.message || 'Revisa tu correo institucional.',
+      autoDownloadAction: '/milab/api/download-pdf-docente',
+      autoDownloadFields: {
+        con_documento: con_documento,
+      },
+      autoDownloadMessage: 'La descarga del certificado comenzará automáticamente.',
     });
   }
 
@@ -526,9 +559,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
     // Usar pool centralizado
 
     const {
-      nombre,
-      cc,
-      estado_docente,
+      usuario_id,
       fecha_creacion,
       id_certificado,
       correo,
@@ -537,18 +568,8 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       origen_descarga,
     } = req;
     pool.query(
-      'INSERT INTO docente (nombre, cc, estado_docente, fecha_creacion, id_certificado, correo, multa, motivo_exp, origen_descarga) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-      [
-        nombre,
-        cc,
-        estado_docente,
-        fecha_creacion,
-        id_certificado,
-        correo,
-        multa,
-        motivo_exp,
-        origen_descarga,
-      ],
+      'INSERT INTO certificado_docente (usuario_id, fecha_creacion, id_certificado, correo, multa, motivo_exp, origen_descarga) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [usuario_id, fecha_creacion, id_certificado, correo, multa, motivo_exp, origen_descarga],
       (error) => {
         if (error) {
           throw error;

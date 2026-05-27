@@ -4,7 +4,7 @@ const pool = require('../../libs/db');
 
 // Función para obtener todos los registros de la tabla1
 async function obtenerRegistrosTabla1() {
-  const query = 'SELECT * FROM estudiante';
+  const query = 'SELECT * FROM certificado_estudiante';
 
   try {
     const client = await pool.connect();

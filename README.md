@@ -1,8 +1,8 @@
-# Paz y Salvos Laboratorios Universidad Distrital
+# MILab
 
 ## Descripción General
 
-Aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo, y seguridad avanzada.
+MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
 ## Arquitectura y Estructura del Proyecto
 
@@ -111,13 +111,13 @@ También puedes documentar comandos para lint o pruebas. Estos pasos ayudan a as
 
 ## Análisis local
 
-El pipeline de calidad usa Node.js 20 y ejecuta formato, ESLint y auditoría de dependencias.
+El pipeline de calidad usa Node.js 25 y ejecuta formato, ESLint y auditoría de dependencias.
 
 Para ejecutar el mismo análisis localmente con Docker:
 
 `npm run analyze:local`
 
-Si ya tienes Node.js 20 instalado y un `package-lock.json` actualizado, también puedes usar:
+Si ya tienes Node.js 25 instalado y un `package-lock.json` actualizado, también puedes usar:
 
 `npm run ci:check`
 
@@ -136,6 +136,12 @@ Si ya tienes Node.js 20 instalado y un `package-lock.json` actualizado, también
 - `LOG_BRIDGE_CONSOLE`: si está en `true`, los `console.log` existentes pasan por el logger central. `console.log` se trata como `debug`, `console.warn` como `warn` y `console.error` como `error`.
 - `SECURITY_LOG_TO_FILE`: permite conservar el archivo `security.log` además del logger central. Por defecto: `true`.
 - `SECURITY_LOG_FILE`: ruta del archivo de eventos de seguridad si se quiere persistencia separada.
+
+## Flujos del sistema
+
+Resumen operativo de procesos y responsabilidades por rol:
+
+- [docs/README-flujos-procesos.md](docs/README-flujos-procesos.md)
 
 ## SQL de base
 

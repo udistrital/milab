@@ -2,322 +2,235 @@
 
 ## Objetivo
 
-Este documento propone una estrategia realista para introducir pruebas automatizadas en MiLab.
-
-No busca únicamente responder "qué probar", sino también "qué tan testeable es hoy el código", "qué dependencias externas hay que aislar" y "en qué orden conviene invertir el esfuerzo".
+Este documento resume el estado actual de la estrategia de pruebas automatizadas de MILab, qué cobertura ya existe y qué frentes siguen siendo prioritarios.
 
 ## Resumen Ejecutivo
 
-El proyecto hoy no tiene una suite formal de pruebas unitarias ni de integración. Tampoco tiene un framework de pruebas declarado en [package.json](package.json). Existe una validación manual o semiautomatizada en [scripts/validate-milab-flows.js](scripts/validate-milab-flows.js), pero no reemplaza una estrategia de pruebas mantenible.
+MILab ya cuenta con una suite formal de pruebas unitarias ejecutada con `node:test` y visible desde `package.json` mediante:
 
-La recomendación es introducir pruebas en tres niveles:
+- `npm test`
+- `npm run test:unit`
 
-1. Pruebas unitarias puras para helpers y decisiones de negocio sin IO.
-2. Pruebas de rutas pequeñas o de middleware con dependencias mockeadas.
-3. Pruebas de integración selectivas para flujos críticos, sin intentar cubrir todo desde el primer sprint.
+La suite actual cubre helpers, middlewares y algunas rutas con dependencias simuladas. Todavía no existe una capa amplia de pruebas de integración end-to-end, pero ya hay una red útil de seguridad sobre invariantes críticos:
 
-El primer objetivo no debe ser alcanzar alta cobertura, sino crear una red mínima de seguridad alrededor de invariantes críticos: autenticación, permisos, recuperación de contraseña, armado de URLs y envío de correo.
+1. correos institucionales y conflictos de email,
+2. construcción de URLs,
+3. envío de correos y overrides,
+4. alcance por facultad,
+5. tokens de registro,
+6. autenticación y autorización de middlewares,
+7. verificación reCAPTCHA,
+8. reintentos del cliente OATI,
+9. parseo de formularios en rutas sensibles.
 
-## Estado Actual De Testeabilidad
+Conclusión: el proyecto ya no está en etapa “sin suite”. La siguiente inversión útil no es montar testing desde cero, sino ampliar cobertura de rutas críticas y separar mejor dependencias externas.
 
-### Lo que sí favorece pruebas rápidas
+## Estado Actual De La Suite
 
-Hay varios módulos con lógica relativamente pura o con límites claros:
+La estructura actual incluye al menos:
+
+- `tests/unit/libs/*.test.js`
+- `tests/unit/middlewares/*.test.js`
+- `tests/unit/routes/*.test.js`
+
+La ejecución actual validada localmente pasa con éxito sobre la suite unitaria.
+
+## Superficie Ya Cubierta
+
+### Helpers y librerías
+
+Hay cobertura efectiva en módulos como:
 
 - [src/libs/account-email.js](src/libs/account-email.js)
 - [src/libs/app-url.js](src/libs/app-url.js)
 - [src/libs/certificate-email.js](src/libs/certificate-email.js)
 - [src/libs/faculty-scope.js](src/libs/faculty-scope.js)
+- [src/libs/mail.js](src/libs/mail.js)
+- [src/libs/oati-client.js](src/libs/oati-client.js)
+- [src/libs/recaptcha.js](src/libs/recaptcha.js)
 - [src/libs/registration-token.js](src/libs/registration-token.js)
+
+Cobertura relevante ya observada:
+
+1. normalización y validación de correos institucionales,
+2. detección de errores únicos de PostgreSQL,
+3. generación de URLs con `APP_BASE_URL`, desarrollo y producción,
+4. comportamiento del correo con recipient override,
+5. derivación de facultades y alcance de coordinadores,
+6. obtención del secreto de registro,
+7. verificación reCAPTCHA,
+8. política de reintentos OATI.
+
+### Middlewares
+
+Hay cobertura útil sobre:
+
 - [src/routes/middlewares/auth.js](src/routes/middlewares/auth.js)
-- [src/routes/middlewares/security-logger.js](src/routes/middlewares/security-logger.js)
+- manejo de errores de aplicación,
+- validación de respuestas JSON para autorización.
 
-Esos archivos permiten empezar a generar valor sin necesidad de refactorizar toda la aplicación.
+### Rutas con pruebas dirigidas
 
-### Lo que hoy dificulta las pruebas
+Ya existen pruebas sobre varias rutas y flujos puntuales, por ejemplo:
 
-Hay varias rutas con mucha lógica acoplada a IO externo y a variables de entorno. Los casos más visibles son:
-
-- [src/routes/api/login.js](src/routes/api/login.js)
-- [src/routes/api/send_email.js](src/routes/api/send_email.js)
-- [src/routes/api/register_labs.js](src/routes/api/register_labs.js)
-- [src/routes/api/registro_coordinador.js](src/routes/api/registro_coordinador.js)
-- [src/routes/api/get-data1.js](src/routes/api/get-data1.js)
+- [src/routes/api/consulta-invit.js](src/routes/api/consulta-invit.js)
+- [src/routes/api/download-pdf.js](src/routes/api/download-pdf.js)
+- [src/routes/api/facultad.js](src/routes/api/facultad.js)
+- [src/routes/api/generate_cert_estudiante_lab.js](src/routes/api/generate_cert_estudiante_lab.js)
 - [src/routes/api/get-data2.js](src/routes/api/get-data2.js)
-- [src/routes/api/get-data.js](src/routes/api/get-data.js)
-- [src/routes/api/get-data-docente.js](src/routes/api/get-data-docente.js)
+- [src/routes/api/login.js](src/routes/api/login.js)
+- [src/routes/api/registro_coordinador.js](src/routes/api/registro_coordinador.js)
+- [src/routes/api/verificar_docente.js](src/routes/api/verificar_docente.js)
+- [src/routes/api/verificar_estudiante.js](src/routes/api/verificar_estudiante.js)
 
-Los problemas más frecuentes son estos:
+Estas pruebas ya validan comportamientos importantes como:
 
-1. La misma función mezcla validación, acceso a base de datos, llamadas HTTP externas, armado de respuesta HTML y efectos secundarios.
-2. Se usan dependencias globales importadas directamente, por ejemplo `pool`, `axios`, `fetch`, `transporter`, `jwt` o `process.env`.
-3. [src/app.js](src/app.js) crea la app y llama `listen` en el mismo archivo, lo que dificulta pruebas de integración con `supertest`.
-4. Hay repetición de lógica de reCAPTCHA, lookup de cuentas y composición de correo en distintas rutas.
+1. rechazo de reCAPTCHA faltante o inválido,
+2. parseo correcto de formularios `application/x-www-form-urlencoded`,
+3. respuestas controladas ante datos faltantes,
+4. flujo básico de generación y descarga de certificados,
+5. acceso al login institucional.
 
-## Dependencias Externas A Aislar En Pruebas
+## Cambio Relevante Ya Cubierto: Reintentos OATI
 
-Para que las pruebas sean deterministas, estas dependencias deben simularse o encapsularse:
+El cliente de OATI en [src/libs/oati-client.js](src/libs/oati-client.js) ahora implementa reintentos con backoff:
+
+- `500 ms`
+- `1500 ms`
+- `3000 ms`
+
+La suite ya cubre:
+
+1. reintento exitoso ante errores transitorios como `ECONNREFUSED`,
+2. no reintentar respuestas no recuperables como `404`.
+
+Esto es importante porque el comportamiento del cliente cambió y ya quedó protegido por pruebas.
+
+## Dependencias Externas Que Siguen Requiriendo Aislamiento
+
+Para mantener pruebas deterministas, estas dependencias siguen siendo las más sensibles:
 
 ### Base de datos PostgreSQL
 
-Uso extendido de [src/libs/db.js](src/libs/db.js) a través de `pool.query`.
+Uso extendido de [src/libs/db.js](src/libs/db.js) vía `pool.query`.
 
-Impacto:
+Impacta:
 
-- Afecta autenticación, recuperación, dashboards, sanciones, registro de usuarios, actualización de correos y administración operativa.
-
-Recomendación:
-
-- Para pruebas unitarias: mock de `pool.query` o de funciones de repositorio extraídas.
-- Para integración: base efímera o contenedor dedicado solo en algunos flujos críticos.
-
-### SMTP y transporte de correo
-
-Uso de [src/libs/mail.js](src/libs/mail.js) y `transporter.sendMail` en:
-
-- [src/routes/api/send_email.js](src/routes/api/send_email.js)
-- [src/routes/api/register.js](src/routes/api/register.js)
-- [src/routes/api/registro_coordinador.js](src/routes/api/registro_coordinador.js)
-- [src/routes/api/register_labs.js](src/routes/api/register_labs.js)
-- [src/libs/certificate-email.js](src/libs/certificate-email.js)
+- autenticación,
+- recuperación de contraseña,
+- dashboard,
+- sanciones,
+- registro de usuarios,
+- administración operativa.
 
 Recomendación:
 
-- No probar contra SMTP real.
-- Mockear `sendMail` y validar `subject`, `to`, flags de override y enlaces generados.
+- unit tests con mocks de `pool.query`,
+- integración selectiva con base efímera solo en flujos de alto valor.
+
+### SMTP y correo
+
+Uso de [src/libs/mail.js](src/libs/mail.js) y [src/libs/certificate-email.js](src/libs/certificate-email.js).
+
+Recomendación:
+
+- no usar SMTP real en pruebas,
+- verificar destinatario, subject, override y feedback generado.
 
 ### reCAPTCHA y servicios HTTP externos
 
-Hay verificación remota vía Google en:
+Se usan llamadas remotas a Google y a servicios académicos externos en rutas como:
 
 - [src/routes/api/login.js](src/routes/api/login.js)
 - [src/routes/api/get-data1.js](src/routes/api/get-data1.js)
 - [src/routes/api/get-data2.js](src/routes/api/get-data2.js)
 - [src/routes/api/consulta-invit.js](src/routes/api/consulta-invit.js)
 
-Además, varias rutas consultan servicios académicos externos vía `axios.get`.
-
 Recomendación:
 
-- Extraer un helper común de verificación reCAPTCHA.
-- Mockear `fetch` o `axios` en pruebas unitarias.
-- No depender de respuestas reales de red.
+- seguir mockeando `fetch` y `axios`,
+- evitar depender de red real incluso en CI.
 
 ### JWT y secretos de entorno
 
 Uso en:
 
-- [src/routes/api/send_email.js](src/routes/api/send_email.js)
 - [src/routes/api/register_labs.js](src/routes/api/register_labs.js)
 - [src/routes/api/registro_coordinador.js](src/routes/api/registro_coordinador.js)
 - [src/libs/registration-token.js](src/libs/registration-token.js)
 
 Recomendación:
 
-- Probar expiración, rechazo y fallback de secreto con secretos controlados en entorno de prueba.
+- mantener secretos controlados por entorno de prueba,
+- validar expiración, fallback y rechazo explícito.
 
 ### Sistema de archivos
 
 Uso visible en:
 
 - [src/libs/certificate-email.js](src/libs/certificate-email.js)
-- [src/routes/middlewares/security-logger.js](src/routes/middlewares/security-logger.js)
 - [src/libs/logger.js](src/libs/logger.js)
 
 Recomendación:
 
-- Mockear `fs.existsSync`, `fs.appendFile`, `fs.readFileSync` y evitar tocar disco real salvo pruebas específicas del logger.
+- mockear acceso a disco salvo en pruebas muy puntuales.
 
-## Qué Tipo De Suite Conviene Montar
+## Qué Sigue Faltando
 
-## Opción recomendada
+### 1. Más cobertura de rutas críticas
 
-Usar el runner nativo `node:test` y sumar `supertest` para pruebas HTTP de rutas.
+Siguen siendo prioritarias estas superficies:
 
-Razones:
+- [src/routes/api/send_email.js](src/routes/api/send_email.js)
+- [src/routes/api/register_labs.js](src/routes/api/register_labs.js)
+- [src/routes/api/aprobacion_multa.js](src/routes/api/aprobacion_multa.js)
+- [src/routes/api/submit.js](src/routes/api/submit.js)
+- [src/routes/api/submit_docente.js](src/routes/api/submit_docente.js)
+- [src/routes/api/get_list_multas.js](src/routes/api/get_list_multas.js)
+- [src/routes/api/dashboard.js](src/routes/api/dashboard.js)
 
-1. El proyecto ya corre en Node 20.
-2. Reduce dependencia inicial y complejidad de configuración.
-3. Permite empezar con pruebas unitarias puras y luego crecer a pruebas de integración.
-4. Es suficiente para la etapa inicial de deuda técnica.
+Especialmente útiles serían pruebas para:
 
-## Dependencias sugeridas
+1. bloqueo de registro de laboratorista si el usuario ya es coordinador,
+2. activación y saldado de sanciones con `req.body` parseado,
+3. rechazo de fechas futuras en sanciones,
+4. alcance del dashboard por rol,
+5. respuestas de error controladas cuando coordinador o laboratorista no tienen alcance asignado.
 
-- `supertest` para probar endpoints Express sin levantar un servidor real.
-- Eventualmente `c8` o equivalente para cobertura, pero no es imprescindible en la primera fase.
+### 2. Integración HTTP más amplia
 
-## Estructura sugerida
+El proyecto ya tiene `supertest`, pero todavía conviene crecer en:
 
-Una estructura razonable sería:
+- pruebas de rutas agrupadas por módulo,
+- validación de redirecciones y sesiones,
+- cobertura de flujos con menú y permisos.
 
-- `tests/unit/libs/*.test.js`
-- `tests/unit/middlewares/*.test.js`
-- `tests/unit/routes/*.test.js`
-- `tests/integration/*.test.js`
+### 3. Separación adicional de responsabilidades
 
-## Superficie De Prueba Prioritaria
+Varias rutas todavía mezclan:
 
-## Prioridad 1: invariantes puros y helpers críticos
+1. validación,
+2. acceso a DB,
+3. llamadas HTTP externas,
+4. renderizado,
+5. efectos secundarios.
 
-Estas pruebas deberían implementarse primero porque tienen alto valor y bajo costo.
+Mientras no se siga desacoplando esa lógica, las pruebas existirán, pero con mayor fricción de mantenimiento.
 
-### [src/libs/account-email.js](src/libs/account-email.js)
+## Recomendación Actualizada
 
-Casos sugeridos:
+La estrategia recomendada ya no es “introducir testing”, sino “ampliar la red existente en el orden correcto”.
 
-1. `normalizeInstitutionalEmail` normaliza espacios y mayúsculas.
-2. `isInstitutionalEmail` acepta solo correos `@udistrital.edu.co`.
-3. `isUniqueViolation` detecta error `23505`.
-4. `normalizeLogDocument` devuelve `null` para identificadores alfanuméricos y preserva documentos numéricos válidos.
+Orden sugerido:
 
-Valor:
+1. rutas de sanciones y registro con regresiones recientes,
+2. dashboard por rol y alcance,
+3. recuperación de contraseña y correo,
+4. integración HTTP de flujos autenticados clave.
 
-- Protege reglas de correo institucional y auditoría, ya afectadas por bugs reales.
+## Conclusión
 
-### [src/libs/app-url.js](src/libs/app-url.js)
-
-Casos sugeridos:
-
-1. Construcción de URL con `APP_BASE_URL` explícito.
-2. Fallback correcto entre desarrollo y producción.
-3. Eliminación de slash final duplicado.
-4. Normalización de rutas con y sin slash inicial.
-
-Valor:
-
-- Ya hubo incidentes con links de recuperación y registro.
-
-### [src/libs/registration-token.js](src/libs/registration-token.js)
-
-Casos sugeridos:
-
-1. Devuelve el secreto configurado.
-2. Comportamiento con secreto ausente.
-
-Valor:
-
-- Es pequeño, fácil de testear y reduce riesgo en rutas de token.
-
-### [src/libs/certificate-email.js](src/libs/certificate-email.js)
-
-Casos sugeridos:
-
-1. `resolveCertificateRecipient` aplica override cuando existe variable de entorno.
-2. `sendCertificateEmail` devuelve `missing-recipient` cuando no hay correo.
-3. `sendCertificateEmail` falla si el PDF no existe.
-4. `buildCertificateEmailFeedback` construye mensajes correctos para envío normal, override y omisión.
-5. `buildCertificateEmailFailureFeedback` devuelve warning consistente.
-
-Valor:
-
-- Cubre una de las funcionalidades que pediste explícitamente: envío de correo.
-
-### [src/libs/faculty-scope.js](src/libs/faculty-scope.js)
-
-Casos sugeridos:
-
-1. `normalizeAcademicText` elimina tildes y normaliza espacios.
-2. `canonicalizeFacultyName` mapea aliases a nombres oficiales.
-3. `resolveAcademicFacultyName` resuelve carreras conocidas.
-4. `resolveCoordinatorScope` devuelve facultades únicas y usa fallback si no hay filas en `coordinador_facultad`.
-
-Valor:
-
-- Protege reglas de negocio y permisos por facultad.
-
-### [src/routes/middlewares/auth.js](src/routes/middlewares/auth.js)
-
-Casos sugeridos:
-
-1. `requireUser` bloquea sesión ausente.
-2. `requireRoles` permite y deniega roles correctamente.
-3. `requireJsonRoles` devuelve `401` o `403` según corresponda.
-
-Valor:
-
-- Muy alta relación valor/esfuerzo.
-
-## Prioridad 2: middlewares y utilidades con IO controlado
-
-### [src/routes/middlewares/security-logger.js](src/routes/middlewares/security-logger.js)
-
-Casos sugeridos:
-
-1. Detecta correo no institucional.
-2. Detecta contraseña débil.
-3. Registra eventos cuando una vista renderiza mensajes sensibles.
-4. `getSecurityLogs` maneja ausencia de archivo y entradas inválidas.
-
-Valor:
-
-- Es lógica de seguridad transversal y fácil de romper en cambios futuros.
-
-### [src/libs/mail.js](src/libs/mail.js)
-
-Casos sugeridos:
-
-1. `applyRecipientOverride` reescribe `to`, limpia `cc` y `bcc`, y preserva destinatarios originales en header.
-2. `buildTransportConfig` usa `EMAIL_SERVICE` si existe.
-3. `buildTransportConfig` usa `host`, `port` y `secure` cuando no hay servicio.
-
-Valor:
-
-- Alta utilidad para asegurar el comportamiento de override en ambientes de prueba.
-
-### [src/libs/logger.js](src/libs/logger.js)
-
-Casos sugeridos:
-
-1. `parseBoolean` y `parseNumber`.
-2. `sanitizeValue` oculta claves sensibles.
-3. `maskIdentifier` enmascara correctamente.
-
-Valor:
-
-- Es transversal y relativamente puro.
-
-## Prioridad 3: primeras pruebas de rutas
-
-Estas ya no son unitarias puras, pero sí deberían entrar en la primera ola porque cubren los flujos básicos que pediste.
-
-### Login
-
-Archivo: [src/routes/api/login.js](src/routes/api/login.js)
-
-Casos sugeridos:
-
-1. Rechaza datos inválidos.
-2. Rechaza reCAPTCHA fallido.
-3. Rechaza credenciales inválidas.
-4. Redirige a cambio de contraseña cuando `password_cambiado === false` para roles operativos.
-5. Crea sesión y redirige a `/milab/inicio` con credenciales válidas.
-
-Necesidad de refactor:
-
-- Extraer verificación de reCAPTCHA a helper reutilizable.
-- Separar la consulta `login(documento)` a un módulo de servicio o repositorio exportable.
-
-### Recuperación de contraseña
-
-Archivo: [src/routes/api/send_email.js](src/routes/api/send_email.js)
-
-Casos sugeridos:
-
-1. Rechaza payload inválido.
-2. Muestra error cuando no encuentra cuenta.
-3. Bloquea cuentas sin correo de recuperación.
-4. Genera token y llama a `sendMail` cuando la cuenta es válida.
-5. Devuelve mensaje de error cuando falla el correo.
-6. `verify_email` resuelve correctamente `auth`, `usuario`, `laboratorista` y `coordinador_laboratorio`.
-
-Necesidad de refactor:
-
-- Extraer `generateRandomSecret` y `verify_email` a módulo reutilizable.
-- Aislar construcción de `mailOptions`.
-
-### Validación de permisos JSON
-
-Archivos candidatos:
+MILab ya tiene una base real de pruebas unitarias útil y ejecutable en CI. La inversión correcta ahora es reforzar regresiones en rutas operativas y en el comportamiento por rol, no reconstruir desde cero la estrategia de testing.
 
 - [src/routes/api/estudiantes_registrados.js](src/routes/api/estudiantes_registrados.js)
 - [src/routes/api/coordinadores_registrados.js](src/routes/api/coordinadores_registrados.js)
@@ -472,7 +385,7 @@ Introducir esta base mínima de pruebas antes de normalizar la BD es la decisió
 
 Razones:
 
-1. La normalización va a tocar `auth`, flujos de correo, sanciones, asignaciones por facultad y auditoría.
+1. La normalización va a tocar `usuario`/`usuario_rol`, flujos de correo, sanciones, asignaciones por facultad y auditoría.
 2. Hoy esos flujos dependen de convenciones implícitas y de joins frágiles.
 3. Sin pruebas, el riesgo de regresión es alto.
 

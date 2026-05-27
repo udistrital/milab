@@ -1,7 +1,7 @@
 const express = require('express');
-const axios = require('axios');
 
 const pool = require('../../libs/db');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { verifyRecaptchaToken } = require('../../libs/recaptcha');
 const limiter = require('../middlewares/limiter');
 require('dotenv').config();
@@ -9,6 +9,9 @@ require('dotenv').config();
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 router.post('/', limiter, async function (req, res) {
   const { numero_documento_identificacion, 'g-recaptcha-response': recaptchaResponse } = req.body;
@@ -60,12 +63,9 @@ router.post('/', limiter, async function (req, res) {
 
   // Si no existe en la base de datos, consultamos al servicio OAS
   try {
-    const respuesta1 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/consultar_estado_docente/' +
-        numero_documento_identificacion
+    const dato1 = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
     );
-
-    const dato1 = respuesta1.data;
 
     // Log the entire dato1 object to inspect its structure
     console.log('Datos del docente:', dato1);

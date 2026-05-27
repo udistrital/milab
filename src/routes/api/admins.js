@@ -1,7 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const bcrypt = require('bcrypt');
-const crypto = require('crypto');
 
 const pool = require('../../libs/db');
 const { requireRoles } = require('../middlewares/auth');
@@ -9,6 +7,9 @@ const { requireRoles } = require('../middlewares/auth');
 require('dotenv').config();
 
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 const requireAdminAccess = requireRoles('admin', {
   message: '¡Algo ha salido mal!',
@@ -88,23 +89,23 @@ async function lookupAdminByDocumento(documento) {
 }
 
 async function ensureAdminRoleExists() {
-  await pool.query("INSERT INTO roles (name) VALUES ('admin') ON CONFLICT DO NOTHING");
+  await pool.query("INSERT INTO rol (nombre) VALUES ('admin') ON CONFLICT DO NOTHING");
 }
 
 async function ensureUserIdentity({ correo, documento, nombre }) {
   const existing = await pool.query(
-    'SELECT id FROM usuarios WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
+    'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
     [correo, documento]
   );
 
   if (existing.rows.length) {
     const userId = existing.rows[0].id;
     await pool.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET correo = $1,
            documento = $2,
            nombre = $3,
-           updated_at = CURRENT_TIMESTAMP
+           fecha_modificacion = CURRENT_TIMESTAMP
        WHERE id = $4`,
       [correo, documento, nombre, userId]
     );
@@ -112,7 +113,7 @@ async function ensureUserIdentity({ correo, documento, nombre }) {
   }
 
   const inserted = await pool.query(
-    'INSERT INTO usuarios (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
+    'INSERT INTO usuario (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
     [correo, documento, nombre]
   );
   return inserted.rows[0].id;
@@ -120,26 +121,12 @@ async function ensureUserIdentity({ correo, documento, nombre }) {
 
 async function ensureAdminRoleAssignment(userId) {
   await pool.query(
-    `INSERT INTO usuario_roles (usuario_id, role_id, activo)
-     SELECT $1, id, TRUE FROM roles WHERE name = 'admin'
-     ON CONFLICT (usuario_id, role_id) DO UPDATE
+    `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
+     SELECT $1, id, TRUE FROM rol WHERE nombre = 'admin'
+     ON CONFLICT (usuario_id, rol_id) DO UPDATE
      SET activo = TRUE,
-         updated_at = CURRENT_TIMESTAMP`,
+       fecha_modificacion = CURRENT_TIMESTAMP`,
     [userId]
-  );
-}
-
-async function upsertAuthAccount({ documento, correo }) {
-  const passwordTemporal = crypto.randomBytes(24).toString('hex');
-  const hashedPassword = await bcrypt.hash(passwordTemporal, 12);
-
-  await pool.query(
-    `INSERT INTO auth (documento, password, tipo, password_cambiado, correo)
-     VALUES ($1, $2, 'admin', TRUE, $3)
-     ON CONFLICT (documento) DO UPDATE
-     SET correo = EXCLUDED.correo,
-         tipo = EXCLUDED.tipo`,
-    [documento, hashedPassword, correo]
   );
 }
 
@@ -252,7 +239,6 @@ router.post('/', requireAdminAccess, async (req, res) => {
     await ensureAdminRoleExists();
     const userId = await ensureUserIdentity({ correo, documento, nombre });
     await ensureAdminRoleAssignment(userId);
-    await upsertAuthAccount({ documento, correo });
     await upsertLegacyUsuario({ documento, nombre, correo });
 
     return res.render('home/admin_add', {

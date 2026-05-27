@@ -3,8 +3,6 @@ const express = require('express');
 const axios = require('axios');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
-const bcrypt = require('bcrypt');
-const crypto = require('crypto');
 const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
@@ -21,6 +19,9 @@ const { securityLogger } = require('../middlewares/security-logger');
 const { requireRoles, requireUser } = require('../middlewares/auth');
 
 const router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
 
 const requireCoordinatorTokenAccess = requireRoles('coordinador', {
   message: '¡Algo ha salido mal!',
@@ -119,7 +120,7 @@ function normalizeSelectedUalIds(rawValue) {
 
 async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }) {
   const existing = await pool.query(
-    'SELECT id FROM usuarios WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
+    'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
     [correo, documento]
   );
 
@@ -127,45 +128,30 @@ async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }
   if (existing.rows.length) {
     userId = existing.rows[0].id;
     await pool.query(
-      `UPDATE usuarios
+      `UPDATE usuario
        SET correo = $1,
            documento = $2,
            nombre = $3,
-           updated_at = CURRENT_TIMESTAMP
+           fecha_modificacion = CURRENT_TIMESTAMP
        WHERE id = $4`,
       [correo, documento, nombre, userId]
     );
   } else {
     const inserted = await pool.query(
-      'INSERT INTO usuarios (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
+      'INSERT INTO usuario (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
       [correo, documento, nombre]
     );
     userId = inserted.rows[0].id;
   }
 
   await pool.query(
-    `INSERT INTO usuario_roles (usuario_id, role_id)
-     SELECT $1, id FROM roles WHERE name = $2
+    `INSERT INTO usuario_rol (usuario_id, rol_id)
+     SELECT $1, id FROM rol WHERE nombre = $2
      ON CONFLICT DO NOTHING`,
     [userId, roleName]
   );
 
   return userId;
-}
-
-async function upsertAuthAccount({ client, documento, correo, tipo }) {
-  const passwordTemporal = crypto.randomBytes(24).toString('hex');
-  const hashedPassword = await bcrypt.hash(passwordTemporal, 12);
-  const runner = client || pool;
-
-  await runner.query(
-    `INSERT INTO auth (documento, password, tipo, password_cambiado, correo)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (documento) DO UPDATE
-     SET correo = EXCLUDED.correo,
-         tipo = EXCLUDED.tipo`,
-    [documento, hashedPassword, tipo, true, correo]
-  );
 }
 
 async function buildRegisterLabsViewContext(sessionUser) {
@@ -340,11 +326,17 @@ router.post(
   requireLabRegistrationSession,
   [
     body('correo')
-      .isEmail()
+      .trim()
       .notEmpty()
-      .matches(/^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$/)
+      .withMessage('Debes ingresar un correo institucional.')
+      .bail()
+      .isEmail()
+      .withMessage('Ingresa un correo electrónico válido.')
+      .bail()
+      .customSanitizer((value) => normalizeEmail(value))
+      .custom((value) => value.endsWith('@udistrital.edu.co'))
       .withMessage('Solo se permiten correos institucionales (@udistrital.edu.co)')
-      .escape(),
+      .bail(),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -356,7 +348,7 @@ router.post(
       return renderRegisterLabsWithError(req, res, errorMessages);
     }
 
-    const usuario = req.body;
+    const usuario = req.body || {};
 
     try {
       const selectedFacultyId = Number(usuario.facultad);
@@ -403,7 +395,7 @@ router.post(
       );
 
       const usuariosResult = await pool.query(
-        'SELECT id, documento FROM usuarios WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
+        'SELECT id, documento FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
         [usuario.correo, usuario.documento]
       );
 
@@ -411,6 +403,38 @@ router.post(
       const hasUserConflict =
         existingUser &&
         String(existingUser.documento || '').trim() !== String(usuario.documento || '').trim();
+
+      const coordinatorResult = await pool.query(
+        `SELECT documento
+         FROM coordinador
+         WHERE documento = $1
+            OR LOWER(COALESCE(correo, '')) = LOWER($2)
+            OR nombre_u = $1
+            OR ($3::bigint IS NOT NULL AND usuario_id = $3::bigint)
+         LIMIT 1`,
+        [usuario.documento, usuario.correo, existingUser?.id || null]
+      );
+
+      const coordinatorRoleConflict = existingUser
+        ? await pool.query(
+            `SELECT 1
+             FROM usuario_rol ur
+             JOIN rol r ON r.id = ur.rol_id
+             WHERE ur.usuario_id = $1
+               AND ur.activo = TRUE
+               AND r.nombre = 'coordinador'
+             LIMIT 1`,
+            [existingUser.id]
+          )
+        : { rows: [] };
+
+      if (coordinatorResult.rows[0] || coordinatorRoleConflict.rows[0]) {
+        return renderRegisterLabsWithError(
+          req,
+          res,
+          'No puedes registrar como laboratorista a un usuario que ya esta asociado como coordinador.'
+        );
+      }
 
       if (result.rows[0] || hasUserConflict) {
         return res.render('home/message_error', {
@@ -466,13 +490,6 @@ async function create_account(data, userSession) {
       roleName: tipo,
     });
 
-    await upsertAuthAccount({
-      client,
-      documento,
-      correo,
-      tipo,
-    });
-
     const result = await client.query(
       `INSERT INTO laboratorista
         (documento, nombre, n_usuario, correo, id_ual, id_facultad, contrato, usuario_id)
@@ -493,17 +510,16 @@ async function create_account(data, userSession) {
       let documentoReal = userSession.documento;
 
       if (userSession.tipo === 'coordinador') {
-        const result = await client.query(
-          'SELECT documento FROM coordinador_laboratorio WHERE nombre_u = $1',
-          [userSession.documento]
-        );
+        const result = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+          userSession.documento,
+        ]);
         if (result.rows.length > 0) {
           documentoReal = result.rows[0].documento;
         }
       }
 
       await client.query(
-        'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+        'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
         [userSession.tipo, documentoReal, 'Registrar nuevo laboratorista', documento]
       );
 
@@ -562,10 +578,10 @@ async function enviarCorreoBienvenidaLaboratorista(datosLaboratorista) {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: datosLaboratorista.correo,
-      subject: `Bienvenido al Sistema de Paz y Salvos - Laboratorios UD`,
+      subject: `Bienvenido a MILab - Laboratorios UD`,
       text: `Estimad@ ${datosLaboratorista.nombre},
 
-¡Bienvenido/a al Sistema de Paz y Salvos de Laboratorios de la Universidad Distrital!
+¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital!
 
 Su cuenta ha sido creada exitosamente con los siguientes datos:
 
@@ -586,7 +602,7 @@ Puede acceder al sistema en: ${appBaseUrl}
 Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.
 
 Atentamente,
-Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
+MILab - Coordinación General de Laboratorios`,
 
       html: `
       <!DOCTYPE html>
@@ -596,7 +612,7 @@ Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <meta name="color-scheme" content="light only">
           <meta name="supported-color-schemes" content="light only">
-          <title>Bienvenido al Sistema de Paz y Salvos</title>
+          <title>Bienvenido a MILab</title>
           <!--[if mso]>
           <style>
               .fallback-font { font-family: Arial, sans-serif; }
@@ -614,7 +630,7 @@ Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
                           <tr>
                               <td align="center" style="padding: 30px 30px 20px 30px; background-color: #28a745; border-radius: 12px 12px 0 0;">
                                   <h1 class="fallback-font" style="font-size: 28px; font-weight: 700; color: #ffffff; margin: 0;">¡Bienvenido/a!</h1>
-                                  <p class="fallback-font" style="font-size: 16px; color: #d4edda; margin: 10px 0 0 0;">Sistema de Paz y Salvos - Laboratorios UD</p>
+                                  <p class="fallback-font" style="font-size: 16px; color: #d4edda; margin: 10px 0 0 0;">MILab - Laboratorios UD</p>
                               </td>
                           </tr>
                           
@@ -625,7 +641,7 @@ Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
                                       Estimad@ <strong>${datosLaboratorista.nombre}</strong>,
                                   </p>
                                   <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin-top: 16px;">
-                                      ¡Bienvenido/a al Sistema de Paz y Salvos de Laboratorios de la Universidad Distrital! Su cuenta ha sido creada exitosamente.
+                                      ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital! Su cuenta ha sido creada exitosamente.
                                   </p>
                               </td>
                           </tr>
@@ -704,7 +720,7 @@ Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
                               Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.
                             </p>
                             <p class="fallback-font" style="font-size: 14px; color: rgba(255,255,255,0.92); margin: 14px 0 0 0; text-align: center; line-height: 1.6;">
-                              Atentamente,<br><strong>Sistema de Paz y Salvos - Coordinación General de Laboratorios</strong>
+                              Atentamente,<br><strong>MILab - Coordinación General de Laboratorios</strong>
                             </p>
                           `)}
                       </table>
@@ -715,7 +731,7 @@ Sistema de Paz y Salvos - Coordinación General de Laboratorios`,
               <tr>
                   <td align="center" style="padding: 20px 0;">
                       <p class="fallback-font" style="font-size: 12px; color: #9aa0a6; text-align: center;">
-                          © 2025 Sistema Paz y Salvos / Coordinación General de Laboratorios - CILUD. Todos los derechos reservados.<br>
+                          © 2025 MILab / Coordinación General de Laboratorios - CILUD. Todos los derechos reservados.<br>
                           Universidad Distrital Francisco José de Caldas, Bogotá D.C.
                       </p>
                   </td>

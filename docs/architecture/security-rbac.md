@@ -2,46 +2,97 @@
 
 ## Proposito
 
-Resumen de autenticacion, control de acceso y limites.
+Resumen de autenticación, control de acceso, límites y alcance operativo por rol en MILab.
 
 ## Diagrama (Mermaid)
 
 ```mermaid
 flowchart TB
   user[Usuario] --> login[Microsoft Entra OAuth]
-  login --> session[Cookie de sesion\nhttpOnly + SameSite]
-  session --> authz[Middleware RBAC\nrequireRoles]
-  authz --> routes_api[Rutas API]
+  login --> session[Cookie de sesión\nhttpOnly + SameSite]
+  session --> authz[Middleware base\nrequireUser / requireRoles]
+  authz --> menu[Permisos de menú\nmenu_item + rol_permiso]
+  authz --> dashboard_scope[Alcance operativo\nfacultades / UAL]
+  menu --> routes_api[Rutas API]
   authz --> routes_web[Rutas web]
+  dashboard_scope --> routes_api
   routes_api --> db[(PostgreSQL)]
 
-  rate[Limite de tasa\npublic + auth] --> routes_api
+  rate[Límite de tasa\npúblico + sesión] --> routes_api
   rate --> routes_web
-  recaptcha[reCAPTCHA] --> routes_api
+  recaptcha[reCAPTCHA en flujos públicos sensibles] --> routes_api
 ```
 
-## Notas clave
+## Notas Clave
 
-- OAuth2 via Microsoft Entra (state habilitado, sin offline_access).
-- Sesion con cookie httpOnly, SameSite configurable, sin saveUninitialized.
-- RBAC basado en roles y permisos de menu (ver docs/route-access-map.md).
-- Limite de tasa para rutas publicas y autenticadas.
-- reCAPTCHA en flujos sensibles.
+- OAuth2 vía Microsoft Entra con `state` habilitado.
+- Sesión con cookie `httpOnly`, `SameSite` configurable y sin `saveUninitialized`.
+- RBAC basado en roles persistidos en `usuario_rol` y permisos de menú en `rol_permiso`.
+- El permiso visual del menú no reemplaza la validación backend: las rutas siguen protegidas con `requireUser(...)` y `requireRoles(...)`.
+- `Monitoreo` ya no es exclusivo de `admin`: también lo usan `coordinador` y `laboratorista`, con alcance filtrado por facultades o UAL.
+- Los formularios públicos sensibles mantienen rate limit y, donde aplica, validación reCAPTCHA.
 
-## Amenazas y mitigaciones
+## Roles Operativos
 
-- Suplantacion OAuth en callback: uso de state en flujo OAuth2.
-- Fijacion o robo de sesion: cookie httpOnly + SameSite; secure cuando SESSION_SECURE=true; regeneracion de sesion tras login.
-- Abuso de rutas publicas: limite de tasa en endpoints publicos.
-- Automatizacion en formularios sensibles: validacion reCAPTCHA.
-- Escalamiento de privilegios: RBAC con roles y permisos de menu persistidos en BD.
-- Auditoria de seguridad: eventos registrados en tabla logs.
+| Rol | Capacidades principales |
+| --- | --- |
+| `admin` | Vista global, administración, configuración, consultas operativas, monitoreo completo |
+| `coordinador` | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades |
+| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL |
+| `estudiante` | Solicitud y descarga de su certificado |
+| `docente` | Solicitud y descarga de su certificado |
 
-## Ejemplos de rutas y controles
+## Alcance De Monitoreo
 
-| Ruta                                | Control aplicado                                         | Origen                                                           |
-| ----------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
-| /milab/api                          | menuPermissionMiddleware (menu_items + role_permissions) | src/milab_routes.js + src/routes/middlewares/menu-permissions.js |
-| /milab/api/download-pdf             | requireRoles + validacion de ownership estudiante        | src/routes/api/download-pdf.js                                   |
-| /milab/api/get-estado-multa/:codigo | publicApiLimiter + validacion numerica                   | src/routes/api/get-estado-multa.js                               |
-| /milab/api/consulta-invit           | reCAPTCHA en POST                                        | src/routes/api/consulta-invit.js                                 |
+El acceso a `/milab/api/dashboard` depende de rol y alcance:
+
+| Rol | Fuente de alcance | Cobertura |
+| --- | --- | --- |
+| `admin` | No aplica | Toda la plataforma |
+| `coordinador` | `resolveCoordinatorScope(...)` + `coordinador_facultad` | Solo facultades asignadas |
+| `laboratorista` | `laboratorista` + `laboratorista_ual` | Solo UAL asignadas |
+
+Indicadores disponibles:
+
+- `admin`: estudiantes, docentes, sanciones, sanciones activas, sanciones saldadas, laboratoristas, coordinadores y usuarios registrados.
+- `coordinador`: estudiantes, sanciones, sanciones activas, sanciones saldadas, laboratoristas, coordinadores y usuarios registrados.
+- `laboratorista`: sanciones, sanciones activas, sanciones saldadas y laboratoristas.
+
+## Amenazas Y Mitigaciones
+
+- Suplantación OAuth en callback: uso de `state` en el flujo OAuth2.
+- Fijación o robo de sesión: cookie `httpOnly`, `SameSite`, `secure` cuando aplica y regeneración de sesión tras login.
+- Abuso de rutas públicas: rate limit en endpoints públicos y sensibles.
+- Automatización en formularios públicos: reCAPTCHA en flujos como consulta de invitado y validaciones expuestas.
+- Escalamiento horizontal de privilegios: RBAC por backend y permisos persistidos en BD.
+- Escalamiento por alcance de datos: el dashboard y varias consultas filtran por facultades o UAL según el rol.
+- Trazabilidad: eventos relevantes se registran en `log`.
+
+## Ejemplos De Rutas Y Controles
+
+| Ruta | Control aplicado | Origen |
+| --- | --- | --- |
+| `/milab/api` | `menuPermissionMiddleware` con `menu_item` + `rol_permiso` | `src/milab_routes.js` + `src/routes/middlewares/menu-permissions.js` |
+| `/milab/api/dashboard` | `requireRoles(['admin', 'coordinador', 'laboratorista'])` + resolución de alcance | `src/routes/api/dashboard.js` |
+| `/milab/api/aprobacion_multa` | `requireRoles('coordinador')` + alcance por facultades | `src/routes/api/aprobacion_multa.js` |
+| `/milab/api/register_labs` | `requireRoles(['admin', 'coordinador'])` + validaciones de conflicto con coordinador | `src/routes/api/register_labs.js` |
+| `/milab/api/download-pdf` | `requireRoles(...)` + validación de ownership estudiante | `src/routes/api/download-pdf.js` |
+| `/milab/api/get-estado-multa/:codigo` | `publicApiLimiter` + validación numérica | `src/routes/api/get-estado-multa.js` |
+| `/milab/api/consulta-invit` | reCAPTCHA en POST | `src/routes/api/consulta-invit.js` |
+
+## Menú Persistido Y Menú De Respaldo
+
+El estado canónico del menú lo define `sql-scripts/db_seed_system.sql` mediante:
+
+- `menu_item`
+- `rol_permiso`
+
+Cuando la BD no puede resolver el menú, `src/routes/middlewares/navigation.js` arma un fallback estático. Ese fallback puede conservar labels legacy, pero no modifica el control real de acceso.
+
+## Referencias
+
+- `src/routes/middlewares/auth.js`
+- `src/routes/middlewares/menu-permissions.js`
+- `src/routes/middlewares/navigation.js`
+- `src/routes/api/dashboard.js`
+- `sql-scripts/db_seed_system.sql`

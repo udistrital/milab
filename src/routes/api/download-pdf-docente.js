@@ -4,6 +4,9 @@ const { buildGeneratePath } = require('../../libs/generate-path');
 
 var router = express.Router();
 
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+
 const requireTeacherPdfDownloadAccess = requireRoles(
   ['admin', 'docente', 'laboratorista', 'coordinador'],
   {
@@ -14,7 +17,8 @@ const requireTeacherPdfDownloadAccess = requireRoles(
 );
 
 router.post('/', requireTeacherPdfDownloadAccess, (req, res) => {
-  const documentoId = req.body.con_documento;
+  const requestBody = req.body || {};
+  const documentoId = requestBody.con_documento;
   if (!/^\d{1,20}$/.test(String(documentoId || ''))) {
     return res.status(400).send('Documento inválido.');
   }

@@ -1,22 +1,26 @@
 const pool = require('../../libs/db');
-const axios = require('axios');
 const express = require('express');
 const QRCode = require('qrcode');
 const { format } = require('date-fns');
 const util = require('util');
 const { buildAppUrl } = require('../../libs/app-url');
 const { buildGeneratePath } = require('../../libs/generate-path');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const {
   buildCertificateEmailFailureFeedback,
   buildCertificateEmailFeedback,
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
+const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
 require('dotenv').config();
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
 
 const requireStaffStudentCertificateAccess = requireRoles(
   ['admin', 'laboratorista', 'coordinador'],
@@ -49,30 +53,23 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-function extractStudentCodes(records) {
-  if (!Array.isArray(records)) return [];
-  return records
-    .map((item) => String(item?.codigo || '').trim())
-    .filter((value) => value && value !== '0');
-}
-
-async function fetchStudentRecordsByDocumento(documento) {
-  if (!documento || documento === '0') return [];
-
-  try {
-    const response = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/' +
-        'servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        documento
-    );
-    return extractOasStudentRecords(response.data);
-  } catch {
-    return [];
-  }
-}
-
 router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
-  const { numero_documento_identificacion, motivo_exp, con_codigo: codigo_form, correo } = req.body;
+  const requestBody = req.body || {};
+  const {
+    numero_documento_identificacion,
+    motivo_exp,
+    con_codigo: codigo_form,
+    correo,
+  } = requestBody;
+
+  if (!motivo_exp || (!numero_documento_identificacion && !codigo_form)) {
+    return res.render('home/message_error', {
+      message: 'No fue posible procesar la solicitud.',
+      message2: 'Verifica los datos del formulario e inténtalo nuevamente.',
+      limit: null,
+    });
+  }
+
   var con_codigo;
   var con_estado;
   var con_documento;
@@ -239,23 +236,20 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   async function consultarEndpointAnidado() {
     try {
-      let oasUrl;
+      let servicePath;
       // Si el documento es '0' o no existe, usamos el código del formulario
       if (
         (!numero_documento_identificacion || numero_documento_identificacion === '0') &&
         codigo_form
       ) {
-        oasUrl =
-          'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_estudiante/' +
-          codigo_form;
+        servicePath = getAcademicServicePath(`datos_basicos_estudiante/${codigo_form}`);
       } else {
-        oasUrl =
-          'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-          numero_documento_identificacion;
+        servicePath = getAcademicServicePath(
+          `datos_basicos_activos_cedula/${numero_documento_identificacion}`
+        );
       }
 
-      const respuesta1 = await axios.get(oasUrl);
-      const dato1 = respuesta1.data; // Obtener los datos de la respuesta 1
+      const dato1 = await requestOati(servicePath);
 
       const studentRecords = extractOasStudentRecords(dato1);
       if (!studentRecords.length) {
@@ -298,18 +292,10 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       uniqueId1 = uniqueId;
       console.log(qr_name);
 
-      const respuesta2 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-          con_estado
-      );
-      const dato2 = respuesta2.data; // Obtener los datos de la respuesta 2
+      const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
       con_estado = dato2.estado.nombre;
 
-      const respuesta3 = await axios.get(
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-          con_carrera
-      );
-      const dato3 = respuesta3.data; // Obtener los datos de la respuesta 3
+      const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
       con_carrera = dato3.carrerasCollection.carrera[0].nombre;
 
       if (isEgresadoStatus(con_estado)) {
@@ -320,23 +306,24 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         });
       }
 
-      let codigoList = extractStudentCodes(studentRecords);
+      const usuarioId = await ensurePerfilEstudiante({
+        documento: con_documento,
+        nombre: con_nombre,
+        codigo: con_codigo,
+        programa: con_carrera,
+        estado: con_estado,
+        correo,
+      });
 
-      if (con_documento && con_documento !== '0') {
-        const recordsByDocumento = await fetchStudentRecordsByDocumento(con_documento);
-        const documentCodes = extractStudentCodes(recordsByDocumento);
-        if (documentCodes.length) {
-          codigoList = documentCodes;
-        }
+      if (!usuarioId) {
+        return res.render('home/message_error', {
+          message: 'No se pudo registrar el perfil del estudiante.',
+          message2: 'Verifica los datos e intenta nuevamente.',
+          limit: null,
+        });
       }
 
-      if (!codigoList.length && con_codigo) {
-        codigoList = [String(con_codigo)];
-      }
-
-      const sanctionKeys = [String(con_documento || '').trim(), ...codigoList].filter(Boolean);
-
-      const multaRows = await consultar_multas(sanctionKeys);
+      const multaRows = await consultar_multas(usuarioId);
 
       if (multaRows.length > 0) {
         return res.render('home/alerta-multado', {
@@ -360,11 +347,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       // Basado en el requerimiento del usuario, se guarda en motivo_expedicion.
 
       let data_to_submit = {
-        nombre: con_nombre,
-        cc: con_documento,
-        codigo: con_codigo,
-        programa: con_carrera,
-        estado_estudiante: con_estado,
+        usuario_id: usuarioId,
         fecha_creacion: con_fecha,
         fecha_vencimiento: fechaVencimiento,
         id_certificado: uniqueId,
@@ -388,7 +371,10 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
             referenceType: 'código',
             motivo: motivo_exp,
           });
-          emailFeedback = buildCertificateEmailFeedback(emailResult);
+          emailFeedback = buildCertificateEmailFeedback(emailResult, {
+            missingRecipientMessage:
+              'El certificado se generó correctamente, pero no se envió por correo porque no se tiene registrado el email del estudiante en MILab.',
+          });
         } catch (emailError) {
           console.error('Error al enviar certificado de estudiante por correo:', emailError);
           emailFeedback = buildCertificateEmailFailureFeedback();
@@ -654,7 +640,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         })
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .text(
-          ' y entregado en Bogotá D.C, a través del sistema de generación de Paz y Salvos el ' +
+          ' y entregado en Bogotá D.C, a través del sistema de información de laboratorios de la Universidad Distrital - MILab en el módulo de generación de Paz y Salvos el ' +
             con_fecha,
           {
             width: doc.page.width - 80,
@@ -683,7 +669,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         .fontSize(12)
         .fill('#021c27')
         .text(
-          'Expedido por: Sistema de Paz y Salvos de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
+          'Expedido por: MILab de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas.',
           40,
           doc.y,
           {
@@ -694,46 +680,35 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
 
       jumpLine(doc, 1);
 
-      const qrSize = 130;
-      const bottomHeight = doc.y + 70; // Margen superior para el texto y el QR
+      const qrSize = 110;
+      const qrTop = doc.y + 28;
 
       // ID único — centrado arriba del QR
       doc
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .fontSize(10)
         .fill('#021c27')
-        .text(`ID único de validación ${uniqueId1}`, 40, bottomHeight - 30, {
+        .text(`ID único de validación ${uniqueId1}`, 40, qrTop - 22, {
           width: doc.page.width - 80,
           align: 'center',
           link: buildAppUrl(`/api/validateqr/${uniqueId1}`),
         });
 
       // QR — centrado
-      doc.image(
-        buildGeneratePath(`${con_codigo}.png`),
-        (doc.page.width - qrSize) / 2,
-        bottomHeight,
-        {
-          fit: [qrSize, qrSize],
-        }
-      );
+      doc.image(buildGeneratePath(`${con_codigo}.png`), (doc.page.width - qrSize) / 2, qrTop, {
+        fit: [qrSize, qrSize],
+      });
 
-      // Posición del texto de vencimiento, al lado derecho
-      const afterQRPosition = bottomHeight + qrSize + 20;
+      const expirationTextY = qrTop + qrSize + 12;
 
       doc
         .font('src/public/fonts/NotoSansJP-Regular.otf')
         .fontSize(10)
         .fill('#021c27')
-        .text(
-          'Fecha de vencimiento del certificado ' + fechaVencimiento,
-          doc.page.width / 2 + 50,
-          afterQRPosition + 50,
-          {
-            width: doc.page.width / 2 - 60,
-            align: 'left',
-          }
-        );
+        .text('Fecha de vencimiento del certificado ' + fechaVencimiento, 40, expirationTextY, {
+          width: doc.page.width - 80,
+          align: 'center',
+        });
 
       doc.end();
 
@@ -752,6 +727,11 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
     return res.render('home/message_success', {
       message: 'Certificado generado correctamente',
       message2: emailFeedback?.message || 'Revisa tu correo institucional.',
+      autoDownloadAction: '/milab/api/download-pdf',
+      autoDownloadFields: {
+        con_codigo: con_codigo,
+      },
+      autoDownloadMessage: 'La descarga del certificado comenzará automáticamente.',
     });
   }
 
@@ -768,11 +748,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
     // Usar pool centralizado
 
     const {
-      nombre,
-      cc,
-      codigo,
-      programa,
-      estado_estudiante,
+      usuario_id,
       fecha_creacion,
       fecha_vencimiento,
       id_certificado,
@@ -783,13 +759,9 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
     } = req;
     // AQUÍ AGREGAMOS motivo_expedicion AL QUERY
     pool.query(
-      'INSERT INTO estudiante (nombre, cc, codigo, programa, estado_estudiante, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, motivo_expedicion, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *',
+      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, motivo_expedicion, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
       [
-        nombre,
-        cc,
-        codigo,
-        programa,
-        estado_estudiante,
+        usuario_id,
         fecha_creacion,
         fecha_vencimiento,
         id_certificado,
@@ -808,19 +780,17 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
 
   // Función para consultar multas asignadas al usuario
 
-  async function consultar_multas(codigos) {
+  async function consultar_multas(usuarioId) {
     const query = util.promisify(pool.query).bind(pool);
-    const codigoList = Array.isArray(codigos) ? codigos : [];
-
-    if (!codigoList.length) {
+    if (!usuarioId) {
       multado = 0;
       return [];
     }
 
     try {
       const result = await query(
-        "SELECT * FROM multas WHERE cod_multado::text = ANY($1::text[]) AND con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
-        [codigoList]
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
+        [usuarioId]
       );
 
       if (result.rows.length > 0) {

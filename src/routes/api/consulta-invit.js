@@ -6,6 +6,9 @@ const { verifyRecaptchaToken } = require('../../libs/recaptcha');
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+
 router.get('/', function (req, res) {
   res.render('home/consulta-invit', {
     estadoResultado: null,
@@ -16,7 +19,17 @@ router.get('/', function (req, res) {
 });
 
 router.post('/', async (req, res) => {
-  const { documento, 'g-recaptcha-response': recaptchaResponse } = req.body;
+  const requestBody = req.body || {};
+  const { documento, 'g-recaptcha-response': recaptchaResponse } = requestBody;
+
+  if (!documento) {
+    return res.render('home/consulta-invit', {
+      siteKey: process.env.RECAPTCHA_SITE_KEY,
+      error: 'Debes ingresar un documento para realizar la consulta.',
+      estadoResultado: null,
+      estadoSinFormato: null,
+    });
+  }
 
   if (!recaptchaResponse) {
     return res.render('home/consulta-invit', {

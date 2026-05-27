@@ -59,61 +59,23 @@ router.get('/', requireMultasAccess, async (req, res) => {
           SELECT
             m.id,
             m.cat_multa,
-            m.nombre_laboratorista,
-            m.cc_laboratorista,
-            COALESCE(sancionado.documento, m.cod_multado::text) AS documento_sancionado,
-            COALESCE(sancionado.tipo, 'estudiante') AS tipo_sancionado,
-            m.ual,
+            l.nombre AS nombre_laboratorista,
+            l.documento AS cc_laboratorista,
+            COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+            COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
+            CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
+            u.nombre AS ual,
             TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
             m.con_estado_multa,
             m.obs_multa,
             m.tipo_sancion
-          FROM multas m
-          INNER JOIN ual ual_ref ON ual_ref.nombre = m.ual
-            LEFT JOIN LATERAL (
-              SELECT documento, tipo
-              FROM (
-                SELECT u2.documento, 'estudiante'::text AS tipo, 0 AS priority
-                FROM usuarios u2
-                WHERE u2.documento = m.cod_multado::text
-
-                UNION ALL
-
-                SELECT pe.documento, 'estudiante'::text AS tipo, 1 AS priority
-                FROM perfil_estudiante pe
-                WHERE pe.documento = m.cod_multado::text
-                  OR pe.codigo::text = m.cod_multado::text
-
-                UNION ALL
-
-                SELECT pd.documento, 'docente'::text AS tipo, 2 AS priority
-                FROM perfil_docente pd
-                WHERE pd.documento = m.cod_multado::text
-
-                UNION ALL
-
-                SELECT u.documento, 'estudiante'::text AS tipo, 3 AS priority
-                FROM usuario u
-                WHERE u.documento = m.cod_multado::text
-                  OR u.codigo::text = m.cod_multado::text
-
-                UNION ALL
-
-                SELECT e.cc::text AS documento, 'estudiante'::text AS tipo, 4 AS priority
-                FROM estudiante e
-                WHERE e.cc::text = m.cod_multado::text
-                  OR e.codigo::text = m.cod_multado::text
-
-                UNION ALL
-
-                SELECT d.cc::text AS documento, 'docente'::text AS tipo, 5 AS priority
-                FROM docente d
-                WHERE d.cc::text = m.cod_multado::text
-              ) candidates
-              ORDER BY priority
-              LIMIT 1
-            ) sancionado ON true
-          WHERE ual_ref.id_facultad = ANY($1::int[])
+          FROM multa m
+          INNER JOIN ual u ON u.id_ual = m.id_ual
+          LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
+          LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
+          LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
+          LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
+          WHERE u.id_facultad = ANY($1::int[])
           ORDER BY m.fecha_multa DESC NULLS LAST, m.id DESC
         `,
         [scope.facultyIds]
@@ -123,59 +85,22 @@ router.get('/', requireMultasAccess, async (req, res) => {
         SELECT
           m.id,
           m.cat_multa,
-          m.nombre_laboratorista,
-          m.cc_laboratorista,
-          COALESCE(sancionado.documento, m.cod_multado::text) AS documento_sancionado,
-          COALESCE(sancionado.tipo, 'estudiante') AS tipo_sancionado,
-          m.ual,
+          l.nombre AS nombre_laboratorista,
+          l.documento AS cc_laboratorista,
+          COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+          COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
+          CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
+          u.nombre AS ual,
           TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
           m.con_estado_multa,
           m.obs_multa,
           m.tipo_sancion
-        FROM multas m
-          LEFT JOIN LATERAL (
-            SELECT documento, tipo
-            FROM (
-              SELECT u2.documento, 'estudiante'::text AS tipo, 0 AS priority
-              FROM usuarios u2
-              WHERE u2.documento = m.cod_multado::text
-
-              UNION ALL
-
-              SELECT pe.documento, 'estudiante'::text AS tipo, 1 AS priority
-              FROM perfil_estudiante pe
-              WHERE pe.documento = m.cod_multado::text
-                OR pe.codigo::text = m.cod_multado::text
-
-              UNION ALL
-
-              SELECT pd.documento, 'docente'::text AS tipo, 2 AS priority
-              FROM perfil_docente pd
-              WHERE pd.documento = m.cod_multado::text
-
-              UNION ALL
-
-              SELECT u.documento, 'estudiante'::text AS tipo, 3 AS priority
-              FROM usuario u
-              WHERE u.documento = m.cod_multado::text
-                OR u.codigo::text = m.cod_multado::text
-
-              UNION ALL
-
-              SELECT e.cc::text AS documento, 'estudiante'::text AS tipo, 4 AS priority
-              FROM estudiante e
-              WHERE e.cc::text = m.cod_multado::text
-                OR e.codigo::text = m.cod_multado::text
-
-              UNION ALL
-
-              SELECT d.cc::text AS documento, 'docente'::text AS tipo, 5 AS priority
-              FROM docente d
-              WHERE d.cc::text = m.cod_multado::text
-            ) candidates
-            ORDER BY priority
-            LIMIT 1
-          ) sancionado ON true
+        FROM multa m
+          LEFT JOIN ual u ON u.id_ual = m.id_ual
+          LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
+          LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
+          LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
+          LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
         ORDER BY m.fecha_multa DESC NULLS LAST, m.id DESC
       `);
     }

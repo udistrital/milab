@@ -8,7 +8,7 @@ Flujo de datos principal entre usuarios, app, BD y servicios externos.
 
 ```mermaid
 flowchart LR
-  user[Usuario] -->|Credenciales/OAuth| app[MiLab App]
+  user[Usuario] -->|Credenciales/OAuth| app[MILab App]
   app -->|OAuth2| entra[Microsoft Entra]
   app -->|Token reCAPTCHA| recaptcha[Google reCAPTCHA]
   app -->|Consulta estado| oas[Servicios OAS]

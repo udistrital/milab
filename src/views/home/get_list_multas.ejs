@@ -70,6 +70,7 @@
                                                 <tr>
                                                     <th>ID</th>
                                                     <th>Documento</th>
+                                                    <th>Código</th>
                                                     <th>Fecha</th>
                                                     <th>Estado</th>
                                                     <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
@@ -80,6 +81,7 @@
                                                     <tr>
                                                         <td class="text-light"><%= data.id %></td>
                                                         <td class="text-light"><%= data.documento_sancionado %></td>
+                                                        <td class="text-light"><%= data.codigo_sancionado || '-' %></td>
                                                         <td class="text-light"><%= data.fecha_multa_formateada %></td>
                                                         <td class="text-light"><%= data.con_estado_multa %></td>
                                                         <td class="text-light">
@@ -90,6 +92,7 @@
                                                                 data-bs-target="#detalleSancionModal"
                                                                 data-sancion-id="<%= data.id %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
+                                                                data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
@@ -120,6 +123,7 @@
                                                 <tr>
                                                     <th>ID</th>
                                                     <th>Documento</th>
+                                                    <th>Código</th>
                                                     <th>Fecha</th>
                                                     <th>Estado</th>
                                                     <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
@@ -130,6 +134,7 @@
                                                     <tr>
                                                         <td class="text-light"><%= data.id %></td>
                                                         <td class="text-light"><%= data.documento_sancionado %></td>
+                                                        <td class="text-light"><%= data.codigo_sancionado || '-' %></td>
                                                         <td class="text-light"><%= data.fecha_multa_formateada %></td>
                                                         <td class="text-light"><%= data.con_estado_multa %></td>
                                                         <td class="text-light">
@@ -140,6 +145,7 @@
                                                                 data-bs-target="#detalleSancionModal"
                                                                 data-sancion-id="<%= data.id %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
+                                                                data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
@@ -192,6 +198,10 @@
                             <div class="fw-semibold" data-detail-field="documento"></div>
                         </div>
                         <div class="col-md-6">
+                            <div class="text-muted small">Código</div>
+                            <div class="fw-semibold" data-detail-field="codigo"></div>
+                        </div>
+                        <div class="col-md-6">
                             <div class="text-muted small">Fecha</div>
                             <div class="fw-semibold" data-detail-field="fecha"></div>
                         </div>
@@ -235,6 +245,7 @@
             const fields = {
                 id: trigger.getAttribute('data-sancion-id'),
                 documento: trigger.getAttribute('data-sancion-documento'),
+                codigo: trigger.getAttribute('data-sancion-codigo'),
                 fecha: trigger.getAttribute('data-sancion-fecha'),
                 estado: trigger.getAttribute('data-sancion-estado'),
                 laboratorista: trigger.getAttribute('data-sancion-laboratorista'),

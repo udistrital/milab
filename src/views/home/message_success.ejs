@@ -6,11 +6,35 @@
             <h3><%- message -%></h3>
             <div class="mensaje-container app-page-subtitle mt-2">
                 <h4><%- message2 -%></h4>
+                                <% if (locals.autoDownloadMessage) { %>
+                                        <p class="mt-3 mb-0"><%= autoDownloadMessage %></p>
+                                <% } %>
             </div>
         </div>
         <div class="text-center mt-4">
             <a href="/milab/" class="btn btn-perso">Volver a inicio</a>
         </div>
+
+                <% if (locals.autoDownloadAction && locals.autoDownloadFields) { %>
+                        <form id="autoDownloadForm" action="<%= autoDownloadAction %>" method="POST" class="d-none">
+                                <% Object.entries(autoDownloadFields).forEach(([fieldName, fieldValue]) => { %>
+                                        <input type="hidden" name="<%= fieldName %>" value="<%= fieldValue %>">
+                                <% }) %>
+                        </form>
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function () {
+                                var form = document.getElementById('autoDownloadForm');
+
+                                if (!form) {
+                                    return;
+                                }
+
+                                window.setTimeout(function () {
+                                    form.submit();
+                                }, 150);
+                            });
+                        </script>
+                <% } %>
     </section>
 </main>
 

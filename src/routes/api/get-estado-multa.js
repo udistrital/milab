@@ -1,6 +1,7 @@
 const express = require('express');
 
 const pool = require('../../libs/db');
+const { resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { publicApiLimiter } = require('../middlewares/public-rate-limit');
 const router = express.Router();
 
@@ -12,13 +13,22 @@ router.get('/:codigo', publicApiLimiter, async (req, res) => {
   }
 
   try {
+    const usuarioId = await resolveUsuarioIdForStudent({ documento: null, codigo });
+
+    if (!usuarioId) {
+      return res.json({
+        codigo: codigo,
+        estado: 'PAZYSALVO',
+      });
+    }
+
     const query = `
       SELECT 1
-      FROM multas
-      WHERE cod_multado = $1 AND con_estado_multa = 'ACTIVA'
+      FROM multa
+      WHERE usuario_id_sancionado = $1 AND con_estado_multa = 'ACTIVA'
       LIMIT 1
     `;
-    const result = await pool.query(query, [codigo]);
+    const result = await pool.query(query, [usuarioId]);
 
     if (result.rows.length > 0) {
       res.json({

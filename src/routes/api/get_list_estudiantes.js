@@ -1,7 +1,7 @@
 var express = require('express');
-const axios = require('axios');
 var router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 
 const bp = require('body-parser');
 
@@ -22,6 +22,28 @@ const requireBulkStudentQueryAccess = requireRoles(['admin', 'laboratorista', 'c
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
 });
+
+async function hasOatiStudentRecord(identificador) {
+  if (!identificador) return false;
+
+  const paths = [
+    getAcademicServicePath(`datos_basicos_estudiante/${identificador}`),
+    getAcademicServicePath(`datos_basicos_activos_cedula/${identificador}`),
+  ];
+
+  for (const path of paths) {
+    try {
+      const respuesta = await requestOati(path);
+      const records = respuesta?.datosEstudianteCollection?.datosBasicosEstudiante;
+      const hasRecords = Array.isArray(records) ? records.length > 0 : Boolean(records);
+      if (hasRecords) return true;
+    } catch {
+      // Intentar con el siguiente endpoint.
+    }
+  }
+
+  return false;
+}
 
 router.get('/', requireAdminStudentsListAccess, async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -45,37 +67,39 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
       WITH certificados AS (
         SELECT
           'estudiante' AS tipo_registro,
-          id,
-          nombre,
-          cc::TEXT AS documento,
-          codigo::TEXT AS codigo,
-          programa,
-          estado_estudiante AS estado,
-          fecha_creacion,
-          fecha_vencimiento,
-          id_certificado,
-          correo,
-          motivo_exp,
-          multa::TEXT AS multa
-        FROM estudiante
+          ce.id,
+          pe.nombre,
+          pe.documento AS documento,
+          pe.codigo::TEXT AS codigo,
+          pe.programa,
+          pe.estado AS estado,
+          ce.fecha_creacion,
+          ce.fecha_vencimiento,
+          ce.id_certificado,
+          ce.correo,
+          ce.motivo_exp,
+          ce.multa::TEXT AS multa
+        FROM certificado_estudiante ce
+        LEFT JOIN perfil_estudiante pe ON pe.usuario_id = ce.usuario_id
 
         UNION ALL
 
         SELECT
           'docente' AS tipo_registro,
-          id,
-          nombre,
-          cc::TEXT AS documento,
+          cd.id,
+          pd.nombre,
+          pd.documento AS documento,
           NULL::TEXT AS codigo,
           NULL::TEXT AS programa,
-          estado_docente AS estado,
-          fecha_creacion::TIMESTAMP AS fecha_creacion,
+          pd.estado AS estado,
+          cd.fecha_creacion::TIMESTAMP AS fecha_creacion,
           NULL::TIMESTAMP AS fecha_vencimiento,
-          id_certificado,
-          correo,
-          motivo_exp,
-          multa::TEXT AS multa
-        FROM docente
+          cd.id_certificado,
+          cd.correo,
+          cd.motivo_exp,
+          cd.multa::TEXT AS multa
+        FROM certificado_docente cd
+        LEFT JOIN perfil_docente pd ON pd.usuario_id = cd.usuario_id
       )
       SELECT *
       FROM certificados
@@ -103,8 +127,13 @@ router.get('/get_consulta', requireBulkStudentQueryAccess, async function (req, 
 
 router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
-  const max = req.body.consulta_masiva.split(',').map(Number);
-  if (max.length > 20) {
+  const rawInput = String(req.body.consulta_masiva || '');
+  const entries = rawInput
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (entries.length > 20) {
     res.render('home/consulta_masiva', {
       sampleData1: 0,
       error: 'Has excedido el límite de 20 estudiantes, inténtalo nuevamente.',
@@ -112,16 +141,19 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
   } else {
     const query = `
                   SELECT
-                  t.cod_multado_convert,
+                  t.identificador,
+                  MAX(pe.documento) AS documento,
+                  MAX(pe.codigo::text) AS codigo,
                     json_agg(
                         CASE 
-                            WHEN m.con_estado_multa = 'ACTIVA' 
+                            WHEN m.id IS NOT NULL
                             THEN json_build_object(
                                 'cat_multa', m.cat_multa,
-                                'nombre_laboratorista', m.nombre_laboratorista,
-                                'cc_laboratorista', m.cc_laboratorista,
-                                'cod_multado', m.cod_multado,
-                                'ual', m.ual,
+                              'nombre_laboratorista', l.nombre,
+                              'cc_laboratorista', l.documento,
+                                'documento', pe.documento,
+                                'codigo', pe.codigo::text,
+                              'ual', u.nombre,
                                 'fecha_multa', m.fecha_multa,
                                 'con_estado_multa', m.con_estado_multa,
                                 'obs_multa', m.obs_multa
@@ -130,17 +162,22 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                         END
                     ) AS multas
                   FROM
-                    UNNEST(STRING_TO_ARRAY($1, ',')) AS t(cod_multado_convert)
-                  LEFT JOIN multas m ON t.cod_multado_convert::numeric = m.cod_multado
+                    UNNEST(STRING_TO_ARRAY($1, ',')) AS t(identificador)
+                  LEFT JOIN perfil_estudiante pe
+                    ON pe.codigo::text = t.identificador
+                    OR pe.documento = t.identificador
+                  LEFT JOIN multa m ON m.usuario_id_sancionado = pe.usuario_id
+                  LEFT JOIN ual u ON u.id_ual = m.id_ual
+                  LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
                   GROUP BY
-                    t.cod_multado_convert;
+                    t.identificador;
             `; //
-    const values = [req.body.consulta_masiva];
+    const values = [entries.join(',')];
     const sampleData1 = await pool.query(query, values);
     //console.log(sampleData1.rows);
 
     const processedData = sampleData1.rows.map((row) => {
-      const codMultado = row.cod_multado_convert;
+      const identificador = row.identificador;
       let multas = row.multas;
 
       // Verifica si todos los objetos en multas son null
@@ -153,7 +190,9 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
 
       // Devuelve el objeto procesado
       return {
-        cod_multado_convert: codMultado,
+        identificador,
+        documento: row.documento || null,
+        codigo: row.codigo || null,
         multas: multas,
       };
     });
@@ -173,21 +212,11 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
     // Modifica el bucle forEach para que sea async
     await Promise.all(
       filteredData.map(async (row) => {
-        try {
-          const respuesta = await axios.get(
-            'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_estudiante/' +
-              row.cod_multado_convert
-          );
-          const codigo =
-            respuesta.data?.datosEstudianteCollection?.datosBasicosEstudiante?.[0]?.codigo;
+        if (row.multas[0] !== null) return;
 
-          if (!codigo) {
-            throw new Error('Codigo de estudiante no disponible');
-          }
-        } catch {
-          // Aquí puedes manejar errores
-          return (row.multas[0] = 'unknown');
-          //console.error(error);
+        const hasRecord = await hasOatiStudentRecord(row.identificador);
+        if (!hasRecord) {
+          row.multas[0] = 'unknown';
         }
       })
     );
@@ -243,7 +272,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     doc
       .fontSize(12)
       .text(
-        'Este es un informe masivo del estado de los estudiantes en las unidades académicas de laboratorios de la Universidad Distrital Francisco José de Caldas. A continuación, se listan los estudiantes consultados por código (los estudiantes sin ningún problema aparecerán a paz y salvo).',
+        'Este es un informe masivo del estado de los estudiantes en las unidades académicas de laboratorios de la Universidad Distrital Francisco José de Caldas. A continuación, se listan los estudiantes consultados por código o documento (los estudiantes sin ningún problema aparecerán a paz y salvo).',
         20,
         textYPosition,
         { width: tableWidth, align: 'justify' }
@@ -269,7 +298,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     doc.fillColor('black');
 
     const tableHeaders = [
-      'Código Estudiante',
+      'Código/Documento Estudiante',
       'Motivo Multa',
       'Fecha de la Multa',
       'Observación',
@@ -280,7 +309,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     sampleData1.forEach((item) => {
       item.multas.forEach((multa) => {
         tableRows.push([
-          item.cod_multado_convert,
+          item.identificador,
           multa?.cat_multa || 'El estudiante no tiene multas',
           // multa?.con_estado_multa || '',
           multa?.fecha_multa || '',
@@ -353,7 +382,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     doc
       .fontSize(10)
       .text(
-        `Se emite en Bogotá D.C. a través del Sistema de Paz y Salvos de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas el ${currentDate}`,
+        `Se emite en Bogotá D.C. a través de MILab de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas el ${currentDate}`,
         startX,
         y + 10,
         { align: 'center' }

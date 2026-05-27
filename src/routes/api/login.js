@@ -8,6 +8,9 @@ require('dotenv').config();
 
 const router = express.Router();
 
+router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
+
 //const limiter = require('../middlewares/limiter'); // Ajusta la ruta según tu estructura de carpetas
 
 router.post(

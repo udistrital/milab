@@ -1,0 +1,44 @@
+kind: pipeline
+name: pipeline-aplicaciones
+
+trigger:
+  branch:
+    - master
+  event:
+    - push
+
+steps:
+  - name: image_to_ecr
+    image: plugins/ecr
+    settings:
+      access_key: ${AWS_ACCESS_KEY_ID}
+      create_repository: true
+      region: ${AWS_REGION}
+      repo: ${DRONE_REPO_NAME}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+      tags:
+        - ${DRONE_COMMIT:0:7}
+        - latest
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_REGION:
+        from_secret: AWS_REGION
+
+  - name: update_ecs_service
+    image: amazon/aws-cli:latest
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_DEFAULT_REGION:
+        from_secret: AWS_REGION
+    commands:
+      - aws ecs update-service
+        --cluster aplicaciones
+        --service $${DRONE_REPO_NAME}
+        --force-new-deployment
+        --query "service.deployments[0].id"

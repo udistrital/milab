@@ -395,50 +395,32 @@ BEGIN
     END IF;
 END $$;
 
-INSERT INTO roles (name)
+INSERT INTO rol (nombre)
 VALUES
     ('admin'),
     ('coordinador'),
     ('laboratorista'),
     ('docente'),
     ('estudiante')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (nombre) DO NOTHING;
 
-UPDATE auth
-SET documento = '1024467835'
-WHERE tipo = 'admin'
-    AND LOWER(correo) = 'acmendeza@udistrital.edu.co'
-    AND documento <> '1024467835';
-
-UPDATE auth
-SET documento = '1030683338'
-WHERE tipo = 'admin'
-    AND LOWER(correo) = 'dfvargasa@udistrital.edu.co'
-    AND documento <> '1030683338';
-
-INSERT INTO auth (documento, password, tipo, correo)
+INSERT INTO usuario (correo, documento, nombre)
 VALUES
-    (
-                '1024467835',
-        crypt('123456*A', gen_salt('bf')),
-        'admin',
-        'acmendeza@udistrital.edu.co'
-    ),
-    (
-        '1030683338',
-        crypt('654321*D', gen_salt('bf')),
-        'admin',
-        'dfvargasa@udistrital.edu.co'
-    )
+    ('acmendeza@udistrital.edu.co', '1024467835', 'Administrador Principal'),
+    ('dfvargasa@udistrital.edu.co', '1030683338', 'Administrador Secundario')
 ON CONFLICT (documento) DO UPDATE
-SET
-    password = EXCLUDED.password,
-    tipo = EXCLUDED.tipo,
-    correo = EXCLUDED.correo;
+SET correo = EXCLUDED.correo,
+    nombre = EXCLUDED.nombre,
+    fecha_modificacion = CURRENT_TIMESTAMP;
 
-DELETE FROM auth
-WHERE tipo = 'admin'
-  AND documento IN ('11', '20250506', '2025001');
+INSERT INTO usuario_rol (usuario_id, rol_id, activo)
+SELECT u.id, r.id, TRUE
+FROM usuario u
+JOIN rol r ON r.nombre = 'admin'
+WHERE u.documento IN ('1024467835', '1030683338')
+ON CONFLICT (usuario_id, rol_id) DO UPDATE
+SET activo = TRUE,
+    fecha_modificacion = CURRENT_TIMESTAMP;
 
 WITH sources AS (
         SELECT LOWER(TRIM(correo)) AS correo,
@@ -457,7 +439,7 @@ WITH sources AS (
                      TRIM(documento)::VARCHAR(50) AS documento,
                      nombre,
                      2 AS priority
-        FROM coordinador_laboratorio
+        FROM coordinador
         WHERE correo IS NOT NULL
             AND TRIM(correo) <> ''
             AND documento IS NOT NULL
@@ -475,17 +457,6 @@ WITH sources AS (
             AND documento IS NOT NULL
             AND TRIM(documento) <> ''
 
-        UNION ALL
-
-        SELECT LOWER(TRIM(correo)) AS correo,
-                     TRIM(documento)::VARCHAR(50) AS documento,
-                     COALESCE(NULLIF(TRIM(correo), ''), TRIM(documento)::VARCHAR(50)) AS nombre,
-                     4 AS priority
-        FROM auth
-        WHERE correo IS NOT NULL
-            AND TRIM(correo) <> ''
-            AND documento IS NOT NULL
-            AND TRIM(documento) <> ''
 ),
 ranked AS (
         SELECT *,
@@ -493,7 +464,7 @@ ranked AS (
                      ROW_NUMBER() OVER (PARTITION BY documento ORDER BY priority) AS rn_doc
         FROM sources
 )
-INSERT INTO usuarios (correo, documento, nombre)
+INSERT INTO usuario (correo, documento, nombre)
 SELECT correo, documento, COALESCE(nombre, correo)
 FROM ranked
 WHERE rn_email = 1
@@ -501,102 +472,16 @@ WHERE rn_email = 1
 ON CONFLICT (correo) DO UPDATE
 SET documento = EXCLUDED.documento,
         nombre = EXCLUDED.nombre,
-        updated_at = CURRENT_TIMESTAMP;
+    fecha_modificacion = CURRENT_TIMESTAMP;
 
-UPDATE coordinador_laboratorio c
-SET usuario_id = u.id
-FROM usuarios u
-WHERE c.usuario_id IS NULL
-    AND (
-        (c.correo IS NOT NULL AND LOWER(c.correo) = u.correo)
-        OR c.documento = u.documento
-    );
-
-UPDATE laboratorista l
-SET usuario_id = u.id
-FROM usuarios u
-WHERE l.usuario_id IS NULL
-    AND (
-        (l.correo IS NOT NULL AND LOWER(l.correo) = u.correo)
-        OR l.documento = u.documento
-    );
-
-INSERT INTO usuario_roles (usuario_id, role_id)
-SELECT u.id, r.id
-FROM usuarios u
-JOIN auth a ON LOWER(a.correo) = u.correo
-JOIN roles r ON r.name = a.tipo
-WHERE a.tipo IN ('admin', 'estudiante', 'docente', 'coordinador', 'laboratorista')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO usuario_roles (usuario_id, role_id)
-SELECT u.id, r.id
-FROM coordinador_laboratorio c
-JOIN usuarios u ON LOWER(c.correo) = u.correo
-JOIN roles r ON r.name = 'coordinador'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO usuario_roles (usuario_id, role_id)
-SELECT u.id, r.id
-FROM laboratorista l
-JOIN usuarios u ON LOWER(l.correo) = u.correo
-JOIN roles r ON r.name = 'laboratorista'
-ON CONFLICT DO NOTHING;
-
-WITH legacy AS (
-        SELECT u.documento,
-                     LOWER(u.correo) AS correo,
-                     u.codigo,
-                     u.carrera,
-                     u.estado,
-                     u.nombre
-        FROM usuario u
-)
-INSERT INTO usuario_roles (usuario_id, role_id)
-SELECT usr.id,
-             role.id
-FROM usuarios usr
-JOIN legacy ON legacy.correo = usr.correo
-JOIN roles role ON role.name =
-    CASE
-        WHEN legacy.codigo IS NOT NULL AND legacy.codigo <> 0 THEN 'estudiante'
-        WHEN legacy.carrera IS NOT NULL AND TRIM(legacy.carrera) <> '' THEN 'estudiante'
-        ELSE 'docente'
-    END
-ON CONFLICT DO NOTHING;
-
-INSERT INTO perfil_estudiante (usuario_id, documento, codigo, programa, estado)
-SELECT usr.id,
-             usr.documento,
-             legacy.codigo,
-             legacy.carrera,
-             legacy.estado
-FROM usuarios usr
-JOIN usuario legacy ON LOWER(legacy.correo) = usr.correo
-JOIN usuario_roles ur ON ur.usuario_id = usr.id
-JOIN roles r ON r.id = ur.role_id AND r.name = 'estudiante'
-ON CONFLICT (usuario_id) DO UPDATE
-SET documento = EXCLUDED.documento,
-        codigo = EXCLUDED.codigo,
-        programa = EXCLUDED.programa,
-        estado = EXCLUDED.estado,
-        updated_at = CURRENT_TIMESTAMP;
-
-INSERT INTO perfil_docente (usuario_id, documento, estado)
-SELECT usr.id,
-             usr.documento,
-             legacy.estado
-FROM usuarios usr
-JOIN usuario legacy ON LOWER(legacy.correo) = usr.correo
-JOIN usuario_roles ur ON ur.usuario_id = usr.id
-JOIN roles r ON r.id = ur.role_id AND r.name = 'docente'
-ON CONFLICT (usuario_id) DO UPDATE
-SET documento = EXCLUDED.documento,
-        estado = EXCLUDED.estado,
-        updated_at = CURRENT_TIMESTAMP;
+-- Los roles coordinador, laboratorista, docente y estudiante no se activan por seed.
+-- Su asociación ocurre en los flujos de negocio:
+--   - coordinador: cuando un admin lo registra
+--   - laboratorista: cuando un coordinador lo registra
+--   - docente/estudiante: cuando el usuario inicia sesión y OATI confirma el perfil activo
 
 -- Menus y permisos base (RBAC).
-INSERT INTO menu_items (section, label, route, icon, order_index)
+INSERT INTO menu_item (section, label, route, icon, order_index)
 VALUES
     ('primary', 'Inicio', '/milab/inicio', 'bi-house-door', 1),
     ('primary', 'Monitoreo', '/milab/api/dashboard', 'bi-activity', 2),
@@ -606,192 +491,285 @@ VALUES
     ('account', 'Perfil', '/milab/api/profile', 'bi-person-circle', 1)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, label, icon, order_index)
+INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Registro', 'bi-person-plus', 1
 WHERE NOT EXISTS (
-  SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Registro' AND parent_id IS NULL
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Registro' AND parent_id IS NULL
 );
 
-INSERT INTO menu_items (section, label, icon, order_index)
+INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Consulta y control', 'bi-grid-1x2', 2
 WHERE NOT EXISTS (
-  SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Consulta y control' AND parent_id IS NULL
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Consulta y control' AND parent_id IS NULL
 );
 
-INSERT INTO menu_items (section, label, icon, order_index)
+INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Paz y Salvos', 'bi-patch-check', 3
 WHERE NOT EXISTS (
-  SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Paz y Salvos' AND parent_id IS NULL
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Paz y Salvos' AND parent_id IS NULL
 );
 
-INSERT INTO menu_items (section, label, icon, order_index)
-SELECT 'secondary', 'Consultas', 'bi-search', 4
-WHERE NOT EXISTS (
-  SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Consultas' AND parent_id IS NULL
-);
-
-INSERT INTO menu_items (section, label, icon, order_index)
+INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Administración', 'bi-sliders', 5
 WHERE NOT EXISTS (
-  SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Administración' AND parent_id IS NULL
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Administración' AND parent_id IS NULL
 );
 
-INSERT INTO menu_items (section, label, icon, order_index)
+INSERT INTO menu_item (section, label, icon, order_index)
+SELECT 'secondary', 'Sanciones', 'bi-shield-exclamation', 4
+WHERE NOT EXISTS (
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Sanciones' AND parent_id IS NULL
+);
+
+INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Configuración', 'bi-gear', 6
 WHERE NOT EXISTS (
-    SELECT 1 FROM menu_items WHERE section = 'secondary' AND label = 'Configuración' AND parent_id IS NULL
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Configuración' AND parent_id IS NULL
 );
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+UPDATE menu_item
+SET order_index = 5
+WHERE section = 'secondary' AND label = 'Administración' AND parent_id IS NULL;
+
+UPDATE menu_item
+SET order_index = 4
+WHERE section = 'secondary' AND label = 'Sanciones' AND parent_id IS NULL;
+
+UPDATE menu_item
+SET order_index = 6
+WHERE section = 'secondary' AND label = 'Configuración' AND parent_id IS NULL;
+
+DELETE FROM menu_item child
+USING menu_item parent
+WHERE parent.id = child.parent_id
+    AND parent.section = 'secondary'
+    AND parent.label = 'Consultas'
+    AND parent.parent_id IS NULL;
+
+DELETE FROM menu_item
+WHERE section = 'secondary'
+    AND label = 'Consultas'
+    AND parent_id IS NULL;
+
+DELETE FROM menu_item child
+USING menu_item parent
+WHERE parent.id = child.parent_id
+    AND parent.section = 'secondary'
+    AND parent.label = 'Consulta y control'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.label = 'Sanciones'
+    AND child.route = '/milab/api/get_list_multas';
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Registro de coordinadores', '/milab/api/registro_coordinador/load_info', 'bi-person-badge', 1
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Registro de laboratoristas', '/milab/api/register_labs/load_info', 'bi-person-plus', 2
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Certificados', '/milab/api/get_list_estudiantes', 'bi-file-earmark-check', 1
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Consulta masiva', '/milab/api/get_list_estudiantes/get_consulta', 'bi-collection', 2
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Coordinadores registrados', '/milab/api/coordinadores_registrados', 'bi-people', 3
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Estudiantes y docentes registrados', '/milab/api/estudiantes_registrados', 'bi-card-list', 4
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Facultades y UAL', '/milab/api/facultad', 'bi-building', 5
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Logs', '/milab/api/logs', 'bi-journal-text', 6
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Laboratoristas registrados', '/milab/api/laboratoristas_registrados', 'bi-person-workspace', 7
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Agregar admin', '/milab/api/admins/load_info', 'bi-person-gear', 9
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
-SELECT 'secondary', parent.id, 'Sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation', 8
-FROM menu_items parent
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Listado de sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation', 8
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+UPDATE menu_item child
+SET label = 'Listado de sanciones'
+FROM menu_item parent
+WHERE parent.id = child.parent_id
+    AND parent.section = 'secondary'
+    AND parent.label = 'Consulta y control'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.route = '/milab/api/get_list_multas'
+    AND child.label = 'Sanciones';
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Verificar estudiante', '/milab/api/verificar_estudiante', 'bi-person-check', 1
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Paz y Salvos' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard', 2
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Paz y Salvos' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+UPDATE menu_item child
+SET parent_id = parent.id,
+        order_index = CASE child.label
+                WHEN 'Sanciones de estudiantes' THEN 1
+                WHEN 'Sanciones de docentes' THEN 2
+                ELSE child.order_index
+        END
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.label IN ('Sanciones de estudiantes', 'Sanciones de docentes')
+    AND child.parent_id IS DISTINCT FROM parent.id
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item sibling
+            WHERE sibling.section = 'secondary'
+                AND sibling.parent_id = parent.id
+                AND sibling.label = child.label
+                AND sibling.route IS NOT DISTINCT FROM child.route
+    );
+
+DELETE FROM menu_item child
+USING menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Administración'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.parent_id = parent.id
+    AND child.label IN ('Sanciones de estudiantes', 'Sanciones de docentes');
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Sanciones de estudiantes', '/milab/api/get-info-multa/get', 'bi-mortarboard', 1
-FROM menu_items parent
-WHERE parent.section = 'secondary' AND parent.label = 'Administración' AND parent.parent_id IS NULL
-ON CONFLICT DO NOTHING;
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item existing
+            WHERE existing.section = 'secondary'
+                AND existing.parent_id = parent.id
+                AND existing.label = 'Sanciones de estudiantes'
+                AND existing.route = '/milab/api/get-info-multa/get'
+    );
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Sanciones de docentes', '/milab/api/get-info-multa-docente/get', 'bi-person-lines-fill', 2
-FROM menu_items parent
-WHERE parent.section = 'secondary' AND parent.label = 'Administración' AND parent.parent_id IS NULL
-ON CONFLICT DO NOTHING;
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item existing
+            WHERE existing.section = 'secondary'
+                AND existing.parent_id = parent.id
+                AND existing.label = 'Sanciones de docentes'
+                AND existing.route = '/milab/api/get-info-multa-docente/get'
+    );
 
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
-SELECT 'secondary', parent.id, 'Consulta masiva', '/milab/api/get_list_estudiantes/get_consulta', 'bi-collection', 1
-FROM menu_items parent
-WHERE parent.section = 'secondary' AND parent.label = 'Consultas' AND parent.parent_id IS NULL
-ON CONFLICT DO NOTHING;
-
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
-SELECT 'secondary', parent.id, 'Sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation', 2
-FROM menu_items parent
-WHERE parent.section = 'secondary' AND parent.label = 'Consultas' AND parent.parent_id IS NULL
-ON CONFLICT DO NOTHING;
-
-INSERT INTO menu_items (section, parent_id, label, route, icon, order_index)
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Permisos y menus', '/milab/api/admin/menus', 'bi-sliders', 1
-FROM menu_items parent
+FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Configuración' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
-WITH role_map AS (SELECT id, name FROM roles),
-menu_map AS (SELECT id, label, route, section, parent_id FROM menu_items)
-INSERT INTO role_permissions (role_id, menu_item_id)
+DELETE FROM rol_permiso rp
+USING rol r, menu_item mi
+WHERE rp.rol_id = r.id
+    AND rp.menu_item_id = mi.id
+    AND r.nombre = 'laboratorista'
+    AND mi.section = 'secondary'
+    AND mi.label = 'Administración'
+    AND mi.parent_id IS NULL;
+
+WITH role_map AS (SELECT id, nombre FROM rol),
+menu_map AS (SELECT id, label, route, section, parent_id FROM menu_item)
+INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'primary'
 WHERE (
-    role_map.name IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
+    role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
     AND menu_map.label = 'Inicio'
 ) OR (
-    role_map.name = 'admin' AND menu_map.label = 'Monitoreo'
+    role_map.nombre IN ('admin', 'coordinador', 'laboratorista') AND menu_map.label = 'Monitoreo'
 ) OR (
-    role_map.name = 'coordinador' AND menu_map.label = 'Autorizaciones'
+    role_map.nombre = 'coordinador' AND menu_map.label = 'Autorizaciones'
 ) OR (
-    role_map.name = 'estudiante' AND menu_map.label = 'Solicitar certificado estudiante'
+    role_map.nombre = 'estudiante' AND menu_map.label = 'Solicitar certificado estudiante'
 ) OR (
-    role_map.name = 'docente' AND menu_map.label = 'Solicitar certificado docente'
+    role_map.nombre = 'docente' AND menu_map.label = 'Solicitar certificado docente'
 )
 ON CONFLICT DO NOTHING;
 
-WITH role_map AS (SELECT id, name FROM roles),
-menu_map AS (SELECT id, label, route, section, parent_id FROM menu_items)
-INSERT INTO role_permissions (role_id, menu_item_id)
+WITH role_map AS (SELECT id, nombre FROM rol),
+menu_map AS (SELECT id, label, route, section, parent_id FROM menu_item)
+INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'account'
-WHERE role_map.name IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
+WHERE role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
 ON CONFLICT DO NOTHING;
 
-WITH role_map AS (SELECT id, name FROM roles),
-menu_map AS (SELECT id, label, route, section, parent_id FROM menu_items)
-INSERT INTO role_permissions (role_id, menu_item_id)
+WITH role_map AS (SELECT id, nombre FROM rol),
+menu_map AS (SELECT id, label, route, section, parent_id FROM menu_item)
+INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'secondary'
 WHERE (
-    role_map.name = 'admin' AND menu_map.label IN (
+    role_map.nombre = 'admin' AND menu_map.label IN (
         'Registro',
         'Registro de coordinadores',
         'Consulta y control',
         'Certificados',
         'Consulta masiva',
+        'Listado de sanciones',
         'Coordinadores registrados',
         'Estudiantes y docentes registrados',
         'Facultades y UAL',
@@ -804,11 +782,12 @@ WHERE (
         'Verificar docente'
     )
 ) OR (
-    role_map.name = 'coordinador' AND menu_map.label IN (
+    role_map.nombre = 'coordinador' AND menu_map.label IN (
         'Registro',
         'Registro de laboratoristas',
         'Consulta y control',
         'Consulta masiva',
+        'Listado de sanciones',
         'Estudiantes y docentes registrados',
         'Laboratoristas registrados',
         'Sanciones',
@@ -817,11 +796,11 @@ WHERE (
         'Verificar docente'
     )
 ) OR (
-    role_map.name = 'laboratorista' AND menu_map.label IN (
-        'Consultas',
+    role_map.nombre = 'laboratorista' AND menu_map.label IN (
+        'Consulta y control',
         'Consulta masiva',
+        'Listado de sanciones',
         'Sanciones',
-        'Administración',
         'Sanciones de estudiantes',
         'Sanciones de docentes',
         'Paz y Salvos',
@@ -830,7 +809,7 @@ WHERE (
     )
 )
 OR (
-    role_map.name = 'admin' AND menu_map.label IN (
+    role_map.nombre = 'admin' AND menu_map.label IN (
         'Configuración',
         'Permisos y menus'
     )

@@ -1,7 +1,6 @@
 const express = require('express');
-const axios = require('axios');
-const https = require('https');
 const { logger, sanitizeValue } = require('../../libs/logger');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 
 var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
@@ -46,39 +45,35 @@ router.use('/generate_cert_docente_lab', require('./generate_cert_docente_lab'))
 router.use('/generate_cert_estudiante_lab', require('./generate_cert_estudiante_lab'));
 router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: false,
-});
 
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [
-    'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/',
-    'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/consultar_estado_docente/',
+    {
+      name: 'datos_basicos_activos_cedula',
+      path: getAcademicServicePath('datos_basicos_activos_cedula/1023968369'),
+    },
+    {
+      name: 'consultar_estado_docente',
+      path: getAcademicServicePath('consultar_estado_docente/1023968369'),
+    },
   ];
 
   try {
-    const promises = services.map(async (url) => {
+    const promises = services.map(async (service) => {
       try {
-        const response = await axios.get(url, {
-          httpsAgent,
-          timeout: 10000, // 10 segundos de timeout
-          headers: {
-            'User-Agent': 'CILUD-System/1.0',
-            Accept: 'application/json, text/html, */*',
-          },
-        });
-        return { url, status: response.status, available: true };
+        await requestOati(service.path);
+        return { service: service.name, status: 200, available: true };
       } catch (error) {
         if (error.response && (error.response.status === 404 || error.response.status === 405)) {
           return {
-            url,
+            service: service.name,
             status: error.response.status,
             available: true,
             note: 'Service responds but endpoint may not exist',
           };
         }
         return {
-          url,
+          service: service.name,
           status: error.response?.status || 'ERROR',
           available: false,
           error: error.message,

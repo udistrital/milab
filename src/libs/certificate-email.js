@@ -14,6 +14,10 @@ function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function isUndeliverablePlaceholderEmail(correo) {
+  return normalizeEmail(correo).toLowerCase().endsWith('@placeholder.milab.local');
+}
+
 function resolveCertificateRecipient(correo) {
   const originalRecipient = normalizeEmail(correo);
   const overrideRecipient = normalizeEmail(
@@ -33,7 +37,7 @@ async function sendCertificateEmail({
 }) {
   const originalRecipient = normalizeEmail(correo);
 
-  if (!originalRecipient) {
+  if (!originalRecipient || isUndeliverablePlaceholderEmail(originalRecipient)) {
     return {
       status: 'skipped',
       reason: 'missing-recipient',
@@ -62,7 +66,7 @@ async function sendCertificateEmail({
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: recipient,
-    subject: 'Certificado de paz y salvo - MiLab Laboratorios UD',
+    subject: 'Certificado de paz y salvo - MILab Laboratorios UD',
     text: `Hola ${safeOwnerName},\n\nAdjuntamos tu certificado de paz y salvo generado con el motivo ${safeMotivo} para ${safeReferenceType} ${safeReference}.${overrideNoticeText}\n\nAtentamente,\nEquipo de la Coordinación General de Laboratorios.`,
     html: `
       <!DOCTYPE html>
@@ -122,10 +126,14 @@ async function sendCertificateEmail({
   };
 }
 
-function buildCertificateEmailFeedback(emailResult) {
+function buildCertificateEmailFeedback(emailResult, options = {}) {
   if (!emailResult) {
     return null;
   }
+
+  const missingRecipientMessage =
+    options.missingRecipientMessage ||
+    'El certificado se generó correctamente, pero no se envió por correo porque no se indicó una dirección de correo.';
 
   if (emailResult.status === 'sent') {
     if (emailResult.overrideActive) {
@@ -144,8 +152,7 @@ function buildCertificateEmailFeedback(emailResult) {
   if (emailResult.reason === 'missing-recipient') {
     return {
       variant: 'warning',
-      message:
-        'El certificado se generó correctamente, pero no se envió por correo porque no se indicó una dirección de correo.',
+      message: missingRecipientMessage,
     };
   }
 

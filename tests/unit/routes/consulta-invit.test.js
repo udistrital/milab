@@ -120,6 +120,27 @@ test('consulta-invit rejects missing recaptcha before calling downstream APIs', 
   }
 });
 
+test('consulta-invit rejects missing documento before calling downstream APIs', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      'g-recaptcha-response': 'token',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/consulta-invit');
+    assert.equal(
+      response.body.locals.error,
+      'Debes ingresar un documento para realizar la consulta.'
+    );
+    assert.equal(loaded.getCalls(), 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('consulta-invit rejects invalid recaptcha without querying the multa API', async () => {
   const loaded = loadRoute({ recaptchaResult: { success: false } });
 

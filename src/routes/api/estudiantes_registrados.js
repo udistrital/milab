@@ -32,10 +32,9 @@ async function resolveActorDocumentForLogs(req, client) {
     return req.session?.user?.documento;
   }
 
-  const result = await client.query(
-    'SELECT documento FROM coordinador_laboratorio WHERE nombre_u = $1',
-    [req.session.user.documento]
-  );
+  const result = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+    req.session.user.documento,
+  ]);
 
   return result.rows[0]?.documento || req.session.user.documento;
 }
@@ -46,8 +45,24 @@ router.get('/', requireAdminOrCoordinadorStudentsAccess, async (req, res) => {
   let client;
 
   try {
-    const query =
-      "SELECT u.nombre AS con_nombre, a.tipo AS con_tipo, u.documento AS con_documento, u.codigo AS con_codigo, u.carrera AS con_carrera, u.estado AS con_estado, u.correo AS con_correo FROM usuario u INNER JOIN auth a USING (documento) WHERE a.tipo IN ('estudiante', 'docente') ORDER BY u.nombre ASC";
+    const query = `SELECT
+         u.nombre AS con_nombre,
+         CASE
+           WHEN BOOL_OR(r.nombre = 'docente') THEN 'docente'
+           WHEN BOOL_OR(r.nombre = 'estudiante') THEN 'estudiante'
+           ELSE NULL
+         END AS con_tipo,
+         u.documento AS con_documento,
+         u.codigo AS con_codigo,
+         u.carrera AS con_carrera,
+         u.estado AS con_estado,
+         u.correo AS con_correo
+       FROM usuario u
+       JOIN usuario_rol ur ON ur.usuario_id = u.id AND ur.activo = TRUE
+       JOIN rol r ON r.id = ur.rol_id
+       WHERE r.nombre IN ('estudiante', 'docente')
+       GROUP BY u.id, u.nombre, u.documento, u.codigo, u.carrera, u.estado, u.correo
+       ORDER BY u.nombre ASC`;
     client = await pool.connect();
 
     const result = await client.query(query);
@@ -113,11 +128,22 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorStudentsEdit, async (
 
     const userResult = await client.query(
       `
-        SELECT u.documento, u.nombre, u.correo, u.carrera, a.tipo
+        SELECT
+          u.documento,
+          u.nombre,
+          u.correo,
+          u.carrera,
+          CASE
+            WHEN BOOL_OR(r.nombre = 'docente') THEN 'docente'
+            WHEN BOOL_OR(r.nombre = 'estudiante') THEN 'estudiante'
+            ELSE NULL
+          END AS tipo
         FROM usuario u
-        INNER JOIN auth a USING (documento)
+        JOIN usuario_rol ur ON ur.usuario_id = u.id AND ur.activo = TRUE
+        JOIN rol r ON r.id = ur.rol_id
         WHERE u.documento = $1
-          AND a.tipo IN ('estudiante', 'docente')
+          AND r.nombre IN ('estudiante', 'docente')
+        GROUP BY u.documento, u.nombre, u.correo, u.carrera
       `,
       [documento]
     );
@@ -159,12 +185,11 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorStudentsEdit, async (
 
     await client.query('BEGIN');
     await client.query('UPDATE usuario SET correo = $1 WHERE documento = $2', [correo, documento]);
-    await client.query('UPDATE auth SET correo = $1 WHERE documento = $2', [correo, documento]);
 
     const actorDocument = await resolveActorDocumentForLogs(req, client);
 
     await client.query(
-      'INSERT INTO logs (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         normalizeLogDocument(actorDocument),

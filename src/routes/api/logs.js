@@ -20,11 +20,11 @@ router.get('/', requireAdminLogsAccess, async (req, res) => {
       SELECT 
         nombre, 
         documento, 
-        TO_CHAR(fecha_hora AT TIME ZONE 'America/Bogota', 'DD/MM/YYYY HH24:MI:SS') as fecha_hora,
+        TO_CHAR(fecha_creacion AT TIME ZONE 'America/Bogota', 'DD/MM/YYYY HH24:MI:SS') as fecha_hora,
         accion, 
         persona 
-      FROM logs 
-      ORDER BY fecha_hora DESC
+      FROM log 
+      ORDER BY fecha_creacion DESC
     `;
 
     const result = await pool.query(query);

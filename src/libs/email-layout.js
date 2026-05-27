@@ -23,7 +23,7 @@ function buildEmailHeaderHtml() {
   return `
     <tr>
       <td align="center" bgcolor="#ffffff" style="padding: 0; background-color: #ffffff; border-radius: 12px 12px 0 0;">
-        <img src="cid:${HEADER_LOGO_CID}" alt="MiLab" width="600" style="display: block; width: 100%; max-width: 600px; height: auto; border-radius: 12px 12px 0 0; margin: 0 auto;">
+        <img src="cid:${HEADER_LOGO_CID}" alt="MILab" width="600" style="display: block; width: 100%; max-width: 600px; height: auto; border-radius: 12px 12px 0 0; margin: 0 auto;">
       </td>
     </tr>
   `;

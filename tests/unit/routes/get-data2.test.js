@@ -7,8 +7,8 @@ const request = require('supertest');
 const routePath = path.resolve(__dirname, '../../../src/routes/api/get-data2.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const recaptchaPath = path.resolve(__dirname, '../../../src/libs/recaptcha.js');
+const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const limiterPath = path.resolve(__dirname, '../../../src/routes/middlewares/limiter.js');
-const axiosPath = require.resolve('axios');
 
 function buildApp(route, sessionState = {}) {
   const app = express();
@@ -27,13 +27,13 @@ function buildApp(route, sessionState = {}) {
   return app;
 }
 
-function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
+function loadRoute({ recaptchaResult = { success: true }, oatiImpl } = {}) {
   const originalDb = require.cache[dbPath];
   const originalRecaptcha = require.cache[recaptchaPath];
+  const originalOatiClient = require.cache[oatiClientPath];
   const originalLimiter = require.cache[limiterPath];
-  const originalAxios = require.cache[axiosPath];
   let dbCalls = 0;
-  let getCalls = 0;
+  let oatiCalls = 0;
 
   delete require.cache[routePath];
   require.cache[dbPath] = {
@@ -55,44 +55,44 @@ function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
       verifyRecaptchaToken: async () => recaptchaResult,
     },
   };
+  require.cache[oatiClientPath] = {
+    id: oatiClientPath,
+    filename: oatiClientPath,
+    loaded: true,
+    exports: {
+      getAcademicServicePath(servicePath) {
+        return servicePath;
+      },
+      async requestOati(pathname) {
+        oatiCalls += 1;
+
+        if (typeof oatiImpl === 'function') {
+          return oatiImpl(pathname);
+        }
+
+        return {
+          docentesCollection: {
+            docente: [
+              {
+                estado_docente: 'ACTIVO',
+                nombre: 'Nombre Docente',
+              },
+            ],
+          },
+        };
+      },
+    },
+  };
   require.cache[limiterPath] = {
     id: limiterPath,
     filename: limiterPath,
     loaded: true,
     exports: (req, res, next) => next(),
   };
-  require.cache[axiosPath] = {
-    id: axiosPath,
-    filename: axiosPath,
-    loaded: true,
-    exports: {
-      async get(url) {
-        getCalls += 1;
-
-        if (typeof axiosGetImpl === 'function') {
-          return axiosGetImpl(url);
-        }
-
-        return {
-          data: {
-            docentesCollection: {
-              docente: [
-                {
-                  estado_docente: 'ACTIVO',
-                  nombre: 'Nombre Docente',
-                },
-              ],
-            },
-          },
-        };
-      },
-    },
-  };
-
   return {
     route: require(routePath),
     getDbCalls: () => dbCalls,
-    getAxiosGetCalls: () => getCalls,
+    getAxiosGetCalls: () => oatiCalls,
     restore() {
       if (originalDb) {
         require.cache[dbPath] = originalDb;
@@ -106,16 +106,16 @@ function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
         delete require.cache[recaptchaPath];
       }
 
+      if (originalOatiClient) {
+        require.cache[oatiClientPath] = originalOatiClient;
+      } else {
+        delete require.cache[oatiClientPath];
+      }
+
       if (originalLimiter) {
         require.cache[limiterPath] = originalLimiter;
       } else {
         delete require.cache[limiterPath];
-      }
-
-      if (originalAxios) {
-        require.cache[axiosPath] = originalAxios;
-      } else {
-        delete require.cache[axiosPath];
       }
 
       delete require.cache[routePath];

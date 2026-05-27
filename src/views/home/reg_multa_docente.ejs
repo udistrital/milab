@@ -34,20 +34,7 @@
     <div class="col-md-6">
       <label for="cat_multa" class="form-label">Cat. de la Sanción:</label>
       <select class="form-select" id="cat_multa" name="cat_multa" required>
-        <option value="">Selecciona una opción</option>
-        <option value="Abandono de los equipos prestados o no devolución en los plazos establecidos">Abandono de los equipos prestados o no devolución en los plazos establecidos</option>
-        <option value="Agredir física o verbalmente al personal de las unidades académicas de laboratorio, docentes, compañeros o cualquier usuario">Agredir física o verbalmente al personal de las unidades académicas de laboratorio, docentes, compañeros o cualquier usuario</option>
-        <option value="Cambiar o alterar el estado físico de los diferentes equipos, herramientas y demás elementos que se encuentren en las unidades académicas de las unidades académicas de laboratorios">Cambiar o alterar el estado físico de los diferentes equipos, herramientas y demás elementos que se encuentren en las unidades académicas de las unidades académicas de laboratorios</option>
-        <option value="Consumir alimentos o bebidas dentro de las unidades académicas los laboratorios">Consumir alimentos o bebidas dentro de las unidades académicas los laboratorios</option>
-        <option value="Desarrollar actividades diferentes a las prácticas o ensayos de laboratorio y operar equipos diferentes a los asignados en cada trabajo experimental, sin previa autorización">Desarrollar actividades diferentes a las prácticas o ensayos de laboratorio y operar equipos diferentes a los asignados en cada trabajo experimental, sin previa autorización</option>
-        <option value="Emplear dispositivos o elementos de distracción que pueda afectar el desarrollo de la práctica">Emplear dispositivos o elementos de distracción que pueda afectar el desarrollo de la práctica</option>
-        <option value="Fumar dentro de las unidades académicas de los laboratorios">Fumar dentro de las unidades académicas de los laboratorios</option>
-        <option value="Hacer uso de los equipos y herramientas sin autorización y/o sin conocer su adecuado manejo">Hacer uso de los equipos y herramientas sin autorización y/o sin conocer su adecuado manejo</option>
-        <option value="Ingresar a las unidades académicas de laboratorios en estado de embriaguez o bajo el efecto de sustancias psicoactivas o alucinógenas, que afecten el estado consciente de una persona y su adecuado comportamiento durante la práctica">Ingresar a las unidades académicas de laboratorios en estado de embriaguez o bajo el efecto de sustancias psicoactivas o alucinógenas, que afecten el estado consciente de una persona y su adecuado comportamiento durante la práctica</option>
-        <option value="Ingresar y/o realizar cualquier tipo de prueba sin los elementos de seguridad que la actividad requiera y la indumentaria adecuada">Ingresar y/o realizar cualquier tipo de prueba sin los elementos de seguridad que la actividad requiera y la indumentaria adecuada</option>
-        <option value="Ingreso de niños y mascotas en las unidades académicas de laboratorios">Ingreso de niños y mascotas en las unidades académicas de laboratorios</option>
-        <option value="Movilizar equipos, máquinas, implementos, mobiliario o sus componentes, de un lugar a otro, sin previa autorización del Coordinador del Laboratorio o Personal de apoyo de las unidades académicas de laboratorio">Movilizar equipos, máquinas, implementos, mobiliario o sus componentes, de un lugar a otro, sin previa autorización del Coordinador del Laboratorio o Personal de apoyo de las unidades académicas de laboratorio</option>
-        <option value="Utilizar documentos falsos, adulterados o que pretendan suplantación">Utilizar documentos falsos, adulterados o que pretendan suplantación</option>
+        <%- include('../partials/multa-options'); %>
       </select>
     
     </div>
@@ -59,22 +46,18 @@
       <label for="cc_laboratorista" class="form-label">CC de laboratorista:</label>
       <input type="number" value="<%= cc_lab %>" class="form-control" id="cc_laboratorista" name="cc_laboratorista" readonly>
     </div>
-    <div class="col-md-6">
-      <label for="n_usuario" class="form-label">Usuario del Laboratorista:</label>
-      <input type="text" value="<%= n_usuario %>" class="form-control" id="n_usuario" name="n_usuario" readonly>
-    </div>
 
     <div class="col-md-6">
-      <label for="ual" class="form-label">UAL</label>
+      <label for="id_ual" class="form-label">UAL</label>
       <% if (uals && uals.length > 0) { %>
-        <select class="form-select" name="ual" required>
+        <select class="form-select" id="id_ual" name="id_ual" required>
           <option value="" selected disabled>Selecciona una UAL</option>
           <% uals.forEach(ual => { %>
-            <option value="<%= ual.nombre %>"><%= ual.nombre %></option>
+            <option value="<%= ual.id_ual %>"><%= ual.nombre %></option>
           <% }) %>
         </select>
       <% } else { %>
-        <input type="text" value="No Aplica" class="form-control" name="ual" readonly>
+        <input type="text" value="No Aplica" class="form-control" name="id_ual" readonly>
       <% } %>
     </div>
 
@@ -103,4 +86,17 @@
     <% } %>
 
 <script>
+  (function () {
+    const fechaInput = document.getElementById('fecha_multa');
+    if (!fechaInput) {
+      return;
+    }
+
+    const today = new Date();
+    const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+
+    fechaInput.max = localToday;
+  })();
 </script>

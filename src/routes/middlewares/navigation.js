@@ -76,6 +76,7 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'coordinador') {
+    primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     primaryLinks.push(
       createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
     );
@@ -120,6 +121,7 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'laboratorista') {
+    primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     secondaryGroups.push(
       createGroup('Consultas', 'bi-search', [
         createLink(
@@ -191,8 +193,8 @@ async function getPendingSanctionsCount(user, role) {
 
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
-     FROM multas m
-     INNER JOIN ual u ON m.ual = u.nombre
+    FROM multa m
+     INNER JOIN ual u ON u.id_ual = m.id_ual
      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
        AND u.id_facultad = ANY($1::int[])`,
     [scope.facultyIds]

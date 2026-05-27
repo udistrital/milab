@@ -1,13 +1,31 @@
-const axios = require('axios');
 const express = require('express');
 
 const pool = require('../../libs/db');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
 require('dotenv').config();
 
 var router = express.Router();
+
+router.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+
+function extractOasStudentRecords(payload) {
+  if (!payload) return [];
+
+  const nested = payload?.datosEstudianteCollection?.datosBasicosEstudiante;
+  if (Array.isArray(nested)) return nested;
+  if (nested) return [nested];
+
+  const flat = payload?.datosBasicosEstudiante;
+  if (Array.isArray(flat)) return flat;
+  if (flat) return [flat];
+
+  return [];
+}
 
 const requireLaboratoristaFineInfoView = requireRoles('laboratorista', {
   message: '¡Algo ha salido mal!',
@@ -23,7 +41,8 @@ router.get('/get', requireLaboratoristaFineInfoView, async function (req, res) {
 router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
-  const { tipo_busqueda, valor_busqueda } = req.body;
+  const requestBody = req.body || {};
+  const { tipo_busqueda, valor_busqueda } = requestBody;
   var con_codigo;
   var con_estado;
   var con_documento;
@@ -33,47 +52,38 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
-    let urlBase;
+    let servicePath;
     if (tipo_busqueda === 'codigo') {
-      urlBase =
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_estudiante/' +
-        valor_busqueda;
+      servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
     } else {
-      urlBase =
-        'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/datos_basicos_activos_cedula/' +
-        valor_busqueda;
+      servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
     }
 
-    const respuesta1 = await axios.get(urlBase);
-    const dato1 = respuesta1.data; // Obtener los datos de la respuesta 1
-    // const dataString = JSON.stringify(dato1, null, 2);
-    var cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+    const dato1 = await requestOati(servicePath);
+    const studentRecords = extractOasStudentRecords(dato1);
+    if (!studentRecords.length) {
+      throw new Error('Estudiante no encontrado en OAS');
+    }
 
-    con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
-    con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
+    const studentRecord = studentRecords[studentRecords.length - 1];
+
+    con_codigo = studentRecord.codigo;
+    con_estado = studentRecord.estado;
     con_documento =
-      dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1]
-        .numero_documento_identificacion;
-    con_carrera = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
-    con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
+      studentRecord.documento || studentRecord.numero_documento_identificacion || null;
+    con_carrera = studentRecord.carrera;
+    con_nombre = studentRecord.nombre;
 
-    // La API OAS no devuelve numero_documento_identificacion, usar el valor de búsqueda original
     if (!con_documento || con_documento === 'undefined' || con_documento === 'null') {
-      con_documento = String(valor_busqueda || '');
+      return res.render('home/error-consulta', {
+        message: 'No se pudo resolver el documento del estudiante.',
+      });
     }
 
-    const respuesta2 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/estados_codigo/' +
-        con_estado
-    );
-    const dato2 = respuesta2.data; // Obtener los datos de la respuesta 2
+    const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
     con_estado = dato2.estado.nombre;
 
-    const respuesta3 = await axios.get(
-      'https://autenticacion.portaloas.udistrital.edu.co/wso2eiserver/services/servicios_academicos_produccion/carrera/' +
-        con_carrera
-    );
-    const dato3 = respuesta3.data; // Obtener los datos de la respuesta 3
+    const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
     con_carrera = dato3.carrerasCollection.carrera[0].nombre;
 
     console.log('con_codigo ' + con_codigo);
@@ -82,15 +92,24 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     console.log('con_carrera ' + con_carrera);
     console.log('con_nombre ' + con_nombre);
 
+    const usuarioId = await ensurePerfilEstudiante({
+      documento: con_documento,
+      nombre: con_nombre,
+      codigo: con_codigo,
+      programa: con_carrera,
+      estado: con_estado,
+      correo: null,
+    });
+
+    if (!usuarioId) {
+      return res.render('home/error-consulta', {
+        message: 'No se pudo registrar el perfil del estudiante.',
+      });
+    }
+
     //--- DB
-    // Buscar multas por CÓDIGO Y DOCUMENTO (para capturar cualquiera de ambas)
-    const sanctionKeys = [
-      String(con_codigo || '').trim(),
-      String(con_documento || '').trim(),
-    ].filter(Boolean);
-    const query =
-      'SELECT COUNT(*) AS multado FROM multas WHERE cod_multado::text = ANY($1::text[])';
-    const values = [sanctionKeys];
+    const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_id_sancionado = $1';
+    const values = [usuarioId];
 
     let con_multado = false;
     const result = await pool.query(query, values);
@@ -98,8 +117,9 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 
     let multaInfo = null;
     if (con_multado) {
-      const queryMultaInfo = 'SELECT * FROM multas WHERE cod_multado::text = ANY($1::text[])';
-      const valuesMultaInfo = [sanctionKeys];
+      const queryMultaInfo =
+        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1';
+      const valuesMultaInfo = [usuarioId];
 
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
@@ -112,11 +132,12 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     var cc_lab = 0;
     var uals = '';
     if (req.session.user.tipo === 'laboratorista') {
-      const query2 = 'SELECT * FROM laboratorista WHERE n_usuario = $1';
-      const values2 = [req.session.user.documento];
+      const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
+      const query2 = 'SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1';
+      const values2 = [sessionDocumento];
       const result2 = await pool.query(query2, values2);
       if (result2.rows.length === 0) {
-        throw new Error('No se encontró laboratorista con ese n_usuario');
+        throw new Error('No se encontró laboratorista con ese documento');
       }
       const query3 = 'SELECT * FROM ual WHERE id_facultad = $1';
       const values3 = [result2.rows[0].id_facultad];
@@ -124,13 +145,12 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       nombre_lab = result2.rows[0].nombre;
       cc_lab = result2.rows[0].documento;
       uals = result3.rows;
-      var n_usuario = result2.rows[0].n_usuario;
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
       cc_lab = 0;
       uals = null;
     } else if (req.session.user.tipo === 'coordinador') {
-      const query = 'SELECT * FROM coordinador_laboratorio WHERE documento = $1';
+      const query = 'SELECT * FROM coordinador WHERE documento = $1';
       const values = [req.session.user.documento];
       const result = await pool.query(query, values);
 
@@ -154,12 +174,12 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       con_codigo,
       con_estado,
       con_documento,
+      tipo_busqueda,
       con_carrera,
       con_nombre,
       nombre_lab,
       cc_lab,
       uals,
-      n_usuario,
     });
 
     // Guardar en la base de datos la solicitud de certificado
