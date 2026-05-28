@@ -74,6 +74,11 @@ function tokenizeName(value) {
 }
 
 function shouldSkipIdentityMatch(correo) {
+  const envName = (process.env.NODE_ENV || '').toLowerCase();
+  if (envName === 'production') {
+    return false;
+  }
+
   const allowList = (process.env.PROFILE_NAME_MATCH_EXCEPT || '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
