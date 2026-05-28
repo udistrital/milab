@@ -49,6 +49,7 @@ const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const isProduction = process.env.NODE_ENV === 'production';
 const localPort = process.env.PORT || 3000;
+const appVersion = (process.env.APP_VERSION || 'dev').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
@@ -234,6 +235,8 @@ app.use((req, res, next) => {
   res.locals.isDevEnvironment = ['dev', 'development', 'local'].includes(
     res.locals.environmentName.toLowerCase()
   );
+  res.locals.appVersion = appVersion;
+  res.setHeader('X-App-Version', appVersion);
   next();
 });
 app.use(requestLogger);
@@ -276,6 +279,7 @@ if (require.main === module) {
       {
         host: app.get('host'),
         port: app.get('port'),
+        version: appVersion,
       },
       'Server started'
     );
