@@ -1,7 +1,9 @@
 -- Esquema canonico de MILab.
 -- Este archivo describe el estado final esperado de la base.
 
-CREATE EXTENSION pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE SCHEMA IF NOT EXISTS milab;
+SET search_path TO milab;
 
 SET TIME ZONE 'America/Bogota';
 

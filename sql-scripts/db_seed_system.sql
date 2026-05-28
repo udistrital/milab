@@ -1,6 +1,8 @@
 -- Catalogos base y bootstrap minimo del sistema.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE SCHEMA IF NOT EXISTS milab;
+SET search_path TO milab;
 
 DO $$
 BEGIN
