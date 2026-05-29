@@ -41,7 +41,8 @@ function verifyCsrfToken(req, res, next) {
   if (!valid) {
     return res.status(403).render('home/message_error', {
       message: 'Solicitud no válida',
-      message2: 'El token de seguridad expiró o es inválido. Recarga la página e inténtalo de nuevo.',
+      message2:
+        'El token de seguridad expiró o es inválido. Recarga la página e inténtalo de nuevo.',
       limit: null,
     });
   }

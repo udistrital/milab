@@ -39,9 +39,7 @@ function resolveOatiEmail(payload) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${documento}`)
-    );
+    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
 
     const docente = data?.docentesCollection?.docente?.[0];
     if (!docente) return null;

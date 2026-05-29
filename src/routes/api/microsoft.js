@@ -39,9 +39,7 @@ function isActiveStudentRecord(record) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${documento}`)
-    );
+    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
 
     const rawDocentes = data?.docentesCollection?.docente;
     const docentes = Array.isArray(rawDocentes) ? rawDocentes : rawDocentes ? [rawDocentes] : [];

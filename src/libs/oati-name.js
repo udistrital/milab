@@ -52,9 +52,7 @@ async function fetchOatiTeacherName(documento) {
   }
 
   try {
-    const data = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${value}`)
-    );
+    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${value}`));
     const docente = data?.docentesCollection?.docente?.[0];
     return docente?.nombre ? String(docente.nombre).trim() : '';
   } catch {

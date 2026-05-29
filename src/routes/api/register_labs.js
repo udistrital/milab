@@ -60,9 +60,7 @@ function resolveOatiEmail(payload) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${documento}`)
-    );
+    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
 
     const docente = data?.docentesCollection?.docente?.[0];
     if (!docente) return null;
@@ -215,7 +213,9 @@ router.get('/token', requireCoordinatorTokenAccess, async function (req, res) {
       limit: null,
     });
   }
-  const token = jwt.sign({ userId: req.session.user?.id, role: 'laboratorista' }, secretKey, { expiresIn: 604800 });
+  const token = jwt.sign({ userId: req.session.user?.id, role: 'laboratorista' }, secretKey, {
+    expiresIn: 604800,
+  });
   res.render('home/message_success', {
     message: '¡Token generado con éxito!',
     message2: buildAppUrl(`/api/register_labs/verify_token?token=${token}`),
