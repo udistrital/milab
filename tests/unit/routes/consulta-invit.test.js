@@ -8,6 +8,8 @@ const routePath = path.resolve(__dirname, '../../../src/routes/api/consulta-invi
 const recaptchaPath = path.resolve(__dirname, '../../../src/libs/recaptcha.js');
 const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const axiosPath = require.resolve('axios');
+const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
+const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 
 function buildApp(route) {
   const app = express();
@@ -22,10 +24,18 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
+function loadRoute({
+  recaptchaResult = { success: true },
+  axiosGetImpl,
+  usuarioIdResult = 'fake-user-id',
+  usuarioIdError = null,
+  multaActiva = false,
+} = {}) {
   const originalRecaptcha = require.cache[recaptchaPath];
   const originalAppUrl = require.cache[appUrlPath];
   const originalAxios = require.cache[axiosPath];
+  const originalUserIdentity = require.cache[userIdentityPath];
+  const originalDb = require.cache[dbPath];
   const originalEnv = {
     RECAPTCHA_SITE_KEY: process.env.RECAPTCHA_SITE_KEY,
   };
@@ -59,12 +69,35 @@ function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
     exports: {
       async get(url) {
         getCalls += 1;
-
         if (typeof axiosGetImpl === 'function') {
           return axiosGetImpl(url);
         }
-
         return { data: { estado: 'PAZ_Y_SALVO' } };
+      },
+    },
+  };
+  require.cache[userIdentityPath] = {
+    id: userIdentityPath,
+    filename: userIdentityPath,
+    loaded: true,
+    exports: {
+      ...require(userIdentityPath),
+      resolveUsuarioIdForStudent: async () => {
+        if (usuarioIdError) throw usuarioIdError;
+        return usuarioIdResult;
+      },
+    },
+  };
+  require.cache[dbPath] = {
+    id: dbPath,
+    filename: dbPath,
+    loaded: true,
+    exports: {
+      query: async () => {
+        if (multaActiva) {
+          return { rows: [{}] };
+        }
+        return { rows: [] };
       },
     },
   };
@@ -78,19 +111,26 @@ function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
       } else {
         delete require.cache[recaptchaPath];
       }
-
       if (originalAppUrl) {
         require.cache[appUrlPath] = originalAppUrl;
       } else {
         delete require.cache[appUrlPath];
       }
-
       if (originalAxios) {
         require.cache[axiosPath] = originalAxios;
       } else {
         delete require.cache[axiosPath];
       }
-
+      if (originalUserIdentity) {
+        require.cache[userIdentityPath] = originalUserIdentity;
+      } else {
+        delete require.cache[userIdentityPath];
+      }
+      if (originalDb) {
+        require.cache[dbPath] = originalDb;
+      } else {
+        delete require.cache[dbPath];
+      }
       Object.entries(originalEnv).forEach(([key, value]) => {
         if (value === undefined) {
           delete process.env[key];
@@ -98,7 +138,6 @@ function loadRoute({ recaptchaResult = { success: true }, axiosGetImpl } = {}) {
           process.env[key] = value;
         }
       });
-
       delete require.cache[routePath];
     },
   };
@@ -161,7 +200,7 @@ test('consulta-invit rejects invalid recaptcha without querying the multa API', 
 });
 
 test('consulta-invit renders estado when recaptcha and API lookup succeed', async () => {
-  const loaded = loadRoute();
+  const loaded = loadRoute({ usuarioIdResult: 'fake-user-id', multaActiva: false });
 
   try {
     const app = buildApp(loaded.route);
@@ -174,7 +213,8 @@ test('consulta-invit renders estado when recaptcha and API lookup succeed', asyn
     assert.equal(response.body.view, 'home/consulta-invit');
     assert.equal(response.body.locals.estadoSinFormato, 'PAZ_Y_SALVO');
     assert.equal(response.body.locals.estadoResultado, 'El estudiante está: PAZ_Y_SALVO');
-    assert.equal(loaded.getCalls(), 1);
+    // El mock de axios ya no se usa, así que getCalls debe ser 0
+    assert.equal(loaded.getCalls(), 0);
   } finally {
     loaded.restore();
   }
@@ -182,11 +222,8 @@ test('consulta-invit renders estado when recaptcha and API lookup succeed', asyn
 
 test('consulta-invit maps 404 lookup failures to a user-facing message', async () => {
   const loaded = loadRoute({
-    axiosGetImpl: async () => {
-      const error = new Error('not found');
-      error.response = { status: 404 };
-      throw error;
-    },
+    usuarioIdResult: null,
+    usuarioIdError: { response: { status: 404 } },
   });
 
   try {
