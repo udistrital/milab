@@ -25,7 +25,7 @@ router.use(requireAdminFacultyAccess);
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
-  const { id_facultad } = req.query;
+  const { facultad_id: facultadId } = req.query;
 
   try {
     let facultades = [];
@@ -34,12 +34,12 @@ router.get('/', async (req, res) => {
 
     const facRes = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
     facultades = facRes.rows;
-    if (id_facultad) {
-      const facSel = facultades.find((f) => String(f.facultad_id) === String(id_facultad));
+    if (facultadId) {
+      const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
       selectedFacultad = facSel || null;
       const ualRes = await pool.query(
         'SELECT ual_id, nombre FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
-        [id_facultad]
+        [facultadId]
       );
       uals = ualRes.rows;
     }
@@ -85,8 +85,8 @@ router.post('/add', async (req, res) => {
 
 // Eliminar facultad (solo si no tiene dependencias)
 router.post('/eliminar', async (req, res) => {
-  const { id_facultad } = req.body;
-  if (!id_facultad) {
+  const { facultad_id: facultadId } = req.body;
+  if (!facultadId) {
     return res.render('home/message_error', {
       message: 'ID de facultad inválido',
       message2: 'Verifique la solicitud',
@@ -96,15 +96,15 @@ router.post('/eliminar', async (req, res) => {
 
   try {
     const depUal = await pool.query('SELECT COUNT(*)::int AS c FROM ual WHERE facultad_id = $1', [
-      id_facultad,
+      facultadId,
     ]);
     const depLab = await pool.query(
       'SELECT COUNT(*)::int AS c FROM laboratorista WHERE facultad_id = $1',
-      [id_facultad]
+      [facultadId]
     );
     const depCoord = await pool.query(
       'SELECT COUNT(*)::int AS c FROM coordinador WHERE facultad_id = $1',
-      [id_facultad]
+      [facultadId]
     );
 
     if (depUal.rows[0].c > 0 || depLab.rows[0].c > 0 || depCoord.rows[0].c > 0) {
@@ -116,11 +116,11 @@ router.post('/eliminar', async (req, res) => {
     }
 
     const facNameRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
-      id_facultad,
+      facultadId,
     ]);
-    const facName = facNameRes.rows[0] ? facNameRes.rows[0].nombre : String(id_facultad);
+    const facName = facNameRes.rows[0] ? facNameRes.rows[0].nombre : String(facultadId);
 
-    await pool.query('DELETE FROM facultad WHERE facultad_id = $1', [id_facultad]);
+    await pool.query('DELETE FROM facultad WHERE facultad_id = $1', [facultadId]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar facultad', facName]
@@ -138,8 +138,9 @@ router.post('/eliminar', async (req, res) => {
 
 // Agregar UAL a una facultad
 router.post('/ual/add', async (req, res) => {
-  const { id_facultad, nombre } = req.body;
-  if (!id_facultad || !nombre || !nombre.trim()) {
+  const { facultad_id: facultadId } = req.body;
+  const { nombre } = req.body;
+  if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
       message2: 'Proporcione nombre de UAL y facultad válidos',
@@ -150,13 +151,13 @@ router.post('/ual/add', async (req, res) => {
   try {
     await pool.query('INSERT INTO ual (nombre, facultad_id) VALUES ($1, $2)', [
       nombre.trim(),
-      id_facultad,
+      facultadId,
     ]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'agregar UAL', nombre.trim()]
     );
-    return res.redirect(`/milab/api/facultad?id_facultad=${id_facultad}`);
+    return res.redirect(`/milab/api/facultad?facultad_id=${facultadId}`);
   } catch (error) {
     console.error('Error agregando UAL:', error);
     return res.render('home/message_error', {
@@ -169,8 +170,9 @@ router.post('/ual/add', async (req, res) => {
 
 // Editar UAL (admin o coordinador dentro de su facultad)
 router.post('/ual/editar', async (req, res) => {
-  const { id_ual, id_facultad, nombre, new_id_facultad } = req.body;
-  if (!id_ual || !nombre || !nombre.trim()) {
+  const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
+  const { nombre } = req.body;
+  if (!ualId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
       message2: 'Proporcione un nombre válido para la UAL',
@@ -183,28 +185,28 @@ router.post('/ual/editar', async (req, res) => {
 
     const oldRes = await pool.query(
       'SELECT ual.nombre AS ual_nombre, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
-      [id_ual]
+      [ualId]
     );
     const oldRow = oldRes.rows[0] || {
       ual_nombre: '',
-      ual_facultad: id_facultad,
+      ual_facultad: facultadId,
       facultad_nombre: '',
     };
 
     // Actualización de nombre
-    await pool.query('UPDATE ual SET nombre = $1 WHERE ual_id = $2', [nombre.trim(), id_ual]);
+    await pool.query('UPDATE ual SET nombre = $1 WHERE ual_id = $2', [nombre.trim(), ualId]);
 
-    // Si es admin y envía new_id_facultad diferente, mover UAL a otra facultad
-    let redirectFacultadId = id_facultad;
+    // Si es admin y envía new_facultad_id diferente, mover UAL a otra facultad
+    let redirectFacultadId = facultadId;
     let cambioFacultadTexto = '';
     if (
       req.session.user.tipo === 'admin' &&
-      new_id_facultad &&
-      String(new_id_facultad) !== String(oldRow.ual_facultad)
+      newFacultadId &&
+      String(newFacultadId) !== String(oldRow.ual_facultad)
     ) {
       // Validar que la facultad destino existe
       const facDestRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
-        new_id_facultad,
+        newFacultadId,
       ]);
       if (facDestRes.rows.length === 0) {
         return res.render('home/message_error', {
@@ -214,11 +216,11 @@ router.post('/ual/editar', async (req, res) => {
         });
       }
       await pool.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = $2', [
-        new_id_facultad,
-        id_ual,
+        newFacultadId,
+        ualId,
       ]);
       cambioFacultadTexto = ` | facultad: ${oldRow.facultad_nombre} -> ${facDestRes.rows[0].nombre}`;
-      redirectFacultadId = new_id_facultad;
+      redirectFacultadId = newFacultadId;
     }
 
     await pool.query(
@@ -230,7 +232,7 @@ router.post('/ual/editar', async (req, res) => {
         `${oldRow.ual_nombre} -> ${nombre.trim()}${cambioFacultadTexto}`,
       ]
     );
-    return res.redirect(`/milab/api/facultad?id_facultad=${redirectFacultadId || ''}`);
+    return res.redirect(`/milab/api/facultad?facultad_id=${redirectFacultadId || ''}`);
   } catch (error) {
     console.error('Error editando UAL:', error);
     return res.render('home/message_error', {
@@ -243,8 +245,8 @@ router.post('/ual/editar', async (req, res) => {
 
 // Eliminar UAL (solo si no tiene laboratoristas asociados)
 router.post('/ual/eliminar', async (req, res) => {
-  const { id_ual, id_facultad } = req.body;
-  if (!id_ual) {
+  const { ual_id: ualId, facultad_id: facultadId } = req.body;
+  if (!ualId) {
     return res.render('home/message_error', {
       message: 'ID de UAL inválido',
       message2: 'Verifique la solicitud',
@@ -255,11 +257,11 @@ router.post('/ual/eliminar', async (req, res) => {
   try {
     const depLabLegacy = await pool.query(
       'SELECT COUNT(*)::int AS c FROM laboratorista WHERE ual_id = $1',
-      [id_ual]
+      [ualId]
     );
     const depLabMulti = await pool.query(
       'SELECT COUNT(*)::int AS c FROM laboratorista_ual WHERE ual_id = $1',
-      [id_ual]
+      [ualId]
     );
     const depLabCount = (depLabLegacy.rows[0]?.c || 0) + (depLabMulti.rows[0]?.c || 0);
 
@@ -270,14 +272,14 @@ router.post('/ual/eliminar', async (req, res) => {
         limit: null,
       });
     }
-    const ualNameRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [id_ual]);
-    const ualName = ualNameRes.rows[0] ? ualNameRes.rows[0].nombre : String(id_ual);
-    await pool.query('DELETE FROM ual WHERE ual_id = $1', [id_ual]);
+    const ualNameRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [ualId]);
+    const ualName = ualNameRes.rows[0] ? ualNameRes.rows[0].nombre : String(ualId);
+    await pool.query('DELETE FROM ual WHERE ual_id = $1', [ualId]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar UAL', ualName]
     );
-    return res.redirect(`/milab/api/facultad?id_facultad=${id_facultad || ''}`);
+    return res.redirect(`/milab/api/facultad?facultad_id=${facultadId || ''}`);
   } catch (error) {
     console.error('Error eliminando UAL:', error);
     return res.render('home/message_error', {
@@ -290,8 +292,9 @@ router.post('/ual/eliminar', async (req, res) => {
 
 // Editar Facultad (solo admin)
 router.post('/editar', async (req, res) => {
-  const { id_facultad, nombre } = req.body;
-  if (!id_facultad || !nombre || !nombre.trim()) {
+  const { facultad_id: facultadId } = req.body;
+  const { nombre } = req.body;
+  if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
       message2: 'Proporcione un nombre válido para la facultad',
@@ -301,12 +304,12 @@ router.post('/editar', async (req, res) => {
 
   try {
     const oldRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
-      id_facultad,
+      facultadId,
     ]);
     const oldName = oldRes.rows[0] ? oldRes.rows[0].nombre : '';
     await pool.query('UPDATE facultad SET nombre = $1 WHERE facultad_id = $2', [
       nombre.trim(),
-      id_facultad,
+      facultadId,
     ]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',

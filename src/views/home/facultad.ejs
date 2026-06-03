@@ -29,11 +29,11 @@
                   <tr>
                     <td><%= f.nombre %></td>
                     <td>
-                      <a class="btn btn-sm btn-primary" href="/milab/api/facultad?id_facultad=<%= f.id_facultad %>">Seleccionar</a>
+                      <a class="btn btn-sm btn-primary" href="/milab/api/facultad?facultad_id=<%= f.facultad_id %>">Seleccionar</a>
                     </td>
                     <td>
                       <% if (locals.tipo === 'admin') { %>
-                        <button type="button" class="btn btn-sm btn-warning btn-edit-facultad" data-id="<%= f.id_facultad %>" data-nombre="<%= f.nombre %>">Editar</button>
+                        <button type="button" class="btn btn-sm btn-warning btn-edit-facultad" data-id="<%= f.facultad_id %>" data-nombre="<%= f.nombre %>">Editar</button>
                       <% } else { %>
                         <span class="text-muted">No permitido</span>
                       <% } %>
@@ -42,7 +42,7 @@
                       <% if (locals.tipo === 'admin') { %>
                         <form action="/milab/api/facultad/eliminar" method="POST" onsubmit="return confirmDelete('facultad')">
                           <%- include('../partials/csrf_field') %>
-                          <input type="hidden" name="id_facultad" value="<%= f.id_facultad %>">
+                          <input type="hidden" name="facultad_id" value="<%= f.facultad_id %>">
                           <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                         </form>
                       <% } else { %>
@@ -95,7 +95,7 @@
                       <td><%= u.nombre %></td>
                       <td>
                         <% if (locals.tipo === 'admin') { %>
-                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.id_ual %>" data-nombre="<%= u.nombre %>" data-facultad="<%= selectedFacultad.id_facultad %>">Editar</button>
+                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
                         <% } else { %>
                           <span class="text-muted">No permitido</span>
                         <% } %>
@@ -104,8 +104,8 @@
                         <% if (locals.tipo === 'admin') { %>
                           <form action="/milab/api/facultad/ual/eliminar" method="POST" onsubmit="return confirmDelete('UAL')">
                             <%- include('../partials/csrf_field') %>
-                            <input type="hidden" name="id_ual" value="<%= u.id_ual %>">
-                            <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
+                            <input type="hidden" name="ual_id" value="<%= u.ual_id %>">
+                            <input type="hidden" name="facultad_id" value="<%= selectedFacultad.facultad_id %>">
                             <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                           </form>
                         <% } else { %>
@@ -124,7 +124,7 @@
               <h6 class="mb-3">Agregar UAL a <%= selectedFacultad.nombre %></h6>
               <form action="/milab/api/facultad/ual/add" method="POST">
                 <%- include('../partials/csrf_field') %>
-                <input type="hidden" name="id_facultad" value="<%= selectedFacultad.id_facultad %>">
+                <input type="hidden" name="facultad_id" value="<%= selectedFacultad.facultad_id %>">
                 <div class="input-group">
                   <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
                   <button type="submit" class="btn btn-success">Agregar</button>
@@ -150,7 +150,7 @@
       <form action="/milab/api/facultad/editar" method="POST">
         <%- include('../partials/csrf_field') %>
         <div class="modal-body">
-          <input type="hidden" name="id_facultad" id="edit_facultad_id">
+          <input type="hidden" name="facultad_id" id="edit_facultad_id">
           <div class="mb-3">
             <label for="edit_facultad_nombre" class="form-label">Nombre</label>
             <input type="text" class="form-control" name="nombre" id="edit_facultad_nombre" required>
@@ -176,8 +176,8 @@
       <form action="/milab/api/facultad/ual/editar" method="POST">
         <%- include('../partials/csrf_field') %>
         <div class="modal-body">
-          <input type="hidden" name="id_ual" id="edit_ual_id">
-          <input type="hidden" name="id_facultad" id="edit_ual_facultad">
+          <input type="hidden" name="ual_id" id="edit_ual_id">
+          <input type="hidden" name="facultad_id" id="edit_ual_facultad">
           <div class="mb-3">
             <label for="edit_ual_nombre" class="form-label">Nombre</label>
             <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
@@ -185,9 +185,9 @@
           <% if (locals.tipo === 'admin') { %>
           <div class="mb-3">
             <label for="edit_ual_facultad_select" class="form-label">Cambiar Facultad</label>
-            <select class="form-select" name="new_id_facultad" id="edit_ual_facultad_select">
+            <select class="form-select" name="new_facultad_id" id="edit_ual_facultad_select">
               <% facultades.forEach(f => { %>
-                <option value="<%= f.id_facultad %>"><%= f.nombre %></option>
+                <option value="<%= f.facultad_id %>"><%= f.nombre %></option>
               <% }) %>
             </select>
             <small class="form-text text-muted">Solo administradores pueden mover UAL entre facultades.</small>

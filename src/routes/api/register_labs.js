@@ -364,8 +364,8 @@ router.post(
     const usuario = req.body || {};
 
     try {
-      const selectedFacultyId = Number(usuario.facultad);
-      const selectedUalIds = normalizeSelectedUalIds(usuario.id_uales);
+      const selectedFacultyId = Number(usuario.facultad_id);
+      const selectedUalIds = normalizeSelectedUalIds(usuario.ual_ids);
 
       if (!selectedFacultyId || selectedUalIds.length === 0) {
         return renderRegisterLabsWithError(
@@ -485,9 +485,9 @@ async function create_account(data, userSession) {
   const nombre = data.nombre;
   const n_usuario = documento;
   const correo = data.correo;
-  const selectedUalIds = normalizeSelectedUalIds(data.id_uales);
+  const selectedUalIds = normalizeSelectedUalIds(data.ual_ids);
   const primaryUalId = selectedUalIds[0];
-  const selectedFacultyId = data.facultad;
+  const selectedFacultyId = data.facultad_id;
   const contrato = data.contrato;
   const tipo = 'laboratorista';
   let client;

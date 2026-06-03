@@ -276,7 +276,7 @@ module.exports = router;
 //         console.log("con_carrera " + con_carrera);
 //         console.log("con_nombre " + con_nombre);
 
-//         let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, id_certificado:uniqueId, correo: correo, motivo_exp:motivo_exp, multa:con_multado};
+//         let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, certificado_id:uniqueId, correo: correo, motivo_exp:motivo_exp, multa:con_multado};
 //         submit_data(data_to_submit);
 
 //         if (con_estado == "ACTIVO" || con_estado == "PRUEBA AC Y ACTIVO" || con_estado == "CANCELADO" || con_estado == "TERMINO Y MATRICULO" || con_estado == "APLAZO" || con_estado == "NO ESTUDIANTE AC004"|| con_estado == "VACACIONES" ) {

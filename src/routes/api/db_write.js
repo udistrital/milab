@@ -3,10 +3,10 @@ require('dotenv').config();
 const pool = require('../../libs/db');
 
 // Función para insertar un registro en la tabla1
-async function insertarRegistroTabla1(usuario_id, fecha_creacion, id_Certificado, correo, multa) {
+async function insertarRegistroTabla1(usuario_id, fecha_creacion, certificado_id, correo, multa) {
   const query =
     'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, certificado_id, correo, multa) VALUES ($1, $2, $3, $4, $5)';
-  const values = [usuario_id, fecha_creacion, id_Certificado, correo, multa];
+  const values = [usuario_id, fecha_creacion, certificado_id, correo, multa];
 
   try {
     const client = await pool.connect();

@@ -103,7 +103,7 @@ test('submit rejects future fine date', async () => {
     const response = await request(app).post('/').type('form').send({
       identificador: '2024100001',
       tipo_busqueda: 'codigo',
-      id_ual: '21',
+      ual_id: '21',
       fecha_multa: '2999-12-31',
       con_estado_multa: 'Pendiente',
     });
@@ -137,7 +137,7 @@ test('submit rejects unauthorized UAL', async () => {
     const response = await request(app).post('/').type('form').send({
       identificador: '2024100001',
       tipo_busqueda: 'codigo',
-      id_ual: '21',
+      ual_id: '21',
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
     });
@@ -160,7 +160,7 @@ test('submit rejects when sanctioned user is not found', async () => {
     const response = await request(app).post('/').type('form').send({
       identificador: '2024100001',
       tipo_busqueda: 'codigo',
-      id_ual: '21',
+      ual_id: '21',
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
     });
@@ -183,7 +183,7 @@ test('submit inserts fine and log when request is valid', async () => {
       cat_multa: 'Uso indebido',
       identificador: '2024100001',
       tipo_busqueda: 'codigo',
-      id_ual: '21',
+      ual_id: '21',
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',

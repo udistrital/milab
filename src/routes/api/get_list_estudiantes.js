@@ -75,7 +75,7 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
           pe.estado AS estado,
           ce.fecha_creacion,
           ce.fecha_vencimiento,
-          ce.certificado_id AS id_certificado,
+          ce.certificado_id,
           ce.correo,
           ce.motivo_exp,
           ce.multa::TEXT AS multa
@@ -94,7 +94,7 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
           pd.estado AS estado,
           cd.fecha_creacion::TIMESTAMP AS fecha_creacion,
           NULL::TIMESTAMP AS fecha_vencimiento,
-          cd.certificado_id AS id_certificado,
+          cd.certificado_id,
           cd.correo,
           cd.motivo_exp,
           cd.multa::TEXT AS multa

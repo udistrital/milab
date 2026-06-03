@@ -49,16 +49,16 @@
     </div>
 
     <div class="col-md-6">
-      <label for="id_ual" class="form-label">UAL</label>
+      <label for="ual_id" class="form-label">UAL</label>
       <% if (uals && uals.length > 0) { %>
-        <select class="form-select" id="id_ual" name="id_ual" required>
+        <select class="form-select" id="ual_id" name="ual_id" required>
           <option value="" selected disabled>Selecciona una UAL</option>
           <% uals.forEach(ual => { %>
-            <option value="<%= ual.id_ual %>"><%= ual.nombre %></option>
+            <option value="<%= ual.ual_id %>"><%= ual.nombre %></option>
           <% }) %>
         </select>
       <% } else { %>
-        <input type="text" value="No Aplica" class="form-control" name="id_ual" readonly>
+        <input type="text" value="No Aplica" class="form-control" name="ual_id" readonly>
       <% } %>
     </div>
 

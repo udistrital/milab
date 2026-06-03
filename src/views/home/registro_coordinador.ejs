@@ -75,8 +75,8 @@
         <% for (var i = 0; i < facultades.length; i++) { %>
           <div class="col-md-6 mb-2">
             <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="facultad_<%= facultades[i].id_facultad %>" name="id_facultades" value="<%= facultades[i].id_facultad %>">
-              <label class="form-check-label" for="facultad_<%= facultades[i].id_facultad %>"><%= facultades[i].nombre %></label>
+              <input class="form-check-input" type="checkbox" id="facultad_<%= facultades[i].facultad_id %>" name="facultad_ids" value="<%= facultades[i].facultad_id %>">
+              <label class="form-check-label" for="facultad_<%= facultades[i].facultad_id %>"><%= facultades[i].nombre %></label>
             </div>
           </div>
         <% } %>
@@ -152,7 +152,7 @@
     }
 
     // Validar selección de al menos una facultad
-    var checks = document.querySelectorAll('input[name="id_facultades"]:checked');
+    var checks = document.querySelectorAll('input[name="facultad_ids"]:checked');
     if (checks.length === 0) {
       mensajeError.classList.remove("d-none");
       mensajeError.innerHTML += "<p>Debe seleccionar al menos una sede/facultad.</p>";

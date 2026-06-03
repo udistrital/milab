@@ -19,7 +19,7 @@ const requireTeacherFineSubmissionAccess = requireRoles('laboratorista', {
 
 router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
   const requestBody = req.body || {};
-  const { cat_multa, con_documento, id_ual, fecha_multa, con_estado_multa, obs_multa } =
+  const { cat_multa, con_documento, ual_id, fecha_multa, con_estado_multa, obs_multa } =
     requestBody;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -65,7 +65,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     }
 
     const laboratorista = laboratoristaResult.rows[0];
-    const idUal = Number(id_ual);
+    const idUal = Number(ual_id);
 
     if (!Number.isInteger(idUal)) {
       return res.render('home/message_error', {

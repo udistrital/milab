@@ -267,7 +267,7 @@ router.post(
       .escape(),
     body('nombre').notEmpty().withMessage('El nombre es obligatorio').trim().escape(),
     // Soporte de múltiples facultades: acepta array o string único
-    body('id_facultades').custom((val) => {
+    body('facultad_ids').custom((val) => {
       if (Array.isArray(val)) {
         return val.length > 0 && val.every((v) => /^\d+$/.test(String(v)));
       }
@@ -308,14 +308,14 @@ router.post(
     const normalizedEmail = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
 
     // Normalizar facultades seleccionadas (array de enteros)
-    const id_facultades_input = req.body.id_facultades;
-    const id_facultades = Array.isArray(id_facultades_input)
-      ? id_facultades_input.map((x) => parseInt(x, 10))
-      : [parseInt(id_facultades_input, 10)].filter(Number.isFinite);
+    const facultyIdsInput = req.body.facultad_ids;
+    const facultyIds = Array.isArray(facultyIdsInput)
+      ? facultyIdsInput.map((x) => parseInt(x, 10))
+      : [parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
 
-    const id_facultad_principal = id_facultades[0];
+    const primaryFacultyId = facultyIds[0];
 
-    if (!id_facultades.length || !numero_resolucion_coordinador || !soporte_resolucion) {
+    if (!facultyIds.length || !numero_resolucion_coordinador || !soporte_resolucion) {
       return res.render('home/message_error', {
         message: '¡Todos los campos son obligatorios!',
         message2: 'Inténtalo nuevamente',
@@ -340,9 +340,9 @@ router.post(
       // Validar que las facultades existan
       const facs = await pool.query(
         'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])',
-        [id_facultades]
+        [facultyIds]
       );
-      if (facs.rows.length !== id_facultades.length) {
+      if (facs.rows.length !== facultyIds.length) {
         return res.render('home/message_error', {
           message: 'Una o más facultades seleccionadas no existen.',
           message2: 'Verifica la selección',
@@ -365,7 +365,7 @@ router.post(
           documento,
           nombre,
           normalizedEmail,
-          id_facultad_principal,
+          primaryFacultyId,
           numero_resolucion_coordinador,
           soporte_resolucion,
           documento,
@@ -378,7 +378,7 @@ router.post(
       ]);
 
       // Insertar todas las asociaciones en la tabla de unión
-      for (const facId of id_facultades) {
+      for (const facId of facultyIds) {
         await pool.query(
           'INSERT INTO coordinador_facultad (documento, facultad_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [documento, facId]
@@ -403,7 +403,7 @@ router.post(
         documento,
         nombre,
         correo: normalizedEmail,
-        id_facultades,
+        faculty_ids: facultyIds,
         numero_resolucion_coordinador,
         soporte_resolucion,
         facultades_nombres: facultadInfo.join(', '),

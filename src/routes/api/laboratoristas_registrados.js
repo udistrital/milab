@@ -218,8 +218,8 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const facultiesQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT facultad_id AS id_facultad, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT facultad_id AS id_facultad, nombre FROM facultad ORDER BY nombre ASC';
+        ? 'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC';
     const facultadesRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(facultiesQuery, [facultadesPermitidas])
@@ -227,18 +227,18 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const ualsQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT ual_id AS id_ual, nombre, facultad_id AS id_facultad FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT ual_id AS id_ual, nombre, facultad_id AS id_facultad FROM ual ORDER BY nombre ASC';
+        ? 'SELECT ual_id, nombre, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT ual_id, nombre, facultad_id FROM ual ORDER BY nombre ASC';
     const ualsRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(ualsQuery, [facultadesPermitidas])
         : await pool.query(ualsQuery);
 
     const assignedUalsRes = await pool.query(
-      'SELECT ual_id AS id_ual FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
+      'SELECT ual_id FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
       [documento]
     );
-    const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.id_ual));
+    const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.ual_id));
 
     if (assignedUalIds.length === 0 && laboratorista.ual_id) {
       assignedUalIds.push(Number(laboratorista.ual_id));
@@ -267,7 +267,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
   const contrato = String(req.body.contrato || '').trim();
   const correo = normalizeInstitutionalEmail(req.body.correo);
   const selectedFacultyId = Number(req.body.facultad);
-  const selectedUalIds = normalizeSelectedUalIds(req.body.id_uales);
+  const selectedUalIds = normalizeSelectedUalIds(req.body.ual_ids);
 
   if (!documento || !nombre || !contrato || !selectedFacultyId || selectedUalIds.length === 0) {
     return res.render('home/message_error', {

@@ -25,7 +25,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     identificador,
     numero_documento_identificacion,
     tipo_busqueda,
-    id_ual,
+    ual_id,
     fecha_multa,
     con_estado_multa,
     obs_multa,
@@ -93,7 +93,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     }
 
     const laboratorista = laboratoristaResult.rows[0];
-    const idUal = Number(id_ual);
+    const idUal = Number(ual_id);
 
     if (!Number.isInteger(idUal)) {
       return res.render('home/message_error', {

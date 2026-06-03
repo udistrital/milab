@@ -147,7 +147,7 @@ test('laboratoristas_registrados /editar allows admin edit and updates assigned 
         nombre: 'Laboratorista Editado',
         correo: 'lab.editado@udistrital.edu.co',
         facultad: '2',
-        id_uales: ['11', '12'],
+        ual_ids: ['11', '12'],
         contrato: 'CPS',
       });
 
@@ -204,7 +204,7 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
         nombre: 'Laboratorista Editado',
         correo: 'lab.editado@udistrital.edu.co',
         facultad: '10',
-        id_uales: ['11'],
+        ual_ids: ['11'],
         contrato: 'CPS',
       });
 
@@ -262,7 +262,7 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
         nombre: 'Laboratorista Coord',
         correo: 'lab.coord@udistrital.edu.co',
         facultad: '20',
-        id_uales: ['21', '22'],
+        ual_ids: ['21', '22'],
         contrato: 'Planta',
       });
 
@@ -297,7 +297,7 @@ test('laboratoristas_registrados /editar rejects institutional email conflict', 
         nombre: 'Laboratorista Editado',
         correo: 'enconflicto@udistrital.edu.co',
         facultad: '2',
-        id_uales: ['11', '12'],
+        ual_ids: ['11', '12'],
         contrato: 'CPS',
       });
 

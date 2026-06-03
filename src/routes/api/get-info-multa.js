@@ -184,7 +184,7 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 
     // Guardar en la base de datos la solicitud de certificado
 
-    //let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, id_certificado:uniqueId, correo: "correo", multa:con_multado};
+    //let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, certificado_id:uniqueId, correo: "correo", multa:con_multado};
     //submit_data(data_to_submit);
   } catch (error) {
     console.error(error);

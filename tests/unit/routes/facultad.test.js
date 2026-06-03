@@ -97,14 +97,14 @@ test('facultad parses form body for UAL edit requests', async () => {
   try {
     const app = buildApp(loaded.route);
     const response = await request(app).post('/ual/editar').type('form').send({
-      id_ual: '10',
-      id_facultad: '1',
+      ual_id: '10',
+      facultad_id: '1',
       nombre: 'UAL Nueva',
-      new_id_facultad: '1',
+      new_facultad_id: '1',
     });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/milab/api/facultad?id_facultad=1');
+    assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=1');
 
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
