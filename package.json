@@ -10,9 +10,10 @@
     "lint": "npx eslint .",
     "format": "npx prettier --write . --ignore-unknown",
     "format:check": "npx prettier --check . --ignore-unknown",
+    "db:audit:check": "node scripts/ci/check-db-fk-audit.js",
     "audit": "npm audit --audit-level=high --omit=dev",
     "audit:fix": "npm audit fix",
-    "ci:check": "npm run format:check && npm run lint && npm run audit",
+    "ci:check": "npm run format:check && npm run lint && npm run db:audit:check && npm run audit",
     "analyze:local": "sh scripts/run-local-analysis.sh"
   },
   "author": "UDFJC - Coordinación General de Laboratorios",

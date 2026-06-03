@@ -424,7 +424,7 @@ VALUES
 UPDATE coordinador c
 SET nombre = s.nombre,
     correo = s.correo,
-    id_facultad = f.id_facultad,
+    facultad_id = f.facultad_id,
     numero_resolucion_coordinador = s.numero_resolucion_coordinador,
     soporte_resolucion = s.soporte_resolucion,
     nombre_u = s.nombre_u
@@ -445,7 +445,7 @@ INSERT INTO coordinador (
     documento,
     nombre,
     correo,
-    id_facultad,
+    facultad_id,
     numero_resolucion_coordinador,
     soporte_resolucion,
     nombre_u
@@ -454,7 +454,7 @@ SELECT
     s.documento,
     s.nombre,
     s.correo,
-    f.id_facultad,
+    f.facultad_id,
     s.numero_resolucion_coordinador,
     s.soporte_resolucion,
     s.nombre_u
@@ -467,8 +467,8 @@ WHERE by_document.documento IS NULL
   AND by_email.documento IS NULL
   AND by_user.documento IS NULL;
 
-INSERT INTO coordinador_facultad (documento, id_facultad)
-SELECT DISTINCT s.documento, f.id_facultad
+INSERT INTO coordinador_facultad (coordinador_documento_id, facultad_id)
+SELECT DISTINCT s.documento, f.facultad_id
 FROM tmp_seed_coordinadores s
 JOIN facultad f ON f.nombre = s.facultad_nombre
 ON CONFLICT DO NOTHING;

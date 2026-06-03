@@ -166,9 +166,9 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                   LEFT JOIN perfil_estudiante pe
                     ON pe.codigo::text = t.identificador
                     OR pe.documento = t.identificador
-                  LEFT JOIN multa m ON m.usuario_id_sancionado = pe.usuario_id
+                  LEFT JOIN multa m ON m.usuario_sancionado_id = pe.usuario_id
                   LEFT JOIN ual u ON u.ual_id = m.ual_id
-                  LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
+                  LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
                   GROUP BY
                     t.identificador;
             `; //

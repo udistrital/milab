@@ -22,9 +22,7 @@ services:
       # So you don't have to use root, but you can if you like
       POSTGRES_USER: ${DB_USER}
       # You can use whatever password you like
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # Password for root access
-      POSTGRES_ROOT_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       # <Port exposed> : < Port running inside container>
       - '5432:5432'

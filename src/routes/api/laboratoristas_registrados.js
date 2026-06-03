@@ -63,7 +63,7 @@ async function resolveCoordinatorFacultyIds(client, authDocument) {
   const coordDocumento = coordInfoRes.rows[0].documento;
   const facultadPrincipal = coordInfoRes.rows[0].facultad_id;
   const facultadesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE documento = $1',
+    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
     [coordDocumento]
   );
 
@@ -93,7 +93,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         ) AS con_ual,
         f.nombre AS con_facultad
       FROM laboratorista l
-      LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
+      LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
       LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id
       LEFT JOIN ual u_principal ON u_principal.ual_id = l.ual_id
       JOIN facultad f ON f.facultad_id = l.facultad_id
@@ -126,7 +126,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
       // Recuperar todas las facultades asociadas mediante la tabla de unión
       const cfRes = await pool.query(
-        `SELECT facultad_id FROM coordinador_facultad WHERE documento = $1`,
+        `SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1`,
         [coordDocumento]
       );
 
@@ -235,7 +235,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         : await pool.query(ualsQuery);
 
     const assignedUalsRes = await pool.query(
-      'SELECT ual_id FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
+      'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1 ORDER BY ual_id ASC',
       [documento]
     );
     const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.ual_id));
@@ -385,9 +385,11 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
         [correo, nombre, documento]
       );
     }
-    await client.query('DELETE FROM laboratorista_ual WHERE documento = $1', [documento]);
+    await client.query('DELETE FROM laboratorista_ual WHERE laboratorista_documento_id = $1', [
+      documento,
+    ]);
     await client.query(
-      'INSERT INTO laboratorista_ual (documento, ual_id) SELECT $1, UNNEST($2::int[])',
+      'INSERT INTO laboratorista_ual (laboratorista_documento_id, ual_id) SELECT $1, UNNEST($2::int[])',
       [documento, selectedUalIds]
     );
 

@@ -34,7 +34,7 @@
             </tr>
             <% if(multaInfo.length > 0) { %>
               <% multaInfo.forEach(function(data){ %>
-                <% const referenciaSancionado = data.documento_sancionado || data.usuario_id_sancionado; %>
+                <% const referenciaSancionado = data.documento_sancionado || data.usuario_sancionado_id; %>
                 <tr>
                   <td><%= data.id %></td>
                   <td><%= data.cat_multa %></td>

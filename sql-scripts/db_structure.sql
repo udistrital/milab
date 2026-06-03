@@ -172,26 +172,26 @@ CREATE TABLE coordinador (
 );
 
 CREATE TABLE coordinador_facultad (
-    documento CHARACTER VARYING(50) NOT NULL,
+    coordinador_documento_id CHARACTER VARYING(50) NOT NULL,
     facultad_id INT NOT NULL,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (documento, facultad_id),
-    CONSTRAINT fk_cf_coordinador FOREIGN KEY (documento)
+    PRIMARY KEY (coordinador_documento_id, facultad_id),
+    CONSTRAINT fk_cf_coordinador FOREIGN KEY (coordinador_documento_id)
         REFERENCES coordinador(documento) ON DELETE CASCADE,
     CONSTRAINT fk_cf_facultad FOREIGN KEY (facultad_id)
         REFERENCES facultad(facultad_id) ON DELETE CASCADE
 );
 
 CREATE TABLE laboratorista_ual (
-    documento CHARACTER VARYING(50) NOT NULL,
+    laboratorista_documento_id CHARACTER VARYING(50) NOT NULL,
     ual_id INT NOT NULL,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (documento, ual_id),
-    CONSTRAINT fk_lu_laboratorista FOREIGN KEY (documento)
+    PRIMARY KEY (laboratorista_documento_id, ual_id),
+    CONSTRAINT fk_lu_laboratorista FOREIGN KEY (laboratorista_documento_id)
         REFERENCES laboratorista(documento) ON DELETE CASCADE,
     CONSTRAINT fk_lu_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE RESTRICT
@@ -200,8 +200,8 @@ CREATE TABLE laboratorista_ual (
 CREATE TABLE multa (
     id SERIAL PRIMARY KEY,
     cat_multa CHARACTER VARYING(100),
-    documento_laboratorista CHARACTER VARYING(50) NOT NULL REFERENCES laboratorista(documento) ON DELETE RESTRICT,
-    usuario_id_sancionado BIGINT NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
+    laboratorista_documento_id CHARACTER VARYING(50) NOT NULL REFERENCES laboratorista(documento) ON DELETE RESTRICT,
+    usuario_sancionado_id BIGINT NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
     ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE RESTRICT,
     fecha_multa DATE,
     con_estado_multa CHARACTER VARYING(50),
@@ -223,14 +223,14 @@ CREATE TABLE log (
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_coordinador_facultad_documento ON coordinador_facultad(documento);
+CREATE INDEX idx_coordinador_facultad_coordinador_documento_id ON coordinador_facultad(coordinador_documento_id);
 CREATE INDEX idx_coordinador_facultad_facultad_id ON coordinador_facultad(facultad_id);
-CREATE INDEX idx_laboratorista_ual_documento ON laboratorista_ual(documento);
+CREATE INDEX idx_laboratorista_ual_laboratorista_documento_id ON laboratorista_ual(laboratorista_documento_id);
 CREATE INDEX idx_laboratorista_ual_ual_id ON laboratorista_ual(ual_id);
 CREATE INDEX idx_certificado_estudiante_usuario ON certificado_estudiante(usuario_id);
 CREATE INDEX idx_certificado_docente_usuario ON certificado_docente(usuario_id);
-CREATE INDEX idx_multa_usuario_sancionado ON multa(usuario_id_sancionado);
-CREATE INDEX idx_multa_documento_laboratorista ON multa(documento_laboratorista);
+CREATE INDEX idx_multa_usuario_sancionado_id ON multa(usuario_sancionado_id);
+CREATE INDEX idx_multa_laboratorista_documento_id ON multa(laboratorista_documento_id);
 CREATE INDEX idx_multa_ual_id ON multa(ual_id);
 
 COMMENT ON COLUMN milab.usuario_rol.usuario_id IS 'Referencia a milab.usuario.id';
@@ -248,12 +248,12 @@ COMMENT ON COLUMN milab.laboratorista.facultad_id IS 'Referencia a milab.faculta
 COMMENT ON COLUMN milab.laboratorista.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador.facultad_id IS 'Referencia a milab.facultad.facultad_id';
 COMMENT ON COLUMN milab.coordinador.usuario_id IS 'Referencia a milab.usuario.id';
-COMMENT ON COLUMN milab.coordinador_facultad.documento IS 'Referencia a milab.coordinador.documento';
+COMMENT ON COLUMN milab.coordinador_facultad.coordinador_documento_id IS 'Referencia a milab.coordinador.documento';
 COMMENT ON COLUMN milab.coordinador_facultad.facultad_id IS 'Referencia a milab.facultad.facultad_id';
-COMMENT ON COLUMN milab.laboratorista_ual.documento IS 'Referencia a milab.laboratorista.documento';
+COMMENT ON COLUMN milab.laboratorista_ual.laboratorista_documento_id IS 'Referencia a milab.laboratorista.documento';
 COMMENT ON COLUMN milab.laboratorista_ual.ual_id IS 'Referencia a milab.ual.ual_id';
-COMMENT ON COLUMN milab.multa.documento_laboratorista IS 'Referencia a milab.laboratorista.documento';
-COMMENT ON COLUMN milab.multa.usuario_id_sancionado IS 'Referencia a milab.usuario.id';
+COMMENT ON COLUMN milab.multa.laboratorista_documento_id IS 'Referencia a milab.laboratorista.documento';
+COMMENT ON COLUMN milab.multa.usuario_sancionado_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.multa.ual_id IS 'Referencia a milab.ual.ual_id';
 
 COMMIT;

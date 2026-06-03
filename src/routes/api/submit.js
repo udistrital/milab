@@ -117,7 +117,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     }
 
     await pool.query(
-      'INSERT INTO multa (cat_multa, documento_laboratorista, usuario_id_sancionado, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
       [
         cat_multa,
         laboratorista.documento,

@@ -25,7 +25,7 @@ router.get('/:codigo', publicApiLimiter, async (req, res) => {
     const query = `
       SELECT 1
       FROM multa
-      WHERE usuario_id_sancionado = $1 AND con_estado_multa = 'ACTIVA'
+      WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'
       LIMIT 1
     `;
     const result = await pool.query(query, [usuarioId]);

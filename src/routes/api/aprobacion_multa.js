@@ -160,8 +160,8 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     const result = await pool.query(
       `SELECT 
         m.id,
-        m.usuario_id_sancionado,
         COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        m.usuario_sancionado_id,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         us.codigo AS codigo_sancionado,
         l.nombre AS nombre_laboratorista,
@@ -173,10 +173,10 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         m.tipo_sancion
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
-      LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
-      LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
-      LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
-      LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
+      LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
+        LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
+        LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
+        LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
         AND u.facultad_id = ANY($1::int[])`,
       [scope.facultyIds]
@@ -248,10 +248,10 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
 
     try {
       const multaInfo = await pool.query(
-        'SELECT m.usuario_id_sancionado, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
+        'SELECT m.usuario_sancionado_id, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
         [multa_id]
       );
-      const usuarioId = multaInfo.rows[0]?.usuario_id_sancionado;
+      const usuarioId = multaInfo.rows[0]?.usuario_sancionado_id;
       const studentInfo = await resolveStudentContactByUsuarioId(usuarioId);
       const referencia = studentInfo?.codigo || studentInfo?.documento || '';
       await pool.query(
@@ -330,7 +330,7 @@ router.post('/saldar', requireCoordinadorApprovalAction, async function (req, re
     }
 
     const sancionadoResult = await pool.query(
-      'SELECT u.documento FROM multa m LEFT JOIN usuario u ON u.id = m.usuario_id_sancionado WHERE m.id = $1',
+      'SELECT u.documento FROM multa m LEFT JOIN usuario u ON u.id = m.usuario_sancionado_id WHERE m.id = $1',
       [multa_id]
     );
     const documentoSancionado = sancionadoResult.rows[0]?.documento || String(multa_id);

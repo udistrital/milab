@@ -218,7 +218,7 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   const laboratorista = laboratoristaRes.rows[0];
   const assignedUalsRes = await client.query(
-    'SELECT ual_id FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
+    'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1 ORDER BY ual_id ASC',
     [laboratorista.documento]
   );
 
@@ -330,7 +330,7 @@ async function fetchLaboratoristaRows(client) {
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(lu.ual_id, l.ual_id)), NULL) AS ual_ids,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(u.facultad_id, l.facultad_id)), NULL) AS faculty_ids
      FROM laboratorista l
-     LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
+     LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
      LEFT JOIN ual u ON u.ual_id = COALESCE(lu.ual_id, l.ual_id)
      GROUP BY l.documento, l.fecha_creacion`
   );
@@ -344,7 +344,7 @@ async function fetchCoordinatorRows(client) {
        c.fecha_creacion,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(cf.facultad_id, c.facultad_id)), NULL) AS faculty_ids
      FROM coordinador c
-     LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
+     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      GROUP BY c.documento, c.fecha_creacion`
   );
   return result.rows;
@@ -360,9 +360,9 @@ async function fetchUsuarioRows(client) {
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.facultad_id, l.facultad_id)), NULL) AS laboratorista_faculty_ids
      FROM usuario u
      LEFT JOIN coordinador c ON c.usuario_id = u.id
-     LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
+     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
-     LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
+     LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
      LEFT JOIN ual ON ual.ual_id = COALESCE(lu.ual_id, l.ual_id)
      GROUP BY u.documento, u.fecha_creacion, u.carrera`
   );

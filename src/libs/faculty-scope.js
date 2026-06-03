@@ -141,7 +141,7 @@ async function resolveCoordinatorScope(client, authDocument) {
   const coordinatorDocument = coordInfoRes.rows[0].documento;
   const primaryFacultyId = coordInfoRes.rows[0].facultad_id;
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE documento = $1',
+    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
     [coordinatorDocument]
   );
 

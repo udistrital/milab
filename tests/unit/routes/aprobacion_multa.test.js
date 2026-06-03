@@ -143,10 +143,10 @@ test('aprobacion_multa activar redirects on successful update', async () => {
         return { rowCount: 1, rows: [] };
       }
 
-      if (sql.includes('SELECT m.usuario_id_sancionado')) {
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
         return {
           rows: [
-            { usuario_id_sancionado: 77, fecha_multa: '2026-01-01', ual: 'Lab', obs_multa: '' },
+            { usuario_sancionado_id: 77, fecha_multa: '2026-01-01', ual: 'Lab', obs_multa: '' },
           ],
         };
       }

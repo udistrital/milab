@@ -99,7 +99,7 @@ router.post('/', async (req, res) => {
     let estado = 'PAZ_Y_SALVO';
     try {
       const result = await pool.query(
-        `SELECT 1 FROM multa WHERE usuario_id_sancionado = $1 AND con_estado_multa = 'ACTIVA' LIMIT 1`,
+        `SELECT 1 FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA' LIMIT 1`,
         [usuarioId]
       );
       if (result.rows.length > 0) estado = 'MULTADO';

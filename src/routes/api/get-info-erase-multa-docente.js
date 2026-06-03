@@ -57,7 +57,7 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
 
     // Consulta solo multas ACTIVAS
     const query =
-      'SELECT COUNT(*) AS multado FROM multa WHERE usuario_id_sancionado = $1 AND con_estado_multa = $2';
+      'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = $2';
     const values = [usuarioId, 'ACTIVA'];
 
     const result = await pool.query(query, values);
@@ -66,7 +66,7 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
     let multaInfo = null;
     if (con_multado) {
       const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa = $2';
+        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa = $2';
       const valuesMultaInfo = [usuarioId, 'ACTIVA'];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;

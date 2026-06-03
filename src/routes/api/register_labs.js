@@ -513,7 +513,7 @@ async function create_account(data, userSession) {
     if (result.rowCount !== undefined && result.rowCount >= 0) {
       await client.query(
         `
-        INSERT INTO laboratorista_ual (documento, ual_id)
+        INSERT INTO laboratorista_ual (laboratorista_documento_id, ual_id)
         SELECT $1, UNNEST($2::int[])
         ON CONFLICT DO NOTHING
         `,

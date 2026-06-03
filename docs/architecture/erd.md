@@ -168,7 +168,7 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
   }
 
   coordinador_facultad {
-    VARCHAR documento FK
+    VARCHAR coordinador_documento_id FK
     INT facultad_id FK
     BOOLEAN activo
     TIMESTAMPTZ fecha_creacion
@@ -176,7 +176,7 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
   }
 
   laboratorista_ual {
-    VARCHAR documento FK
+    VARCHAR laboratorista_documento_id FK
     INT ual_id FK
     BOOLEAN activo
     TIMESTAMPTZ fecha_creacion
@@ -186,8 +186,8 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
   multa {
     SERIAL id PK
     TEXT cat_multa
-    VARCHAR documento_laboratorista FK
-    BIGINT usuario_id_sancionado FK
+    VARCHAR laboratorista_documento_id FK
+    BIGINT usuario_sancionado_id FK
     INT ual_id FK
     DATE fecha_multa
     TEXT con_estado_multa
@@ -240,9 +240,9 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
 | `ual` | ual_id, nombre, facultad_id, activo, fecha_creacion, fecha_modificacion |
 | `laboratorista` | documento, nombre, n_usuario, correo, ual_id, facultad_id, contrato, usuario_id, activo, fecha_creacion, fecha_modificacion |
 | `coordinador` | documento, nombre, correo, facultad_id, numero_resolucion_coordinador, soporte_resolucion, nombre_u, usuario_id, activo, fecha_creacion, fecha_modificacion |
-| `coordinador_facultad` | documento, facultad_id, activo, fecha_creacion, fecha_modificacion |
-| `laboratorista_ual` | documento, ual_id, activo, fecha_creacion, fecha_modificacion |
-| `multa` | id, cat_multa, documento_laboratorista, usuario_id_sancionado, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion, activo, fecha_creacion, fecha_modificacion |
+| `coordinador_facultad` | coordinador_documento_id, facultad_id, activo, fecha_creacion, fecha_modificacion |
+| `laboratorista_ual` | laboratorista_documento_id, ual_id, activo, fecha_creacion, fecha_modificacion |
+| `multa` | id, cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion, activo, fecha_creacion, fecha_modificacion |
 
 ## Notas De Modelado
 

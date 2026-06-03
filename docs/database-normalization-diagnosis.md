@@ -62,8 +62,8 @@ La tabla `multa` dejó atrás el modelo más frágil del sistema.
 
 Hoy las relaciones principales son:
 
-1. `multa.documento_laboratorista -> laboratorista.documento`
-2. `multa.usuario_id_sancionado -> usuario.id`
+1. `multa.laboratorista_documento_id -> laboratorista.documento`
+2. `multa.usuario_sancionado_id -> usuario.id`
 3. `multa.ual_id -> ual.ual_id`
 
 Esto resuelve una parte crítica de la deuda histórica:
@@ -253,7 +253,7 @@ La dirección arquitectónica recomendada hoy es esta:
 
 ### Fase 3. Alinear aplicación y esquema
 
-1. Revisar rutas y consultas para asegurar que usen `multa.usuario_id_sancionado`, `multa.documento_laboratorista` y `multa.ual_id`.
+1. Revisar rutas y consultas para asegurar que usen `multa.usuario_sancionado_id`, `multa.laboratorista_documento_id` y `multa.ual_id`.
 2. Seguir retirando supuestos heredados donde el documento o el código se trataban como sustituto de una FK.
 
 ## Conclusión

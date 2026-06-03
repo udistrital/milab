@@ -134,7 +134,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       let con_multado = 0;
       try {
         const result = await pool.query(
-          'SELECT 1 FROM multa WHERE usuario_id_sancionado = $1 LIMIT 1',
+          'SELECT 1 FROM multa WHERE usuario_sancionado_id = $1 LIMIT 1',
           [usuarioId]
         );
         if (result.rows.length > 0) {

@@ -57,7 +57,11 @@ function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } 
         return { rows: [{ documento: '900', facultad_id: 10 }] };
       }
 
-      if (sql.includes('SELECT facultad_id FROM coordinador_facultad WHERE documento = $1')) {
+      if (
+        sql.includes(
+          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+        )
+      ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
       }
 
@@ -160,11 +164,15 @@ test('laboratoristas_registrados /editar allows admin edit and updates assigned 
       true
     );
     assert.equal(
-      calls.some((call) => call.sql.includes('DELETE FROM laboratorista_ual WHERE documento = $1')),
+      calls.some((call) =>
+        call.sql.includes('DELETE FROM laboratorista_ual WHERE laboratorista_documento_id = $1')
+      ),
       true
     );
     assert.equal(
-      calls.some((call) => call.sql.includes('INSERT INTO laboratorista_ual (documento, ual_id)')),
+      calls.some((call) =>
+        call.sql.includes('INSERT INTO laboratorista_ual (laboratorista_documento_id, ual_id)')
+      ),
       true
     );
   } finally {
@@ -186,7 +194,11 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
         return { rows: [{ documento: '900', facultad_id: 10 }] };
       }
 
-      if (sql.includes('SELECT facultad_id FROM coordinador_facultad WHERE documento = $1')) {
+      if (
+        sql.includes(
+          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+        )
+      ) {
         return { rows: [{ facultad_id: 10 }] };
       }
 
@@ -236,7 +248,11 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
         return { rows: [{ documento: '900', facultad_id: 10 }] };
       }
 
-      if (sql.includes('SELECT facultad_id FROM coordinador_facultad WHERE documento = $1')) {
+      if (
+        sql.includes(
+          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+        )
+      ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
       }
 

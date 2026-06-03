@@ -22,7 +22,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
 
   try {
     // Primero obtenemos el usuario sancionado de la multa
-    const multaResult = await pool.query('SELECT usuario_id_sancionado FROM multa WHERE id = $1', [
+    const multaResult = await pool.query('SELECT usuario_sancionado_id FROM multa WHERE id = $1', [
       con_id,
     ]);
 
@@ -34,7 +34,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       });
     }
 
-    const usuarioSancionadoId = multaResult.rows[0].usuario_id_sancionado;
+    const usuarioSancionadoId = multaResult.rows[0].usuario_sancionado_id;
     const usuarioSancionado = await fetchUserById(usuarioSancionadoId);
     const referenciaSancionado = usuarioSancionado?.documento || 'desconocido';
 

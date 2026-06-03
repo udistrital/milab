@@ -82,7 +82,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
     }
 
     // --- Base de datos
-    const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_id_sancionado = $1';
+    const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1';
     const values = [usuarioId];
     let con_multado = false;
     const result = await pool.query(query, values);
@@ -91,7 +91,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
     let multaInfo = null;
     if (con_multado) {
       const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1';
+        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1';
       const valuesMultaInfo = [usuarioId];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;

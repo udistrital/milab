@@ -380,7 +380,7 @@ router.post(
       // Insertar todas las asociaciones en la tabla de unión
       for (const facId of facultyIds) {
         await pool.query(
-          'INSERT INTO coordinador_facultad (documento, facultad_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          'INSERT INTO coordinador_facultad (coordinador_documento_id, facultad_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [documento, facId]
         );
       }
