@@ -3,9 +3,13 @@ FROM node:25-slim
 WORKDIR /usr/src/app
 # Copia package y lo ejecuta, instala dependencias del codigo
 COPY package*.json ./
-RUN npm install
+RUN npm ci --omit=dev
 
-COPY . .
+# Copia solo los directorios necesarios para ejecutar la app.
+COPY src ./src
+COPY public ./public
+COPY views ./views
+COPY sql-scripts ./sql-scripts
 
 EXPOSE 3000
 
