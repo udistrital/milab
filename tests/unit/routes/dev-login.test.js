@@ -8,9 +8,6 @@ function loadRouterWithEnv(partialEnv) {
   const originalEnv = {
     NODE_ENV: process.env.NODE_ENV,
     ENABLE_DEV_LOGIN: process.env.ENABLE_DEV_LOGIN,
-    DEV_LOGIN_ALLOWED_IPS: process.env.DEV_LOGIN_ALLOWED_IPS,
-    DEV_LOGIN_HEADER_SECRET: process.env.DEV_LOGIN_HEADER_SECRET,
-    ADMINDEV_HASH: process.env.ADMINDEV_HASH,
   };
 
   if (Object.hasOwn(partialEnv, 'NODE_ENV')) {
@@ -21,18 +18,6 @@ function loadRouterWithEnv(partialEnv) {
     process.env.ENABLE_DEV_LOGIN = partialEnv.ENABLE_DEV_LOGIN;
   }
 
-  if (Object.hasOwn(partialEnv, 'DEV_LOGIN_ALLOWED_IPS')) {
-    process.env.DEV_LOGIN_ALLOWED_IPS = partialEnv.DEV_LOGIN_ALLOWED_IPS;
-  }
-
-  if (Object.hasOwn(partialEnv, 'DEV_LOGIN_HEADER_SECRET')) {
-    process.env.DEV_LOGIN_HEADER_SECRET = partialEnv.DEV_LOGIN_HEADER_SECRET;
-  }
-
-  if (Object.hasOwn(partialEnv, 'ADMINDEV_HASH')) {
-    process.env.ADMINDEV_HASH = partialEnv.ADMINDEV_HASH;
-  }
-
   delete require.cache[modulePath];
   const router = require(modulePath);
 
@@ -41,18 +26,6 @@ function loadRouterWithEnv(partialEnv) {
 
   if (originalEnv.ENABLE_DEV_LOGIN === undefined) delete process.env.ENABLE_DEV_LOGIN;
   else process.env.ENABLE_DEV_LOGIN = originalEnv.ENABLE_DEV_LOGIN;
-
-  if (originalEnv.DEV_LOGIN_ALLOWED_IPS === undefined) delete process.env.DEV_LOGIN_ALLOWED_IPS;
-  else process.env.DEV_LOGIN_ALLOWED_IPS = originalEnv.DEV_LOGIN_ALLOWED_IPS;
-
-  if (originalEnv.DEV_LOGIN_HEADER_SECRET === undefined) {
-    delete process.env.DEV_LOGIN_HEADER_SECRET;
-  } else {
-    process.env.DEV_LOGIN_HEADER_SECRET = originalEnv.DEV_LOGIN_HEADER_SECRET;
-  }
-
-  if (originalEnv.ADMINDEV_HASH === undefined) delete process.env.ADMINDEV_HASH;
-  else process.env.ADMINDEV_HASH = originalEnv.ADMINDEV_HASH;
 
   return router;
 }

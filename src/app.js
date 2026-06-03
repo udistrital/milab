@@ -57,7 +57,11 @@ require('./routes/middlewares/microsoft');
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
-const { createApplicationErrorHandler } = require('./routes/middlewares/error-handler');
+const {
+  createApplicationErrorHandler,
+  renderApplicationError,
+  wantsJson,
+} = require('./routes/middlewares/error-handler');
 const {
   csrfTokenMiddleware,
   verifyCsrfToken,
@@ -132,52 +136,16 @@ function requireApiSessionUnlessPublic(req, res, next) {
 }
 const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
 const isProduction = normalizedNodeEnv === 'production';
-const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalizedNodeEnv);
-const deploymentEnvironment = (process.env.DEPLOYMENT_ENV || 'local').toLowerCase().trim();
-const allowedDevRuntimeEnvironments = (process.env.ALLOWED_DEV_RUNTIME_ENVS || 'local')
-  .split(',')
-  .map((value) => value.trim().toLowerCase())
-  .filter(Boolean);
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
   (process.env.ENABLE_DEV_LOGIN || '').toLowerCase()
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
-const devAdminPasswordHash = (process.env.ADMINDEV_HASH || '').trim();
-const devLoginHeaderSecret = (process.env.DEV_LOGIN_HEADER_SECRET || '').trim();
-if (isProduction && isDevLoginEnabled) {
+const isDevLoginRuntime = normalizedNodeEnv === 'dev';
+
+// Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
+if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   throw new Error(
-    '[SECURITY] ENABLE_DEV_LOGIN no puede estar activo en producción. Deshabilítalo para iniciar la aplicación.'
-  );
-}
-if (isProduction && hasDevAdminPasswordConfigured) {
-  throw new Error(
-    '[SECURITY] ADMINDEV no debe estar configurado en producción. Elimínalo para iniciar la aplicación.'
-  );
-}
-if (isDevNodeEnvironment && !allowedDevRuntimeEnvironments.includes(deploymentEnvironment)) {
-  throw new Error(
-    `[SECURITY] NODE_ENV=${normalizedNodeEnv} no está permitido para DEPLOYMENT_ENV=${deploymentEnvironment}. ` +
-      `Entornos permitidos: ${allowedDevRuntimeEnvironments.join(', ')}`
-  );
-}
-if (isDevLoginEnabled && !isDevNodeEnvironment) {
-  throw new Error(
-    '[SECURITY] ENABLE_DEV_LOGIN solo puede activarse cuando NODE_ENV es dev|development|local.'
-  );
-}
-if (isDevLoginEnabled && !devAdminPasswordHash) {
-  throw new Error(
-    '[SECURITY] ADMINDEV_HASH es obligatorio cuando ENABLE_DEV_LOGIN está activo.'
-  );
-}
-if (isDevLoginEnabled && !devLoginHeaderSecret) {
-  throw new Error(
-    '[SECURITY] DEV_LOGIN_HEADER_SECRET es obligatorio cuando ENABLE_DEV_LOGIN está activo.'
-  );
-}
-if (isDevLoginEnabled && devLoginHeaderSecret.length < 24) {
-  throw new Error(
-    '[SECURITY] DEV_LOGIN_HEADER_SECRET debe tener al menos 24 caracteres cuando ENABLE_DEV_LOGIN está activo.'
+    '[SECURITY] ADMINDEV es obligatorio cuando ENABLE_DEV_LOGIN está activo en NODE_ENV=dev.'
   );
 }
 const localPort = process.env.PORT || 3000;
@@ -371,18 +339,18 @@ app.use((req, res, next) => {
   res.locals.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY || '';
   res.locals.environmentName = (process.env.NODE_ENV || 'development').trim();
   res.locals.isNonProductionEnvironment = res.locals.environmentName !== 'production';
-  res.locals.isDevEnvironment = ['dev', 'development', 'local'].includes(
-    res.locals.environmentName.toLowerCase()
-  );
+  res.locals.isDevEnvironment = res.locals.environmentName.toLowerCase() === 'dev';
+  res.locals.isDevLoginEnabled = isDevLoginEnabled && normalizedNodeEnv === 'dev';
   res.locals.appVersion = appVersion;
   res.setHeader('X-App-Version', appVersion);
   next();
 });
 app.use(requestLogger);
 
-app.use(express.static('public'));
-app.use('/css', express.static('public/css'));
-app.use('/js', express.static('public/js'));
+const publicDir = path.join(__dirname, 'public');
+app.use(express.static(publicDir));
+app.use('/css', express.static(path.join(publicDir, 'css')));
+app.use('/js', express.static(path.join(publicDir, 'js')));
 
 app.set('host', process.env.HOST || '0.0.0.0');
 app.set('port', process.env.PORT || 3000);
@@ -402,6 +370,25 @@ app.use(legacyBasePath, (req, res, next) => {
 
 app.use(canonicalBasePath, verifyCsrfToken, require('./milab_routes'));
 app.use(legacyBasePath, verifyCsrfToken, require('./milab_routes'));
+
+// 404 handler: evita respuestas default de Express tipo "Cannot POST ..."
+app.use((req, res) => {
+  const requestUrl = String(req.originalUrl || '');
+
+  if (wantsJson(req) || requestUrl.startsWith('/api') || requestUrl.startsWith('/milab/api')) {
+    return res.status(404).json({
+      ok: false,
+      message: 'Ruta no encontrada',
+      message2: 'La URL solicitada no existe o el método no está permitido.',
+    });
+  }
+
+  return renderApplicationError(res, {
+    status: 404,
+    message: 'Página no encontrada',
+    message2: 'La URL solicitada no existe o el método no está permitido.',
+  });
+});
 app.use(createApplicationErrorHandler(logger));
 
 //app.use("/auth", loginRouter);

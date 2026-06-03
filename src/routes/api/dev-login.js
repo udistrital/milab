@@ -8,22 +8,13 @@
 
 const { Router } = require('express');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const { fetchUserByEmail, buildSessionUser } = require('../../libs/user-identity');
 
-const DEV_ENVS = new Set(['dev', 'development', 'local']);
-const isDevEnvironment = DEV_ENVS.has((process.env.NODE_ENV || '').toLowerCase());
+const isDevEnvironment = (process.env.NODE_ENV || '').toLowerCase() === 'dev';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
   (process.env.ENABLE_DEV_LOGIN || '').toLowerCase()
 );
-const defaultAllowedDevLoginIps = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
-const allowedDevLoginIps = (process.env.DEV_LOGIN_ALLOWED_IPS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
-const effectiveAllowedDevLoginIps =
-  allowedDevLoginIps.length > 0 ? allowedDevLoginIps : defaultAllowedDevLoginIps;
 
 const router = Router();
 
@@ -42,22 +33,6 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
         confirmacion: null,
       }),
   });
-
-  function normalizeIp(ip) {
-    if (!ip) return '';
-    if (ip.startsWith('::ffff:')) return ip.slice(7);
-    return ip;
-  }
-
-  function isIpAllowedForDevLogin(ip) {
-    const normalizedIp = normalizeIp(String(ip || '').trim());
-    if (!normalizedIp) return false;
-
-    return effectiveAllowedDevLoginIps.some((allowedIp) => {
-      const normalizedAllowedIp = normalizeIp(allowedIp);
-      return normalizedIp === normalizedAllowedIp;
-    });
-  }
 
   /**
    * Comparación en tiempo constante para evitar timing attacks.
@@ -79,38 +54,23 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
   }
 
   router.post('/dev-login', devLoginLimiter, async (req, res) => {
-    const adminPasswordHash = process.env.ADMINDEV_HASH;
-    const headerSecret = process.env.DEV_LOGIN_HEADER_SECRET;
+    const legacyAdminPassword = String(process.env.ADMINDEV || '');
 
-    if (!adminPasswordHash) {
-      return res.status(503).send('[DEV] ADMINDEV_HASH no está configurado en .env');
-    }
-
-    if (!headerSecret) {
-      return res.status(503).send('[DEV] DEV_LOGIN_HEADER_SECRET no está configurado en .env');
-    }
-
-    if (!isIpAllowedForDevLogin(req.ip)) {
-      return res.status(403).render('home/login_2', {
-        error: '[DEV] Acceso denegado para esta IP',
+    if (!legacyAdminPassword.trim()) {
+      return res.status(503).render('home/login_2', {
+        error: '[DEV] ADMINDEV no está configurado en .env',
         confirmacion: null,
       });
     }
 
     const correo = (req.body.correo || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    const submittedHeaderSecret = String(req.headers?.['x-dev-login-secret'] || '');
 
     if (!correo || !password) {
       return renderLoginError(res, '[DEV] Correo y contraseña son requeridos');
     }
 
-    if (!timingSafeStringEqual(submittedHeaderSecret, headerSecret)) {
-      return renderLoginError(res, '[DEV] Secreto técnico de cabecera inválido');
-    }
-
-    const passwordMatches = await bcrypt.compare(password, adminPasswordHash);
-    if (!passwordMatches) {
+    if (!timingSafeStringEqual(password, legacyAdminPassword)) {
       return renderLoginError(res, '[DEV] Contraseña de desarrollo incorrecta');
     }
 
@@ -125,6 +85,16 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
       return renderLoginError(
         res,
         '[DEV] No existe un usuario con ese correo en la base de datos local'
+      );
+    }
+
+    const roles = Array.isArray(usuario.roles)
+      ? usuario.roles.map((role) => String(role || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (!roles.includes('admin')) {
+      return renderLoginError(
+        res,
+        '[DEV] El correo indicado no corresponde a un usuario admin en la base de datos'
       );
     }
 

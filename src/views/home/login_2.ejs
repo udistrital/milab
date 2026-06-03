@@ -721,13 +721,13 @@
         </div>
       </section>
 
-      <% if (isDevEnvironment) { %>
+      <% if (isDevEnvironment && isDevLoginEnabled) { %>
       <section class="login-card" aria-label="Login de desarrollo"
         style="border:2px dashed #f59e0b;margin-top:1.5rem;background:#fffbeb;">
         <div>
           <h2 style="color:#b45309;">&#9888; Acceso de desarrollo</h2>
           <p class="login-card-intro">
-            Solo activo con <code>NODE_ENV=dev</code>. Invisible en producción.
+            Solo activo con <code>NODE_ENV=dev</code> y <code>ENABLE_DEV_LOGIN=true</code>.
           </p>
         </div>
         <% if (typeof error !== 'undefined' && error && String(error).startsWith('[DEV]')) { %>
@@ -745,7 +745,7 @@
           </div>
           <div style="margin-bottom:1rem;">
             <label for="dev-password" style="display:block;margin-bottom:0.25rem;font-weight:600;">
-              Contraseña ADMINDEV
+              Contraseña de desarrollo
             </label>
             <input type="password" id="dev-password" name="password" required
               style="width:100%;padding:0.5rem;border:1px solid #d97706;border-radius:4px;">

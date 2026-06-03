@@ -7,8 +7,7 @@ RUN npm ci --omit=dev
 
 # Copia solo los directorios necesarios para ejecutar la app.
 COPY src ./src
-COPY public ./public
-COPY views ./views
+COPY scripts ./scripts
 COPY sql-scripts ./sql-scripts
 
 EXPOSE 3000
