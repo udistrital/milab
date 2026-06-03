@@ -91,7 +91,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
     let multaInfo = null;
     if (con_multado) {
       const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1';
+        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1';
       const valuesMultaInfo = [usuarioId];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
@@ -113,8 +113,8 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
 
-      const query3 = 'SELECT * FROM ual WHERE id_facultad = $1';
-      const values3 = [result2.rows[0].id_facultad];
+      const query3 = 'SELECT * FROM ual WHERE facultad_id = $1';
+      const values3 = [result2.rows[0].facultad_id];
       const result3 = await pool.query(query3, values3);
 
       nombre_lab = result2.rows[0].nombre;
@@ -129,9 +129,9 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       const values = [req.session.user.documento];
       const result = await pool.query(query, values);
 
-      const id_facultad = result.rows[0].id_facultad;
-      const queryUals = 'SELECT * FROM ual WHERE id_facultad = $1';
-      const resultUals = await pool.query(queryUals, [id_facultad]);
+      const facultadId = result.rows[0].facultad_id;
+      const queryUals = 'SELECT * FROM ual WHERE facultad_id = $1';
+      const resultUals = await pool.query(queryUals, [facultadId]);
 
       nombre_lab = result.rows[0].nombre;
       cc_lab = result.rows[0].documento;

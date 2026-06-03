@@ -64,7 +64,7 @@ Hoy las relaciones principales son:
 
 1. `multa.documento_laboratorista -> laboratorista.documento`
 2. `multa.usuario_id_sancionado -> usuario.id`
-3. `multa.id_ual -> ual.id_ual`
+3. `multa.ual_id -> ual.ual_id`
 
 Esto resuelve una parte crítica de la deuda histórica:
 
@@ -96,26 +96,26 @@ ya expresan correctamente que el alcance operativo puede ser múltiple, algo cla
 
 ### 1. Doble fuente de verdad en coordinadores
 
-`coordinador` conserva `id_facultad`, pero el sistema también tiene `coordinador_facultad`.
+`coordinador` conserva `facultad_id`, pero el sistema también tiene `coordinador_facultad`.
 
 Eso crea dos niveles posibles de verdad:
 
-- relación simple embebida en `coordinador.id_facultad`
+- relación simple embebida en `coordinador.facultad_id`
 - relación múltiple real en `coordinador_facultad`
 
 Estado recomendado:
 
 - `coordinador_facultad` debe tratarse como relación autoritativa.
-- `coordinador.id_facultad` debería quedar como dato de compatibilidad, derivado o candidato a remoción futura.
+- `coordinador.facultad_id` debería quedar como dato de compatibilidad, derivado o candidato a remoción futura.
 
 ### 2. Doble fuente de verdad en laboratoristas
 
-`laboratorista` conserva `id_ual` e `id_facultad`, pero el alcance real puede ser múltiple vía `laboratorista_ual`.
+`laboratorista` conserva `ual_id` y `facultad_id`, pero el alcance real puede ser múltiple vía `laboratorista_ual`.
 
 Estado recomendado:
 
 - `laboratorista_ual` debe ser la relación autoritativa para asignación de laboratorios.
-- `laboratorista.id_ual` e `id_facultad` deberían tratarse como campos legacy o de compatibilidad.
+- `laboratorista.ual_id` y `facultad_id` deberían tratarse como campos legacy o de compatibilidad.
 
 ### 3. Identificadores legacy de cuenta
 
@@ -190,7 +190,7 @@ Estado actual:
 
 Diagnóstico:
 
-- La duplicidad con `id_facultad` persiste.
+- La duplicidad con `facultad_id` persiste.
 - El modelo correcto ya existe, pero convive con legado.
 
 ### `laboratorista` y `laboratorista_ual`
@@ -249,11 +249,11 @@ La dirección arquitectónica recomendada hoy es esta:
 
 1. Tratar `coordinador_facultad` como relación autoritativa.
 2. Tratar `laboratorista_ual` como relación autoritativa.
-3. Dejar `id_facultad` e `id_ual` embebidos solo como compatibilidad temporal si todavía se necesitan.
+3. Dejar `facultad_id` y `ual_id` embebidos solo como compatibilidad temporal si todavía se necesitan.
 
 ### Fase 3. Alinear aplicación y esquema
 
-1. Revisar rutas y consultas para asegurar que usen `multa.usuario_id_sancionado`, `multa.documento_laboratorista` y `multa.id_ual`.
+1. Revisar rutas y consultas para asegurar que usen `multa.usuario_id_sancionado`, `multa.documento_laboratorista` y `multa.ual_id`.
 2. Seguir retirando supuestos heredados donde el documento o el código se trataban como sustituto de una FK.
 
 ## Conclusión

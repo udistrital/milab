@@ -164,12 +164,12 @@ async function buildRegisterLabsViewContext(sessionUser) {
 
     const facultades = (
       await pool.query(
-        'SELECT * FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [scope.facultyIds]
       )
     ).rows;
     const uals = (
-      await pool.query('SELECT * FROM ual WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC', [
+      await pool.query('SELECT * FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC', [
         scope.facultyIds,
       ])
     ).rows;
@@ -388,7 +388,7 @@ router.post(
       }
 
       const ualRes = await pool.query(
-        'SELECT id_ual FROM ual WHERE id_facultad = $1 AND id_ual = ANY($2::int[])',
+        'SELECT ual_id FROM ual WHERE facultad_id = $1 AND ual_id = ANY($2::int[])',
         [selectedFacultyId, selectedUalIds]
       );
 
@@ -486,8 +486,8 @@ async function create_account(data, userSession) {
   const n_usuario = documento;
   const correo = data.correo;
   const selectedUalIds = normalizeSelectedUalIds(data.id_uales);
-  const id_ual = selectedUalIds[0];
-  const id_facultad = data.facultad;
+  const primaryUalId = selectedUalIds[0];
+  const selectedFacultyId = data.facultad;
   const contrato = data.contrato;
   const tipo = 'laboratorista';
   let client;
@@ -505,15 +505,15 @@ async function create_account(data, userSession) {
 
     const result = await client.query(
       `INSERT INTO laboratorista
-        (documento, nombre, n_usuario, correo, id_ual, id_facultad, contrato, usuario_id)
+        (documento, nombre, n_usuario, correo, ual_id, facultad_id, contrato, usuario_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [documento, nombre, n_usuario, correo, id_ual, id_facultad, contrato, userId]
+      [documento, nombre, n_usuario, correo, primaryUalId, selectedFacultyId, contrato, userId]
     );
 
     if (result.rowCount !== undefined && result.rowCount >= 0) {
       await client.query(
         `
-        INSERT INTO laboratorista_ual (documento, id_ual)
+        INSERT INTO laboratorista_ual (documento, ual_id)
         SELECT $1, UNNEST($2::int[])
         ON CONFLICT DO NOTHING
         `,
@@ -537,11 +537,11 @@ async function create_account(data, userSession) {
       );
 
       const facultadInfo = await client.query(
-        'SELECT nombre FROM facultad WHERE id_facultad = $1',
-        [id_facultad]
+        'SELECT nombre FROM facultad WHERE facultad_id = $1',
+        [selectedFacultyId]
       );
       const ualInfo = await client.query(
-        "SELECT STRING_AGG(nombre, ', ' ORDER BY nombre) AS nombres FROM ual WHERE id_ual = ANY($1::int[])",
+        "SELECT STRING_AGG(nombre, ', ' ORDER BY nombre) AS nombres FROM ual WHERE ual_id = ANY($1::int[])",
         [selectedUalIds]
       );
 

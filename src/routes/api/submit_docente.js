@@ -52,7 +52,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
 
     const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
     const laboratoristaResult = await pool.query(
-      'SELECT documento, id_facultad FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
+      'SELECT documento, facultad_id FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
       [sessionDocumento]
     );
 
@@ -76,8 +76,8 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     }
 
     const ualResult = await pool.query(
-      'SELECT id_ual FROM ual WHERE id_ual = $1 AND id_facultad = $2',
-      [idUal, laboratorista.id_facultad]
+      'SELECT ual_id FROM ual WHERE ual_id = $1 AND facultad_id = $2',
+      [idUal, laboratorista.facultad_id]
     );
 
     if (ualResult.rows.length === 0) {
@@ -89,7 +89,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     }
 
     await pool.query(
-      'INSERT INTO multa (cat_multa, documento_laboratorista, usuario_id_sancionado, id_ual, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      'INSERT INTO multa (cat_multa, documento_laboratorista, usuario_id_sancionado, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
       [
         cat_multa,
         laboratorista.documento,

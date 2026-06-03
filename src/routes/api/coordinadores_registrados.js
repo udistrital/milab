@@ -61,14 +61,14 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
-             c.id_facultad AS con_facultad,
+             c.facultad_id AS con_facultad,
              f.nombre AS facultad_nombre,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
              END AS tipo
       FROM coordinador c
-      JOIN facultad f ON c.id_facultad = f.id_facultad
+      JOIN facultad f ON c.facultad_id = f.facultad_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
         OR u.documento = c.documento

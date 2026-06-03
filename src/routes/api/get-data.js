@@ -658,7 +658,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       multa,
     } = req;
     pool.query(
-      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, multa) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, multa) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, multa],
       (error) => {
         if (error) {

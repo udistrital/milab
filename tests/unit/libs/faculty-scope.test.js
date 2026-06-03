@@ -42,7 +42,7 @@ test('resolveCoordinatorScope returns unique faculty ids and falls back to prima
       queries.push({ query, values });
 
       if (queries.length === 1) {
-        return { rows: [{ documento: '1024467835', id_facultad: 7 }] };
+        return { rows: [{ documento: '1024467835', facultad_id: 7 }] };
       }
 
       return { rows: [] };
@@ -64,11 +64,11 @@ test('resolveCoordinatorFacultyNames resolves and canonicalizes faculty names', 
       step += 1;
 
       if (step === 1) {
-        return { rows: [{ documento: '1024467835', id_facultad: 2 }] };
+        return { rows: [{ documento: '1024467835', facultad_id: 2 }] };
       }
 
       if (step === 2) {
-        return { rows: [{ id_facultad: 2 }, { id_facultad: 1 }, { id_facultad: 2 }] };
+        return { rows: [{ facultad_id: 2 }, { facultad_id: 1 }, { facultad_id: 2 }] };
       }
 
       return {

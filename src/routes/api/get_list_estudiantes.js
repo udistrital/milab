@@ -75,7 +75,7 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
           pe.estado AS estado,
           ce.fecha_creacion,
           ce.fecha_vencimiento,
-          ce.id_certificado,
+          ce.certificado_id AS id_certificado,
           ce.correo,
           ce.motivo_exp,
           ce.multa::TEXT AS multa
@@ -94,7 +94,7 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
           pd.estado AS estado,
           cd.fecha_creacion::TIMESTAMP AS fecha_creacion,
           NULL::TIMESTAMP AS fecha_vencimiento,
-          cd.id_certificado,
+          cd.certificado_id AS id_certificado,
           cd.correo,
           cd.motivo_exp,
           cd.multa::TEXT AS multa
@@ -167,7 +167,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                     ON pe.codigo::text = t.identificador
                     OR pe.documento = t.identificador
                   LEFT JOIN multa m ON m.usuario_id_sancionado = pe.usuario_id
-                  LEFT JOIN ual u ON u.id_ual = m.id_ual
+                  LEFT JOIN ual u ON u.ual_id = m.ual_id
                   LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
                   GROUP BY
                     t.identificador;

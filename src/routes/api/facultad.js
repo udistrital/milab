@@ -32,13 +32,13 @@ router.get('/', async (req, res) => {
     let selectedFacultad = null;
     let uals = [];
 
-    const facRes = await pool.query('SELECT id_facultad, nombre FROM facultad ORDER BY nombre ASC');
+    const facRes = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
     facultades = facRes.rows;
     if (id_facultad) {
-      const facSel = facultades.find((f) => String(f.id_facultad) === String(id_facultad));
+      const facSel = facultades.find((f) => String(f.facultad_id) === String(id_facultad));
       selectedFacultad = facSel || null;
       const ualRes = await pool.query(
-        'SELECT id_ual, nombre FROM ual WHERE id_facultad = $1 ORDER BY nombre ASC',
+        'SELECT ual_id, nombre FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
         [id_facultad]
       );
       uals = ualRes.rows;
@@ -95,15 +95,15 @@ router.post('/eliminar', async (req, res) => {
   }
 
   try {
-    const depUal = await pool.query('SELECT COUNT(*)::int AS c FROM ual WHERE id_facultad = $1', [
+    const depUal = await pool.query('SELECT COUNT(*)::int AS c FROM ual WHERE facultad_id = $1', [
       id_facultad,
     ]);
     const depLab = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE id_facultad = $1',
+      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE facultad_id = $1',
       [id_facultad]
     );
     const depCoord = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM coordinador WHERE id_facultad = $1',
+      'SELECT COUNT(*)::int AS c FROM coordinador WHERE facultad_id = $1',
       [id_facultad]
     );
 
@@ -115,12 +115,12 @@ router.post('/eliminar', async (req, res) => {
       });
     }
 
-    const facNameRes = await pool.query('SELECT nombre FROM facultad WHERE id_facultad = $1', [
+    const facNameRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
       id_facultad,
     ]);
     const facName = facNameRes.rows[0] ? facNameRes.rows[0].nombre : String(id_facultad);
 
-    await pool.query('DELETE FROM facultad WHERE id_facultad = $1', [id_facultad]);
+    await pool.query('DELETE FROM facultad WHERE facultad_id = $1', [id_facultad]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar facultad', facName]
@@ -148,7 +148,7 @@ router.post('/ual/add', async (req, res) => {
   }
 
   try {
-    await pool.query('INSERT INTO ual (nombre, id_facultad) VALUES ($1, $2)', [
+    await pool.query('INSERT INTO ual (nombre, facultad_id) VALUES ($1, $2)', [
       nombre.trim(),
       id_facultad,
     ]);
@@ -182,7 +182,7 @@ router.post('/ual/editar', async (req, res) => {
     // Solo admin edita UAL
 
     const oldRes = await pool.query(
-      'SELECT ual.nombre AS ual_nombre, ual.id_facultad AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.id_facultad = ual.id_facultad WHERE id_ual = $1',
+      'SELECT ual.nombre AS ual_nombre, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
       [id_ual]
     );
     const oldRow = oldRes.rows[0] || {
@@ -192,7 +192,7 @@ router.post('/ual/editar', async (req, res) => {
     };
 
     // Actualización de nombre
-    await pool.query('UPDATE ual SET nombre = $1 WHERE id_ual = $2', [nombre.trim(), id_ual]);
+    await pool.query('UPDATE ual SET nombre = $1 WHERE ual_id = $2', [nombre.trim(), id_ual]);
 
     // Si es admin y envía new_id_facultad diferente, mover UAL a otra facultad
     let redirectFacultadId = id_facultad;
@@ -203,7 +203,7 @@ router.post('/ual/editar', async (req, res) => {
       String(new_id_facultad) !== String(oldRow.ual_facultad)
     ) {
       // Validar que la facultad destino existe
-      const facDestRes = await pool.query('SELECT nombre FROM facultad WHERE id_facultad = $1', [
+      const facDestRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
         new_id_facultad,
       ]);
       if (facDestRes.rows.length === 0) {
@@ -213,7 +213,7 @@ router.post('/ual/editar', async (req, res) => {
           limit: null,
         });
       }
-      await pool.query('UPDATE ual SET id_facultad = $1 WHERE id_ual = $2', [
+      await pool.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = $2', [
         new_id_facultad,
         id_ual,
       ]);
@@ -254,11 +254,11 @@ router.post('/ual/eliminar', async (req, res) => {
 
   try {
     const depLabLegacy = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE id_ual = $1',
+      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE ual_id = $1',
       [id_ual]
     );
     const depLabMulti = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM laboratorista_ual WHERE id_ual = $1',
+      'SELECT COUNT(*)::int AS c FROM laboratorista_ual WHERE ual_id = $1',
       [id_ual]
     );
     const depLabCount = (depLabLegacy.rows[0]?.c || 0) + (depLabMulti.rows[0]?.c || 0);
@@ -270,9 +270,9 @@ router.post('/ual/eliminar', async (req, res) => {
         limit: null,
       });
     }
-    const ualNameRes = await pool.query('SELECT nombre FROM ual WHERE id_ual = $1', [id_ual]);
+    const ualNameRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [id_ual]);
     const ualName = ualNameRes.rows[0] ? ualNameRes.rows[0].nombre : String(id_ual);
-    await pool.query('DELETE FROM ual WHERE id_ual = $1', [id_ual]);
+    await pool.query('DELETE FROM ual WHERE ual_id = $1', [id_ual]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'eliminar UAL', ualName]
@@ -300,11 +300,11 @@ router.post('/editar', async (req, res) => {
   }
 
   try {
-    const oldRes = await pool.query('SELECT nombre FROM facultad WHERE id_facultad = $1', [
+    const oldRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
       id_facultad,
     ]);
     const oldName = oldRes.rows[0] ? oldRes.rows[0].nombre : '';
-    await pool.query('UPDATE facultad SET nombre = $1 WHERE id_facultad = $2', [
+    await pool.query('UPDATE facultad SET nombre = $1 WHERE facultad_id = $2', [
       nombre.trim(),
       id_facultad,
     ]);

@@ -94,9 +94,9 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         f.nombre AS con_facultad
       FROM laboratorista l
       LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
-      LEFT JOIN ual u_rel ON u_rel.id_ual = lu.id_ual
-      LEFT JOIN ual u_principal ON u_principal.id_ual = l.id_ual
-      JOIN facultad f ON f.id_facultad = l.id_facultad
+      LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id
+      LEFT JOIN ual u_principal ON u_principal.ual_id = l.ual_id
+      JOIN facultad f ON f.facultad_id = l.facultad_id
     `;
 
     if (req.session.user.tipo === 'admin') {
@@ -109,7 +109,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     } else if (req.session.user.tipo === 'coordinador') {
       // Obtener el documento real del coordinador y su facultad principal (compatibilidad)
       const coordInfoRes = await pool.query(
-        `SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1`,
+        `SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1`,
         [req.session.user.documento]
       );
 
@@ -122,15 +122,15 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       }
 
       const coordDocumento = coordInfoRes.rows[0].documento;
-      const facultadPrincipal = coordInfoRes.rows[0].id_facultad;
+      const facultadPrincipal = coordInfoRes.rows[0].facultad_id;
 
       // Recuperar todas las facultades asociadas mediante la tabla de unión
       const cfRes = await pool.query(
-        `SELECT id_facultad FROM coordinador_facultad WHERE documento = $1`,
+        `SELECT facultad_id FROM coordinador_facultad WHERE documento = $1`,
         [coordDocumento]
       );
 
-      let facultadesCoord = cfRes.rows.map((r) => r.id_facultad);
+      let facultadesCoord = cfRes.rows.map((r) => r.facultad_id);
       // Fallback: si aún no hay registros en la relación, usar la facultad principal
       if (facultadesCoord.length === 0 && facultadPrincipal) {
         facultadesCoord = [facultadPrincipal];
@@ -146,7 +146,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
       const result = await pool.query(
         `${baseQuery}
-         WHERE l.id_facultad = ANY($1::int[])
+         WHERE l.facultad_id = ANY($1::int[])
          GROUP BY l.nombre, l.documento, l.correo, u_principal.nombre, f.nombre
          ORDER BY l.nombre ASC`,
         [facultadesCoord]
@@ -218,8 +218,8 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const facultiesQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT id_facultad, nombre FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT id_facultad, nombre FROM facultad ORDER BY nombre ASC';
+        ? 'SELECT facultad_id AS id_facultad, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT facultad_id AS id_facultad, nombre FROM facultad ORDER BY nombre ASC';
     const facultadesRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(facultiesQuery, [facultadesPermitidas])
@@ -227,21 +227,21 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const ualsQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT id_ual, nombre, id_facultad FROM ual WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT id_ual, nombre, id_facultad FROM ual ORDER BY nombre ASC';
+        ? 'SELECT ual_id AS id_ual, nombre, facultad_id AS id_facultad FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT ual_id AS id_ual, nombre, facultad_id AS id_facultad FROM ual ORDER BY nombre ASC';
     const ualsRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(ualsQuery, [facultadesPermitidas])
         : await pool.query(ualsQuery);
 
     const assignedUalsRes = await pool.query(
-      'SELECT id_ual FROM laboratorista_ual WHERE documento = $1 ORDER BY id_ual ASC',
+      'SELECT ual_id AS id_ual FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
       [documento]
     );
     const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.id_ual));
 
-    if (assignedUalIds.length === 0 && laboratorista.id_ual) {
-      assignedUalIds.push(Number(laboratorista.id_ual));
+    if (assignedUalIds.length === 0 && laboratorista.ual_id) {
+      assignedUalIds.push(Number(laboratorista.ual_id));
     }
 
     return res.render('home/editar_laboratorista', {
@@ -314,7 +314,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
 
       if (
         facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.id_facultad) ||
+        !facultadesPermitidas.includes(laboratorista.facultad_id) ||
         !facultadesPermitidas.includes(selectedFacultyId)
       ) {
         client.release();
@@ -327,7 +327,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     }
 
     const ualsRes = await client.query(
-      'SELECT id_ual FROM ual WHERE id_facultad = $1 AND id_ual = ANY($2::int[])',
+      'SELECT ual_id FROM ual WHERE facultad_id = $1 AND ual_id = ANY($2::int[])',
       [selectedFacultyId, selectedUalIds]
     );
 
@@ -359,8 +359,8 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
         UPDATE laboratorista
         SET nombre = $1,
             correo = $2,
-            id_facultad = $3,
-            id_ual = $4,
+            facultad_id = $3,
+            ual_id = $4,
             contrato = $5
         WHERE documento = $6
       `,
@@ -387,7 +387,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     }
     await client.query('DELETE FROM laboratorista_ual WHERE documento = $1', [documento]);
     await client.query(
-      'INSERT INTO laboratorista_ual (documento, id_ual) SELECT $1, UNNEST($2::int[])',
+      'INSERT INTO laboratorista_ual (documento, ual_id) SELECT $1, UNNEST($2::int[])',
       [documento, selectedUalIds]
     );
 

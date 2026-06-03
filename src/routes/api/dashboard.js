@@ -202,7 +202,7 @@ function normalizeIntegerArray(values) {
 
 async function resolveLaboratoristaScope(client, authDocument) {
   const laboratoristaRes = await client.query(
-    'SELECT documento, id_ual, id_facultad FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    'SELECT documento, ual_id, facultad_id FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
     [authDocument]
   );
 
@@ -218,13 +218,13 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   const laboratorista = laboratoristaRes.rows[0];
   const assignedUalsRes = await client.query(
-    'SELECT id_ual FROM laboratorista_ual WHERE documento = $1 ORDER BY id_ual ASC',
+    'SELECT ual_id FROM laboratorista_ual WHERE documento = $1 ORDER BY ual_id ASC',
     [laboratorista.documento]
   );
 
-  const ualIds = assignedUalsRes.rows.map((row) => Number(row.id_ual)).filter(Boolean);
-  if (!ualIds.length && laboratorista.id_ual) {
-    ualIds.push(Number(laboratorista.id_ual));
+  const ualIds = assignedUalsRes.rows.map((row) => Number(row.ual_id)).filter(Boolean);
+  if (!ualIds.length && laboratorista.ual_id) {
+    ualIds.push(Number(laboratorista.ual_id));
   }
 
   let ualNames = [];
@@ -233,22 +233,22 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   if (ualIds.length) {
     const ualInfoRes = await client.query(
-      'SELECT id_ual, nombre, id_facultad FROM ual WHERE id_ual = ANY($1::int[]) ORDER BY nombre ASC',
+      'SELECT ual_id, nombre, facultad_id FROM ual WHERE ual_id = ANY($1::int[]) ORDER BY nombre ASC',
       [ualIds]
     );
     ualNames = ualInfoRes.rows.map((row) => row.nombre).filter(Boolean);
     facultyIds = [
-      ...new Set(ualInfoRes.rows.map((row) => Number(row.id_facultad)).filter(Boolean)),
+      ...new Set(ualInfoRes.rows.map((row) => Number(row.facultad_id)).filter(Boolean)),
     ];
   }
 
-  if (!facultyIds.length && laboratorista.id_facultad) {
-    facultyIds.push(Number(laboratorista.id_facultad));
+  if (!facultyIds.length && laboratorista.facultad_id) {
+    facultyIds.push(Number(laboratorista.facultad_id));
   }
 
   if (facultyIds.length) {
     const facultyInfoRes = await client.query(
-      'SELECT nombre FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC',
+      'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
       [facultyIds]
     );
     facultyNames = facultyInfoRes.rows.map((row) => row.nombre).filter(Boolean);
@@ -314,9 +314,9 @@ async function fetchTeacherCertificateRows(client) {
 
 async function fetchSanctionRows(client) {
   const result = await client.query(
-    `SELECT m.fecha_multa, m.con_estado_multa, u.id_ual, u.id_facultad
+    `SELECT m.fecha_multa, m.con_estado_multa, u.ual_id, u.facultad_id
      FROM multa m
-     JOIN ual u ON u.id_ual = m.id_ual
+     JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.fecha_multa IS NOT NULL`
   );
   return result.rows;
@@ -327,11 +327,11 @@ async function fetchLaboratoristaRows(client) {
     `SELECT
        l.documento,
        l.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(lu.id_ual, l.id_ual)), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(u.id_facultad, l.id_facultad)), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(lu.ual_id, l.ual_id)), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(u.facultad_id, l.facultad_id)), NULL) AS faculty_ids
      FROM laboratorista l
      LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
-     LEFT JOIN ual u ON u.id_ual = COALESCE(lu.id_ual, l.id_ual)
+     LEFT JOIN ual u ON u.ual_id = COALESCE(lu.ual_id, l.ual_id)
      GROUP BY l.documento, l.fecha_creacion`
   );
   return result.rows;
@@ -342,7 +342,7 @@ async function fetchCoordinatorRows(client) {
     `SELECT
        c.documento,
        c.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(cf.id_facultad, c.id_facultad)), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(cf.facultad_id, c.facultad_id)), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
      GROUP BY c.documento, c.fecha_creacion`
@@ -356,14 +356,14 @@ async function fetchUsuarioRows(client) {
        u.documento,
        u.fecha_creacion,
        u.carrera,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.id_facultad), NULL) AS coordinator_faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.id_facultad, l.id_facultad)), NULL) AS laboratorista_faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS coordinator_faculty_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.facultad_id, l.facultad_id)), NULL) AS laboratorista_faculty_ids
      FROM usuario u
      LEFT JOIN coordinador c ON c.usuario_id = u.id
      LEFT JOIN coordinador_facultad cf ON cf.documento = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
      LEFT JOIN laboratorista_ual lu ON lu.documento = l.documento
-     LEFT JOIN ual ON ual.id_ual = COALESCE(lu.id_ual, l.id_ual)
+     LEFT JOIN ual ON ual.ual_id = COALESCE(lu.ual_id, l.ual_id)
      GROUP BY u.documento, u.fecha_creacion, u.carrera`
   );
   return result.rows;
@@ -387,11 +387,11 @@ function filterSanctionRowsByScope(rows, role, scope) {
 
   if (role === 'coordinador') {
     const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) => facultyIds.has(Number(row.id_facultad)));
+    return rows.filter((row) => facultyIds.has(Number(row.facultad_id)));
   }
 
   const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) => ualIds.has(Number(row.id_ual)));
+  return rows.filter((row) => ualIds.has(Number(row.ual_id)));
 }
 
 function filterLaboratoristaRowsByScope(rows, role, scope) {
@@ -493,7 +493,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       }
 
       const facultiesRes = await client.query(
-        'SELECT nombre FROM facultad WHERE id_facultad = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [scope.facultyIds]
       );
       scope.facultyNames = facultiesRes.rows.map((row) => row.nombre).filter(Boolean);

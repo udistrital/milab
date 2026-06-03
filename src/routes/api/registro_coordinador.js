@@ -339,7 +339,7 @@ router.post(
 
       // Validar que las facultades existan
       const facs = await pool.query(
-        'SELECT id_facultad, nombre FROM facultad WHERE id_facultad = ANY($1::int[])',
+        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])',
         [id_facultades]
       );
       if (facs.rows.length !== id_facultades.length) {
@@ -359,7 +359,7 @@ router.post(
 
       await pool.query(
         `INSERT INTO coordinador
-             (documento, nombre, correo, id_facultad, numero_resolucion_coordinador, soporte_resolucion, nombre_u)
+             (documento, nombre, correo, facultad_id, numero_resolucion_coordinador, soporte_resolucion, nombre_u)
              VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           documento,
@@ -380,7 +380,7 @@ router.post(
       // Insertar todas las asociaciones en la tabla de unión
       for (const facId of id_facultades) {
         await pool.query(
-          'INSERT INTO coordinador_facultad (documento, id_facultad) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          'INSERT INTO coordinador_facultad (documento, facultad_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [documento, facId]
         );
       }

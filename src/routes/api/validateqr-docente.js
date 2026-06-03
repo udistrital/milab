@@ -13,7 +13,7 @@ router.get('/:cc', publicPageLimiter, async (req, res) => {
 
   try {
     const query =
-      'SELECT pd.nombre FROM certificado_docente cd LEFT JOIN perfil_docente pd ON pd.usuario_id = cd.usuario_id WHERE cd.id_certificado = $1';
+      'SELECT pd.nombre FROM certificado_docente cd LEFT JOIN perfil_docente pd ON pd.usuario_id = cd.usuario_id WHERE cd.certificado_id = $1';
     const values = [cc];
     const result = await pool.query(query, values);
 

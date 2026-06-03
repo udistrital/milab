@@ -5,7 +5,7 @@ const pool = require('../../libs/db');
 // Función para insertar un registro en la tabla1
 async function insertarRegistroTabla1(usuario_id, fecha_creacion, id_Certificado, correo, multa) {
   const query =
-    'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, id_Certificado, correo, multa) VALUES ($1, $2, $3, $4, $5)';
+    'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, certificado_id, correo, multa) VALUES ($1, $2, $3, $4, $5)';
   const values = [usuario_id, fecha_creacion, id_Certificado, correo, multa];
 
   try {

@@ -759,7 +759,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
     } = req;
     // AQUÍ AGREGAMOS motivo_expedicion AL QUERY
     pool.query(
-      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, id_certificado, correo, motivo_exp, motivo_expedicion, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, motivo_expedicion, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
       [
         usuario_id,
         fecha_creacion,
@@ -789,7 +789,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
 
     try {
       const result = await query(
-        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
         [usuarioId]
       );
 

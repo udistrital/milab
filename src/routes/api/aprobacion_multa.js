@@ -172,13 +172,13 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         m.obs_multa,
         m.tipo_sancion
       FROM multa m
-      INNER JOIN ual u ON u.id_ual = m.id_ual
+      INNER JOIN ual u ON u.ual_id = m.ual_id
       LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
       LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
       LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
       LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-        AND u.id_facultad = ANY($1::int[])`,
+        AND u.facultad_id = ANY($1::int[])`,
       [scope.facultyIds]
     );
 
@@ -232,8 +232,8 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
       FROM ual u
       WHERE m.id = $1
         AND m.con_estado_multa = 'Pendiente'
-        AND u.id_ual = m.id_ual
-        AND u.id_facultad = ANY($3::int[])
+        AND u.ual_id = m.ual_id
+        AND u.facultad_id = ANY($3::int[])
     `,
       [multa_id, tipo_sancion, scope.facultyIds]
     );
@@ -248,7 +248,7 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
 
     try {
       const multaInfo = await pool.query(
-        'SELECT m.usuario_id_sancionado, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.id_ual = m.id_ual WHERE m.id = $1',
+        'SELECT m.usuario_id_sancionado, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
         [multa_id]
       );
       const usuarioId = multaInfo.rows[0]?.usuario_id_sancionado;
@@ -315,8 +315,8 @@ router.post('/saldar', requireCoordinadorApprovalAction, async function (req, re
       FROM ual u
       WHERE m.id = $1
         AND m.con_estado_multa = 'POR SALDAR'
-        AND u.id_ual = m.id_ual
-        AND u.id_facultad = ANY($2::int[])
+        AND u.ual_id = m.ual_id
+        AND u.facultad_id = ANY($2::int[])
     `,
       [multa_id, scope.facultyIds]
     );

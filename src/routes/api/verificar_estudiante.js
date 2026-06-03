@@ -205,7 +205,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
 
     // 2. Consultar Multas en BD local
     const queryMultas =
-      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
     const resultMultas = await pool.query(queryMultas, [usuarioId]);
 
     if (resultMultas.rows.length > 0) {

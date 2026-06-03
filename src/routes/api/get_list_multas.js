@@ -70,12 +70,12 @@ router.get('/', requireMultasAccess, async (req, res) => {
             m.obs_multa,
             m.tipo_sancion
           FROM multa m
-          INNER JOIN ual u ON u.id_ual = m.id_ual
+          INNER JOIN ual u ON u.ual_id = m.ual_id
           LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
           LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
           LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado
           LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_id_sancionado
-          WHERE u.id_facultad = ANY($1::int[])
+          WHERE u.facultad_id = ANY($1::int[])
           ORDER BY m.fecha_multa DESC NULLS LAST, m.id DESC
         `,
         [scope.facultyIds]
@@ -96,7 +96,7 @@ router.get('/', requireMultasAccess, async (req, res) => {
           m.obs_multa,
           m.tipo_sancion
         FROM multa m
-          LEFT JOIN ual u ON u.id_ual = m.id_ual
+          LEFT JOIN ual u ON u.ual_id = m.ual_id
           LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista
           LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado
           LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_id_sancionado

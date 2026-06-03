@@ -63,7 +63,7 @@ router.get('/verificacion', requireTeacherCertificateAccess, async function (req
   let multaInfo = null;
   if (con_multado && usuarioId) {
     const queryMultaInfo =
-      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.id_ual = m.id_ual LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa='ACTIVA'";
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_id_sancionado LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.documento_laboratorista WHERE m.usuario_id_sancionado = $1 AND m.con_estado_multa='ACTIVA'";
     const valuesMultaInfo = [usuarioId];
 
     const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);

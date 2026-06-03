@@ -194,9 +194,9 @@ async function getPendingSanctionsCount(user, role) {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
     FROM multa m
-     INNER JOIN ual u ON u.id_ual = m.id_ual
+     INNER JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-       AND u.id_facultad = ANY($1::int[])`,
+       AND u.facultad_id = ANY($1::int[])`,
     [scope.facultyIds]
   );
 

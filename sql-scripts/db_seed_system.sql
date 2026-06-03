@@ -23,7 +23,7 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM ual) THEN
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio De Fotografía', 1),
         ('Taller De Serigrafía', 1),
@@ -121,7 +121,7 @@ BEGIN
         ('Teatrino', 1),
         ('Centro De Documentación De Las Artes "Gabriel Esquinas"', 1);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Estudio de Televisión', 2),
         ('Laboratorio de Fotografía', 2),
@@ -148,15 +148,15 @@ BEGIN
         ('Almacén De Topografía', 2),
         ('Almacén de Reactivos', 2);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio de Manufactura y Diseño Avanzado LAMDA', 3);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio de E-Learning ICG/OKP', 4);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio De Física 5b', 5),
         ('Laboratorio De Física 5d', 5),
@@ -224,7 +224,7 @@ BEGIN
         ('Almacén de química', 5),
         ('Preparación de reactivos', 5);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio de Cartografía y Sensores Remotos', 6),
         ('Laboratorio De Fotogrametría Digital', 6),
@@ -265,7 +265,7 @@ BEGIN
         ('Laboratorio De Investigación Laser', 6),
         ('Cecad', 6);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio De Biología', 7),
         ('Laboratorio De Maderas', 7),
@@ -294,12 +294,12 @@ BEGIN
         ('Almacén de Reactivos', 7),
         ('Almacén de Topografía', 7);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio Observatorio Astronómico', 8),
         ('Centro de Geoprocesamiento/Aula Especializada', 8);
 
-        INSERT INTO ual (nombre, id_facultad)
+        INSERT INTO ual (nombre, facultad_id)
         VALUES
         ('Laboratorio Aplicado de Instalaciones Eléctricas e Iluminación', 9),
         ('Laboratorio de resistencia de materiales', 9),

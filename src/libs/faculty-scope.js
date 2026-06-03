@@ -127,7 +127,7 @@ function resolveAcademicFacultyName(programName) {
 
 async function resolveCoordinatorScope(client, authDocument) {
   const coordInfoRes = await client.query(
-    'SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1',
+    'SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1',
     [authDocument]
   );
 
@@ -139,13 +139,13 @@ async function resolveCoordinatorScope(client, authDocument) {
   }
 
   const coordinatorDocument = coordInfoRes.rows[0].documento;
-  const primaryFacultyId = coordInfoRes.rows[0].id_facultad;
+  const primaryFacultyId = coordInfoRes.rows[0].facultad_id;
   const facultiesRes = await client.query(
-    'SELECT id_facultad FROM coordinador_facultad WHERE documento = $1',
+    'SELECT facultad_id FROM coordinador_facultad WHERE documento = $1',
     [coordinatorDocument]
   );
 
-  const facultyIds = facultiesRes.rows.map((row) => Number(row.id_facultad)).filter(Boolean);
+  const facultyIds = facultiesRes.rows.map((row) => Number(row.facultad_id)).filter(Boolean);
 
   if (facultyIds.length === 0 && primaryFacultyId) {
     facultyIds.push(Number(primaryFacultyId));
@@ -165,7 +165,7 @@ async function resolveCoordinatorFacultyNames(client, authDocument) {
   }
 
   const result = await client.query(
-    'SELECT nombre FROM facultad WHERE id_facultad = ANY($1::int[])',
+    'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[])',
     [scope.facultyIds]
   );
 

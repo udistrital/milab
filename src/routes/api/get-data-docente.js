@@ -519,7 +519,7 @@ router.post('/', requireTeacherCertificateGenerationAccess, function (req, res) 
       origen_descarga,
     } = req;
     pool.query(
-      'INSERT INTO certificado_docente (usuario_id, fecha_creacion, id_certificado, correo, multa, motivo_exp, origen_descarga) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      'INSERT INTO certificado_docente (usuario_id, fecha_creacion, certificado_id, correo, multa, motivo_exp, origen_descarga) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [usuario_id, fecha_creacion, id_certificado, correo, multa, motivo_exp, origen_descarga],
       (error) => {
         if (error) {
