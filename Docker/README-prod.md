@@ -73,6 +73,16 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 - No subas archivos `.env` con secretos a repositorios públicos.
 - Revisa y ajusta los valores en `Docker/.prodenv` antes de desplegar.
 
+Controles de seguridad recomendados para autenticación:
+- `ENABLE_DEV_LOGIN=false` en producción.
+- `ADMINDEV` debe permanecer vacío en producción.
+- `ADMINDEV_HASH` y `DEV_LOGIN_HEADER_SECRET` se usan solo en desarrollo con `ENABLE_DEV_LOGIN=true`.
+- `ALLOW_PUBLIC_SERVICE_STATUS` debe permanecer deshabilitado en producción (evita exponer endpoints de diagnóstico).
+- `DEPLOYMENT_ENV=production` y `ALLOWED_DEV_RUNTIME_ENVS=local` para impedir que `NODE_ENV=dev` arranque en ambientes no permitidos.
+- Si por error `ENABLE_DEV_LOGIN=true` o `ADMINDEV` tiene valor en producción, la aplicación ahora falla al iniciar (fail-fast).
+- Si por error `ALLOW_PUBLIC_SERVICE_STATUS=true` fuera de `dev|development|local`, la aplicación falla al iniciar (fail-fast).
+- En ambientes de desarrollo, limita `DEV_LOGIN_ALLOWED_IPS` a loopback o red interna de confianza.
+
 ---
 
 ## 7. Logs y Monitoreo

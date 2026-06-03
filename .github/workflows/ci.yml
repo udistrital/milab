@@ -85,6 +85,32 @@ jobs:
             install -m 600 /opt/.env /opt/milab/Docker/.env
           fi
 
+      - name: Validar flags sensibles en entorno
+        run: |
+          set -eu
+          env_file=/opt/milab/Docker/.env
+
+          allow_public=$(grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
+          node_env=$(grep -E '^[[:space:]]*NODE_ENV=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
+
+          case "$allow_public" in
+            1|true|yes)
+              case "$node_env" in
+                dev|development|local)
+                  echo 'OK: ALLOW_PUBLIC_SERVICE_STATUS permitido solo en dev.'
+                  ;;
+                *)
+                  echo 'ERROR: ALLOW_PUBLIC_SERVICE_STATUS no debe estar activo fuera de dev|development|local.' >&2
+                  echo "NODE_ENV=$node_env" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo 'OK: ALLOW_PUBLIC_SERVICE_STATUS no está activo.'
+              ;;
+          esac
+
       - name: Actualizar imagenes base de pruebas
         run: |
           cd /home/ubuntu/prod

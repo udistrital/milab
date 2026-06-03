@@ -21,12 +21,12 @@
     "@mapbox/node-pre-gyp": "^2.0.3",
     "axios": "^1.16.0",
     "bcrypt": "^6.0.0",
-    "body-parser": "^1.20.2",
+    "body-parser": "^1.20.5",
     "cookie-parser": "^1.4.6",
     "date-fns": "^2.30.0",
     "dotenv": "^16.3.1",
     "ejs": "^3.1.9",
-    "express": "^4.18.2",
+    "express": "^4.22.2",
     "express-rate-limit": "^7.1.5",
     "express-recaptcha": "^5.1.0",
     "express-session": "^1.17.3",
@@ -34,7 +34,6 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.2",
-    "nodemon": "^3.0.1",
     "passport": "^0.6.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-microsoft": "^1.0.0",
@@ -48,7 +47,7 @@
     "recaptcha": "^1.2.1",
     "tar": "^7.5.11",
     "util": "^0.12.5",
-    "uuid": "^9.0.0"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@eslint/css": "^1.0.0",
@@ -59,6 +58,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "globals": "^17.4.0",
+    "nodemon": "^3.1.14",
     "prettier": "^3.8.1",
     "supertest": "^7.2.2"
   }

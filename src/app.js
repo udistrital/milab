@@ -32,14 +32,39 @@ function getOriginFromUrl(url) {
   }
 }
 
+function resolveTrustProxySetting() {
+  const rawValue = process.env.TRUST_PROXY;
+
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return false;
+  }
+
+  const normalized = rawValue.trim().toLowerCase();
+
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+
+  const numericValue = Number.parseInt(normalized, 10);
+  if (Number.isInteger(numericValue) && String(numericValue) === normalized) {
+    return numericValue;
+  }
+
+  return rawValue.trim();
+}
+
 require('./routes/middlewares/microsoft');
 
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const { createApplicationErrorHandler } = require('./routes/middlewares/error-handler');
-const { csrfTokenMiddleware, verifyCsrfToken } = require('./routes/middlewares/csrf');
+const {
+  csrfTokenMiddleware,
+  verifyCsrfToken,
+  createCsrfVerifier,
+} = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
+const { renderAuthError } = require('./routes/middlewares/auth');
 
 installConsoleBridge();
 installProcessHandlers();
@@ -47,7 +72,114 @@ installProcessHandlers();
 var app = express();
 const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
-const isProduction = process.env.NODE_ENV === 'production';
+const apiCsrfExemptPaths = [];
+const verifyApiCsrfToken = createCsrfVerifier({ skipPaths: apiCsrfExemptPaths });
+const publicApiAllowlist = [
+  { prefix: '/api/login/login', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/api/register', methods: ['POST'], allowSubpaths: true },
+  { prefix: '/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
+  { prefix: '/api/get-data1', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/api/get-data2', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
+  { prefix: '/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
+];
+
+function normalizeRequestPath(originalUrl) {
+  return (originalUrl || '').split('?')[0];
+}
+
+function isPublicApiRequest(req) {
+  const requestPath = normalizeRequestPath(req.originalUrl);
+  const method = String(req.method || '').toUpperCase();
+
+  return publicApiAllowlist.some((rule) => {
+    if (!rule.methods.includes(method)) return false;
+
+    if (rule.allowSubpaths) {
+      return requestPath === rule.prefix || requestPath.startsWith(`${rule.prefix}/`);
+    }
+
+    return requestPath === rule.prefix;
+  });
+}
+
+function expectsJsonResponse(req) {
+  if (req.xhr) return true;
+  if (typeof req.get === 'function') {
+    const accept = req.get('accept') || '';
+    return accept.includes('application/json');
+  }
+  return false;
+}
+
+function requireApiSessionUnlessPublic(req, res, next) {
+  if (isPublicApiRequest(req) || req.session?.user) {
+    return next();
+  }
+
+  if (expectsJsonResponse(req)) {
+    return res.status(401).json({
+      ok: false,
+      message: 'Debe iniciar sesión para continuar.',
+    });
+  }
+
+  return renderAuthError(res, {
+    message: 'Acceso denegado',
+    message2: 'Debe iniciar sesion para continuar.',
+    limit: 'loginOnly',
+  });
+}
+const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
+const isProduction = normalizedNodeEnv === 'production';
+const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalizedNodeEnv);
+const deploymentEnvironment = (process.env.DEPLOYMENT_ENV || 'local').toLowerCase().trim();
+const allowedDevRuntimeEnvironments = (process.env.ALLOWED_DEV_RUNTIME_ENVS || 'local')
+  .split(',')
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
+const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
+  (process.env.ENABLE_DEV_LOGIN || '').toLowerCase()
+);
+const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
+const devAdminPasswordHash = (process.env.ADMINDEV_HASH || '').trim();
+const devLoginHeaderSecret = (process.env.DEV_LOGIN_HEADER_SECRET || '').trim();
+if (isProduction && isDevLoginEnabled) {
+  throw new Error(
+    '[SECURITY] ENABLE_DEV_LOGIN no puede estar activo en producción. Deshabilítalo para iniciar la aplicación.'
+  );
+}
+if (isProduction && hasDevAdminPasswordConfigured) {
+  throw new Error(
+    '[SECURITY] ADMINDEV no debe estar configurado en producción. Elimínalo para iniciar la aplicación.'
+  );
+}
+if (isDevNodeEnvironment && !allowedDevRuntimeEnvironments.includes(deploymentEnvironment)) {
+  throw new Error(
+    `[SECURITY] NODE_ENV=${normalizedNodeEnv} no está permitido para DEPLOYMENT_ENV=${deploymentEnvironment}. ` +
+      `Entornos permitidos: ${allowedDevRuntimeEnvironments.join(', ')}`
+  );
+}
+if (isDevLoginEnabled && !isDevNodeEnvironment) {
+  throw new Error(
+    '[SECURITY] ENABLE_DEV_LOGIN solo puede activarse cuando NODE_ENV es dev|development|local.'
+  );
+}
+if (isDevLoginEnabled && !devAdminPasswordHash) {
+  throw new Error(
+    '[SECURITY] ADMINDEV_HASH es obligatorio cuando ENABLE_DEV_LOGIN está activo.'
+  );
+}
+if (isDevLoginEnabled && !devLoginHeaderSecret) {
+  throw new Error(
+    '[SECURITY] DEV_LOGIN_HEADER_SECRET es obligatorio cuando ENABLE_DEV_LOGIN está activo.'
+  );
+}
+if (isDevLoginEnabled && devLoginHeaderSecret.length < 24) {
+  throw new Error(
+    '[SECURITY] DEV_LOGIN_HEADER_SECRET debe tener al menos 24 caracteres cuando ENABLE_DEV_LOGIN está activo.'
+  );
+}
 const localPort = process.env.PORT || 3000;
 const appVersion = (process.env.APP_VERSION || 'dev').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
@@ -64,9 +196,16 @@ const formActionSources = Array.from(
     ...(configuredAppOrigin ? [configuredAppOrigin] : []),
   ])
 );
+const trustProxySetting = resolveTrustProxySetting();
 
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', trustProxySetting);
+if (isProduction && trustProxySetting === false) {
+  logger.warn(
+    '[SECURITY] TRUST_PROXY no está configurado; trust proxy queda deshabilitado. ' +
+      'Define TRUST_PROXY según tu infraestructura (por ejemplo 1 detrás de ALB/Nginx).'
+  );
+}
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
 
@@ -249,7 +388,7 @@ app.set('host', process.env.HOST || '0.0.0.0');
 app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
-app.use('/api', require('./routes/api'));
+app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';
