@@ -1,0 +1,17 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+test('generate_cert_docente_lab exports an Express router with handlers', () => {
+  const modulePath = path.resolve(
+    __dirname,
+    '../../../src/routes/api/generate_cert_docente_lab.js'
+  );
+  delete require.cache[modulePath];
+  const router = require(modulePath);
+
+  assert.equal(typeof router, 'function');
+  assert.equal(typeof router.use, 'function');
+  assert.equal(Array.isArray(router.stack), true);
+  assert.equal(router.stack.length > 0, true);
+});

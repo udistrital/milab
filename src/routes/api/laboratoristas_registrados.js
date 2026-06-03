@@ -52,7 +52,7 @@ async function resolveActorDocumentForLogs(req, client) {
 
 async function resolveCoordinatorFacultyIds(client, authDocument) {
   const coordInfoRes = await client.query(
-    'SELECT documento, id_facultad FROM coordinador WHERE nombre_u = $1',
+    'SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1',
     [authDocument]
   );
 
@@ -61,13 +61,13 @@ async function resolveCoordinatorFacultyIds(client, authDocument) {
   }
 
   const coordDocumento = coordInfoRes.rows[0].documento;
-  const facultadPrincipal = coordInfoRes.rows[0].id_facultad;
+  const facultadPrincipal = coordInfoRes.rows[0].facultad_id;
   const facultadesRes = await client.query(
-    'SELECT id_facultad FROM coordinador_facultad WHERE documento = $1',
+    'SELECT facultad_id FROM coordinador_facultad WHERE documento = $1',
     [coordDocumento]
   );
 
-  const facultades = facultadesRes.rows.map((row) => row.id_facultad);
+  const facultades = facultadesRes.rows.map((row) => row.facultad_id);
 
   if (facultades.length === 0 && facultadPrincipal) {
     return [facultadPrincipal];
@@ -183,7 +183,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
   try {
     const laboratoristaRes = await pool.query(
       `
-        SELECT documento, nombre, correo, n_usuario, id_facultad, contrato, id_ual
+        SELECT documento, nombre, correo, n_usuario, facultad_id, contrato, ual_id
         FROM laboratorista
         WHERE documento = $1
       `,
@@ -206,7 +206,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
       if (
         facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.id_facultad)
+        !facultadesPermitidas.includes(laboratorista.facultad_id)
       ) {
         return res.render('home/message_error', {
           message: '¡Acceso denegado!',
@@ -291,7 +291,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     client = await pool.connect();
 
     const laboratoristaRes = await client.query(
-      'SELECT documento, n_usuario, id_facultad, usuario_id FROM laboratorista WHERE documento = $1',
+      'SELECT documento, n_usuario, facultad_id, usuario_id FROM laboratorista WHERE documento = $1',
       [documento]
     );
 
@@ -449,7 +449,7 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
     client = await pool.connect();
 
     const laboratoristaResult = await client.query(
-      'SELECT documento, nombre, correo, n_usuario, id_facultad, usuario_id FROM laboratorista WHERE documento = $1',
+      'SELECT documento, nombre, correo, n_usuario, facultad_id, usuario_id FROM laboratorista WHERE documento = $1',
       [documento]
     );
 
@@ -471,7 +471,7 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
 
       if (
         facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.id_facultad)
+        !facultadesPermitidas.includes(laboratorista.facultad_id)
       ) {
         client.release();
         return res.status(403).json({
