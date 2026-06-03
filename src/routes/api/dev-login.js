@@ -89,7 +89,13 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
     }
 
     const roles = Array.isArray(usuario.roles)
-      ? usuario.roles.map((role) => String(role || '').trim().toLowerCase()).filter(Boolean)
+      ? usuario.roles
+          .map((role) =>
+            String(role || '')
+              .trim()
+              .toLowerCase()
+          )
+          .filter(Boolean)
       : [];
     if (!roles.includes('admin')) {
       return renderLoginError(
