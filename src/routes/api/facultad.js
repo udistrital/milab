@@ -215,10 +215,7 @@ router.post('/ual/editar', async (req, res) => {
           limit: null,
         });
       }
-      await pool.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = $2', [
-        newFacultadId,
-        ualId,
-      ]);
+      await pool.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = $2', [newFacultadId, ualId]);
       cambioFacultadTexto = ` | facultad: ${oldRow.facultad_nombre} -> ${facDestRes.rows[0].nombre}`;
       redirectFacultadId = newFacultadId;
     }
