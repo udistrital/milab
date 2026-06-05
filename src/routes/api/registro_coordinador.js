@@ -313,7 +313,6 @@ router.post(
       ? facultyIdsInput.map((x) => parseInt(x, 10))
       : [parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
 
-    const primaryFacultyId = facultyIds[0];
 
     if (!facultyIds.length || !numero_resolucion_coordinador || !soporte_resolucion) {
       return res.render('home/message_error', {
@@ -359,13 +358,12 @@ router.post(
 
       await pool.query(
         `INSERT INTO coordinador
-             (documento, nombre, correo, facultad_id, numero_resolucion_coordinador, soporte_resolucion, nombre_u)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion, nombre_u)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           documento,
           nombre,
           normalizedEmail,
-          primaryFacultyId,
           numero_resolucion_coordinador,
           soporte_resolucion,
           documento,

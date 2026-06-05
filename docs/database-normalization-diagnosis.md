@@ -17,12 +17,11 @@ Hoy, las mejoras más relevantes ya consolidadas son estas:
 3. Las asignaciones múltiples de alcance ya existen de forma explícita en `coordinador_facultad` y `laboratorista_ual`.
 4. El modelo de certificados ya se expresa con `certificado_estudiante` y `certificado_docente`, vinculados a `usuario`.
 
-La deuda de normalización que sigue abierta ya no es principalmente de integridad referencial básica, sino de duplicidad semántica y compatibilidad con legado:
+La deuda de normalización que sigue abierta ya no es principalmente de integridad referencial básica. Tras la remoción de relaciones duplicadas en `coordinador` y `laboratorista`, la deuda activa se concentra en legado de identidad y auditoría:
 
-1. `coordinador` y `laboratorista` todavía conservan columnas que duplican relaciones también representadas en tablas de unión.
-2. Persisten identificadores operativos legacy (`nombre_u`, `n_usuario`) que mezclan identidad de persona con identidad de cuenta.
-3. `log.documento` sigue modelado como numérico, aunque la aplicación ya maneja identificadores alfanuméricos.
-4. Existen rutas y consultas que todavía cargan supuestos heredados del modelo antiguo, sobre todo alrededor de estudiantes, docentes y sanciones.
+1. Persisten identificadores operativos legacy (`nombre_u`, `n_usuario`) que mezclan identidad de persona con identidad de cuenta.
+2. `log.documento` sigue modelado como numérico, aunque la aplicación ya maneja identificadores alfanuméricos.
+3. Existen rutas y consultas que todavía cargan supuestos heredados del modelo antiguo, sobre todo alrededor de estudiantes, docentes y sanciones.
 
 ## Estado Actual Del Modelo
 
@@ -94,30 +93,7 @@ ya expresan correctamente que el alcance operativo puede ser múltiple, algo cla
 
 ## Deuda Que Sigue Vigente
 
-### 1. Doble fuente de verdad en coordinadores
-
-`coordinador` conserva `facultad_id`, pero el sistema también tiene `coordinador_facultad`.
-
-Eso crea dos niveles posibles de verdad:
-
-- relación simple embebida en `coordinador.facultad_id`
-- relación múltiple real en `coordinador_facultad`
-
-Estado recomendado:
-
-- `coordinador_facultad` debe tratarse como relación autoritativa.
-- `coordinador.facultad_id` debería quedar como dato de compatibilidad, derivado o candidato a remoción futura.
-
-### 2. Doble fuente de verdad en laboratoristas
-
-`laboratorista` conserva `ual_id` y `facultad_id`, pero el alcance real puede ser múltiple vía `laboratorista_ual`.
-
-Estado recomendado:
-
-- `laboratorista_ual` debe ser la relación autoritativa para asignación de laboratorios.
-- `laboratorista.ual_id` y `facultad_id` deberían tratarse como campos legacy o de compatibilidad.
-
-### 3. Identificadores legacy de cuenta
+### 1. Identificadores legacy de cuenta
 
 Persisten dos columnas con semántica híbrida:
 
@@ -134,7 +110,7 @@ Estado recomendado:
 - `usuario` debe seguir siendo la identidad canónica.
 - `n_usuario` y `nombre_u` deben considerarse legado operativo, no la base del modelo de identidad.
 
-### 4. Auditoría con tipo insuficiente
+### 2. Auditoría con tipo insuficiente
 
 `log.documento` sigue siendo `NUMERIC(16,0)`.
 
@@ -190,8 +166,8 @@ Estado actual:
 
 Diagnóstico:
 
-- La duplicidad con `facultad_id` persiste.
-- El modelo correcto ya existe, pero convive con legado.
+- El alcance se define en `coordinador_facultad`.
+- Se eliminó la duplicidad estructural de facultad en el esquema canónico.
 
 ### `laboratorista` y `laboratorista_ual`
 
@@ -202,8 +178,8 @@ Estado actual:
 
 Diagnóstico:
 
-- La tabla de unión es la pieza correcta.
-- Las columnas simples en `laboratorista` deben considerarse auxiliares o legacy.
+- La tabla de unión es la pieza autoritativa.
+- Se eliminó la duplicidad estructural de UAL/facultad en el esquema canónico.
 
 ### `multa`
 
@@ -245,13 +221,7 @@ La dirección arquitectónica recomendada hoy es esta:
 1. Cambiar `log.documento` a un tipo textual.
 2. Reducir dependencias funcionales de `n_usuario` y `nombre_u`.
 
-### Fase 2. Declarar fuentes de verdad explícitas
-
-1. Tratar `coordinador_facultad` como relación autoritativa.
-2. Tratar `laboratorista_ual` como relación autoritativa.
-3. Dejar `facultad_id` y `ual_id` embebidos solo como compatibilidad temporal si todavía se necesitan.
-
-### Fase 3. Alinear aplicación y esquema
+### Fase 2. Alinear aplicación y esquema
 
 1. Revisar rutas y consultas para asegurar que usen `multa.usuario_sancionado_id`, `multa.laboratorista_documento_id` y `multa.ual_id`.
 2. Seguir retirando supuestos heredados donde el documento o el código se trataban como sustituto de una FK.

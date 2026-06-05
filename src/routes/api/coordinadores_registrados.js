@@ -61,14 +61,14 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
-             c.facultad_id AS con_facultad,
-             f.nombre AS facultad_nombre,
+             STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
              END AS tipo
       FROM coordinador c
-      JOIN facultad f ON c.facultad_id = f.facultad_id
+      JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+      JOIN facultad f ON f.facultad_id = cf.facultad_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
         OR u.documento = c.documento
@@ -82,6 +82,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
           AND r.nombre = 'coordinador'
         LIMIT 1
       ) role_state ON true
+      GROUP BY c.nombre, c.documento, c.correo, role_state.activo
     `;
     const result = await pool.query(query);
     const coordinadores = result.rows;

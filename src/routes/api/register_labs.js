@@ -486,7 +486,6 @@ async function create_account(data, userSession) {
   const n_usuario = documento;
   const correo = data.correo;
   const selectedUalIds = normalizeSelectedUalIds(data.ual_ids);
-  const primaryUalId = selectedUalIds[0];
   const selectedFacultyId = data.facultad_id;
   const contrato = data.contrato;
   const tipo = 'laboratorista';
@@ -505,9 +504,9 @@ async function create_account(data, userSession) {
 
     const result = await client.query(
       `INSERT INTO laboratorista
-        (documento, nombre, n_usuario, correo, ual_id, facultad_id, contrato, usuario_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [documento, nombre, n_usuario, correo, primaryUalId, selectedFacultyId, contrato, userId]
+        (documento, nombre, n_usuario, correo, contrato, usuario_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [documento, nombre, n_usuario, correo, contrato, userId]
     );
 
     if (result.rowCount !== undefined && result.rowCount >= 0) {

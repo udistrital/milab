@@ -51,29 +51,33 @@ async function resolveActorDocumentForLogs(req, client) {
 }
 
 async function resolveCoordinatorFacultyIds(client, authDocument) {
-  const coordInfoRes = await client.query(
-    'SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1',
-    [authDocument]
-  );
+  const coordInfoRes = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+    authDocument,
+  ]);
 
   if (coordInfoRes.rows.length === 0) {
     return [];
   }
 
   const coordDocumento = coordInfoRes.rows[0].documento;
-  const facultadPrincipal = coordInfoRes.rows[0].facultad_id;
   const facultadesRes = await client.query(
     'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
     [coordDocumento]
   );
 
-  const facultades = facultadesRes.rows.map((row) => row.facultad_id);
+  return facultadesRes.rows.map((row) => row.facultad_id);
+}
 
-  if (facultades.length === 0 && facultadPrincipal) {
-    return [facultadPrincipal];
-  }
+async function resolveLaboratoristaFacultyIds(client, laboratoristaDocumento) {
+  const result = await client.query(
+    `SELECT DISTINCT u.facultad_id
+     FROM laboratorista_ual lu
+     JOIN ual u ON u.ual_id = lu.ual_id
+     WHERE lu.laboratorista_documento_id = $1`,
+    [laboratoristaDocumento]
+  );
 
-  return facultades;
+  return result.rows.map((row) => Number(row.facultad_id)).filter(Boolean);
 }
 
 router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
@@ -87,31 +91,25 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         l.nombre AS con_nombre,
         l.documento AS con_documento,
         l.correo AS con_correo,
-        COALESCE(
-          STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre),
-          u_principal.nombre
-        ) AS con_ual,
-        f.nombre AS con_facultad
+        COALESCE(STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre), '') AS con_ual,
+        COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS con_facultad
       FROM laboratorista l
       LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
       LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id
-      LEFT JOIN ual u_principal ON u_principal.ual_id = l.ual_id
-      JOIN facultad f ON f.facultad_id = l.facultad_id
+      LEFT JOIN facultad f ON f.facultad_id = u_rel.facultad_id
     `;
 
     if (req.session.user.tipo === 'admin') {
       const result = await pool.query(
         `${baseQuery}
-         GROUP BY l.nombre, l.documento, l.correo, u_principal.nombre, f.nombre
+         GROUP BY l.nombre, l.documento, l.correo
          ORDER BY l.nombre ASC`
       );
       laboratoristas = result.rows;
     } else if (req.session.user.tipo === 'coordinador') {
-      // Obtener el documento real del coordinador y su facultad principal (compatibilidad)
-      const coordInfoRes = await pool.query(
-        `SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1`,
-        [req.session.user.documento]
-      );
+      const coordInfoRes = await pool.query(`SELECT documento FROM coordinador WHERE nombre_u = $1`, [
+        req.session.user.documento,
+      ]);
 
       if (coordInfoRes.rows.length === 0) {
         return res.render('home/message_error', {
@@ -122,19 +120,12 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       }
 
       const coordDocumento = coordInfoRes.rows[0].documento;
-      const facultadPrincipal = coordInfoRes.rows[0].facultad_id;
-
-      // Recuperar todas las facultades asociadas mediante la tabla de unión
       const cfRes = await pool.query(
         `SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1`,
         [coordDocumento]
       );
 
-      let facultadesCoord = cfRes.rows.map((r) => r.facultad_id);
-      // Fallback: si aún no hay registros en la relación, usar la facultad principal
-      if (facultadesCoord.length === 0 && facultadPrincipal) {
-        facultadesCoord = [facultadPrincipal];
-      }
+      const facultadesCoord = cfRes.rows.map((r) => r.facultad_id);
 
       if (facultadesCoord.length === 0) {
         return res.render('home/message_error', {
@@ -146,8 +137,14 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
       const result = await pool.query(
         `${baseQuery}
-         WHERE l.facultad_id = ANY($1::int[])
-         GROUP BY l.nombre, l.documento, l.correo, u_principal.nombre, f.nombre
+         WHERE EXISTS (
+           SELECT 1
+           FROM laboratorista_ual lu_scope
+           JOIN ual u_scope ON u_scope.ual_id = lu_scope.ual_id
+           WHERE lu_scope.laboratorista_documento_id = l.documento
+             AND u_scope.facultad_id = ANY($1::int[])
+         )
+         GROUP BY l.nombre, l.documento, l.correo
          ORDER BY l.nombre ASC`,
         [facultadesCoord]
       );
@@ -183,7 +180,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
   try {
     const laboratoristaRes = await pool.query(
       `
-        SELECT documento, nombre, correo, n_usuario, facultad_id, contrato, ual_id
+        SELECT documento, nombre, correo, n_usuario, contrato
         FROM laboratorista
         WHERE documento = $1
       `,
@@ -199,15 +196,17 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     }
 
     const laboratorista = laboratoristaRes.rows[0];
+    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(pool, documento);
+    const selectedFacultyId = laboratoristaFacultyIds[0] || null;
     let facultadesPermitidas = null;
 
     if (req.session.user.tipo === 'coordinador') {
       facultadesPermitidas = await resolveCoordinatorFacultyIds(pool, req.session.user.documento);
+      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
+        facultadesPermitidas.includes(facultyId)
+      );
 
-      if (
-        facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.facultad_id)
-      ) {
+      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
         return res.render('home/message_error', {
           message: '¡Acceso denegado!',
           message2: 'No tienes permisos para editar este laboratorista.',
@@ -240,12 +239,11 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     );
     const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.ual_id));
 
-    if (assignedUalIds.length === 0 && laboratorista.ual_id) {
-      assignedUalIds.push(Number(laboratorista.ual_id));
-    }
-
     return res.render('home/editar_laboratorista', {
-      laboratorista,
+      laboratorista: {
+        ...laboratorista,
+        facultad_id: selectedFacultyId,
+      },
       facultades: facultadesRes.rows,
       uals: ualsRes.rows,
       assignedUalIds,
@@ -291,7 +289,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     client = await pool.connect();
 
     const laboratoristaRes = await client.query(
-      'SELECT documento, n_usuario, facultad_id, usuario_id FROM laboratorista WHERE documento = $1',
+      'SELECT documento, n_usuario, usuario_id FROM laboratorista WHERE documento = $1',
       [documento]
     );
 
@@ -305,16 +303,20 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     }
 
     const laboratorista = laboratoristaRes.rows[0];
+    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
 
     if (req.session.user.tipo === 'coordinador') {
       const facultadesPermitidas = await resolveCoordinatorFacultyIds(
         client,
         req.session.user.documento
       );
+      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
+        facultadesPermitidas.includes(facultyId)
+      );
 
       if (
         facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.facultad_id) ||
+        !isWithinCoordinatorScope ||
         !facultadesPermitidas.includes(selectedFacultyId)
       ) {
         client.release();
@@ -351,20 +353,16 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
       });
     }
 
-    const primaryUalId = selectedUalIds[0];
-
     await client.query('BEGIN');
     await client.query(
       `
         UPDATE laboratorista
         SET nombre = $1,
             correo = $2,
-            facultad_id = $3,
-            ual_id = $4,
-            contrato = $5
-        WHERE documento = $6
+            contrato = $3
+        WHERE documento = $4
       `,
-      [nombre, correo, selectedFacultyId, primaryUalId, contrato, documento]
+      [nombre, correo, contrato, documento]
     );
     if (laboratorista.usuario_id) {
       await client.query(
@@ -451,7 +449,7 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
     client = await pool.connect();
 
     const laboratoristaResult = await client.query(
-      'SELECT documento, nombre, correo, n_usuario, facultad_id, usuario_id FROM laboratorista WHERE documento = $1',
+      'SELECT documento, nombre, correo, n_usuario, usuario_id FROM laboratorista WHERE documento = $1',
       [documento]
     );
 
@@ -464,17 +462,18 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
     }
 
     const laboratorista = laboratoristaResult.rows[0];
+    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
 
     if (req.session.user.tipo === 'coordinador') {
       const facultadesPermitidas = await resolveCoordinatorFacultyIds(
         client,
         req.session.user.documento
       );
+      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
+        facultadesPermitidas.includes(facultyId)
+      );
 
-      if (
-        facultadesPermitidas.length === 0 ||
-        !facultadesPermitidas.includes(laboratorista.facultad_id)
-      ) {
+      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
         client.release();
         return res.status(403).json({
           ok: false,

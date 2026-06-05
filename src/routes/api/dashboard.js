@@ -202,7 +202,7 @@ function normalizeIntegerArray(values) {
 
 async function resolveLaboratoristaScope(client, authDocument) {
   const laboratoristaRes = await client.query(
-    'SELECT documento, ual_id, facultad_id FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
     [authDocument]
   );
 
@@ -223,9 +223,6 @@ async function resolveLaboratoristaScope(client, authDocument) {
   );
 
   const ualIds = assignedUalsRes.rows.map((row) => Number(row.ual_id)).filter(Boolean);
-  if (!ualIds.length && laboratorista.ual_id) {
-    ualIds.push(Number(laboratorista.ual_id));
-  }
 
   let ualNames = [];
   let facultyIds = [];
@@ -240,10 +237,6 @@ async function resolveLaboratoristaScope(client, authDocument) {
     facultyIds = [
       ...new Set(ualInfoRes.rows.map((row) => Number(row.facultad_id)).filter(Boolean)),
     ];
-  }
-
-  if (!facultyIds.length && laboratorista.facultad_id) {
-    facultyIds.push(Number(laboratorista.facultad_id));
   }
 
   if (facultyIds.length) {
@@ -327,11 +320,11 @@ async function fetchLaboratoristaRows(client) {
     `SELECT
        l.documento,
        l.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(lu.ual_id, l.ual_id)), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(u.facultad_id, l.facultad_id)), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.ual_id), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids
      FROM laboratorista l
      LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
-     LEFT JOIN ual u ON u.ual_id = COALESCE(lu.ual_id, l.ual_id)
+     LEFT JOIN ual u ON u.ual_id = lu.ual_id
      GROUP BY l.documento, l.fecha_creacion`
   );
   return result.rows;
@@ -342,7 +335,7 @@ async function fetchCoordinatorRows(client) {
     `SELECT
        c.documento,
        c.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(cf.facultad_id, c.facultad_id)), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      GROUP BY c.documento, c.fecha_creacion`
@@ -357,13 +350,13 @@ async function fetchUsuarioRows(client) {
        u.fecha_creacion,
        u.carrera,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS coordinator_faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.facultad_id, l.facultad_id)), NULL) AS laboratorista_faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.facultad_id), NULL) AS laboratorista_faculty_ids
      FROM usuario u
      LEFT JOIN coordinador c ON c.usuario_id = u.id
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
      LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
-     LEFT JOIN ual ON ual.ual_id = COALESCE(lu.ual_id, l.ual_id)
+     LEFT JOIN ual ON ual.ual_id = lu.ual_id
      GROUP BY u.documento, u.fecha_creacion, u.carrera`
   );
   return result.rows;

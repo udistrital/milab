@@ -99,11 +99,14 @@ router.post('/eliminar', async (req, res) => {
       facultadId,
     ]);
     const depLab = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE facultad_id = $1',
+      `SELECT COUNT(DISTINCT lu.laboratorista_documento_id)::int AS c
+       FROM laboratorista_ual lu
+       JOIN ual u ON u.ual_id = lu.ual_id
+       WHERE u.facultad_id = $1`,
       [facultadId]
     );
     const depCoord = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM coordinador WHERE facultad_id = $1',
+      'SELECT COUNT(*)::int AS c FROM coordinador_facultad WHERE facultad_id = $1',
       [facultadId]
     );
 
@@ -252,15 +255,11 @@ router.post('/ual/eliminar', async (req, res) => {
   }
 
   try {
-    const depLabLegacy = await pool.query(
-      'SELECT COUNT(*)::int AS c FROM laboratorista WHERE ual_id = $1',
-      [ualId]
-    );
     const depLabMulti = await pool.query(
       'SELECT COUNT(*)::int AS c FROM laboratorista_ual WHERE ual_id = $1',
       [ualId]
     );
-    const depLabCount = (depLabLegacy.rows[0]?.c || 0) + (depLabMulti.rows[0]?.c || 0);
+    const depLabCount = depLabMulti.rows[0]?.c || 0;
 
     if (depLabCount > 0) {
       return res.render('home/message_error', {

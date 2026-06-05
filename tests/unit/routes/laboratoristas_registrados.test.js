@@ -39,10 +39,14 @@ function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } 
         return clientQueryImpl(sql, params);
       }
 
-      if (sql.includes('SELECT documento, n_usuario, facultad_id, usuario_id FROM laboratorista')) {
+      if (sql.includes('SELECT documento, n_usuario, usuario_id FROM laboratorista')) {
         return {
-          rows: [{ documento: '12345', n_usuario: '12345', facultad_id: 2, usuario_id: 55 }],
+          rows: [{ documento: '12345', n_usuario: '12345', usuario_id: 55 }],
         };
+      }
+
+      if (sql.includes('SELECT DISTINCT u.facultad_id')) {
+        return { rows: [{ facultad_id: 2 }] };
       }
 
       if (sql.includes('SELECT ual_id FROM ual WHERE facultad_id = $1')) {
@@ -51,10 +55,6 @@ function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } 
 
       if (sql.includes('SELECT documento FROM coordinador WHERE nombre_u = $1')) {
         return { rows: [{ documento: '900' }] };
-      }
-
-      if (sql.includes('SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1')) {
-        return { rows: [{ documento: '900', facultad_id: 10 }] };
       }
 
       if (
@@ -184,14 +184,14 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
   const loaded = loadRoute({
     sessionRole: 'coordinador',
     clientQueryImpl: async (sql) => {
-      if (sql.includes('SELECT documento, n_usuario, facultad_id, usuario_id FROM laboratorista')) {
+      if (sql.includes('SELECT documento, n_usuario, usuario_id FROM laboratorista')) {
         return {
-          rows: [{ documento: '12345', n_usuario: '12345', facultad_id: 99, usuario_id: 55 }],
+          rows: [{ documento: '12345', n_usuario: '12345', usuario_id: 55 }],
         };
       }
 
-      if (sql.includes('SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1')) {
-        return { rows: [{ documento: '900', facultad_id: 10 }] };
+      if (sql.includes('SELECT DISTINCT u.facultad_id')) {
+        return { rows: [{ facultad_id: 99 }] };
       }
 
       if (
@@ -238,14 +238,14 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
   const loaded = loadRoute({
     sessionRole: 'coordinador',
     clientQueryImpl: async (sql) => {
-      if (sql.includes('SELECT documento, n_usuario, facultad_id, usuario_id FROM laboratorista')) {
+      if (sql.includes('SELECT documento, n_usuario, usuario_id FROM laboratorista')) {
         return {
-          rows: [{ documento: '12345', n_usuario: '12345', facultad_id: 10, usuario_id: 55 }],
+          rows: [{ documento: '12345', n_usuario: '12345', usuario_id: 55 }],
         };
       }
 
-      if (sql.includes('SELECT documento, facultad_id FROM coordinador WHERE nombre_u = $1')) {
-        return { rows: [{ documento: '900', facultad_id: 10 }] };
+      if (sql.includes('SELECT DISTINCT u.facultad_id')) {
+        return { rows: [{ facultad_id: 10 }] };
       }
 
       if (

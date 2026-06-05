@@ -148,8 +148,6 @@ CREATE TABLE laboratorista (
     nombre CHARACTER VARYING(100) NOT NULL,
     n_usuario CHARACTER VARYING(50) UNIQUE,
     correo CHARACTER VARYING(50) UNIQUE NOT NULL,
-    ual_id INT REFERENCES ual(ual_id),
-    facultad_id INT REFERENCES facultad(facultad_id),
     contrato CHARACTER VARYING(50),
     usuario_id BIGINT REFERENCES usuario(id) ON DELETE SET NULL,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
@@ -161,7 +159,6 @@ CREATE TABLE coordinador (
     documento CHARACTER VARYING(50) PRIMARY KEY,
     nombre CHARACTER VARYING(255) NOT NULL,
     correo CHARACTER VARYING(255) UNIQUE,
-    facultad_id INT REFERENCES facultad(facultad_id),
     numero_resolucion_coordinador CHARACTER VARYING(100),
     soporte_resolucion CHARACTER VARYING(1000),
     nombre_u CHARACTER VARYING(50),
@@ -243,10 +240,7 @@ COMMENT ON COLUMN milab.rol_permiso.menu_item_id IS 'Referencia a milab.menu_ite
 COMMENT ON COLUMN milab.certificado_estudiante.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.certificado_docente.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.ual.facultad_id IS 'Referencia a milab.facultad.facultad_id';
-COMMENT ON COLUMN milab.laboratorista.ual_id IS 'Referencia a milab.ual.ual_id';
-COMMENT ON COLUMN milab.laboratorista.facultad_id IS 'Referencia a milab.facultad.facultad_id';
 COMMENT ON COLUMN milab.laboratorista.usuario_id IS 'Referencia a milab.usuario.id';
-COMMENT ON COLUMN milab.coordinador.facultad_id IS 'Referencia a milab.facultad.facultad_id';
 COMMENT ON COLUMN milab.coordinador.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador_facultad.coordinador_documento_id IS 'Referencia a milab.coordinador.documento';
 COMMENT ON COLUMN milab.coordinador_facultad.facultad_id IS 'Referencia a milab.facultad.facultad_id';

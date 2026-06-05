@@ -41,11 +41,15 @@ function loadRoute({ resolveUsuarioId = async () => 77, queryImpl } = {}) {
           }
 
           if (sql.includes('FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
-            return { rows: [{ documento: '1024467835', facultad_id: 10 }] };
+            return { rows: [{ documento: '1024467835' }] };
           }
 
-          if (sql.includes('SELECT ual_id FROM ual WHERE ual_id = $1 AND facultad_id = $2')) {
-            return { rows: [{ ual_id: 21 }] };
+          if (
+            sql.includes(
+              'SELECT 1 FROM laboratorista_ual WHERE laboratorista_documento_id = $1 AND ual_id = $2'
+            )
+          ) {
+            return { rows: [{ '?column?': 1 }] };
           }
 
           return { rows: [] };
@@ -121,10 +125,14 @@ test('submit rejects unauthorized UAL', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
       if (sql.includes('FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
-        return { rows: [{ documento: '1024467835', facultad_id: 10 }] };
+        return { rows: [{ documento: '1024467835' }] };
       }
 
-      if (sql.includes('SELECT ual_id FROM ual WHERE ual_id = $1 AND facultad_id = $2')) {
+      if (
+        sql.includes(
+          'SELECT 1 FROM laboratorista_ual WHERE laboratorista_documento_id = $1 AND ual_id = $2'
+        )
+      ) {
         return { rows: [] };
       }
 

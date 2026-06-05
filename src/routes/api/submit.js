@@ -80,7 +80,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
 
     const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
     const laboratoristaResult = await pool.query(
-      'SELECT documento, facultad_id FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
+      'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
       [sessionDocumento]
     );
 
@@ -104,8 +104,8 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     }
 
     const ualResult = await pool.query(
-      'SELECT ual_id FROM ual WHERE ual_id = $1 AND facultad_id = $2',
-      [idUal, laboratorista.facultad_id]
+      'SELECT 1 FROM laboratorista_ual WHERE laboratorista_documento_id = $1 AND ual_id = $2',
+      [laboratorista.documento, idUal]
     );
 
     if (ualResult.rows.length === 0) {

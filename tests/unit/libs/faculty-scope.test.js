@@ -35,17 +35,17 @@ test('resolveAcademicFacultyName maps known academic programs', () => {
   assert.equal(resolveAcademicFacultyName('Licenciatura en Arte'), null);
 });
 
-test('resolveCoordinatorScope returns unique faculty ids and falls back to primary faculty', async () => {
+test('resolveCoordinatorScope returns unique faculty ids from coordinador_facultad', async () => {
   const queries = [];
   const client = {
     async query(query, values) {
       queries.push({ query, values });
 
       if (queries.length === 1) {
-        return { rows: [{ documento: '1024467835', facultad_id: 7 }] };
+        return { rows: [{ documento: '1024467835' }] };
       }
 
-      return { rows: [] };
+      return { rows: [{ facultad_id: 7 }, { facultad_id: 7 }] };
     },
   };
 
@@ -64,7 +64,7 @@ test('resolveCoordinatorFacultyNames resolves and canonicalizes faculty names', 
       step += 1;
 
       if (step === 1) {
-        return { rows: [{ documento: '1024467835', facultad_id: 2 }] };
+        return { rows: [{ documento: '1024467835' }] };
       }
 
       if (step === 2) {
