@@ -126,10 +126,9 @@ function resolveAcademicFacultyName(programName) {
 }
 
 async function resolveCoordinatorScope(client, authDocument) {
-  const coordInfoRes = await client.query(
-    'SELECT documento FROM coordinador WHERE nombre_u = $1',
-    [authDocument]
-  );
+  const coordInfoRes = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+    authDocument,
+  ]);
 
   if (coordInfoRes.rows.length === 0) {
     return {

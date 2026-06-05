@@ -107,9 +107,10 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       );
       laboratoristas = result.rows;
     } else if (req.session.user.tipo === 'coordinador') {
-      const coordInfoRes = await pool.query(`SELECT documento FROM coordinador WHERE nombre_u = $1`, [
-        req.session.user.documento,
-      ]);
+      const coordInfoRes = await pool.query(
+        `SELECT documento FROM coordinador WHERE nombre_u = $1`,
+        [req.session.user.documento]
+      );
 
       if (coordInfoRes.rows.length === 0) {
         return res.render('home/message_error', {

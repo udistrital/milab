@@ -25,7 +25,9 @@ function normalizeUalDescription(value) {
 }
 
 function normalizeUalShortCode(value) {
-  const normalized = String(value || '').trim().toUpperCase();
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase();
   return normalized || null;
 }
 

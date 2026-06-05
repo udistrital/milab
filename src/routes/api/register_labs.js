@@ -185,7 +185,11 @@ async function buildRegisterLabsViewContext(sessionUser) {
 
   return {
     facultades: (await pool.query('SELECT * FROM facultad ORDER BY nombre ASC')).rows,
-    uals: (await pool.query('SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual ORDER BY nombre ASC')).rows,
+    uals: (
+      await pool.query(
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual ORDER BY nombre ASC'
+      )
+    ).rows,
     tipo: sessionUser?.tipo || 'admin',
     documento: sessionUser?.documento || null,
   };

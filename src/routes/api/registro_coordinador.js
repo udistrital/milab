@@ -313,7 +313,6 @@ router.post(
       ? facultyIdsInput.map((x) => parseInt(x, 10))
       : [parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
 
-
     if (!facultyIds.length || !numero_resolucion_coordinador || !soporte_resolucion) {
       return res.render('home/message_error', {
         message: '¡Todos los campos son obligatorios!',
