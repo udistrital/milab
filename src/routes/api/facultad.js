@@ -19,6 +19,11 @@ function getLogActorDocument(req) {
   return normalizeLogDocument(req.session?.user?.documento);
 }
 
+function normalizeUalDescription(value) {
+  const normalized = String(value || '').trim();
+  return normalized || null;
+}
+
 router.use(requireAdminFacultyAccess);
 
 // Página principal de administración de facultades y UALs (admin solo)
@@ -38,7 +43,7 @@ router.get('/', async (req, res) => {
       const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
       selectedFacultad = facSel || null;
       const ualRes = await pool.query(
-        'SELECT ual_id, nombre FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
+        'SELECT ual_id, nombre, descripcion FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
         [facultadId]
       );
       uals = ualRes.rows;
@@ -143,6 +148,7 @@ router.post('/eliminar', async (req, res) => {
 router.post('/ual/add', async (req, res) => {
   const { facultad_id: facultadId } = req.body;
   const { nombre } = req.body;
+  const descripcion = normalizeUalDescription(req.body.descripcion);
   if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
@@ -151,9 +157,18 @@ router.post('/ual/add', async (req, res) => {
     });
   }
 
+  if (descripcion && descripcion.length > 255) {
+    return res.render('home/message_error', {
+      message: 'Descripción inválida',
+      message2: 'La descripción de la UAL no puede superar 255 caracteres.',
+      limit: null,
+    });
+  }
+
   try {
-    await pool.query('INSERT INTO ual (nombre, facultad_id) VALUES ($1, $2)', [
+    await pool.query('INSERT INTO ual (nombre, descripcion, facultad_id) VALUES ($1, $2, $3)', [
       nombre.trim(),
+      descripcion,
       facultadId,
     ]);
     await pool.query(
@@ -175,6 +190,7 @@ router.post('/ual/add', async (req, res) => {
 router.post('/ual/editar', async (req, res) => {
   const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
   const { nombre } = req.body;
+  const descripcion = normalizeUalDescription(req.body.descripcion);
   if (!ualId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
@@ -183,11 +199,19 @@ router.post('/ual/editar', async (req, res) => {
     });
   }
 
+  if (descripcion && descripcion.length > 255) {
+    return res.render('home/message_error', {
+      message: 'Descripción inválida',
+      message2: 'La descripción de la UAL no puede superar 255 caracteres.',
+      limit: null,
+    });
+  }
+
   try {
     // Solo admin edita UAL
 
     const oldRes = await pool.query(
-      'SELECT ual.nombre AS ual_nombre, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
+      'SELECT ual.nombre AS ual_nombre, ual.descripcion AS ual_descripcion, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
       [ualId]
     );
     const oldRow = oldRes.rows[0] || {
@@ -196,8 +220,12 @@ router.post('/ual/editar', async (req, res) => {
       facultad_nombre: '',
     };
 
-    // Actualización de nombre
-    await pool.query('UPDATE ual SET nombre = $1 WHERE ual_id = $2', [nombre.trim(), ualId]);
+    // Actualización de nombre y descripción
+    await pool.query('UPDATE ual SET nombre = $1, descripcion = $2 WHERE ual_id = $3', [
+      nombre.trim(),
+      descripcion,
+      ualId,
+    ]);
 
     // Si es admin y envía new_facultad_id diferente, mover UAL a otra facultad
     let redirectFacultadId = facultadId;

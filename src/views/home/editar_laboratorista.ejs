@@ -70,7 +70,10 @@
                     data-facultad="<%= ual.facultad_id %>"
                     <%= assignedUalIds.includes(Number(ual.ual_id)) ? 'checked' : '' %>
                   >
-                  <span class="form-check-label"><%= ual.nombre %></span>
+                  <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <% if (ual.descripcion) { %>
+                    <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
+                  <% } %>
                 </label>
               </div>
             <% }); %>

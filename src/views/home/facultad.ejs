@@ -85,6 +85,7 @@
                 <thead class="text-center">
                   <tr>
                     <th>Nombre</th>
+                    <th>Descripción</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
                   </tr>
@@ -93,9 +94,10 @@
                   <% uals.forEach(u => { %>
                     <tr>
                       <td><%= u.nombre %></td>
+                      <td><%= u.descripcion || '-' %></td>
                       <td>
                         <% if (locals.tipo === 'admin') { %>
-                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
+                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-descripcion="<%= u.descripcion || '' %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
                         <% } else { %>
                           <span class="text-muted">No permitido</span>
                         <% } %>
@@ -125,9 +127,16 @@
               <form action="/milab/api/facultad/ual/add" method="POST">
                 <%- include('../partials/csrf_field') %>
                 <input type="hidden" name="facultad_id" value="<%= selectedFacultad.facultad_id %>">
-                <div class="input-group">
-                  <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
-                  <button type="submit" class="btn btn-success">Agregar</button>
+                <div class="row g-2">
+                  <div class="col-12">
+                    <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
+                  </div>
+                  <div class="col-12">
+                    <input type="text" name="descripcion" class="form-control" maxlength="255" placeholder="Descripción opcional de la UAL">
+                  </div>
+                  <div class="col-12 d-grid">
+                    <button type="submit" class="btn btn-success">Agregar</button>
+                  </div>
                 </div>
               </form>
             <% } %>
@@ -181,6 +190,10 @@
           <div class="mb-3">
             <label for="edit_ual_nombre" class="form-label">Nombre</label>
             <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+          </div>
+          <div class="mb-3">
+            <label for="edit_ual_descripcion" class="form-label">Descripción opcional</label>
+            <input type="text" class="form-control" name="descripcion" id="edit_ual_descripcion" maxlength="255">
           </div>
           <% if (locals.tipo === 'admin') { %>
           <div class="mb-3">
@@ -253,9 +266,11 @@
       button.addEventListener('click', function() {
         var id = button.getAttribute('data-id');
         var nombre = button.getAttribute('data-nombre');
+        var descripcion = button.getAttribute('data-descripcion');
         var idFac = button.getAttribute('data-facultad');
         var idInput = document.getElementById('edit_ual_id');
         var nombreInput = document.getElementById('edit_ual_nombre');
+        var descripcionInput = document.getElementById('edit_ual_descripcion');
         var facultadInput = document.getElementById('edit_ual_facultad');
         var facultadSelect = document.getElementById('edit_ual_facultad_select');
 
@@ -265,6 +280,10 @@
 
         if (nombreInput) {
           nombreInput.value = nombre || '';
+        }
+
+        if (descripcionInput) {
+          descripcionInput.value = descripcion || '';
         }
 
         if (facultadInput) {

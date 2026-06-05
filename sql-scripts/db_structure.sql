@@ -137,6 +137,7 @@ CREATE TABLE facultad (
 CREATE TABLE ual (
     ual_id SERIAL PRIMARY KEY,
     nombre CHARACTER VARYING(255) NOT NULL,
+    descripcion CHARACTER VARYING(255),
     facultad_id INT NOT NULL REFERENCES facultad(facultad_id),
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -240,6 +241,7 @@ COMMENT ON COLUMN milab.rol_permiso.menu_item_id IS 'Referencia a milab.menu_ite
 COMMENT ON COLUMN milab.certificado_estudiante.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.certificado_docente.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.ual.facultad_id IS 'Referencia a milab.facultad.facultad_id';
+COMMENT ON COLUMN milab.ual.descripcion IS 'Descripción opcional de la UAL para contexto operativo';
 COMMENT ON COLUMN milab.laboratorista.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador_facultad.coordinador_documento_id IS 'Referencia a milab.coordinador.documento';

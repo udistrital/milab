@@ -169,9 +169,10 @@ async function buildRegisterLabsViewContext(sessionUser) {
       )
     ).rows;
     const uals = (
-      await pool.query('SELECT * FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC', [
-        scope.facultyIds,
-      ])
+      await pool.query(
+        'SELECT ual_id, nombre, descripcion, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [scope.facultyIds]
+      )
     ).rows;
 
     return {
@@ -184,7 +185,7 @@ async function buildRegisterLabsViewContext(sessionUser) {
 
   return {
     facultades: (await pool.query('SELECT * FROM facultad ORDER BY nombre ASC')).rows,
-    uals: (await pool.query('SELECT * FROM ual ORDER BY nombre ASC')).rows,
+    uals: (await pool.query('SELECT ual_id, nombre, descripcion, facultad_id FROM ual ORDER BY nombre ASC')).rows,
     tipo: sessionUser?.tipo || 'admin',
     documento: sessionUser?.documento || null,
   };

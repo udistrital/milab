@@ -108,7 +108,10 @@
                     data-ual-checkbox="true"
                     data-facultad="<%= ual.facultad_id %>"
                   >
-                  <span class="form-check-label"><%= ual.nombre %></span>
+                  <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <% if (ual.descripcion) { %>
+                    <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
+                  <% } %>
                 </label>
               </div>
             <% }); %>

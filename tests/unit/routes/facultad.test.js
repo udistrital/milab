@@ -42,6 +42,7 @@ function loadRoute() {
               rows: [
                 {
                   ual_nombre: 'UAL Antigua',
+                  ual_descripcion: 'Descripcion antigua',
                   ual_facultad: '1',
                   facultad_nombre: 'ASAB',
                 },
@@ -100,6 +101,7 @@ test('facultad parses form body for UAL edit requests', async () => {
       ual_id: '10',
       facultad_id: '1',
       nombre: 'UAL Nueva',
+      descripcion: 'Descripcion nueva',
       new_facultad_id: '1',
     });
 
@@ -108,9 +110,10 @@ test('facultad parses form body for UAL edit requests', async () => {
 
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
-        sql === 'UPDATE ual SET nombre = $1 WHERE ual_id = $2' &&
+        sql === 'UPDATE ual SET nombre = $1, descripcion = $2 WHERE ual_id = $3' &&
         params[0] === 'UAL Nueva' &&
-        params[1] === '10'
+        params[1] === 'Descripcion nueva' &&
+        params[2] === '10'
     );
 
     assert.ok(updatedNameQuery);
