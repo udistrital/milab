@@ -71,6 +71,9 @@
                     <%= assignedUalIds.includes(Number(ual.ual_id)) ? 'checked' : '' %>
                   >
                   <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <% if (ual.codigo_abreviacion) { %>
+                    <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
+                  <% } %>
                   <% if (ual.descripcion) { %>
                     <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
                   <% } %>

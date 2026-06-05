@@ -24,6 +24,15 @@ function normalizeUalDescription(value) {
   return normalized || null;
 }
 
+function normalizeUalShortCode(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || null;
+}
+
+function isValidUalShortCode(value) {
+  return /^[A-Z0-9_-]+$/.test(value);
+}
+
 router.use(requireAdminFacultyAccess);
 
 // Página principal de administración de facultades y UALs (admin solo)
@@ -43,7 +52,7 @@ router.get('/', async (req, res) => {
       const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
       selectedFacultad = facSel || null;
       const ualRes = await pool.query(
-        'SELECT ual_id, nombre, descripcion FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
         [facultadId]
       );
       uals = ualRes.rows;
@@ -148,6 +157,7 @@ router.post('/eliminar', async (req, res) => {
 router.post('/ual/add', async (req, res) => {
   const { facultad_id: facultadId } = req.body;
   const { nombre } = req.body;
+  const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
   if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
@@ -155,6 +165,16 @@ router.post('/ual/add', async (req, res) => {
       message2: 'Proporcione nombre de UAL y facultad válidos',
       limit: null,
     });
+  }
+
+  if (codigoAbreviacion) {
+    if (codigoAbreviacion.length > 30 || !isValidUalShortCode(codigoAbreviacion)) {
+      return res.render('home/message_error', {
+        message: 'Código abreviado inválido',
+        message2: 'Usa máximo 30 caracteres con letras, números, guion o guion bajo.',
+        limit: null,
+      });
+    }
   }
 
   if (descripcion && descripcion.length > 255) {
@@ -166,11 +186,10 @@ router.post('/ual/add', async (req, res) => {
   }
 
   try {
-    await pool.query('INSERT INTO ual (nombre, descripcion, facultad_id) VALUES ($1, $2, $3)', [
-      nombre.trim(),
-      descripcion,
-      facultadId,
-    ]);
+    await pool.query(
+      'INSERT INTO ual (nombre, codigo_abreviacion, descripcion, facultad_id) VALUES ($1, $2, $3, $4)',
+      [nombre.trim(), codigoAbreviacion, descripcion, facultadId]
+    );
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, getLogActorDocument(req), 'agregar UAL', nombre.trim()]
@@ -178,6 +197,18 @@ router.post('/ual/add', async (req, res) => {
     return res.redirect(`/milab/api/facultad?facultad_id=${facultadId}`);
   } catch (error) {
     console.error('Error agregando UAL:', error);
+
+    if (
+      error?.code === '23505' &&
+      String(error?.constraint || '').includes('idx_ual_codigo_abreviacion_unique')
+    ) {
+      return res.render('home/message_error', {
+        message: 'Código abreviado duplicado',
+        message2: 'Ya existe una UAL con ese código abreviado.',
+        limit: null,
+      });
+    }
+
     return res.render('home/message_error', {
       message: 'Error al agregar UAL',
       message2: 'Inténtalo nuevamente',
@@ -190,6 +221,7 @@ router.post('/ual/add', async (req, res) => {
 router.post('/ual/editar', async (req, res) => {
   const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
   const { nombre } = req.body;
+  const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
   if (!ualId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
@@ -197,6 +229,16 @@ router.post('/ual/editar', async (req, res) => {
       message2: 'Proporcione un nombre válido para la UAL',
       limit: null,
     });
+  }
+
+  if (codigoAbreviacion) {
+    if (codigoAbreviacion.length > 30 || !isValidUalShortCode(codigoAbreviacion)) {
+      return res.render('home/message_error', {
+        message: 'Código abreviado inválido',
+        message2: 'Usa máximo 30 caracteres con letras, números, guion o guion bajo.',
+        limit: null,
+      });
+    }
   }
 
   if (descripcion && descripcion.length > 255) {
@@ -211,7 +253,7 @@ router.post('/ual/editar', async (req, res) => {
     // Solo admin edita UAL
 
     const oldRes = await pool.query(
-      'SELECT ual.nombre AS ual_nombre, ual.descripcion AS ual_descripcion, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
+      'SELECT ual.nombre AS ual_nombre, ual.codigo_abreviacion AS ual_codigo_abreviacion, ual.descripcion AS ual_descripcion, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
       [ualId]
     );
     const oldRow = oldRes.rows[0] || {
@@ -220,12 +262,11 @@ router.post('/ual/editar', async (req, res) => {
       facultad_nombre: '',
     };
 
-    // Actualización de nombre y descripción
-    await pool.query('UPDATE ual SET nombre = $1, descripcion = $2 WHERE ual_id = $3', [
-      nombre.trim(),
-      descripcion,
-      ualId,
-    ]);
+    // Actualización de nombre, código y descripción
+    await pool.query(
+      'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3 WHERE ual_id = $4',
+      [nombre.trim(), codigoAbreviacion, descripcion, ualId]
+    );
 
     // Si es admin y envía new_facultad_id diferente, mover UAL a otra facultad
     let redirectFacultadId = facultadId;
@@ -263,6 +304,18 @@ router.post('/ual/editar', async (req, res) => {
     return res.redirect(`/milab/api/facultad?facultad_id=${redirectFacultadId || ''}`);
   } catch (error) {
     console.error('Error editando UAL:', error);
+
+    if (
+      error?.code === '23505' &&
+      String(error?.constraint || '').includes('idx_ual_codigo_abreviacion_unique')
+    ) {
+      return res.render('home/message_error', {
+        message: 'Código abreviado duplicado',
+        message2: 'Ya existe una UAL con ese código abreviado.',
+        limit: null,
+      });
+    }
+
     return res.render('home/message_error', {
       message: 'Error al editar UAL',
       message2: 'Inténtalo nuevamente',

@@ -109,6 +109,9 @@
                     data-facultad="<%= ual.facultad_id %>"
                   >
                   <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <% if (ual.codigo_abreviacion) { %>
+                    <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
+                  <% } %>
                   <% if (ual.descripcion) { %>
                     <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
                   <% } %>

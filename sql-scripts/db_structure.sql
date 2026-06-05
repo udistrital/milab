@@ -137,11 +137,16 @@ CREATE TABLE facultad (
 CREATE TABLE ual (
     ual_id SERIAL PRIMARY KEY,
     nombre CHARACTER VARYING(255) NOT NULL,
+    codigo_abreviacion CHARACTER VARYING(30),
     descripcion CHARACTER VARYING(255),
     facultad_id INT NOT NULL REFERENCES facultad(facultad_id),
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_ual_codigo_abreviacion_formato CHECK (
+        codigo_abreviacion IS NULL
+        OR codigo_abreviacion ~ '^[A-Z0-9_-]+$'
+    )
 );
 
 CREATE TABLE laboratorista (
@@ -225,6 +230,9 @@ CREATE INDEX idx_coordinador_facultad_coordinador_documento_id ON coordinador_fa
 CREATE INDEX idx_coordinador_facultad_facultad_id ON coordinador_facultad(facultad_id);
 CREATE INDEX idx_laboratorista_ual_laboratorista_documento_id ON laboratorista_ual(laboratorista_documento_id);
 CREATE INDEX idx_laboratorista_ual_ual_id ON laboratorista_ual(ual_id);
+CREATE UNIQUE INDEX idx_ual_codigo_abreviacion_unique
+    ON ual (LOWER(codigo_abreviacion))
+    WHERE codigo_abreviacion IS NOT NULL;
 CREATE INDEX idx_certificado_estudiante_usuario ON certificado_estudiante(usuario_id);
 CREATE INDEX idx_certificado_docente_usuario ON certificado_docente(usuario_id);
 CREATE INDEX idx_multa_usuario_sancionado_id ON multa(usuario_sancionado_id);
@@ -241,6 +249,7 @@ COMMENT ON COLUMN milab.rol_permiso.menu_item_id IS 'Referencia a milab.menu_ite
 COMMENT ON COLUMN milab.certificado_estudiante.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.certificado_docente.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.ual.facultad_id IS 'Referencia a milab.facultad.facultad_id';
+COMMENT ON COLUMN milab.ual.codigo_abreviacion IS 'Código abreviado opcional de la UAL';
 COMMENT ON COLUMN milab.ual.descripcion IS 'Descripción opcional de la UAL para contexto operativo';
 COMMENT ON COLUMN milab.laboratorista.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador.usuario_id IS 'Referencia a milab.usuario.id';

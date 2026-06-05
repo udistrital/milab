@@ -226,8 +226,8 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const ualsQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT ual_id, nombre, descripcion, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT ual_id, nombre, descripcion, facultad_id FROM ual ORDER BY nombre ASC';
+        ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual ORDER BY nombre ASC';
     const ualsRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(ualsQuery, [facultadesPermitidas])

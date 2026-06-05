@@ -85,6 +85,7 @@
                 <thead class="text-center">
                   <tr>
                     <th>Nombre</th>
+                    <th>Código</th>
                     <th>Descripción</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
@@ -94,10 +95,11 @@
                   <% uals.forEach(u => { %>
                     <tr>
                       <td><%= u.nombre %></td>
+                      <td><%= u.codigo_abreviacion || '-' %></td>
                       <td><%= u.descripcion || '-' %></td>
                       <td>
                         <% if (locals.tipo === 'admin') { %>
-                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-descripcion="<%= u.descripcion || '' %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
+                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-codigo="<%= u.codigo_abreviacion || '' %>" data-descripcion="<%= u.descripcion || '' %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
                         <% } else { %>
                           <span class="text-muted">No permitido</span>
                         <% } %>
@@ -130,6 +132,9 @@
                 <div class="row g-2">
                   <div class="col-12">
                     <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
+                  </div>
+                  <div class="col-12">
+                    <input type="text" name="codigo_abreviacion" class="form-control" maxlength="30" placeholder="Código abreviado opcional (ej: LAB_FIS_01)">
                   </div>
                   <div class="col-12">
                     <input type="text" name="descripcion" class="form-control" maxlength="255" placeholder="Descripción opcional de la UAL">
@@ -190,6 +195,11 @@
           <div class="mb-3">
             <label for="edit_ual_nombre" class="form-label">Nombre</label>
             <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+          </div>
+          <div class="mb-3">
+            <label for="edit_ual_codigo" class="form-label">Código abreviado opcional</label>
+            <input type="text" class="form-control" name="codigo_abreviacion" id="edit_ual_codigo" maxlength="30" placeholder="Ej: LAB_FIS_01">
+            <small class="form-text text-muted">Solo letras, números, guion y guion bajo.</small>
           </div>
           <div class="mb-3">
             <label for="edit_ual_descripcion" class="form-label">Descripción opcional</label>
@@ -266,10 +276,12 @@
       button.addEventListener('click', function() {
         var id = button.getAttribute('data-id');
         var nombre = button.getAttribute('data-nombre');
+        var codigo = button.getAttribute('data-codigo');
         var descripcion = button.getAttribute('data-descripcion');
         var idFac = button.getAttribute('data-facultad');
         var idInput = document.getElementById('edit_ual_id');
         var nombreInput = document.getElementById('edit_ual_nombre');
+        var codigoInput = document.getElementById('edit_ual_codigo');
         var descripcionInput = document.getElementById('edit_ual_descripcion');
         var facultadInput = document.getElementById('edit_ual_facultad');
         var facultadSelect = document.getElementById('edit_ual_facultad_select');
@@ -280,6 +292,10 @@
 
         if (nombreInput) {
           nombreInput.value = nombre || '';
+        }
+
+        if (codigoInput) {
+          codigoInput.value = codigo || '';
         }
 
         if (descripcionInput) {
