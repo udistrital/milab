@@ -13,6 +13,20 @@
         action="/milab/api/register_labs/load_info"
         class="row g-2 justify-content-center align-items-end app-form-grid mb-4"
       >
+        <% if (tipo === 'admin') { %>
+          <div class="col-12 col-md-8 mx-auto text-center">
+            <label for="coordinador_documento_lookup" class="form-label">Coordinador responsable</label>
+            <select class="form-select" id="coordinador_documento_lookup" name="coordinador_documento" required>
+              <option value="">Selecciona un coordinador</option>
+              <% coordinadores.forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+            <small class="form-text text-muted">El admin registra el laboratorista dentro del alcance de este coordinador.</small>
+          </div>
+        <% } %>
         <div class="col-12 col-md-8 mx-auto text-center">
           <label for="documento_lookup" class="form-label">Consulta en OATI por documento</label>
           <div class="input-group justify-content-center">
@@ -50,6 +64,23 @@
           <em>Ingresa los datos del laboratorista y asigna su facultad, uno o varios laboratorios y el acceso inicial.</em>
         </p>
 
+        <% if (tipo === 'admin') { %>
+          <input type="hidden" name="coordinador_documento" value="<%= selectedCoordinatorDocument || '' %>">
+
+          <div class="col-md-12">
+            <label for="coordinador_documento_display" class="form-label">Coordinador responsable</label>
+            <select class="form-select" id="coordinador_documento_display" disabled required>
+              <option value="">Selecciona un coordinador arriba</option>
+              <% coordinadores.forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+            <small class="form-text text-muted">Para cambiarlo usa el selector superior y vuelve a cargar el alcance.</small>
+          </div>
+        <% } %>
+
         <div class="col-md-6">
           <label for="nombre" class="form-label">Nombre completo</label>
           <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required>
@@ -85,8 +116,8 @@
 
         <div class="col-md-6">
           <label for="facultad" class="form-label">Sede / Facultad</label>
-          <select class="form-select" id="facultad" name="facultad_id" required>
-            <option value="">Selecciona una sede</option>
+          <select class="form-select" id="facultad" name="facultad_id" required <%= tipo === 'admin' && !selectedCoordinatorDocument ? 'disabled' : '' %>>
+            <option value=""><%= tipo === 'admin' && !selectedCoordinatorDocument ? 'Selecciona primero un coordinador' : 'Selecciona una sede' %></option>
             <% facultades.forEach(function(facultad) { %>
               <option value="<%= facultad.facultad_id %>"><%= facultad.nombre %></option>
             <% }); %>
@@ -111,6 +142,12 @@
                   <span class="form-check-label d-block"><%= ual.nombre %></span>
                   <% if (ual.codigo_abreviacion) { %>
                     <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
+                  <% } %>
+                  <% if (ual.sal_id_espacio) { %>
+                    <small class="text-muted d-block mt-1">ID espacio: <%= ual.sal_id_espacio %></small>
+                  <% } %>
+                  <% if (ual.sal_ocupantes) { %>
+                    <small class="text-muted d-block mt-1">Ocupantes: <%= ual.sal_ocupantes %></small>
                   <% } %>
                   <% if (ual.descripcion) { %>
                     <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
@@ -147,6 +184,7 @@
 <script nonce="<%= cspNonce %>">
   const tipoUsuario = '<%= tipo %>';
   const idFacultadSesion = '<%= facultades[0]?.facultad_id || "" %>';
+  const selectedCoordinatorDocument = '<%= selectedCoordinatorDocument || "" %>';
 
   function filtrarUalsPorFacultad(selectedFacultadId) {
     const items = document.querySelectorAll('#ual .ual-item');
@@ -166,8 +204,24 @@
     const facultadSelect = document.getElementById('facultad');
     const optionRows = document.querySelectorAll('[data-ual-option="true"]');
     const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+    const coordinatorLookupSelect = document.getElementById('coordinador_documento_lookup');
 
     if (!facultadSelect) {
+      return;
+    }
+
+    if (tipoUsuario === 'admin' && coordinatorLookupSelect) {
+      coordinatorLookupSelect.addEventListener('change', function () {
+        if (!this.form) {
+          return;
+        }
+
+        this.form.submit();
+      });
+    }
+
+    if (tipoUsuario === 'admin' && !selectedCoordinatorDocument) {
+      filtrarUalsPorFacultad('', optionRows, checkboxes);
       return;
     }
 

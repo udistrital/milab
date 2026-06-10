@@ -113,11 +113,14 @@ test('facultad parses form body for UAL edit requests', async () => {
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
         sql ===
-          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3 WHERE ual_id = $4' &&
+          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6 WHERE ual_id = $7' &&
         params[0] === 'UAL Nueva' &&
         params[1] === 'UAL_NUEVA' &&
         params[2] === 'Descripcion nueva' &&
-        params[3] === '10'
+        params[3] === null &&
+        params[4] === null &&
+        params[5] === false &&
+        params[6] === '10'
     );
 
     assert.ok(updatedNameQuery);

@@ -46,6 +46,47 @@ function loadRoute({ scopeImpl, poolQueryImpl } = {}) {
             return poolQueryImpl(sql, params);
           }
 
+          if (sql.includes('FROM coordinador c')) {
+            return {
+              rows: [
+                {
+                  documento: '900',
+                  nombre: 'Coordinador Prueba',
+                  facultades: 'Facultad 10',
+                },
+              ],
+            };
+          }
+
+          if (sql.includes('SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1')) {
+            return { rows: [{ documento: params[0] }] };
+          }
+
+          if (
+            sql.includes(
+              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+            )
+          ) {
+            return { rows: [{ facultad_id: 10 }] };
+          }
+
+          if (sql.includes('SELECT * FROM facultad WHERE facultad_id = ANY($1::int[])')) {
+            return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
+          }
+
+          if (sql.includes('FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[])')) {
+            return {
+              rows: [
+                { ual_id: 11, nombre: 'Lab 11', facultad_id: 10, activo: true },
+                { ual_id: 12, nombre: 'Lab 12', facultad_id: 10, activo: true },
+              ],
+            };
+          }
+
+          if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1')) {
+            return { rows: [{ ual_id: 11 }, { ual_id: 12 }] };
+          }
+
           return { rows: [] };
         },
         connect: async () => ({
@@ -170,6 +211,55 @@ test('register_labs post validates selected faculty and labs before querying per
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/register_labs');
     assert.match(response.body.locals.error, /seleccionar una facultad y al menos un laboratorio/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('register_labs new scopes admin form to selected coordinator faculties', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const response = await request(app).get('/new').query({ coordinador_documento: '900' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/register_labs');
+    assert.equal(response.body.locals.selectedCoordinatorDocument, '900');
+    assert.equal(response.body.locals.coordinadores.length, 1);
+    assert.deepEqual(
+      response.body.locals.facultades.map((facultad) => facultad.facultad_id),
+      [10]
+    );
+    assert.deepEqual(
+      response.body.locals.uals.map((ual) => ual.ual_id),
+      [11, 12]
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('register_labs post requires coordinator selection for admin', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const response = await request(app)
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Laboratorista Test',
+        documento: '12345',
+        correo: 'laboratorista@udistrital.edu.co',
+        contrato: 'CPS',
+        facultad_id: '10',
+        ual_ids: ['11'],
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/register_labs');
+    assert.match(response.body.locals.error, /seleccionar el coordinador responsable/i);
   } finally {
     loaded.restore();
   }

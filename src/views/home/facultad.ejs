@@ -1,41 +1,118 @@
 <%- include('../partials/header'); -%>
 
+<style nonce="<%= cspNonce %>">
+/* ── Viewport slide container ───────────────────────────────── */
+#fac-viewport {
+  display: flex;
+  overflow: hidden;
+  gap: 0;
+  transition: none;
+  /* height auto; cards handle their own scroll */
+}
+
+/* UAL detail state: hide left panel and expand right panel */
+#fac-viewport.split #fac-panel-left  {
+  flex: 0 0 0%;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(-40px);
+  pointer-events: none;
+}
+#fac-viewport.split #fac-panel-right {
+  flex: 1 1 100%;
+  max-width: 100%;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Default: left full-width, right hidden */
+#fac-panel-left  {
+  flex: 1 1 100%;
+  opacity: 1;
+  transform: translateX(0);
+  transition: flex 0.45s cubic-bezier(.4,0,.2,1), max-width 0.45s cubic-bezier(.4,0,.2,1);
+}
+#fac-panel-right {
+  flex: 0 0 0%;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(60px);
+  transition:
+    flex 0.45s cubic-bezier(.4,0,.2,1),
+    max-width 0.45s cubic-bezier(.4,0,.2,1),
+    opacity 0.35s ease 0.15s,
+    transform 0.4s ease 0.1s;
+}
+
+/* No gap in detail mode because left panel is hidden */
+#fac-viewport.split { gap: 0; }
+
+/* Highlight the selected row */
+#tbl-facultad tbody tr.row-selected td { background: var(--app-accent, #1a7fc1) !important; color: #fff !important; }
+#tbl-facultad tbody tr.row-selected .btn { opacity: 0.85; }
+
+/* Back button */
+#btn-volver {
+  display: none;
+}
+#fac-viewport.split #btn-volver { display: inline-flex; }
+
+/* UAL badge inside table */
+.badge-activa   { background: #198754; }
+.badge-inactiva { background: #6c757d; }
+
+/* Spinner while loading */
+#ual-loading { display: none; }
+#fac-viewport.loading #ual-loading { display: flex; }
+#fac-viewport.loading #ual-content { display: none; }
+</style>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Administrar facultades y UAL</h1>
-    <p class="app-page-subtitle">Gestiona facultades, laboratorios y movimientos de UAL con una disposición homogénea y más legible.</p>
+    <p class="app-page-subtitle">Selecciona una facultad para explorar y gestionar sus UAL.</p>
   </section>
 
-  <section class="app-grid-2">
-    <!-- Columna Facultades -->
-    <div>
-      <div class="card app-table-panel text-light">
-        <div class="card-header text-center">
-          <h5>Facultades</h5>
+  <div id="fac-viewport">
+    <!-- ── Panel izquierdo: Facultades ── -->
+    <div id="fac-panel-left">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header text-center d-flex align-items-center justify-content-between">
+          <h5 class="mb-0">Facultades</h5>
+          <span></span>
         </div>
         <div class="card-body">
           <div class="table-responsive mb-3">
-            <table class="table table-bordered table-striped table-hover app-table-compact table-facultad js-data-grid" data-grid-page-length="10" data-grid-scroll-x="false">
+            <table id="tbl-facultad" class="table table-bordered table-striped table-hover app-table-compact js-data-grid" data-grid-page-length="10" data-grid-scroll-x="false">
               <thead class="text-center">
                 <tr>
                   <th>Nombre</th>
-                  <th data-grid-filter="false" data-grid-orderable="false">Ver UALs</th>
+                  <th data-grid-filter="false" data-grid-orderable="false">UALs</th>
                   <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
                   <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
                 </tr>
               </thead>
               <tbody class="text-center text-light">
                 <% facultades.forEach(f => { %>
-                  <tr>
-                    <td><%= f.nombre %></td>
+                  <tr data-fac-id="<%= f.facultad_id %>">
+                    <td class="text-start fw-semibold"><%= f.nombre %></td>
                     <td>
-                      <a class="btn btn-sm btn-primary" href="/milab/api/facultad?facultad_id=<%= f.facultad_id %>">Seleccionar</a>
+                      <button type="button"
+                        class="btn btn-sm btn-primary btn-select-fac"
+                        data-id="<%= f.facultad_id %>"
+                        data-nombre="<%= f.nombre %>">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" class="bi bi-ui-checks-grid me-1" viewBox="0 0 16 16"><path d="M2 10h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1zm9-9h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm0 9h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1zM2 1h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z"/></svg>
+                        Ver UALs
+                      </button>
                     </td>
                     <td>
                       <% if (locals.tipo === 'admin') { %>
-                        <button type="button" class="btn btn-sm btn-warning btn-edit-facultad" data-id="<%= f.facultad_id %>" data-nombre="<%= f.nombre %>">Editar</button>
+                        <button type="button" class="btn btn-sm btn-warning btn-edit-facultad"
+                          data-id="<%= f.facultad_id %>" data-nombre="<%= f.nombre %>">Editar</button>
                       <% } else { %>
-                        <span class="text-muted">No permitido</span>
+                        <span class="text-muted small">–</span>
                       <% } %>
                     </td>
                     <td>
@@ -46,7 +123,7 @@
                           <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                         </form>
                       <% } else { %>
-                        <span class="text-muted">No permitido</span>
+                        <span class="text-muted small">–</span>
                       <% } %>
                     </td>
                   </tr>
@@ -70,92 +147,88 @@
       </div>
     </div>
 
-    <!-- Columna UALs -->
-    <div>
-      <div class="card app-table-panel text-light">
-        <div class="card-header text-center">
-          <h5>UALs <%= selectedFacultad ? ('de ' + selectedFacultad.nombre) : '' %></h5>
+    <!-- ── Panel derecho: UALs (aparece al seleccionar) ── -->
+    <div id="fac-panel-right" aria-live="polite">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <button id="btn-volver" type="button" class="btn btn-sm btn-outline-secondary gap-1" aria-label="Volver">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-arrow-left" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/></svg>
+            Volver
+          </button>
+          <h5 class="mb-0" id="ual-panel-title">UALs</h5>
+          <span></span>
         </div>
         <div class="card-body">
-          <% if (!selectedFacultad) { %>
-            <p class="text-center">Seleccione una facultad para ver sus UALs.</p>
-          <% } else { %>
+
+          <!-- Spinner -->
+          <div id="ual-loading" class="justify-content-center align-items-center py-5">
+            <div class="spinner-border text-secondary" role="status"><span class="visually-hidden">Cargando…</span></div>
+          </div>
+
+          <!-- Contenido dinámico -->
+          <div id="ual-content">
             <div class="table-responsive mb-3">
-              <table id="myTable" class="table table-bordered table-striped table-hover app-table-compact table-facultad js-data-grid" data-grid-page-length="10" data-grid-scroll-x="false">
+              <table id="tbl-ual" class="table table-bordered table-striped table-hover app-table-compact" data-grid-page-length="15">
                 <thead class="text-center">
                   <tr>
                     <th>Nombre</th>
                     <th>Código</th>
-                    <th>Descripción</th>
+                    <th>ID espacio</th>
+                    <th>Ocupantes</th>
+                    <th>Estado</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
                     <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
                   </tr>
                 </thead>
-                <tbody class="text-center text-light">
-                  <% uals.forEach(u => { %>
-                    <tr>
-                      <td><%= u.nombre %></td>
-                      <td><%= u.codigo_abreviacion || '-' %></td>
-                      <td><%= u.descripcion || '-' %></td>
-                      <td>
-                        <% if (locals.tipo === 'admin') { %>
-                          <button type="button" class="btn btn-sm btn-warning btn-edit-ual" data-id="<%= u.ual_id %>" data-nombre="<%= u.nombre %>" data-codigo="<%= u.codigo_abreviacion || '' %>" data-descripcion="<%= u.descripcion || '' %>" data-facultad="<%= selectedFacultad.facultad_id %>">Editar</button>
-                        <% } else { %>
-                          <span class="text-muted">No permitido</span>
-                        <% } %>
-                      </td>
-                      <td>
-                        <% if (locals.tipo === 'admin') { %>
-                          <form action="/milab/api/facultad/ual/eliminar" method="POST" onsubmit="return confirmDelete('UAL')">
-                            <%- include('../partials/csrf_field') %>
-                            <input type="hidden" name="ual_id" value="<%= u.ual_id %>">
-                            <input type="hidden" name="facultad_id" value="<%= selectedFacultad.facultad_id %>">
-                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
-                          </form>
-                        <% } else { %>
-                          <span class="text-muted">No permitido</span>
-                        <% } %>
-
-                      </td>
-                    </tr>
-                  <% }) %>
+                <tbody id="ual-tbody" class="text-center text-light">
                 </tbody>
               </table>
             </div>
 
-             <% if (locals.tipo === 'admin') { %>
+            <% if (locals.tipo === 'admin') { %>
               <hr>
-              <h6 class="mb-3">Agregar UAL a <%= selectedFacultad.nombre %></h6>
-              <form action="/milab/api/facultad/ual/add" method="POST">
+              <h6 class="mb-3" id="ual-add-title">Agregar UAL</h6>
+              <form id="form-add-ual" action="/milab/api/facultad/ual/add" method="POST">
                 <%- include('../partials/csrf_field') %>
-                <input type="hidden" name="facultad_id" value="<%= selectedFacultad.facultad_id %>">
+                <input type="hidden" name="facultad_id" id="add_ual_facultad_id">
                 <div class="row g-2">
-                  <div class="col-12">
+                  <div class="col-md-6">
                     <input type="text" name="nombre" class="form-control" placeholder="Nombre de la UAL" required>
                   </div>
-                  <div class="col-12">
-                    <input type="text" name="codigo_abreviacion" class="form-control" maxlength="30" placeholder="Código abreviado opcional (ej: LAB_FIS_01)">
+                  <div class="col-md-6">
+                    <input type="text" name="codigo_abreviacion" class="form-control" maxlength="30" placeholder="Código abreviado (ej: LAB_FIS_01)">
+                  </div>
+                  <div class="col-md-6">
+                    <input type="text" name="sal_id_espacio" class="form-control" maxlength="30" placeholder="SAL_ID_ESPACIO">
+                  </div>
+                  <div class="col-md-6">
+                    <input type="text" name="sal_ocupantes" class="form-control" maxlength="30" placeholder="SAL_OCUPANTES">
                   </div>
                   <div class="col-12">
-                    <input type="text" name="descripcion" class="form-control" maxlength="255" placeholder="Descripción opcional de la UAL">
+                    <input type="text" name="descripcion" class="form-control" maxlength="255" placeholder="Descripción opcional">
                   </div>
-                  <div class="col-12 d-grid">
+                  <div class="col-12 d-flex align-items-center gap-3">
+                    <div class="form-check m-0">
+                      <input class="form-check-input" type="checkbox" name="activo" id="new_ual_activo" checked>
+                      <label class="form-check-label" for="new_ual_activo">UAL activa</label>
+                    </div>
                     <button type="submit" class="btn btn-success">Agregar</button>
                   </div>
                 </div>
               </form>
             <% } %>
+          </div><!-- /ual-content -->
 
-          <% } %>
         </div>
       </div>
-    </div>
-  </section>
+    </div><!-- /fac-panel-right -->
+  </div><!-- /fac-viewport -->
+
 </main>
 
-<!-- Modal Editar Facultad -->
+<!-- ── Modal Editar Facultad ── -->
 <div class="modal fade" id="editarFacultadModal" tabindex="-1" aria-labelledby="editarFacultadModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" role="document">
+  <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="editarFacultadModalLabel">Editar Facultad</h5>
@@ -179,9 +252,9 @@
   </div>
 </div>
 
-<!-- Modal Editar UAL -->
+<!-- ── Modal Editar UAL ── -->
 <div class="modal fade" id="editarUalModal" tabindex="-1" aria-labelledby="editarUalModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" role="document">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="editarUalModalLabel">Editar UAL</h5>
@@ -192,130 +265,454 @@
         <div class="modal-body">
           <input type="hidden" name="ual_id" id="edit_ual_id">
           <input type="hidden" name="facultad_id" id="edit_ual_facultad">
-          <div class="mb-3">
-            <label for="edit_ual_nombre" class="form-label">Nombre</label>
-            <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+          <div class="row g-3">
+            <div class="col-12">
+              <label for="edit_ual_nombre" class="form-label">Nombre</label>
+              <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+            </div>
+            <div class="col-md-6">
+              <label for="edit_ual_codigo" class="form-label">Código abreviado</label>
+              <input type="text" class="form-control" name="codigo_abreviacion" id="edit_ual_codigo" maxlength="30" placeholder="Ej: LAB_FIS_01">
+              <small class="text-muted">Solo letras, números, guion y guion bajo.</small>
+            </div>
+            <div class="col-md-6">
+              <label for="edit_ual_sal_id_espacio" class="form-label">SAL_ID_ESPACIO</label>
+              <input type="text" class="form-control" name="sal_id_espacio" id="edit_ual_sal_id_espacio" maxlength="30">
+            </div>
+            <div class="col-md-6">
+              <label for="edit_ual_sal_ocupantes" class="form-label">SAL_OCUPANTES</label>
+              <input type="text" class="form-control" name="sal_ocupantes" id="edit_ual_sal_ocupantes" maxlength="30">
+            </div>
+            <div class="col-md-6">
+              <label for="edit_ual_descripcion" class="form-label">Descripción</label>
+              <input type="text" class="form-control" name="descripcion" id="edit_ual_descripcion" maxlength="255">
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="activo" id="edit_ual_activo">
+                <label class="form-check-label" for="edit_ual_activo">UAL activa</label>
+              </div>
+            </div>
+            <% if (locals.tipo === 'admin') { %>
+            <div class="col-12">
+              <label for="edit_ual_facultad_select" class="form-label">Cambiar Facultad</label>
+              <select class="form-select" name="new_facultad_id" id="edit_ual_facultad_select">
+                <% facultades.forEach(f => { %>
+                  <option value="<%= f.facultad_id %>"><%= f.nombre %></option>
+                <% }) %>
+              </select>
+              <small class="text-muted">Solo administradores pueden mover una UAL entre facultades.</small>
+            </div>
+            <% } %>
           </div>
-          <div class="mb-3">
-            <label for="edit_ual_codigo" class="form-label">Código abreviado opcional</label>
-            <input type="text" class="form-control" name="codigo_abreviacion" id="edit_ual_codigo" maxlength="30" placeholder="Ej: LAB_FIS_01">
-            <small class="form-text text-muted">Solo letras, números, guion y guion bajo.</small>
-          </div>
-          <div class="mb-3">
-            <label for="edit_ual_descripcion" class="form-label">Descripción opcional</label>
-            <input type="text" class="form-control" name="descripcion" id="edit_ual_descripcion" maxlength="255">
-          </div>
-          <% if (locals.tipo === 'admin') { %>
-          <div class="mb-3">
-            <label for="edit_ual_facultad_select" class="form-label">Cambiar Facultad</label>
-            <select class="form-select" name="new_facultad_id" id="edit_ual_facultad_select">
-              <% facultades.forEach(f => { %>
-                <option value="<%= f.facultad_id %>"><%= f.nombre %></option>
-              <% }) %>
-            </select>
-            <small class="form-text text-muted">Solo administradores pueden mover UAL entre facultades.</small>
-          </div>
-          <% } %>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
+<div id="fac-delete-form-tpl" style="display:none">
+  <%- include('../partials/csrf_field') %>
+</div>
+
 <script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+
+  /* ── helpers ────────────────────────────────────────────── */
   function confirmDelete(type) {
-    return confirm(`¿Está seguro que desea eliminar esta ${type}?`);
+    return confirm('¿Está seguro que desea eliminar esta ' + type + '?');
   }
+  window.confirmDelete = confirmDelete;
 
-  document.addEventListener('DOMContentLoaded', function() {
-    function hoistModalToBody(id) {
-      var modalElement = document.getElementById(id);
+  var isAdmin = '<%= locals.tipo %>' === 'admin';
+  var viewport  = document.getElementById('fac-viewport');
+  var panelRight = document.getElementById('fac-panel-right');
+  var ualTbody  = document.getElementById('ual-tbody');
+  var ualTitle  = document.getElementById('ual-panel-title');
+  var addTitle  = document.getElementById('ual-add-title');
+  var addFacId  = document.getElementById('add_ual_facultad_id');
+  var btnVolver = document.getElementById('btn-volver');
 
-      if (modalElement && modalElement.parentElement !== document.body) {
-        document.body.appendChild(modalElement);
+  /* DataTable instance for UAL table – destroyed & rebuilt on each load */
+  var ualGrid = null;
+  var currentFacId = null;
+  var $ = window.jQuery;
+
+  var gridLanguage = {
+    decimal: ',',
+    thousands: '.',
+    processing: 'Procesando...',
+    search: 'Buscar global:',
+    lengthMenu: 'Mostrar _MENU_ registros',
+    info: 'Mostrando _START_ a _END_ de _TOTAL_ registros',
+    infoEmpty: 'Mostrando 0 a 0 de 0 registros',
+    infoFiltered: '(filtrados de _MAX_ registros)',
+    loadingRecords: 'Cargando...',
+    zeroRecords: 'No se encontraron resultados',
+    emptyTable: 'No hay datos disponibles en esta tabla',
+    paginate: { first: 'Primera', previous: 'Anterior', next: 'Siguiente', last: 'Última' }
+  };
+
+  function buildFilterRow(jq, $table) {
+    var $thead = $table.find('thead');
+    var $headerRow = $thead.find('tr').first();
+
+    if ($headerRow.length === 0) return;
+    $thead.find('tr.data-grid-filters').remove();
+
+    var $filterRow = jq('<tr class="data-grid-filters"></tr>');
+
+    $headerRow.children('th').each(function () {
+      var $headerCell = jq(this);
+      var title = $headerCell.text().replace(/\s+/g, ' ').trim();
+      var filterable = $headerCell.data('gridFilter') !== false;
+      var $filterCell = jq('<th class="data-grid-filter-cell"></th>');
+
+      if (!filterable) {
+        $filterCell.append('<span class="app-grid-filter-placeholder">Sin filtro</span>');
+        $filterRow.append($filterCell);
+        return;
       }
 
-      return modalElement;
+      var $input = jq('<input type="text" class="app-grid-filter-input" autocomplete="off" />');
+      $input.attr('placeholder', title ? 'Filtrar ' + title : 'Filtrar columna');
+      $input.attr('aria-label', title ? 'Filtrar ' + title : 'Filtrar columna');
+      $filterCell.append($input);
+      $filterRow.append($filterCell);
+    });
+
+    $thead.append($filterRow);
+  }
+
+  function resolveColumnDefs(jq, $table) {
+    var nonOrderable = [];
+    var nonSearchable = [];
+
+    $table.find('thead tr').first().children('th').each(function (index) {
+      var $headerCell = jq(this);
+
+      if ($headerCell.data('gridOrderable') === false) {
+        nonOrderable.push(index);
+      }
+      if ($headerCell.data('gridFilter') === false) {
+        nonSearchable.push(index);
+      }
+    });
+
+    var defs = [];
+    if (nonOrderable.length > 0) defs.push({ targets: nonOrderable, orderable: false });
+    if (nonSearchable.length > 0) defs.push({ targets: nonSearchable, searchable: false });
+
+    return defs;
+  }
+
+  function resolveInitialOrder(jq, $table) {
+    var $headers = $table.find('thead tr').first().children('th');
+
+    for (var index = 0; index < $headers.length; index += 1) {
+      var $header = jq($headers[index]);
+      if ($header.data('gridOrderable') !== false) {
+        return [[index, 'asc']];
+      }
     }
 
-    var facultadModalElement = hoistModalToBody('editarFacultadModal');
-    var ualModalElement = hoistModalToBody('editarUalModal');
-    var facultadModal = facultadModalElement && window.bootstrap
-      ? window.bootstrap.Modal.getOrCreateInstance(facultadModalElement)
-      : null;
-    var ualModal = ualModalElement && window.bootstrap
-      ? window.bootstrap.Modal.getOrCreateInstance(ualModalElement)
-      : null;
+    return [];
+  }
 
-    document.querySelectorAll('.btn-edit-facultad').forEach(function(button) {
-      button.addEventListener('click', function() {
-        var id = button.getAttribute('data-id');
-        var nombre = button.getAttribute('data-nombre');
-        var idInput = document.getElementById('edit_facultad_id');
-        var nombreInput = document.getElementById('edit_facultad_nombre');
+  function attachColumnFilters(dataTable, $table, jq) {
+    var $filterCells = $table.find('thead tr.data-grid-filters th');
 
-        if (idInput) {
-          idInput.value = id || '';
-        }
+    dataTable.columns().every(function (index) {
+      var column = this;
+      var $input = $filterCells.eq(index).find('input');
 
-        if (nombreInput) {
-          nombreInput.value = nombre || '';
-        }
+      if ($input.length === 0) return;
 
-        if (facultadModal) {
-          facultadModal.show();
+      $input.on('click', function (event) {
+        event.stopPropagation();
+      });
+
+      $input.on('keyup change clear', function (event) {
+        event.stopPropagation();
+
+        if (column.search() !== this.value) {
+          column.search(this.value).draw();
         }
       });
     });
+  }
 
-    document.querySelectorAll('.btn-edit-ual').forEach(function(button) {
-      button.addEventListener('click', function() {
-        var id = button.getAttribute('data-id');
-        var nombre = button.getAttribute('data-nombre');
-        var codigo = button.getAttribute('data-codigo');
-        var descripcion = button.getAttribute('data-descripcion');
-        var idFac = button.getAttribute('data-facultad');
-        var idInput = document.getElementById('edit_ual_id');
-        var nombreInput = document.getElementById('edit_ual_nombre');
-        var codigoInput = document.getElementById('edit_ual_codigo');
-        var descripcionInput = document.getElementById('edit_ual_descripcion');
-        var facultadInput = document.getElementById('edit_ual_facultad');
-        var facultadSelect = document.getElementById('edit_ual_facultad_select');
+  function attachResetButton(dataTable, $table, jq) {
+    var tableId = $table.attr('id');
+    var wrapperSelector = '#' + tableId + '_wrapper .dataTables_filter';
+    var $filterContainer = jq(wrapperSelector);
 
-        if (idInput) {
-          idInput.value = id || '';
-        }
+    if ($filterContainer.length === 0 || $filterContainer.find('.app-grid-reset-button').length > 0) {
+      return;
+    }
 
-        if (nombreInput) {
-          nombreInput.value = nombre || '';
-        }
+    var $button = jq('<button type="button" class="app-grid-reset-button">Limpiar filtros</button>');
 
-        if (codigoInput) {
-          codigoInput.value = codigo || '';
-        }
+    $button.on('click', function () {
+      var $globalInput = $filterContainer.find('input[type="search"]');
+      var $columnInputs = $table.find('thead tr.data-grid-filters input');
 
-        if (descripcionInput) {
-          descripcionInput.value = descripcion || '';
-        }
-
-        if (facultadInput) {
-          facultadInput.value = idFac || '';
-        }
-
-        if (facultadSelect) {
-          facultadSelect.value = idFac || '';
-        }
-
-        if (ualModal) {
-          ualModal.show();
-        }
-      });
+      $globalInput.val('');
+      $columnInputs.val('');
+      dataTable.search('');
+      dataTable.columns().search('');
+      dataTable.order(resolveInitialOrder(jq, $table));
+      dataTable.page('first').draw();
     });
+
+    $filterContainer.append($button);
+  }
+
+  function initializeUalGrid() {
+    var jq = window.jQuery;
+    if (!jq || !jq.fn || !jq.fn.DataTable) {
+      return;
+    }
+
+    var tableEl = document.getElementById('tbl-ual');
+    if (!tableEl) {
+      return;
+    }
+
+    var $table = jq(tableEl);
+
+    /* use lowercase alias – guaranteed across all DataTables 1.10+ builds */
+    if (jq.fn.dataTable.isDataTable(tableEl)) {
+      $table.DataTable().destroy();
+    }
+
+    buildFilterRow(jq, $table);
+
+    ualGrid = $table.DataTable({
+      language: gridLanguage,
+      pageLength: 15,
+      lengthMenu: [10, 25, 50, 100],
+      order: resolveInitialOrder(jq, $table),
+      orderCellsTop: true,
+      autoWidth: false,
+      scrollX: false,
+      searchDelay: 250,
+      columnDefs: resolveColumnDefs(jq, $table)
+    });
+
+    attachColumnFilters(ualGrid, $table, jq);
+    attachResetButton(ualGrid, $table, jq);
+  }
+
+  /* ── hoistModals ───────────────────────────────────────── */
+  function hoistModalToBody(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentElement !== document.body) document.body.appendChild(el);
+    return el;
+  }
+
+  var facModalEl = hoistModalToBody('editarFacultadModal');
+  var ualModalEl = hoistModalToBody('editarUalModal');
+  var facModal   = facModalEl && window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(facModalEl) : null;
+  var ualModal   = ualModalEl && window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(ualModalEl) : null;
+
+  /* ── openUalPanel ──────────────────────────────────────── */
+  function openUalPanel(facId, facNombre) {
+    if (currentFacId === facId) return;
+    currentFacId = facId;
+
+    /* highlight row */
+    document.querySelectorAll('#tbl-facultad tbody tr').forEach(function (tr) {
+      tr.classList.toggle('row-selected', tr.dataset.facId === String(facId));
+    });
+
+    /* show split layout */
+    viewport.classList.add('split', 'loading');
+
+    /* update titles & form */
+    ualTitle.textContent = 'UALs de ' + facNombre;
+    if (addTitle) addTitle.textContent = 'Agregar UAL a ' + facNombre;
+    if (addFacId) addFacId.value = facId;
+
+    /* destroy existing DataTable */
+    var jq0 = window.jQuery;
+    if (jq0 && jq0.fn && jq0.fn.dataTable && jq0.fn.dataTable.isDataTable(document.getElementById('tbl-ual'))) {
+      jq0('#tbl-ual').DataTable().destroy();
+    }
+    ualGrid = null;
+    ualTbody.innerHTML = '';
+
+    /* fetch UALs from JSON endpoint */
+    fetch('/milab/api/facultad/ual/json?facultad_id=' + encodeURIComponent(facId), {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (data) {
+      renderUals(data.uals, facId);
+      viewport.classList.remove('loading');
+      /* init UAL grid with app standard behavior */
+      initializeUalGrid();
+    })
+    .catch(function (err) {
+      console.error('Error cargando UALs:', err);
+      ualTbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error al cargar UALs</td></tr>';
+      viewport.classList.remove('loading');
+    });
+  }
+
+  /* ── renderUals ────────────────────────────────────────── */
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function csrfHtml() {
+    var tpl = document.getElementById('fac-delete-form-tpl');
+    return tpl ? tpl.innerHTML.trim() : '';
+  }
+
+  function renderUals(uals, facId) {
+    if (!uals || uals.length === 0) {
+      ualTbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Esta facultad no tiene UALs registradas.</td></tr>';
+      return;
+    }
+    var rows = uals.map(function (u) {
+      var badge = u.activo
+        ? '<span class="badge badge-activa">Activa</span>'
+        : '<span class="badge badge-inactiva">Inactiva</span>';
+
+      var editBtn = isAdmin
+        ? '<button type="button" class="btn btn-sm btn-warning btn-edit-ual" ' +
+            'data-id="' + esc(u.ual_id) + '" ' +
+            'data-nombre="' + esc(u.nombre) + '" ' +
+            'data-codigo="' + esc(u.codigo_abreviacion) + '" ' +
+            'data-sal-id-espacio="' + esc(u.sal_id_espacio) + '" ' +
+            'data-sal-ocupantes="' + esc(u.sal_ocupantes) + '" ' +
+            'data-descripcion="' + esc(u.descripcion) + '" ' +
+            'data-activo="' + (u.activo ? 'true' : 'false') + '" ' +
+            'data-facultad="' + esc(facId) + '">Editar</button>'
+        : '<span class="text-muted small">–</span>';
+
+      var delBtn = isAdmin
+        ? '<form action="/milab/api/facultad/ual/eliminar" method="POST" onsubmit="return confirmDelete(\'UAL\')">' +
+            csrfHtml() +
+            '<input type="hidden" name="ual_id" value="' + esc(u.ual_id) + '">' +
+            '<input type="hidden" name="facultad_id" value="' + esc(facId) + '">' +
+            '<button type="submit" class="btn btn-sm btn-danger">Eliminar</button></form>'
+        : '<span class="text-muted small">–</span>';
+
+      return '<tr>' +
+        '<td class="text-start">' + esc(u.nombre) + '</td>' +
+        '<td>' + esc(u.codigo_abreviacion || '–') + '</td>' +
+        '<td><code>' + esc(u.sal_id_espacio || '–') + '</code></td>' +
+        '<td>' + esc(u.sal_ocupantes || '–') + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td>' + editBtn + '</td>' +
+        '<td>' + delBtn + '</td>' +
+        '</tr>';
+    });
+    ualTbody.innerHTML = rows.join('');
+    bindUalEditButtons();
+  }
+
+  /* ── closeUalPanel ──────────────────────────────────────── */
+  function closeUalPanel() {
+    currentFacId = null;
+    viewport.classList.remove('split', 'loading');
+    document.querySelectorAll('#tbl-facultad tbody tr').forEach(function (tr) {
+      tr.classList.remove('row-selected');
+    });
+    var jqC = window.jQuery;
+    if (jqC && jqC.fn && jqC.fn.dataTable && jqC.fn.dataTable.isDataTable(document.getElementById('tbl-ual'))) {
+      jqC('#tbl-ual').DataTable().destroy();
+    }
+    ualGrid = null;
+    ualTbody.innerHTML = '';
+    ualTitle.textContent = 'UALs';
+  }
+
+  /* ── Bind: back button ──────────────────────────────────── */
+  if (btnVolver) {
+    btnVolver.addEventListener('click', closeUalPanel);
+  }
+
+  /* ── bindUalEditButtons is a no-op; delegation handles it ─ */
+  function bindUalEditButtons() {}
+
+  /* ── Delegated click handler for ALL interactive elements ── *
+   * Binding directly on buttons fails when DataTables rebuilds  *
+   * the tbody DOM. Delegating on document is immune to that.   */
+  document.addEventListener('click', function (e) {
+    /* Ver UALs */
+    var selBtn = e.target.closest('.btn-select-fac');
+    if (selBtn) {
+      openUalPanel(selBtn.dataset.id, selBtn.dataset.nombre);
+      return;
+    }
+
+    /* Editar Facultad */
+    var editFacBtn = e.target.closest('.btn-edit-facultad');
+    if (editFacBtn) {
+      var idEl     = document.getElementById('edit_facultad_id');
+      var nombreEl = document.getElementById('edit_facultad_nombre');
+      if (idEl) idEl.value = editFacBtn.dataset.id || '';
+      if (nombreEl) nombreEl.value = editFacBtn.dataset.nombre || '';
+      if (facModal) facModal.show();
+      return;
+    }
+
+    /* Editar UAL */
+    var editUalBtn = e.target.closest('.btn-edit-ual');
+    if (editUalBtn) {
+      var g = function (id) { return document.getElementById(id); };
+      var u = editUalBtn.dataset;
+      var idEl2      = g('edit_ual_id');
+      var nombreEl2  = g('edit_ual_nombre');
+      var codigoEl   = g('edit_ual_codigo');
+      var espacioEl  = g('edit_ual_sal_id_espacio');
+      var ocupEl     = g('edit_ual_sal_ocupantes');
+      var descEl     = g('edit_ual_descripcion');
+      var activoEl   = g('edit_ual_activo');
+      var facEl      = g('edit_ual_facultad');
+      var facSelEl   = g('edit_ual_facultad_select');
+      if (idEl2)     idEl2.value      = u.id        || '';
+      if (nombreEl2) nombreEl2.value  = u.nombre    || '';
+      if (codigoEl)  codigoEl.value   = u.codigo    || '';
+      if (espacioEl) espacioEl.value  = u.salIdEspacio || '';
+      if (ocupEl)    ocupEl.value     = u.salOcupantes || '';
+      if (descEl)    descEl.value     = u.descripcion  || '';
+      if (activoEl)  activoEl.checked = u.activo === 'true';
+      if (facEl)     facEl.value      = u.facultad  || '';
+      if (facSelEl)  facSelEl.value   = u.facultad  || '';
+      if (ualModal) ualModal.show();
+      return;
+    }
   });
+
+  /* ── Auto-open if server returned a selected faculty ───── */
+  <% if (selectedFacultad) { %>
+  (function () {
+    var preloadUals = <%- JSON.stringify(uals) %>;
+    var preloadFac  = <%- JSON.stringify(selectedFacultad) %>;
+    currentFacId = String(preloadFac.facultad_id);
+    ualTitle.textContent = 'UALs de ' + preloadFac.nombre;
+    if (addTitle) addTitle.textContent = 'Agregar UAL a ' + preloadFac.nombre;
+    if (addFacId) addFacId.value = preloadFac.facultad_id;
+    renderUals(preloadUals, preloadFac.facultad_id);
+    viewport.classList.add('split');
+    var selRow = document.querySelector('[data-fac-id="' + preloadFac.facultad_id + '"]');
+    if (selRow) selRow.classList.add('row-selected');
+    initializeUalGrid();
+  }());
+  <% } %>
+}());
 </script>
 
 <%- include('../partials/footer'); -%>

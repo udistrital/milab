@@ -227,8 +227,8 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
     const ualsQuery =
       req.session.user.tipo === 'coordinador'
-        ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual ORDER BY nombre ASC';
+        ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
+        : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE ORDER BY nombre ASC';
     const ualsRes =
       req.session.user.tipo === 'coordinador'
         ? await pool.query(ualsQuery, [facultadesPermitidas])
@@ -330,7 +330,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     }
 
     const ualsRes = await client.query(
-      'SELECT ual_id FROM ual WHERE facultad_id = $1 AND ual_id = ANY($2::int[])',
+      'SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])',
       [selectedFacultyId, selectedUalIds]
     );
 

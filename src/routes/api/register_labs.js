@@ -113,6 +113,68 @@ function normalizeSelectedUalIds(rawValue) {
   ];
 }
 
+function normalizeCoordinatorDocument(value) {
+  return String(value || '').trim();
+}
+
+function resolveSelectedCoordinatorDocument(source) {
+  return normalizeCoordinatorDocument(source?.coordinador_documento);
+}
+
+async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
+  const normalizedDocument = normalizeCoordinatorDocument(coordinatorDocument);
+
+  if (!normalizedDocument) {
+    return {
+      coordinatorDocument: null,
+      facultyIds: [],
+    };
+  }
+
+  const coordinatorRes = await client.query(
+    'SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1',
+    [normalizedDocument]
+  );
+
+  if (coordinatorRes.rows.length === 0) {
+    return {
+      coordinatorDocument: null,
+      facultyIds: [],
+    };
+  }
+
+  const facultiesRes = await client.query(
+    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    [normalizedDocument]
+  );
+
+  return {
+    coordinatorDocument: normalizedDocument,
+    facultyIds: [
+      ...new Set(
+        facultiesRes.rows
+          .map((row) => Number(row.facultad_id))
+          .filter((value) => Number.isInteger(value))
+      ),
+    ],
+  };
+}
+
+async function fetchCoordinatorOptions(client) {
+  const result = await client.query(
+    `SELECT c.documento,
+            c.nombre,
+            COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS facultades
+     FROM coordinador c
+     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+     LEFT JOIN facultad f ON f.facultad_id = cf.facultad_id
+     GROUP BY c.documento, c.nombre
+     ORDER BY c.nombre ASC`
+  );
+
+  return result.rows;
+}
+
 async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }) {
   const existing = await pool.query(
     'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
@@ -149,7 +211,11 @@ async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }
   return userId;
 }
 
-async function buildRegisterLabsViewContext(sessionUser) {
+async function buildRegisterLabsViewContext(sessionUser, options = {}) {
+  const selectedCoordinatorDocument = normalizeCoordinatorDocument(
+    options.selectedCoordinatorDocument
+  );
+
   if (sessionUser?.tipo === 'coordinador') {
     const scope = await resolveCoordinatorScope(pool, sessionUser.documento);
 
@@ -170,7 +236,7 @@ async function buildRegisterLabsViewContext(sessionUser) {
     ).rows;
     const uals = (
       await pool.query(
-        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [scope.facultyIds]
       )
     ).rows;
@@ -180,6 +246,42 @@ async function buildRegisterLabsViewContext(sessionUser) {
       uals,
       tipo: sessionUser.tipo,
       documento: sessionUser.documento,
+      coordinadores: [],
+      selectedCoordinatorDocument: '',
+    };
+  }
+
+  if (sessionUser?.tipo === 'admin') {
+    const coordinadores = await fetchCoordinatorOptions(pool);
+    let facultades = [];
+    let uals = [];
+
+    if (selectedCoordinatorDocument) {
+      const scope = await resolveCoordinatorScopeByDocument(pool, selectedCoordinatorDocument);
+
+      if (scope.facultyIds.length > 0) {
+        facultades = (
+          await pool.query(
+            'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            [scope.facultyIds]
+          )
+        ).rows;
+        uals = (
+          await pool.query(
+            'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            [scope.facultyIds]
+          )
+        ).rows;
+      }
+    }
+
+    return {
+      facultades,
+      uals,
+      tipo: sessionUser.tipo,
+      documento: sessionUser.documento,
+      coordinadores,
+      selectedCoordinatorDocument,
     };
   }
 
@@ -187,16 +289,23 @@ async function buildRegisterLabsViewContext(sessionUser) {
     facultades: (await pool.query('SELECT * FROM facultad ORDER BY nombre ASC')).rows,
     uals: (
       await pool.query(
-        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, facultad_id FROM ual ORDER BY nombre ASC'
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE ORDER BY nombre ASC'
       )
     ).rows,
     tipo: sessionUser?.tipo || 'admin',
     documento: sessionUser?.documento || null,
+    coordinadores: [],
+    selectedCoordinatorDocument: '',
   };
 }
 
 async function renderRegisterLabsWithError(req, res, error) {
-  const viewContext = await buildRegisterLabsViewContext(req.session?.user || null);
+  const selectedCoordinatorDocument = resolveSelectedCoordinatorDocument(
+    req.body || req.query || {}
+  );
+  const viewContext = await buildRegisterLabsViewContext(req.session?.user || null, {
+    selectedCoordinatorDocument,
+  });
 
   return res.render('home/register_labs', {
     error,
@@ -271,7 +380,9 @@ router.get('/new', async function (req, res) {
     });
   }
 
-  const viewContext = await buildRegisterLabsViewContext(req.session.user || null);
+  const viewContext = await buildRegisterLabsViewContext(req.session.user || null, {
+    selectedCoordinatorDocument: resolveSelectedCoordinatorDocument(req.query || {}),
+  });
   return res.render('home/register_labs', {
     error: null,
     confirmacion: null,
@@ -287,7 +398,9 @@ router.get('/load_info', requireAdminOrCoordinatorLoadInfo, async function (req,
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const viewContext = await buildRegisterLabsViewContext(req.session.user);
+    const viewContext = await buildRegisterLabsViewContext(req.session.user, {
+      selectedCoordinatorDocument: resolveSelectedCoordinatorDocument(req.query || {}),
+    });
     const documentoQuery = (req.query.documento || '').toString().trim();
     let lookupData = null;
     let lookupMessage = null;
@@ -371,6 +484,7 @@ router.post(
     try {
       const selectedFacultyId = Number(usuario.facultad_id);
       const selectedUalIds = normalizeSelectedUalIds(usuario.ual_ids);
+      const selectedCoordinatorDocument = resolveSelectedCoordinatorDocument(usuario);
 
       if (!selectedFacultyId || selectedUalIds.length === 0) {
         return renderRegisterLabsWithError(
@@ -380,7 +494,25 @@ router.post(
         );
       }
 
-      if (req.session.user.tipo === 'coordinador') {
+      if (req.session.user.tipo === 'admin') {
+        if (!selectedCoordinatorDocument) {
+          return renderRegisterLabsWithError(
+            req,
+            res,
+            'Debes seleccionar el coordinador responsable antes de registrar el laboratorista.'
+          );
+        }
+
+        const scope = await resolveCoordinatorScopeByDocument(pool, selectedCoordinatorDocument);
+
+        if (!scope.coordinatorDocument || !scope.facultyIds.includes(selectedFacultyId)) {
+          return renderRegisterLabsWithError(
+            req,
+            res,
+            'La facultad seleccionada no pertenece al coordinador indicado.'
+          );
+        }
+      } else if (req.session.user.tipo === 'coordinador') {
         const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
 
         if (!scope.coordinatorDocument || !scope.facultyIds.includes(selectedFacultyId)) {
@@ -393,7 +525,7 @@ router.post(
       }
 
       const ualRes = await pool.query(
-        'SELECT ual_id FROM ual WHERE facultad_id = $1 AND ual_id = ANY($2::int[])',
+        'SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])',
         [selectedFacultyId, selectedUalIds]
       );
 

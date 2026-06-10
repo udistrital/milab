@@ -113,7 +113,8 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
 
-      const query3 = 'SELECT * FROM ual WHERE facultad_id = $1';
+      const query3 =
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
       const values3 = [result2.rows[0].facultad_id];
       const result3 = await pool.query(query3, values3);
 
@@ -130,7 +131,8 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       const result = await pool.query(query, values);
 
       const facultadId = result.rows[0].facultad_id;
-      const queryUals = 'SELECT * FROM ual WHERE facultad_id = $1';
+      const queryUals =
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
       const resultUals = await pool.query(queryUals, [facultadId]);
 
       nombre_lab = result.rows[0].nombre;

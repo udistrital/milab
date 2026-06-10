@@ -49,7 +49,7 @@ function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } 
         return { rows: [{ facultad_id: 2 }] };
       }
 
-      if (sql.includes('SELECT ual_id FROM ual WHERE facultad_id = $1')) {
+      if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1')) {
         return { rows: [{ ual_id: 11 }, { ual_id: 12 }] };
       }
 
@@ -256,7 +256,7 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
       }
 
-      if (sql.includes('SELECT ual_id FROM ual WHERE facultad_id = $1')) {
+      if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1')) {
         return { rows: [{ ual_id: 21 }, { ual_id: 22 }] };
       }
 

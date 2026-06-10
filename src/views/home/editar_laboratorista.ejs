@@ -74,6 +74,12 @@
                   <% if (ual.codigo_abreviacion) { %>
                     <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
                   <% } %>
+                  <% if (ual.sal_id_espacio) { %>
+                    <small class="text-muted d-block mt-1">ID espacio: <%= ual.sal_id_espacio %></small>
+                  <% } %>
+                  <% if (ual.sal_ocupantes) { %>
+                    <small class="text-muted d-block mt-1">Ocupantes: <%= ual.sal_ocupantes %></small>
+                  <% } %>
                   <% if (ual.descripcion) { %>
                     <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
                   <% } %>

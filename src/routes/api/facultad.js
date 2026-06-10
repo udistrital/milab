@@ -24,6 +24,22 @@ function normalizeUalDescription(value) {
   return normalized || null;
 }
 
+function normalizeUalSpaceId(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase();
+  return normalized || null;
+}
+
+function normalizeUalOccupants(value) {
+  const normalized = String(value || '').trim();
+  return normalized || null;
+}
+
+function normalizeUalActiveFlag(value) {
+  return String(value || '').toLowerCase() === 'on';
+}
+
 function normalizeUalShortCode(value) {
   const normalized = String(value || '')
     .trim()
@@ -36,6 +52,31 @@ function isValidUalShortCode(value) {
 }
 
 router.use(requireAdminFacultyAccess);
+
+// Endpoint JSON: UALs de una facultad (usado por la SPA sin recarga)
+router.get('/ual/json', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const { facultad_id: facultadId } = req.query;
+  if (!facultadId) return res.status(400).json({ error: 'facultad_id requerido' });
+
+  try {
+    const facRes = await pool.query(
+      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1',
+      [facultadId]
+    );
+    if (facRes.rows.length === 0) return res.status(404).json({ error: 'Facultad no encontrada' });
+    const facultad = facRes.rows[0];
+
+    const ualRes = await pool.query(
+      'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, activo FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
+      [facultadId]
+    );
+    return res.json({ facultad, uals: ualRes.rows });
+  } catch (error) {
+    console.error('Error en /ual/json:', error);
+    return res.status(500).json({ error: 'Error interno' });
+  }
+});
 
 // Página principal de administración de facultades y UALs (admin solo)
 router.get('/', async (req, res) => {
@@ -54,7 +95,7 @@ router.get('/', async (req, res) => {
       const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
       selectedFacultad = facSel || null;
       const ualRes = await pool.query(
-        'SELECT ual_id, nombre, codigo_abreviacion, descripcion FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, activo FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
         [facultadId]
       );
       uals = ualRes.rows;
@@ -161,6 +202,9 @@ router.post('/ual/add', async (req, res) => {
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
+  const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
+  const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
+  const activo = normalizeUalActiveFlag(req.body.activo);
   if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
@@ -187,10 +231,34 @@ router.post('/ual/add', async (req, res) => {
     });
   }
 
+  if (salIdEspacio && salIdEspacio.length > 30) {
+    return res.render('home/message_error', {
+      message: 'ID de espacio inválido',
+      message2: 'SAL_ID_ESPACIO no puede superar 30 caracteres.',
+      limit: null,
+    });
+  }
+
+  if (salOcupantes && salOcupantes.length > 30) {
+    return res.render('home/message_error', {
+      message: 'Ocupantes inválido',
+      message2: 'SAL_OCUPANTES no puede superar 30 caracteres.',
+      limit: null,
+    });
+  }
+
   try {
     await pool.query(
-      'INSERT INTO ual (nombre, codigo_abreviacion, descripcion, facultad_id) VALUES ($1, $2, $3, $4)',
-      [nombre.trim(), codigoAbreviacion, descripcion, facultadId]
+      'INSERT INTO ual (nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [
+        nombre.trim(),
+        codigoAbreviacion,
+        descripcion,
+        salIdEspacio,
+        salOcupantes,
+        facultadId,
+        activo,
+      ]
     );
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
@@ -225,6 +293,9 @@ router.post('/ual/editar', async (req, res) => {
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
+  const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
+  const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
+  const activo = normalizeUalActiveFlag(req.body.activo);
   if (!ualId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
       message: 'Datos inválidos',
@@ -251,11 +322,27 @@ router.post('/ual/editar', async (req, res) => {
     });
   }
 
+  if (salIdEspacio && salIdEspacio.length > 30) {
+    return res.render('home/message_error', {
+      message: 'ID de espacio inválido',
+      message2: 'SAL_ID_ESPACIO no puede superar 30 caracteres.',
+      limit: null,
+    });
+  }
+
+  if (salOcupantes && salOcupantes.length > 30) {
+    return res.render('home/message_error', {
+      message: 'Ocupantes inválido',
+      message2: 'SAL_OCUPANTES no puede superar 30 caracteres.',
+      limit: null,
+    });
+  }
+
   try {
     // Solo admin edita UAL
 
     const oldRes = await pool.query(
-      'SELECT ual.nombre AS ual_nombre, ual.codigo_abreviacion AS ual_codigo_abreviacion, ual.descripcion AS ual_descripcion, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
+      'SELECT ual.nombre AS ual_nombre, ual.codigo_abreviacion AS ual_codigo_abreviacion, ual.descripcion AS ual_descripcion, ual.sal_id_espacio AS ual_sal_id_espacio, ual.sal_ocupantes AS ual_sal_ocupantes, ual.activo AS ual_activo, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
       [ualId]
     );
     const oldRow = oldRes.rows[0] || {
@@ -264,10 +351,10 @@ router.post('/ual/editar', async (req, res) => {
       facultad_nombre: '',
     };
 
-    // Actualización de nombre, código y descripción
+    // Actualización de nombre y metadatos operativos
     await pool.query(
-      'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3 WHERE ual_id = $4',
-      [nombre.trim(), codigoAbreviacion, descripcion, ualId]
+      'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6 WHERE ual_id = $7',
+      [nombre.trim(), codigoAbreviacion, descripcion, salIdEspacio, salOcupantes, activo, ualId]
     );
 
     // Si es admin y envía new_facultad_id diferente, mover UAL a otra facultad
