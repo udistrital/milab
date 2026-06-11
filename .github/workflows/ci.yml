@@ -116,10 +116,14 @@ jobs:
           cd /home/ubuntu/prod
           sudo docker compose pull dbpostgres dbseed
 
+      - name: Construir imagen de app para pruebas con Dockerfile.dev
+        run: |
+          sudo docker build -f /opt/milab/Docker/Dockerfile.dev -t prod-milabud /opt/milab
+
       - name: Recrear contenedores de pruebas
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose up -d --build --force-recreate dbpostgres milabud
+          sudo docker compose up -d --force-recreate dbpostgres milabud
 
       - name: Verificar servicios desplegados
         run: |
