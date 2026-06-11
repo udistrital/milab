@@ -10,10 +10,21 @@ on:
     branches:
       - '**'
   workflow_dispatch:
+    inputs:
+      recreate_containers:
+        description: 'Recrear contenedores dbpostgres y milabud'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   Analisis:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ec2
+      - milab
     env:
       NODE_OPTIONS: --no-deprecation
       NPM_CONFIG_LOGLEVEL: error
@@ -32,7 +43,12 @@ jobs:
   pruebas_unitarias:
     name: Pruebas unitarias
     needs: Analisis
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ec2
+      - milab
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
@@ -51,7 +67,10 @@ jobs:
     if: github.ref == 'refs/heads/prestamos' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
-      - laboratorios_ec2
+      - linux
+      - x64
+      - ec2
+      - milab
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
@@ -117,9 +136,16 @@ jobs:
           sudo docker compose pull dbpostgres dbseed
 
       - name: Recrear contenedores de pruebas
+        if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
         run: |
           cd /home/ubuntu/prod
           sudo docker compose up -d --build --force-recreate dbpostgres milabud
+
+      - name: Desplegar sin recrear DB
+        if: github.event_name != 'workflow_dispatch' || inputs.recreate_containers != true
+        run: |
+          cd /home/ubuntu/prod
+          sudo docker compose up -d --build milabud
 
       - name: Verificar servicios desplegados
         run: |
