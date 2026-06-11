@@ -1,0 +1,1181 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Gestion de practicas</h1>
+    <p class="app-page-subtitle">Revision operativa de reservas de practica para aprobar, rechazar, iniciar y completar.</p>
+  </section>
+
+  <div id="gestionPracticasAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <%
+    const reservasDiaRaw = Array.isArray(reservasDia) ? reservasDia : [];
+    const reservasDelDia = Array.isArray(reservasDiaEstudiante)
+      ? reservasDiaEstudiante
+      : reservasDiaRaw.filter(function(item) { return String(item.tipo_practica || '') !== 'docente'; });
+    const reservasDocentesDelDia = Array.isArray(reservasDiaDocente)
+      ? reservasDiaDocente
+      : reservasDiaRaw.filter(function(item) { return String(item.tipo_practica || '') === 'docente'; });
+    const practicasEnCurso = Array.isArray(practicasActivas) ? practicasActivas : [];
+    const cancelacionesDelDia = Array.isArray(cancelacionesDia) ? cancelacionesDia : [];
+    const solicitudesEnCola = Array.isArray(colasPractica) ? colasPractica : [];
+  %>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Vista operativa de practicas</h5>
+      <form method="GET" action="/milab/prestamos/practicas/gestion" class="d-flex align-items-center gap-2">
+        <label for="gestionPracticasFecha" class="form-label mb-0 small text-light-emphasis">Fecha</label>
+        <input
+          type="date"
+          class="form-control form-control-sm"
+          id="gestionPracticasFecha"
+          name="fecha"
+          value="<%= fecha || '' %>"
+          onchange="this.form.submit()"
+        >
+      </form>
+    </div>
+
+    <div class="card-body">
+      <ul class="nav nav-tabs mb-3" id="gestionPracticasTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="gestion-reservas-tab" data-bs-toggle="tab" data-bs-target="#gestion-reservas-pane" type="button" role="tab" aria-controls="gestion-reservas-pane" aria-selected="true">
+            Practicas libres del dia <span class="badge text-bg-secondary"><%= reservasDelDia.length %></span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="gestion-docentes-tab" data-bs-toggle="tab" data-bs-target="#gestion-docentes-pane" type="button" role="tab" aria-controls="gestion-docentes-pane" aria-selected="false">
+            Practicas docentes del dia <span class="badge text-bg-secondary"><%= reservasDocentesDelDia.length %></span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="gestion-activas-tab" data-bs-toggle="tab" data-bs-target="#gestion-activas-pane" type="button" role="tab" aria-controls="gestion-activas-pane" aria-selected="false">
+            Practicas en curso <span class="badge text-bg-success"><%= practicasEnCurso.length %></span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="gestion-cancelaciones-tab" data-bs-toggle="tab" data-bs-target="#gestion-cancelaciones-pane" type="button" role="tab" aria-controls="gestion-cancelaciones-pane" aria-selected="false">
+            Cancelaciones <span class="badge text-bg-danger"><%= cancelacionesDelDia.length %></span>
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="gestion-cola-tab" data-bs-toggle="tab" data-bs-target="#gestion-cola-pane" type="button" role="tab" aria-controls="gestion-cola-pane" aria-selected="false">
+            En cola <span class="badge text-bg-dark"><%= solicitudesEnCola.length %></span>
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content" id="gestionPracticasTabsContent">
+        <div class="tab-pane fade show active" id="gestion-reservas-pane" role="tabpanel" aria-labelledby="gestion-reservas-tab" tabindex="0">
+          <% if (reservasDelDia.length > 0) { %>
+            <div class="row g-3">
+              <% reservasDelDia.forEach(function(item) { %>
+                <div class="col-xl-4 col-lg-6">
+                  <article class="card h-100 bg-transparent border-light-subtle">
+                    <div class="card-body d-flex flex-column gap-3">
+                      <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <h5 class="mb-1 text-capitalize"><%= item.tipo_practica || 'Practica' %></h5>
+                          <div class="small text-light-emphasis"><%= item.facultad || '-' %> - <%= item.laboratorio || '-' %></div>
+                          <div class="small text-light-emphasis">Sala: <%= item.sala_nombre || 'Sin sala asignada' %></div>
+                        </div>
+                        <span class="badge <%= item.estado === 'pendiente' || item.estado === 'por_aprobacion' ? 'bg-warning text-dark' : item.estado === 'con_comentarios' ? 'bg-info text-dark' : item.estado === 'aprobada' ? 'bg-success' : 'bg-secondary' %>">
+                          <%= item.estado === 'por_aprobacion' ? 'Por aprobacion' : item.estado === 'con_comentarios' ? 'Con comentarios' : item.estado ? item.estado.charAt(0).toUpperCase() + item.estado.slice(1) : 'Sin estado' %>
+                        </span>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Solicitante</div>
+                        <div><%= item.usuario_nombre || '-' %></div>
+                        <div class="small"><%= item.usuario_documento || '-' %></div>
+                        <div class="small"><%= item.usuario_correo || '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Horario</div>
+                        <div><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                        <div class="small"><%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Categoria</div>
+                        <div class="text-capitalize"><%= item.categoria_practica || '-' %></div>
+                      </div>
+
+                      <% if (item.modalidad_libre) { %>
+                        <div>
+                          <div class="small text-light-emphasis mb-1">Modalidad libre</div>
+                          <div class="text-capitalize"><%= String(item.modalidad_libre || '').replaceAll('_', ' ') %></div>
+                        </div>
+                      <% } %>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Justificacion</div>
+                        <div class="small"><%= item.justificacion || '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Documentos</div>
+                        <div class="d-flex gap-2 flex-wrap">
+                          <a href="/milab/prestamos/practicas/<%= item.id %>/reglamento-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-light btn-sm">Reglamento firmado</a>
+                          <% if (item.formato_archivo) { %>
+                            <a href="/milab/prestamos/practicas/<%= item.id %>/formato-llenado-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">Formato diligenciado</a>
+                          <% } %>
+                        </div>
+                      </div>
+
+                      <div class="d-flex gap-2 mt-auto flex-wrap">
+                        <% if (item.estado === 'pendiente' || item.estado === 'por_aprobacion') { %>
+                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-check-circle"></i>
+                            <span>Aprobar</span>
+                          </button>
+                          <% if (item.tipo_practica === 'docente' && item.estado === 'por_aprobacion') { %>
+                            <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-open-comment-practice-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>">
+                              <i class="bi bi-chat-left-text"></i>
+                              <span>Comentarios</span>
+                            </button>
+                          <% } %>
+                          <button type="button" class="btn btn-outline-danger btn-sm flex-fill js-open-reject-practice-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>">
+                            <i class="bi bi-x-circle"></i>
+                            <span>Rechazar</span>
+                          </button>
+                        <% } %>
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm flex-fill js-open-reassign-practice-modal"
+                          data-reservation-id="<%= item.id %>"
+                          data-facultad="<%= item.facultad || '' %>"
+                          data-laboratorio="<%= item.laboratorio || '' %>"
+                          data-fecha-inicio="<%= item.fecha_inicio ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(item.fecha_inicio)).replace(' ', 'T') : '' %>"
+                          data-fecha-fin="<%= item.fecha_fin ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(item.fecha_fin)).replace(' ', 'T') : '' %>"
+                          data-tipo-practica="<%= item.tipo_practica || 'libre' %>"
+                          data-categoria-practica="<%= item.categoria_practica || 'academica' %>"
+                        >
+                          <i class="bi bi-arrow-repeat"></i>
+                          <span>Reasignar sala</span>
+                        </button>
+                        <% if (item.estado === 'aprobada') { %>
+                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-play-circle"></i>
+                            <span>Iniciar</span>
+                          </button>
+                          <% if (item.habilitarUltimaHora) { %>
+                            <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-open-practice-last-minute-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>" data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>">
+                              <i class="bi bi-clock-history"></i>
+                              <span>Ultima hora</span>
+                            </button>
+                          <% } %>
+                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-person-x"></i>
+                            <span>No asistio</span>
+                          </button>
+                        <% } %>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay reservas pendientes o aprobadas para la fecha seleccionada.</div>
+          <% } %>
+        </div>
+
+        <div class="tab-pane fade" id="gestion-docentes-pane" role="tabpanel" aria-labelledby="gestion-docentes-tab" tabindex="0">
+          <% if (reservasDocentesDelDia.length > 0) { %>
+            <div class="row g-3">
+              <% reservasDocentesDelDia.forEach(function(item) { %>
+                <div class="col-xl-4 col-lg-6">
+                  <article class="card h-100 bg-transparent border-light-subtle">
+                    <div class="card-body d-flex flex-column gap-3">
+                      <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <h5 class="mb-1 text-capitalize"><%= item.tipo_practica || 'Practica' %></h5>
+                          <div class="small text-light-emphasis"><%= item.facultad || '-' %> - <%= item.laboratorio || '-' %></div>
+                          <div class="small text-light-emphasis">Sala: <%= item.sala_nombre || 'Sin sala asignada' %></div>
+                        </div>
+                        <span class="badge <%= item.estado === 'pendiente' || item.estado === 'por_aprobacion' ? 'bg-warning text-dark' : item.estado === 'con_comentarios' ? 'bg-info text-dark' : item.estado === 'aprobada' ? 'bg-success' : 'bg-secondary' %>">
+                          <%= item.estado === 'por_aprobacion' ? 'Por aprobacion' : item.estado === 'con_comentarios' ? 'Con comentarios' : item.estado ? item.estado.charAt(0).toUpperCase() + item.estado.slice(1) : 'Sin estado' %>
+                        </span>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Solicitante</div>
+                        <div><%= item.usuario_nombre || '-' %></div>
+                        <div class="small"><%= item.usuario_documento || '-' %></div>
+                        <div class="small"><%= item.usuario_correo || '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Horario</div>
+                        <div><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                        <div class="small"><%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Categoria</div>
+                        <div class="text-capitalize"><%= item.categoria_practica || '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Documentos</div>
+                        <div class="d-flex gap-2 flex-wrap">
+                          <a href="/milab/prestamos/practicas/<%= item.id %>/reglamento-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-light btn-sm">Reglamento firmado</a>
+                          <% if (item.formato_archivo) { %>
+                            <a href="/milab/prestamos/practicas/<%= item.id %>/formato-llenado-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">Formato diligenciado</a>
+                          <% } %>
+                        </div>
+                      </div>
+
+                      <div class="d-flex gap-2 mt-auto flex-wrap">
+                        <% if (item.estado === 'pendiente' || item.estado === 'por_aprobacion') { %>
+                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-check-circle"></i>
+                            <span>Aprobar</span>
+                          </button>
+                          <% if (item.tipo_practica === 'docente' && item.estado === 'por_aprobacion') { %>
+                            <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-open-comment-practice-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>">
+                              <i class="bi bi-chat-left-text"></i>
+                              <span>Comentarios</span>
+                            </button>
+                          <% } %>
+                          <button type="button" class="btn btn-outline-danger btn-sm flex-fill js-open-reject-practice-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>">
+                            <i class="bi bi-x-circle"></i>
+                            <span>Rechazar</span>
+                          </button>
+                        <% } %>
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm flex-fill js-open-reassign-practice-modal"
+                          data-reservation-id="<%= item.id %>"
+                          data-facultad="<%= item.facultad || '' %>"
+                          data-laboratorio="<%= item.laboratorio || '' %>"
+                          data-fecha-inicio="<%= item.fecha_inicio ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(item.fecha_inicio)).replace(' ', 'T') : '' %>"
+                          data-fecha-fin="<%= item.fecha_fin ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(item.fecha_fin)).replace(' ', 'T') : '' %>"
+                          data-tipo-practica="<%= item.tipo_practica || 'libre' %>"
+                          data-categoria-practica="<%= item.categoria_practica || 'academica' %>"
+                        >
+                          <i class="bi bi-arrow-repeat"></i>
+                          <span>Reasignar sala</span>
+                        </button>
+                        <% if (item.estado === 'aprobada') { %>
+                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-play-circle"></i>
+                            <span>Iniciar</span>
+                          </button>
+                          <% if (item.habilitarUltimaHora) { %>
+                            <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-open-practice-last-minute-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>" data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>">
+                              <i class="bi bi-clock-history"></i>
+                              <span>Ultima hora</span>
+                            </button>
+                          <% } %>
+                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                            <i class="bi bi-person-x"></i>
+                            <span>No asistio</span>
+                          </button>
+                        <% } %>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay practicas docentes pendientes o aprobadas para la fecha seleccionada.</div>
+          <% } %>
+        </div>
+
+        <div class="tab-pane fade" id="gestion-activas-pane" role="tabpanel" aria-labelledby="gestion-activas-tab" tabindex="0">
+          <% if (practicasEnCurso.length > 0) { %>
+            <div class="row g-3">
+              <% practicasEnCurso.forEach(function(item) { %>
+                <div class="col-xl-4 col-lg-6">
+                  <article class="card h-100 bg-transparent border-light-subtle">
+                    <div class="card-body d-flex flex-column gap-3">
+                      <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <h5 class="mb-1 text-capitalize"><%= item.tipo_practica || 'Practica' %></h5>
+                          <div class="small text-light-emphasis"><%= item.facultad || '-' %> - <%= item.laboratorio || '-' %></div>
+                          <div class="small text-light-emphasis">Sala: <%= item.sala_nombre || 'Sin sala asignada' %></div>
+                        </div>
+                        <span class="badge bg-info text-dark"><%= item.estado === 'iniciada' ? 'Iniciada' : 'Activa' %></span>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Solicitante</div>
+                        <div><%= item.usuario_nombre || '-' %></div>
+                        <div class="small"><%= item.usuario_documento || '-' %></div>
+                        <div class="small"><%= item.usuario_correo || '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Horario</div>
+                        <div><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                        <div class="small"><%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Documentos</div>
+                        <div class="d-flex gap-2 flex-wrap">
+                          <a href="/milab/prestamos/practicas/<%= item.id %>/reglamento-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-light btn-sm">Reglamento firmado</a>
+                          <% if (item.formato_archivo) { %>
+                            <a href="/milab/prestamos/practicas/<%= item.id %>/formato-llenado-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">Formato diligenciado</a>
+                          <% } %>
+                          <a href="/milab/prestamos/practicas/<%= item.id %>/comprobante-pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline-info btn-sm">Comprobante</a>
+                        </div>
+                      </div>
+
+                      <div class="d-flex gap-2 mt-auto flex-wrap">
+                        <% if (item.habilitarUltimaHora) { %>
+                          <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-open-practice-last-minute-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>" data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>">
+                            <i class="bi bi-clock-history"></i>
+                            <span>Ultima hora</span>
+                          </button>
+                        <% } %>
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-sm flex-fill js-complete-practice"
+                          data-reservation-id="<%= item.id %>"
+                          data-tipo-practica="<%= item.tipo_practica || '' %>"
+                          data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>"
+                        >
+                          <i class="bi bi-check2-square"></i>
+                          <span>Completar</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                          <i class="bi bi-person-x"></i>
+                          <span>No asistio</span>
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay practicas activas dentro de tu alcance actual.</div>
+          <% } %>
+        </div>
+
+        <div class="tab-pane fade" id="gestion-cancelaciones-pane" role="tabpanel" aria-labelledby="gestion-cancelaciones-tab" tabindex="0">
+          <% if (cancelacionesDelDia.length > 0) { %>
+            <div class="table-responsive">
+              <table class="table table-dark table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Horario</th>
+                    <th>Usuario</th>
+                    <th>Documento</th>
+                    <th>Laboratorio</th>
+                    <th>Sala</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% cancelacionesDelDia.forEach(function(item) { %>
+                    <tr>
+                      <td>
+                        <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-' %>
+                        -
+                        <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-' %>
+                      </td>
+                      <td><%= item.usuario_nombre || '-' %></td>
+                      <td><%= item.usuario_documento || '-' %></td>
+                      <td><%= item.laboratorio || '-' %></td>
+                      <td><%= item.sala_nombre || 'N/A' %></td>
+                      <td><%= item.tipo_practica === 'docente' ? 'Docente' : 'Libre' %></td>
+                      <td><span class="badge text-bg-danger">Cancelada</span></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay cancelaciones para la fecha seleccionada.</div>
+          <% } %>
+        </div>
+
+        <div class="tab-pane fade" id="gestion-cola-pane" role="tabpanel" aria-labelledby="gestion-cola-tab" tabindex="0">
+          <% if (solicitudesEnCola.length > 0) { %>
+            <div class="table-responsive">
+              <table class="table table-dark table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Horario</th>
+                    <th>Usuario</th>
+                    <th>Documento</th>
+                    <th>Tipo</th>
+                    <th>Laboratorio</th>
+                    <th>Creacion</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% solicitudesEnCola.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></td>
+                      <td>
+                        <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-' %>
+                        -
+                        <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-' %>
+                      </td>
+                      <td><%= item.usuario_nombre || '-' %></td>
+                      <td><%= item.usuario_documento || '-' %></td>
+                      <td><%= item.tipo_practica === 'docente' ? 'Docente' : 'Libre' %></td>
+                      <td><%= item.laboratorio || '-' %></td>
+                      <td><%= item.fecha_creacion ? new Date(item.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn btn-outline-warning btn-sm js-open-practice-queue-modal"
+                          data-queue-id="<%= item.id %>"
+                          data-practice="<%= item.tipo_practica || 'Practica' %>"
+                          data-requester="<%= item.usuario_nombre || 'Usuario' %>"
+                        >
+                          <i class="bi bi-lightning-charge"></i>
+                          <span>Asignar ultima hora</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-outline-danger btn-sm js-cancel-practice-queue"
+                          data-queue-id="<%= item.id %>"
+                        >
+                          <i class="bi bi-x-circle"></i>
+                          <span>Cancelar</span>
+                        </button>
+                      </td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay solicitudes en cola dentro de tu alcance actual.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="rechazoPracticaModal" tabindex="-1" aria-labelledby="rechazoPracticaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="rechazoPracticaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="rechazoPracticaModalLabel">Rechazar practica</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="rechazoPracticaId">
+          <p class="mb-2"><strong>Practica:</strong> <span id="rechazoPracticaNombre">-</span></p>
+          <label for="rechazoPracticaMotivo" class="form-label">Motivo</label>
+          <textarea
+            class="form-control"
+            id="rechazoPracticaMotivo"
+            rows="4"
+            maxlength="1000"
+            placeholder="Describe por que la practica no puede ser aprobada."
+          ></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="rechazoPracticaSubmitBtn">Confirmar rechazo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="comentariosPracticaModal" tabindex="-1" aria-labelledby="comentariosPracticaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="comentariosPracticaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="comentariosPracticaModalLabel">Enviar comentarios</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="comentariosPracticaId">
+          <p class="mb-2"><strong>Practica:</strong> <span id="comentariosPracticaNombre">-</span></p>
+          <label for="comentariosPracticaTexto" class="form-label">Comentarios *</label>
+          <textarea
+            class="form-control"
+            id="comentariosPracticaTexto"
+            rows="4"
+            maxlength="1000"
+            required
+            placeholder="Indica que debe corregir el docente para reenviar la solicitud."
+          ></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning" id="comentariosPracticaSubmitBtn">Enviar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="reasignarPracticaModal" tabindex="-1" aria-labelledby="reasignarPracticaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="reasignarPracticaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="reasignarPracticaModalLabel">Reasignar sala</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="reasignarPracticaId">
+          <input type="hidden" id="reasignarFacultad">
+          <input type="hidden" id="reasignarLaboratorio">
+          <input type="hidden" id="reasignarFechaInicio">
+          <input type="hidden" id="reasignarFechaFin">
+          <input type="hidden" id="reasignarTipoPractica">
+          <input type="hidden" id="reasignarCategoriaPractica">
+          <label for="reasignarSalaId" class="form-label">Nueva sala *</label>
+          <select class="form-select" id="reasignarSalaId" required>
+            <option value="">Selecciona una sala...</option>
+          </select>
+          <div class="form-text" id="reasignarSalaInfo">Se muestran solo salas disponibles para la franja actual.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-secondary" id="reasignarPracticaSubmitBtn">Guardar cambio</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="ultimaHoraPracticaModal" tabindex="-1" aria-labelledby="ultimaHoraPracticaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="ultimaHoraPracticaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="ultimaHoraPracticaModalLabel">Prestamo de ultima hora</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="ultimaHoraPracticaId">
+          <p class="mb-2"><strong>Practica:</strong> <span id="ultimaHoraPracticaNombre">-</span></p>
+          <p class="mb-3"><strong>Lugar:</strong> <span id="ultimaHoraPracticaLugar">-</span></p>
+          <div class="mb-3">
+            <label for="ultimaHoraPracticaDocumento" class="form-label">Documento o codigo del usuario *</label>
+            <input
+              type="text"
+              class="form-control"
+              id="ultimaHoraPracticaDocumento"
+              required
+              placeholder="Ingresa el documento o codigo institucional"
+            >
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-secondary" id="ultimaHoraPracticaSubmitBtn">Aplicar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="asignarColaPracticaModal" tabindex="-1" aria-labelledby="asignarColaPracticaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="asignarColaPracticaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="asignarColaPracticaModalLabel">Asignar cola a ultima hora</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="asignarColaPracticaId">
+          <p class="mb-2"><strong>Solicitud:</strong> <span id="asignarColaPracticaNombre">-</span></p>
+          <div class="mb-3">
+            <label for="asignarColaPracticaReservaId" class="form-label">ID de la reserva base *</label>
+            <input
+              type="number"
+              class="form-control"
+              id="asignarColaPracticaReservaId"
+              min="1"
+              required
+              placeholder="Ingresa el ID de la reserva con ultima hora habilitada"
+            >
+          </div>
+          <div class="form-text" id="asignarColaPracticaInfo">Solo funciona cuando la reserva base ya tiene habilitada la ultima hora.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-light" id="asignarColaPracticaSubmitBtn">Asignar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="incidenciaDocenteModal" tabindex="-1" aria-labelledby="incidenciaDocenteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="incidenciaDocenteForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="incidenciaDocenteModalLabel">Incidencia docente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="incidenciaDocenteReservaId">
+          <p class="mb-2"><strong>Lugar:</strong> <span id="incidenciaDocenteLugar">-</span></p>
+          <div class="mb-3">
+            <label for="incidenciaDocenteTipo" class="form-label">Tipo de incidencia</label>
+            <input
+              type="text"
+              class="form-control"
+              id="incidenciaDocenteTipo"
+              maxlength="120"
+              placeholder="Ej. Daño de equipo, incumplimiento de protocolo..."
+            >
+          </div>
+          <div class="mb-2">
+            <label for="incidenciaDocenteDescripcion" class="form-label">Descripcion</label>
+            <textarea
+              class="form-control"
+              id="incidenciaDocenteDescripcion"
+              rows="4"
+              maxlength="2000"
+              placeholder="Describe la incidencia. Si dejas ambos campos vacios, solo se finaliza la practica."
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Finalizar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('gestionPracticasAlerts');
+    var rejectModalElement = document.getElementById('rechazoPracticaModal');
+    var rejectForm = document.getElementById('rechazoPracticaForm');
+    var rejectIdInput = document.getElementById('rechazoPracticaId');
+    var rejectPracticeLabel = document.getElementById('rechazoPracticaNombre');
+    var rejectReasonInput = document.getElementById('rechazoPracticaMotivo');
+    var rejectSubmitButton = document.getElementById('rechazoPracticaSubmitBtn');
+    var commentModalElement = document.getElementById('comentariosPracticaModal');
+    var commentForm = document.getElementById('comentariosPracticaForm');
+    var commentIdInput = document.getElementById('comentariosPracticaId');
+    var commentPracticeLabel = document.getElementById('comentariosPracticaNombre');
+    var commentTextInput = document.getElementById('comentariosPracticaTexto');
+    var commentSubmitButton = document.getElementById('comentariosPracticaSubmitBtn');
+    var reassignModalElement = document.getElementById('reasignarPracticaModal');
+    var reassignForm = document.getElementById('reasignarPracticaForm');
+    var reassignSalaSelect = document.getElementById('reasignarSalaId');
+    var reassignSalaInfo = document.getElementById('reasignarSalaInfo');
+    var reassignSubmitButton = document.getElementById('reasignarPracticaSubmitBtn');
+    var lastMinuteModalElement = document.getElementById('ultimaHoraPracticaModal');
+    var lastMinuteForm = document.getElementById('ultimaHoraPracticaForm');
+    var queueModalElement = document.getElementById('asignarColaPracticaModal');
+    var queueForm = document.getElementById('asignarColaPracticaForm');
+    var incidenciaModalElement = document.getElementById('incidenciaDocenteModal');
+    var incidenciaForm = document.getElementById('incidenciaDocenteForm');
+    var incidenciaIdInput = document.getElementById('incidenciaDocenteReservaId');
+    var incidenciaLocation = document.getElementById('incidenciaDocenteLugar');
+    var incidenciaTipoInput = document.getElementById('incidenciaDocenteTipo');
+    var incidenciaDescripcionInput = document.getElementById('incidenciaDocenteDescripcion');
+    var incidenciaSubmitButton = document.getElementById('incidenciaDocenteSubmitBtn');
+
+    if (!alertsContainer || !rejectModalElement || !rejectForm || !commentModalElement || !commentForm || !reassignModalElement || !reassignForm || !lastMinuteModalElement || !lastMinuteForm || !queueModalElement || !queueForm || !incidenciaModalElement || !incidenciaForm) return;
+
+    var rejectModal = new bootstrap.Modal(rejectModalElement);
+    var commentModal = new bootstrap.Modal(commentModalElement);
+    var reassignModal = new bootstrap.Modal(reassignModalElement);
+    var lastMinuteModal = new bootstrap.Modal(lastMinuteModalElement);
+    var queueModal = new bootstrap.Modal(queueModalElement);
+    var incidenciaModal = new bootstrap.Modal(incidenciaModalElement);
+    var lastMinuteIdInput = document.getElementById('ultimaHoraPracticaId');
+    var lastMinutePracticeName = document.getElementById('ultimaHoraPracticaNombre');
+    var lastMinuteLocation = document.getElementById('ultimaHoraPracticaLugar');
+    var lastMinuteDocumentInput = document.getElementById('ultimaHoraPracticaDocumento');
+    var lastMinuteSubmitButton = document.getElementById('ultimaHoraPracticaSubmitBtn');
+    var queueIdInput = document.getElementById('asignarColaPracticaId');
+    var queuePracticeName = document.getElementById('asignarColaPracticaNombre');
+    var queueReservationIdInput = document.getElementById('asignarColaPracticaReservaId');
+    var queueInfo = document.getElementById('asignarColaPracticaInfo');
+    var queueSubmitButton = document.getElementById('asignarColaPracticaSubmitBtn');
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    async function fetchJson(url) {
+      var response = await fetch(url);
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    document.querySelectorAll('.js-approve-practice').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var reservationId = button.getAttribute('data-reservation-id');
+        if (!reservationId || !window.confirm('¿Deseas aprobar esta practica?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/aprobar');
+          showAlert('success', result.message || 'Practica aprobada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible aprobar la practica.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-start-practice').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var reservationId = button.getAttribute('data-reservation-id');
+        if (!reservationId || !window.confirm('¿Deseas iniciar esta practica?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/iniciar');
+          showAlert('success', result.message || 'Practica iniciada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible iniciar la practica.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-complete-practice').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var reservationId = button.getAttribute('data-reservation-id');
+        var tipoPractica = String(button.getAttribute('data-tipo-practica') || '').toLowerCase();
+        var location = button.getAttribute('data-location') || '-';
+        if (!reservationId) return;
+
+        if (tipoPractica === 'docente') {
+          incidenciaIdInput.value = reservationId;
+          incidenciaLocation.textContent = location;
+          incidenciaTipoInput.value = '';
+          incidenciaDescripcionInput.value = '';
+          incidenciaSubmitButton.disabled = false;
+          incidenciaModal.show();
+          return;
+        }
+
+        if (!window.confirm('¿Deseas completar esta practica?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/completar');
+          showAlert('success', result.message || 'Practica completada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible completar la practica.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    incidenciaForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var reservationId = String(incidenciaIdInput.value || '').trim();
+      var tipoIncidencia = String(incidenciaTipoInput.value || '').trim();
+      var descripcionIncidencia = String(incidenciaDescripcionInput.value || '').trim();
+
+      if (!reservationId) return;
+      if (!window.confirm('¿Deseas finalizar esta practica docente?')) return;
+
+      if ((tipoIncidencia && !descripcionIncidencia) || (!tipoIncidencia && descripcionIncidencia)) {
+        showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion (o dejar ambos vacios).');
+        return;
+      }
+
+      incidenciaSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/completar',
+          {
+            incidencia_tipo: tipoIncidencia,
+            incidencia_descripcion: descripcionIncidencia,
+          }
+        );
+        incidenciaModal.hide();
+        showAlert('success', result.message || 'Practica finalizada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible finalizar la practica.');
+        incidenciaSubmitButton.disabled = false;
+      }
+    });
+
+    document.querySelectorAll('.js-no-show-practice').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var reservationId = button.getAttribute('data-reservation-id');
+        if (!reservationId || !window.confirm('¿Deseas marcar esta practica como no asistio?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/no-asistio');
+          showAlert('success', result.message || 'Practica marcada como no asistio.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible marcar la practica como no asistio.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-open-reassign-practice-modal').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        document.getElementById('reasignarPracticaId').value = button.getAttribute('data-reservation-id') || '';
+        document.getElementById('reasignarFacultad').value = button.getAttribute('data-facultad') || '';
+        document.getElementById('reasignarLaboratorio').value = button.getAttribute('data-laboratorio') || '';
+        document.getElementById('reasignarFechaInicio').value = button.getAttribute('data-fecha-inicio') || '';
+        document.getElementById('reasignarFechaFin').value = button.getAttribute('data-fecha-fin') || '';
+        document.getElementById('reasignarTipoPractica').value = button.getAttribute('data-tipo-practica') || 'libre';
+        document.getElementById('reasignarCategoriaPractica').value = button.getAttribute('data-categoria-practica') || 'academica';
+        reassignSalaSelect.innerHTML = '<option value="">Cargando salas...</option>';
+        reassignSalaInfo.textContent = 'Se muestran solo salas disponibles para la franja actual.';
+        reassignSubmitButton.disabled = true;
+        reassignModal.show();
+
+        try {
+          var params = new URLSearchParams({
+            facultad: document.getElementById('reasignarFacultad').value,
+            laboratorio: document.getElementById('reasignarLaboratorio').value,
+            fechaInicio: document.getElementById('reasignarFechaInicio').value,
+            fechaFin: document.getElementById('reasignarFechaFin').value,
+            tipo_practica: document.getElementById('reasignarTipoPractica').value,
+            categoria_practica: document.getElementById('reasignarCategoriaPractica').value,
+          });
+          var data = await fetchJson('/milab/prestamos/practicas/api/salas-disponibles?' + params.toString());
+          reassignSalaSelect.innerHTML = '<option value="">Selecciona una sala...</option>';
+
+          (data.salas || []).forEach(function(item) {
+            var option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.nombre + ' - cupos: ' + item.cupos_disponibles + '/' + item.capacidad;
+            reassignSalaSelect.appendChild(option);
+          });
+
+          reassignSubmitButton.disabled = false;
+        } catch (error) {
+          reassignSalaSelect.innerHTML = '<option value="">No fue posible cargar salas</option>';
+          reassignSalaInfo.textContent = error.message || 'No fue posible cargar salas disponibles.';
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-open-practice-last-minute-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        lastMinuteIdInput.value = button.getAttribute('data-reservation-id') || '';
+        lastMinutePracticeName.textContent = button.getAttribute('data-practice') || '-';
+        lastMinuteLocation.textContent = button.getAttribute('data-location') || '-';
+        lastMinuteDocumentInput.value = '';
+        lastMinuteSubmitButton.disabled = false;
+        lastMinuteModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-practice-queue-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        queueIdInput.value = button.getAttribute('data-queue-id') || '';
+        queuePracticeName.textContent =
+          (button.getAttribute('data-practice') || 'Practica') +
+          ' - ' +
+          (button.getAttribute('data-requester') || 'Usuario');
+        queueReservationIdInput.value = '';
+        queueReservationIdInput.classList.remove('is-invalid');
+        queueInfo.textContent = 'Ingresa el ID de la reserva que ya tiene ultima hora habilitada.';
+        queueSubmitButton.disabled = false;
+        queueModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-cancel-practice-queue').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var queueId = button.getAttribute('data-queue-id');
+        if (!queueId || !window.confirm('¿Deseas cancelar esta solicitud en cola?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson(
+            '/milab/prestamos/cola/practicas/' + encodeURIComponent(queueId) + '/cancelar'
+          );
+          showAlert('success', result.message || 'Solicitud en cola cancelada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible cancelar la solicitud en cola.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-open-reject-practice-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        rejectIdInput.value = button.getAttribute('data-reservation-id') || '';
+        rejectPracticeLabel.textContent = button.getAttribute('data-practice') || '-';
+        rejectReasonInput.value = '';
+        rejectSubmitButton.disabled = false;
+        rejectModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-comment-practice-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        commentIdInput.value = button.getAttribute('data-reservation-id') || '';
+        commentPracticeLabel.textContent = button.getAttribute('data-practice') || '-';
+        commentTextInput.value = '';
+        commentSubmitButton.disabled = false;
+        commentModal.show();
+      });
+    });
+
+    rejectForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var reservationId = rejectIdInput.value;
+      if (!reservationId) return;
+
+      rejectSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/rechazar',
+          { motivo_rechazo: rejectReasonInput.value }
+        );
+
+        rejectModal.hide();
+        showAlert('success', result.message || 'Practica rechazada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible rechazar la practica.');
+        rejectSubmitButton.disabled = false;
+      }
+    });
+
+    commentForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var reservationId = commentIdInput.value;
+      if (!reservationId) return;
+
+      if (!commentTextInput.value.trim()) {
+        commentTextInput.classList.add('is-invalid');
+        return;
+      }
+
+      commentTextInput.classList.remove('is-invalid');
+      commentSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/comentarios',
+          { comentario: commentTextInput.value }
+        );
+
+        commentModal.hide();
+        showAlert('success', result.message || 'Comentarios enviados correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible enviar los comentarios.');
+        commentSubmitButton.disabled = false;
+      }
+    });
+
+    lastMinuteForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!lastMinuteDocumentInput.value.trim()) {
+        lastMinuteDocumentInput.classList.add('is-invalid');
+        return;
+      }
+
+      lastMinuteDocumentInput.classList.remove('is-invalid');
+      lastMinuteSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/practicas/' + encodeURIComponent(lastMinuteIdInput.value) + '/ultima-hora',
+          {
+            documento: lastMinuteDocumentInput.value
+          }
+        );
+        lastMinuteModal.hide();
+        showAlert('success', result.message || 'Prestamo de ultima hora aplicado correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible aplicar el prestamo de ultima hora.');
+        lastMinuteSubmitButton.disabled = false;
+      }
+    });
+
+    queueForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!queueReservationIdInput.value) {
+        queueReservationIdInput.classList.add('is-invalid');
+        return;
+      }
+
+      queueReservationIdInput.classList.remove('is-invalid');
+      queueSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/cola/practicas/' + encodeURIComponent(queueIdInput.value) + '/asignar-ultima-hora',
+          {
+            reserva_id: queueReservationIdInput.value
+          }
+        );
+        queueModal.hide();
+        showAlert('success', result.message || 'Solicitud en cola asignada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible asignar la solicitud en cola.');
+        queueSubmitButton.disabled = false;
+      }
+    });
+
+    rejectModalElement.addEventListener('hidden.bs.modal', function() {
+      rejectIdInput.value = '';
+      rejectPracticeLabel.textContent = '-';
+      rejectReasonInput.value = '';
+      rejectSubmitButton.disabled = false;
+    });
+
+    commentModalElement.addEventListener('hidden.bs.modal', function() {
+      commentIdInput.value = '';
+      commentPracticeLabel.textContent = '-';
+      commentTextInput.value = '';
+      commentTextInput.classList.remove('is-invalid');
+      commentSubmitButton.disabled = false;
+    });
+
+    reassignForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var reservationId = document.getElementById('reasignarPracticaId').value;
+      if (!reservationId || !reassignSalaSelect.value) return;
+
+      reassignSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/reasignar-sala',
+          { sala_id: reassignSalaSelect.value }
+        );
+        reassignModal.hide();
+        showAlert('success', result.message || 'Sala reasignada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible reasignar la sala.');
+        reassignSubmitButton.disabled = false;
+      }
+    });
+
+    reassignModalElement.addEventListener('hidden.bs.modal', function() {
+      document.getElementById('reasignarPracticaId').value = '';
+      reassignSalaSelect.innerHTML = '<option value="">Selecciona una sala...</option>';
+      reassignSalaInfo.textContent = 'Se muestran solo salas disponibles para la franja actual.';
+      reassignSubmitButton.disabled = false;
+    });
+
+    lastMinuteModalElement.addEventListener('hidden.bs.modal', function() {
+      lastMinuteIdInput.value = '';
+      lastMinutePracticeName.textContent = '-';
+      lastMinuteLocation.textContent = '-';
+      lastMinuteDocumentInput.value = '';
+      lastMinuteDocumentInput.classList.remove('is-invalid');
+      lastMinuteSubmitButton.disabled = false;
+    });
+
+    queueModalElement.addEventListener('hidden.bs.modal', function() {
+      queueIdInput.value = '';
+      queuePracticeName.textContent = '-';
+      queueReservationIdInput.value = '';
+      queueReservationIdInput.classList.remove('is-invalid');
+      queueInfo.textContent = 'Solo funciona cuando la reserva base ya tiene habilitada la ultima hora.';
+      queueSubmitButton.disabled = false;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

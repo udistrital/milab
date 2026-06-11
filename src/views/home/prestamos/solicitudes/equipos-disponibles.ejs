@@ -1,0 +1,626 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Equipos disponibles</h1>
+    <p class="app-page-subtitle"><strong><%= facultad %></strong> / <strong><%= laboratorio %></strong></p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (equipos && equipos.length > 0) { %>
+    <section class="card app-table-panel text-light">
+      <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <h5 class="mb-0">Listado de equipos</h5>
+        <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/solicitar">Nueva consulta</a>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="20" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>Codigo</th>
+                <th>Nombre</th>
+                <th>Categoria</th>
+                <th>Laboratorio</th>
+                <th>Ubicacion</th>
+                <th>Prestamo</th>
+                <th data-grid-filter="false" data-grid-orderable="false">Accion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% equipos.forEach(function(equipo) { %>
+                <tr>
+                  <td class="text-light"><%= equipo.codigo || '-' %></td>
+                  <td class="text-light"><%= equipo.nombre || '-' %></td>
+                  <td class="text-light"><%= equipo.categoria || '-' %></td>
+                  <td class="text-light"><%= equipo.laboratorio || '-' %></td>
+                  <td class="text-light"><%= equipo.ubicacion || '-' %></td>
+                  <td class="text-light">
+                    <%= equipo.ubicacion_prestamo?.dentro ? 'Dentro' : '' %><%= equipo.ubicacion_prestamo?.dentro && equipo.ubicacion_prestamo?.fuera ? ' / ' : '' %><%= equipo.ubicacion_prestamo?.fuera ? 'Fuera' : '' %>
+                  </td>
+                  <td class="text-light">
+                    <button
+                      type="button"
+                      class="btn btn-perso btn-sm js-open-request-modal"
+                      data-equipo-id="<%= equipo.id %>"
+                      data-equipo-codigo="<%= equipo.codigo || '' %>"
+                      data-equipo-nombre="<%= equipo.nombre || '' %>"
+                    >
+                      Solicitar
+                    </button>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  <% } else { %>
+    <section class="card app-table-panel text-light">
+      <div class="card-body">
+        <div class="alert alert-info mb-0">
+          No se encontraron equipos disponibles para esta facultad y laboratorio.
+        </div>
+        <div class="mt-3">
+          <a class="btn btn-outline-secondary" href="/milab/prestamos/solicitar">Volver a consultar</a>
+        </div>
+      </div>
+    </section>
+  <% } %>
+</main>
+
+<div class="modal fade" id="solicitudModal" tabindex="-1" aria-labelledby="solicitudModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="solicitudModalLabel">Crear solicitud de prestamo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="solicitudModalStatus" class="alert alert-info">
+          Cargando horarios del equipo...
+        </div>
+        <div class="mb-3">
+          <div class="small text-muted">Equipo</div>
+          <div class="fw-semibold" id="solicitudEquipoInfo">-</div>
+        </div>
+        <form id="solicitudForm" novalidate>
+          <input type="hidden" id="solicitudEquipoId" name="equipoId">
+          <input type="hidden" id="solicitudFechaInicio" name="fechaInicio">
+          <input type="hidden" id="solicitudFechaFin" name="fechaFin">
+
+          <div class="mb-3">
+            <label class="form-label">Horario *</label>
+            <div id="solicitudHorariosContainer" class="vstack gap-2"></div>
+            <div class="invalid-feedback d-block" id="solicitudHorarioError" style="display: none;">Selecciona un horario.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="solicitudCategoria" class="form-label">Categoria de practica *</label>
+            <select class="form-select" id="solicitudCategoria" name="categoria_practica" required>
+              <option value="">Selecciona una categoria</option>
+              <option value="academica">Academica</option>
+              <option value="extension">Extension</option>
+              <option value="investigacion">Investigacion</option>
+              <option value="otra">Otra</option>
+            </select>
+            <div class="invalid-feedback">Selecciona una categoria valida.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="solicitudJustificacion" class="form-label">Justificacion academica *</label>
+            <textarea class="form-control" id="solicitudJustificacion" name="justificacion" rows="3" minlength="10" required></textarea>
+            <div class="invalid-feedback">La justificacion es obligatoria y debe tener al menos 10 caracteres.</div>
+          </div>
+
+          <div class="mb-4">
+            <div class="card border-info">
+              <div class="card-body py-3">
+                <div class="d-flex align-items-center mb-2">
+                  <i class="bi bi-file-earmark-pdf text-danger fs-4 me-2"></i>
+                  <div>
+                    <h6 class="mb-0">Reglamento de Prestamos</h6>
+                    <a
+                      href="/milab/prestamos/api/reglamento/descargar"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="text-decoration-none small"
+                    >
+                      <i class="bi bi-download"></i> Ver/Descargar Reglamento (PDF)
+                    </a>
+                  </div>
+                </div>
+                <div class="form-check mt-2">
+                  <input class="form-check-input" type="checkbox" id="solicitudAceptarReglamento" required>
+                  <label class="form-check-label small" for="solicitudAceptarReglamento">
+                    He leido y acepto los terminos y condiciones del reglamento de prestamos de laboratorio.
+                    Entiendo que el incumplimiento puede acarrear sanciones.
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Firma del solicitante *</label>
+
+            <ul class="nav nav-tabs mb-3" id="solicitudSignatureTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link active"
+                  id="solicitud-draw-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#solicitud-draw-pane"
+                  type="button"
+                  role="tab"
+                  aria-controls="solicitud-draw-pane"
+                  aria-selected="true"
+                >
+                  Dibujar
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="solicitud-type-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#solicitud-type-pane"
+                  type="button"
+                  role="tab"
+                  aria-controls="solicitud-type-pane"
+                  aria-selected="false"
+                >
+                  Escribir
+                </button>
+              </li>
+            </ul>
+
+            <div class="tab-content">
+              <div
+                class="tab-pane fade show active"
+                id="solicitud-draw-pane"
+                role="tabpanel"
+                aria-labelledby="solicitud-draw-tab"
+              >
+                <div class="border rounded bg-white">
+                  <canvas
+                    id="signature-pad-solicitud"
+                    class="w-100"
+                    style="height: 150px; touch-action: none;"
+                  ></canvas>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                  <small class="text-muted">Firma con el cursor, lapiz o dedo.</small>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="btnLimpiarFirmaSolicitud">
+                    Limpiar dibujo
+                  </button>
+                </div>
+              </div>
+
+              <div
+                class="tab-pane fade"
+                id="solicitud-type-pane"
+                role="tabpanel"
+                aria-labelledby="solicitud-type-tab"
+              >
+                <div class="row g-3">
+                  <div class="col-md-7">
+                    <label for="solicitudSignatureText" class="form-label">Nombre completo</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="solicitudSignatureText"
+                      placeholder="Escribe tu nombre aqui"
+                      autocomplete="off"
+                    >
+                  </div>
+                  <div class="col-md-5">
+                    <label for="solicitudSignatureStyle" class="form-label">Estilo de firma</label>
+                    <select class="form-select" id="solicitudSignatureStyle">
+                      <option value="cursive">Cursiva</option>
+                      <option value="serif">Serif</option>
+                      <option value="sans-serif">Sans serif</option>
+                      <option value="monospace">Monospace</option>
+                    </select>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Vista previa</label>
+                    <div
+                      class="border rounded bg-white d-flex align-items-center justify-content-center"
+                      style="height: 170px; overflow: hidden;"
+                    >
+                      <canvas id="solicitudTextSignatureCanvas" style="max-width: 100%; max-height: 100%;"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="invalid-feedback d-block" id="solicitudFirmaError" style="display: none;">
+              La firma es obligatoria para procesar la solicitud.
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-perso" id="solicitudSubmitBtn" disabled>Enviar solicitud</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script>
+  (function() {
+    var modalElement = document.getElementById('solicitudModal');
+    var statusElement = document.getElementById('solicitudModalStatus');
+    var equipoInfoElement = document.getElementById('solicitudEquipoInfo');
+    var equipoIdInput = document.getElementById('solicitudEquipoId');
+    var fechaInicioInput = document.getElementById('solicitudFechaInicio');
+    var fechaFinInput = document.getElementById('solicitudFechaFin');
+    var horariosContainer = document.getElementById('solicitudHorariosContainer');
+    var horarioError = document.getElementById('solicitudHorarioError');
+    var submitButton = document.getElementById('solicitudSubmitBtn');
+    var form = document.getElementById('solicitudForm');
+    var categoriaInput = document.getElementById('solicitudCategoria');
+    var justificacionInput = document.getElementById('solicitudJustificacion');
+    var aceptarReglamentoInput = document.getElementById('solicitudAceptarReglamento');
+    var firmaError = document.getElementById('solicitudFirmaError');
+    var drawTab = document.getElementById('solicitud-draw-tab');
+    var typeTab = document.getElementById('solicitud-type-tab');
+    var signatureTextInput = document.getElementById('solicitudSignatureText');
+    var signatureStyleInput = document.getElementById('solicitudSignatureStyle');
+    var textSignatureCanvas = document.getElementById('solicitudTextSignatureCanvas');
+    var clearSignatureButton = document.getElementById('btnLimpiarFirmaSolicitud');
+    var signaturePadSolicitud = null;
+    var resizeSignaturePadSolicitud = null;
+    var hasBoundSignaturePadResize = false;
+    var selectedScheduleKey = '';
+
+    if (!modalElement || !statusElement || !horariosContainer || !submitButton || !form) return;
+
+    var modal = new bootstrap.Modal(modalElement);
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function resetCanvas(canvas) {
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function initSignaturePadSolicitud() {
+      var canvas = document.getElementById('signature-pad-solicitud');
+      if (!canvas) return;
+
+      resizeSignaturePadSolicitud = function() {
+        if (!canvas.offsetWidth || !canvas.offsetHeight) {
+          return;
+        }
+
+        var ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        var context = canvas.getContext('2d');
+        context.scale(ratio, ratio);
+        if (signaturePadSolicitud) {
+          signaturePadSolicitud.clear();
+        }
+      };
+
+      if (!signaturePadSolicitud) {
+        signaturePadSolicitud = new SignaturePad(canvas, {
+          backgroundColor: 'rgb(255,255,255)',
+          penColor: 'rgb(0,0,0)'
+        });
+
+        canvas.addEventListener('mouseup', updateSubmitAvailability);
+        canvas.addEventListener('touchend', updateSubmitAvailability);
+      }
+
+      if (!hasBoundSignaturePadResize) {
+        window.addEventListener('resize', function() {
+          if (typeof resizeSignaturePadSolicitud === 'function') {
+            resizeSignaturePadSolicitud();
+          }
+        });
+        hasBoundSignaturePadResize = true;
+      }
+
+      resizeSignaturePadSolicitud();
+    }
+
+    function updateTypedSignaturePreview() {
+      if (!textSignatureCanvas || !signatureTextInput || !signatureStyleInput) return;
+
+      textSignatureCanvas.width = 640;
+      textSignatureCanvas.height = 170;
+      resetCanvas(textSignatureCanvas);
+
+      var ctx = textSignatureCanvas.getContext('2d');
+      var text = String(signatureTextInput.value || '').trim();
+      if (!text) {
+        updateSubmitAvailability();
+        return;
+      }
+
+      ctx.fillStyle = 'black';
+      ctx.font = '56px ' + signatureStyleInput.value;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, textSignatureCanvas.width / 2, textSignatureCanvas.height / 2);
+      updateSubmitAvailability();
+    }
+
+    function hideSignatureError() {
+      if (!firmaError) return;
+      firmaError.style.display = 'none';
+    }
+
+    function showSignatureError(message) {
+      if (!firmaError) return;
+      firmaError.textContent = message;
+      firmaError.style.display = 'block';
+    }
+
+    function getSignatureDataUrl() {
+      if (drawTab && drawTab.classList.contains('active')) {
+        if (!signaturePadSolicitud || signaturePadSolicitud.isEmpty()) {
+          return null;
+        }
+        return signaturePadSolicitud.toDataURL('image/png');
+      }
+
+      if (typeTab && typeTab.classList.contains('active')) {
+        if (!signatureTextInput || !String(signatureTextInput.value || '').trim()) {
+          return null;
+        }
+        return textSignatureCanvas ? textSignatureCanvas.toDataURL('image/png') : null;
+      }
+
+      return null;
+    }
+
+    function resetSignatureInputs() {
+      hideSignatureError();
+      if (signaturePadSolicitud) {
+        signaturePadSolicitud.clear();
+      }
+      if (signatureTextInput) {
+        signatureTextInput.value = '';
+      }
+      if (signatureStyleInput) {
+        signatureStyleInput.value = 'cursive';
+      }
+      if (textSignatureCanvas) {
+        textSignatureCanvas.width = 640;
+        textSignatureCanvas.height = 170;
+        resetCanvas(textSignatureCanvas);
+      }
+    }
+
+    function updateSubmitAvailability() {
+      var hasSchedule = Boolean(selectedScheduleKey);
+      var hasCategoria = Boolean(categoriaInput && categoriaInput.value);
+      var hasJustificacion = Boolean(justificacionInput && justificacionInput.value.trim().length >= 10);
+      var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
+      var hasFirma = Boolean(getSignatureDataUrl());
+      submitButton.disabled = !(hasSchedule && hasCategoria && hasJustificacion && hasReglamento && hasFirma);
+    }
+
+    function clearScheduleSelection() {
+      selectedScheduleKey = '';
+      if (fechaInicioInput) fechaInicioInput.value = '';
+      if (fechaFinInput) fechaFinInput.value = '';
+      if (horarioError) horarioError.style.display = 'none';
+      horariosContainer.querySelectorAll('.js-schedule-option').forEach(function(button) {
+        button.classList.remove('active');
+      });
+      updateSubmitAvailability();
+    }
+
+    function renderScheduleOptions(horarios) {
+      if (!Array.isArray(horarios) || !horarios.length) {
+        horariosContainer.innerHTML = '<div class="alert alert-warning mb-0">No hay horarios disponibles para este equipo.</div>';
+        return;
+      }
+
+      horariosContainer.innerHTML = '';
+
+      horarios.forEach(function(slot) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-sm js-schedule-option text-start ' + (slot.disponible ? 'btn-outline-success' : 'btn-outline-secondary');
+        button.setAttribute('data-fecha', slot.fecha);
+        button.setAttribute('data-inicio', slot.horaInicio);
+        button.setAttribute('data-fin', slot.horaFin);
+        button.innerHTML =
+          '<div><strong>' + escapeHtml(slot.fecha) + '</strong></div>' +
+          '<div>' + escapeHtml(slot.horaInicio) + ' - ' + escapeHtml(slot.horaFin) + (slot.disponible ? '' : ' (ocupado: se enviará a cola)') + '</div>';
+
+        button.addEventListener('click', function() {
+          clearScheduleSelection();
+          button.classList.add('active');
+          selectedScheduleKey = [slot.fecha, slot.horaInicio, slot.horaFin].join('|');
+          fechaInicioInput.value = slot.fecha + 'T' + slot.horaInicio;
+          fechaFinInput.value = slot.fecha + 'T' + slot.horaFin;
+          if (statusElement) {
+            if (slot.disponible) {
+              statusElement.className = 'alert alert-secondary';
+              statusElement.textContent = 'Horario disponible seleccionado.';
+            } else {
+              statusElement.className = 'alert alert-warning';
+              statusElement.textContent = 'Horario ocupado seleccionado: la solicitud se registrará en cola de espera.';
+            }
+          }
+          updateSubmitAvailability();
+        });
+
+        horariosContainer.appendChild(button);
+      });
+    }
+
+    async function openRequestModal(equipmentId, equipmentName, equipmentCode) {
+      clearScheduleSelection();
+      form.classList.remove('was-validated');
+      categoriaInput.value = '';
+      justificacionInput.value = '';
+      if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
+      resetSignatureInputs();
+      equipoIdInput.value = equipmentId;
+      equipoInfoElement.textContent = (equipmentCode ? equipmentCode + ' - ' : '') + equipmentName;
+      submitButton.disabled = true;
+      statusElement.className = 'alert alert-info';
+      statusElement.textContent = 'Cargando horarios del equipo...';
+      horariosContainer.innerHTML = '';
+      modal.show();
+
+      try {
+        var response = await fetch('/milab/prestamos/api/equipos/' + encodeURIComponent(equipmentId) + '/disponibilidad');
+        var data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'No fue posible consultar la disponibilidad.');
+        }
+
+        statusElement.className = 'alert alert-secondary';
+        statusElement.textContent = data.disponibilidad && data.disponibilidad.mensaje
+          ? data.disponibilidad.mensaje
+          : 'Selecciona uno de los horarios disponibles.';
+        renderScheduleOptions(data.disponibilidad && data.disponibilidad.horariosDisponibles ? data.disponibilidad.horariosDisponibles : []);
+      } catch (error) {
+        statusElement.className = 'alert alert-danger';
+        statusElement.textContent = error.message || 'No fue posible cargar la disponibilidad del equipo.';
+        horariosContainer.innerHTML = '';
+      }
+    }
+
+    document.addEventListener('click', function(event) {
+      var button = event.target.closest('.js-open-request-modal');
+      if (!button) return;
+
+      event.preventDefault();
+      openRequestModal(
+        button.getAttribute('data-equipo-id'),
+        button.getAttribute('data-equipo-nombre'),
+        button.getAttribute('data-equipo-codigo')
+      );
+    });
+
+    if (categoriaInput) categoriaInput.addEventListener('change', updateSubmitAvailability);
+    if (justificacionInput) justificacionInput.addEventListener('input', updateSubmitAvailability);
+    if (aceptarReglamentoInput) aceptarReglamentoInput.addEventListener('change', updateSubmitAvailability);
+    if (signatureTextInput) signatureTextInput.addEventListener('input', updateTypedSignaturePreview);
+    if (signatureStyleInput) signatureStyleInput.addEventListener('change', updateTypedSignaturePreview);
+    if (drawTab) {
+      drawTab.addEventListener('shown.bs.tab', function() {
+        initSignaturePadSolicitud();
+        updateSubmitAvailability();
+      });
+    }
+    if (typeTab) {
+      typeTab.addEventListener('shown.bs.tab', function() {
+        updateTypedSignaturePreview();
+        updateSubmitAvailability();
+        if (signatureTextInput) {
+          window.requestAnimationFrame(function() {
+            signatureTextInput.focus();
+          });
+        }
+      });
+    }
+    if (clearSignatureButton) {
+      clearSignatureButton.addEventListener('click', function() {
+        if (signaturePadSolicitud) {
+          signaturePadSolicitud.clear();
+        }
+        hideSignatureError();
+        updateSubmitAvailability();
+      });
+    }
+
+    submitButton.addEventListener('click', async function() {
+      if (!form.checkValidity() || !selectedScheduleKey) {
+        form.classList.add('was-validated');
+        if (!selectedScheduleKey && horarioError) {
+          horarioError.style.display = 'block';
+        }
+        return;
+      }
+
+      var signatureDataUrl = getSignatureDataUrl();
+      if (!signatureDataUrl) {
+        showSignatureError('La firma es obligatoria para procesar la solicitud.');
+        return;
+      }
+
+      hideSignatureError();
+      submitButton.disabled = true;
+      submitButton.textContent = 'Enviando...';
+
+      try {
+        var response = await fetch('/milab/prestamos/solicitudes/crear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            equipoId: equipoIdInput.value,
+            fechaInicio: fechaInicioInput.value,
+            fechaFin: fechaFinInput.value,
+            categoria_practica: categoriaInput.value,
+            justificacion: justificacionInput.value,
+            firma_digital: signatureDataUrl,
+          }),
+        });
+
+        var data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'No fue posible registrar la solicitud.');
+        }
+
+        window.location.href = '/milab/prestamos/mis-solicitudes?success=' + encodeURIComponent('Solicitud creada correctamente');
+      } catch (error) {
+        statusElement.className = 'alert alert-danger';
+        statusElement.textContent = error.message || 'No fue posible registrar la solicitud.';
+        submitButton.disabled = false;
+        submitButton.textContent = 'Enviar solicitud';
+      }
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', function() {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Enviar solicitud';
+      clearScheduleSelection();
+      if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
+      resetSignatureInputs();
+      form.classList.remove('was-validated');
+    });
+
+    modalElement.addEventListener('shown.bs.modal', function() {
+      initSignaturePadSolicitud();
+      updateTypedSignaturePreview();
+    });
+
+    updateTypedSignaturePreview();
+    updateSubmitAvailability();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

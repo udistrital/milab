@@ -1,0 +1,146 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Solicitud de prestamos</h1>
+    <p class="app-page-subtitle">Selecciona la facultad y el laboratorio para consultar los equipos disponibles para prestamo.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (sancionesActivas > 0) { %>
+    <div class="alert alert-warning" role="alert">
+      Tienes <strong><%= sancionesActivas %></strong> sancion(es) activa(s). El sistema te permitira consultar equipos, pero no podras crear solicitudes hasta resolverlas.
+    </div>
+  <% } %>
+
+  <section class="card app-form-panel text-light mx-auto col-lg-8">
+    <div class="card-body">
+      <form id="solicitudBusquedaForm" action="/milab/prestamos/solicitar/consultar" method="get" class="row g-3" novalidate>
+        <div class="col-md-6">
+          <label for="facultad" class="form-label">Facultad *</label>
+          <select class="form-select" id="facultad" name="facultad" required>
+            <option value="">Cargando facultades...</option>
+          </select>
+          <div class="invalid-feedback">Selecciona una facultad valida.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="laboratorio" class="form-label">Laboratorio *</label>
+          <select class="form-select" id="laboratorio" name="laboratorio" required disabled>
+            <option value="">Selecciona primero una facultad...</option>
+          </select>
+          <div class="invalid-feedback">Selecciona un laboratorio valido.</div>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/inicio">Cancelar</a>
+          <button class="btn btn-perso" id="consultarBtn" type="submit" disabled>Consultar equipos</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+  (function() {
+    var form = document.getElementById('solicitudBusquedaForm');
+    var facultadSelect = document.getElementById('facultad');
+    var laboratorioSelect = document.getElementById('laboratorio');
+    var consultarBtn = document.getElementById('consultarBtn');
+
+    if (!form || !facultadSelect || !laboratorioSelect || !consultarBtn) return;
+
+    function syncState() {
+      var hasFacultad = Boolean(facultadSelect.value);
+      var hasLaboratorio = Boolean(laboratorioSelect.value);
+      laboratorioSelect.disabled = !hasFacultad;
+      consultarBtn.disabled = !(hasFacultad && hasLaboratorio);
+    }
+
+    async function loadFacultades() {
+      try {
+        var response = await fetch('/milab/prestamos/api/facultades');
+        var data = await response.json();
+
+        facultadSelect.innerHTML = '<option value="">Selecciona una facultad...</option>';
+
+        if (!data.success || !Array.isArray(data.facultades)) {
+          facultadSelect.innerHTML = '<option value="">No fue posible cargar facultades</option>';
+          return;
+        }
+
+        data.facultades.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item.facultad;
+          option.textContent = item.facultad;
+          facultadSelect.appendChild(option);
+        });
+      } catch (error) {
+        facultadSelect.innerHTML = '<option value="">No fue posible cargar facultades</option>';
+      }
+
+      syncState();
+    }
+
+    async function loadLaboratorios(facultad) {
+      laboratorioSelect.innerHTML = '<option value="">Cargando laboratorios...</option>';
+      laboratorioSelect.disabled = true;
+
+      try {
+        var response = await fetch('/milab/prestamos/api/laboratorios/' + encodeURIComponent(facultad));
+        var data = await response.json();
+
+        laboratorioSelect.innerHTML = '<option value="">Selecciona un laboratorio...</option>';
+
+        if (!data.success || !Array.isArray(data.laboratorios) || !data.laboratorios.length) {
+          laboratorioSelect.innerHTML = '<option value="">No hay laboratorios disponibles</option>';
+          syncState();
+          return;
+        }
+
+        data.laboratorios.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item.laboratorio;
+          option.textContent = item.laboratorio;
+          laboratorioSelect.appendChild(option);
+        });
+      } catch (error) {
+        laboratorioSelect.innerHTML = '<option value="">No fue posible cargar laboratorios</option>';
+      }
+
+      syncState();
+    }
+
+    facultadSelect.addEventListener('change', function() {
+      laboratorioSelect.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
+      laboratorioSelect.value = '';
+
+      if (facultadSelect.value) {
+        loadLaboratorios(facultadSelect.value);
+      } else {
+        syncState();
+      }
+    });
+
+    laboratorioSelect.addEventListener('change', syncState);
+
+    form.addEventListener('submit', function(event) {
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+        form.classList.add('was-validated');
+      }
+    });
+
+    loadFacultades();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

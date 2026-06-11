@@ -1,0 +1,421 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Firma del coordinador</h1>
+    <p class="app-page-subtitle">Actualiza la firma que se usa en los comprobantes y reglamentos institucionales del modulo de prestamos.</p>
+  </section>
+
+  <div id="firmaCoordinatorAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-xxl-10">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-1">Firma institucional</h5>
+        <div class="small text-light-emphasis">
+          <%= coordinator?.nombre || 'Coordinador' %>
+          <% if (coordinator?.facultad) { %>
+            · <%= coordinator.facultad %>
+          <% } %>
+        </div>
+      </div>
+      <a class="btn btn-outline-light" href="/milab/inicio">Volver</a>
+    </div>
+
+    <div class="card-body">
+      <div class="row g-4">
+        <div class="col-lg-5">
+          <h6 class="mb-3">Firma actual</h6>
+          <% if (firmaActual) { %>
+            <div class="border rounded bg-white p-3 text-center">
+              <img
+                src="<%= firmaActual %>"
+                alt="Firma actual del coordinador"
+                class="img-fluid"
+                style="max-height: 220px;"
+              >
+            </div>
+            <% if (fechaFirma) { %>
+              <p class="small text-light-emphasis mt-2 mb-0">Ultima actualizacion: <%= fechaFirma %></p>
+            <% } %>
+          <% } else { %>
+            <div class="alert alert-secondary mb-0">Aun no hay una firma registrada para este coordinador.</div>
+          <% } %>
+        </div>
+
+        <div class="col-lg-7">
+          <h6 class="mb-3">Nueva firma</h6>
+
+          <ul class="nav nav-tabs mb-3" id="firmaCoordinatorTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link active"
+                id="firma-draw-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#firma-draw-pane"
+                type="button"
+                role="tab"
+                aria-controls="firma-draw-pane"
+                aria-selected="true"
+              >
+                Dibujar
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="firma-type-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#firma-type-pane"
+                type="button"
+                role="tab"
+                aria-controls="firma-type-pane"
+                aria-selected="false"
+              >
+                Escribir
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="firma-upload-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#firma-upload-pane"
+                type="button"
+                role="tab"
+                aria-controls="firma-upload-pane"
+                aria-selected="false"
+              >
+                Subir imagen
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content" id="firmaCoordinatorTabContent">
+            <div class="tab-pane fade show active" id="firma-draw-pane" role="tabpanel" aria-labelledby="firma-draw-tab">
+              <div class="border rounded bg-white">
+                <canvas id="signature-pad-coordinador" class="w-100" style="height: 170px; touch-action: none;"></canvas>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <small class="text-light-emphasis">Firma con el cursor, lapiz o dedo.</small>
+                <button type="button" class="btn btn-sm btn-outline-light" id="btnLimpiarFirma">Limpiar</button>
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="firma-type-pane" role="tabpanel" aria-labelledby="firma-type-tab">
+              <div class="row g-3">
+                <div class="col-md-7">
+                  <label for="textoFirma" class="form-label">Texto de la firma</label>
+                  <input type="text" class="form-control" id="textoFirma" placeholder="Escriba su nombre aqui">
+                </div>
+                <div class="col-md-5">
+                  <label for="estiloFirma" class="form-label">Estilo</label>
+                  <select class="form-select" id="estiloFirma">
+                    <option value="cursive">Cursiva</option>
+                    <option value="serif">Serif</option>
+                    <option value="sans-serif">Sans serif</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Vista previa</label>
+                  <div class="border rounded bg-white d-flex align-items-center justify-content-center" style="height: 170px; overflow: hidden;">
+                    <canvas id="text-signature-canvas" style="max-width: 100%; max-height: 100%;"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="firma-upload-pane" role="tabpanel" aria-labelledby="firma-upload-tab">
+              <div class="mb-3">
+                <label for="firmaArchivoInput" class="form-label">Imagen de firma</label>
+                <input type="file" class="form-control" id="firmaArchivoInput" accept="image/*">
+                <div class="form-text text-light-emphasis">Se ajusta automaticamente al recuadro de la firma.</div>
+              </div>
+              <label class="form-label">Vista previa</label>
+              <div class="border rounded bg-white d-flex align-items-center justify-content-center" style="height: 170px; overflow: hidden;">
+                <canvas id="upload-signature-canvas" style="max-width: 100%; max-height: 100%;"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="invalid-feedback d-block d-none mt-3" id="signatureError">
+            Debe registrar una firma antes de guardar.
+          </div>
+
+          <div class="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline-secondary" id="btnCancelarFirma">Limpiar todo</button>
+            <button type="button" class="btn btn-perso" id="btnGuardarFirma">Guardar firma</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script>
+  const signatureRoute = '<%= signatureRoute %>';
+  let signaturePadCoordinador = null;
+  let textCanvas = null;
+  let uploadCanvas = null;
+  let uploadDataUrl = null;
+
+  function resetCanvas(canvas) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function initSignaturePadCoordinador() {
+    const canvas = document.getElementById('signature-pad-coordinador');
+    if (!canvas) return;
+
+    function resizeCanvas() {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      canvas.width = canvas.offsetWidth * ratio;
+      canvas.height = canvas.offsetHeight * ratio;
+      const context = canvas.getContext('2d');
+      context.scale(ratio, ratio);
+      if (signaturePadCoordinador) {
+        signaturePadCoordinador.clear();
+      }
+    }
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    signaturePadCoordinador = new SignaturePad(canvas, {
+      backgroundColor: 'rgb(255,255,255)',
+      penColor: 'rgb(0,0,0)'
+    });
+  }
+
+  function initTextSignature() {
+    textCanvas = document.getElementById('text-signature-canvas');
+    const input = document.getElementById('textoFirma');
+    const select = document.getElementById('estiloFirma');
+    if (!textCanvas || !input || !select) return;
+
+    textCanvas.width = 640;
+    textCanvas.height = 170;
+
+    function updateTextSignature() {
+      resetCanvas(textCanvas);
+      const ctx = textCanvas.getContext('2d');
+      const text = String(input.value || '').trim();
+      if (!text) return;
+
+      ctx.fillStyle = 'black';
+      ctx.font = '56px ' + select.value;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, textCanvas.width / 2, textCanvas.height / 2);
+    }
+
+    input.addEventListener('input', updateTextSignature);
+    select.addEventListener('change', updateTextSignature);
+    resetCanvas(textCanvas);
+  }
+
+  function initUploadSignature() {
+    uploadCanvas = document.getElementById('upload-signature-canvas');
+    const input = document.getElementById('firmaArchivoInput');
+    if (!uploadCanvas || !input) return;
+
+    uploadCanvas.width = 640;
+    uploadCanvas.height = 170;
+    resetCanvas(uploadCanvas);
+
+    input.addEventListener('change', async function () {
+      uploadDataUrl = null;
+      resetCanvas(uploadCanvas);
+      hideSignatureError();
+
+      const file = input.files && input.files[0] ? input.files[0] : null;
+      if (!file) return;
+
+      if (!String(file.type || '').startsWith('image/')) {
+        showSignatureError('El archivo seleccionado no es una imagen.');
+        return;
+      }
+
+      const dataUrl = await new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () {
+          resolve(String(reader.result || ''));
+        };
+        reader.onerror = function () {
+          reject(new Error('No se pudo leer la imagen.'));
+        };
+        reader.readAsDataURL(file);
+      });
+
+      const img = new Image();
+      img.onload = function () {
+        const ctx = uploadCanvas.getContext('2d');
+        resetCanvas(uploadCanvas);
+        const scale = Math.min(uploadCanvas.width / img.width, uploadCanvas.height / img.height);
+        const drawW = Math.floor(img.width * scale);
+        const drawH = Math.floor(img.height * scale);
+        const x = Math.floor((uploadCanvas.width - drawW) / 2);
+        const y = Math.floor((uploadCanvas.height - drawH) / 2);
+        ctx.drawImage(img, x, y, drawW, drawH);
+        uploadDataUrl = uploadCanvas.toDataURL('image/png');
+      };
+      img.onerror = function () {
+        showSignatureError('No se pudo cargar la imagen seleccionada.');
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  function showSignatureError(message) {
+    const errorEl = document.getElementById('signatureError');
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.classList.remove('d-none');
+  }
+
+  function hideSignatureError() {
+    const errorEl = document.getElementById('signatureError');
+    if (!errorEl) return;
+    errorEl.classList.add('d-none');
+  }
+
+  function clearAllSignatureInputs() {
+    hideSignatureError();
+
+    if (signaturePadCoordinador) {
+      signaturePadCoordinador.clear();
+    }
+
+    const textInput = document.getElementById('textoFirma');
+    if (textInput) {
+      textInput.value = '';
+    }
+    if (textCanvas) {
+      resetCanvas(textCanvas);
+    }
+
+    const fileInput = document.getElementById('firmaArchivoInput');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    if (uploadCanvas) {
+      resetCanvas(uploadCanvas);
+    }
+    uploadDataUrl = null;
+  }
+
+  function getActiveSignatureDataUrl() {
+    const drawTab = document.getElementById('firma-draw-tab');
+    const typeTab = document.getElementById('firma-type-tab');
+    const uploadTab = document.getElementById('firma-upload-tab');
+
+    if (drawTab && drawTab.classList.contains('active')) {
+      if (!signaturePadCoordinador || signaturePadCoordinador.isEmpty()) {
+        return null;
+      }
+      return signaturePadCoordinador.toDataURL('image/png');
+    }
+
+    if (typeTab && typeTab.classList.contains('active')) {
+      const textInput = document.getElementById('textoFirma');
+      if (!textInput || !String(textInput.value || '').trim()) {
+        return null;
+      }
+      return textCanvas ? textCanvas.toDataURL('image/png') : null;
+    }
+
+    if (uploadTab && uploadTab.classList.contains('active')) {
+      return uploadDataUrl;
+    }
+
+    return null;
+  }
+
+  async function guardarFirma() {
+    const button = document.getElementById('btnGuardarFirma');
+    const dataUrl = getActiveSignatureDataUrl();
+
+    if (!dataUrl) {
+      showSignatureError('Debe registrar una firma valida antes de guardar.');
+      return;
+    }
+
+    hideSignatureError();
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Guardando...';
+    }
+
+    try {
+      const response = await fetch(signatureRoute, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ firma_digital: dataUrl })
+      });
+
+      const payload = await response.json().catch(function () {
+        return null;
+      });
+
+      if (!response.ok || !payload || !payload.success) {
+        showSignatureError(
+          payload && payload.message
+            ? payload.message
+            : 'No fue posible guardar la firma del coordinador.'
+        );
+        return;
+      }
+
+      window.location.href = signatureRoute + '?success=' + encodeURIComponent(payload.message);
+    } catch (error) {
+      showSignatureError('No fue posible guardar la firma del coordinador.');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Guardar firma';
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initSignaturePadCoordinador();
+    initTextSignature();
+    initUploadSignature();
+
+    const clearButton = document.getElementById('btnLimpiarFirma');
+    const resetButton = document.getElementById('btnCancelarFirma');
+    const saveButton = document.getElementById('btnGuardarFirma');
+
+    if (clearButton) {
+      clearButton.addEventListener('click', function () {
+        if (signaturePadCoordinador) {
+          signaturePadCoordinador.clear();
+        }
+        hideSignatureError();
+      });
+    }
+
+    if (resetButton) {
+      resetButton.addEventListener('click', clearAllSignatureInputs);
+    }
+
+    if (saveButton) {
+      saveButton.addEventListener('click', guardarFirma);
+    }
+  });
+</script>
+
+<%- include('../../../partials/footer'); -%>

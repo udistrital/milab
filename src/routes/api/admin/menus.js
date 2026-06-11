@@ -1,5 +1,9 @@
 const express = require('express');
 const pool = require('../../../libs/db');
+const {
+  listPrestamosFacultyAccess,
+  updatePrestamosFacultyAccess,
+} = require('../../../libs/prestamos-module-access');
 const { requireRoles } = require('../../middlewares/auth');
 
 const router = express.Router();
@@ -41,14 +45,45 @@ async function loadMenuData() {
   return { roles, menuItems, permissions };
 }
 
+function sanitizeText(value) {
+  return value === undefined || value === null ? '' : String(value).trim();
+}
+
+async function registerPrestamosAccessAudit(req, facultyName, role, permitido) {
+  const user = req.session?.user || {};
+  const actor = sanitizeText(user?.tipo) || 'admin';
+  const document = sanitizeText(user?.documento_real || user?.documento) || '0';
+  const normalizedRole = role === 'laboratorista' ? 'laboratorista' : 'coordinador';
+  const action = permitido
+    ? 'Habilitar Modulo Prestamos por Facultad'
+    : 'Bloquear Modulo Prestamos por Facultad';
+  const person = `${facultyName || 'Facultad'} - ${normalizedRole}`;
+
+  try {
+    await pool.query(
+      `
+        INSERT INTO log (nombre, documento, accion, persona)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [actor, document, action, person]
+    );
+  } catch (error) {
+    console.error('Error registrando auditoria de acceso a prestamos:', error);
+  }
+}
+
 router.get('/', requireAdmin, async (req, res) => {
   try {
-    const { roles, menuItems, permissions } = await loadMenuData();
+    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
+      loadMenuData(),
+      listPrestamosFacultyAccess(),
+    ]);
 
     return res.render('home/admin_menus', {
       roles,
       menuItems,
       permissions,
+      prestamosFacultyAccess,
       error: null,
       success: null,
     });
@@ -74,11 +109,15 @@ router.post('/', requireAdmin, async (req, res) => {
   } = req.body;
 
   if (!section || !label) {
-    const { roles, menuItems, permissions } = await loadMenuData();
+    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
+      loadMenuData(),
+      listPrestamosFacultyAccess(),
+    ]);
     return res.render('home/admin_menus', {
       roles,
       menuItems,
       permissions,
+      prestamosFacultyAccess,
       error: 'Seccion y etiqueta son obligatorias.',
       success: null,
     });
@@ -98,21 +137,29 @@ router.post('/', requireAdmin, async (req, res) => {
       [section, parentId, label, route || null, icon || null, orderIndex, isActive]
     );
 
-    const { roles, menuItems, permissions } = await loadMenuData();
+    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
+      loadMenuData(),
+      listPrestamosFacultyAccess(),
+    ]);
     return res.render('home/admin_menus', {
       roles,
       menuItems,
       permissions,
+      prestamosFacultyAccess,
       error: null,
       success: 'Menu creado o actualizado.',
     });
   } catch (error) {
     console.error('Error creando menu:', error);
-    const { roles, menuItems, permissions } = await loadMenuData();
+    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
+      loadMenuData(),
+      listPrestamosFacultyAccess(),
+    ]);
     return res.render('home/admin_menus', {
       roles,
       menuItems,
       permissions,
+      prestamosFacultyAccess,
       error: 'No fue posible crear el menu.',
       success: null,
     });
@@ -151,6 +198,59 @@ router.post('/permissions', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error actualizando permisos:', error);
     return res.status(500).json({ ok: false, message: 'No fue posible actualizar permisos.' });
+  }
+});
+
+router.post('/prestamos-access', requireAdmin, async (req, res) => {
+  const facultadId = Number(req.body?.facultad_id);
+  const role = sanitizeText(req.body?.role).toLowerCase();
+  const enabledRaw = req.body?.enabled;
+  const permitido =
+    enabledRaw === true || enabledRaw === 'true' || enabledRaw === 'on' || enabledRaw === 1;
+
+  if (!Number.isInteger(facultadId) || facultadId <= 0) {
+    return res.status(400).json({ ok: false, message: 'La facultad es invalida.' });
+  }
+
+  if (!['coordinador', 'laboratorista'].includes(role)) {
+    return res.status(400).json({ ok: false, message: 'El rol es invalido.' });
+  }
+
+  try {
+    const facultyResult = await pool.query(
+      `
+        SELECT nombre
+        FROM facultad
+        WHERE facultad_id = $1
+          AND activo = TRUE
+        LIMIT 1
+      `,
+      [facultadId]
+    );
+
+    const facultyName = facultyResult.rows[0]?.nombre;
+    if (!facultyName) {
+      return res.status(404).json({ ok: false, message: 'La facultad no existe.' });
+    }
+
+    await updatePrestamosFacultyAccess(
+      {
+        facultadId,
+        role,
+        permitido,
+      },
+      pool
+    );
+
+    await registerPrestamosAccessAudit(req, facultyName, role, permitido);
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Error actualizando acceso a prestamos por facultad:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar el acceso al modulo de prestamos.',
+    });
   }
 });
 

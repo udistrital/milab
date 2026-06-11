@@ -70,6 +70,58 @@
         </div>
       </div>
 
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Acceso a Prestamos por facultad</h2>
+          <p class="text-muted mb-3">
+            Si desactivas una facultad, el coordinador y sus laboratoristas ya no veran ni podran usar el modulo de Prestamos.
+          </p>
+          <div class="table-responsive admin-permissions-table">
+            <table class="table align-middle">
+              <thead>
+                <tr>
+                  <th>Facultad</th>
+                  <th class="text-center">Coordinador</th>
+                  <th class="text-center">Laboratorista</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!prestamosFacultyAccess || !prestamosFacultyAccess.length) { %>
+                  <tr>
+                    <td colspan="3" class="text-muted">No hay facultades disponibles.</td>
+                  </tr>
+                <% } %>
+                <% (prestamosFacultyAccess || []).forEach(function(item) { %>
+                  <tr>
+                    <td>
+                      <strong><%= item.nombre %></strong>
+                    </td>
+                    <td class="text-center">
+                      <input
+                        type="checkbox"
+                        class="form-check-input prestamos-access-toggle"
+                        data-facultad-id="<%= item.facultad_id %>"
+                        data-role="coordinador"
+                        <%= item.coordinador_permitido ? 'checked' : '' %>
+                      />
+                    </td>
+                    <td class="text-center">
+                      <input
+                        type="checkbox"
+                        class="form-check-input prestamos-access-toggle"
+                        data-facultad-id="<%= item.facultad_id %>"
+                        data-role="laboratorista"
+                        <%= item.laboratorista_permitido ? 'checked' : '' %>
+                      />
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <%
         const primaryItems = [];
         const accountItems = [];
@@ -302,6 +354,37 @@
         }
       } catch (error) {
         alert(error.message || 'Error al actualizar permisos.');
+        event.target.checked = !enabled;
+      }
+    });
+  });
+
+  document.querySelectorAll('.prestamos-access-toggle').forEach(function(checkbox) {
+    checkbox.addEventListener('change', async function(event) {
+      const facultadId = event.target.getAttribute('data-facultad-id');
+      const role = event.target.getAttribute('data-role');
+      const enabled = event.target.checked;
+
+      try {
+        const response = await fetch('/milab/api/admin/menus/prestamos-access', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('input[name="_csrf"]')?.value || '',
+          },
+          body: JSON.stringify({
+            facultad_id: facultadId,
+            role,
+            enabled,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.message || 'Error al actualizar acceso a prestamos.');
+        }
+      } catch (error) {
+        alert(error.message || 'Error al actualizar acceso a prestamos.');
         event.target.checked = !enabled;
       }
     });

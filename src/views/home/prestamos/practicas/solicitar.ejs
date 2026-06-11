@@ -1,0 +1,1200 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Solicitar practica</h1>
+    <p class="app-page-subtitle">Registra una reserva de practica indicando facultad, laboratorio, franja horaria y una sala disponible.</p>
+  </section>
+
+  <div id="practicaAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+
+    <% if (initialReservation && initialReservation.motivo_rechazo) { %>
+      <div class="alert alert-warning" role="alert">
+        <strong>Comentarios del laboratorista:</strong> <%= initialReservation.motivo_rechazo %>
+      </div>
+    <% } %>
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-xl-9">
+    <div class="card-body">
+      <form id="practicaForm" class="row g-3" novalidate>
+        <div class="col-md-6">
+          <label for="facultad" class="form-label">Facultad *</label>
+          <select class="form-select" id="facultad" required>
+            <option value="">Cargando facultades...</option>
+          </select>
+          <div class="invalid-feedback">Selecciona una facultad valida.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="laboratorio" class="form-label">Laboratorio *</label>
+          <select class="form-select" id="laboratorio" required disabled>
+            <option value="">Selecciona primero una facultad...</option>
+          </select>
+          <div class="invalid-feedback">Selecciona un laboratorio valido.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="fechaPractica" class="form-label">Fecha *</label>
+          <input type="date" class="form-control" id="fechaPractica" required disabled>
+          <div class="invalid-feedback">Selecciona una fecha valida para la practica.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="tipoPractica" class="form-label">Tipo de practica *</label>
+          <select class="form-select" id="tipoPractica" required>
+            <% if (isDocente) { %>
+              <option value="">Selecciona una opcion...</option>
+              <option value="libre">Libre</option>
+              <option value="docente">Docente</option>
+            <% } else { %>
+              <option value="libre" selected>Libre</option>
+            <% } %>
+          </select>
+          <div class="invalid-feedback">Selecciona el tipo de practica.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="categoriaPractica" class="form-label">Categoria *</label>
+          <select class="form-select" id="categoriaPractica" required>
+            <option value="">Selecciona una opcion...</option>
+            <option value="academica">Academica</option>
+            <option value="extension">Extension</option>
+            <option value="investigacion">Investigacion</option>
+            <option value="otra">Otra</option>
+          </select>
+          <div class="invalid-feedback">Selecciona la categoria de la practica.</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Horarios disponibles *</label>
+          <div class="form-text mb-2" id="salaInfoText">
+            Selecciona facultad, laboratorio, fecha y tipo de practica para consultar las salas con horas disponibles.
+          </div>
+          <div id="salasContainer" class="d-none">
+            <div id="listaSalas" class="d-grid gap-3"></div>
+          </div>
+          <div class="invalid-feedback d-block" id="salaSeleccionError" style="display: none;">
+            Debes seleccionar una sala y una hora valida para la practica.
+          </div>
+        </div>
+
+        <input type="hidden" id="fechaInicio">
+        <input type="hidden" id="fechaFin">
+        <input type="hidden" id="salaId">
+        <input type="hidden" id="modalidadLibre">
+        <input type="hidden" id="reservaId" value="<%= initialReservation ? initialReservation.id : '' %>">
+
+        <div class="col-12">
+          <label for="justificacion" class="form-label">Justificacion *</label>
+          <textarea
+            class="form-control"
+            id="justificacion"
+            rows="4"
+            minlength="10"
+            required
+            placeholder="Describe el objetivo de la practica."
+          ></textarea>
+          <div class="invalid-feedback">La justificacion es obligatoria y debe tener al menos 10 caracteres.</div>
+        </div>
+
+        <div class="col-12">
+          <label for="formatoArchivo" class="form-label">Formato institucional</label>
+          <div class="input-group">
+            <select class="form-select" id="formatoArchivo">
+              <option value="">No diligenciar formato fisico</option>
+              <option value="GL-PR-001-FR-001.pdf">GL-PR-001-FR-001.pdf</option>
+              <option value="GL-PR-001-FR-002.pdf">GL-PR-001-FR-002.pdf</option>
+              <option value="GL-PR-001-FR-004.pdf">GL-PR-001-FR-004.pdf</option>
+              <option value="GL-PR-001-FR-006.pdf">GL-PR-001-FR-006.pdf</option>
+              <option value="GL-PR-001-FR-012.pdf">GL-PR-001-FR-012.pdf</option>
+            </select>
+            <button type="button" class="btn btn-outline-primary" id="btnDiligenciarFormatoPdf">
+              Diligenciar
+            </button>
+          </div>
+          <div class="form-text" id="formatoArchivoInfo">
+            Si seleccionas un formato, el reglamento PDF de la reserva usara la plantilla institucional del legacy.
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="alert alert-warning mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="aceptoReglamento" required>
+              <label class="form-check-label" for="aceptoReglamento">
+                He leido y acepto los terminos del reglamento para la practica.
+              </label>
+              <div class="invalid-feedback">Debes aceptar el reglamento para continuar.</div>
+            </div>
+          </div>
+
+          <label class="form-label fw-semibold">Firma de aceptacion *</label>
+
+          <ul class="nav nav-tabs mb-3" id="practicaSignatureTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link active"
+                id="practica-draw-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#practica-draw-pane"
+                type="button"
+                role="tab"
+                aria-controls="practica-draw-pane"
+                aria-selected="true"
+              >
+                Dibujar
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="practica-type-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#practica-type-pane"
+                type="button"
+                role="tab"
+                aria-controls="practica-type-pane"
+                aria-selected="false"
+              >
+                Escribir
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content">
+            <div
+              class="tab-pane fade show active"
+              id="practica-draw-pane"
+              role="tabpanel"
+              aria-labelledby="practica-draw-tab"
+            >
+              <div class="border rounded bg-white">
+                <canvas
+                  id="practica-signature-pad"
+                  class="w-100"
+                  style="height: 180px; touch-action: none;"
+                ></canvas>
+              </div>
+              <div class="d-flex justify-content-between mt-2">
+                <small class="text-muted">Firma con el cursor, lapiz o dedo.</small>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnLimpiarFirmaPractica">
+                  Limpiar dibujo
+                </button>
+              </div>
+            </div>
+
+            <div
+              class="tab-pane fade"
+              id="practica-type-pane"
+              role="tabpanel"
+              aria-labelledby="practica-type-tab"
+            >
+              <div class="row g-3">
+                <div class="col-md-7">
+                  <label for="practicaSignatureText" class="form-label">Nombre completo</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="practicaSignatureText"
+                    placeholder="Escribe tu nombre aqui"
+                    autocomplete="off"
+                  >
+                </div>
+                <div class="col-md-5">
+                  <label for="practicaSignatureStyle" class="form-label">Estilo de firma</label>
+                  <select class="form-select" id="practicaSignatureStyle">
+                    <option value="cursive">Cursiva</option>
+                    <option value="serif">Serif</option>
+                    <option value="sans-serif">Sans serif</option>
+                    <option value="monospace">Monospace</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Vista previa</label>
+                  <div
+                    class="border rounded bg-white d-flex align-items-center justify-content-center"
+                    style="height: 170px; overflow: hidden;"
+                  >
+                    <canvas id="practicaTextSignatureCanvas" style="max-width: 100%; max-height: 100%;"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="invalid-feedback d-block" id="practicaFirmaError" style="display: none;">
+            La firma es obligatoria para procesar la practica.
+          </div>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/inicio">Cancelar</a>
+          <button class="btn btn-perso" id="practicaSubmitBtn" type="submit">Registrar practica</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="modalFormatoPdf" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Diligenciar formato PDF</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label" for="pdf_fecha">Fecha</label>
+            <input type="text" class="form-control" id="pdf_fecha">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="pdf_cod_equipo">Codigo equipo</label>
+            <input type="text" class="form-control" id="pdf_cod_equipo">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="pdf_clase_equipo">Clase equipo</label>
+            <input type="text" class="form-control" id="pdf_clase_equipo">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pdf_nombre">Nombre</label>
+            <input type="text" class="form-control" id="pdf_nombre">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pdf_celular">Celular</label>
+            <input type="text" class="form-control" id="pdf_celular">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pdf_proyecto">Proyecto curricular</label>
+            <input type="text" class="form-control" id="pdf_proyecto">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="pdf_sede">Sede</label>
+            <select class="form-select" id="pdf_sede">
+              <option value="">Seleccione...</option>
+              <option value="Sabio">Sabio</option>
+              <option value="Central">Central</option>
+              <option value="Red">Red</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label" for="pdf_salon">Salon</label>
+            <input type="text" class="form-control" id="pdf_salon">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pdf_hora_salida">Hora salida</label>
+            <input type="text" class="form-control" id="pdf_hora_salida">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pdf_hora_entrega">Hora entrega</label>
+            <input type="text" class="form-control" id="pdf_hora_entrega">
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="pdf_observaciones">Observaciones</label>
+            <textarea class="form-control" id="pdf_observaciones" rows="3"></textarea>
+          </div>
+        </div>
+        <div id="pdfExtraFields"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="btnDescargarPdfDiligenciado">
+          Descargar PDF diligenciado
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script>
+  (function() {
+    var form = document.getElementById('practicaForm');
+    var alertsContainer = document.getElementById('practicaAlerts');
+    var facultadSelect = document.getElementById('facultad');
+    var laboratorioSelect = document.getElementById('laboratorio');
+    var salaIdInput = document.getElementById('salaId');
+    var fechaInput = document.getElementById('fechaPractica');
+    var fechaInicioInput = document.getElementById('fechaInicio');
+    var fechaFinInput = document.getElementById('fechaFin');
+    var modalidadLibreInput = document.getElementById('modalidadLibre');
+    var reservaIdInput = document.getElementById('reservaId');
+        var salaInfoText = document.getElementById('salaInfoText');
+    var salasContainer = document.getElementById('salasContainer');
+    var listaSalas = document.getElementById('listaSalas');
+    var salaSeleccionError = document.getElementById('salaSeleccionError');
+    var formatoArchivoSelect = document.getElementById('formatoArchivo');
+    var formatoArchivoInfo = document.getElementById('formatoArchivoInfo');
+    var btnDiligenciarFormatoPdf = document.getElementById('btnDiligenciarFormatoPdf');
+    var btnDescargarPdfDiligenciado = document.getElementById('btnDescargarPdfDiligenciado');
+    var modalFormatoPdfEl = document.getElementById('modalFormatoPdf');
+    var modalFormatoPdf = modalFormatoPdfEl && window.bootstrap && typeof window.bootstrap.Modal === 'function'
+      ? new window.bootstrap.Modal(modalFormatoPdfEl)
+      : null;
+    var pdfStaticRow = modalFormatoPdfEl ? modalFormatoPdfEl.querySelector('.row.g-3') : null;
+    var extraContainer = document.getElementById('pdfExtraFields');
+    var submitButton = document.getElementById('practicaSubmitBtn');
+    var aceptarReglamentoInput = document.getElementById('aceptoReglamento');
+    var firmaError = document.getElementById('practicaFirmaError');
+    var drawTab = document.getElementById('practica-draw-tab');
+    var typeTab = document.getElementById('practica-type-tab');
+    var signatureTextInput = document.getElementById('practicaSignatureText');
+    var signatureStyleInput = document.getElementById('practicaSignatureStyle');
+    var textSignatureCanvas = document.getElementById('practicaTextSignatureCanvas');
+    var clearSignatureButton = document.getElementById('btnLimpiarFirmaPractica');
+    var signaturePadPractica = null;
+    var resizeSignaturePadPractica = null;
+    var hasBoundSignaturePadResize = false;
+    var initialReservation = <%- JSON.stringify(initialReservation || null) %>;
+    var isEditMode = Boolean(initialReservation && initialReservation.id);
+
+    if (!form || !alertsContainer || !facultadSelect || !laboratorioSelect || !salaIdInput || !fechaInput || !salaInfoText || !submitButton) return;
+
+    if (isEditMode) {
+      facultadSelect.disabled = true;
+      laboratorioSelect.disabled = true;
+      fechaInput.disabled = true;
+      var tipoPracticaSelect = document.getElementById('tipoPractica');
+      if (tipoPracticaSelect) {
+        tipoPracticaSelect.disabled = true;
+        tipoPracticaSelect.value = 'docente';
+      }
+      salaInfoText.textContent = 'Modo correccion: actualiza el formato y reenvía la practica para aprobacion.';
+      if (salasContainer) salasContainer.classList.add('d-none');
+    }
+
+    function collectDataKeys(root) {
+      var out = {};
+      if (!root) return out;
+      root.querySelectorAll('[data-key]').forEach(function(el) {
+        var key = el.getAttribute('data-key');
+        var value = el.value || '';
+        if (Object.prototype.hasOwnProperty.call(out, key)) {
+          if (Array.isArray(out[key])) {
+            out[key].push(value);
+          } else {
+            out[key] = [out[key], value];
+          }
+        } else {
+          out[key] = value;
+        }
+      });
+      return out;
+    }
+
+    function buildFormatFields(file) {
+      if (!extraContainer || !pdfStaticRow) return;
+
+      var map = {
+        'GL-PR-001-FR-012.pdf': null,
+        'GL-PR-001-FR-002.pdf': [
+          { key: 'nombre_practica', label: 'Nombre de la practica', col: 12 },
+          { key: 'asignatura', label: 'Asignatura', col: 6 },
+          { key: 'docente', label: 'Docente', col: 6 },
+          { key: 'monitor', label: 'Monitor', col: 6 },
+          { key: 'numero_grupos', label: 'N. de grupos', col: 6 },
+          { key: 'fecha_solicitud', label: 'Fecha de solicitud', col: 6 },
+          { key: 'hora_solicitud', label: 'Hora de solicitud', col: 6 },
+          { key: 'fecha_practica', label: 'Fecha de practica', col: 6 },
+          { key: 'hora_practica', label: 'Hora de practica', col: 6 },
+          { key: 'observaciones', label: 'Observaciones', col: 12, textarea: true }
+        ],
+        'GL-PR-001-FR-001.pdf': [
+          { key: 'tipo_practica_text', label: 'Tipo de practica', col: 12 },
+          { key: 'nombre', label: 'Nombre', col: 6 },
+          { key: 'codigo', label: 'Codigo/Cedula', col: 6 },
+          { key: 'titulo_practica', label: 'Titulo de la practica', col: 8 },
+          { key: 'codigo_grupo', label: 'Codigo de grupo', col: 4 },
+          { key: 'dia', label: 'Dia (DD)', col: 2 },
+          { key: 'mes', label: 'Mes (MM)', col: 2 },
+          { key: 'ano', label: 'Ano (AAAA)', col: 2 },
+          { key: 'hora_solicitud', label: 'Hora solicitud', col: 6 },
+          { key: 'dependencia', label: 'Dependencia/Lugar', col: 6 },
+          { key: 'consecutivo', label: 'Consecutivo', col: 6 },
+          { key: 'observaciones', label: 'Observaciones', col: 12, textarea: true },
+          { key: 'usuario', label: 'Usuario', col: 4 },
+          { key: 'docente', label: 'Docente', col: 4 }
+        ],
+        'GL-PR-001-FR-006.pdf': [
+          { key: 'dependencia', label: 'Dependencia', col: 6 },
+          { key: 'fecha_solicitud', label: 'Fecha solicitud', col: 6 },
+          { key: 'consecutivo', label: 'Consecutivo', col: 6 },
+          { key: 'motivo', label: 'Motivo', col: 6 },
+          { key: 'destino', label: 'Destino de los equipos', col: 6 },
+          { key: 'lugar', label: 'Lugar donde reposaran', col: 12 },
+          { key: 'responsable_nombre', label: 'Responsable - Nombre', col: 6 },
+          { key: 'responsable_cedula', label: 'Responsable - Cedula', col: 6 },
+          { key: 'responsable_empresa', label: 'Empresa/Institucion', col: 6 },
+          { key: 'responsable_cargo', label: 'Cargo', col: 6 }
+        ],
+        'GL-PR-001-FR-004.pdf': [
+          { key: 'nombre_practica', label: 'Nombre de la practica', col: 12 },
+          { key: 'docente', label: 'Docente', col: 6 },
+          { key: 'asignatura', label: 'Asignatura', col: 6 },
+          { key: 'monitor', label: 'Monitor', col: 6 },
+          { key: 'fecha', label: 'Fecha', col: 6 }
+        ]
+      };
+
+      var fields = map[file] || null;
+      if (!fields) {
+        pdfStaticRow.classList.remove('d-none');
+        extraContainer.innerHTML = '';
+        return;
+      }
+
+      pdfStaticRow.classList.add('d-none');
+      var html = '<div class="row g-3 mt-1">';
+      fields.forEach(function(field) {
+        if (field.key === 'tipo_practica_text') {
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><select class="form-select" data-key="' + field.key + '"><option value="">Seleccione...</option><option value="Academico">Academico</option><option value="Investigacion">Investigacion</option><option value="Extension">Extension</option><option value="Servicios">Servicios</option><option value="Otros">Otros</option></select></div>';
+        } else if (field.key === 'motivo') {
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><select class="form-select" data-key="' + field.key + '"><option value="">Seleccione...</option><option value="practica">Practica academica</option><option value="mantenimiento">Mantenimiento</option><option value="investigacion">Investigacion</option><option value="prestamo">Prestamo</option><option value="garantia">Garantia</option><option value="otro">Otro</option></select></div>';
+        } else if (field.textarea) {
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><textarea class="form-control" data-key="' + field.key + '"></textarea></div>';
+        } else {
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><input type="text" class="form-control" data-key="' + field.key + '"></div>';
+        }
+      });
+      html += '</div>';
+
+      if (file === 'GL-PR-001-FR-002.pdf') {
+        html += '<div class="mt-3"><div class="d-flex justify-content-between align-items-center"><div class="fw-semibold">Materiales / Reactivos / Concentracion / Cantidad</div><button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddFilaFR002">Agregar fila</button></div><div class="mt-2" id="fr002Rows"></div></div>';
+      } else if (file === 'GL-PR-001-FR-001.pdf') {
+        html += '<div class="mt-3"><div class="d-flex justify-content-between align-items-center"><div class="fw-semibold">Cant / Descripcion / Interno / Entrega</div><button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddFilaFR001">Agregar fila</button></div><div class="mt-2" id="fr001Rows"></div></div>';
+      } else if (file === 'GL-PR-001-FR-004.pdf') {
+        html += '<div class="mt-3"><div class="d-flex justify-content-between align-items-center"><div class="fw-semibold">Descripcion y Grupos 1-15</div><button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddFilaFR004">Agregar fila</button></div><div class="mt-2" id="fr004Rows"></div></div>';
+      } else if (file === 'GL-PR-001-FR-006.pdf') {
+        html += '<div class="mt-3"><div class="d-flex justify-content-between align-items-center"><div class="fw-semibold">Elementos (Descripcion / Placa / F.Salida / F.Devol / Precio)</div><button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddFilaFR006Elem">Agregar fila</button></div><div class="mt-2" id="fr006ElemRows"></div></div><div class="mt-3"><div class="d-flex justify-content-between align-items-center"><div class="fw-semibold">Usuarios (Nombre / Codigo / Cedula / Celular)</div><button type="button" class="btn btn-outline-secondary btn-sm" id="btnAddFilaFR006Usr">Agregar fila</button></div><div class="mt-2" id="fr006UsrRows"></div></div>';
+      }
+
+      extraContainer.innerHTML = html;
+
+      if (file === 'GL-PR-001-FR-002.pdf') {
+        var fr002Rows = document.getElementById('fr002Rows');
+        var fr002Btn = document.getElementById('btnAddFilaFR002');
+        var addFr002Row = function() {
+          var count = fr002Rows ? fr002Rows.querySelectorAll('.fr002-row').length : 0;
+          if (!fr002Rows || count >= 20) return;
+          var row = document.createElement('div');
+          row.className = 'row g-2 align-items-end fr002-row';
+          row.innerHTML = '<div class="col-md-5"><label class="form-label">Materiales y equipos</label><input type="text" class="form-control" data-key="materiales"></div><div class="col-md-3"><label class="form-label">Reactivos</label><input type="text" class="form-control" data-key="reactivos"></div><div class="col-md-2"><label class="form-label">Concentracion</label><input type="text" class="form-control" data-key="concentracion"></div><div class="col-md-2"><label class="form-label">Cantidad</label><input type="text" class="form-control" data-key="cantidad"></div>';
+          fr002Rows.appendChild(row);
+        };
+        if (fr002Btn) fr002Btn.addEventListener('click', addFr002Row);
+        addFr002Row();
+      } else if (file === 'GL-PR-001-FR-001.pdf') {
+        var fr001Rows = document.getElementById('fr001Rows');
+        var fr001Btn = document.getElementById('btnAddFilaFR001');
+        var addFr001Row = function() {
+          var count = fr001Rows ? fr001Rows.querySelectorAll('.fr001-row').length : 0;
+          if (!fr001Rows || count >= 18) return;
+          var row = document.createElement('div');
+          row.className = 'row g-2 align-items-end fr001-row';
+          row.innerHTML = '<div class="col-md-2"><label class="form-label">Cant</label><input type="text" class="form-control" data-key="cant"></div><div class="col-md-6"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div><div class="col-md-2"><label class="form-label">Interno</label><input type="text" class="form-control" data-key="interno"></div><div class="col-md-2"><label class="form-label">Entrega</label><input type="text" class="form-control" data-key="entrega"></div>';
+          fr001Rows.appendChild(row);
+        };
+        if (fr001Btn) fr001Btn.addEventListener('click', addFr001Row);
+        addFr001Row();
+      } else if (file === 'GL-PR-001-FR-004.pdf') {
+        var fr004Rows = document.getElementById('fr004Rows');
+        var fr004Btn = document.getElementById('btnAddFilaFR004');
+        var addFr004Row = function() {
+          var count = fr004Rows ? fr004Rows.querySelectorAll('.fr004-row').length : 0;
+          if (!fr004Rows || count >= 21) return;
+          var row = document.createElement('div');
+          row.className = 'row g-2 align-items-end fr004-row';
+          var inner = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div>';
+          for (var i = 1; i <= 15; i += 1) {
+            inner += '<div class="col-md-1"><label class="form-label">G' + i + '</label><input type="text" class="form-control" data-key="g' + i + '"></div>';
+          }
+          row.innerHTML = inner;
+          fr004Rows.appendChild(row);
+        };
+        if (fr004Btn) fr004Btn.addEventListener('click', addFr004Row);
+        addFr004Row();
+      } else if (file === 'GL-PR-001-FR-006.pdf') {
+        var fr006ElemRows = document.getElementById('fr006ElemRows');
+        var fr006ElemBtn = document.getElementById('btnAddFilaFR006Elem');
+        var addFr006ElemRow = function() {
+          var count = fr006ElemRows ? fr006ElemRows.querySelectorAll('.fr006-elem-row').length : 0;
+          if (!fr006ElemRows || count >= 4) return;
+          var row = document.createElement('div');
+          row.className = 'row g-2 align-items-end fr006-elem-row';
+          row.innerHTML = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div><div class="col-md-2"><label class="form-label">Placa</label><input type="text" class="form-control" data-key="placa"></div><div class="col-md-2"><label class="form-label">F. Salida</label><input type="text" class="form-control" data-key="fSalida"></div><div class="col-md-2"><label class="form-label">F. Devol</label><input type="text" class="form-control" data-key="fDevol"></div><div class="col-md-2"><label class="form-label">Precio</label><input type="text" class="form-control" data-key="precio"></div>';
+          fr006ElemRows.appendChild(row);
+        };
+        if (fr006ElemBtn) fr006ElemBtn.addEventListener('click', addFr006ElemRow);
+        addFr006ElemRow();
+
+        var fr006UsrRows = document.getElementById('fr006UsrRows');
+        var fr006UsrBtn = document.getElementById('btnAddFilaFR006Usr');
+        var addFr006UsrRow = function() {
+          var count = fr006UsrRows ? fr006UsrRows.querySelectorAll('.fr006-usr-row').length : 0;
+          if (!fr006UsrRows || count >= 5) return;
+          var row = document.createElement('div');
+          row.className = 'row g-2 align-items-end fr006-usr-row';
+          row.innerHTML = '<div class="col-md-6"><label class="form-label">Nombre</label><input type="text" class="form-control" data-key="uNom"></div><div class="col-md-2"><label class="form-label">Codigo</label><input type="text" class="form-control" data-key="uCod"></div><div class="col-md-2"><label class="form-label">Cedula</label><input type="text" class="form-control" data-key="uCed"></div><div class="col-md-2"><label class="form-label">Celular</label><input type="text" class="form-control" data-key="uCel"></div>';
+          fr006UsrRows.appendChild(row);
+        };
+        if (fr006UsrBtn) fr006UsrBtn.addEventListener('click', addFr006UsrRow);
+        addFr006UsrRow();
+      }
+    }
+
+    function syncModalFields() {
+      if (!formatoArchivoSelect || !formatoArchivoSelect.value) return;
+      buildFormatFields(formatoArchivoSelect.value);
+    }
+
+    function getSelectedRoomName() {
+      var selectedButton = document.querySelector('.js-practica-horario.active');
+      var selectedCard = selectedButton ? selectedButton.closest('.card') : null;
+      var title = selectedCard ? selectedCard.querySelector('.card-title') : null;
+      return title ? title.textContent : '';
+    }
+
+    function buildInstitutionalFormatPayload() {
+      if (!formatoArchivoSelect || !formatoArchivoSelect.value) {
+        return null;
+      }
+
+      var payload = {
+        archivo: formatoArchivoSelect.value,
+        fecha: (document.getElementById('pdf_fecha') && document.getElementById('pdf_fecha').value) || fechaInicioInput.value.slice(0, 10),
+        cod_equipo: (document.getElementById('pdf_cod_equipo') && document.getElementById('pdf_cod_equipo').value) || '',
+        clase_equipo: (document.getElementById('pdf_clase_equipo') && document.getElementById('pdf_clase_equipo').value) || '',
+        nombre: (document.getElementById('pdf_nombre') && document.getElementById('pdf_nombre').value) || '',
+        celular: (document.getElementById('pdf_celular') && document.getElementById('pdf_celular').value) || '',
+        proyecto: (document.getElementById('pdf_proyecto') && document.getElementById('pdf_proyecto').value) || facultadSelect.value,
+        sede: (document.getElementById('pdf_sede') && document.getElementById('pdf_sede').value) || '',
+        salon: (document.getElementById('pdf_salon') && document.getElementById('pdf_salon').value) || getSelectedRoomName(),
+        hora_salida: (document.getElementById('pdf_hora_salida') && document.getElementById('pdf_hora_salida').value) || fechaInicioInput.value.slice(11, 16),
+        hora_entrega: (document.getElementById('pdf_hora_entrega') && document.getElementById('pdf_hora_entrega').value) || fechaFinInput.value.slice(11, 16),
+        observaciones: (document.getElementById('pdf_observaciones') && document.getElementById('pdf_observaciones').value) || document.getElementById('justificacion').value
+      };
+
+      Object.assign(payload, collectDataKeys(extraContainer));
+      return payload;
+    }
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    function resetCanvas(canvas) {
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function initSignaturePadPractica() {
+      var canvas = document.getElementById('practica-signature-pad');
+      if (!canvas) return;
+
+      resizeSignaturePadPractica = function() {
+        if (!canvas.offsetWidth || !canvas.offsetHeight) {
+          return;
+        }
+
+        var ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        var context = canvas.getContext('2d');
+        context.scale(ratio, ratio);
+        if (signaturePadPractica) {
+          signaturePadPractica.clear();
+        }
+      };
+
+      if (!signaturePadPractica) {
+        signaturePadPractica = new SignaturePad(canvas, {
+          backgroundColor: 'rgb(255,255,255)',
+          penColor: 'rgb(0,0,0)'
+        });
+
+        canvas.addEventListener('mouseup', updateSubmitAvailability);
+        canvas.addEventListener('touchend', updateSubmitAvailability);
+      }
+
+      if (!hasBoundSignaturePadResize) {
+        window.addEventListener('resize', function() {
+          if (typeof resizeSignaturePadPractica === 'function') {
+            resizeSignaturePadPractica();
+          }
+        });
+        hasBoundSignaturePadResize = true;
+      }
+
+      resizeSignaturePadPractica();
+    }
+
+    function updateTypedSignaturePreview() {
+      if (!textSignatureCanvas || !signatureTextInput || !signatureStyleInput) return;
+
+      textSignatureCanvas.width = 640;
+      textSignatureCanvas.height = 170;
+      resetCanvas(textSignatureCanvas);
+
+      var ctx = textSignatureCanvas.getContext('2d');
+      var text = String(signatureTextInput.value || '').trim();
+      if (!text) {
+        updateSubmitAvailability();
+        return;
+      }
+
+      ctx.fillStyle = 'black';
+      ctx.font = '56px ' + signatureStyleInput.value;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, textSignatureCanvas.width / 2, textSignatureCanvas.height / 2);
+      updateSubmitAvailability();
+    }
+
+    function hideSignatureError() {
+      if (!firmaError) return;
+      firmaError.style.display = 'none';
+    }
+
+    function showSignatureError(message) {
+      if (!firmaError) return;
+      firmaError.textContent = message;
+      firmaError.style.display = 'block';
+    }
+
+    function getSignatureDataUrl() {
+      if (drawTab && drawTab.classList.contains('active')) {
+        if (!signaturePadPractica || signaturePadPractica.isEmpty()) {
+          return null;
+        }
+        return signaturePadPractica.toDataURL('image/png');
+      }
+
+      if (typeTab && typeTab.classList.contains('active')) {
+        if (!signatureTextInput || !String(signatureTextInput.value || '').trim()) {
+          return null;
+        }
+        return textSignatureCanvas ? textSignatureCanvas.toDataURL('image/png') : null;
+      }
+
+      return null;
+    }
+
+    function resetSignatureInputs() {
+      hideSignatureError();
+      if (signaturePadPractica) {
+        signaturePadPractica.clear();
+      }
+      if (signatureTextInput) {
+        signatureTextInput.value = '';
+      }
+      if (signatureStyleInput) {
+        signatureStyleInput.value = 'cursive';
+      }
+      if (textSignatureCanvas) {
+        textSignatureCanvas.width = 640;
+        textSignatureCanvas.height = 170;
+        resetCanvas(textSignatureCanvas);
+      }
+    }
+
+    function updateSubmitAvailability() {
+      var hasFacultad = Boolean(facultadSelect.value);
+      var hasLaboratorio = Boolean(laboratorioSelect.value);
+      var hasFecha = Boolean(fechaInput.value);
+      var hasInicio = Boolean(fechaInicioInput.value);
+      var hasFin = Boolean(fechaFinInput.value);
+      var hasTipo = Boolean(document.getElementById('tipoPractica').value);
+      var hasCategoria = Boolean(document.getElementById('categoriaPractica').value);
+      var hasSala = Boolean(salaIdInput.value);
+      var hasJustificacion = Boolean(document.getElementById('justificacion').value.trim().length >= 10);
+      var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
+      var hasFirma = Boolean(getSignatureDataUrl());
+      submitButton.disabled = !(
+        hasFacultad &&
+        hasLaboratorio &&
+        hasFecha &&
+        hasInicio &&
+        hasFin &&
+        hasTipo &&
+        hasCategoria &&
+        hasSala &&
+        hasJustificacion &&
+        hasReglamento &&
+        hasFirma
+      );
+    }
+
+    async function loadFacultades() {
+      try {
+        var response = await fetch('/milab/prestamos/api/facultades');
+        var data = await response.json();
+
+        facultadSelect.innerHTML = '<option value="">Selecciona una facultad...</option>';
+
+        if (!data.success || !Array.isArray(data.facultades)) {
+          facultadSelect.innerHTML = '<option value="">No fue posible cargar facultades</option>';
+          return;
+        }
+
+        data.facultades.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item.facultad;
+          option.textContent = item.facultad;
+          facultadSelect.appendChild(option);
+        });
+      } catch (error) {
+        facultadSelect.innerHTML = '<option value="">No fue posible cargar facultades</option>';
+      }
+    }
+
+    async function loadLaboratorios(facultad) {
+      laboratorioSelect.innerHTML = '<option value="">Cargando laboratorios...</option>';
+      laboratorioSelect.disabled = true;
+
+      try {
+        var response = await fetch('/milab/prestamos/api/laboratorios/' + encodeURIComponent(facultad));
+        var data = await response.json();
+
+        laboratorioSelect.innerHTML = '<option value="">Selecciona un laboratorio...</option>';
+
+        if (!data.success || !Array.isArray(data.laboratorios) || !data.laboratorios.length) {
+          laboratorioSelect.innerHTML = '<option value="">No hay laboratorios disponibles</option>';
+          return;
+        }
+
+        data.laboratorios.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item.laboratorio;
+          option.textContent = item.laboratorio;
+          laboratorioSelect.appendChild(option);
+        });
+
+        laboratorioSelect.disabled = false;
+      } catch (error) {
+        laboratorioSelect.innerHTML = '<option value="">No fue posible cargar laboratorios</option>';
+      }
+    }
+
+    function hideScheduleError() {
+      if (!salaSeleccionError) return;
+      salaSeleccionError.style.display = 'none';
+    }
+
+    function showScheduleError() {
+      if (!salaSeleccionError) return;
+      salaSeleccionError.style.display = 'block';
+    }
+
+    function clearSelectedSchedule() {
+      if (fechaInicioInput) fechaInicioInput.value = '';
+      if (fechaFinInput) fechaFinInput.value = '';
+      if (salaIdInput) salaIdInput.value = '';
+      if (modalidadLibreInput) modalidadLibreInput.value = '';
+      document.querySelectorAll('.js-practica-horario').forEach(function(button) {
+        button.classList.remove('active');
+      });
+      hideScheduleError();
+      updateSubmitAvailability();
+    }
+
+    function resetSalas(message) {
+      clearSelectedSchedule();
+      if (listaSalas) {
+        listaSalas.innerHTML = '<div class="alert alert-secondary mb-0">' + message + '</div>';
+      }
+      if (salasContainer) {
+        salasContainer.classList.remove('d-none');
+      }
+      salaInfoText.textContent =
+        'Selecciona facultad, laboratorio, fecha y tipo de practica para consultar las salas con horas disponibles.';
+    }
+
+    function canLoadSalas() {
+      return Boolean(
+        facultadSelect.value &&
+        laboratorioSelect.value &&
+        fechaInput.value &&
+        document.getElementById('tipoPractica').value
+      );
+    }
+
+    function syncSelectedFormatInfo() {
+      if (!formatoArchivoSelect || !formatoArchivoInfo) return;
+      if (!formatoArchivoSelect.value) {
+        formatoArchivoInfo.textContent =
+          'Si seleccionas un formato, el reglamento PDF de la reserva usara la plantilla institucional del legacy.';
+        return;
+      }
+
+      formatoArchivoInfo.textContent =
+        'Formato seleccionado: ' +
+        formatoArchivoSelect.value +
+        '. Se guardara con la reserva para diligenciar el PDF institucional.';
+    }
+
+    async function loadSalasDisponibles() {
+      if (!canLoadSalas()) {
+        resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+        return;
+      }
+
+      clearSelectedSchedule();
+      if (listaSalas) {
+        listaSalas.innerHTML =
+          '<div class="text-center py-4"><div class="spinner-border text-light" role="status"></div><p class="mt-2 mb-0">Buscando horarios disponibles...</p></div>';
+      }
+      if (salasContainer) {
+        salasContainer.classList.remove('d-none');
+      }
+
+      try {
+        var params = new URLSearchParams({
+          facultad: facultadSelect.value,
+          laboratorio: laboratorioSelect.value,
+          fecha: fechaInput.value,
+          tipo_practica: document.getElementById('tipoPractica').value,
+        });
+        var response = await fetch('/milab/prestamos/practicas/api/salas-disponibles?' + params.toString());
+        var data = await response.json();
+
+        if (!data.success || !Array.isArray(data.salas) || !data.salas.length) {
+          resetSalas('No hay salas disponibles con horarios para esta fecha.');
+          return;
+        }
+
+        listaSalas.innerHTML = '';
+
+        data.salas.forEach(function(item) {
+          var card = document.createElement('div');
+          card.className = 'card bg-dark-subtle text-dark';
+
+          var horariosHtml = Array.isArray(item.horarios)
+            ? item.horarios.map(function(slot) {
+                var cupos = Number(slot.cupos_disponibles || 0);
+                var buttonClass = cupos > 0 ? 'btn-outline-primary' : 'btn-outline-secondary';
+                var badgeClass = cupos > 0 ? 'bg-primary' : 'bg-secondary';
+                var cuposLabel = cupos > 0 ? '' : ' (ocupado: se enviará a cola)';
+                return (
+                  '<button type="button" class="btn ' +
+                  buttonClass +
+                  ' m-1 js-practica-horario" ' +
+                  'data-start="' + slot.hora_inicio + '" ' +
+                  'data-end="' + slot.hora_fin + '" ' +
+                  'data-sala="' + item.id + '" ' +
+                  'data-formato="' + (item.formato_requerido || '') + '" ' +
+                  'data-modalidad="' + (slot.modalidad_libre || '') + '" ' +
+                  'data-cupos="' + cupos + '">' +
+                  slot.hora_inicio.slice(0, 5) +
+                  ' - ' +
+                  slot.hora_fin.slice(0, 5) +
+                  cuposLabel +
+                  ' <span class="badge ' +
+                  badgeClass +
+                  ' rounded-pill ms-1">' +
+                  cupos +
+                  '</span>' +
+                  '</button>'
+                );
+              }).join('')
+            : '';
+
+          card.innerHTML =
+            '<div class="card-body">' +
+            '<h5 class="card-title mb-1">' + item.nombre + '</h5>' +
+            '<p class="card-text small text-muted mb-2">' + (item.descripcion || '') + ' (Capacidad: ' + item.capacidad + ')</p>' +
+            '<p class="card-text small mb-2"><strong>Formato:</strong> ' + (item.formato_requerido || 'N/A') + '</p>' +
+            '<div class="d-flex flex-wrap">' + horariosHtml + '</div>' +
+            '</div>';
+
+          listaSalas.appendChild(card);
+        });
+
+        salaInfoText.textContent =
+          'Selecciona la sala y la hora (si está ocupada, tu solicitud se enviará a cola).';
+        if (formatoArchivoSelect && !formatoArchivoSelect.value) {
+          var firstSuggested = data.salas.find(function(item) {
+            return item && item.formato_requerido;
+          });
+          if (firstSuggested && firstSuggested.formato_requerido) {
+            formatoArchivoSelect.value = firstSuggested.formato_requerido;
+            syncSelectedFormatInfo();
+          }
+        }
+
+        document.querySelectorAll('.js-practica-horario').forEach(function(button) {
+          button.addEventListener('click', function() {
+            document.querySelectorAll('.js-practica-horario').forEach(function(item) {
+              item.classList.remove('active');
+            });
+
+            button.classList.add('active');
+            hideScheduleError();
+            fechaInicioInput.value = fechaInput.value + 'T' + button.getAttribute('data-start');
+            fechaFinInput.value = fechaInput.value + 'T' + button.getAttribute('data-end');
+            salaIdInput.value = button.getAttribute('data-sala') || '';
+            if (modalidadLibreInput) {
+              modalidadLibreInput.value = button.getAttribute('data-modalidad') || '';
+            }
+
+            if (formatoArchivoSelect && !formatoArchivoSelect.value && button.getAttribute('data-formato')) {
+              formatoArchivoSelect.value = button.getAttribute('data-formato');
+              syncSelectedFormatInfo();
+            }
+
+            var selectedCupos = Number(button.getAttribute('data-cupos') || 0);
+            salaInfoText.textContent =
+              selectedCupos > 0
+                ? 'Horario disponible seleccionado.'
+                : 'Horario ocupado seleccionado: la solicitud se registrará en cola de espera.';
+            updateSubmitAvailability();
+          });
+        });
+      } catch (error) {
+        resetSalas('No fue posible cargar salas disponibles.');
+      }
+    }
+
+    facultadSelect.addEventListener('change', function() {
+      laboratorioSelect.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
+      laboratorioSelect.value = '';
+      laboratorioSelect.disabled = true;
+      fechaInput.value = '';
+      fechaInput.disabled = true;
+      resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+
+      if (facultadSelect.value) {
+        loadLaboratorios(facultadSelect.value);
+      }
+    });
+
+    laboratorioSelect.addEventListener('change', function() {
+      fechaInput.value = '';
+      fechaInput.disabled = !laboratorioSelect.value;
+      resetSalas('Selecciona una fecha para consultar horarios disponibles.');
+      updateSubmitAvailability();
+    });
+    fechaInput.addEventListener('change', loadSalasDisponibles);
+    document.getElementById('tipoPractica').addEventListener('change', loadSalasDisponibles);
+    document.getElementById('categoriaPractica').addEventListener('change', loadSalasDisponibles);
+    facultadSelect.addEventListener('change', updateSubmitAvailability);
+    laboratorioSelect.addEventListener('change', updateSubmitAvailability);
+    fechaInput.addEventListener('input', updateSubmitAvailability);
+    document.getElementById('tipoPractica').addEventListener('change', updateSubmitAvailability);
+    document.getElementById('categoriaPractica').addEventListener('change', updateSubmitAvailability);
+    document.getElementById('justificacion').addEventListener('input', updateSubmitAvailability);
+    if (aceptarReglamentoInput) aceptarReglamentoInput.addEventListener('change', updateSubmitAvailability);
+    if (formatoArchivoSelect) {
+      formatoArchivoSelect.addEventListener('change', function() {
+        syncSelectedFormatInfo();
+        syncModalFields();
+      });
+    }
+    if (btnDiligenciarFormatoPdf) {
+      btnDiligenciarFormatoPdf.addEventListener('click', function() {
+        if (!formatoArchivoSelect || !formatoArchivoSelect.value) {
+          showAlert('warning', 'Selecciona un formato PDF antes de diligenciarlo.');
+          return;
+        }
+
+        syncModalFields();
+
+        var pdfFecha = document.getElementById('pdf_fecha');
+        var pdfHoraSalida = document.getElementById('pdf_hora_salida');
+        var pdfHoraEntrega = document.getElementById('pdf_hora_entrega');
+        var pdfProyecto = document.getElementById('pdf_proyecto');
+        var pdfSalon = document.getElementById('pdf_salon');
+        var pdfObservaciones = document.getElementById('pdf_observaciones');
+
+        if (pdfFecha && !pdfFecha.value && fechaInicioInput.value) pdfFecha.value = fechaInicioInput.value.slice(0, 10);
+        if (pdfHoraSalida && !pdfHoraSalida.value && fechaInicioInput.value) pdfHoraSalida.value = fechaInicioInput.value.slice(11, 16);
+        if (pdfHoraEntrega && !pdfHoraEntrega.value && fechaFinInput.value) pdfHoraEntrega.value = fechaFinInput.value.slice(11, 16);
+        if (pdfProyecto && !pdfProyecto.value) pdfProyecto.value = facultadSelect.value || '';
+        if (pdfSalon && !pdfSalon.value) pdfSalon.value = getSelectedRoomName();
+        if (pdfObservaciones && !pdfObservaciones.value) pdfObservaciones.value = document.getElementById('justificacion').value || '';
+
+        if (modalFormatoPdf) {
+          modalFormatoPdf.show();
+        }
+      });
+    }
+    if (btnDescargarPdfDiligenciado) {
+      btnDescargarPdfDiligenciado.addEventListener('click', async function() {
+        var payload = buildInstitutionalFormatPayload();
+        if (!payload) {
+          showAlert('warning', 'Selecciona un formato PDF antes de descargarlo.');
+          return;
+        }
+
+        try {
+          var response = await fetch('/milab/prestamos/formatos/audiovisuales/fill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            throw new Error('No fue posible generar el PDF diligenciado.');
+          }
+          var blob = await response.blob();
+          var url = URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          window.setTimeout(function() {
+            URL.revokeObjectURL(url);
+          }, 60000);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible generar el PDF diligenciado.');
+        }
+      });
+    }
+    if (signatureTextInput) signatureTextInput.addEventListener('input', updateTypedSignaturePreview);
+    if (signatureStyleInput) signatureStyleInput.addEventListener('change', updateTypedSignaturePreview);
+    if (drawTab) {
+      drawTab.addEventListener('shown.bs.tab', function() {
+        initSignaturePadPractica();
+        updateSubmitAvailability();
+      });
+    }
+    if (typeTab) {
+      typeTab.addEventListener('shown.bs.tab', function() {
+        updateTypedSignaturePreview();
+        updateSubmitAvailability();
+        if (signatureTextInput) {
+          window.requestAnimationFrame(function() {
+            signatureTextInput.focus();
+          });
+        }
+      });
+    }
+    if (clearSignatureButton) {
+      clearSignatureButton.addEventListener('click', function() {
+        if (signaturePadPractica) {
+          signaturePadPractica.clear();
+        }
+        hideSignatureError();
+        updateSubmitAvailability();
+      });
+    }
+
+    form.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var signatureDataUrl = getSignatureDataUrl();
+      var editingId = reservaIdInput ? String(reservaIdInput.value || '').trim() : '';
+      var hasSelectedSchedule = editingId
+        ? true
+        : Boolean(salaIdInput.value && fechaInicioInput.value && fechaFinInput.value);
+      if (!form.checkValidity() || !signatureDataUrl || !hasSelectedSchedule) {
+        event.stopPropagation();
+        form.classList.add('was-validated');
+        if (!signatureDataUrl) {
+          showSignatureError('La firma es obligatoria para procesar la practica.');
+        }
+        if (!hasSelectedSchedule && !editingId) {
+          showScheduleError();
+        }
+        return;
+      }
+
+      hideSignatureError();
+      hideScheduleError();
+      submitButton.disabled = true;
+
+      try {
+        var endpoint = editingId
+          ? '/milab/prestamos/practicas/' + encodeURIComponent(editingId) + '/reenviar'
+          : '/milab/prestamos/practicas/reservar';
+        var requestBody = {
+          categoria_practica: document.getElementById('categoriaPractica').value,
+          justificacion: document.getElementById('justificacion').value,
+          firma_digital: signatureDataUrl,
+          formato_archivo: formatoArchivoSelect ? formatoArchivoSelect.value : null,
+          formato_payload: (function() {
+            var payload = buildInstitutionalFormatPayload();
+            if (payload) {
+              if (!payload.tipo_practica) {
+                payload.tipo_practica = document.getElementById('tipoPractica').value;
+              }
+              return payload;
+            }
+            return null;
+          })(),
+        };
+        if (!editingId) {
+          requestBody.facultad = facultadSelect.value;
+          requestBody.laboratorio = laboratorioSelect.value;
+          requestBody.fechaInicio = fechaInicioInput.value;
+          requestBody.fechaFin = fechaFinInput.value;
+          requestBody.salaId = salaIdInput.value;
+          requestBody.tipo_practica = document.getElementById('tipoPractica').value;
+          requestBody.modalidad_libre = modalidadLibreInput ? modalidadLibreInput.value : null;
+        }
+
+        var result = await postJson(endpoint, requestBody);
+
+        showAlert('success', result.message || 'Practica registrada correctamente.');
+        if (!editingId) {
+          form.reset();
+          laboratorioSelect.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
+          laboratorioSelect.disabled = true;
+          fechaInput.disabled = true;
+          resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+          if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
+          resetSignatureInputs();
+          syncSelectedFormatInfo();
+          form.classList.remove('was-validated');
+          updateSubmitAvailability();
+        } else {
+          window.location.href = '/milab/prestamos/practicas/mis-reservas?success=Practica%20reenviada';
+        }
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible registrar la practica.');
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    loadFacultades();
+    resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+    syncSelectedFormatInfo();
+    initSignaturePadPractica();
+    updateTypedSignaturePreview();
+    updateSubmitAvailability();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

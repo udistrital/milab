@@ -1,0 +1,367 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Reportes de prestamos</h1>
+    <p class="app-page-subtitle">Tablero operativo de equipos, solicitudes, practicas, incidencias y uso de salas segun tu alcance.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <form method="get" action="/milab/prestamos/reportes" class="row g-3">
+        <div class="col-md-4">
+          <label for="fechaInicio" class="form-label">Fecha inicial</label>
+          <input
+            type="date"
+            class="form-control"
+            id="fechaInicio"
+            name="fecha_inicio"
+            value="<%= filters && filters.fecha_inicio ? filters.fecha_inicio : '' %>"
+          >
+        </div>
+        <div class="col-md-4">
+          <label for="fechaFin" class="form-label">Fecha final</label>
+          <input
+            type="date"
+            class="form-control"
+            id="fechaFin"
+            name="fecha_fin"
+            value="<%= filters && filters.fecha_fin ? filters.fecha_fin : '' %>"
+          >
+        </div>
+        <div class="col-md-4 d-flex align-items-end gap-2">
+          <button type="submit" class="btn btn-perso w-100">Aplicar filtro</button>
+        </div>
+      </form>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <a
+          class="btn btn-perso btn-sm"
+          target="_blank"
+          rel="noopener noreferrer"
+          href="/milab/prestamos/reportes/print?autoprint=true&fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Imprimir / PDF
+        </a>
+        <a
+          class="btn btn-outline-light btn-sm"
+          href="/milab/prestamos/reportes/export/solicitudes?fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Exportar solicitudes CSV
+        </a>
+        <a
+          class="btn btn-outline-light btn-sm"
+          href="/milab/prestamos/reportes/export/practicas?fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Exportar practicas CSV
+        </a>
+        <a
+          class="btn btn-outline-light btn-sm"
+          href="/milab/prestamos/reportes/export/incidencias?fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Exportar incidencias CSV
+        </a>
+        <a
+          class="btn btn-outline-light btn-sm"
+          href="/milab/prestamos/reportes/export/equipos-top?fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Exportar equipos top CSV
+        </a>
+        <a
+          class="btn btn-outline-light btn-sm"
+          href="/milab/prestamos/reportes/export/salas-top?fecha_inicio=<%= encodeURIComponent(filters && filters.fecha_inicio ? filters.fecha_inicio : '') %>&fecha_fin=<%= encodeURIComponent(filters && filters.fecha_fin ? filters.fecha_fin : '') %>"
+        >
+          Exportar salas top CSV
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="row g-3 mb-4">
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Equipos</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.equipos) ? stats.equipos : 0 %></div>
+        </div>
+      </article>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Solicitudes activas</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.solicitudes_activas) ? stats.solicitudes_activas : 0 %></div>
+        </div>
+      </article>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Solicitudes por gestionar</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.solicitudes_pendientes) ? stats.solicitudes_pendientes : 0 %></div>
+        </div>
+      </article>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Practicas activas</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.practicas_activas) ? stats.practicas_activas : 0 %></div>
+        </div>
+      </article>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Incidencias abiertas</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.incidencias_abiertas) ? stats.incidencias_abiertas : 0 %></div>
+        </div>
+      </article>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+      <article class="card app-form-panel text-light h-100">
+        <div class="card-body">
+          <div class="small text-light-emphasis mb-2">Salas activas</div>
+          <div class="display-6 fw-semibold"><%= stats && Number.isFinite(stats.salas_activas) ? stats.salas_activas : 0 %></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="row g-4">
+    <div class="col-xl-4">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Solicitudes por estado</h5>
+        </div>
+        <div class="card-body">
+          <% if (solicitudesPorEstado && solicitudesPorEstado.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% solicitudesPorEstado.forEach(function(item) { %>
+                    <tr>
+                      <td class="text-capitalize"><%= item.estado || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay solicitudes para el rango seleccionado.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Practicas por estado</h5>
+        </div>
+        <div class="card-body">
+          <% if (practicasPorEstado && practicasPorEstado.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% practicasPorEstado.forEach(function(item) { %>
+                    <tr>
+                      <td class="text-capitalize"><%= item.estado || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay practicas para el rango seleccionado.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-4">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Incidencias por estado</h5>
+        </div>
+        <div class="card-body">
+          <% if (incidenciasPorEstado && incidenciasPorEstado.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% incidenciasPorEstado.forEach(function(item) { %>
+                    <tr>
+                      <td class="text-capitalize"><%= item.estado || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay incidencias para el rango seleccionado.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Solicitudes por mes</h5>
+        </div>
+        <div class="card-body">
+          <% if (solicitudesPorMes && solicitudesPorMes.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Periodo</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% solicitudesPorMes.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.periodo || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay solicitudes acumuladas por mes en este rango.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Practicas por mes</h5>
+        </div>
+        <div class="card-body">
+          <% if (practicasPorMes && practicasPorMes.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Periodo</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% practicasPorMes.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.periodo || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay practicas acumuladas por mes en este rango.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Equipos mas solicitados</h5>
+        </div>
+        <div class="card-body">
+          <% if (equiposTop && equiposTop.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Equipo</th>
+                    <th>Codigo</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% equiposTop.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.nombre || '-' %></td>
+                      <td><%= item.codigo || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay consumo de equipos para el rango seleccionado.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Salas mas usadas</h5>
+        </div>
+        <div class="card-body">
+          <% if (salasTop && salasTop.length) { %>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Sala</th>
+                    <th class="text-end">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% salasTop.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.nombre || '-' %></td>
+                      <td class="text-end"><%= item.cantidad || 0 %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay uso de salas para el rango seleccionado.</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../../../partials/footer'); -%>

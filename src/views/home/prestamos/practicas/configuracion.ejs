@@ -1,0 +1,144 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  const facultadActual = selectedFacultyName || 'Sin facultad asignada';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Configuracion de Practicas Libres</h1>
+    <p class="app-page-subtitle">Administra la anticipacion, cancelacion, maximo de activas y sancion por inasistencia.</p>
+  </section>
+
+  <div id="configPracticasAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-xl-8">
+    <div class="card-header">
+      <h5 class="mb-0">Configuracion de Practicas Libres</h5>
+    </div>
+    <div class="card-body">
+      <form class="row g-3 mb-4" method="get" action="/milab/prestamos/coordinador/practicas/config">
+        <div class="col-md-9">
+          <label for="facultad_id_filtro" class="form-label">Facultad</label>
+          <select class="form-select" id="facultad_id_filtro" name="facultad_id" <%= facultades && facultades.length ? '' : 'disabled' %>>
+            <% if (facultades && facultades.length) { %>
+              <% facultades.forEach(function(item) { %>
+                <option value="<%= item.id_facultad %>" <%= Number(selectedFacultyId) === Number(item.id_facultad) ? 'selected' : '' %>>
+                  <%= item.nombre %>
+                </option>
+              <% }) %>
+            <% } else { %>
+              <option value="">No hay facultades disponibles</option>
+            <% } %>
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button class="btn btn-outline-light w-100" type="submit" <%= facultades && facultades.length ? '' : 'disabled' %>>Cargar</button>
+        </div>
+      </form>
+
+      <p class="mb-4">
+        Facultad: <strong><%= facultadActual %></strong>
+      </p>
+
+      <form class="row g-3" method="post" action="/milab/prestamos/coordinador/practicas/config">
+        <input type="hidden" name="facultad_id" value="<%= selectedFacultyId || '' %>">
+
+        <div class="col-md-6">
+          <label for="min_reserva_hours" class="form-label">Anticipacion minima para reservar (horas)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="min_reserva_hours"
+            name="min_reserva_hours"
+            min="2"
+            step="1"
+            required
+            value="<%= Number(config && config.min_reserva_hours || 2) %>"
+          >
+          <div class="form-text text-light-emphasis">Minimo permitido: 2 horas.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="min_cancel_hours" class="form-label">Anticipacion minima para cancelar (horas)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="min_cancel_hours"
+            name="min_cancel_hours"
+            min="1"
+            step="1"
+            required
+            value="<%= Number(config && config.min_cancel_hours || 1) %>"
+          >
+          <div class="form-text text-light-emphasis">Minimo permitido: 1 hora.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="min_docente_reserva_days" class="form-label">Dias minimos de anticipacion para reservar practica docente</label>
+          <input
+            type="number"
+            class="form-control"
+            id="min_docente_reserva_days"
+            name="min_docente_reserva_days"
+            min="0"
+            step="1"
+            required
+            value="<%= Number(config && config.min_docente_reserva_days || 0) %>"
+          >
+          <div class="form-text text-light-emphasis">0 para permitir reservas el mismo dia.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="max_activas_estudiante" class="form-label">Maximo de practicas activas por estudiante</label>
+          <input
+            type="number"
+            class="form-control"
+            id="max_activas_estudiante"
+            name="max_activas_estudiante"
+            min="1"
+            step="1"
+            required
+            value="<%= Number(config && config.max_activas_estudiante || 2) %>"
+          >
+          <div class="form-text text-light-emphasis">Valor por defecto: 2 practicas activas.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="dias_sancion_no_asistencia" class="form-label">Dias de sancion por inasistencia (No Asistio)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="dias_sancion_no_asistencia"
+            name="dias_sancion_no_asistencia"
+            min="0"
+            step="1"
+            required
+            value="<%= Number(config && config.dias_sancion_no_asistencia || 1) %>"
+          >
+          <div class="form-text text-light-emphasis">
+            Dias de bloqueo para reservar tras marcar "No Asistio". 0 para desactivar.
+          </div>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/prestamos/reportes">Volver</a>
+          <button
+            class="btn btn-perso"
+            type="submit"
+            <%= selectedFacultyId ? '' : 'disabled' %>
+          >
+            Guardar configuracion
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>

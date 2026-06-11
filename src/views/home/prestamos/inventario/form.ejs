@@ -1,0 +1,134 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  const formItem = item || {};
+  const submitUrl = isEdit
+    ? `/milab/prestamos/inventario/${formItem.id}/editar`
+    : '/milab/prestamos/inventario/crear';
+  const pageTitle = isEdit ? 'Editar elemento de inventario' : 'Crear elemento de inventario';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title"><%= pageTitle %></h1>
+    <p class="app-page-subtitle">Piloto inicial del modulo de inventario integrado a MiLab.</p>
+  </section>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <div class="alert alert-info" role="note">
+    Los campos marcados con * son obligatorios. Para crear el elemento debes diligenciar al menos `Nombre del bien`.
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-lg-10">
+    <div class="card-body">
+      <form action="<%= submitUrl %>" method="post" class="row g-3" id="inventarioForm" novalidate>
+        <div class="col-md-6">
+          <label for="serie" class="form-label">Serie</label>
+          <input type="text" class="form-control" id="serie" name="serie" value="<%= formItem.serie || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="placa" class="form-label">Placa</label>
+          <input type="text" class="form-control" id="placa" name="placa" value="<%= formItem.placa || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="nombre_bien" class="form-label">Nombre del bien *</label>
+          <input
+            type="text"
+            class="form-control"
+            id="nombre_bien"
+            name="nombre_bien"
+            value="<%= formItem.nombre_bien || '' %>"
+            required
+            aria-describedby="nombre_bien_help nombre_bien_error"
+          >
+          <div id="nombre_bien_help" class="form-text text-light">Este campo es obligatorio.</div>
+          <div id="nombre_bien_error" class="invalid-feedback">Ingresa el nombre del bien para continuar.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="grupo_inventario" class="form-label">Grupo de inventario</label>
+          <input type="text" class="form-control" id="grupo_inventario" name="grupo_inventario" value="<%= formItem.grupo_inventario || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="nivel_inventario" class="form-label">Nivel de inventario</label>
+          <input type="text" class="form-control" id="nivel_inventario" name="nivel_inventario" value="<%= formItem.nivel_inventario || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="funcionario_doc" class="form-label">Documento del funcionario</label>
+          <input type="text" class="form-control" id="funcionario_doc" name="funcionario_doc" value="<%= formItem.funcionario_doc || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="nombre_funcionario" class="form-label">Nombre del funcionario</label>
+          <input type="text" class="form-control" id="nombre_funcionario" name="nombre_funcionario" value="<%= formItem.nombre_funcionario || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="fecha_registro" class="form-label">Fecha de registro</label>
+          <input type="date" class="form-control" id="fecha_registro" name="fecha_registro" value="<%= formItem.fecha_registro ? new Date(formItem.fecha_registro).toISOString().split('T')[0] : '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="sede" class="form-label">Sede</label>
+          <input type="text" class="form-control" id="sede" name="sede" value="<%= formItem.sede || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="dependencia" class="form-label">Dependencia</label>
+          <input type="text" class="form-control" id="dependencia" name="dependencia" value="<%= formItem.dependencia || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="espacio_fisico" class="form-label">Espacio fisico</label>
+          <input type="text" class="form-control" id="espacio_fisico" name="espacio_fisico" value="<%= formItem.espacio_fisico || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="disponible_prestamo" class="form-label">Disponible para prestamo</label>
+          <select class="form-select" id="disponible_prestamo" name="disponible_prestamo">
+            <option value="false" <%= formItem.disponible_prestamo ? '' : 'selected' %>>No</option>
+            <option value="true" <%= formItem.disponible_prestamo ? 'selected' : '' %>>Si</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/prestamos/inventario">Cancelar</a>
+          <button class="btn btn-perso" type="submit"><%= isEdit ? 'Guardar cambios' : 'Crear elemento' %></button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+  (function() {
+    var form = document.getElementById('inventarioForm');
+    if (!form) return;
+
+    form.addEventListener('submit', function(event) {
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+        form.classList.add('was-validated');
+
+        var firstInvalidField = form.querySelector(':invalid');
+        if (firstInvalidField) {
+          firstInvalidField.focus();
+          firstInvalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      form.classList.add('was-validated');
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

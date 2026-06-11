@@ -1,0 +1,388 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Incidencias</h1>
+    <p class="app-page-subtitle">Consulta y cierre de incidencias registradas sobre equipos del modulo de prestamos.</p>
+  </section>
+
+  <div id="incidenciasAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Listado de incidencias</h5>
+      <span class="badge text-bg-secondary"><%= Array.isArray(incidencias) ? incidencias.length : 0 %> registro(s)</span>
+    </div>
+
+    <div class="card-body">
+      <% const currentRoleValue = Array.isArray(user && user.roles) ? user.roles.join(',') : (user && user.tipo) || ''; %>
+      <% const currentRoleLower = String(currentRoleValue || '').toLowerCase(); %>
+      <% const isCoordinator = currentRoleLower.includes('coordinador'); %>
+      <% const isAdmin = currentRoleLower.includes('admin'); %>
+      <% const isLaboratorista = currentRoleLower.includes('laboratorista'); %>
+      <% if (incidencias && incidencias.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="20" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>ID</th>
+                <th>Equipo</th>
+                <th>Codigo</th>
+                <th>Facultad</th>
+                <th>Laboratorio</th>
+                <th>Tipo</th>
+                <th>Descripcion</th>
+                <th>Evidencia</th>
+                <th>Estado</th>
+                <th>Sancion</th>
+                <th>Reportado por</th>
+                <th>Solicitud</th>
+                <th>Fecha</th>
+                <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% incidencias.forEach(function(item) { %>
+                <% const estadoLower = String(item.estado || '').toLowerCase(); %>
+                <% const puedeAprobar = (isCoordinator || isAdmin) && estadoLower === 'pendiente_confirmacion'; %>
+                <% const puedeSolicitarCierre = (isLaboratorista || isAdmin) && estadoLower === 'abierta'; %>
+                <% const puedeCerrar = (isCoordinator || isAdmin) && estadoLower === 'pendiente_cierre'; %>
+                <tr>
+                  <td class="text-light"><%= item.id %></td>
+                  <td class="text-light"><%= item.equipo_nombre || '-' %></td>
+                  <td class="text-light"><%= item.equipo_codigo || '-' %></td>
+                  <td class="text-light"><%= item.facultad || '-' %></td>
+                  <td class="text-light"><%= item.laboratorio || '-' %></td>
+                  <td class="text-light text-capitalize"><%= (item.tipo_incidencia || '-').replace(/_/g, ' ') %></td>
+                  <td class="text-light"><%= item.descripcion || '-' %></td>
+                  <td class="text-light">
+                    <% if (item.tiene_evidencia) { %>
+                      <a
+                        class="btn btn-outline-info btn-sm"
+                        href="/milab/prestamos/incidencias/<%= item.id %>/imagen"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver evidencia
+                      </a>
+                    <% } else { %>
+                      <span class="small text-light-emphasis">Sin imagen</span>
+                    <% } %>
+                  </td>
+                  <td class="text-light">
+                    <span class="badge <%= estadoLower === 'cerrada' ? 'bg-success' : estadoLower === 'pendiente_cierre' ? 'bg-warning text-dark' : estadoLower === 'pendiente_confirmacion' ? 'bg-secondary' : 'bg-danger' %>">
+                      <%= item.estado ? item.estado.replace(/_/g, ' ') : '-' %>
+                    </span>
+                    <% if (item.descripcion_cierre) { %>
+                      <div class="small mt-1"><%= item.descripcion_cierre %></div>
+                    <% } %>
+                  </td>
+                  <td class="text-light">
+                    <%= item.sancion_tipo ? item.sancion_tipo.replace(/_/g, ' ') : '-' %>
+                    <% if (item.sancion_detalle) { %>
+                      <div class="small mt-1"><%= item.sancion_detalle %></div>
+                    <% } %>
+                  </td>
+                  <td class="text-light">
+                    <%= item.reportado_por_nombre || '-' %>
+                    <div class="small"><%= item.reportado_por_documento || '-' %></div>
+                  </td>
+                  <td class="text-light">
+                    <%= item.solicitud_prestamo_id || '-' %>
+                    <div class="small"><%= item.solicitud_estado || '-' %></div>
+                  </td>
+                  <td class="text-light"><%= item.fecha_creacion ? new Date(item.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></td>
+                  <td class="text-light">
+                    <div class="d-grid gap-2">
+                      <% if (puedeAprobar) { %>
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-sm js-open-approve-incident-modal"
+                          data-incident-id="<%= item.id %>"
+                          data-equipo="<%= item.equipo_nombre || '' %>"
+                        >
+                          Aprobar
+                        </button>
+                      <% } %>
+                      <% if (puedeSolicitarCierre) { %>
+                        <button
+                          type="button"
+                          class="btn btn-warning btn-sm js-request-close-incident"
+                          data-incident-id="<%= item.id %>"
+                        >
+                          Pendiente por cerrar
+                        </button>
+                      <% } %>
+                      <% if (puedeCerrar) { %>
+                        <button
+                          type="button"
+                          class="btn btn-success btn-sm js-open-close-incident-modal"
+                          data-incident-id="<%= item.id %>"
+                          data-equipo="<%= item.equipo_nombre || '' %>"
+                        >
+                          Cerrar
+                        </button>
+                      <% } %>
+                      <% if (!puedeAprobar && !puedeSolicitarCierre && !puedeCerrar) { %>
+                        <span class="small text-light-emphasis">Sin acciones</span>
+                      <% } %>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          No hay incidencias registradas dentro de tu alcance actual.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="aprobarIncidenciaModal" tabindex="-1" aria-labelledby="aprobarIncidenciaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="aprobarIncidenciaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="aprobarIncidenciaModalLabel">Aprobar incidencia</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="aprobarIncidenciaId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="aprobarIncidenciaEquipo">-</span></p>
+          <div class="mb-3">
+            <label for="aprobarSancionTipo" class="form-label">Sancion o medida aplicada *</label>
+            <select class="form-select" id="aprobarSancionTipo" required>
+              <option value="">Selecciona una opcion</option>
+              <option value="pedagogica">Sancion pedagogica</option>
+              <option value="reposicion">Reposicion de elemento</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div class="mb-0">
+            <label for="aprobarSancionDetalle" class="form-label">Detalle</label>
+            <textarea
+              class="form-control"
+              id="aprobarSancionDetalle"
+              rows="3"
+              placeholder="Describe brevemente la medida aplicada."
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="aprobarIncidenciaSubmitBtn">Confirmar aprobacion</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="cerrarIncidenciaModal" tabindex="-1" aria-labelledby="cerrarIncidenciaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="cerrarIncidenciaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="cerrarIncidenciaModalLabel">Cerrar incidencia</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="cerrarIncidenciaId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="cerrarIncidenciaEquipo">-</span></p>
+          <label for="cerrarIncidenciaDescripcion" class="form-label">Descripcion del cierre</label>
+          <textarea
+            class="form-control"
+            id="cerrarIncidenciaDescripcion"
+            rows="4"
+            placeholder="Describe la solucion aplicada."
+          ></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success" id="cerrarIncidenciaSubmitBtn">Confirmar cierre</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('incidenciasAlerts');
+    var approveModalElement = document.getElementById('aprobarIncidenciaModal');
+    var closeModalElement = document.getElementById('cerrarIncidenciaModal');
+    var approveForm = document.getElementById('aprobarIncidenciaForm');
+    var closeForm = document.getElementById('cerrarIncidenciaForm');
+
+    if (!alertsContainer || !approveModalElement || !closeModalElement || !approveForm || !closeForm) return;
+
+    var approveModal = new bootstrap.Modal(approveModalElement);
+    var closeModal = new bootstrap.Modal(closeModalElement);
+    var approveIdInput = document.getElementById('aprobarIncidenciaId');
+    var approveEquipoLabel = document.getElementById('aprobarIncidenciaEquipo');
+    var approveSancionTipo = document.getElementById('aprobarSancionTipo');
+    var approveSancionDetalle = document.getElementById('aprobarSancionDetalle');
+    var approveSubmitButton = document.getElementById('aprobarIncidenciaSubmitBtn');
+    var closeIdInput = document.getElementById('cerrarIncidenciaId');
+    var closeEquipoLabel = document.getElementById('cerrarIncidenciaEquipo');
+    var closeDescriptionInput = document.getElementById('cerrarIncidenciaDescripcion');
+    var closeSubmitButton = document.getElementById('cerrarIncidenciaSubmitBtn');
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    document.querySelectorAll('.js-open-approve-incident-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        approveIdInput.value = button.getAttribute('data-incident-id') || '';
+        approveEquipoLabel.textContent = button.getAttribute('data-equipo') || '-';
+        approveSancionTipo.value = '';
+        approveSancionTipo.classList.remove('is-invalid');
+        approveSancionDetalle.value = '';
+        approveSubmitButton.disabled = false;
+        approveModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-close-incident-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        closeIdInput.value = button.getAttribute('data-incident-id') || '';
+        closeEquipoLabel.textContent = button.getAttribute('data-equipo') || '-';
+        closeDescriptionInput.value = '';
+        closeSubmitButton.disabled = false;
+        closeModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-request-close-incident').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var incidentId = button.getAttribute('data-incident-id') || '';
+        if (!incidentId) return;
+        if (!window.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson(
+            '/milab/prestamos/incidencias/' + encodeURIComponent(incidentId) + '/pendiente-cierre',
+            {}
+          );
+          showAlert('success', result.message || 'Incidencia marcada como pendiente por cerrar.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible actualizar la incidencia.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    approveForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!approveSancionTipo.value) {
+        approveSancionTipo.classList.add('is-invalid');
+        return;
+      }
+
+      approveSancionTipo.classList.remove('is-invalid');
+      approveSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/incidencias/' + encodeURIComponent(approveIdInput.value) + '/aprobar',
+          {
+            sancion_tipo: approveSancionTipo.value,
+            sancion_detalle: approveSancionDetalle.value,
+          }
+        );
+
+        approveModal.hide();
+        showAlert('success', result.message || 'Incidencia aprobada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible aprobar la incidencia.');
+        approveSubmitButton.disabled = false;
+      }
+    });
+
+    closeForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      closeSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/incidencias/' + encodeURIComponent(closeIdInput.value) + '/solucionar',
+          { descripcion_cierre: closeDescriptionInput.value }
+        );
+
+        closeModal.hide();
+        showAlert('success', result.message || 'Incidencia cerrada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible cerrar la incidencia.');
+        closeSubmitButton.disabled = false;
+      }
+    });
+
+    approveModalElement.addEventListener('hidden.bs.modal', function() {
+      approveIdInput.value = '';
+      approveEquipoLabel.textContent = '-';
+      approveSancionTipo.value = '';
+      approveSancionTipo.classList.remove('is-invalid');
+      approveSancionDetalle.value = '';
+      approveSubmitButton.disabled = false;
+    });
+
+    closeModalElement.addEventListener('hidden.bs.modal', function() {
+      closeIdInput.value = '';
+      closeEquipoLabel.textContent = '-';
+      closeDescriptionInput.value = '';
+      closeSubmitButton.disabled = false;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

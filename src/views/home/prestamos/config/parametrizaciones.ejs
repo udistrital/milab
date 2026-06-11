@@ -1,0 +1,61 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Parametrizaciones (Cuotas mensuales)</h1>
+    <p class="app-page-subtitle">Administra las cuotas mensuales globales de practicas libres y prestamos de equipos.</p>
+  </section>
+
+  <div id="parametrizacionesAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-xl-8">
+    <div class="card-header">
+      <h5 class="mb-0">Parametrizaciones (Cuotas mensuales)</h5>
+    </div>
+    <div class="card-body">
+      <form class="row g-3" method="post" action="/milab/prestamos/admin/parametrizaciones">
+        <div class="col-md-6">
+          <label for="max_horas_mes_practica_libre" class="form-label">Tiempo maximo por mes para practicas libres (horas)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="max_horas_mes_practica_libre"
+            name="max_horas_mes_practica_libre"
+            min="0"
+            step="1"
+            required
+            value="<%= Number(config && config.max_horas_mes_practica_libre || 0) %>"
+          >
+          <div class="form-text text-light-emphasis">0 para no limitar.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="max_horas_mes_prestamos" class="form-label">Tiempo maximo por mes para prestamos de equipos (horas)</label>
+          <input
+            type="number"
+            class="form-control"
+            id="max_horas_mes_prestamos"
+            name="max_horas_mes_prestamos"
+            min="0"
+            step="1"
+            required
+            value="<%= Number(config && config.max_horas_mes_prestamos || 0) %>"
+          >
+          <div class="form-text text-light-emphasis">0 para no limitar.</div>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/prestamos">Volver</a>
+          <button class="btn btn-perso" type="submit">Guardar configuracion</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>

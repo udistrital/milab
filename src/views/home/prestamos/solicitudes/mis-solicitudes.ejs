@@ -1,0 +1,432 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Mis solicitudes</h1>
+    <p class="app-page-subtitle">Consulta el estado de tus solicitudes de prestamo de equipos.</p>
+  </section>
+
+  <% const weeklyUsage = locals.weeklyUsage || null; %>
+  <% const weeklyUsageItems = weeklyUsage && Array.isArray(weeklyUsage.items) ? weeklyUsage.items.filter(function(item) { return String(item.variant || '') === 'info'; }) : []; %>
+  <% const shouldShowWeeklyUsage = Boolean(weeklyUsage && weeklyUsageItems.length); %>
+  <% if (shouldShowWeeklyUsage) { %>
+    <section class="card mb-3">
+      <div class="card-body">
+        <h5 class="mb-3"><%= weeklyUsage.title || 'Uso semanal' %></h5>
+        <div class="row g-3">
+          <% weeklyUsageItems.forEach(function(item) { %>
+            <% const limit = Number(item.limitHours || 0); %>
+            <% const used = Number(item.usedHours || 0); %>
+            <% const remaining = Number(item.remainingHours || 0); %>
+            <% const percent = limit > 0 ? Math.min(100, Math.max(0, Number(item.percent || 0))) : null; %>
+            <div class="col-lg-6">
+              <div class="p-3 border rounded-3">
+                <div class="d-flex justify-content-between align-items-baseline gap-3">
+                  <strong><%= item.label || 'Uso' %></strong>
+                  <% if (limit > 0) { %>
+                    <span class="text-muted">Restan <%= remaining.toFixed(2) %> h</span>
+                  <% } else { %>
+                    <span class="text-muted">Sin límite</span>
+                  <% } %>
+                </div>
+                <% if (percent !== null) { %>
+                  <div class="progress mt-2" role="progressbar" aria-valuenow="<%= percent.toFixed(0) %>" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar bg-<%= item.variant || 'primary' %>" style="width: <%= percent.toFixed(2) %>%"></div>
+                  </div>
+                <% } %>
+                <% if (limit > 0) { %>
+                  <div class="small text-muted mt-2"><%= used.toFixed(2) %> / <%= limit.toFixed(2) %> h</div>
+                <% } %>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </section>
+  <% } %>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Solicitudes registradas</h5>
+      <a class="btn btn-perso btn-sm" href="/milab/prestamos/solicitar">Nueva solicitud</a>
+    </div>
+    <div class="card-body">
+      <% const ultimaHoraSolicitudes = Array.isArray(locals.ultimaHoraSolicitudes) ? locals.ultimaHoraSolicitudes : []; %>
+      <% if (ultimaHoraSolicitudes.length > 0) { %>
+        <div class="alert alert-warning">
+          <i class="bi bi-clock-history"></i>
+          Tienes <strong><%= ultimaHoraSolicitudes.length %></strong> prestamo(s) de ultima hora pendiente(s) de firma.
+        </div>
+        <div class="row g-3 mb-3">
+          <% ultimaHoraSolicitudes.forEach(function(item) { %>
+            <div class="col-lg-6">
+              <article class="card h-100 bg-transparent border-warning">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                      <h5 class="mb-1"><%= item.equipo_nombre || 'Equipo' %></h5>
+                      <div class="small text-light-emphasis"><%= item.equipo_codigo || '-' %></div>
+                    </div>
+                    <span class="badge bg-warning text-dark">Ultima hora - firma</span>
+                  </div>
+
+                  <div class="small text-light-emphasis mb-1">Facultad</div>
+                  <div class="mb-3"><%= item.facultad || '-' %></div>
+
+                  <div class="small text-light-emphasis mb-1">Laboratorio</div>
+                  <div class="mb-3"><%= item.laboratorio || '-' %></div>
+
+                  <div class="small text-light-emphasis mb-1">Franja</div>
+                  <div class="mb-3">
+                    <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    <br>
+                    <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                  </div>
+
+                  <div class="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-outline-warning btn-sm js-open-ultima-hora-firma"
+                      data-cola-id="<%= item.cola_id %>"
+                      data-equipo-nombre="<%= item.equipo_nombre || 'Equipo' %>"
+                      data-equipo-codigo="<%= item.equipo_codigo || '' %>"
+                      data-fecha-inicio="<%= item.fecha_inicio ? new Date(item.fecha_inicio).toISOString() : '' %>"
+                      data-fecha-fin="<%= item.fecha_fin ? new Date(item.fecha_fin).toISOString() : '' %>"
+                    >
+                      <i class="bi bi-pen"></i>
+                      <span>Firmar y enviar</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <% if (solicitudes && solicitudes.length > 0) { %>
+        <div class="row g-3">
+          <% solicitudes.forEach(function(item) { %>
+            <div class="col-lg-6">
+              <article class="card h-100 bg-transparent border-light-subtle">
+                <% const vencido = item.fecha_fin ? new Date(item.fecha_fin) <= new Date() : false; %>
+                <% const estadoNormalizado = item.estado === 'finalizado' ? 'completado' : item.estado; %>
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                      <h5 class="mb-1"><%= item.equipo_nombre || 'Equipo' %></h5>
+                      <div class="small text-light-emphasis"><%= item.equipo_codigo || '-' %></div>
+                    </div>
+                    <span class="badge <%= estadoNormalizado === 'en_cola' ? 'bg-warning text-dark' : estadoNormalizado === 'pendiente' ? 'bg-warning' : estadoNormalizado === 'aprobado' ? 'bg-success' : estadoNormalizado === 'activo' ? (vencido ? 'bg-warning text-dark' : 'bg-info text-dark') : estadoNormalizado === 'completado' ? 'bg-primary' : estadoNormalizado === 'rechazado' ? 'bg-danger' : 'bg-secondary' %>">
+                      <%= estadoNormalizado === 'en_cola' ? 'En cola' : (estadoNormalizado ? estadoNormalizado.charAt(0).toUpperCase() + estadoNormalizado.slice(1) : 'Sin estado') %>
+                    </span>
+                  </div>
+
+                  <div class="small text-light-emphasis mb-1">Facultad</div>
+                  <div class="mb-3"><%= item.facultad || '-' %></div>
+
+                  <div class="small text-light-emphasis mb-1">Laboratorio</div>
+                  <div class="mb-3"><%= item.laboratorio || '-' %></div>
+
+                  <div class="small text-light-emphasis mb-1">Horario solicitado</div>
+                  <div class="mb-3">
+                    <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    <br>
+                    <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                  </div>
+
+                  <div class="small text-light-emphasis mb-1">Categoria</div>
+                  <div class="mb-3 text-capitalize"><%= item.categoria_practica || '-' %></div>
+
+                  <div class="small text-light-emphasis mb-1">Justificacion</div>
+                  <div class="mb-3"><%= item.justificacion_academica || '-' %></div>
+
+                  <% if (estadoNormalizado === 'aprobado') { %>
+                    <div class="alert alert-success mb-3 py-2">
+                      <i class="bi bi-check-circle-fill"></i>
+                      <strong>¡Acérquese al laboratorio por el equipo!</strong>
+                      <br><small>Su solicitud ha sido aprobada</small>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                      <a
+                        class="btn btn-outline-info btn-sm"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="/milab/prestamos/solicitudes/<%= item.id %>/comprobante-pdf"
+                      >
+                        <i class="bi bi-file-earmark-pdf"></i> Descargar Comprobante
+                      </a>
+                    </div>
+                  <% } else if (estadoNormalizado === 'activo') { %>
+                    <% if (vencido) { %>
+                      <div class="alert alert-warning mb-3 py-2">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Plazo de devolucion cumplido</strong>
+                        <br><small>Esta fuera de la fecha acordada de devolucion. Podria ser sancionado si no regresa el equipo lo mas pronto posible.</small>
+                        <br><small>Fin: <%= new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></small>
+                      </div>
+                    <% } else { %>
+                      <div class="alert alert-info mb-3 py-2">
+                        <i class="bi bi-laptop"></i>
+                        <strong>Usted posee el equipo en prestamo</strong>
+                        <br><small>Por favor devolver a la hora indicada: <%= new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></small>
+                      </div>
+                    <% } %>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                      <a
+                        class="btn btn-outline-info btn-sm"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        href="/milab/prestamos/solicitudes/<%= item.id %>/comprobante-pdf"
+                      >
+                        <i class="bi bi-file-earmark-pdf"></i> Descargar Comprobante
+                      </a>
+                    </div>
+                  <% } else if (estadoNormalizado === 'en_cola') { %>
+                    <div class="alert alert-warning mb-3 py-2">
+                      <i class="bi bi-clock-history"></i>
+                      <strong>En cola de espera</strong>
+                      <br><small>Si se libera un cupo, el laboratorista podra reasignarlo.</small>
+                    </div>
+                  <% } else if (estadoNormalizado === 'pendiente') { %>
+                    <div class="alert alert-warning mb-3 py-2">
+                      <i class="bi bi-clock"></i>
+                      <strong>Solicitud en revision</strong>
+                      <br><small>Espere la aprobacion del laboratorista</small>
+                    </div>
+                  <% } else if (estadoNormalizado === 'completado') { %>
+                    <div class="alert alert-primary mb-3 py-2">
+                      <i class="bi bi-check-all"></i>
+                      <strong>Prestamo completado</strong>
+                      <br><small>Equipo devuelto exitosamente</small>
+                    </div>
+                  <% } %>
+
+                  <% if (item.motivo_rechazo) { %>
+                    <div class="alert alert-danger mb-0">
+                      <strong>Motivo de rechazo:</strong> <%= item.motivo_rechazo %>
+                    </div>
+                  <% } %>
+                </div>
+              </article>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          Aun no has registrado solicitudes de prestamo.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="ultimaHoraFirmaModal" tabindex="-1" aria-labelledby="ultimaHoraFirmaModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ultimaHoraFirmaModalLabel">Firma - Prestamo de ultima hora</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ultimaHoraFirmaStatus" class="alert alert-info">
+          Firma el reglamento para enviar la solicitud.
+        </div>
+        <div class="mb-3">
+          <div class="small text-muted">Equipo</div>
+          <div class="fw-semibold" id="ultimaHoraFirmaEquipoInfo">-</div>
+        </div>
+        <input type="hidden" id="ultimaHoraFirmaColaId">
+
+        <div class="mb-3">
+          <div class="d-flex align-items-center mb-2">
+            <i class="bi bi-file-earmark-pdf text-danger fs-4 me-2"></i>
+            <div>
+              <h6 class="mb-0">Reglamento de Prestamos</h6>
+              <a
+                href="/milab/prestamos/api/reglamento/descargar"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-decoration-none small"
+              >
+                <i class="bi bi-download"></i> Ver/Descargar Reglamento (PDF)
+              </a>
+            </div>
+          </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="ultimaHoraAceptarReglamento" required>
+            <label class="form-check-label small" for="ultimaHoraAceptarReglamento">
+              He leido y acepto los terminos y condiciones del reglamento de prestamos de laboratorio.
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Firma del solicitante *</label>
+          <div class="border rounded bg-white d-flex align-items-center justify-content-center" style="height: 220px; overflow: hidden;">
+            <canvas id="ultimaHoraFirmaCanvas" style="width: 100%; height: 100%;"></canvas>
+          </div>
+          <div class="d-flex justify-content-between mt-2">
+            <small class="text-muted">Firma con el cursor, lapiz o dedo.</small>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnLimpiarFirmaUltimaHora">Limpiar</button>
+          </div>
+          <div class="invalid-feedback d-block" id="ultimaHoraFirmaError" style="display: none;">
+            La firma es obligatoria para procesar la solicitud.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-warning" id="ultimaHoraFirmaSubmitBtn" disabled>Enviar solicitud</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+<script>
+  (function() {
+    var modalElement = document.getElementById('ultimaHoraFirmaModal');
+    var statusElement = document.getElementById('ultimaHoraFirmaStatus');
+    var equipoInfoElement = document.getElementById('ultimaHoraFirmaEquipoInfo');
+    var colaIdInput = document.getElementById('ultimaHoraFirmaColaId');
+    var aceptarReglamentoInput = document.getElementById('ultimaHoraAceptarReglamento');
+    var submitButton = document.getElementById('ultimaHoraFirmaSubmitBtn');
+    var canvas = document.getElementById('ultimaHoraFirmaCanvas');
+    var clearButton = document.getElementById('btnLimpiarFirmaUltimaHora');
+    var firmaError = document.getElementById('ultimaHoraFirmaError');
+
+    if (!modalElement || !statusElement || !equipoInfoElement || !colaIdInput || !aceptarReglamentoInput || !submitButton || !canvas || !clearButton) return;
+
+    var modal = new bootstrap.Modal(modalElement);
+    var signaturePad = null;
+
+    function showSignatureError(message) {
+      if (firmaError) {
+        firmaError.textContent = message || 'La firma es obligatoria.';
+        firmaError.style.display = 'block';
+      }
+    }
+
+    function hideSignatureError() {
+      if (firmaError) {
+        firmaError.style.display = 'none';
+      }
+    }
+
+    function initSignaturePad() {
+      if (!window.SignaturePad || signaturePad) return;
+      signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgba(255,255,255,1)' });
+      signaturePad.addEventListener('endStroke', updateSubmitAvailability);
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+    }
+
+    function resizeCanvas() {
+      if (!canvas || !signaturePad) return;
+      var ratio = Math.max(window.devicePixelRatio || 1, 1);
+      var rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      canvas.getContext('2d').scale(ratio, ratio);
+      signaturePad.clear();
+    }
+
+    function updateSubmitAvailability() {
+      var hasAccepted = Boolean(aceptarReglamentoInput.checked);
+      var hasSignature = signaturePad && !signaturePad.isEmpty();
+      submitButton.disabled = !(hasAccepted && hasSignature);
+    }
+
+    clearButton.addEventListener('click', function() {
+      if (signaturePad) signaturePad.clear();
+      hideSignatureError();
+      updateSubmitAvailability();
+    });
+
+    aceptarReglamentoInput.addEventListener('change', updateSubmitAvailability);
+
+    document.querySelectorAll('.js-open-ultima-hora-firma').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var colaId = button.getAttribute('data-cola-id') || '';
+        colaIdInput.value = colaId;
+        var equipoNombre = button.getAttribute('data-equipo-nombre') || 'Equipo';
+        var equipoCodigo = button.getAttribute('data-equipo-codigo') || '';
+        equipoInfoElement.textContent = equipoNombre + (equipoCodigo ? ' (' + equipoCodigo + ')' : '');
+        statusElement.className = 'alert alert-info';
+        statusElement.textContent = 'Firma el reglamento para enviar la solicitud.';
+        if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
+        hideSignatureError();
+        submitButton.disabled = true;
+        modal.show();
+      });
+    });
+
+    modalElement.addEventListener('shown.bs.modal', function() {
+      initSignaturePad();
+      updateSubmitAvailability();
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', function() {
+      if (signaturePad) signaturePad.clear();
+      if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
+      hideSignatureError();
+      submitButton.disabled = true;
+    });
+
+    submitButton.addEventListener('click', async function() {
+      var colaId = String(colaIdInput.value || '').trim();
+      if (!colaId) return;
+
+      if (!aceptarReglamentoInput.checked) {
+        statusElement.className = 'alert alert-warning';
+        statusElement.textContent = 'Debes aceptar el reglamento para continuar.';
+        return;
+      }
+
+      if (!signaturePad || signaturePad.isEmpty()) {
+        showSignatureError('La firma es obligatoria para procesar la solicitud.');
+        return;
+      }
+
+      hideSignatureError();
+      submitButton.disabled = true;
+
+      try {
+        var response = await fetch(
+          '/milab/prestamos/mis-solicitudes/ultima-hora/' + encodeURIComponent(colaId) + '/aceptar',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              firma_digital: signaturePad.toDataURL('image/png'),
+            }),
+          }
+        );
+        var data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'No fue posible enviar la solicitud.');
+        }
+
+        modal.hide();
+        window.location.href =
+          '/milab/prestamos/mis-solicitudes?success=' +
+          encodeURIComponent(data.message || 'Solicitud enviada correctamente');
+      } catch (error) {
+        statusElement.className = 'alert alert-danger';
+        statusElement.textContent = error.message || 'No fue posible enviar la solicitud.';
+        submitButton.disabled = false;
+      }
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

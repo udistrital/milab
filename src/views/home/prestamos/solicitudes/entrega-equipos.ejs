@@ -1,0 +1,666 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Entrega y devolucion</h1>
+    <p class="app-page-subtitle">Gestion operativa de solicitudes aprobadas y prestamos activos.</p>
+  </section>
+
+  <div id="entregaEquiposAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Solicitudes aprobadas y activas</h5>
+      <span class="badge text-bg-secondary"><%= Array.isArray(solicitudes) ? solicitudes.length : 0 %> registro(s)</span>
+    </div>
+
+    <div class="card-body">
+      <% if (solicitudes && solicitudes.length > 0) { %>
+        <div class="row g-3">
+          <% solicitudes.forEach(function(item) { %>
+            <div class="col-xl-4 col-lg-6">
+              <article class="card h-100 bg-transparent border-light-subtle">
+                <% const ahora = new Date(); %>
+                <% const finPrestamo = item.fecha_fin ? new Date(item.fecha_fin).getTime() : 0; %>
+                <% const dentroUmbralRecepcion = item.estado === 'activo' ? (finPrestamo - (15 * 60 * 1000)) <= ahora.getTime() : false; %>
+                <div class="card-body d-flex flex-column gap-3">
+                  <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                      <h5 class="mb-1"><%= item.equipo_nombre || 'Equipo' %></h5>
+                      <div class="small text-light-emphasis"><%= item.equipo_codigo || '-' %></div>
+                    </div>
+                    <span class="badge <%= item.estado === 'activo' ? 'bg-info text-dark' : 'bg-warning text-dark' %>">
+                      <%= item.estado === 'activo' ? 'Activo' : 'Aprobado' %>
+                    </span>
+                  </div>
+
+                  <div>
+                    <div class="small text-light-emphasis mb-1">Solicitante</div>
+                    <div><%= item.usuario_nombre || '-' %></div>
+                    <div class="small"><%= item.usuario_documento || '-' %></div>
+                    <div class="small"><%= item.usuario_correo || '-' %></div>
+                  </div>
+
+                  <div>
+                    <div class="small text-light-emphasis mb-1">Ubicacion</div>
+                    <div><%= item.facultad || '-' %></div>
+                    <div class="small"><%= item.laboratorio || '-' %></div>
+                  </div>
+
+                  <div>
+                    <div class="small text-light-emphasis mb-1">Horario</div>
+                    <div><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                    <div class="small"><%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
+                  </div>
+
+                  <div>
+                    <div class="small text-light-emphasis mb-1">Solicitud</div>
+                    <div class="small"><%= item.justificacion_academica || '-' %></div>
+                  </div>
+
+                  <% if (item.condicion_entrega) { %>
+                    <div>
+                      <div class="small text-light-emphasis mb-1">Condicion de entrega</div>
+                      <div class="small"><%= item.condicion_entrega %></div>
+                    </div>
+                  <% } %>
+
+                  <% if (item.condicion_devolucion) { %>
+                    <div>
+                      <div class="small text-light-emphasis mb-1">Condicion de devolucion</div>
+                      <div class="small"><%= item.condicion_devolucion %></div>
+                    </div>
+                  <% } %>
+
+                  <% if (Array.isArray(item.lista_componentes) && item.lista_componentes.length > 0) { %>
+                    <div>
+                      <div class="small text-light-emphasis mb-1">Componentes devueltos</div>
+                      <div class="small"><%= item.lista_componentes.join(', ') %></div>
+                    </div>
+                  <% } %>
+
+                  <div class="d-flex gap-2 mt-auto flex-wrap">
+                    <% if (['aprobado', 'activo', 'finalizado', 'completado'].includes(item.estado)) { %>
+                      <a
+                        href="/milab/prestamos/solicitudes/<%= item.id %>/comprobante-pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-info btn-sm"
+                      >
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        <span>Comprobante</span>
+                      </a>
+                    <% } %>
+                    <a
+                      href="/milab/prestamos/solicitudes/<%= item.id %>/reglamento-pdf"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="btn btn-outline-secondary btn-sm"
+                    >
+                      <i class="bi bi-journal-text"></i>
+                      <span>Reglamento firmado</span>
+                    </a>
+                  </div>
+
+                  <div class="d-flex gap-2 flex-wrap">
+                    <% if (item.estado === 'aprobado') { %>
+                      <div class="d-flex gap-2 flex-fill flex-wrap">
+                        <button
+                          type="button"
+                          class="btn btn-success btn-sm flex-fill js-open-delivery-modal"
+                          data-request-id="<%= item.id %>"
+                          data-equipo="<%= item.equipo_nombre || '' %>"
+                        >
+                          <i class="bi bi-box-arrow-right"></i>
+                          <span>Entregar</span>
+                        </button>
+                        <% if (item.habilitarUltimaHora) { %>
+                          <button
+                            type="button"
+                            class="btn btn-outline-secondary btn-sm flex-fill js-open-last-minute-modal"
+                            data-request-id="<%= item.id %>"
+                            data-equipo="<%= item.equipo_nombre || '' %>"
+                          >
+                            <i class="bi bi-clock-history"></i>
+                            <span>Ultima hora</span>
+                          </button>
+                        <% } %>
+                      </div>
+                    <% } else if (item.estado === 'activo') { %>
+                      <% if (dentroUmbralRecepcion) { %>
+                        <div class="d-flex gap-2 flex-fill">
+                          <% if (item.incidencia_activa || item.equipo_estado === 'mantenimiento') { %>
+                            <div class="w-100 d-grid gap-2">
+                              <div class="alert alert-warning mb-0">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <strong>Solucionar incidencia para recibir equipo</strong>
+                              </div>
+                              <button
+                                type="button"
+                                class="btn btn-warning btn-sm"
+                                disabled
+                                title="Equipo con incidencia o en mantenimiento"
+                              >
+                                <i class="bi bi-box-arrow-in-left"></i>
+                                <span>Recibir</span>
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn-outline-danger btn-sm js-open-incident-modal"
+                                data-request-id="<%= item.id %>"
+                                data-equipo="<%= item.equipo_nombre || '' %>"
+                              >
+                                <i class="bi bi-bug"></i>
+                                <span>Incidencia</span>
+                              </button>
+                            </div>
+                          <% } else { %>
+                            <button
+                              type="button"
+                              class="btn btn-warning btn-sm flex-fill js-open-return-modal"
+                              data-request-id="<%= item.id %>"
+                              data-equipo="<%= item.equipo_nombre || '' %>"
+                            >
+                              <i class="bi bi-box-arrow-in-left"></i>
+                              <span>Recibir</span>
+                            </button>
+                            <button
+                              type="button"
+                              class="btn btn-outline-danger btn-sm flex-fill js-open-incident-modal"
+                              data-request-id="<%= item.id %>"
+                              data-equipo="<%= item.equipo_nombre || '' %>"
+                            >
+                              <i class="bi bi-bug"></i>
+                              <span>Incidencia</span>
+                            </button>
+                          <% } %>
+                        </div>
+                      <% } else { %>
+                        <div class="alert alert-info mb-0 w-100">
+                          <i class="bi bi-info-circle"></i>
+                          <strong>Equipo en prestamo activo</strong><br>
+                          <small>Esperando devolucion del usuario</small>
+                        </div>
+                      <% } %>
+                      <% if (item.incidencia_activa) { %>
+                        <div class="small text-warning mt-2">
+                          Incidencia activa: <%= item.incidencia_descripcion || 'Pendiente de solucion.' %>
+                        </div>
+                      <% } %>
+                    <% } %>
+                  </div>
+                </div>
+              </article>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          No hay solicitudes aprobadas o activas dentro de tu alcance actual.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="entregaModal" tabindex="-1" aria-labelledby="entregaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="entregaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="entregaModalLabel">Registrar entrega</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="entregaSolicitudId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="entregaEquipoNombre">-</span></p>
+          <div class="mb-3">
+            <label for="entregaCondicion" class="form-label">Condicion de la entrega *</label>
+            <textarea
+              class="form-control"
+              id="entregaCondicion"
+              rows="4"
+              required
+              placeholder="Describe el estado del equipo y los elementos entregados."
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success" id="entregaSubmitBtn">Confirmar entrega</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="incidenciaModal" tabindex="-1" aria-labelledby="incidenciaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="incidenciaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="incidenciaModalLabel">Registrar incidencia</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="incidenciaSolicitudId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="incidenciaEquipoNombre">-</span></p>
+          <div class="mb-3">
+            <label for="incidenciaTipo" class="form-label">Tipo de incidencia *</label>
+            <select class="form-select" id="incidenciaTipo" required>
+              <option value="">Selecciona una opcion</option>
+              <option value="danio_fisico">Danio fisico</option>
+              <option value="faltante">Faltante</option>
+              <option value="mal_funcionamiento">Mal funcionamiento</option>
+              <option value="otro">Otra</option>
+            </select>
+          </div>
+          <div class="mb-0">
+            <label for="incidenciaDescripcion" class="form-label">Descripcion *</label>
+            <textarea
+              class="form-control"
+              id="incidenciaDescripcion"
+              rows="4"
+              required
+              placeholder="Describe lo sucedido y el estado actual del equipo."
+            ></textarea>
+          </div>
+          <div class="mt-3">
+            <label for="incidenciaEvidencia" class="form-label">Evidencia fotografica</label>
+            <input
+              type="file"
+              class="form-control"
+              id="incidenciaEvidencia"
+              accept="image/*"
+            >
+            <div class="form-text">Opcional. Puedes adjuntar una imagen de maximo 1 MB.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="incidenciaSubmitBtn">Registrar incidencia</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="ultimaHoraModal" tabindex="-1" aria-labelledby="ultimaHoraModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="ultimaHoraForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="ultimaHoraModalLabel">Prestamo de ultima hora</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="ultimaHoraSolicitudId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="ultimaHoraEquipoNombre">-</span></p>
+          <div class="mb-3">
+            <label for="ultimaHoraDocumento" class="form-label">Documento del nuevo usuario *</label>
+            <input
+              type="text"
+              class="form-control"
+              id="ultimaHoraDocumento"
+              required
+              placeholder="Ej.: 1000..."
+            >
+          </div>
+          <div class="alert alert-warning mb-0">
+            El usuario destino debe firmar el reglamento y enviar la solicitud desde "Mis solicitudes" para que puedas entregar el equipo.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-secondary" id="ultimaHoraSubmitBtn">Enviar a ultima hora</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="devolucionModal" tabindex="-1" aria-labelledby="devolucionModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="devolucionForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="devolucionModalLabel">Registrar devolucion</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="devolucionSolicitudId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="devolucionEquipoNombre">-</span></p>
+          <div class="mb-3">
+            <label for="devolucionCondicion" class="form-label">Condicion de la devolucion *</label>
+            <textarea
+              class="form-control"
+              id="devolucionCondicion"
+              rows="4"
+              required
+              placeholder="Describe el estado en que se recibe el equipo."
+            ></textarea>
+          </div>
+          <div class="mb-0">
+            <label for="devolucionComponentes" class="form-label">Componentes devueltos</label>
+            <input
+              type="text"
+              class="form-control"
+              id="devolucionComponentes"
+              placeholder="Ej: cargador, mouse, cable HDMI"
+            >
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning" id="devolucionSubmitBtn">Confirmar devolucion</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('entregaEquiposAlerts');
+    var entregaModalElement = document.getElementById('entregaModal');
+    var ultimaHoraModalElement = document.getElementById('ultimaHoraModal');
+    var devolucionModalElement = document.getElementById('devolucionModal');
+    var incidenciaModalElement = document.getElementById('incidenciaModal');
+    var entregaForm = document.getElementById('entregaForm');
+    var ultimaHoraForm = document.getElementById('ultimaHoraForm');
+    var devolucionForm = document.getElementById('devolucionForm');
+    var incidenciaForm = document.getElementById('incidenciaForm');
+
+    if (!alertsContainer || !entregaModalElement || !ultimaHoraModalElement || !devolucionModalElement || !incidenciaModalElement || !entregaForm || !ultimaHoraForm || !devolucionForm || !incidenciaForm) return;
+
+    var entregaModal = new bootstrap.Modal(entregaModalElement);
+    var ultimaHoraModal = new bootstrap.Modal(ultimaHoraModalElement);
+    var devolucionModal = new bootstrap.Modal(devolucionModalElement);
+    var incidenciaModal = new bootstrap.Modal(incidenciaModalElement);
+
+    var entregaSolicitudId = document.getElementById('entregaSolicitudId');
+    var entregaEquipoNombre = document.getElementById('entregaEquipoNombre');
+    var entregaCondicion = document.getElementById('entregaCondicion');
+    var entregaSubmitBtn = document.getElementById('entregaSubmitBtn');
+
+    var ultimaHoraSolicitudId = document.getElementById('ultimaHoraSolicitudId');
+    var ultimaHoraEquipoNombre = document.getElementById('ultimaHoraEquipoNombre');
+    var ultimaHoraDocumento = document.getElementById('ultimaHoraDocumento');
+    var ultimaHoraSubmitBtn = document.getElementById('ultimaHoraSubmitBtn');
+
+    var devolucionSolicitudId = document.getElementById('devolucionSolicitudId');
+    var devolucionEquipoNombre = document.getElementById('devolucionEquipoNombre');
+    var devolucionCondicion = document.getElementById('devolucionCondicion');
+    var devolucionComponentes = document.getElementById('devolucionComponentes');
+    var devolucionSubmitBtn = document.getElementById('devolucionSubmitBtn');
+
+    var incidenciaSolicitudId = document.getElementById('incidenciaSolicitudId');
+    var incidenciaEquipoNombre = document.getElementById('incidenciaEquipoNombre');
+    var incidenciaTipo = document.getElementById('incidenciaTipo');
+    var incidenciaDescripcion = document.getElementById('incidenciaDescripcion');
+    var incidenciaEvidencia = document.getElementById('incidenciaEvidencia');
+    var incidenciaSubmitBtn = document.getElementById('incidenciaSubmitBtn');
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    async function postForm(url, formData) {
+      var response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    document.querySelectorAll('.js-open-delivery-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        entregaSolicitudId.value = button.getAttribute('data-request-id') || '';
+        entregaEquipoNombre.textContent = button.getAttribute('data-equipo') || '-';
+        entregaCondicion.value = '';
+        entregaSubmitBtn.disabled = false;
+        entregaModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-last-minute-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        ultimaHoraSolicitudId.value = button.getAttribute('data-request-id') || '';
+        ultimaHoraEquipoNombre.textContent = button.getAttribute('data-equipo') || '-';
+        ultimaHoraDocumento.value = '';
+        ultimaHoraSubmitBtn.disabled = false;
+        ultimaHoraModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-return-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        devolucionSolicitudId.value = button.getAttribute('data-request-id') || '';
+        devolucionEquipoNombre.textContent = button.getAttribute('data-equipo') || '-';
+        devolucionCondicion.value = '';
+        devolucionComponentes.value = '';
+        devolucionSubmitBtn.disabled = false;
+        devolucionModal.show();
+      });
+    });
+
+    document.querySelectorAll('.js-open-incident-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        incidenciaSolicitudId.value = button.getAttribute('data-request-id') || '';
+        incidenciaEquipoNombre.textContent = button.getAttribute('data-equipo') || '-';
+        incidenciaTipo.value = '';
+        incidenciaDescripcion.value = '';
+        incidenciaSubmitBtn.disabled = false;
+        incidenciaModal.show();
+      });
+    });
+
+    entregaForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!entregaCondicion.value.trim()) {
+        entregaCondicion.classList.add('is-invalid');
+        return;
+      }
+
+      entregaCondicion.classList.remove('is-invalid');
+      entregaSubmitBtn.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/entrega-equipos/' + encodeURIComponent(entregaSolicitudId.value) + '/marcar-prestado',
+          {
+            condicion_entrega: entregaCondicion.value,
+          }
+        );
+
+        entregaModal.hide();
+        showAlert('success', result.message || 'Entrega registrada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible registrar la entrega.');
+        entregaSubmitBtn.disabled = false;
+      }
+    });
+
+    ultimaHoraForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!ultimaHoraDocumento.value.trim()) {
+        if (!ultimaHoraDocumento.value.trim()) ultimaHoraDocumento.classList.add('is-invalid');
+        return;
+      }
+
+      ultimaHoraDocumento.classList.remove('is-invalid');
+      ultimaHoraSubmitBtn.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/entrega-equipos/' + encodeURIComponent(ultimaHoraSolicitudId.value) + '/ultima-hora',
+          {
+            documento: ultimaHoraDocumento.value
+          }
+        );
+
+        ultimaHoraModal.hide();
+        showAlert('success', result.message || 'Prestamo de ultima hora registrado correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible registrar el prestamo de ultima hora.');
+        ultimaHoraSubmitBtn.disabled = false;
+      }
+    });
+
+    devolucionForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!devolucionCondicion.value.trim()) {
+        devolucionCondicion.classList.add('is-invalid');
+        return;
+      }
+
+      devolucionCondicion.classList.remove('is-invalid');
+      devolucionSubmitBtn.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/entrega-equipos/' + encodeURIComponent(devolucionSolicitudId.value) + '/recibir',
+          {
+            condicion_devolucion: devolucionCondicion.value,
+            lista_componentes: devolucionComponentes.value,
+          }
+        );
+
+        devolucionModal.hide();
+        showAlert('success', result.message || 'Devolucion registrada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible registrar la devolucion.');
+        devolucionSubmitBtn.disabled = false;
+      }
+    });
+
+    incidenciaForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      if (!incidenciaTipo.value || !incidenciaDescripcion.value.trim()) {
+        if (!incidenciaTipo.value) incidenciaTipo.classList.add('is-invalid');
+        if (!incidenciaDescripcion.value.trim()) incidenciaDescripcion.classList.add('is-invalid');
+        return;
+      }
+
+      incidenciaTipo.classList.remove('is-invalid');
+      incidenciaDescripcion.classList.remove('is-invalid');
+      incidenciaSubmitBtn.disabled = true;
+
+      try {
+        var formData = new FormData();
+        formData.append('tipo_incidencia', incidenciaTipo.value);
+        formData.append('descripcion', incidenciaDescripcion.value);
+        if (incidenciaEvidencia && incidenciaEvidencia.files && incidenciaEvidencia.files[0]) {
+          formData.append('evidencia', incidenciaEvidencia.files[0]);
+        }
+
+        var result = await postForm(
+          '/milab/prestamos/entrega-equipos/' + encodeURIComponent(incidenciaSolicitudId.value) + '/incidencia',
+          formData
+        );
+
+        incidenciaModal.hide();
+        showAlert('warning', result.message || 'Incidencia registrada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible registrar la incidencia.');
+        incidenciaSubmitBtn.disabled = false;
+      }
+    });
+
+    entregaModalElement.addEventListener('hidden.bs.modal', function() {
+      entregaSolicitudId.value = '';
+      entregaEquipoNombre.textContent = '-';
+      entregaCondicion.value = '';
+      entregaCondicion.classList.remove('is-invalid');
+      entregaSubmitBtn.disabled = false;
+    });
+
+    ultimaHoraModalElement.addEventListener('hidden.bs.modal', function() {
+      ultimaHoraSolicitudId.value = '';
+      ultimaHoraEquipoNombre.textContent = '-';
+      ultimaHoraDocumento.value = '';
+      ultimaHoraDocumento.classList.remove('is-invalid');
+      ultimaHoraSubmitBtn.disabled = false;
+    });
+
+    devolucionModalElement.addEventListener('hidden.bs.modal', function() {
+      devolucionSolicitudId.value = '';
+      devolucionEquipoNombre.textContent = '-';
+      devolucionCondicion.value = '';
+      devolucionCondicion.classList.remove('is-invalid');
+      devolucionComponentes.value = '';
+      devolucionSubmitBtn.disabled = false;
+    });
+
+    incidenciaModalElement.addEventListener('hidden.bs.modal', function() {
+      incidenciaSolicitudId.value = '';
+      incidenciaEquipoNombre.textContent = '-';
+      incidenciaTipo.value = '';
+      incidenciaTipo.classList.remove('is-invalid');
+      incidenciaDescripcion.value = '';
+      incidenciaDescripcion.classList.remove('is-invalid');
+      if (incidenciaEvidencia) incidenciaEvidencia.value = '';
+      incidenciaSubmitBtn.disabled = false;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

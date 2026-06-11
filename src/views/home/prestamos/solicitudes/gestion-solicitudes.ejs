@@ -1,0 +1,335 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Gestion de solicitudes</h1>
+    <p class="app-page-subtitle">Revision y decision de solicitudes pendientes de prestamo para laboratoristas, coordinadores y administradores.</p>
+  </section>
+
+  <div id="gestionSolicitudesAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Solicitudes por gestionar</h5>
+      <span class="badge text-bg-secondary"><%= Array.isArray(solicitudes) ? solicitudes.length : 0 %> pendiente(s)</span>
+    </div>
+
+    <div class="card-body">
+      <% if (solicitudes && solicitudes.length > 0) { %>
+        <div class="row g-3">
+          <% solicitudes.forEach(function(item) { %>
+            <div class="col-xl-4 col-lg-6">
+              <article class="card bg-secondary h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h6 class="mb-0">
+                    <i class="bi bi-gear"></i>
+                    <span><%= item.equipo_nombre || 'Equipo' %></span>
+                  </h6>
+                  <% if (item.estado === 'en_cola') { %>
+                    <span class="badge bg-warning text-dark">
+                      <i class="bi bi-clock-history"></i>
+                      <span>En cola</span>
+                    </span>
+                  <% } else { %>
+                    <span class="badge bg-warning text-dark">
+                      <i class="bi bi-clock"></i>
+                      <span>Pendiente</span>
+                    </span>
+                  <% } %>
+                </div>
+
+                <div class="card-body">
+                  <div class="mb-3">
+                    <h6 class="text-info"><i class="bi bi-person"></i> Solicitante:</h6>
+                    <p class="mb-1"><strong>Nombre:</strong> <%= item.usuario_nombre || '-' %></p>
+                    <p class="mb-1"><strong>Documento:</strong> <%= item.usuario_documento || '-' %></p>
+                    <p class="mb-1"><strong>Email:</strong> <%= item.usuario_correo || '-' %></p>
+                  </div>
+
+                  <div class="mb-3">
+                    <h6 class="text-info"><i class="bi bi-gear"></i> Equipo:</h6>
+                    <p class="mb-1"><strong>Codigo:</strong> <%= item.equipo_codigo || '-' %></p>
+                    <p class="mb-1"><strong>Descripcion:</strong> <%= item.equipo_descripcion || '-' %></p>
+                    <p class="mb-1"><strong>Laboratorio:</strong> <%= item.laboratorio || '-' %></p>
+                    <p class="mb-1"><strong>Facultad:</strong> <%= item.facultad || '-' %></p>
+                  </div>
+
+                  <div class="mb-3">
+                    <h6 class="text-info"><i class="bi bi-calendar"></i> Periodo:</h6>
+                    <p class="mb-1">
+                      <strong>Inicio:</strong>
+                      <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    </p>
+                    <p class="mb-1">
+                      <strong>Fin:</strong>
+                      <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    </p>
+                    <p class="mb-1">
+                      <strong>Solicitado:</strong>
+                      <%= item.fecha_creacion ? new Date(item.fecha_creacion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    </p>
+                  </div>
+
+                  <div class="mb-3">
+                    <h6 class="text-info"><i class="bi bi-tags"></i> Categoria:</h6>
+                    <p class="mb-0 text-capitalize"><%= item.categoria_practica || '-' %></p>
+                  </div>
+
+                  <div class="mb-3">
+                    <h6 class="text-info"><i class="bi bi-file-text"></i> Justificacion:</h6>
+                    <p class="small mb-0"><%= item.justificacion_academica || '-' %></p>
+                  </div>
+
+                  <div class="mb-3">
+                    <a
+                      href="/milab/prestamos/solicitudes/<%= item.id %>/reglamento-pdf"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="btn btn-outline-info w-100"
+                    >
+                      <i class="bi bi-file-earmark-pdf"></i>
+                      <span>Ver Reglamento Firmado</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div class="card-footer">
+                  <div class="d-grid gap-2">
+                    <% if (item.estado === 'en_cola') { %>
+                      <% if (item.cupo_libre) { %>
+                        <button
+                          type="button"
+                          class="btn btn-success js-approve-request"
+                          data-request-id="<%= item.id %>"
+                        >
+                          <i class="bi bi-check-circle"></i>
+                          <span>Aprobar</span>
+                        </button>
+                      <% } else if (item.puede_ultima_hora && item.cola_id && item.solicitud_fuente_id) { %>
+                        <button
+                          type="button"
+                          class="btn btn-warning js-assign-queue-last-minute"
+                          data-queue-id="<%= item.cola_id %>"
+                          data-source-request-id="<%= item.solicitud_fuente_id %>"
+                        >
+                          <i class="bi bi-lightning-charge"></i>
+                          <span>Asignar ultima hora</span>
+                        </button>
+                      <% } else { %>
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          disabled
+                          title="Esperando cancelacion o ventana de ultima hora"
+                        >
+                          <i class="bi bi-hourglass-split"></i>
+                          <span>En espera de cupo</span>
+                        </button>
+                      <% } %>
+                    <% } else { %>
+                      <button
+                        type="button"
+                        class="btn btn-success js-approve-request"
+                        data-request-id="<%= item.id %>"
+                      >
+                        <i class="bi bi-check-circle"></i>
+                        <span>Aprobar</span>
+                      </button>
+                    <% } %>
+                    <button
+                      type="button"
+                      class="btn btn-danger js-open-reject-modal"
+                      data-request-id="<%= item.id %>"
+                      data-equipo="<%= item.equipo_nombre || '' %>"
+                    >
+                      <i class="bi bi-x-circle"></i>
+                      <span><%= item.estado === 'en_cola' ? 'Cancelar Cola' : 'Rechazar' %></span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="text-center py-5">
+          <i class="bi bi-inbox display-1 text-muted"></i>
+          <h3 class="text-muted mt-3">No hay solicitudes pendientes</h3>
+          <p class="text-muted mb-0">Todas las solicitudes han sido procesadas.</p>
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="rechazoSolicitudModal" tabindex="-1" aria-labelledby="rechazoSolicitudModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="rechazoSolicitudForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="rechazoSolicitudModalLabel">Rechazar solicitud</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="rechazoSolicitudId">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="rechazoSolicitudEquipo">-</span></p>
+          <label for="rechazoSolicitudMotivo" class="form-label">Motivo</label>
+          <textarea
+            class="form-control"
+            id="rechazoSolicitudMotivo"
+            rows="4"
+            maxlength="1000"
+            placeholder="Describe por que la solicitud no puede ser aprobada."
+          ></textarea>
+          <div class="form-text">Si lo dejas vacio, el sistema registrara un motivo generico.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="rechazoSolicitudSubmitBtn">Confirmar rechazo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('gestionSolicitudesAlerts');
+    var rejectModalElement = document.getElementById('rechazoSolicitudModal');
+    var rejectForm = document.getElementById('rechazoSolicitudForm');
+    var rejectIdInput = document.getElementById('rechazoSolicitudId');
+    var rejectEquipoLabel = document.getElementById('rechazoSolicitudEquipo');
+    var rejectReasonInput = document.getElementById('rechazoSolicitudMotivo');
+    var rejectSubmitButton = document.getElementById('rechazoSolicitudSubmitBtn');
+
+    if (!alertsContainer || !rejectModalElement || !rejectForm) return;
+
+    var rejectModal = new bootstrap.Modal(rejectModalElement);
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    document.querySelectorAll('.js-approve-request').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var requestId = button.getAttribute('data-request-id');
+        if (!requestId || !window.confirm('¿Deseas aprobar esta solicitud?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/gestion-solicitudes/' + encodeURIComponent(requestId) + '/aprobar');
+          showAlert('success', result.message || 'Solicitud aprobada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible aprobar la solicitud.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-assign-queue-last-minute').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var queueId = button.getAttribute('data-queue-id');
+        var sourceRequestId = button.getAttribute('data-source-request-id');
+        if (!queueId || !sourceRequestId) return;
+        if (!window.confirm('¿Deseas asignar esta solicitud en cola por ultima hora?')) return;
+
+        button.disabled = true;
+
+        try {
+          await postJson(
+            '/milab/prestamos/cola/prestamos/' + encodeURIComponent(queueId) + '/asignar-ultima-hora',
+            { solicitud_id: sourceRequestId }
+          );
+          showAlert('success', 'Solicitud en cola asignada por ultima hora.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible asignar desde cola.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.js-open-reject-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        rejectIdInput.value = button.getAttribute('data-request-id') || '';
+        rejectEquipoLabel.textContent = button.getAttribute('data-equipo') || '-';
+        rejectReasonInput.value = '';
+        rejectSubmitButton.disabled = false;
+        rejectModal.show();
+      });
+    });
+
+    rejectForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      var requestId = rejectIdInput.value;
+      if (!requestId) return;
+
+      rejectSubmitButton.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/gestion-solicitudes/' + encodeURIComponent(requestId) + '/rechazar',
+          { motivo_rechazo: rejectReasonInput.value }
+        );
+
+        rejectModal.hide();
+        showAlert('success', result.message || 'Solicitud rechazada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible rechazar la solicitud.');
+        rejectSubmitButton.disabled = false;
+      }
+    });
+
+    rejectModalElement.addEventListener('hidden.bs.modal', function() {
+      rejectIdInput.value = '';
+      rejectEquipoLabel.textContent = '-';
+      rejectReasonInput.value = '';
+      rejectSubmitButton.disabled = false;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

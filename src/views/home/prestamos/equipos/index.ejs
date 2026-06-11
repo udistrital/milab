@@ -1,0 +1,162 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Equipos de prestamos</h1>
+    <p class="app-page-subtitle">Gestion basica del catalogo de equipos habilitados para el sistema de prestamos en MiLab.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-0">Equipos</h5>
+      </div>
+      <a class="btn btn-perso" href="/milab/prestamos/equipos/crear">
+        <i class="bi bi-plus-circle"></i>
+        <span>Agregar equipo</span>
+      </a>
+    </div>
+
+    <div class="card-body">
+      <% if (items && items.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>Codigo</th>
+                <th>Nombre</th>
+                <th>Categoria</th>
+                <th>Estado</th>
+                <th>Facultad</th>
+                <th>Laboratorio</th>
+                <th>Ubicacion</th>
+                <th>Marca</th>
+                <th>Modelo</th>
+                <th>Serie</th>
+                <th>Prestamo</th>
+                <th>Horarios</th>
+                <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% items.forEach(function(item) { %>
+                <tr>
+                  <td class="text-light"><%= item.codigo || '-' %></td>
+                  <td class="text-light"><%= item.nombre || '-' %></td>
+                  <td class="text-light"><%= item.categoria || '-' %></td>
+                  <td class="text-light text-capitalize"><%= (item.estado || '-').replace('_', ' ') %></td>
+                  <td class="text-light"><%= item.facultad || '-' %></td>
+                  <td class="text-light"><%= item.laboratorio || '-' %></td>
+                  <td class="text-light"><%= item.ubicacion || '-' %></td>
+                  <td class="text-light"><%= item.especificaciones?.marca || '-' %></td>
+                  <td class="text-light"><%= item.especificaciones?.modelo || '-' %></td>
+                  <td class="text-light"><%= item.especificaciones?.serie || '-' %></td>
+                  <td class="text-light">
+                    <%= item.ubicacion_prestamo?.dentro ? 'Dentro' : '' %><%= item.ubicacion_prestamo?.dentro && item.ubicacion_prestamo?.fuera ? ' / ' : '' %><%= item.ubicacion_prestamo?.fuera ? 'Fuera' : '' %>
+                  </td>
+                  <td class="text-light"><%= Array.isArray(item.horarios) ? item.horarios.length : 0 %></td>
+                  <td class="text-light">
+                    <div class="d-flex gap-2">
+                      <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/equipos/<%= item.id %>/editar">
+                        <i class="bi bi-pencil"></i>
+                        <span>Editar</span>
+                      </a>
+                      <button
+                        class="btn btn-outline-warning btn-sm"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#estadoModal"
+                        data-equipo-id="<%= item.id %>"
+                        data-equipo-nombre="<%= item.nombre || '' %>"
+                        data-equipo-estado="<%= item.estado || '' %>"
+                      >
+                        <i class="bi bi-arrow-repeat"></i>
+                        <span>Estado</span>
+                      </button>
+                      <form action="/milab/prestamos/equipos/<%= item.id %>/eliminar" method="post" onsubmit="return confirm('¿Deseas eliminar este equipo?');">
+                        <button class="btn btn-outline-danger btn-sm" type="submit">
+                          <i class="bi bi-trash"></i>
+                          <span>Eliminar</span>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          No hay equipos cargados todavia. Usa `Agregar equipo` para crear el primero.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="estadoModal" tabindex="-1" aria-labelledby="estadoModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="estadoModalForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="estadoModalLabel">Cambiar estado del equipo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2"><strong>Equipo:</strong> <span id="estadoModalEquipoNombre">-</span></p>
+          <p class="mb-3"><strong>Estado actual:</strong> <span id="estadoModalEstadoActual">-</span></p>
+
+          <label for="estadoModalSelect" class="form-label">Nuevo estado</label>
+          <select class="form-select" id="estadoModalSelect" name="estado" required>
+            <option value="">Selecciona un estado</option>
+            <option value="disponible">Disponible</option>
+            <option value="prestado">Prestado</option>
+            <option value="mantenimiento">En mantenimiento</option>
+            <option value="fuera_servicio">Fuera de servicio</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-perso">Guardar estado</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var estadoModal = document.getElementById('estadoModal');
+    if (!estadoModal) return;
+
+    var form = document.getElementById('estadoModalForm');
+    var nameTarget = document.getElementById('estadoModalEquipoNombre');
+    var currentStateTarget = document.getElementById('estadoModalEstadoActual');
+    var select = document.getElementById('estadoModalSelect');
+
+    estadoModal.addEventListener('show.bs.modal', function(event) {
+      var button = event.relatedTarget;
+      if (!button) return;
+
+      var equipmentId = button.getAttribute('data-equipo-id');
+      var equipmentName = button.getAttribute('data-equipo-nombre') || '-';
+      var currentState = button.getAttribute('data-equipo-estado') || '';
+
+      form.setAttribute('action', '/milab/prestamos/equipos/' + equipmentId + '/estado');
+      nameTarget.textContent = equipmentName;
+      currentStateTarget.textContent = currentState ? currentState.replace('_', ' ') : '-';
+      select.value = currentState;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

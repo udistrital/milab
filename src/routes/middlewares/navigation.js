@@ -1,5 +1,9 @@
 const pool = require('../../libs/db');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const {
+  getPrestamosModuleAccess,
+  removePrestamosNavigation,
+} = require('../../libs/prestamos-module-access');
 const { formatRoleLabel, getPrimaryRole, normalizeRoles } = require('../../libs/roles');
 const { getMenuForRoles } = require('../../libs/menu');
 
@@ -62,6 +66,7 @@ function buildStaticNavigation(user) {
           '/milab/api/laboratoristas_registrados',
           'bi-person-workspace'
         ),
+        createLink('Menus y accesos', '/milab/api/admin/menus', 'bi-ui-checks-grid'),
         createLink('Agregar admin', '/milab/api/admins/load_info', 'bi-person-gear'),
         createLink('Sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation'),
       ])
@@ -218,26 +223,49 @@ async function buildNavigation(user) {
     };
   }
 
+  let accessInfo;
+  try {
+    accessInfo = await getPrestamosModuleAccess(user);
+  } catch {
+    accessInfo = null;
+  }
+
   try {
     const menu = await getMenuForRoles(roles);
     const hasMenu =
       menu.primaryLinks.length || menu.secondaryGroups.length || menu.accountLinks.length;
 
     if (hasMenu) {
+      const filteredMenu =
+        accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+          ? removePrestamosNavigation(menu)
+          : menu;
       return {
         isAuthenticated,
         role: getPrimaryRole(roles),
         roleLabel: formatRoleLabel(roles),
-        ...menu,
+        ...filteredMenu,
       };
     }
   } catch {
-    // Fallback to static navigation when DB is unavailable.
+    const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
+    const filteredFallback =
+      accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+        ? removePrestamosNavigation(fallback)
+        : fallback;
+    return {
+      ...filteredFallback,
+      roleLabel: formatRoleLabel(roles),
+    };
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
+  const filteredFallback =
+    accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+      ? removePrestamosNavigation(fallback)
+      : fallback;
   return {
-    ...fallback,
+    ...filteredFallback,
     roleLabel: formatRoleLabel(roles),
   };
 }

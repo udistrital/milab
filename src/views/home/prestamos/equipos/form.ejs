@@ -1,0 +1,356 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  const formItem = item || {};
+  const availableFacultyOptions = Array.isArray(availableFacultades) ? availableFacultades : [];
+  const laboratoryOptionsByFaculty = availableLaboratoriosByFaculty || {};
+  const selectedFaculty = formItem.facultad || '';
+  const selectedLaboratory = formItem.laboratorio || '';
+  const submitUrl = isEdit
+    ? `/milab/prestamos/equipos/${formItem.id}/editar`
+    : '/milab/prestamos/equipos/crear';
+  const pageTitle = isEdit ? 'Editar equipo' : 'Crear equipo';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title"><%= pageTitle %></h1>
+    <p class="app-page-subtitle">Gestion basica del catalogo de equipos del modulo de prestamos en MiLab.</p>
+  </section>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <div class="alert alert-info" role="note">
+    Los campos marcados con * son obligatorios. El codigo del equipo se genera automaticamente al crear el registro.
+  </div>
+
+  <section class="card app-form-panel text-light mx-auto col-xl-10">
+    <div class="card-body">
+      <form action="<%= submitUrl %>" method="post" class="row g-3" id="equiposForm" novalidate>
+        <% if (isEdit) { %>
+          <div class="col-md-6">
+            <label for="codigo" class="form-label">Codigo</label>
+            <input type="text" class="form-control" id="codigo" name="codigo" value="<%= formItem.codigo || '' %>" readonly>
+          </div>
+        <% } %>
+
+        <div class="col-md-6">
+          <label for="nombre" class="form-label">Nombre del equipo *</label>
+          <input
+            type="text"
+            class="form-control"
+            id="nombre"
+            name="nombre"
+            value="<%= formItem.nombre || '' %>"
+            required
+            aria-describedby="nombre_help nombre_error"
+          >
+          <div id="nombre_help" class="form-text text-light">Ejemplo: Osciloscopio digital, Portatil Dell, Microscopio.</div>
+          <div id="nombre_error" class="invalid-feedback">Ingresa el nombre del equipo para continuar.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="categoria" class="form-label">Categoria *</label>
+          <select class="form-select" id="categoria" name="categoria" required>
+            <option value="">Selecciona una categoria</option>
+            <% ['Informatica', 'Laboratorio', 'Audiovisual', 'Mobiliario', 'Electronica', 'Mecanica', 'Quimica', 'Fisica', 'Otro'].forEach(function(option) { %>
+              <option value="<%= option %>" <%= formItem.categoria === option ? 'selected' : '' %>><%= option %></option>
+            <% }) %>
+          </select>
+          <div class="invalid-feedback">Selecciona una categoria valida.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="facultad" class="form-label">Facultad o sede *</label>
+          <select class="form-select" id="facultad" name="facultad" required>
+            <option value="">Selecciona una facultad</option>
+            <% availableFacultyOptions.forEach(function(option) { %>
+              <option value="<%= option %>" <%= selectedFaculty === option ? 'selected' : '' %>><%= option %></option>
+            <% }) %>
+          </select>
+          <div class="invalid-feedback">Selecciona una facultad valida.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="laboratorio" class="form-label">Laboratorio *</label>
+          <select class="form-select" id="laboratorio" name="laboratorio" required>
+            <option value=""><%= selectedFaculty ? 'Selecciona un laboratorio' : 'Selecciona primero una facultad' %></option>
+            <% (laboratoryOptionsByFaculty[selectedFaculty] || []).forEach(function(option) { %>
+              <option value="<%= option %>" <%= selectedLaboratory === option ? 'selected' : '' %>><%= option %></option>
+            <% }) %>
+          </select>
+          <div class="invalid-feedback">Selecciona un laboratorio valido.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="area_conocimiento" class="form-label">Area de conocimiento</label>
+          <input type="text" class="form-control" id="area_conocimiento" name="area_conocimiento" value="<%= formItem.area_conocimiento || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="estado" class="form-label">Estado *</label>
+          <select class="form-select" id="estado" name="estado" required>
+            <option value="">Selecciona un estado</option>
+            <option value="disponible" <%= formItem.estado === 'disponible' ? 'selected' : '' %>>Disponible</option>
+            <option value="prestado" <%= formItem.estado === 'prestado' ? 'selected' : '' %>>Prestado</option>
+            <option value="mantenimiento" <%= formItem.estado === 'mantenimiento' ? 'selected' : '' %>>En mantenimiento</option>
+            <option value="fuera_servicio" <%= formItem.estado === 'fuera_servicio' ? 'selected' : '' %>>Fuera de servicio</option>
+          </select>
+          <div class="invalid-feedback">Selecciona un estado valido.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="ubicacion" class="form-label">Ubicacion fisica</label>
+          <input type="text" class="form-control" id="ubicacion" name="ubicacion" value="<%= formItem.ubicacion || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="marca" class="form-label">Marca</label>
+          <input type="text" class="form-control" id="marca" name="marca" value="<%= formItem.especificaciones?.marca || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="modelo" class="form-label">Modelo</label>
+          <input type="text" class="form-control" id="modelo" name="modelo" value="<%= formItem.especificaciones?.modelo || '' %>">
+        </div>
+
+        <div class="col-md-6">
+          <label for="serie_equipo" class="form-label">Serie</label>
+          <input type="text" class="form-control" id="serie_equipo" name="serie_equipo" value="<%= formItem.especificaciones?.serie || '' %>">
+        </div>
+
+        <div class="col-12">
+          <label for="descripcion" class="form-label">Descripcion</label>
+          <textarea class="form-control" id="descripcion" name="descripcion" rows="2"><%= formItem.descripcion || '' %></textarea>
+        </div>
+
+        <div class="col-12">
+          <label for="detalles_tecnicos" class="form-label">Detalles tecnicos</label>
+          <textarea class="form-control" id="detalles_tecnicos" name="detalles_tecnicos" rows="3"><%= formItem.especificaciones?.detalles || '' %></textarea>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label d-block">Ubicacion de prestamo *</label>
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="ubicacion_prestamo_dentro"
+              name="ubicacion_prestamo_dentro"
+              <%= formItem.ubicacion_prestamo?.dentro ? 'checked' : '' %>
+            >
+            <label class="form-check-label" for="ubicacion_prestamo_dentro">Dentro de las instalaciones</label>
+          </div>
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="ubicacion_prestamo_fuera"
+              name="ubicacion_prestamo_fuera"
+              <%= formItem.ubicacion_prestamo?.fuera ? 'checked' : '' %>
+            >
+            <label class="form-check-label" for="ubicacion_prestamo_fuera">Fuera de las instalaciones</label>
+          </div>
+          <div class="invalid-feedback d-block" id="ubicacionPrestamoError" style="display: none;">Selecciona al menos una ubicacion de prestamo.</div>
+        </div>
+
+        <div class="col-12">
+          <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-2">
+            <label class="form-label mb-0">Horarios de disponibilidad</label>
+            <button class="btn btn-outline-primary btn-sm" type="button" id="agregarHorarioBtn">
+              <i class="bi bi-plus-circle"></i>
+              <span>Agregar horario</span>
+            </button>
+          </div>
+
+          <div class="form-text text-light mb-3">
+            Configura franjas por fecha para indicar cuando el equipo esta disponible para prestamo.
+          </div>
+
+          <div class="vstack gap-3" id="horariosContainer">
+            <% if (Array.isArray(formItem.horarios) && formItem.horarios.length) { %>
+              <% formItem.horarios.forEach(function(horario, index) { %>
+                <div class="row g-2 align-items-end horario-row" data-row-index="<%= index %>">
+                  <div class="col-md-4">
+                    <label class="form-label" for="schedule_fecha_<%= index %>">Fecha</label>
+                    <input type="date" class="form-control" id="schedule_fecha_<%= index %>" name="schedule_fecha" value="<%= horario.fecha || '' %>">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="schedule_hora_inicio_<%= index %>">Hora inicio</label>
+                    <input type="time" class="form-control" id="schedule_hora_inicio_<%= index %>" name="schedule_hora_inicio" value="<%= horario.hora_inicio || '' %>">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="schedule_hora_fin_<%= index %>">Hora fin</label>
+                    <input type="time" class="form-control" id="schedule_hora_fin_<%= index %>" name="schedule_hora_fin" value="<%= horario.hora_fin || '' %>">
+                  </div>
+                  <div class="col-md-2 d-grid">
+                    <button class="btn btn-outline-danger remove-schedule-btn" type="button">Eliminar</button>
+                  </div>
+                </div>
+              <% }) %>
+            <% } %>
+          </div>
+
+          <div class="alert alert-secondary mt-3 mb-0" id="emptySchedulesMessage" <%= Array.isArray(formItem.horarios) && formItem.horarios.length ? 'style="display: none;"' : '' %>>
+            No hay horarios configurados todavia.
+          </div>
+        </div>
+
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <a class="btn btn-outline-secondary" href="/milab/prestamos/equipos">Cancelar</a>
+          <button class="btn btn-perso" type="submit"><%= isEdit ? 'Guardar cambios' : 'Crear equipo' %></button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+  (function() {
+    var form = document.getElementById('equiposForm');
+    if (!form) return;
+
+    var insideCheckbox = document.getElementById('ubicacion_prestamo_dentro');
+    var outsideCheckbox = document.getElementById('ubicacion_prestamo_fuera');
+    var locationError = document.getElementById('ubicacionPrestamoError');
+    var schedulesContainer = document.getElementById('horariosContainer');
+    var addScheduleButton = document.getElementById('agregarHorarioBtn');
+    var emptySchedulesMessage = document.getElementById('emptySchedulesMessage');
+    var facultySelect = document.getElementById('facultad');
+    var laboratorySelect = document.getElementById('laboratorio');
+    var laboratoryOptionsByFaculty = <%- JSON.stringify(laboratoryOptionsByFaculty) %>;
+    var scheduleRowIndex = schedulesContainer ? schedulesContainer.querySelectorAll('.horario-row').length : 0;
+
+    function validateLoanLocation() {
+      var hasSelection = (insideCheckbox && insideCheckbox.checked) || (outsideCheckbox && outsideCheckbox.checked);
+      if (locationError) {
+        locationError.style.display = hasSelection ? 'none' : 'block';
+      }
+      return hasSelection;
+    }
+
+    function syncEmptySchedulesMessage() {
+      if (!schedulesContainer || !emptySchedulesMessage) return;
+      emptySchedulesMessage.style.display = schedulesContainer.querySelector('.horario-row') ? 'none' : 'block';
+    }
+
+    function syncLaboratoryOptions(preserveSelection) {
+      if (!facultySelect || !laboratorySelect) return;
+
+      var selectedFaculty = facultySelect.value || '';
+      var laboratories = laboratoryOptionsByFaculty[selectedFaculty] || [];
+      var previousValue = preserveSelection ? laboratorySelect.value : '';
+
+      laboratorySelect.innerHTML = '';
+
+      var placeholderOption = document.createElement('option');
+      placeholderOption.value = '';
+      placeholderOption.textContent = selectedFaculty
+        ? 'Selecciona un laboratorio'
+        : 'Selecciona primero una facultad';
+      laboratorySelect.appendChild(placeholderOption);
+
+      laboratories.forEach(function(laboratory) {
+        var option = document.createElement('option');
+        option.value = laboratory;
+        option.textContent = laboratory;
+        laboratorySelect.appendChild(option);
+      });
+
+      laboratorySelect.disabled = !selectedFaculty || laboratories.length === 0;
+
+      if (previousValue && laboratories.includes(previousValue)) {
+        laboratorySelect.value = previousValue;
+      } else {
+        laboratorySelect.value = '';
+      }
+    }
+
+    function createScheduleRow(values) {
+      if (!schedulesContainer) return;
+
+      var row = document.createElement('div');
+      row.className = 'row g-2 align-items-end horario-row';
+      row.setAttribute('data-row-index', String(scheduleRowIndex));
+      row.innerHTML =
+        '<div class="col-md-4">' +
+        '  <label class="form-label" for="schedule_fecha_' + scheduleRowIndex + '">Fecha</label>' +
+        '  <input type="date" class="form-control" id="schedule_fecha_' + scheduleRowIndex + '" name="schedule_fecha" value="' + (values?.fecha || '') + '">' +
+        '</div>' +
+        '<div class="col-md-3">' +
+        '  <label class="form-label" for="schedule_hora_inicio_' + scheduleRowIndex + '">Hora inicio</label>' +
+        '  <input type="time" class="form-control" id="schedule_hora_inicio_' + scheduleRowIndex + '" name="schedule_hora_inicio" value="' + (values?.hora_inicio || '') + '">' +
+        '</div>' +
+        '<div class="col-md-3">' +
+        '  <label class="form-label" for="schedule_hora_fin_' + scheduleRowIndex + '">Hora fin</label>' +
+        '  <input type="time" class="form-control" id="schedule_hora_fin_' + scheduleRowIndex + '" name="schedule_hora_fin" value="' + (values?.hora_fin || '') + '">' +
+        '</div>' +
+        '<div class="col-md-2 d-grid">' +
+        '  <button class="btn btn-outline-danger remove-schedule-btn" type="button">Eliminar</button>' +
+        '</div>';
+
+      schedulesContainer.appendChild(row);
+      scheduleRowIndex += 1;
+      syncEmptySchedulesMessage();
+    }
+
+    if (schedulesContainer) {
+      schedulesContainer.addEventListener('click', function(event) {
+        var target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        if (target.classList.contains('remove-schedule-btn')) {
+          var row = target.closest('.horario-row');
+          if (row) {
+            row.remove();
+            syncEmptySchedulesMessage();
+          }
+        }
+      });
+    }
+
+    if (addScheduleButton) {
+      addScheduleButton.addEventListener('click', function() {
+        createScheduleRow();
+      });
+    }
+
+    if (facultySelect) {
+      facultySelect.addEventListener('change', function() {
+        syncLaboratoryOptions(false);
+      });
+    }
+
+    if (insideCheckbox) insideCheckbox.addEventListener('change', validateLoanLocation);
+    if (outsideCheckbox) outsideCheckbox.addEventListener('change', validateLoanLocation);
+    syncLaboratoryOptions(true);
+    syncEmptySchedulesMessage();
+
+    form.addEventListener('submit', function(event) {
+      var isLoanLocationValid = validateLoanLocation();
+
+      if (!form.checkValidity() || !isLoanLocationValid) {
+        event.preventDefault();
+        event.stopPropagation();
+        form.classList.add('was-validated');
+
+        if (!isLoanLocationValid && insideCheckbox) {
+          insideCheckbox.focus();
+        } else {
+          var firstInvalidField = form.querySelector(':invalid');
+          if (firstInvalidField) {
+            firstInvalidField.focus();
+            firstInvalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+        return;
+      }
+
+      form.classList.add('was-validated');
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

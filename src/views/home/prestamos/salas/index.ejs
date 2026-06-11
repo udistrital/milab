@@ -1,0 +1,540 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Salas</h1>
+    <p class="app-page-subtitle">Administra las salas disponibles por facultad y laboratorio para preparar la operacion de practicas.</p>
+  </section>
+
+  <div id="salasAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <form id="filtroSalasForm" class="row g-3" method="get" action="/milab/prestamos/salas">
+        <div class="col-md-5">
+          <label for="filtroFacultad" class="form-label">Facultad</label>
+          <select class="form-select" id="filtroFacultad" name="facultad">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div class="col-md-5">
+          <label for="filtroLaboratorio" class="form-label">Laboratorio</label>
+          <select class="form-select" id="filtroLaboratorio" name="laboratorio">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end gap-2">
+          <button type="submit" class="btn btn-outline-light w-100">Filtrar</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Nueva sala</h5>
+      <span class="small text-light-emphasis">Catalogo minimo de salas</span>
+    </div>
+    <div class="card-body">
+      <form id="crearSalaForm" class="row g-3" novalidate>
+        <div class="col-md-6">
+          <label for="crearFacultad" class="form-label">Facultad *</label>
+          <select class="form-select" id="crearFacultad" required>
+            <option value="">Cargando facultades...</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="crearLaboratorio" class="form-label">Laboratorio *</label>
+          <select class="form-select" id="crearLaboratorio" required disabled>
+            <option value="">Selecciona primero una facultad...</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="crearNombre" class="form-label">Nombre *</label>
+          <input type="text" class="form-control" id="crearNombre" required maxlength="150">
+        </div>
+        <div class="col-md-4">
+          <label for="crearTipoEspacio" class="form-label">Tipo de espacio *</label>
+          <select class="form-select" id="crearTipoEspacio" required>
+            <option value="Sala">Sala</option>
+            <option value="Aula">Aula</option>
+            <option value="Laboratorio">Laboratorio</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="crearCapacidad" class="form-label">Capacidad *</label>
+          <input type="number" class="form-control" id="crearCapacidad" min="1" step="1" value="1" required>
+        </div>
+        <div class="col-md-6">
+          <label for="crearFormatoLibre" class="form-label">Formato practica libre</label>
+          <input type="text" class="form-control" id="crearFormatoLibre" value="PL_REGLAMENTO_GENERAL">
+        </div>
+        <div class="col-md-6">
+          <label for="crearFormatoDocente" class="form-label">Formato practica docente</label>
+          <input type="text" class="form-control" id="crearFormatoDocente" value="DOC_PRACTICA_DOCENTE_SOLICITUD">
+        </div>
+        <div class="col-12">
+          <label for="crearDescripcion" class="form-label">Descripcion</label>
+          <textarea class="form-control" id="crearDescripcion" rows="3"></textarea>
+        </div>
+        <div class="col-12">
+          <label for="crearEquiposNombres" class="form-label">Equipos en sala (opcional)</label>
+          <textarea
+            class="form-control"
+            id="crearEquiposNombres"
+            rows="3"
+            maxlength="2500"
+            placeholder="Escribe los equipos disponibles en esta sala. Uno por linea."
+          ></textarea>
+        </div>
+        <div class="col-md-4 form-check ms-2">
+          <input class="form-check-input" type="checkbox" id="crearPermiteLibre" checked>
+          <label class="form-check-label" for="crearPermiteLibre">Permite practica libre</label>
+        </div>
+        <div class="col-md-4 form-check">
+          <input class="form-check-input" type="checkbox" id="crearPermiteDocente">
+          <label class="form-check-label" for="crearPermiteDocente">Permite practica docente</label>
+        </div>
+        <div class="col-md-3 form-check">
+          <input class="form-check-input" type="checkbox" id="crearActivo" checked>
+          <label class="form-check-label" for="crearActivo">Activa</label>
+        </div>
+        <div class="col-12 d-flex justify-content-end">
+          <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn">Crear sala</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Salas registradas</h5>
+      <span class="badge text-bg-secondary"><%= Array.isArray(salas) ? salas.length : 0 %> sala(s)</span>
+    </div>
+    <div class="card-body">
+      <% if (salas && salas.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-hover table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Ubicacion</th>
+                <th>Tipo</th>
+                <th>Capacidad</th>
+                <th>Practicas</th>
+                <th>Horarios</th>
+                <th>Estado</th>
+                <th class="text-end">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% salas.forEach(function(item) { %>
+                <tr>
+                  <td>
+                    <strong><%= item.nombre || '-' %></strong>
+                    <% if (item.descripcion) { %>
+                      <div class="small text-light-emphasis"><%= item.descripcion %></div>
+                    <% } %>
+                    <% if (item.equipos_nombres) { %>
+                      <div class="small text-light-emphasis">Equipos: <%= item.equipos_nombres %></div>
+                    <% } %>
+                  </td>
+                  <td>
+                    <div><%= item.facultad || '-' %></div>
+                    <div class="small text-light-emphasis"><%= item.laboratorio || '-' %></div>
+                  </td>
+                  <td><%= item.tipo_espacio || '-' %></td>
+                  <td><%= item.capacidad || 0 %></td>
+                  <td>
+                    <div>Libre: <%= item.permite_practica_libre ? 'Si' : 'No' %></div>
+                    <div>Docente: <%= item.permite_practica_docente ? 'Si' : 'No' %></div>
+                  </td>
+                  <td><%= item.total_horarios || 0 %></td>
+                  <td>
+                    <span class="badge <%= item.activo ? 'bg-success' : 'bg-secondary' %>">
+                      <%= item.activo ? 'Activa' : 'Inactiva' %>
+                    </span>
+                  </td>
+                  <td class="text-end">
+                    <div class="d-flex justify-content-end gap-2 flex-wrap">
+                      <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/salas/<%= item.id %>/horarios">
+                        Horarios
+                      </a>
+                      <button
+                        type="button"
+                        class="btn btn-outline-warning btn-sm js-open-edit-sala"
+                        data-sala-id="<%= item.id %>"
+                        data-facultad="<%= item.facultad || '' %>"
+                        data-laboratorio="<%= item.laboratorio || '' %>"
+                        data-nombre="<%= item.nombre || '' %>"
+                        data-tipo-espacio="<%= item.tipo_espacio || 'Sala' %>"
+                        data-capacidad="<%= item.capacidad || 1 %>"
+                        data-descripcion="<%= item.descripcion || '' %>"
+                        data-equipos-nombres="<%= item.equipos_nombres || '' %>"
+                        data-permite-libre="<%= item.permite_practica_libre ? 'true' : 'false' %>"
+                        data-permite-docente="<%= item.permite_practica_docente ? 'true' : 'false' %>"
+                        data-formato-libre="<%= item.formato_practica_libre || 'PL_REGLAMENTO_GENERAL' %>"
+                        data-formato-docente="<%= item.formato_practica_docente || 'DOC_PRACTICA_DOCENTE_SOLICITUD' %>"
+                        data-activo="<%= item.activo ? 'true' : 'false' %>"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-outline-danger btn-sm js-delete-sala"
+                        data-sala-id="<%= item.id %>"
+                        data-sala-nombre="<%= item.nombre || '' %>"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">No hay salas registradas para el filtro actual.</div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="editarSalaModal" tabindex="-1" aria-labelledby="editarSalaModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="editarSalaForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="editarSalaModalLabel">Editar sala</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editarSalaId">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="editarFacultad" class="form-label">Facultad *</label>
+              <select class="form-select" id="editarFacultad" required></select>
+            </div>
+            <div class="col-md-6">
+              <label for="editarLaboratorio" class="form-label">Laboratorio *</label>
+              <select class="form-select" id="editarLaboratorio" required></select>
+            </div>
+            <div class="col-md-4">
+              <label for="editarNombre" class="form-label">Nombre *</label>
+              <input type="text" class="form-control" id="editarNombre" required maxlength="150">
+            </div>
+            <div class="col-md-4">
+              <label for="editarTipoEspacio" class="form-label">Tipo de espacio *</label>
+              <select class="form-select" id="editarTipoEspacio" required>
+                <option value="Sala">Sala</option>
+                <option value="Aula">Aula</option>
+                <option value="Laboratorio">Laboratorio</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="editarCapacidad" class="form-label">Capacidad *</label>
+              <input type="number" class="form-control" id="editarCapacidad" min="1" step="1" required>
+            </div>
+            <div class="col-md-6">
+              <label for="editarFormatoLibre" class="form-label">Formato practica libre</label>
+              <input type="text" class="form-control" id="editarFormatoLibre">
+            </div>
+            <div class="col-md-6">
+              <label for="editarFormatoDocente" class="form-label">Formato practica docente</label>
+              <input type="text" class="form-control" id="editarFormatoDocente">
+            </div>
+            <div class="col-12">
+              <label for="editarDescripcion" class="form-label">Descripcion</label>
+              <textarea class="form-control" id="editarDescripcion" rows="3"></textarea>
+            </div>
+            <div class="col-12">
+              <label for="editarEquiposNombres" class="form-label">Equipos en sala (opcional)</label>
+              <textarea
+                class="form-control"
+                id="editarEquiposNombres"
+                rows="3"
+                maxlength="2500"
+                placeholder="Escribe los equipos disponibles en esta sala. Uno por linea."
+              ></textarea>
+            </div>
+            <div class="col-md-4 form-check ms-2">
+              <input class="form-check-input" type="checkbox" id="editarPermiteLibre">
+              <label class="form-check-label" for="editarPermiteLibre">Permite practica libre</label>
+            </div>
+            <div class="col-md-4 form-check">
+              <input class="form-check-input" type="checkbox" id="editarPermiteDocente">
+              <label class="form-check-label" for="editarPermiteDocente">Permite practica docente</label>
+            </div>
+            <div class="col-md-3 form-check">
+              <input class="form-check-input" type="checkbox" id="editarActivo">
+              <label class="form-check-label" for="editarActivo">Activa</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning" id="editarSalaSubmitBtn">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var selectedFacultad = <%- JSON.stringify(selectedFacultad || '') %>;
+    var selectedLaboratorio = <%- JSON.stringify(selectedLaboratorio || '') %>;
+    var alertsContainer = document.getElementById('salasAlerts');
+    var filtroFacultad = document.getElementById('filtroFacultad');
+    var filtroLaboratorio = document.getElementById('filtroLaboratorio');
+    var crearFacultad = document.getElementById('crearFacultad');
+    var crearLaboratorio = document.getElementById('crearLaboratorio');
+    var crearSalaForm = document.getElementById('crearSalaForm');
+    var crearSalaSubmitBtn = document.getElementById('crearSalaSubmitBtn');
+    var editarSalaModalEl = document.getElementById('editarSalaModal');
+    var editarSalaForm = document.getElementById('editarSalaForm');
+    var editarSalaSubmitBtn = document.getElementById('editarSalaSubmitBtn');
+
+    if (!alertsContainer || !filtroFacultad || !crearSalaForm || !editarSalaModalEl || !editarSalaForm) return;
+
+    var editarSalaModal = new bootstrap.Modal(editarSalaModalEl);
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function fetchJson(url) {
+      var response = await fetch(url);
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    function fillSelect(select, items, placeholder, valueKey, selectedValue) {
+      select.innerHTML = '';
+      var emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = placeholder;
+      select.appendChild(emptyOption);
+
+      (items || []).forEach(function(item) {
+        var option = document.createElement('option');
+        option.value = item[valueKey];
+        option.textContent = item[valueKey];
+        if (selectedValue && selectedValue === option.value) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    async function loadFacultades() {
+      var data = await fetchJson('/milab/prestamos/salas/api/facultades');
+      fillSelect(filtroFacultad, data.facultades, 'Todas', 'facultad', selectedFacultad);
+      fillSelect(crearFacultad, data.facultades, 'Selecciona una facultad...', 'facultad', '');
+      fillSelect(document.getElementById('editarFacultad'), data.facultades, 'Selecciona una facultad...', 'facultad', '');
+    }
+
+    async function loadLaboratorios(facultad, select, placeholder, selectedValue) {
+      select.disabled = true;
+      fillSelect(select, [], 'Cargando laboratorios...', 'laboratorio', '');
+
+      if (!facultad) {
+        fillSelect(select, [], placeholder, 'laboratorio', '');
+        return;
+      }
+
+      var data = await fetchJson('/milab/prestamos/salas/api/laboratorios/' + encodeURIComponent(facultad));
+      fillSelect(select, data.laboratorios, placeholder, 'laboratorio', selectedValue || '');
+      select.disabled = false;
+    }
+
+    function buildSalaPayload(prefix) {
+      return {
+        facultad: document.getElementById(prefix + 'Facultad').value,
+        laboratorio: document.getElementById(prefix + 'Laboratorio').value,
+        nombre: document.getElementById(prefix + 'Nombre').value,
+        tipo_espacio: document.getElementById(prefix + 'TipoEspacio').value,
+        capacidad: document.getElementById(prefix + 'Capacidad').value,
+        descripcion: document.getElementById(prefix + 'Descripcion').value,
+        equipos_nombres: document.getElementById(prefix + 'EquiposNombres').value,
+        permite_practica_libre: document.getElementById(prefix + 'PermiteLibre').checked,
+        permite_practica_docente: document.getElementById(prefix + 'PermiteDocente').checked,
+        formato_practica_libre: document.getElementById(prefix + 'FormatoLibre').value,
+        formato_practica_docente: document.getElementById(prefix + 'FormatoDocente').value,
+        activo: document.getElementById(prefix + 'Activo').checked,
+      };
+    }
+
+    filtroFacultad.addEventListener('change', function() {
+      loadLaboratorios(filtroFacultad.value, filtroLaboratorio, 'Todos', '');
+    });
+
+    crearFacultad.addEventListener('change', function() {
+      loadLaboratorios(crearFacultad.value, crearLaboratorio, 'Selecciona un laboratorio...', '');
+    });
+
+    document.getElementById('editarFacultad').addEventListener('change', function() {
+      loadLaboratorios(
+        document.getElementById('editarFacultad').value,
+        document.getElementById('editarLaboratorio'),
+        'Selecciona un laboratorio...',
+        ''
+      );
+    });
+
+    crearSalaForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!crearSalaForm.checkValidity()) {
+        event.stopPropagation();
+        crearSalaForm.classList.add('was-validated');
+        return;
+      }
+
+      crearSalaSubmitBtn.disabled = true;
+
+      try {
+        var result = await postJson('/milab/prestamos/salas', buildSalaPayload('crear'));
+        showAlert('success', result.message || 'Sala creada correctamente.');
+        crearSalaForm.reset();
+        crearSalaForm.classList.remove('was-validated');
+        crearLaboratorio.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
+        crearLaboratorio.disabled = true;
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 700);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible crear la sala.');
+      } finally {
+        crearSalaSubmitBtn.disabled = false;
+      }
+    });
+
+    document.querySelectorAll('.js-open-edit-sala').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        document.getElementById('editarSalaId').value = button.getAttribute('data-sala-id') || '';
+        document.getElementById('editarNombre').value = button.getAttribute('data-nombre') || '';
+        document.getElementById('editarTipoEspacio').value = button.getAttribute('data-tipo-espacio') || 'Sala';
+        document.getElementById('editarCapacidad').value = button.getAttribute('data-capacidad') || '1';
+        document.getElementById('editarDescripcion').value = button.getAttribute('data-descripcion') || '';
+        document.getElementById('editarEquiposNombres').value = button.getAttribute('data-equipos-nombres') || '';
+        document.getElementById('editarPermiteLibre').checked = button.getAttribute('data-permite-libre') === 'true';
+        document.getElementById('editarPermiteDocente').checked = button.getAttribute('data-permite-docente') === 'true';
+        document.getElementById('editarFormatoLibre').value = button.getAttribute('data-formato-libre') || '';
+        document.getElementById('editarFormatoDocente').value = button.getAttribute('data-formato-docente') || '';
+        document.getElementById('editarActivo').checked = button.getAttribute('data-activo') === 'true';
+        document.getElementById('editarFacultad').value = button.getAttribute('data-facultad') || '';
+        await loadLaboratorios(
+          button.getAttribute('data-facultad') || '',
+          document.getElementById('editarLaboratorio'),
+          'Selecciona un laboratorio...',
+          button.getAttribute('data-laboratorio') || ''
+        );
+        editarSalaModal.show();
+      });
+    });
+
+    editarSalaForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!editarSalaForm.checkValidity()) {
+        event.stopPropagation();
+        editarSalaForm.classList.add('was-validated');
+        return;
+      }
+
+      var salaId = document.getElementById('editarSalaId').value;
+      if (!salaId) return;
+
+      editarSalaSubmitBtn.disabled = true;
+
+      try {
+        var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId), buildSalaPayload('editar'));
+        editarSalaModal.hide();
+        showAlert('success', result.message || 'Sala actualizada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 700);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible actualizar la sala.');
+      } finally {
+        editarSalaSubmitBtn.disabled = false;
+      }
+    });
+
+    document.querySelectorAll('.js-delete-sala').forEach(function(button) {
+      button.addEventListener('click', async function() {
+        var salaId = button.getAttribute('data-sala-id');
+        var salaNombre = button.getAttribute('data-sala-nombre') || 'esta sala';
+        if (!salaId || !window.confirm('¿Deseas eliminar ' + salaNombre + '?')) return;
+
+        button.disabled = true;
+
+        try {
+          var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/eliminar');
+          showAlert('success', result.message || 'Sala eliminada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 700);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible eliminar la sala.');
+          button.disabled = false;
+        }
+      });
+    });
+
+    loadFacultades()
+      .then(function() {
+        if (selectedFacultad) {
+          return loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
+        }
+        fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+        return null;
+      })
+      .catch(function(error) {
+        showAlert('danger', error.message || 'No fue posible cargar los catalogos de salas.');
+      });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

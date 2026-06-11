@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de prestamos MiLab</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        color: #1f2937;
+        margin: 24px;
+        line-height: 1.4;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0 0 12px;
+      }
+
+      .meta,
+      .grid,
+      .section {
+        margin-bottom: 24px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .label {
+        color: #6b7280;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .value {
+        font-size: 24px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+
+      th,
+      td {
+        border: 1px solid #d1d5db;
+        padding: 8px;
+        text-align: left;
+        font-size: 12px;
+      }
+
+      th {
+        background: #f3f4f6;
+      }
+
+      .muted {
+        color: #6b7280;
+        font-size: 12px;
+      }
+
+      .empty {
+        border: 1px dashed #d1d5db;
+        padding: 12px;
+        border-radius: 8px;
+        color: #6b7280;
+      }
+
+      .actions {
+        margin-bottom: 20px;
+      }
+
+      .actions button {
+        padding: 10px 14px;
+        border: none;
+        border-radius: 6px;
+        background: #111827;
+        color: #fff;
+        cursor: pointer;
+      }
+
+      @media print {
+        body {
+          margin: 12px;
+        }
+
+        .actions {
+          display: none;
+        }
+
+        .section {
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="actions">
+      <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
+    </div>
+
+    <header class="section">
+      <h1>Reporte operativo de prestamos MiLab</h1>
+      <div class="meta">
+        <div><strong>Rango:</strong> <%= filters && filters.fecha_inicio ? filters.fecha_inicio : '-' %> a <%= filters && filters.fecha_fin ? filters.fecha_fin : '-' %></div>
+        <div><strong>Generado:</strong> <%= generatedAt || '-' %></div>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <div class="label">Equipos</div>
+        <div class="value"><%= stats && Number.isFinite(stats.equipos) ? stats.equipos : 0 %></div>
+      </article>
+      <article class="card">
+        <div class="label">Solicitudes activas</div>
+        <div class="value"><%= stats && Number.isFinite(stats.solicitudes_activas) ? stats.solicitudes_activas : 0 %></div>
+      </article>
+      <article class="card">
+        <div class="label">Solicitudes por gestionar</div>
+        <div class="value"><%= stats && Number.isFinite(stats.solicitudes_pendientes) ? stats.solicitudes_pendientes : 0 %></div>
+      </article>
+      <article class="card">
+        <div class="label">Practicas activas</div>
+        <div class="value"><%= stats && Number.isFinite(stats.practicas_activas) ? stats.practicas_activas : 0 %></div>
+      </article>
+      <article class="card">
+        <div class="label">Incidencias abiertas</div>
+        <div class="value"><%= stats && Number.isFinite(stats.incidencias_abiertas) ? stats.incidencias_abiertas : 0 %></div>
+      </article>
+      <article class="card">
+        <div class="label">Salas activas</div>
+        <div class="value"><%= stats && Number.isFinite(stats.salas_activas) ? stats.salas_activas : 0 %></div>
+      </article>
+    </section>
+
+    <% function renderTable(title, headers, rows) { %>
+      <section class="section">
+        <h2><%= title %></h2>
+        <% if (rows && rows.length) { %>
+          <table>
+            <thead>
+              <tr>
+                <% headers.forEach(function(header) { %>
+                  <th><%= header.label %></th>
+                <% }) %>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach(function(row) { %>
+                <tr>
+                  <% headers.forEach(function(header) { %>
+                    <td><%= row[header.key] || row[header.key] === 0 ? row[header.key] : '-' %></td>
+                  <% }) %>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <div class="empty">No hay datos para esta seccion en el rango seleccionado.</div>
+        <% } %>
+      </section>
+    <% } %>
+
+    <% renderTable('Solicitudes por estado', [
+      { key: 'estado', label: 'Estado' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], solicitudesPorEstado); %>
+
+    <% renderTable('Practicas por estado', [
+      { key: 'estado', label: 'Estado' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], practicasPorEstado); %>
+
+    <% renderTable('Incidencias por estado', [
+      { key: 'estado', label: 'Estado' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], incidenciasPorEstado); %>
+
+    <% renderTable('Solicitudes por mes', [
+      { key: 'periodo', label: 'Periodo' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], solicitudesPorMes); %>
+
+    <% renderTable('Practicas por mes', [
+      { key: 'periodo', label: 'Periodo' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], practicasPorMes); %>
+
+    <% renderTable('Equipos mas solicitados', [
+      { key: 'nombre', label: 'Equipo' },
+      { key: 'codigo', label: 'Codigo' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], equiposTop); %>
+
+    <% renderTable('Salas mas usadas', [
+      { key: 'nombre', label: 'Sala' },
+      { key: 'cantidad', label: 'Cantidad' }
+    ], salasTop); %>
+
+    <div class="muted">Documento generado para impresion o guardado como PDF desde el navegador.</div>
+
+    <% if (autoPrint) { %>
+      <script>
+        window.addEventListener('load', function() {
+          window.print();
+        });
+      </script>
+    <% } %>
+  </body>
+</html>
