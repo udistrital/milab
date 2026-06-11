@@ -14,7 +14,6 @@ const {
   resolveCoordinatorFacultyNames,
 } = require('../../libs/faculty-scope');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 router.use(express.urlencoded({ extended: true }));
 
@@ -100,21 +99,7 @@ router.get('/', requireAdminOrCoordinadorStudentsAccess, async (req, res) => {
     }
 
     console.error('Error al obtener estudiantes:', error);
-
-    if (wantsJson(req)) {
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible cargar los estudiantes registrados.',
-        message2: 'Intenta nuevamente en unos minutos.',
-      });
-    }
-
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar los estudiantes registrados.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    res.status(500).send('Error al obtener estudiantes');
   }
 });
 

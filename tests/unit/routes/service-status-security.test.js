@@ -32,7 +32,7 @@ function withEnv(partialEnv, fn) {
   }
 }
 
-test('api router allows public service status endpoint outside dev envs', () => {
+test('api router fails fast when ALLOW_PUBLIC_SERVICE_STATUS is enabled outside dev envs', () => {
   withEnv(
     {
       NODE_ENV: 'production',
@@ -40,7 +40,9 @@ test('api router allows public service status endpoint outside dev envs', () => 
     },
     () => {
       delete require.cache[modulePath];
-      assert.doesNotThrow(() => require(modulePath));
+      assert.throws(() => require(modulePath), {
+        message: /ALLOW_PUBLIC_SERVICE_STATUS/i,
+      });
     }
   );
 });

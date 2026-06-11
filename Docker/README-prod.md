@@ -22,7 +22,7 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 
 2. **Configura los parámetros de conexión**
    - Obtén el endpoint, puerto, usuario, contraseña y nombre de la base de datos.
-   - Usa como base `Docker/.env.prod.example` y crea tu archivo real de entorno con estos valores:
+   - Actualiza el archivo de entorno de producción (`Docker/.prodenv`) con estos valores:
      - `DB_HOST=<endpoint RDS>`
      - `DB_PORT=<puerto RDS>`
      - `DB_USER=<usuario>`
@@ -37,8 +37,6 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
    ```sh
    docker build -t milab:prod .
    ```
-   - Este comando usa el `Dockerfile` de la raiz (imagen minima para produccion).
-   - Para entorno local/pruebas se usa `Docker/Dockerfile.dev` desde `Docker/docker-compose.local.yml`.
 2. **Subir la imagen a ECR (Elastic Container Registry)**
    - Crea un repositorio en ECR.
    - Etiqueta y sube la imagen:
@@ -54,7 +52,7 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 
 - Crea una Task Definition en ECS con:
   - Imagen: la URL de ECR subida.
-   - Variables de entorno: usa `Docker/.env.prod.example` como referencia (puedes usar AWS Secrets Manager para los secretos).
+  - Variables de entorno: copia el contenido de `Docker/.prodenv` (puedes usar AWS Secrets Manager para los secretos).
   - Configura puertos (por ejemplo, 3000).
   - Asigna un rol de tarea adecuado para acceso a otros servicios (por ejemplo, Secrets Manager, CloudWatch).
 
@@ -73,12 +71,14 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 
 - Usa AWS Secrets Manager o Parameter Store para manejar contraseñas y secretos.
 - No subas archivos `.env` con secretos a repositorios públicos.
-- Revisa y ajusta los valores tomando como base `Docker/.env.prod.example` antes de desplegar.
+- Revisa y ajusta los valores en `Docker/.prodenv` antes de desplegar.
 
 Controles de seguridad recomendados para autenticación:
 - `ENABLE_DEV_LOGIN=false` en producción.
 - `ADMINDEV` debe permanecer vacío en producción.
+- `ALLOW_PUBLIC_SERVICE_STATUS` debe permanecer deshabilitado en producción (evita exponer endpoints de diagnóstico).
 - El `dev-login` solo se habilita con `NODE_ENV=dev` y `ENABLE_DEV_LOGIN=true`.
+- Si por error `ALLOW_PUBLIC_SERVICE_STATUS=true` fuera de `dev|development|local`, la aplicación falla al iniciar (fail-fast).
 
 
 ---

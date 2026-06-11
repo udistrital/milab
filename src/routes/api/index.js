@@ -5,9 +5,18 @@ const { requireJsonRoles } = require('../middlewares/auth');
 
 var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
-const publicServiceStatusEnv = (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase();
-const allowPublicServiceStatusEndpoint =
-  publicServiceStatusEnv === '' ? true : ['1', 'true', 'yes'].includes(publicServiceStatusEnv);
+const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase().trim();
+const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalizedNodeEnv);
+const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
+  (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()
+);
+
+if (!isDevNodeEnvironment && allowPublicServiceStatusEndpoint) {
+  throw new Error(
+    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de dev|development|local. ' +
+      'Deshabilítalo para iniciar la aplicación.'
+  );
+}
 
 const requireServiceStatusAccess = allowPublicServiceStatusEndpoint
   ? (req, res, next) => next()

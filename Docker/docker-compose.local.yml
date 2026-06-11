@@ -1,8 +1,6 @@
 services:
   milabud:
-    build:
-      context: ..
-      dockerfile: Docker/Dockerfile.dev
+    build: ..
     container_name: milabud_local
     env_file:
       - .env

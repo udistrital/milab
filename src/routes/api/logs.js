@@ -3,7 +3,6 @@ const router = express.Router();
 
 const pool = require('../../libs/db');
 const { requireRoles } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const requireAdminLogsAccess = requireRoles('admin', {
   message: '¡Acceso denegado!',
@@ -34,21 +33,7 @@ router.get('/', requireAdminLogsAccess, async (req, res) => {
     res.render('home/logs', { logs });
   } catch (error) {
     console.error('Error al obtener logs:', error);
-
-    if (wantsJson(req)) {
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible cargar los registros del sistema.',
-        message2: 'Intenta nuevamente en unos minutos.',
-      });
-    }
-
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar los registros del sistema.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    res.status(500).send('Error al obtener logs');
   }
 });
 

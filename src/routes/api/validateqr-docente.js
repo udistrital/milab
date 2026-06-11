@@ -1,7 +1,6 @@
 const express = require('express');
 const pool = require('../../libs/db');
 const { publicPageLimiter } = require('../middlewares/public-rate-limit');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 var router = express.Router();
 
@@ -26,21 +25,7 @@ router.get('/:cc', publicPageLimiter, async (req, res) => {
     }
   } catch (error) {
     console.error('Error al validar el registro:', error);
-
-    if (wantsJson(req)) {
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible validar el registro.',
-        message2: 'Intenta nuevamente en unos minutos.',
-      });
-    }
-
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible validar el registro.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    res.status(500).send('Error al validar el registro.');
   }
 });
 

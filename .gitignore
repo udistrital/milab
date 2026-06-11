@@ -4,7 +4,6 @@
 ### dotenv ###
 .env
 .env.*
-!Docker/.env.prod.example
 Docker/.env
 .venv/
 

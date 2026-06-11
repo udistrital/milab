@@ -10,36 +10,16 @@ on:
     branches:
       - '**'
   workflow_dispatch:
-    inputs:
-      recreate_containers:
-        description: 'Recrear contenedores dbpostgres y milabud'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   Analisis:
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
+    runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: --no-deprecation
       NPM_CONFIG_LOGLEVEL: error
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
-      - name: Validar dependencia del runner (libatomic)
-        run: |
-          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y libatomic1
-            else
-              apt-get update
-              apt-get install -y libatomic1
-            fi
-          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
@@ -52,24 +32,10 @@ jobs:
   pruebas_unitarias:
     name: Pruebas unitarias
     needs: Analisis
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
+    runs-on: ubuntu-latest
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
-      - name: Validar dependencia del runner (libatomic)
-        run: |
-          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
-            if command -v sudo >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y libatomic1
-            else
-              apt-get update
-              apt-get install -y libatomic1
-            fi
-          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
@@ -82,11 +48,10 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_unitarias
-    if: github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/prestamos' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
-      - linux
-      - x64
+      - laboratorios_ec2
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
@@ -152,16 +117,9 @@ jobs:
           sudo docker compose pull dbpostgres dbseed
 
       - name: Recrear contenedores de pruebas
-        if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
         run: |
           cd /home/ubuntu/prod
           sudo docker compose up -d --build --force-recreate dbpostgres milabud
-
-      - name: Desplegar sin recrear DB
-        if: github.event_name != 'workflow_dispatch' || inputs.recreate_containers != true
-        run: |
-          cd /home/ubuntu/prod
-          sudo docker compose up -d --build milabud
 
       - name: Verificar servicios desplegados
         run: |
