@@ -29,6 +29,17 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+      - name: Validar dependencia del runner (libatomic)
+        run: |
+          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y libatomic1
+            else
+              apt-get update
+              apt-get install -y libatomic1
+            fi
+          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
@@ -48,6 +59,17 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+      - name: Validar dependencia del runner (libatomic)
+        run: |
+          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y libatomic1
+            else
+              apt-get update
+              apt-get install -y libatomic1
+            fi
+          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
