@@ -7,9 +7,7 @@ var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
 const publicServiceStatusEnv = (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase();
 const allowPublicServiceStatusEndpoint =
-  publicServiceStatusEnv === ''
-    ? true
-    : ['1', 'true', 'yes'].includes(publicServiceStatusEnv);
+  publicServiceStatusEnv === '' ? true : ['1', 'true', 'yes'].includes(publicServiceStatusEnv);
 
 const requireServiceStatusAccess = allowPublicServiceStatusEndpoint
   ? (req, res, next) => next()
