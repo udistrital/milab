@@ -8,6 +8,7 @@ const {
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -89,7 +90,21 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
     res.render('home/coordinadores_registrados', { coordinadores });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
-    res.status(500).send('Error al obtener coordinadores');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible cargar los coordinadores registrados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar los coordinadores registrados.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 

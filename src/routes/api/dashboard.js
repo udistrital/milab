@@ -4,6 +4,7 @@ const pool = require('../../libs/db');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -624,7 +625,21 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     });
   } catch (error) {
     console.error('Error en dashboard:', error);
-    return res.status(500).send('Error en dashboard');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible cargar el dashboard.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar el dashboard.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   } finally {
     if (client) {
       client.release();

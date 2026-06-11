@@ -5,6 +5,7 @@ const pool = require('../../libs/db');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveOatiName } = require('../../libs/oati-name');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const bp = require('body-parser');
 router.use(bp.json());
@@ -122,7 +123,21 @@ router.get('/', requireMultasAccess, async (req, res) => {
     }
 
     console.error(error);
-    res.status(500).send('Error en el servidor');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible cargar el listado de multas.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar el listado de multas.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 
