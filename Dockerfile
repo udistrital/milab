@@ -5,10 +5,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copia solo los directorios necesarios para ejecutar la app.
+# Imagen de produccion: solo runtime de la app.
 COPY src ./src
-COPY scripts ./scripts
-COPY sql-scripts ./sql-scripts
 
 EXPOSE 3000
 
