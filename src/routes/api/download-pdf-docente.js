@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireRoles } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 var router = express.Router();
 
@@ -20,14 +21,38 @@ router.post('/', requireTeacherPdfDownloadAccess, (req, res) => {
   const requestBody = req.body || {};
   const documentoId = requestBody.con_documento;
   if (!/^\d{1,20}$/.test(String(documentoId || ''))) {
-    return res.status(400).send('Documento inválido.');
+    if (wantsJson(req)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Documento inválido.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 400,
+      message: 'Documento inválido.',
+      message2: 'Revisa el documento e inténtalo nuevamente.',
+      limit: null,
+    });
   }
 
   if (
     req.session.user.tipo === 'docente' &&
     String(req.session.user.documento) !== String(documentoId)
   ) {
-    return res.status(403).send('No tienes permisos para descargar este certificado.');
+    if (wantsJson(req)) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No tienes permisos para descargar este certificado.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 403,
+      message: 'No tienes permisos para descargar este certificado.',
+      message2: 'Si crees que es un error, contacta a soporte.',
+      limit: null,
+    });
   }
 
   const pdfFileName = `certificado_${documentoId}.pdf`;
@@ -38,9 +63,24 @@ router.post('/', requireTeacherPdfDownloadAccess, (req, res) => {
   res.download(pdfPath, 'Certificado_PazySalvo.pdf', (err) => {
     if (err) {
       console.log('Error al descargar el archivo:', err);
-      res
-        .status(500)
-        .send('Error al descargar el archivo. Por favor, inténtalo de nuevo más tarde.');
+      if (res.headersSent) {
+        return;
+      }
+
+      if (wantsJson(req)) {
+        return res.status(500).json({
+          ok: false,
+          message: 'No fue posible descargar el archivo.',
+          message2: 'Inténtalo de nuevo más tarde.',
+        });
+      }
+
+      return renderApplicationError(res, {
+        status: 500,
+        message: 'No fue posible descargar el archivo.',
+        message2: 'Inténtalo de nuevo más tarde.',
+        limit: null,
+      });
     }
   });
 });

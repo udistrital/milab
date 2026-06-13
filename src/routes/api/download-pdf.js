@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { requireRoles } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 var router = express.Router();
 
@@ -25,7 +26,19 @@ router.post('/', requireStudentPdfDownloadAccess, async (req, res) => {
 
   const certificadoId = requestBody.con_codigo; // Este valor debería ser dinámico según tus necesidades
   if (!/^\d{1,20}$/.test(String(certificadoId || ''))) {
-    return res.status(400).send('Código de certificado inválido.');
+    if (wantsJson(req)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Código de certificado inválido.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 400,
+      message: 'Código de certificado inválido.',
+      message2: 'Revisa el código e inténtalo nuevamente.',
+      limit: null,
+    });
   }
 
   if (req.session.user.tipo === 'estudiante') {
@@ -34,7 +47,19 @@ router.post('/', requireStudentPdfDownloadAccess, async (req, res) => {
     ]);
     const expectedCode = result.rows[0]?.codigo ? String(result.rows[0].codigo) : null;
     if (!expectedCode || expectedCode !== String(certificadoId)) {
-      return res.status(403).send('No tienes permisos para descargar este certificado.');
+      if (wantsJson(req)) {
+        return res.status(403).json({
+          ok: false,
+          message: 'No tienes permisos para descargar este certificado.',
+        });
+      }
+
+      return renderApplicationError(res, {
+        status: 403,
+        message: 'No tienes permisos para descargar este certificado.',
+        message2: 'Si crees que es un error, contacta a soporte.',
+        limit: null,
+      });
     }
   }
 
@@ -47,9 +72,24 @@ router.post('/', requireStudentPdfDownloadAccess, async (req, res) => {
     if (err) {
       // Manejo del error en caso de que ocurra durante la descarga
       console.log('Error al descargar el archivo:', err);
-      res
-        .status(500)
-        .send('Error al descargar el archivo. Por favor, inténtalo de nuevo más tarde.');
+      if (res.headersSent) {
+        return;
+      }
+
+      if (wantsJson(req)) {
+        return res.status(500).json({
+          ok: false,
+          message: 'No fue posible descargar el archivo.',
+          message2: 'Inténtalo de nuevo más tarde.',
+        });
+      }
+
+      return renderApplicationError(res, {
+        status: 500,
+        message: 'No fue posible descargar el archivo.',
+        message2: 'Inténtalo de nuevo más tarde.',
+        limit: null,
+      });
     }
   });
 });

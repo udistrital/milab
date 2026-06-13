@@ -11,6 +11,7 @@ require('dotenv').config();
 const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 const router = express.Router();
 
 router.use(express.json());
@@ -382,7 +383,21 @@ router.post('/enviar-codigo', async (req, res) => {
     res.send('Código de verificación enviado al correo (Si no ve el correo, revise su spam).');
   } catch (error) {
     console.error('Error al enviar el correo:', error.message);
-    res.send('Error al enviar el correo.');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible enviar el correo de verificación.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible enviar el correo de verificación.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 
@@ -419,10 +434,25 @@ router.post('/create_account', limiter, securityLogger, async (req, res) => {
         req.session.destroy((err) => {
           if (err) {
             console.error('Error al destruir la sesión:', err);
-            res.status(500).send('Error al cerrar sesión');
+
+            if (wantsJson(req)) {
+              return res.status(500).json({
+                ok: false,
+                message: 'No fue posible cerrar la sesión.',
+                message2: 'Intenta nuevamente.',
+              });
+            }
+
+            return renderApplicationError(res, {
+              status: 500,
+              message: 'No fue posible cerrar la sesión.',
+              message2: 'Intenta nuevamente.',
+              limit: null,
+            });
           }
+
+          return res.render('home/login_2', { error: null, confirmacion: 'cuenta_creada' });
         });
-        res.render('home/login_2', { error: null, confirmacion: 'cuenta_creada' });
       }
     } catch {
       res.render('home/message_error', {
