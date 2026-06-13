@@ -55,6 +55,7 @@ function resolveTrustProxySetting() {
 require('./routes/middlewares/microsoft');
 
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
+const db = require('./libs/db');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const {
@@ -400,16 +401,23 @@ app.use(createApplicationErrorHandler(logger));
 //});
 
 if (require.main === module) {
-  app.listen(app.get('port'), app.get('host'), function () {
-    logger.info(
-      {
-        host: app.get('host'),
-        port: app.get('port'),
-        version: appVersion,
-      },
-      'Server started'
-    );
-  });
+  db.init()
+    .then(() => {
+      app.listen(app.get('port'), app.get('host'), function () {
+        logger.info(
+          {
+            host: app.get('host'),
+            port: app.get('port'),
+            version: appVersion,
+          },
+          'Server started'
+        );
+      });
+    })
+    .catch((error) => {
+      logger.error({ err: error }, 'Database initialization failed during startup');
+      process.exit(1);
+    });
 }
 
 module.exports = app;
