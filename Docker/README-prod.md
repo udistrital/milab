@@ -22,12 +22,18 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 
 2. **Configura los parámetros de conexión**
    - Obtén el endpoint, puerto, usuario, contraseña y nombre de la base de datos.
-   - Actualiza el archivo de entorno de producción (`Docker/.prodenv`) con estos valores:
+    - Actualiza el archivo de entorno de producción (`Docker/.prodenv`) con estos valores:
      - `DB_HOST=<endpoint RDS>`
      - `DB_PORT=<puerto RDS>`
-     - `DB_USER=<usuario>`
-     - `DB_PASSWORD=<contraseña>`
      - `DB_NAME=<nombre de la base de datos>`
+    - Para producción, define credenciales vía Secrets Manager:
+       - `DB_SECRET_ENABLED=true`
+       - `DB_AWS_SECRET_ID=<nombre-o-arn-del-secreto>`
+       - `AWS_REGION=<region-aws-del-secreto>`
+       - `DB_SECRET_USER_KEY=user` (opcional)
+       - `DB_SECRET_PASSWORD_KEY=password` (opcional)
+    - El secreto debe ser JSON, por ejemplo:
+       - `{"user":"mi_usuario","password":"mi_password"}`
 
 ---
 
@@ -72,6 +78,9 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
 - Usa AWS Secrets Manager o Parameter Store para manejar contraseñas y secretos.
 - No subas archivos `.env` con secretos a repositorios públicos.
 - Revisa y ajusta los valores en `Docker/.prodenv` antes de desplegar.
+- Si necesitas cambiar los nombres de variables usadas por la app para leer secreto/región, puedes usar:
+   - `DB_SECRET_ID_ENV_VAR` (por defecto: `DB_AWS_SECRET_ID`)
+   - `DB_SECRET_REGION_ENV_VAR` (por defecto: `AWS_REGION`)
 
 Controles de seguridad recomendados para autenticación:
 - `ENABLE_DEV_LOGIN=false` en producción.
