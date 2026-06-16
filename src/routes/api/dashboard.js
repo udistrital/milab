@@ -8,6 +8,51 @@ const { renderApplicationError, wantsJson } = require('../middlewares/error-hand
 
 const router = express.Router();
 
+async function resolveExistingColumn(client, tableName, candidateColumns) {
+  const candidates = Array.isArray(candidateColumns) ? candidateColumns : [];
+  if (!candidates.length) {
+    return null;
+  }
+
+  const result = await client.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = ANY (current_schemas(true))
+       AND table_name = $1
+       AND column_name = ANY($2::text[])
+     ORDER BY array_position($2::text[], column_name)
+     LIMIT 1`,
+    [tableName, candidates]
+  );
+
+  return result.rows[0]?.column_name || null;
+}
+
+async function resolveDashboardSchemaColumns(client) {
+  const ualIdColumn = await resolveExistingColumn(client, 'ual', ['ual_id', 'id_ual']);
+  const facultadIdColumn = await resolveExistingColumn(client, 'facultad', [
+    'facultad_id',
+    'id_facultad',
+  ]);
+  const multaUalIdColumn = await resolveExistingColumn(client, 'multa', ['ual_id', 'id_ual']);
+  const laboratoristaUalIdColumn = await resolveExistingColumn(client, 'laboratorista_ual', [
+    'ual_id',
+    'id_ual',
+  ]);
+  const coordinadorFacultadIdColumn = await resolveExistingColumn(client, 'coordinador_facultad', [
+    'facultad_id',
+    'id_facultad',
+  ]);
+
+  return {
+    ualIdColumn,
+    facultadIdColumn,
+    multaUalIdColumn,
+    laboratoristaUalIdColumn,
+    coordinadorFacultadIdColumn,
+  };
+}
+
 const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratorista'], {
   message: '¡Acceso denegado!',
   message2: 'No tienes permisos para ver el dashboard',
@@ -202,6 +247,17 @@ function normalizeIntegerArray(values) {
 }
 
 async function resolveLaboratoristaScope(client, authDocument) {
+  const columns = await resolveDashboardSchemaColumns(client);
+  if (!columns.ualIdColumn || !columns.facultadIdColumn || !columns.laboratoristaUalIdColumn) {
+    return {
+      laboratoristaDocument: null,
+      ualIds: [],
+      facultyIds: [],
+      ualNames: [],
+      facultyNames: [],
+    };
+  }
+
   const laboratoristaRes = await client.query(
     'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
     [authDocument]
@@ -219,7 +275,10 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   const laboratorista = laboratoristaRes.rows[0];
   const assignedUalsRes = await client.query(
-    'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1 ORDER BY ual_id ASC',
+    `SELECT ${columns.laboratoristaUalIdColumn} AS ual_id
+     FROM laboratorista_ual
+     WHERE laboratorista_documento_id = $1
+     ORDER BY ${columns.laboratoristaUalIdColumn} ASC`,
     [laboratorista.documento]
   );
 
@@ -231,7 +290,12 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   if (ualIds.length) {
     const ualInfoRes = await client.query(
-      'SELECT ual_id, nombre, facultad_id FROM ual WHERE ual_id = ANY($1::int[]) ORDER BY nombre ASC',
+      `SELECT ${columns.ualIdColumn} AS ual_id,
+              nombre,
+              ${columns.facultadIdColumn} AS facultad_id
+       FROM ual
+       WHERE ${columns.ualIdColumn} = ANY($1::int[])
+       ORDER BY nombre ASC`,
       [ualIds]
     );
     ualNames = ualInfoRes.rows.map((row) => row.nombre).filter(Boolean);
@@ -242,7 +306,10 @@ async function resolveLaboratoristaScope(client, authDocument) {
 
   if (facultyIds.length) {
     const facultyInfoRes = await client.query(
-      'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+      `SELECT nombre
+       FROM facultad
+       WHERE ${columns.facultadIdColumn} = ANY($1::int[])
+       ORDER BY nombre ASC`,
       [facultyIds]
     );
     facultyNames = facultyInfoRes.rows.map((row) => row.nombre).filter(Boolean);
@@ -306,37 +373,51 @@ async function fetchTeacherCertificateRows(client) {
   return result.rows;
 }
 
-async function fetchSanctionRows(client) {
+async function fetchSanctionRows(client, columns) {
+  if (!columns?.ualIdColumn || !columns?.facultadIdColumn || !columns?.multaUalIdColumn) {
+    return [];
+  }
+
   const result = await client.query(
-    `SELECT m.fecha_multa, m.con_estado_multa, u.ual_id, u.facultad_id
+    `SELECT m.fecha_multa, m.con_estado_multa,
+            u.${columns.ualIdColumn} AS ual_id,
+            u.${columns.facultadIdColumn} AS facultad_id
      FROM multa m
-     JOIN ual u ON u.ual_id = m.ual_id
+     JOIN ual u ON u.${columns.ualIdColumn} = m.${columns.multaUalIdColumn}
      WHERE m.fecha_multa IS NOT NULL`
   );
   return result.rows;
 }
 
-async function fetchLaboratoristaRows(client) {
+async function fetchLaboratoristaRows(client, columns) {
+  if (!columns?.ualIdColumn || !columns?.facultadIdColumn || !columns?.laboratoristaUalIdColumn) {
+    return [];
+  }
+
   const result = await client.query(
     `SELECT
        l.documento,
        l.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.ual_id), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.${columns.laboratoristaUalIdColumn}), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.${columns.facultadIdColumn}), NULL) AS faculty_ids
      FROM laboratorista l
      LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
-     LEFT JOIN ual u ON u.ual_id = lu.ual_id
+     LEFT JOIN ual u ON u.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
      GROUP BY l.documento, l.fecha_creacion`
   );
   return result.rows;
 }
 
-async function fetchCoordinatorRows(client) {
+async function fetchCoordinatorRows(client, columns) {
+  if (!columns?.coordinadorFacultadIdColumn) {
+    return [];
+  }
+
   const result = await client.query(
     `SELECT
        c.documento,
        c.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      GROUP BY c.documento, c.fecha_creacion`
@@ -344,20 +425,29 @@ async function fetchCoordinatorRows(client) {
   return result.rows;
 }
 
-async function fetchUsuarioRows(client) {
+async function fetchUsuarioRows(client, columns) {
+  if (
+    !columns?.ualIdColumn ||
+    !columns?.facultadIdColumn ||
+    !columns?.laboratoristaUalIdColumn ||
+    !columns?.coordinadorFacultadIdColumn
+  ) {
+    return [];
+  }
+
   const result = await client.query(
     `SELECT
        u.documento,
        u.fecha_creacion,
        u.carrera,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS coordinator_faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.facultad_id), NULL) AS laboratorista_faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS coordinator_faculty_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS laboratorista_faculty_ids
      FROM usuario u
      LEFT JOIN coordinador c ON c.usuario_id = u.id
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
      LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
-     LEFT JOIN ual ON ual.ual_id = lu.ual_id
+     LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
      GROUP BY u.documento, u.fecha_creacion, u.carrera`
   );
   return result.rows;
@@ -466,6 +556,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+    const columns = await resolveDashboardSchemaColumns(client);
 
     let scope = {
       facultyIds: [],
@@ -486,8 +577,19 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         });
       }
 
+      if (!columns.facultadIdColumn) {
+        return res.render('home/message_error', {
+          message: 'No fue posible cargar el dashboard.',
+          message2: 'No se pudo determinar la estructura de facultades.',
+          limit: null,
+        });
+      }
+
       const facultiesRes = await client.query(
-        'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        `SELECT nombre
+         FROM facultad
+         WHERE ${columns.facultadIdColumn} = ANY($1::int[])
+         ORDER BY nombre ASC`,
         [scope.facultyIds]
       );
       scope.facultyNames = facultiesRes.rows.map((row) => row.nombre).filter(Boolean);
@@ -524,13 +626,13 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       availableChartIds.includes('docentes')
         ? fetchTeacherCertificateRows(client)
         : Promise.resolve([]),
-      fetchSanctionRows(client),
-      fetchLaboratoristaRows(client),
+      fetchSanctionRows(client, columns),
+      fetchLaboratoristaRows(client, columns),
       availableChartIds.includes('coordinadores')
-        ? fetchCoordinatorRows(client)
+        ? fetchCoordinatorRows(client, columns)
         : Promise.resolve([]),
       availableChartIds.includes('usuariosRegistrados')
-        ? fetchUsuarioRows(client)
+        ? fetchUsuarioRows(client, columns)
         : Promise.resolve([]),
     ]);
 
