@@ -12,6 +12,7 @@ app.use('/inicio', menuPermissionMiddleware);
 app.use('/', require('./routes/web/home'));
 app.use('/api', menuPermissionMiddleware, require('./routes/api/index'));
 app.use('/auth', require('./routes/api/login'));
+app.use('/prestamos', require('./routes/api/prestamos'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use('/auth', require('./routes/api/logout'));
 app.use('/auth', require('./routes/api/dev-login'));
