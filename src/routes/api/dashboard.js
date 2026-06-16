@@ -39,6 +39,10 @@ async function resolveDashboardSchemaColumns(client) {
     'ual_id',
     'id_ual',
   ]);
+  const laboratoristaUalDocumentColumn = await resolveExistingColumn(client, 'laboratorista_ual', [
+    'laboratorista_documento_id',
+    'documento_laboratorista',
+  ]);
   const coordinadorFacultadIdColumn = await resolveExistingColumn(client, 'coordinador_facultad', [
     'facultad_id',
     'id_facultad',
@@ -49,6 +53,7 @@ async function resolveDashboardSchemaColumns(client) {
     facultadIdColumn,
     multaUalIdColumn,
     laboratoristaUalIdColumn,
+    laboratoristaUalDocumentColumn,
     coordinadorFacultadIdColumn,
   };
 }
@@ -248,7 +253,12 @@ function normalizeIntegerArray(values) {
 
 async function resolveLaboratoristaScope(client, authDocument) {
   const columns = await resolveDashboardSchemaColumns(client);
-  if (!columns.ualIdColumn || !columns.facultadIdColumn || !columns.laboratoristaUalIdColumn) {
+  if (
+    !columns.ualIdColumn ||
+    !columns.facultadIdColumn ||
+    !columns.laboratoristaUalIdColumn ||
+    !columns.laboratoristaUalDocumentColumn
+  ) {
     return {
       laboratoristaDocument: null,
       ualIds: [],
@@ -277,7 +287,7 @@ async function resolveLaboratoristaScope(client, authDocument) {
   const assignedUalsRes = await client.query(
     `SELECT ${columns.laboratoristaUalIdColumn} AS ual_id
      FROM laboratorista_ual
-     WHERE laboratorista_documento_id = $1
+     WHERE ${columns.laboratoristaUalDocumentColumn} = $1
      ORDER BY ${columns.laboratoristaUalIdColumn} ASC`,
     [laboratorista.documento]
   );
@@ -390,7 +400,12 @@ async function fetchSanctionRows(client, columns) {
 }
 
 async function fetchLaboratoristaRows(client, columns) {
-  if (!columns?.ualIdColumn || !columns?.facultadIdColumn || !columns?.laboratoristaUalIdColumn) {
+  if (
+    !columns?.ualIdColumn ||
+    !columns?.facultadIdColumn ||
+    !columns?.laboratoristaUalIdColumn ||
+    !columns?.laboratoristaUalDocumentColumn
+  ) {
     return [];
   }
 
@@ -401,7 +416,7 @@ async function fetchLaboratoristaRows(client, columns) {
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.${columns.laboratoristaUalIdColumn}), NULL) AS ual_ids,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.${columns.facultadIdColumn}), NULL) AS faculty_ids
      FROM laboratorista l
-     LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
+     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
      LEFT JOIN ual u ON u.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
      GROUP BY l.documento, l.fecha_creacion`
   );
@@ -430,6 +445,7 @@ async function fetchUsuarioRows(client, columns) {
     !columns?.ualIdColumn ||
     !columns?.facultadIdColumn ||
     !columns?.laboratoristaUalIdColumn ||
+    !columns?.laboratoristaUalDocumentColumn ||
     !columns?.coordinadorFacultadIdColumn
   ) {
     return [];
@@ -446,7 +462,7 @@ async function fetchUsuarioRows(client, columns) {
      LEFT JOIN coordinador c ON c.usuario_id = u.id
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
-     LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
+     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
      LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
      GROUP BY u.documento, u.fecha_creacion, u.carrera`
   );
