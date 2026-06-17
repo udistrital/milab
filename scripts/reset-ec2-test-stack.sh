@@ -56,6 +56,7 @@ set -eu
 ENV_FILE="$APP_DIR/Docker/.env"
 SQL_DIR="$APP_DIR/sql-scripts"
 SQL_RUN_DIR="$APP_DIR/sql-scripts.apply"
+COMPOSE_OVERRIDE_FILE="$COMPOSE_DIR/docker-compose.override.yml"
 PROJECT_NAME="$(basename "$COMPOSE_DIR")"
 DB_VOLUME="$(sudo docker inspect "$DB_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
 
@@ -68,11 +69,12 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-if grep -q '^DB_SCHEMA=' "$ENV_FILE"; then
-  sed -i.bak 's/^DB_SCHEMA=.*/DB_SCHEMA=milab/' "$ENV_FILE"
-else
-  printf '\nDB_SCHEMA=milab\n' >> "$ENV_FILE"
-fi
+cat > "$COMPOSE_OVERRIDE_FILE" <<'YAML'
+services:
+  milabud:
+    environment:
+      DB_SCHEMA: milab
+YAML
 
 rm -rf "$SQL_RUN_DIR"
 mv "$SQL_DIR" "$SQL_RUN_DIR"

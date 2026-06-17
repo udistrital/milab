@@ -120,6 +120,15 @@ jobs:
             install -m 600 /opt/.env /opt/milab/Docker/.env
           fi
 
+      - name: Crear override de compose para pruebas
+        run: |
+          cat > /home/ubuntu/prod/docker-compose.override.yml <<'YAML'
+          services:
+            milabud:
+              environment:
+                DB_SCHEMA: milab
+          YAML
+
       - name: Validar flags sensibles en entorno
         run: |
           set -eu
@@ -154,10 +163,36 @@ jobs:
       - name: Recrear contenedores de pruebas
         if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
         run: |
+          set -eu
+          env_file=/opt/milab/Docker/.env
+          db_user=$(grep -E '^[[:space:]]*DB_USER=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
+          db_name=$(grep -E '^[[:space:]]*DB_NAME=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
           cd /home/ubuntu/prod
-          sudo docker compose down dbpostgres milabud
-          sudo docker volume rm prod_my-db6 || true
-          sudo docker compose up -d --build --force-recreate dbpostgres milabud
+          sudo docker compose stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker compose rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker volume rm prod_milab_db_data || true
+          sudo docker compose up -d dbpostgres
+
+          ready=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+            if sudo docker exec milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo 'La base de pruebas no quedó lista a tiempo.' >&2
+            exit 1
+          fi
+
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure.sql
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_seed_system.sql
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure_prestamos.sql
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_seed_prestamos.sql
+
+          sudo docker compose up -d --build milabud
 
       - name: Desplegar sin recrear DB
         if: github.event_name != 'workflow_dispatch' || inputs.recreate_containers != true
