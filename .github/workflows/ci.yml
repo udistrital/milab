@@ -164,14 +164,20 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
         run: |
           set -eu
-          env_file=/opt/milab/Docker/.env
-          db_user=$(grep -E '^[[:space:]]*DB_USER=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
-          db_name=$(grep -E '^[[:space:]]*DB_NAME=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
           cd /home/ubuntu/prod
           sudo docker compose stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
           sudo docker compose rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
           sudo docker volume rm prod_milab_db_data || true
           sudo docker compose up -d dbpostgres
+
+          db_user=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')
+          db_name=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_DB" {print $2; exit}')
+
+          if [ -z "$db_user" ] || [ -z "$db_name" ]; then
+            echo 'No se pudieron resolver POSTGRES_USER o POSTGRES_DB desde el contenedor dbpostgres.' >&2
+            sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | sort
+            exit 1
+          fi
 
           ready=0
           for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do

@@ -94,8 +94,14 @@ sudo docker compose rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
 sudo docker volume rm "$DB_VOLUME" >/dev/null 2>&1 || true
 sudo docker compose up -d dbpostgres
 
-DB_USER="$(grep '^DB_USER=' "$ENV_FILE" | cut -d= -f2-)"
-DB_NAME="$(grep '^DB_NAME=' "$ENV_FILE" | cut -d= -f2-)"
+DB_USER="$(sudo docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')"
+DB_NAME="$(sudo docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_DB" {print $2; exit}')"
+
+if [ -z "$DB_USER" ] || [ -z "$DB_NAME" ]; then
+  echo 'No se pudieron resolver POSTGRES_USER o POSTGRES_DB del contenedor remoto.' >&2
+  sudo docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' | sort
+  exit 1
+fi
 
 ready=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
