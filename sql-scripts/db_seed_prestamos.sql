@@ -1,3 +1,5 @@
+SET search_path TO milab;
+
 INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Prestamos', 'bi-box-seam', 7
 WHERE NOT EXISTS (

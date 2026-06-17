@@ -1,3 +1,5 @@
+CREATE SCHEMA IF NOT EXISTS milab;
+SET search_path TO milab;
 SET TIME ZONE 'America/Bogota';
 
 BEGIN;

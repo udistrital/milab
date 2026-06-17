@@ -47,6 +47,11 @@ async function resolveDashboardSchemaColumns(client) {
     'facultad_id',
     'id_facultad',
   ]);
+  const coordinadorFacultadDocumentColumn = await resolveExistingColumn(
+    client,
+    'coordinador_facultad',
+    ['coordinador_documento_id', 'documento_coordinador', 'documento']
+  );
 
   return {
     ualIdColumn,
@@ -55,6 +60,7 @@ async function resolveDashboardSchemaColumns(client) {
     laboratoristaUalIdColumn,
     laboratoristaUalDocumentColumn,
     coordinadorFacultadIdColumn,
+    coordinadorFacultadDocumentColumn,
   };
 }
 
@@ -424,7 +430,7 @@ async function fetchLaboratoristaRows(client, columns) {
 }
 
 async function fetchCoordinatorRows(client, columns) {
-  if (!columns?.coordinadorFacultadIdColumn) {
+  if (!columns?.coordinadorFacultadIdColumn || !columns?.coordinadorFacultadDocumentColumn) {
     return [];
   }
 
@@ -434,7 +440,7 @@ async function fetchCoordinatorRows(client, columns) {
        c.fecha_creacion,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS faculty_ids
      FROM coordinador c
-     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
      GROUP BY c.documento, c.fecha_creacion`
   );
   return result.rows;
@@ -446,7 +452,8 @@ async function fetchUsuarioRows(client, columns) {
     !columns?.facultadIdColumn ||
     !columns?.laboratoristaUalIdColumn ||
     !columns?.laboratoristaUalDocumentColumn ||
-    !columns?.coordinadorFacultadIdColumn
+    !columns?.coordinadorFacultadIdColumn ||
+    !columns?.coordinadorFacultadDocumentColumn
   ) {
     return [];
   }
@@ -460,7 +467,7 @@ async function fetchUsuarioRows(client, columns) {
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS laboratorista_faculty_ids
      FROM usuario u
      LEFT JOIN coordinador c ON c.usuario_id = u.id
-     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
      LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
      LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
@@ -764,5 +771,11 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     }
   }
 });
+
+router.__private = {
+  fetchCoordinatorRows,
+  fetchUsuarioRows,
+  resolveDashboardSchemaColumns,
+};
 
 module.exports = router;

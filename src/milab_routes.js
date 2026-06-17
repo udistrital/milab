@@ -10,6 +10,7 @@ app.set('view engine', 'ejs');
 
 app.use('/inicio', menuPermissionMiddleware);
 app.use('/', require('./routes/web/home'));
+app.use('/prestamos', menuPermissionMiddleware, require('./routes/api/prestamos'));
 app.use('/api', menuPermissionMiddleware, require('./routes/api/index'));
 app.use('/auth', require('./routes/api/login'));
 app.use('/auth', require('./routes/api/microsoft'));
