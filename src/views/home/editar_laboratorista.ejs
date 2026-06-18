@@ -11,6 +11,9 @@
       <form method="POST" action="/milab/api/laboratoristas_registrados/editar" class="row g-3 app-form-grid">
         <%- include('../partials/csrf_field') %>
         <input type="hidden" name="documento" value="<%= laboratorista.documento %>">
+        <% if (tipo === 'admin') { %>
+          <input type="hidden" id="coordinador_documento" name="coordinador_documento" value="<%= selectedCoordinatorDocument || '' %>">
+        <% } %>
 
         <div class="col-md-6">
           <label class="form-label" for="documento">Documento</label>
@@ -44,6 +47,21 @@
             required
           >
         </div>
+
+        <% if (tipo === 'admin') { %>
+          <div class="col-md-12">
+            <label class="form-label" for="coordinador_documento_select">Coordinador responsable (para filtrar alcance)</label>
+            <select class="form-select" id="coordinador_documento_select">
+              <option value="">Sin filtro</option>
+              <% (coordinadores || []).forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+            <small class="form-text text-muted">Al seleccionar un coordinador se recarga la página para mostrar solo facultades y laboratorios dentro de su alcance.</small>
+          </div>
+        <% } %>
 
         <div class="col-md-6">
           <label class="form-label" for="facultad">Facultad</label>
@@ -102,9 +120,19 @@
 
 <script nonce="<%= cspNonce %>">
   window.addEventListener('DOMContentLoaded', function () {
+    const coordinatorSelect = document.getElementById('coordinador_documento_select');
+    const coordinatorHidden = document.getElementById('coordinador_documento');
     const facultySelect = document.getElementById('facultad');
     const optionRows = document.querySelectorAll('[data-ual-option="true"]');
     const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+
+    function syncCoordinatorSelection() {
+      if (!coordinatorSelect || !coordinatorHidden) {
+        return;
+      }
+
+      coordinatorHidden.value = coordinatorSelect.value || '';
+    }
 
     function refreshUalOptions() {
       const selectedFaculty = facultySelect.value;
@@ -123,7 +151,20 @@
       });
     }
 
+    if (coordinatorSelect) {
+      coordinatorSelect.addEventListener('change', function () {
+        const params = new URLSearchParams(window.location.search);
+        if (coordinatorSelect.value) {
+          params.set('coordinador_documento', coordinatorSelect.value);
+        } else {
+          params.delete('coordinador_documento');
+        }
+        window.location.search = params.toString();
+      });
+    }
+
     facultySelect.addEventListener('change', refreshUalOptions);
     refreshUalOptions();
+    syncCoordinatorSelection();
   });
 </script>

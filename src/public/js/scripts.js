@@ -632,6 +632,118 @@
           'start'
         ),
         createStep(
+          ['[data-guide="nav-prestamos"]'],
+          'Prestamos',
+          'Este menu agrupa el flujo completo de prestamos y practicas, desde la solicitud hasta la entrega, incidencias y reportes.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-inventario"]'],
+          'Inventario',
+          'Permite consultar y administrar el inventario operativo disponible para el modulo de prestamos.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-equipos"]'],
+          'Equipos',
+          'Aqui se revisa el catalogo de equipos con su informacion operativa para solicitudes y control.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-solicitar-equipo"]'],
+          'Solicitar equipo',
+          'Sirve para crear nuevas solicitudes de prestamo de equipos segun el rol y el alcance habilitado.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-mis-solicitudes"]'],
+          'Mis solicitudes',
+          'Muestra el seguimiento de las solicitudes de prestamo realizadas por el usuario autenticado.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-gestion-solicitudes"]'],
+          'Gestion de solicitudes',
+          'Concentra la revision, aprobacion y administracion de solicitudes de prestamo pendientes o en curso.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-entrega-devolucion"]'],
+          'Entrega y devolucion',
+          'Permite registrar entregas, devoluciones y el estado operativo de los equipos prestados.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-incidencias"]'],
+          'Incidencias',
+          'Desde aqui se consultan y gestionan novedades asociadas a prestamos o practicas.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-solicitar-practica"]'],
+          'Solicitar practica',
+          'Este acceso permite reservar practicas o espacios academicos segun disponibilidad y reglas del modulo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-mis-practicas"]'],
+          'Mis practicas',
+          'Aqui el usuario puede consultar el historial y estado de sus reservas o practicas registradas.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-gestion-practicas"]'],
+          'Gestion de practicas',
+          'Permite administrar reservas de practicas, seguimiento diario y cierres operativos.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-salas"]'],
+          'Salas',
+          'Muestra la gestion de salas y su relacion con laboratorios, equipos o practicas del modulo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-reportes"]'],
+          'Reportes',
+          'Consolida consultas y salidas de informacion para seguimiento del modulo de prestamos.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-auditoria"]'],
+          'Auditoria',
+          'Permite revisar trazabilidad y eventos relevantes del modulo para soporte y control.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-parametrizaciones"]'],
+          'Parametrizaciones',
+          'Aqui el administrador ajusta reglas operativas generales del modulo de prestamos.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-prestamos-configuracion-practicas"]'],
+          'Configuracion de practicas',
+          'Este acceso permite definir reglas y alcances de practicas para la coordinacion correspondiente.',
+          'right',
+          'start'
+        ),
+        createStep(
           ['[data-guide="account-menu"]', '[data-guide="account-menu-mobile"]'],
           'Cuenta del usuario',
           'Este bloque te permite consultar tu informacion, cambiar la contrasena, cambiar el tema y cerrar sesion.',
