@@ -237,6 +237,77 @@ CREATE TABLE IF NOT EXISTS practica_config (
 
 CREATE INDEX IF NOT EXISTS idx_practica_config_facultad ON practica_config(facultad_id);
 
+CREATE TABLE IF NOT EXISTS asignatura (
+    id SERIAL NOT NULL,
+    codigo VARCHAR(80) NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_asignatura PRIMARY KEY (id),
+    CONSTRAINT uq_asignatura_codigo UNIQUE (codigo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asignatura_codigo ON asignatura(codigo);
+CREATE INDEX IF NOT EXISTS idx_asignatura_nombre ON asignatura(nombre);
+
+CREATE TABLE IF NOT EXISTS configuracion_practica (
+    id SERIAL NOT NULL,
+    ual_id INT NOT NULL,
+    schema_json JSONB NOT NULL DEFAULT '{"campos_adicionales":[]}'::jsonb,
+    creado_por_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_configuracion_practica PRIMARY KEY (id),
+    CONSTRAINT uq_configuracion_practica_ual UNIQUE (ual_id),
+    CONSTRAINT fk_configuracion_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+    CONSTRAINT fk_configuracion_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_configuracion_practica_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS idx_configuracion_practica_ual ON configuracion_practica(ual_id);
+
+CREATE TABLE IF NOT EXISTS practica (
+    id SERIAL NOT NULL,
+    ual_id INT NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    tipo_practica VARCHAR(120) NOT NULL,
+    estado VARCHAR(20) NOT NULL DEFAULT 'borrador',
+    configuracion_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    creado_por_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_practica PRIMARY KEY (id),
+    CONSTRAINT fk_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+    CONSTRAINT fk_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_practica_estado CHECK (estado IN ('borrador', 'activa', 'inactiva')),
+    CONSTRAINT ck_practica_configuracion_json CHECK (jsonb_typeof(configuracion_json) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS idx_practica_ual ON practica(ual_id);
+CREATE INDEX IF NOT EXISTS idx_practica_estado ON practica(estado);
+CREATE INDEX IF NOT EXISTS idx_practica_tipo ON practica(tipo_practica);
+
+CREATE TABLE IF NOT EXISTS asignatura_practica (
+    id SERIAL NOT NULL,
+    asignatura_id INT NOT NULL,
+    practica_id INT NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_asignatura_practica PRIMARY KEY (id),
+    CONSTRAINT uq_asignatura_practica UNIQUE (asignatura_id, practica_id),
+    CONSTRAINT fk_asignatura_practica_asignatura FOREIGN KEY (asignatura_id) REFERENCES asignatura(id) ON DELETE CASCADE,
+    CONSTRAINT fk_asignatura_practica_practica FOREIGN KEY (practica_id) REFERENCES practica(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_asignatura_practica_asignatura ON asignatura_practica(asignatura_id);
+CREATE INDEX IF NOT EXISTS idx_asignatura_practica_practica ON asignatura_practica(practica_id);
+
 ALTER TABLE coordinador
 ADD COLUMN IF NOT EXISTS firma_digital TEXT;
 

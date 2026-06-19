@@ -245,7 +245,8 @@ WHERE (
         'Gestion de practicas',
         'Salas',
         'Reportes',
-        'Auditoria'
+        'Auditoria',
+        'Configuracion de practicas'
     )
 ) OR (
     role_map.nombre = 'estudiante' AND menu_map.label IN (

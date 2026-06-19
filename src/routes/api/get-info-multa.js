@@ -27,6 +27,41 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
+async function resolveLaboratoristaUals(laboratorista) {
+  if (!laboratorista?.documento) {
+    return [];
+  }
+
+  const assignedUalsResult = await pool.query(
+    `SELECT DISTINCT u.ual_id, u.nombre, u.codigo_abreviacion, u.sal_id_espacio, u.sal_ocupantes
+     FROM laboratorista_ual lu
+     JOIN ual u ON u.ual_id = lu.ual_id
+     WHERE lu.laboratorista_documento_id = $1
+       AND u.activo = TRUE
+     ORDER BY u.nombre ASC`,
+    [laboratorista.documento]
+  );
+
+  if (assignedUalsResult.rows.length > 0) {
+    return assignedUalsResult.rows;
+  }
+
+  if (!laboratorista.facultad_id) {
+    return [];
+  }
+
+  const legacyFacultyUalsResult = await pool.query(
+    `SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes
+     FROM ual
+     WHERE activo = TRUE
+       AND facultad_id = $1
+     ORDER BY nombre ASC`,
+    [laboratorista.facultad_id]
+  );
+
+  return legacyFacultyUalsResult.rows;
+}
+
 const requireLaboratoristaFineInfoView = requireRoles('laboratorista', {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
@@ -139,13 +174,10 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       if (result2.rows.length === 0) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
-      const query3 =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
-      const values3 = [result2.rows[0].facultad_id];
-      const result3 = await pool.query(query3, values3);
-      nombre_lab = result2.rows[0].nombre;
-      cc_lab = result2.rows[0].documento;
-      uals = result3.rows;
+      const laboratorista = result2.rows[0];
+      nombre_lab = laboratorista.nombre;
+      cc_lab = laboratorista.documento;
+      uals = await resolveLaboratoristaUals(laboratorista);
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
       cc_lab = 0;
@@ -197,5 +229,10 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 });
 
 // Función para consultar multas asignadas al usuario
+
+router.__private = {
+  extractOasStudentRecords,
+  resolveLaboratoristaUals,
+};
 
 module.exports = router;

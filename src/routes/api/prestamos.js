@@ -333,7 +333,7 @@ const requireParametrizacionesAuthorized = [
   createMenuPermissionMiddleware(PARAMETRIZACIONES_MENU_ROUTE),
 ];
 
-const requirePracticasConfigAccess = requireRoles(['admin', 'coordinador'], {
+const requirePracticasConfigAccess = requireRoles(['admin', 'coordinador', 'laboratorista'], {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder a la configuracion de practicas.',
   limit: 'loginOnly',
@@ -421,6 +421,7 @@ async function registerPrestamosAuditEntry(options = {}) {
 
 const tableColumnCache = new Map();
 let practiceIncidenceSchemaEnsured = false;
+let academicPracticeSchemaEnsured = false;
 
 async function fetchTableColumns(tableName, client = pool) {
   const normalizedTableName = sanitizeText(tableName);
@@ -484,6 +485,95 @@ async function ensurePracticeIncidenceSchema(client = pool) {
   practiceIncidenceSchemaEnsured = true;
 }
 
+async function ensureAcademicPracticeSchema(client = pool) {
+  if (academicPracticeSchemaEnsured) {
+    return;
+  }
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS asignatura (
+      id SERIAL NOT NULL,
+      codigo VARCHAR(80) NOT NULL,
+      nombre VARCHAR(255) NOT NULL,
+      descripcion TEXT,
+      activo BOOLEAN NOT NULL DEFAULT TRUE,
+      fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT pk_asignatura PRIMARY KEY (id),
+      CONSTRAINT uq_asignatura_codigo UNIQUE (codigo)
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_asignatura_codigo ON asignatura(codigo)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_asignatura_nombre ON asignatura(nombre)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS configuracion_practica (
+      id SERIAL NOT NULL,
+      ual_id INT NOT NULL,
+      schema_json JSONB NOT NULL DEFAULT '{"campos_adicionales":[]}'::jsonb,
+      creado_por_id BIGINT,
+      activo BOOLEAN NOT NULL DEFAULT TRUE,
+      fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT pk_configuracion_practica PRIMARY KEY (id),
+      CONSTRAINT uq_configuracion_practica_ual UNIQUE (ual_id),
+      CONSTRAINT fk_configuracion_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+      CONSTRAINT fk_configuracion_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+      CONSTRAINT ck_configuracion_practica_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
+    )
+  `);
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_configuracion_practica_ual ON configuracion_practica(ual_id)`
+  );
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS practica (
+      id SERIAL NOT NULL,
+      ual_id INT NOT NULL,
+      nombre VARCHAR(255) NOT NULL,
+      descripcion TEXT,
+      tipo_practica VARCHAR(120) NOT NULL,
+      estado VARCHAR(20) NOT NULL DEFAULT 'borrador',
+      configuracion_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      creado_por_id BIGINT,
+      activo BOOLEAN NOT NULL DEFAULT TRUE,
+      fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT pk_practica PRIMARY KEY (id),
+      CONSTRAINT fk_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+      CONSTRAINT fk_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+      CONSTRAINT ck_practica_estado CHECK (estado IN ('borrador', 'activa', 'inactiva')),
+      CONSTRAINT ck_practica_configuracion_json CHECK (jsonb_typeof(configuracion_json) = 'object')
+    )
+  `);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_practica_ual ON practica(ual_id)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_practica_estado ON practica(estado)`);
+  await client.query(`CREATE INDEX IF NOT EXISTS idx_practica_tipo ON practica(tipo_practica)`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS asignatura_practica (
+      id SERIAL NOT NULL,
+      asignatura_id INT NOT NULL,
+      practica_id INT NOT NULL,
+      activo BOOLEAN NOT NULL DEFAULT TRUE,
+      fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT pk_asignatura_practica PRIMARY KEY (id),
+      CONSTRAINT uq_asignatura_practica UNIQUE (asignatura_id, practica_id),
+      CONSTRAINT fk_asignatura_practica_asignatura FOREIGN KEY (asignatura_id) REFERENCES asignatura(id) ON DELETE CASCADE,
+      CONSTRAINT fk_asignatura_practica_practica FOREIGN KEY (practica_id) REFERENCES practica(id) ON DELETE CASCADE
+    )
+  `);
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_asignatura_practica_asignatura ON asignatura_practica(asignatura_id)`
+  );
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_asignatura_practica_practica ON asignatura_practica(practica_id)`
+  );
+
+  academicPracticeSchemaEnsured = true;
+}
+
 function sanitizeInstitutionalFormatFile(value) {
   const normalized = sanitizeText(value);
   if (!normalized) {
@@ -520,6 +610,20 @@ const DEFAULT_PRACTICE_CONFIGURATION = {
   max_horas_mes_practica_libre: 0,
   max_horas_mes_prestamos: 0,
 };
+
+const DEFAULT_DYNAMIC_PRACTICE_SCHEMA = {
+  campos_adicionales: [],
+};
+
+const ALLOWED_DYNAMIC_PRACTICE_FIELD_TYPES = new Set([
+  'text',
+  'textarea',
+  'number',
+  'select',
+  'checkbox',
+  'date',
+  'url',
+]);
 
 function normalizeNonNegativeInteger(value, fallbackValue = 0) {
   const parsed = Number.parseInt(value, 10);
@@ -893,6 +997,270 @@ function validatePracticeReservationPayload(payload) {
 
   if (!payload.firma_digital || payload.firma_digital.length < 5) {
     return 'La firma digital es obligatoria y debe tener al menos 5 caracteres.';
+  }
+
+  return '';
+}
+
+function normalizeSlugPart(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeText(item)).filter(Boolean);
+  }
+
+  const normalized = sanitizeText(value);
+  if (!normalized) {
+    return [];
+  }
+
+  return normalized
+    .split(/\r?\n|,/)
+    .map((item) => sanitizeText(item))
+    .filter(Boolean);
+}
+
+function normalizePracticeSubjectList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(function (item) {
+      return {
+        codigo: sanitizeText(item?.codigo),
+        nombre: sanitizeText(item?.nombre),
+        descripcion: sanitizeText(item?.descripcion),
+      };
+    })
+    .filter(function (item) {
+      return item.codigo && item.nombre;
+    });
+}
+
+function normalizePracticeDocumentList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(function (item) {
+      const url = sanitizeText(item?.url);
+      const nombre =
+        sanitizeText(item?.nombre) ||
+        (url
+          ? decodeURIComponent(String(url).split('/').pop().split('?')[0] || 'Documento PDF')
+          : null);
+
+      return {
+        nombre,
+        url,
+      };
+    })
+    .filter(function (item) {
+      return item.url;
+    });
+}
+
+function normalizeDynamicPracticeField(rawField, index) {
+  const nombre = sanitizeText(rawField?.nombre);
+  const keyCandidate = sanitizeText(rawField?.key);
+  const key = normalizeSlugPart(keyCandidate || nombre || `campo_${index + 1}`);
+  const tipo = sanitizeText(rawField?.tipo || 'text');
+  const valores = normalizeStringList(rawField?.valores);
+
+  return {
+    key,
+    nombre,
+    tipo,
+    obligatorio: toBoolean(rawField?.obligatorio),
+    ayuda: sanitizeText(rawField?.ayuda),
+    placeholder: sanitizeText(rawField?.placeholder),
+    valores,
+  };
+}
+
+function normalizeDynamicPracticeSchema(value) {
+  const raw = sanitizeJsonObject(value) || DEFAULT_DYNAMIC_PRACTICE_SCHEMA;
+  const fields = Array.isArray(raw.campos_adicionales) ? raw.campos_adicionales : [];
+
+  return {
+    campos_adicionales: fields.map(normalizeDynamicPracticeField).filter(function (item) {
+      return item.key && item.nombre;
+    }),
+  };
+}
+
+function validateDynamicPracticeSchema(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return 'El esquema dinamico de la practica no es valido.';
+  }
+
+  const keys = new Set();
+  for (const field of schema.campos_adicionales || []) {
+    if (!field.key || !field.nombre) {
+      return 'Todos los campos adicionales deben tener nombre y llave.';
+    }
+
+    if (!ALLOWED_DYNAMIC_PRACTICE_FIELD_TYPES.has(field.tipo)) {
+      return `El tipo del campo adicional "${field.nombre}" no es valido.`;
+    }
+
+    if (keys.has(field.key)) {
+      return `La llave "${field.key}" esta repetida en el esquema dinamico.`;
+    }
+    keys.add(field.key);
+
+    if (['select'].includes(field.tipo) && !(field.valores || []).length) {
+      return `El campo "${field.nombre}" debe definir al menos una opcion.`;
+    }
+  }
+
+  return '';
+}
+
+function normalizeDynamicPracticeValues(value) {
+  const raw = sanitizeJsonObject(value);
+  return raw || {};
+}
+
+function validateDynamicPracticeValues(schema, values) {
+  const normalizedValues = values && typeof values === 'object' ? values : {};
+
+  for (const field of schema.campos_adicionales || []) {
+    const currentValue = normalizedValues[field.key];
+    const isEmptyValue =
+      currentValue === undefined ||
+      currentValue === null ||
+      String(currentValue).trim() === '' ||
+      (Array.isArray(currentValue) && !currentValue.length);
+
+    if (field.obligatorio && isEmptyValue) {
+      return `El campo dinamico "${field.nombre}" es obligatorio.`;
+    }
+
+    if (isEmptyValue) {
+      continue;
+    }
+
+    if (field.tipo === 'number' && !Number.isFinite(Number(currentValue))) {
+      return `El campo dinamico "${field.nombre}" debe ser numerico.`;
+    }
+
+    if (field.tipo === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(String(currentValue))) {
+      return `El campo dinamico "${field.nombre}" debe tener formato YYYY-MM-DD.`;
+    }
+
+    if (field.tipo === 'url') {
+      try {
+        const parsed = new URL(String(currentValue));
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return `El campo dinamico "${field.nombre}" debe ser una URL http o https.`;
+        }
+      } catch {
+        return `El campo dinamico "${field.nombre}" debe ser una URL valida.`;
+      }
+    }
+
+    if (field.tipo === 'select' && !(field.valores || []).includes(String(currentValue))) {
+      return `El valor del campo dinamico "${field.nombre}" no coincide con las opciones permitidas.`;
+    }
+  }
+
+  return '';
+}
+
+function buildDynamicPracticeSchemaPayload(body = {}) {
+  return {
+    facultad_id: sanitizeText(body.facultad_id),
+    ual_id: sanitizeText(body.ual_id),
+    schema_json: normalizeDynamicPracticeSchema(body.schema_json || body.schemaJson),
+  };
+}
+
+function buildAcademicPracticePayload(body = {}) {
+  return {
+    practica_id: sanitizeText(body.practica_id || body.practicaId),
+    facultad_id: sanitizeText(body.facultad_id),
+    ual_id: sanitizeText(body.ual_id || body.ualId),
+    nombre: sanitizeText(body.nombre),
+    descripcion: sanitizeText(body.descripcion),
+    tipo_practica: sanitizeText(body.tipo_practica),
+    estado: sanitizeText(body.estado || 'borrador'),
+    asignaturas: normalizePracticeSubjectList(body.asignaturas),
+    documentos: normalizePracticeDocumentList(body.documentos),
+    insumos: normalizeStringList(body.insumos),
+    equipos: normalizeStringList(body.equipos),
+    competencias: normalizeStringList(body.competencias),
+    guias_trabajo: normalizeStringList(body.guias_trabajo || body.guiasTrabajo),
+    recomendaciones_seguridad: normalizeStringList(
+      body.recomendaciones_seguridad || body.recomendacionesSeguridad
+    ),
+    parametros_evaluacion: normalizeStringList(
+      body.parametros_evaluacion || body.parametrosEvaluacion
+    ),
+    recomendaciones: sanitizeText(body.recomendaciones),
+    observaciones: sanitizeText(body.observaciones),
+    duracion: sanitizeText(body.duracion),
+    configuracion_dinamica: normalizeDynamicPracticeValues(
+      body.configuracion_dinamica || body.configuracionDinamica
+    ),
+  };
+}
+
+function validateAcademicPracticePayload(payload, schema) {
+  if (!/^\d+$/.test(String(payload.ual_id || ''))) {
+    return 'Debes seleccionar un laboratorio valido para la practica.';
+  }
+
+  if (!payload.nombre) {
+    return 'El nombre de la practica es obligatorio.';
+  }
+
+  if (!payload.tipo_practica) {
+    return 'El tipo de practica es obligatorio.';
+  }
+
+  if (!['borrador', 'activa', 'inactiva'].includes(payload.estado || '')) {
+    return 'El estado de la practica no es valido.';
+  }
+
+  if (!payload.asignaturas.length) {
+    return 'Debes asociar al menos una asignatura a la practica.';
+  }
+
+  if (payload.documentos.length > 10) {
+    return 'Solo puedes asociar hasta 10 documentos PDF por practica.';
+  }
+
+  for (const documento of payload.documentos) {
+    try {
+      const parsed = new URL(documento.url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return `El documento "${documento.nombre || documento.url}" debe usar http o https.`;
+      }
+    } catch {
+      return `El enlace del documento "${documento.nombre || documento.url}" no es una URL valida.`;
+    }
+  }
+
+  if (
+    payload.duracion &&
+    (!Number.isInteger(Number(payload.duracion)) || Number(payload.duracion) <= 0)
+  ) {
+    return 'La duracion de la practica debe ser un numero entero mayor que cero.';
+  }
+
+  const dynamicValueError = validateDynamicPracticeValues(schema, payload.configuracion_dinamica);
+  if (dynamicValueError) {
+    return dynamicValueError;
   }
 
   return '';
@@ -4120,6 +4488,50 @@ async function resolveManagedUal(payload, scope) {
   return result.rows[0] || null;
 }
 
+async function fetchManagedUalById(ualId, scope) {
+  if (!Number.isInteger(Number(ualId)) || Number(ualId) <= 0) {
+    return null;
+  }
+
+  if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
+    return null;
+  }
+
+  const params = [Number(ualId)];
+  const whereParts = ['u.ual_id = $1'];
+
+  if (!scope.unrestricted) {
+    params.push(scope.facultyIds);
+    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+  }
+
+  if (
+    scope.restrictToLaboratories &&
+    Array.isArray(scope.laboratoryNames) &&
+    scope.laboratoryNames.length
+  ) {
+    params.push(scope.laboratoryNames);
+    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        u.ual_id,
+        u.nombre AS laboratorio,
+        f.nombre AS facultad,
+        f.facultad_id
+      FROM ual u
+      JOIN facultad f ON f.facultad_id = u.facultad_id
+      WHERE ${whereParts.join(' AND ')}
+      LIMIT 1
+    `,
+    params
+  );
+
+  return result.rows[0] || null;
+}
+
 async function fetchPracticeRoomAvailability(payload, scope) {
   const managedUal = await resolveManagedUal(payload, scope);
 
@@ -4742,11 +5154,9 @@ async function fetchCoordinatorSignatureRecord(req) {
 }
 
 async function fetchScopedPracticeConfigurationFaculties(req) {
-  const user = req.session?.user;
-  const roles = normalizeRoles(user?.roles || user?.tipo);
-  const authDocument = sanitizeText(user?.documento_real || user?.documento);
+  const scope = await resolveLoanManagementScope(req);
 
-  if (roles.includes('admin')) {
+  if (scope.unrestricted) {
     const result = await pool.query(
       `
         SELECT facultad_id, nombre
@@ -4759,7 +5169,6 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
     return result.rows || [];
   }
 
-  const scope = await resolveCoordinatorScope(pool, authDocument);
   if (!scope.facultyIds.length) {
     return [];
   }
@@ -4775,6 +5184,359 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
   );
 
   return result.rows || [];
+}
+
+async function fetchScopedPracticeConfigurationLaboratories(req, facultyId) {
+  const scope = await resolveLoanManagementScope(req);
+  const params = [facultyId];
+  const whereParts = ['u.activo = TRUE', 'u.facultad_id = $1'];
+
+  if (!scope.unrestricted) {
+    if (!scope.facultyIds.length) {
+      return [];
+    }
+
+    params.push(scope.facultyIds);
+    whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
+  }
+
+  if (
+    scope.restrictToLaboratories &&
+    Array.isArray(scope.laboratoryNames) &&
+    scope.laboratoryNames.length
+  ) {
+    params.push(scope.laboratoryNames);
+    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  }
+
+  const result = await pool.query(
+    `
+      SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+      FROM ual u
+      JOIN facultad f ON f.facultad_id = u.facultad_id
+      WHERE ${whereParts.join(' AND ')}
+      ORDER BY u.nombre ASC
+    `,
+    params
+  );
+
+  return result.rows || [];
+}
+
+async function fetchDynamicPracticeSchemaByUalId(ualId) {
+  if (!Number.isInteger(Number(ualId)) || Number(ualId) <= 0) {
+    return { ...DEFAULT_DYNAMIC_PRACTICE_SCHEMA };
+  }
+
+  await ensureAcademicPracticeSchema();
+
+  const result = await pool.query(
+    `
+      SELECT schema_json
+      FROM configuracion_practica
+      WHERE ual_id = $1
+      LIMIT 1
+    `,
+    [Number(ualId)]
+  );
+
+  return normalizeDynamicPracticeSchema(result.rows[0]?.schema_json);
+}
+
+async function validatePracticeDocumentUrl(url) {
+  const normalizedUrl = sanitizeText(url);
+  if (!normalizedUrl) {
+    return {
+      available: false,
+      warning: 'El enlace del documento esta vacio.',
+      statusCode: null,
+      contentType: '',
+    };
+  }
+
+  let parsedUrl = null;
+  try {
+    parsedUrl = new URL(normalizedUrl);
+  } catch {
+    return {
+      available: false,
+      warning: 'El enlace del documento no es una URL valida.',
+      statusCode: null,
+      contentType: '',
+    };
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return {
+      available: false,
+      warning: 'El enlace del documento debe usar http o https.',
+      statusCode: null,
+      contentType: '',
+    };
+  }
+
+  const requestInit = function (method, controller) {
+    return {
+      method,
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/pdf,*/*;q=0.8',
+        'User-Agent': 'MiLab/Prestamos',
+      },
+    };
+  };
+
+  const attemptRequest = async function (method) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function () {
+      controller.abort();
+    }, 4000);
+
+    try {
+      const response = await fetch(normalizedUrl, requestInit(method, controller));
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (response.body && typeof response.body.cancel === 'function') {
+        response.body.cancel().catch(function () {
+          return null;
+        });
+      }
+
+      return {
+        ok: response.ok,
+        statusCode: response.status,
+        contentType,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  try {
+    let result = await attemptRequest('HEAD');
+    if (!result.ok && [403, 405, 406].includes(Number(result.statusCode || 0))) {
+      result = await attemptRequest('GET');
+    }
+
+    if (!result.ok) {
+      return {
+        available: false,
+        warning: `El enlace respondio con estado HTTP ${result.statusCode || 'desconocido'}.`,
+        statusCode: result.statusCode || null,
+        contentType: result.contentType || '',
+      };
+    }
+
+    const looksLikePdf =
+      normalizedUrl.toLowerCase().includes('.pdf') ||
+      String(result.contentType || '').includes('pdf');
+
+    if (!looksLikePdf) {
+      return {
+        available: false,
+        warning: 'El enlace responde, pero no parece apuntar a un PDF.',
+        statusCode: result.statusCode || null,
+        contentType: result.contentType || '',
+      };
+    }
+
+    return {
+      available: true,
+      warning: '',
+      statusCode: result.statusCode || null,
+      contentType: result.contentType || '',
+    };
+  } catch (error) {
+    return {
+      available: false,
+      warning:
+        error?.name === 'AbortError'
+          ? 'No fue posible validar el documento porque el enlace excedio el tiempo maximo de respuesta.'
+          : 'No fue posible validar el enlace del documento.',
+      statusCode: null,
+      contentType: '',
+    };
+  }
+}
+
+async function validatePracticeDocumentLinks(documents) {
+  const normalizedDocuments = Array.isArray(documents) ? documents : [];
+  const validations = await Promise.all(
+    normalizedDocuments.map(async function (item) {
+      const validation = await validatePracticeDocumentUrl(item.url);
+      return {
+        ...item,
+        validacion: validation,
+      };
+    })
+  );
+
+  return validations;
+}
+
+async function fetchAcademicPracticesByUalId(ualId) {
+  if (!Number.isInteger(Number(ualId)) || Number(ualId) <= 0) {
+    return [];
+  }
+
+  await ensureAcademicPracticeSchema();
+
+  const result = await pool.query(
+    `
+      SELECT
+        p.id,
+        p.ual_id,
+        p.nombre,
+        p.descripcion,
+        p.tipo_practica,
+        p.estado,
+        p.configuracion_json,
+        p.fecha_creacion,
+        p.fecha_modificacion,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', a.id,
+              'codigo', a.codigo,
+              'nombre', a.nombre
+            )
+          ) FILTER (WHERE a.id IS NOT NULL),
+          '[]'::json
+        ) AS asignaturas
+      FROM practica p
+      LEFT JOIN asignatura_practica ap
+        ON ap.practica_id = p.id
+       AND ap.activo = TRUE
+      LEFT JOIN asignatura a
+        ON a.id = ap.asignatura_id
+       AND a.activo = TRUE
+      WHERE p.ual_id = $1
+      GROUP BY p.id
+      ORDER BY p.fecha_modificacion DESC, p.id DESC
+    `,
+    [Number(ualId)]
+  );
+
+  const rows = result.rows || [];
+  const practices = await Promise.all(
+    rows.map(async function (row) {
+      const configuracion = sanitizeJsonObject(row.configuracion_json) || {};
+      const documentos = normalizePracticeDocumentList(configuracion.documentos);
+
+      return {
+        ...row,
+        asignaturas: Array.isArray(row.asignaturas) ? row.asignaturas : [],
+        configuracion_json: {
+          ...configuracion,
+          documentos: await validatePracticeDocumentLinks(documentos),
+        },
+      };
+    })
+  );
+
+  return practices;
+}
+
+async function fetchManagedAcademicPractice(practiceId, scope) {
+  if (!Number.isInteger(Number(practiceId)) || Number(practiceId) <= 0) {
+    return null;
+  }
+
+  if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
+    return null;
+  }
+
+  const params = [Number(practiceId)];
+  const whereParts = ['p.id = $1'];
+
+  if (!scope.unrestricted) {
+    params.push(scope.facultyIds);
+    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+  }
+
+  if (
+    scope.restrictToLaboratories &&
+    Array.isArray(scope.laboratoryNames) &&
+    scope.laboratoryNames.length
+  ) {
+    params.push(scope.laboratoryNames);
+    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        p.id,
+        p.ual_id,
+        p.nombre,
+        p.estado,
+        u.nombre AS laboratorio,
+        f.nombre AS facultad,
+        f.facultad_id
+      FROM practica p
+      JOIN ual u ON u.ual_id = p.ual_id
+      JOIN facultad f ON f.facultad_id = u.facultad_id
+      WHERE ${whereParts.join(' AND ')}
+      LIMIT 1
+    `,
+    params
+  );
+
+  return result.rows[0] || null;
+}
+
+async function upsertAcademicPracticeSubjects(client, practiceId, subjects) {
+  await client.query(
+    `
+      DELETE FROM asignatura_practica
+      WHERE practica_id = $1
+    `,
+    [practiceId]
+  );
+
+  for (const subject of subjects) {
+    const result = await client.query(
+      `
+        INSERT INTO asignatura (
+          codigo,
+          nombre,
+          descripcion,
+          fecha_modificacion
+        )
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        ON CONFLICT (codigo)
+        DO UPDATE SET
+          nombre = EXCLUDED.nombre,
+          descripcion = COALESCE(EXCLUDED.descripcion, asignatura.descripcion),
+          activo = TRUE,
+          fecha_modificacion = CURRENT_TIMESTAMP
+        RETURNING id
+      `,
+      [subject.codigo, subject.nombre, subject.descripcion]
+    );
+
+    const subjectId = result.rows[0]?.id;
+    if (!subjectId) {
+      continue;
+    }
+
+    await client.query(
+      `
+        INSERT INTO asignatura_practica (
+          asignatura_id,
+          practica_id,
+          activo,
+          fecha_modificacion
+        )
+        VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP)
+        ON CONFLICT (asignatura_id, practica_id)
+        DO UPDATE SET
+          activo = TRUE,
+          fecha_modificacion = CURRENT_TIMESTAMP
+      `,
+      [subjectId, practiceId]
+    );
+  }
 }
 
 async function calculateMonthlyLoanHours(usuarioId) {
@@ -10840,17 +11602,34 @@ router.get(
   requirePracticasConfigAuthorized,
   async function (req, res) {
     try {
+      await ensureAcademicPracticeSchema();
       const facultades = await fetchScopedPracticeConfigurationFaculties(req);
       const selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
       const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
+      const laboratorios = selectedFaculty
+        ? await fetchScopedPracticeConfigurationLaboratories(req, selectedFaculty.facultad_id)
+        : [];
+      const selectedUalId = Number(req.query?.ual_id || laboratorios[0]?.ual_id || 0);
+      const selectedLaboratory = laboratorios.find((item) => Number(item.ual_id) === selectedUalId);
+      const dynamicPracticeSchema = selectedLaboratory
+        ? await fetchDynamicPracticeSchemaByUalId(selectedLaboratory.ual_id)
+        : { ...DEFAULT_DYNAMIC_PRACTICE_SCHEMA };
+      const academicPractices = selectedLaboratory
+        ? await fetchAcademicPracticesByUalId(selectedLaboratory.ual_id)
+        : [];
 
       return res.render('home/prestamos/practicas/configuracion', {
         facultades,
         selectedFacultyId: selectedFaculty?.facultad_id || null,
         selectedFacultyName: selectedFaculty?.nombre || '',
+        laboratorios,
+        selectedUalId: selectedLaboratory?.ual_id || null,
+        selectedLaboratoryName: selectedLaboratory?.nombre || '',
         config: selectedFaculty
           ? await fetchPracticeConfigurationByFacultyId(selectedFaculty.facultad_id)
           : { ...DEFAULT_PRACTICE_CONFIGURATION },
+        dynamicPracticeSchema,
+        academicPractices,
         successMessage: sanitizeText(req.query.success),
         errorMessage:
           sanitizeText(req.query.error) ||
@@ -10862,7 +11641,12 @@ router.get(
         facultades: [],
         selectedFacultyId: null,
         selectedFacultyName: '',
+        laboratorios: [],
+        selectedUalId: null,
+        selectedLaboratoryName: '',
         config: { ...DEFAULT_PRACTICE_CONFIGURATION },
+        dynamicPracticeSchema: { ...DEFAULT_DYNAMIC_PRACTICE_SCHEMA },
+        academicPractices: [],
         successMessage: '',
         errorMessage: resolveLoanDbErrorMessage(
           error,
@@ -10880,6 +11664,7 @@ router.post(
     try {
       const facultades = await fetchScopedPracticeConfigurationFaculties(req);
       const selectedId = Number(req.body?.facultad_id || 0);
+      const selectedUalId = Number(req.body?.ual_id || req.query?.ual_id || 0);
       const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
 
       if (!selectedFaculty) {
@@ -10949,7 +11734,9 @@ router.post(
       return res.redirect(
         `/milab/prestamos/coordinador/practicas/config?facultad_id=${encodeURIComponent(
           String(selectedFaculty.facultad_id)
-        )}&success=${encodeURIComponent('Configuracion actualizada correctamente.')}`
+        )}&ual_id=${encodeURIComponent(String(selectedUalId || ''))}&success=${encodeURIComponent(
+          'Configuracion actualizada correctamente.'
+        )}`
       );
     } catch (error) {
       console.error('Error guardando configuracion de practicas MiLab:', error);
@@ -10961,6 +11748,240 @@ router.post(
     }
   }
 );
+
+router.post(
+  '/coordinador/practicas/config/schema',
+  requirePracticasConfigAuthorized,
+  async function (req, res) {
+    const payload = buildDynamicPracticeSchemaPayload(req.body);
+    const schemaError = validateDynamicPracticeSchema(payload.schema_json);
+
+    if (!/^\d+$/.test(String(payload.ual_id || ''))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes seleccionar un laboratorio valido para guardar el esquema.',
+      });
+    }
+
+    if (schemaError) {
+      return res.status(400).json({
+        success: false,
+        message: schemaError,
+      });
+    }
+
+    try {
+      await ensureAcademicPracticeSchema();
+      const scope = await resolveLoanManagementScope(req);
+      const managedUal = await fetchManagedUalById(payload.ual_id, scope);
+      const sessionUsuario = await fetchSessionUsuario(req);
+
+      if (!managedUal) {
+        return res.status(403).json({
+          success: false,
+          message: 'El laboratorio seleccionado no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      await pool.query(
+        `
+          INSERT INTO configuracion_practica (
+            ual_id,
+            schema_json,
+            creado_por_id,
+            fecha_modificacion
+          )
+          VALUES ($1, $2::jsonb, $3, CURRENT_TIMESTAMP)
+          ON CONFLICT (ual_id)
+          DO UPDATE SET
+            schema_json = EXCLUDED.schema_json,
+            creado_por_id = EXCLUDED.creado_por_id,
+            activo = TRUE,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        `,
+        [managedUal.ual_id, payload.schema_json, sessionUsuario?.id || null]
+      );
+
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Configurar Practicas (Coordinador)',
+        persona: `Esquema dinamico: ${managedUal.laboratorio || managedUal.ual_id}`,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Esquema dinamico guardado correctamente.',
+        schema: payload.schema_json,
+      });
+    } catch (error) {
+      console.error('Error guardando esquema dinamico de practicas MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible guardar el esquema dinamico de la practica.'
+        ),
+      });
+    }
+  }
+);
+
+router.post(
+  '/coordinador/practicas/catalogo',
+  requirePracticasConfigAuthorized,
+  async function (req, res) {
+    const payload = buildAcademicPracticePayload(req.body);
+
+    try {
+      await ensureAcademicPracticeSchema();
+      const scope = await resolveLoanManagementScope(req);
+      const managedUal = await fetchManagedUalById(payload.ual_id, scope);
+      const sessionUsuario = await fetchSessionUsuario(req);
+
+      if (!managedUal) {
+        return res.status(403).json({
+          success: false,
+          message: 'El laboratorio seleccionado no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      const dynamicSchema = await fetchDynamicPracticeSchemaByUalId(managedUal.ual_id);
+      const validationError = validateAcademicPracticePayload(payload, dynamicSchema);
+      if (validationError) {
+        return res.status(400).json({
+          success: false,
+          message: validationError,
+        });
+      }
+
+      const validatedDocuments = await validatePracticeDocumentLinks(payload.documentos);
+      const documentWarnings = validatedDocuments
+        .filter((item) => !item.validacion?.available)
+        .map((item) => item.validacion?.warning)
+        .filter(Boolean);
+
+      const configuracionJson = {
+        documentos: validatedDocuments.map(function (item) {
+          return { url: item.url };
+        }),
+        insumos: payload.insumos,
+        equipos: payload.equipos,
+        duracion: payload.duracion ? Number(payload.duracion) : null,
+        competencias: payload.competencias,
+        guias_trabajo: payload.guias_trabajo,
+        recomendaciones_seguridad: payload.recomendaciones_seguridad,
+        parametros_evaluacion: payload.parametros_evaluacion,
+        recomendaciones: payload.recomendaciones,
+        observaciones: payload.observaciones,
+        configuracion_dinamica: payload.configuracion_dinamica,
+        schema_aplicado: dynamicSchema,
+      };
+
+      const client = await pool.connect();
+
+      try {
+        await client.query('BEGIN');
+
+        let practiceId = null;
+        if (/^\d+$/.test(String(payload.practica_id || ''))) {
+          const existingPractice = await fetchManagedAcademicPractice(payload.practica_id, scope);
+
+          if (!existingPractice) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+              success: false,
+              message: 'La practica seleccionada no existe o no pertenece a tu alcance.',
+            });
+          }
+
+          practiceId = Number(payload.practica_id);
+          await client.query(
+            `
+              UPDATE practica
+              SET
+                ual_id = $2,
+                nombre = $3,
+                descripcion = $4,
+                tipo_practica = $5,
+                estado = $6,
+                configuracion_json = $7::jsonb,
+                activo = TRUE,
+                fecha_modificacion = CURRENT_TIMESTAMP
+              WHERE id = $1
+            `,
+            [
+              practiceId,
+              managedUal.ual_id,
+              payload.nombre,
+              payload.descripcion,
+              payload.tipo_practica,
+              payload.estado,
+              configuracionJson,
+            ]
+          );
+        } else {
+          const insertResult = await client.query(
+            `
+              INSERT INTO practica (
+                ual_id,
+                nombre,
+                descripcion,
+                tipo_practica,
+                estado,
+                configuracion_json,
+                creado_por_id,
+                fecha_modificacion
+              )
+              VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, CURRENT_TIMESTAMP)
+              RETURNING id
+            `,
+            [
+              managedUal.ual_id,
+              payload.nombre,
+              payload.descripcion,
+              payload.tipo_practica,
+              payload.estado,
+              configuracionJson,
+              sessionUsuario?.id || null,
+            ]
+          );
+          practiceId = insertResult.rows[0]?.id || null;
+        }
+
+        await upsertAcademicPracticeSubjects(client, practiceId, payload.asignaturas);
+
+        await client.query('COMMIT');
+
+        await registerPrestamosAuditEntry({
+          req,
+          accion: 'Configurar Practicas (Coordinador)',
+          persona: `Practica academica: ${payload.nombre}`,
+        });
+
+        return res.json({
+          success: true,
+          message: /^\d+$/.test(String(payload.practica_id || ''))
+            ? 'Practica academica actualizada correctamente.'
+            : 'Practica academica creada correctamente.',
+          warnings: documentWarnings,
+          practiceId,
+        });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error('Error guardando practica academica MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(error, 'No fue posible guardar la practica academica.'),
+      });
+    }
+  }
+);
+
 router.get('/salas', requireSalasAuthorized, async function (req, res) {
   try {
     const scope = await resolveLoanManagementScope(req);
@@ -11961,5 +12982,14 @@ router.get('/auditoria', requireAuditoriaAuthorized, async function (req, res) {
     });
   }
 });
+
+router.__private = {
+  normalizeDynamicPracticeSchema,
+  validateDynamicPracticeSchema,
+  validateDynamicPracticeValues,
+  buildAcademicPracticePayload,
+  validateAcademicPracticePayload,
+  normalizePracticeDocumentList,
+};
 
 module.exports = router;

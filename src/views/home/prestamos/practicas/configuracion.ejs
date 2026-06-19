@@ -2,12 +2,13 @@
 
 <%
   const facultadActual = selectedFacultyName || 'Sin facultad asignada';
+  const laboratorioActual = selectedLaboratoryName || 'Sin laboratorio seleccionado';
 %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Configuracion de Practicas Libres</h1>
-    <p class="app-page-subtitle">Administra la anticipacion, cancelacion, maximo de activas y sancion por inasistencia.</p>
+    <h1 class="app-page-title">Configuracion De Practicas</h1>
+    <p class="app-page-subtitle">Administra reglas de reserva, define el esquema dinamico por laboratorio y crea practicas academicas asociadas a asignaturas.</p>
   </section>
 
   <div id="configPracticasAlerts">
@@ -19,18 +20,18 @@
     <% } %>
   </div>
 
-  <section class="card app-form-panel text-light mx-auto col-xl-8">
+  <section class="card app-form-panel text-light mb-4">
     <div class="card-header">
-      <h5 class="mb-0">Configuracion de Practicas Libres</h5>
+      <h5 class="mb-0">Contexto De Trabajo</h5>
     </div>
     <div class="card-body">
-      <form class="row g-3 mb-4" method="get" action="/milab/prestamos/coordinador/practicas/config">
-        <div class="col-md-9">
+      <form class="row g-3" method="get" action="/milab/prestamos/coordinador/practicas/config">
+        <div class="col-md-5">
           <label for="facultad_id_filtro" class="form-label">Facultad</label>
           <select class="form-select" id="facultad_id_filtro" name="facultad_id" <%= facultades && facultades.length ? '' : 'disabled' %>>
             <% if (facultades && facultades.length) { %>
               <% facultades.forEach(function(item) { %>
-                <option value="<%= item.id_facultad %>" <%= Number(selectedFacultyId) === Number(item.id_facultad) ? 'selected' : '' %>>
+                <option value="<%= item.facultad_id %>" <%= Number(selectedFacultyId) === Number(item.facultad_id) ? 'selected' : '' %>>
                   <%= item.nombre %>
                 </option>
               <% }) %>
@@ -39,106 +40,749 @@
             <% } %>
           </select>
         </div>
-        <div class="col-md-3 d-flex align-items-end">
+        <div class="col-md-5">
+          <label for="ual_id_filtro" class="form-label">Laboratorio</label>
+          <select class="form-select" id="ual_id_filtro" name="ual_id" <%= laboratorios && laboratorios.length ? '' : 'disabled' %>>
+            <% if (laboratorios && laboratorios.length) { %>
+              <% laboratorios.forEach(function(item) { %>
+                <option value="<%= item.ual_id %>" <%= Number(selectedUalId) === Number(item.ual_id) ? 'selected' : '' %>>
+                  <%= item.nombre %>
+                </option>
+              <% }) %>
+            <% } else { %>
+              <option value="">No hay laboratorios disponibles</option>
+            <% } %>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
           <button class="btn btn-outline-light w-100" type="submit" <%= facultades && facultades.length ? '' : 'disabled' %>>Cargar</button>
         </div>
       </form>
 
-      <p class="mb-4">
-        Facultad: <strong><%= facultadActual %></strong>
-      </p>
-
-      <form class="row g-3" method="post" action="/milab/prestamos/coordinador/practicas/config">
-        <input type="hidden" name="facultad_id" value="<%= selectedFacultyId || '' %>">
-
+      <div class="row g-3 mt-1">
         <div class="col-md-6">
-          <label for="min_reserva_hours" class="form-label">Anticipacion minima para reservar (horas)</label>
-          <input
-            type="number"
-            class="form-control"
-            id="min_reserva_hours"
-            name="min_reserva_hours"
-            min="2"
-            step="1"
-            required
-            value="<%= Number(config && config.min_reserva_hours || 2) %>"
-          >
-          <div class="form-text text-light-emphasis">Minimo permitido: 2 horas.</div>
+          <div class="small text-light-emphasis">Facultad activa</div>
+          <div class="fw-semibold"><%= facultadActual %></div>
         </div>
-
         <div class="col-md-6">
-          <label for="min_cancel_hours" class="form-label">Anticipacion minima para cancelar (horas)</label>
-          <input
-            type="number"
-            class="form-control"
-            id="min_cancel_hours"
-            name="min_cancel_hours"
-            min="1"
-            step="1"
-            required
-            value="<%= Number(config && config.min_cancel_hours || 1) %>"
-          >
-          <div class="form-text text-light-emphasis">Minimo permitido: 1 hora.</div>
+          <div class="small text-light-emphasis">Laboratorio activo</div>
+          <div class="fw-semibold"><%= laboratorioActual %></div>
         </div>
-
-        <div class="col-md-6">
-          <label for="min_docente_reserva_days" class="form-label">Dias minimos de anticipacion para reservar practica docente</label>
-          <input
-            type="number"
-            class="form-control"
-            id="min_docente_reserva_days"
-            name="min_docente_reserva_days"
-            min="0"
-            step="1"
-            required
-            value="<%= Number(config && config.min_docente_reserva_days || 0) %>"
-          >
-          <div class="form-text text-light-emphasis">0 para permitir reservas el mismo dia.</div>
-        </div>
-
-        <div class="col-md-6">
-          <label for="max_activas_estudiante" class="form-label">Maximo de practicas activas por estudiante</label>
-          <input
-            type="number"
-            class="form-control"
-            id="max_activas_estudiante"
-            name="max_activas_estudiante"
-            min="1"
-            step="1"
-            required
-            value="<%= Number(config && config.max_activas_estudiante || 2) %>"
-          >
-          <div class="form-text text-light-emphasis">Valor por defecto: 2 practicas activas.</div>
-        </div>
-
-        <div class="col-md-6">
-          <label for="dias_sancion_no_asistencia" class="form-label">Dias de sancion por inasistencia (No Asistio)</label>
-          <input
-            type="number"
-            class="form-control"
-            id="dias_sancion_no_asistencia"
-            name="dias_sancion_no_asistencia"
-            min="0"
-            step="1"
-            required
-            value="<%= Number(config && config.dias_sancion_no_asistencia || 1) %>"
-          >
-          <div class="form-text text-light-emphasis">
-            Dias de bloqueo para reservar tras marcar "No Asistio". 0 para desactivar.
-          </div>
-        </div>
-
-        <div class="col-12 d-flex justify-content-end gap-2">
-          <a class="btn btn-outline-secondary" href="/milab/prestamos/reportes">Volver</a>
-          <button
-            class="btn btn-perso"
-            type="submit"
-            <%= selectedFacultyId ? '' : 'disabled' %>
-          >
-            Guardar configuracion
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   </section>
+
+  <div class="row g-4">
+    <div class="col-xl-5">
+      <section class="card app-form-panel text-light h-100">
+        <div class="card-header">
+          <h5 class="mb-0">Reglas De Reserva</h5>
+        </div>
+        <div class="card-body">
+          <form class="row g-3" method="post" action="/milab/prestamos/coordinador/practicas/config">
+            <input type="hidden" name="facultad_id" value="<%= selectedFacultyId || '' %>">
+            <input type="hidden" name="ual_id" value="<%= selectedUalId || '' %>">
+
+            <div class="col-md-6">
+              <label for="min_reserva_hours" class="form-label">Anticipacion minima para reservar</label>
+              <input type="number" class="form-control" id="min_reserva_hours" name="min_reserva_hours" min="2" step="1" required value="<%= Number(config && config.min_reserva_hours || 2) %>">
+              <div class="form-text text-light-emphasis">Minimo permitido: 2 horas.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label for="min_cancel_hours" class="form-label">Anticipacion minima para cancelar</label>
+              <input type="number" class="form-control" id="min_cancel_hours" name="min_cancel_hours" min="1" step="1" required value="<%= Number(config && config.min_cancel_hours || 1) %>">
+              <div class="form-text text-light-emphasis">Minimo permitido: 1 hora.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label for="min_docente_reserva_days" class="form-label">Dias minimos para practica docente</label>
+              <input type="number" class="form-control" id="min_docente_reserva_days" name="min_docente_reserva_days" min="0" step="1" required value="<%= Number(config && config.min_docente_reserva_days || 0) %>">
+            </div>
+
+            <div class="col-md-6">
+              <label for="max_activas_estudiante" class="form-label">Maximo de activas por estudiante</label>
+              <input type="number" class="form-control" id="max_activas_estudiante" name="max_activas_estudiante" min="1" step="1" required value="<%= Number(config && config.max_activas_estudiante || 2) %>">
+            </div>
+
+            <div class="col-md-6">
+              <label for="dias_sancion_no_asistencia" class="form-label">Dias de sancion por inasistencia</label>
+              <input type="number" class="form-control" id="dias_sancion_no_asistencia" name="dias_sancion_no_asistencia" min="0" step="1" required value="<%= Number(config && config.dias_sancion_no_asistencia || 1) %>">
+            </div>
+
+            <div class="col-12 d-flex justify-content-end gap-2">
+              <a class="btn btn-outline-secondary" href="/milab/prestamos/reportes">Volver</a>
+              <button class="btn btn-perso" type="submit" <%= selectedFacultyId ? '' : 'disabled' %>>Guardar reglas</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-xl-7">
+      <section class="card app-form-panel text-light h-100">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <div>
+            <h5 class="mb-0">Esquema Dinamico Del Laboratorio</h5>
+            <div class="small text-light-emphasis">El laboratorista define la estructura JSON y luego cada practica la diligencia con ese mismo esquema.</div>
+          </div>
+          <button type="button" class="btn btn-outline-light btn-sm" id="saveDynamicSchemaBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar esquema</button>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label for="schemaFieldName" class="form-label">Nombre del campo</label>
+              <input type="text" class="form-control" id="schemaFieldName" placeholder="Ej. Voltaje utilizado">
+            </div>
+            <div class="col-md-3">
+              <label for="schemaFieldType" class="form-label">Tipo</label>
+              <select class="form-select" id="schemaFieldType">
+                <option value="text">Texto</option>
+                <option value="textarea">Texto largo</option>
+                <option value="number">Numero</option>
+                <option value="select">Seleccion</option>
+                <option value="checkbox">Si/No</option>
+                <option value="date">Fecha</option>
+                <option value="url">URL</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label for="schemaFieldOptions" class="form-label">Opciones</label>
+              <input type="text" class="form-control" id="schemaFieldOptions" placeholder="Opcion 1, Opcion 2">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label d-block">Obligatorio</label>
+              <div class="form-check form-switch pt-2">
+                <input class="form-check-input" type="checkbox" id="schemaFieldRequired">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label for="schemaFieldPlaceholder" class="form-label">Placeholder</label>
+              <input type="text" class="form-control" id="schemaFieldPlaceholder" placeholder="Ayuda breve para diligenciar">
+            </div>
+            <div class="col-md-6">
+              <label for="schemaFieldHelp" class="form-label">Ayuda</label>
+              <input type="text" class="form-control" id="schemaFieldHelp" placeholder="Instruccion corta para el usuario">
+            </div>
+            <div class="col-12 d-flex justify-content-end">
+              <button type="button" class="btn btn-outline-info" id="addSchemaFieldBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar campo</button>
+            </div>
+          </div>
+
+          <div class="table-responsive mb-3">
+            <table class="table table-dark table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Campo</th>
+                  <th>Llave</th>
+                  <th>Tipo</th>
+                  <th>Opciones</th>
+                  <th>Obligatorio</th>
+                  <th class="text-end">Accion</th>
+                </tr>
+              </thead>
+              <tbody id="dynamicSchemaTableBody">
+                <tr>
+                  <td colspan="6" class="text-center text-light-emphasis">No hay campos dinamicos configurados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <label for="dynamicSchemaPreview" class="form-label">Vista previa JSON</label>
+            <textarea class="form-control font-monospace" id="dynamicSchemaPreview" rows="10" readonly></textarea>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-12">
+      <section class="card app-form-panel text-light">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <div>
+            <h5 class="mb-0">Catalogo De Practicas Academicas</h5>
+            <div class="small text-light-emphasis">Cada practica toma el esquema del laboratorio activo y guarda su configuracion en JSONB.</div>
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="resetPracticeFormBtn">Limpiar formulario</button>
+        </div>
+        <div class="card-body">
+          <form id="academicPracticeForm" class="row g-3" novalidate>
+            <input type="hidden" id="practiceIdInput">
+            <input type="hidden" id="practiceUalIdInput" value="<%= selectedUalId || '' %>">
+
+            <div class="col-md-4">
+              <label for="practiceNameInput" class="form-label">Nombre de la practica *</label>
+              <input type="text" class="form-control" id="practiceNameInput" required <%= selectedUalId ? '' : 'disabled' %>>
+            </div>
+            <div class="col-md-4">
+              <label for="practiceTypeInput" class="form-label">Tipo de practica *</label>
+              <input type="text" class="form-control" id="practiceTypeInput" placeholder="Ej. Experimental, demostrativa" required <%= selectedUalId ? '' : 'disabled' %>>
+            </div>
+            <div class="col-md-4">
+              <label for="practiceStatusInput" class="form-label">Estado *</label>
+              <select class="form-select" id="practiceStatusInput" <%= selectedUalId ? '' : 'disabled' %>>
+                <option value="borrador">Borrador</option>
+                <option value="activa">Activa</option>
+                <option value="inactiva">Inactiva</option>
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label for="practiceDescriptionInput" class="form-label">Descripcion</label>
+              <textarea class="form-control" id="practiceDescriptionInput" rows="3" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+
+            <div class="col-md-4">
+              <label for="practiceDurationInput" class="form-label">Duracion (minutos)</label>
+              <input type="number" class="form-control" id="practiceDurationInput" min="1" step="1" <%= selectedUalId ? '' : 'disabled' %>>
+            </div>
+            <div class="col-md-4">
+              <label for="practiceRecommendationsInput" class="form-label">Recomendaciones</label>
+              <textarea class="form-control" id="practiceRecommendationsInput" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+            <div class="col-md-4">
+              <label for="practiceObservationsInput" class="form-label">Observaciones</label>
+              <textarea class="form-control" id="practiceObservationsInput" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label for="practiceSuppliesInput" class="form-label">Insumos requeridos</label>
+              <textarea class="form-control" id="practiceSuppliesInput" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+            <div class="col-md-6">
+              <label for="practiceEquipmentInput" class="form-label">Equipos necesarios</label>
+              <textarea class="form-control" id="practiceEquipmentInput" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label for="practiceCompetenciasInput" class="form-label">Competencias</label>
+              <textarea class="form-control" id="practiceCompetenciasInput" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+            <div class="col-md-6">
+              <label for="practiceGuiasInput" class="form-label">Guias de trabajo</label>
+              <textarea class="form-control" id="practiceGuiasInput" rows="3" placeholder="Una URL o nombre por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label for="practiceSecurityInput" class="form-label">Recomendaciones de seguridad</label>
+              <textarea class="form-control" id="practiceSecurityInput" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+            <div class="col-md-6">
+              <label for="practiceEvaluationInput" class="form-label">Parametros especificos de evaluacion</label>
+              <textarea class="form-control" id="practiceEvaluationInput" rows="3" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+            </div>
+
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0">Asignaturas asociadas *</label>
+                <button type="button" class="btn btn-outline-light btn-sm" id="addSubjectBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar asignatura</button>
+              </div>
+              <div id="practiceSubjectsContainer" class="d-grid gap-2"></div>
+            </div>
+
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0">Documentos PDF por URL</label>
+                <button type="button" class="btn btn-outline-light btn-sm" id="addDocumentBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar documento</button>
+              </div>
+              <div id="practiceDocumentsContainer" class="d-grid gap-2"></div>
+              <div class="form-text text-light-emphasis">Solo se almacena la URL del documento. El sistema valida automaticamente si el enlace responde.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Configuracion dinamica segun esquema del laboratorio</label>
+              <div id="practiceDynamicFieldsContainer" class="row g-3"></div>
+            </div>
+
+            <div class="col-12 d-flex justify-content-end">
+              <button type="submit" class="btn btn-perso" id="savePracticeBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar practica academica</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-12">
+      <section class="card app-table-panel text-light">
+        <div class="card-header">
+          <h5 class="mb-0">Practicas Registradas En El Laboratorio</h5>
+        </div>
+        <div class="card-body">
+          <% if (academicPractices && academicPractices.length) { %>
+            <div class="row g-3" id="practiceCardsContainer">
+              <% academicPractices.forEach(function(item) { %>
+                <div class="col-xl-4 col-lg-6">
+                  <article class="card h-100 bg-transparent border-light-subtle">
+                    <div class="card-body d-flex flex-column gap-3">
+                      <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <h5 class="mb-1"><%= item.nombre %></h5>
+                          <div class="small text-light-emphasis"><%= item.tipo_practica || '-' %></div>
+                        </div>
+                        <span class="badge <%= item.estado === 'activa' ? 'bg-success' : item.estado === 'inactiva' ? 'bg-secondary' : 'bg-warning text-dark' %>">
+                          <%= item.estado || 'borrador' %>
+                        </span>
+                      </div>
+
+                      <div class="small"><%= item.descripcion || 'Sin descripcion.' %></div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Asignaturas</div>
+                        <div class="d-flex gap-2 flex-wrap">
+                          <% (item.asignaturas || []).forEach(function(asignatura) { %>
+                            <span class="badge text-bg-dark"><%= asignatura.codigo %> - <%= asignatura.nombre %></span>
+                          <% }) %>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div class="small text-light-emphasis mb-1">Documentos</div>
+                        <% if (item.configuracion_json && item.configuracion_json.documentos && item.configuracion_json.documentos.length) { %>
+                          <div class="d-grid gap-2">
+                            <% item.configuracion_json.documentos.forEach(function(documento) { %>
+                              <div class="border rounded p-2">
+                                <a class="link-light" href="<%= documento.url %>" target="_blank" rel="noopener noreferrer"><%= documento.url %></a>
+                                <% if (documento.validacion && !documento.validacion.available) { %>
+                                  <div class="small text-warning mt-1">Advertencia: <%= documento.validacion.warning %></div>
+                                <% } %>
+                              </div>
+                            <% }) %>
+                          </div>
+                        <% } else { %>
+                          <div class="small text-light-emphasis">Sin documentos asociados.</div>
+                        <% } %>
+                      </div>
+
+                      <div class="mt-auto d-flex justify-content-end">
+                        <button type="button" class="btn btn-outline-light btn-sm js-edit-practice" data-practice-id="<%= item.id %>">Editar</button>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0">No hay practicas academicas registradas para el laboratorio seleccionado.</div>
+          <% } %>
+        </div>
+      </section>
+    </div>
+  </div>
 </main>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('configPracticasAlerts');
+    var selectedUalId = <%- JSON.stringify(selectedUalId || null) %>;
+    var schemaState = <%- JSON.stringify(dynamicPracticeSchema || { campos_adicionales: [] }) %>;
+    var practices = <%- JSON.stringify(academicPractices || []) %>;
+    var addSchemaFieldBtn = document.getElementById('addSchemaFieldBtn');
+    var saveDynamicSchemaBtn = document.getElementById('saveDynamicSchemaBtn');
+    var dynamicSchemaTableBody = document.getElementById('dynamicSchemaTableBody');
+    var dynamicSchemaPreview = document.getElementById('dynamicSchemaPreview');
+    var practiceDynamicFieldsContainer = document.getElementById('practiceDynamicFieldsContainer');
+    var practiceForm = document.getElementById('academicPracticeForm');
+    var practiceSubjectsContainer = document.getElementById('practiceSubjectsContainer');
+    var practiceDocumentsContainer = document.getElementById('practiceDocumentsContainer');
+    var practiceIdInput = document.getElementById('practiceIdInput');
+    var practiceNameInput = document.getElementById('practiceNameInput');
+    var practiceTypeInput = document.getElementById('practiceTypeInput');
+    var practiceStatusInput = document.getElementById('practiceStatusInput');
+    var practiceDescriptionInput = document.getElementById('practiceDescriptionInput');
+    var practiceDurationInput = document.getElementById('practiceDurationInput');
+    var practiceRecommendationsInput = document.getElementById('practiceRecommendationsInput');
+    var practiceObservationsInput = document.getElementById('practiceObservationsInput');
+    var practiceSuppliesInput = document.getElementById('practiceSuppliesInput');
+    var practiceEquipmentInput = document.getElementById('practiceEquipmentInput');
+    var practiceCompetenciasInput = document.getElementById('practiceCompetenciasInput');
+    var practiceGuiasInput = document.getElementById('practiceGuiasInput');
+    var practiceSecurityInput = document.getElementById('practiceSecurityInput');
+    var practiceEvaluationInput = document.getElementById('practiceEvaluationInput');
+    var savePracticeBtn = document.getElementById('savePracticeBtn');
+    var resetPracticeFormBtn = document.getElementById('resetPracticeFormBtn');
+
+    function showAlert(type, message) {
+      if (!alertsContainer) return;
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function postJson(url, payload) {
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      }).then(async function(response) {
+        var data = await response.json().catch(function() {
+          return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+        });
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'La operacion no pudo completarse.');
+        }
+        return data;
+      });
+    }
+
+    function slugify(value) {
+      return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
+
+    function parseListValue(value) {
+      return String(value || '')
+        .split(/\r?\n|,/)
+        .map(function(item) { return item.trim(); })
+        .filter(Boolean);
+    }
+
+    function createSubjectRow(subject) {
+      var row = document.createElement('div');
+      row.className = 'row g-2 align-items-end practice-subject-row';
+      row.innerHTML =
+        '<div class="col-md-4">' +
+          '<label class="form-label">Codigo *</label>' +
+          '<input type="text" class="form-control js-subject-code">' +
+        '</div>' +
+        '<div class="col-md-7">' +
+          '<label class="form-label">Nombre *</label>' +
+          '<input type="text" class="form-control js-subject-name">' +
+        '</div>' +
+        '<div class="col-md-1 d-grid">' +
+          '<button type="button" class="btn btn-outline-danger js-remove-row">X</button>' +
+        '</div>';
+      row.querySelector('.js-subject-code').value = subject && subject.codigo ? subject.codigo : '';
+      row.querySelector('.js-subject-name').value = subject && subject.nombre ? subject.nombre : '';
+      row.querySelector('.js-remove-row').addEventListener('click', function() {
+        row.remove();
+      });
+      return row;
+    }
+
+    function createDocumentRow(documento) {
+      var row = document.createElement('div');
+      row.className = 'row g-2 align-items-end practice-document-row';
+      row.innerHTML =
+        '<div class="col-md-11">' +
+          '<label class="form-label">URL del PDF</label>' +
+          '<input type="url" class="form-control js-document-url" placeholder="https://.../guia.pdf">' +
+        '</div>' +
+        '<div class="col-md-1 d-grid">' +
+          '<button type="button" class="btn btn-outline-danger js-remove-row">X</button>' +
+        '</div>';
+      row.querySelector('.js-document-url').value = documento && documento.url ? documento.url : '';
+      row.querySelector('.js-remove-row').addEventListener('click', function() {
+        row.remove();
+      });
+      return row;
+    }
+
+    function renderSchemaTable() {
+      if (!dynamicSchemaTableBody || !dynamicSchemaPreview) return;
+      var fields = Array.isArray(schemaState.campos_adicionales) ? schemaState.campos_adicionales : [];
+
+      if (!fields.length) {
+        dynamicSchemaTableBody.innerHTML =
+          '<tr><td colspan="6" class="text-center text-light-emphasis">No hay campos dinamicos configurados.</td></tr>';
+      } else {
+        dynamicSchemaTableBody.innerHTML = '';
+        fields.forEach(function(field, index) {
+          var row = document.createElement('tr');
+          row.innerHTML =
+            '<td>' + field.nombre + '</td>' +
+            '<td class="font-monospace">' + field.key + '</td>' +
+            '<td>' + field.tipo + '</td>' +
+            '<td>' + (Array.isArray(field.valores) ? field.valores.join(', ') : '') + '</td>' +
+            '<td>' + (field.obligatorio ? 'Si' : 'No') + '</td>' +
+            '<td class="text-end"><button type="button" class="btn btn-outline-danger btn-sm js-remove-schema-field" data-index="' + index + '">Eliminar</button></td>';
+          dynamicSchemaTableBody.appendChild(row);
+        });
+        dynamicSchemaTableBody.querySelectorAll('.js-remove-schema-field').forEach(function(button) {
+          button.addEventListener('click', function() {
+            var index = Number(button.getAttribute('data-index'));
+            schemaState.campos_adicionales.splice(index, 1);
+            renderSchemaTable();
+            renderDynamicPracticeFields();
+          });
+        });
+      }
+
+      dynamicSchemaPreview.value = JSON.stringify(schemaState, null, 2);
+    }
+
+    function renderDynamicPracticeFields(values) {
+      if (!practiceDynamicFieldsContainer) return;
+      var fields = Array.isArray(schemaState.campos_adicionales) ? schemaState.campos_adicionales : [];
+      practiceDynamicFieldsContainer.innerHTML = '';
+
+      if (!fields.length) {
+        practiceDynamicFieldsContainer.innerHTML = '<div class="col-12"><div class="alert alert-secondary mb-0">El laboratorio no tiene campos dinamicos definidos.</div></div>';
+        return;
+      }
+
+      fields.forEach(function(field) {
+        var wrapper = document.createElement('div');
+        wrapper.className = 'col-md-6';
+        var label = '<label class="form-label" for="dynamic_' + field.key + '">' + field.nombre + (field.obligatorio ? ' *' : '') + '</label>';
+        var help = field.ayuda ? '<div class="form-text">' + field.ayuda + '</div>' : '';
+        var currentValue = values && values[field.key] !== undefined && values[field.key] !== null ? values[field.key] : '';
+        var inputHtml = '';
+
+        if (field.tipo === 'textarea') {
+          inputHtml = '<textarea class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" rows="3" ' + (field.placeholder ? 'placeholder="' + field.placeholder + '"' : '') + '>' + currentValue + '</textarea>';
+        } else if (field.tipo === 'number') {
+          inputHtml = '<input type="number" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
+        } else if (field.tipo === 'date') {
+          inputHtml = '<input type="date" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '">';
+        } else if (field.tipo === 'url') {
+          inputHtml = '<input type="url" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
+        } else if (field.tipo === 'select') {
+          inputHtml = '<select class="form-select js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '"><option value="">Selecciona...</option>' +
+            (field.valores || []).map(function(option) {
+              return '<option value="' + option + '"' + (String(currentValue) === String(option) ? ' selected' : '') + '>' + option + '</option>';
+            }).join('') +
+          '</select>';
+        } else if (field.tipo === 'checkbox') {
+          inputHtml = '<div class="form-check form-switch pt-2"><input type="checkbox" class="form-check-input js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '"' + (currentValue ? ' checked' : '') + '></div>';
+        } else {
+          inputHtml = '<input type="text" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
+        }
+
+        wrapper.innerHTML = label + inputHtml + help;
+        practiceDynamicFieldsContainer.appendChild(wrapper);
+      });
+    }
+
+    function collectDynamicFieldValues() {
+      var values = {};
+      document.querySelectorAll('.js-dynamic-field').forEach(function(input) {
+        var key = input.getAttribute('data-key');
+        if (!key) return;
+        values[key] = input.type === 'checkbox' ? Boolean(input.checked) : input.value;
+      });
+      return values;
+    }
+
+    function resetPracticeForm() {
+      if (!practiceForm) return;
+      practiceForm.reset();
+      practiceIdInput.value = '';
+      practiceSubjectsContainer.innerHTML = '';
+      practiceDocumentsContainer.innerHTML = '';
+      createDefaultRows();
+      renderDynamicPracticeFields();
+      savePracticeBtn.textContent = 'Guardar practica academica';
+    }
+
+    function createDefaultRows() {
+      if (practiceSubjectsContainer && !practiceSubjectsContainer.children.length) {
+        practiceSubjectsContainer.appendChild(createSubjectRow());
+      }
+      if (practiceDocumentsContainer && !practiceDocumentsContainer.children.length) {
+        practiceDocumentsContainer.appendChild(createDocumentRow());
+      }
+    }
+
+    function populatePracticeForm(practiceId) {
+      var item = practices.find(function(current) {
+        return Number(current.id) === Number(practiceId);
+      });
+      if (!item) return;
+
+      practiceIdInput.value = item.id || '';
+      practiceNameInput.value = item.nombre || '';
+      practiceTypeInput.value = item.tipo_practica || '';
+      practiceStatusInput.value = item.estado || 'borrador';
+      practiceDescriptionInput.value = item.descripcion || '';
+
+      var config = item.configuracion_json || {};
+      practiceDurationInput.value = config.duracion || '';
+      practiceRecommendationsInput.value = config.recomendaciones || '';
+      practiceObservationsInput.value = config.observaciones || '';
+      practiceSuppliesInput.value = Array.isArray(config.insumos) ? config.insumos.join('\n') : '';
+      practiceEquipmentInput.value = Array.isArray(config.equipos) ? config.equipos.join('\n') : '';
+      practiceCompetenciasInput.value = Array.isArray(config.competencias) ? config.competencias.join('\n') : '';
+      practiceGuiasInput.value = Array.isArray(config.guias_trabajo) ? config.guias_trabajo.join('\n') : '';
+      practiceSecurityInput.value = Array.isArray(config.recomendaciones_seguridad) ? config.recomendaciones_seguridad.join('\n') : '';
+      practiceEvaluationInput.value = Array.isArray(config.parametros_evaluacion) ? config.parametros_evaluacion.join('\n') : '';
+
+      practiceSubjectsContainer.innerHTML = '';
+      (item.asignaturas || []).forEach(function(subject) {
+        practiceSubjectsContainer.appendChild(createSubjectRow(subject));
+      });
+      if (!practiceSubjectsContainer.children.length) {
+        practiceSubjectsContainer.appendChild(createSubjectRow());
+      }
+
+      practiceDocumentsContainer.innerHTML = '';
+      ((config.documentos || [])).forEach(function(documento) {
+        practiceDocumentsContainer.appendChild(createDocumentRow(documento));
+      });
+      if (!practiceDocumentsContainer.children.length) {
+        practiceDocumentsContainer.appendChild(createDocumentRow());
+      }
+
+      renderDynamicPracticeFields(config.configuracion_dinamica || {});
+      savePracticeBtn.textContent = 'Actualizar practica academica';
+      window.scrollTo({ top: practiceForm.offsetTop - 40, behavior: 'smooth' });
+    }
+
+    if (addSchemaFieldBtn) {
+      addSchemaFieldBtn.addEventListener('click', function() {
+        var nameInput = document.getElementById('schemaFieldName');
+        var typeInput = document.getElementById('schemaFieldType');
+        var optionsInput = document.getElementById('schemaFieldOptions');
+        var requiredInput = document.getElementById('schemaFieldRequired');
+        var placeholderInput = document.getElementById('schemaFieldPlaceholder');
+        var helpInput = document.getElementById('schemaFieldHelp');
+        var fieldName = String(nameInput.value || '').trim();
+        if (!fieldName) {
+          showAlert('warning', 'Debes indicar el nombre del campo dinamico.');
+          return;
+        }
+
+        var field = {
+          key: slugify(fieldName),
+          nombre: fieldName,
+          tipo: typeInput.value || 'text',
+          obligatorio: Boolean(requiredInput.checked),
+          placeholder: String(placeholderInput.value || '').trim(),
+          ayuda: String(helpInput.value || '').trim(),
+          valores: parseListValue(optionsInput.value)
+        };
+
+        schemaState.campos_adicionales = Array.isArray(schemaState.campos_adicionales) ? schemaState.campos_adicionales : [];
+        schemaState.campos_adicionales.push(field);
+        renderSchemaTable();
+        renderDynamicPracticeFields();
+        nameInput.value = '';
+        optionsInput.value = '';
+        requiredInput.checked = false;
+        placeholderInput.value = '';
+        helpInput.value = '';
+      });
+    }
+
+    if (saveDynamicSchemaBtn) {
+      saveDynamicSchemaBtn.addEventListener('click', async function() {
+        if (!selectedUalId) {
+          showAlert('warning', 'Selecciona un laboratorio antes de guardar el esquema.');
+          return;
+        }
+
+        saveDynamicSchemaBtn.disabled = true;
+        try {
+          var result = await postJson('/milab/prestamos/coordinador/practicas/config/schema', {
+            ual_id: selectedUalId,
+            schema_json: schemaState
+          });
+          showAlert('success', result.message || 'Esquema dinamico guardado correctamente.');
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible guardar el esquema dinamico.');
+        } finally {
+          saveDynamicSchemaBtn.disabled = false;
+        }
+      });
+    }
+
+    document.getElementById('addSubjectBtn') && document.getElementById('addSubjectBtn').addEventListener('click', function() {
+      practiceSubjectsContainer.appendChild(createSubjectRow());
+    });
+
+    document.getElementById('addDocumentBtn') && document.getElementById('addDocumentBtn').addEventListener('click', function() {
+      practiceDocumentsContainer.appendChild(createDocumentRow());
+    });
+
+    resetPracticeFormBtn && resetPracticeFormBtn.addEventListener('click', resetPracticeForm);
+
+    document.querySelectorAll('.js-edit-practice').forEach(function(button) {
+      button.addEventListener('click', function() {
+        populatePracticeForm(button.getAttribute('data-practice-id'));
+      });
+    });
+
+    if (practiceForm) {
+      practiceForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        if (!selectedUalId) {
+          showAlert('warning', 'Selecciona un laboratorio antes de registrar la practica.');
+          return;
+        }
+
+        var subjects = Array.from(document.querySelectorAll('.practice-subject-row')).map(function(row) {
+          return {
+            codigo: row.querySelector('.js-subject-code').value,
+            nombre: row.querySelector('.js-subject-name').value
+          };
+        }).filter(function(item) {
+          return String(item.codigo || '').trim() && String(item.nombre || '').trim();
+        });
+
+        if (!subjects.length) {
+          showAlert('warning', 'Debes registrar al menos una asignatura.');
+          return;
+        }
+
+        var documents = Array.from(document.querySelectorAll('.practice-document-row')).map(function(row) {
+          return {
+            url: row.querySelector('.js-document-url').value
+          };
+        }).filter(function(item) {
+          return String(item.url || '').trim();
+        });
+
+        var payload = {
+          practica_id: practiceIdInput.value || null,
+          ual_id: selectedUalId,
+          nombre: practiceNameInput.value,
+          descripcion: practiceDescriptionInput.value,
+          tipo_practica: practiceTypeInput.value,
+          estado: practiceStatusInput.value,
+          asignaturas: subjects,
+          documentos: documents,
+          duracion: practiceDurationInput.value,
+          recomendaciones: practiceRecommendationsInput.value,
+          observaciones: practiceObservationsInput.value,
+          insumos: parseListValue(practiceSuppliesInput.value),
+          equipos: parseListValue(practiceEquipmentInput.value),
+          competencias: parseListValue(practiceCompetenciasInput.value),
+          guias_trabajo: parseListValue(practiceGuiasInput.value),
+          recomendaciones_seguridad: parseListValue(practiceSecurityInput.value),
+          parametros_evaluacion: parseListValue(practiceEvaluationInput.value),
+          configuracion_dinamica: collectDynamicFieldValues()
+        };
+
+        savePracticeBtn.disabled = true;
+        try {
+          var result = await postJson('/milab/prestamos/coordinador/practicas/catalogo', payload);
+          showAlert('success', result.message || 'Practica academica guardada correctamente.');
+          if (Array.isArray(result.warnings) && result.warnings.length) {
+            showAlert('warning', result.warnings.join('<br>'));
+          }
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 1000);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible guardar la practica academica.');
+        } finally {
+          savePracticeBtn.disabled = false;
+        }
+      });
+    }
+
+    renderSchemaTable();
+    renderDynamicPracticeFields();
+    createDefaultRows();
+  })();
+</script>
