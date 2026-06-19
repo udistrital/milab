@@ -5254,8 +5254,9 @@ async function validatePracticeDocumentUrl(url) {
     };
   }
 
+  let parsedUrl;
   try {
-    new URL(normalizedUrl);
+    parsedUrl = new URL(normalizedUrl);
   } catch {
     return {
       available: false,
