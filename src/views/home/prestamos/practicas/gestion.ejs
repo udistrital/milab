@@ -111,6 +111,16 @@
                         <div class="text-capitalize"><%= item.categoria_practica || '-' %></div>
                       </div>
 
+                      <% if (item.practica_id) { %>
+                        <div>
+                          <div class="small text-light-emphasis mb-1">Practica configurada</div>
+                          <div><%= item.practica_nombre || ('ID ' + item.practica_id) %></div>
+                          <% if (item.asignatura_codigo || item.asignatura_nombre) { %>
+                            <div class="small text-light-emphasis"><%= [item.asignatura_codigo, item.asignatura_nombre].filter(Boolean).join(' - ') %></div>
+                          <% } %>
+                        </div>
+                      <% } %>
+
                       <% if (item.modalidad_libre) { %>
                         <div>
                           <div class="small text-light-emphasis mb-1">Modalidad libre</div>
@@ -227,6 +237,16 @@
                         <div class="text-capitalize"><%= item.categoria_practica || '-' %></div>
                       </div>
 
+                      <% if (item.practica_id) { %>
+                        <div>
+                          <div class="small text-light-emphasis mb-1">Practica configurada</div>
+                          <div><%= item.practica_nombre || ('ID ' + item.practica_id) %></div>
+                          <% if (item.asignatura_codigo || item.asignatura_nombre) { %>
+                            <div class="small text-light-emphasis"><%= [item.asignatura_codigo, item.asignatura_nombre].filter(Boolean).join(' - ') %></div>
+                          <% } %>
+                        </div>
+                      <% } %>
+
                       <div>
                         <div class="small text-light-emphasis mb-1">Documentos</div>
                         <div class="d-flex gap-2 flex-wrap">
@@ -323,6 +343,16 @@
                         <div><%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
                         <div class="small"><%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></div>
                       </div>
+
+                      <% if (item.practica_id) { %>
+                        <div>
+                          <div class="small text-light-emphasis mb-1">Practica configurada</div>
+                          <div><%= item.practica_nombre || ('ID ' + item.practica_id) %></div>
+                          <% if (item.asignatura_codigo || item.asignatura_nombre) { %>
+                            <div class="small text-light-emphasis"><%= [item.asignatura_codigo, item.asignatura_nombre].filter(Boolean).join(' - ') %></div>
+                          <% } %>
+                        </div>
+                      <% } %>
 
                       <div>
                         <div class="small text-light-emphasis mb-1">Documentos</div>

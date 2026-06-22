@@ -88,6 +88,18 @@
                   <div class="small text-light-emphasis mb-1">Categoria</div>
                   <div class="mb-3 text-capitalize"><%= item.categoria_practica || '-' %></div>
 
+                  <% if (item.practica_id) { %>
+                    <div class="small text-light-emphasis mb-1">Practica configurada</div>
+                    <div class="mb-3">
+                      <div><%= item.practica_nombre || ('ID ' + item.practica_id) %></div>
+                      <% if (item.asignatura_codigo || item.asignatura_nombre) { %>
+                        <div class="small text-light-emphasis">
+                          <%= [item.asignatura_codigo, item.asignatura_nombre].filter(Boolean).join(' - ') %>
+                        </div>
+                      <% } %>
+                    </div>
+                  <% } %>
+
                   <% if (item.modalidad_libre) { %>
                     <div class="small text-light-emphasis mb-1">Modalidad libre</div>
                     <div class="mb-3 text-capitalize"><%= String(item.modalidad_libre || '').replaceAll('_', ' ') %></div>

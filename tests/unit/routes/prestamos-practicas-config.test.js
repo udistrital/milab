@@ -127,6 +127,8 @@ test('prestamos expone helpers privados para configuracion dinamica de practicas
   const loaded = loadRoute();
 
   try {
+    assert.equal(typeof loaded.route.__private.buildPracticeReservationPayload, 'function');
+    assert.equal(typeof loaded.route.__private.validatePracticeReservationPayload, 'function');
     assert.equal(typeof loaded.route.__private.normalizeDynamicPracticeSchema, 'function');
     assert.equal(typeof loaded.route.__private.validateDynamicPracticeSchema, 'function');
     assert.equal(typeof loaded.route.__private.validateAcademicPracticePayload, 'function');
@@ -226,6 +228,37 @@ test('prestamos valida que una practica academica cumpla asignaturas y campos di
     );
 
     assert.equal(invalidMessage, 'El campo dinamico "Voltaje utilizado" es obligatorio.');
+    assert.equal(validMessage, '');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos exige practica y asignatura configuradas para practicas docentes academicas', () => {
+  const loaded = loadRoute();
+
+  try {
+    const payload = loaded.route.__private.buildPracticeReservationPayload({
+      facultad: 'Ingenieria',
+      laboratorio: 'Fisica',
+      salaId: '8',
+      fechaInicio: '2099-01-10T08:00',
+      fechaFin: '2099-01-10T10:00',
+      tipo_practica: 'docente',
+      categoria_practica: 'academica',
+      justificacion: 'Solicitud de practica academica para laboratorio.',
+      firma_digital: 'firma-valida',
+    });
+
+    const missingPracticeMessage =
+      loaded.route.__private.validatePracticeReservationPayload(payload);
+    const validMessage = loaded.route.__private.validatePracticeReservationPayload({
+      ...payload,
+      practica_id: '15',
+      asignatura_codigo: 'FIS101',
+    });
+
+    assert.equal(missingPracticeMessage, 'Debes seleccionar una practica academica configurada.');
     assert.equal(validMessage, '');
   } finally {
     loaded.restore();

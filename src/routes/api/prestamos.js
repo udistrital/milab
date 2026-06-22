@@ -422,6 +422,7 @@ async function registerPrestamosAuditEntry(options = {}) {
 const tableColumnCache = new Map();
 let practiceIncidenceSchemaEnsured = false;
 let academicPracticeSchemaEnsured = false;
+let practiceReservationAcademicFieldsEnsured = false;
 
 async function fetchTableColumns(tableName, client = pool) {
   const normalizedTableName = sanitizeText(tableName);
@@ -572,6 +573,46 @@ async function ensureAcademicPracticeSchema(client = pool) {
   );
 
   academicPracticeSchemaEnsured = true;
+}
+
+async function ensurePracticeReservationAcademicFields(client = pool) {
+  if (practiceReservationAcademicFieldsEnsured) {
+    return;
+  }
+
+  await ensureAcademicPracticeSchema(client);
+  await client.query(`ALTER TABLE reserva_practica ADD COLUMN IF NOT EXISTS practica_id INT`);
+  await client.query(
+    `ALTER TABLE reserva_practica ADD COLUMN IF NOT EXISTS asignatura_codigo VARCHAR(80)`
+  );
+  await client.query(
+    `ALTER TABLE reserva_practica ADD COLUMN IF NOT EXISTS asignatura_nombre VARCHAR(255)`
+  );
+  await client.query(
+    `ALTER TABLE reserva_practica ADD COLUMN IF NOT EXISTS detalle_practica_json JSONB NOT NULL DEFAULT '{}'::jsonb`
+  );
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_reserva_practica_practica_id ON reserva_practica(practica_id)`
+  );
+  await client.query(
+    `CREATE INDEX IF NOT EXISTS idx_reserva_practica_asignatura_codigo ON reserva_practica(asignatura_codigo)`
+  );
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_reserva_practica_practica'
+      ) THEN
+        ALTER TABLE reserva_practica
+        ADD CONSTRAINT fk_reserva_practica_practica
+        FOREIGN KEY (practica_id) REFERENCES practica(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+
+  practiceReservationAcademicFieldsEnsured = true;
 }
 
 function sanitizeInstitutionalFormatFile(value) {
@@ -936,6 +977,12 @@ function buildPracticeReservationPayload(body = {}) {
     modalidad_libre: sanitizeText(body.modalidad_libre),
     formato_archivo: sanitizeInstitutionalFormatFile(body.formato_archivo || body.formatoArchivo),
     formato_payload: sanitizeJsonObject(body.formato_payload || body.formatoPayload),
+    practica_id: sanitizeText(body.practica_id || body.practicaId),
+    asignatura_codigo: sanitizeText(body.asignatura_codigo || body.asignaturaCodigo),
+    asignatura_nombre: sanitizeText(body.asignatura_nombre || body.asignaturaNombre),
+    detalle_practica_json: sanitizeJsonObject(
+      body.detalle_practica_json || body.detallePracticaJson
+    ),
   };
 }
 
@@ -982,6 +1029,26 @@ function validatePracticeReservationPayload(payload) {
 
   if (!['academica', 'extension', 'investigacion', 'otra'].includes(payload.categoria_practica)) {
     return 'La categoria de la practica no es valida.';
+  }
+
+  if (payload.practica_id && !/^\d+$/.test(String(payload.practica_id || ''))) {
+    return 'La practica academica seleccionada no es valida.';
+  }
+
+  if (
+    payload.tipo_practica === 'docente' &&
+    payload.categoria_practica === 'academica' &&
+    !/^\d+$/.test(String(payload.practica_id || ''))
+  ) {
+    return 'Debes seleccionar una practica academica configurada.';
+  }
+
+  if (
+    payload.tipo_practica === 'docente' &&
+    payload.categoria_practica === 'academica' &&
+    !payload.asignatura_codigo
+  ) {
+    return 'Debes seleccionar la asignatura asociada a la practica.';
   }
 
   if (!payload.justificacion || payload.justificacion.length < 10) {
@@ -3441,6 +3508,10 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
           rp.modalidad_libre,
           rp.estado,
           rp.justificacion,
+          rp.practica_id,
+          rp.asignatura_codigo,
+          rp.asignatura_nombre,
+          rp.detalle_practica_json,
           rp.formato_archivo,
           rp.formato_payload,
           rp.firma_digital,
@@ -3513,6 +3584,10 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
         rp.modalidad_libre,
         rp.estado,
         rp.justificacion,
+        rp.practica_id,
+        rp.asignatura_codigo,
+        rp.asignatura_nombre,
+        rp.detalle_practica_json,
         rp.formato_archivo,
         rp.formato_payload,
         rp.firma_digital,
@@ -5435,6 +5510,130 @@ async function fetchAcademicPracticesByUalId(ualId) {
   );
 
   return practices;
+}
+
+async function fetchAcademicPracticesForReservation(facultad, laboratorio) {
+  const normalizedFaculty = sanitizeText(facultad);
+  const normalizedLaboratory = sanitizeText(laboratorio);
+
+  if (!normalizedFaculty || !normalizedLaboratory) {
+    return [];
+  }
+
+  await ensureAcademicPracticeSchema();
+  await ensurePracticeReservationAcademicFields();
+
+  const result = await pool.query(
+    `
+      SELECT
+        p.id,
+        p.ual_id,
+        p.nombre,
+        p.descripcion,
+        p.tipo_practica,
+        p.estado,
+        p.configuracion_json,
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', a.id,
+              'codigo', a.codigo,
+              'nombre', a.nombre
+            )
+          ) FILTER (WHERE a.id IS NOT NULL),
+          '[]'::json
+        ) AS asignaturas
+      FROM practica p
+      JOIN ual u
+        ON u.ual_id = p.ual_id
+       AND u.activo = TRUE
+      JOIN facultad f
+        ON f.facultad_id = u.facultad_id
+       AND f.activo = TRUE
+      LEFT JOIN asignatura_practica ap
+        ON ap.practica_id = p.id
+       AND ap.activo = TRUE
+      LEFT JOIN asignatura a
+        ON a.id = ap.asignatura_id
+       AND a.activo = TRUE
+      WHERE p.activo = TRUE
+        AND p.estado = 'activa'
+        AND UPPER(f.nombre) = UPPER($1)
+        AND UPPER(u.nombre) = UPPER($2)
+      GROUP BY p.id
+      ORDER BY p.nombre ASC, p.id ASC
+    `,
+    [normalizedFaculty, normalizedLaboratory]
+  );
+
+  return (result.rows || []).map(function (row) {
+    const config = sanitizeJsonObject(row.configuracion_json) || {};
+    return {
+      id: Number(row.id),
+      ual_id: Number(row.ual_id),
+      nombre: sanitizeText(row.nombre),
+      descripcion: sanitizeText(row.descripcion),
+      tipo_practica: sanitizeText(row.tipo_practica),
+      estado: sanitizeText(row.estado),
+      asignaturas: Array.isArray(row.asignaturas)
+        ? row.asignaturas
+            .map(function (subject) {
+              return {
+                id: Number(subject?.id),
+                codigo: sanitizeText(subject?.codigo),
+                nombre: sanitizeText(subject?.nombre),
+              };
+            })
+            .filter(function (subject) {
+              return subject.codigo && subject.nombre;
+            })
+        : [],
+      configuracion_json: {
+        documentos: normalizePracticeDocumentList(config.documentos),
+        insumos: normalizeStringList(config.insumos),
+        equipos: normalizeStringList(config.equipos),
+        duracion: config.duracion ? Number(config.duracion) : null,
+        competencias: normalizeStringList(config.competencias),
+        guias_trabajo: normalizeStringList(config.guias_trabajo),
+        recomendaciones_seguridad: normalizeStringList(config.recomendaciones_seguridad),
+        parametros_evaluacion: normalizeStringList(config.parametros_evaluacion),
+        recomendaciones: sanitizeText(config.recomendaciones),
+        observaciones: sanitizeText(config.observaciones),
+        configuracion_dinamica: sanitizeJsonObject(config.configuracion_dinamica) || {},
+        schema_aplicado: normalizeDynamicPracticeSchema(config.schema_aplicado),
+      },
+    };
+  });
+}
+
+function buildAcademicPracticeReservationSnapshot(practice, subject) {
+  const config = sanitizeJsonObject(practice?.configuracion_json) || {};
+
+  return {
+    practica_id: Number(practice?.id) || null,
+    nombre: sanitizeText(practice?.nombre),
+    descripcion: sanitizeText(practice?.descripcion),
+    tipo_practica: sanitizeText(practice?.tipo_practica),
+    asignatura: subject
+      ? {
+          id: Number(subject.id) || null,
+          codigo: sanitizeText(subject.codigo),
+          nombre: sanitizeText(subject.nombre),
+        }
+      : null,
+    documentos: normalizePracticeDocumentList(config.documentos),
+    insumos: normalizeStringList(config.insumos),
+    equipos: normalizeStringList(config.equipos),
+    duracion: config.duracion ? Number(config.duracion) : null,
+    competencias: normalizeStringList(config.competencias),
+    guias_trabajo: normalizeStringList(config.guias_trabajo),
+    recomendaciones_seguridad: normalizeStringList(config.recomendaciones_seguridad),
+    parametros_evaluacion: normalizeStringList(config.parametros_evaluacion),
+    recomendaciones: sanitizeText(config.recomendaciones),
+    observaciones: sanitizeText(config.observaciones),
+    configuracion_dinamica: sanitizeJsonObject(config.configuracion_dinamica) || {},
+    schema_aplicado: normalizeDynamicPracticeSchema(config.schema_aplicado),
+  };
 }
 
 async function fetchManagedAcademicPractice(practiceId, scope) {
@@ -8917,6 +9116,7 @@ router.post('/formatos/audiovisuales/fill', requirePracticasAuthorized, async fu
 
 router.get('/practicas/solicitar', requirePracticasAuthorized, async function (req, res) {
   try {
+    await ensurePracticeReservationAcademicFields();
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const isDocente = roles.includes('docente');
     const editId = sanitizeText(req.query.editar);
@@ -8937,6 +9137,10 @@ router.get('/practicas/solicitar', requirePracticasAuthorized, async function (r
               fecha_inicio,
               fecha_fin,
               justificacion,
+              practica_id,
+              asignatura_codigo,
+              asignatura_nombre,
+              detalle_practica_json,
               formato_archivo,
               formato_payload,
               motivo_rechazo
@@ -8968,6 +9172,37 @@ router.get('/practicas/solicitar', requirePracticasAuthorized, async function (r
       errorMessage: 'No fue posible cargar el formulario de practicas.',
       isDocente,
       initialReservation: null,
+    });
+  }
+});
+
+router.get('/practicas/api/catalogo', requirePracticasAuthorized, async function (req, res) {
+  try {
+    const facultad = sanitizeText(req.query.facultad);
+    const laboratorio = sanitizeText(req.query.laboratorio);
+
+    if (!facultad || !laboratorio) {
+      return res.status(400).json({
+        success: false,
+        practicas: [],
+        message: 'La facultad y el laboratorio son obligatorios.',
+      });
+    }
+
+    const practicas = await fetchAcademicPracticesForReservation(facultad, laboratorio);
+    return res.json({
+      success: true,
+      practicas,
+    });
+  } catch (error) {
+    console.error('Error consultando catalogo academico de practicas MiLab:', error);
+    return res.status(500).json({
+      success: false,
+      practicas: [],
+      message: resolveLoanDbErrorMessage(
+        error,
+        'No fue posible consultar el catalogo de practicas academicas.'
+      ),
     });
   }
 });
@@ -9035,6 +9270,8 @@ router.get(
       const validationError = validatePracticeReservationPayload({
         ...payload,
         sala_id: payload.sala_id || '1',
+        practica_id: payload.practica_id || '1',
+        asignatura_codigo: payload.asignatura_codigo || 'CATALOGO',
       });
 
       if (validationError && !validationError.includes('Debes seleccionar una sala valida')) {
@@ -9088,6 +9325,7 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
   }
 
   try {
+    await ensurePracticeReservationAcademicFields();
     const usuario = await fetchSessionUsuario(req);
 
     if (!usuario?.id) {
@@ -9215,6 +9453,46 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
     }
 
     const shouldQueueReservation = payload.tipo_practica === 'libre' && !salaSeleccionada;
+    let selectedAcademicPractice = null;
+    let selectedAcademicSubject = null;
+    let academicPracticeSnapshot = {};
+
+    if (payload.practica_id) {
+      const academicPractices = await fetchAcademicPracticesForReservation(
+        payload.facultad,
+        payload.laboratorio
+      );
+      selectedAcademicPractice = academicPractices.find(function (item) {
+        return Number(item.id) === Number(payload.practica_id);
+      });
+
+      if (!selectedAcademicPractice) {
+        return res.status(400).json({
+          success: false,
+          message: 'La practica academica seleccionada no pertenece al laboratorio indicado.',
+        });
+      }
+
+      selectedAcademicSubject = (selectedAcademicPractice.asignaturas || []).find(function (item) {
+        return sanitizeText(item.codigo) === payload.asignatura_codigo;
+      });
+
+      if (
+        payload.tipo_practica === 'docente' &&
+        payload.categoria_practica === 'academica' &&
+        !selectedAcademicSubject
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'La asignatura seleccionada no corresponde a la practica academica elegida.',
+        });
+      }
+
+      academicPracticeSnapshot = buildAcademicPracticeReservationSnapshot(
+        selectedAcademicPractice,
+        selectedAcademicSubject
+      );
+    }
 
     const client = await pool.connect();
 
@@ -9237,6 +9515,10 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
         'formato_payload',
         'firma_digital',
         'fecha_firma',
+        'practica_id',
+        'asignatura_codigo',
+        'asignatura_nombre',
+        'detalle_practica_json',
       ];
       const insertValues = [
         usuario.id,
@@ -9258,6 +9540,10 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
         payload.formato_payload,
         payload.firma_digital,
         payload.firma_digital ? new Date() : null,
+        selectedAcademicPractice?.id || null,
+        selectedAcademicSubject?.codigo || payload.asignatura_codigo || null,
+        selectedAcademicSubject?.nombre || payload.asignatura_nombre || null,
+        academicPracticeSnapshot,
       ];
 
       const insertPlaceholders = insertValues.map(function (_, index) {
@@ -9382,6 +9668,7 @@ router.post('/practicas/:id/reenviar', requirePracticasAuthorized, async functio
   const payload = buildPracticeReservationPayload(req.body);
 
   try {
+    await ensurePracticeReservationAcademicFields();
     const usuario = await fetchSessionUsuario(req);
     if (!usuario?.id) {
       return res.status(401).json({
@@ -9412,7 +9699,11 @@ router.post('/practicas/:id/reenviar', requirePracticasAuthorized, async functio
           facultad,
           tipo_practica,
           categoria_practica,
-          estado
+          estado,
+          practica_id,
+          asignatura_codigo,
+          asignatura_nombre,
+          detalle_practica_json
         FROM reserva_practica
         WHERE id = $1
           AND usuario_id = $2
@@ -9458,6 +9749,10 @@ router.post('/practicas/:id/reenviar', requirePracticasAuthorized, async functio
       modalidad_libre: null,
       formato_archivo: payload.formato_archivo,
       formato_payload: payload.formato_payload,
+      practica_id: reserva.practica_id ? String(reserva.practica_id) : '',
+      asignatura_codigo: sanitizeText(reserva.asignatura_codigo),
+      asignatura_nombre: sanitizeText(reserva.asignatura_nombre),
+      detalle_practica_json: sanitizeJsonObject(reserva.detalle_practica_json) || {},
     };
 
     const validationError = validatePracticeReservationPayload(merged);
@@ -9557,6 +9852,7 @@ router.post('/practicas/:id/reenviar', requirePracticasAuthorized, async functio
 
 router.get('/practicas/mis-reservas', requireMisPracticasAuthorized, async function (req, res) {
   try {
+    await ensurePracticeReservationAcademicFields();
     const usuario = await fetchSessionUsuario(req);
 
     if (!usuario?.id) {
@@ -9581,9 +9877,14 @@ router.get('/practicas/mis-reservas', requireMisPracticasAuthorized, async funct
           rp.estado,
           rp.justificacion,
           rp.motivo_rechazo,
+          rp.practica_id,
+          p.nombre AS practica_nombre,
+          rp.asignatura_codigo,
+          rp.asignatura_nombre,
           s.nombre AS sala_nombre
         FROM reserva_practica rp
         LEFT JOIN sala s ON s.id = rp.sala_id
+        LEFT JOIN practica p ON p.id = rp.practica_id
         WHERE rp.usuario_id = $1
         ORDER BY rp.fecha_inicio DESC, rp.id DESC
       `,
@@ -9813,6 +10114,7 @@ router.post('/practicas/:id/cancelar', requireMisPracticasAuthorized, async func
 
 router.get('/practicas/gestion', requireGestionPracticasAuthorized, async function (req, res) {
   try {
+    await ensurePracticeReservationAcademicFields();
     const scope = await resolveLoanManagementScope(req);
     const requestedDate = sanitizeText(req.query.fecha);
     const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
@@ -9860,6 +10162,10 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             rp.modalidad_libre,
             rp.estado,
             rp.justificacion,
+            rp.practica_id,
+            p.nombre AS practica_nombre,
+            rp.asignatura_codigo,
+            rp.asignatura_nombre,
             rp.formato_archivo,
             s.nombre AS sala_nombre,
             u.nombre AS usuario_nombre,
@@ -9868,6 +10174,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
+          LEFT JOIN practica p ON p.id = rp.practica_id
           LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${dayWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
@@ -9924,6 +10231,10 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             rp.modalidad_libre,
             rp.estado,
             rp.justificacion,
+            rp.practica_id,
+            p.nombre AS practica_nombre,
+            rp.asignatura_codigo,
+            rp.asignatura_nombre,
             rp.formato_archivo,
             s.nombre AS sala_nombre,
             u.nombre AS usuario_nombre,
@@ -9932,6 +10243,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
+          LEFT JOIN practica p ON p.id = rp.practica_id
           LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${activeWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
@@ -10847,7 +11159,11 @@ router.post(
             formato_archivo,
             formato_payload,
             firma_digital,
-            fecha_firma
+            fecha_firma,
+            practica_id,
+            asignatura_codigo,
+            asignatura_nombre,
+            detalle_practica_json
           )
           VALUES (
             $1,
@@ -10864,7 +11180,11 @@ router.post(
             $10,
             $11,
             NULL,
-            NULL
+            NULL,
+            $13,
+            $14,
+            $15,
+            $16::jsonb
           )
           RETURNING id, fecha_inicio, fecha_fin
         `,
@@ -10881,6 +11201,10 @@ router.post(
           reserva.formato_archivo || null,
           reserva.formato_payload || null,
           reserva.tipo_practica === 'docente' ? 'iniciada' : 'activa',
+          reserva.practica_id || null,
+          reserva.asignatura_codigo || null,
+          reserva.asignatura_nombre || null,
+          sanitizeJsonObject(reserva.detalle_practica_json) || {},
         ]
       );
 
@@ -12984,6 +13308,8 @@ router.get('/auditoria', requireAuditoriaAuthorized, async function (req, res) {
 });
 
 router.__private = {
+  buildPracticeReservationPayload,
+  validatePracticeReservationPayload,
   normalizeDynamicPracticeSchema,
   validateDynamicPracticeSchema,
   validateDynamicPracticeValues,

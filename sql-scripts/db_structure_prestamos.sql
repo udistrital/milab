@@ -346,6 +346,10 @@ CREATE TABLE IF NOT EXISTS reserva_practica (
     modalidad_libre VARCHAR(20),
     estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
     justificacion TEXT NOT NULL,
+    practica_id INT,
+    asignatura_codigo VARCHAR(80),
+    asignatura_nombre VARCHAR(255),
+    detalle_practica_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     formato_archivo VARCHAR(100),
     formato_payload JSONB,
     firma_digital TEXT,
@@ -357,12 +361,16 @@ CREATE TABLE IF NOT EXISTS reserva_practica (
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_reserva_practica PRIMARY KEY (id),
     CONSTRAINT fk_reserva_practica_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+    CONSTRAINT fk_reserva_practica_practica FOREIGN KEY (practica_id) REFERENCES practica(id) ON DELETE SET NULL,
     CONSTRAINT ck_tipo_practica_reserva_practica CHECK (tipo_practica IN ('libre', 'docente')),
     CONSTRAINT ck_categoria_practica_reserva_practica CHECK (categoria_practica IN ('academica', 'extension', 'investigacion', 'otra')),
     CONSTRAINT ck_estado_reserva_practica CHECK (estado IN ('pendiente', 'por_aprobacion', 'con_comentarios', 'en_cola', 'aprobada', 'activa', 'iniciada', 'completada', 'finalizada', 'rechazada', 'cancelada', 'no_asistio')),
     CONSTRAINT ck_fecha_inicio_reserva_practica CHECK (fecha_inicio < fecha_fin),
     CONSTRAINT ck_modalidad_libre_reserva_practica CHECK (
       modalidad_libre IS NULL OR modalidad_libre IN ('uno_a_uno', 'uno_a_varios', 'varios_a_uno')
+    ),
+    CONSTRAINT ck_detalle_practica_json_reserva_practica CHECK (
+      jsonb_typeof(detalle_practica_json) = 'object'
     )
 );
 
@@ -370,6 +378,8 @@ CREATE INDEX IF NOT EXISTS idx_reserva_practica_usuario ON reserva_practica(usua
 CREATE INDEX IF NOT EXISTS idx_reserva_practica_sala ON reserva_practica(sala_id);
 CREATE INDEX IF NOT EXISTS idx_reserva_practica_facultad ON reserva_practica(facultad);
 CREATE INDEX IF NOT EXISTS idx_reserva_practica_laboratorio ON reserva_practica(laboratorio);
+CREATE INDEX IF NOT EXISTS idx_reserva_practica_practica_id ON reserva_practica(practica_id);
+CREATE INDEX IF NOT EXISTS idx_reserva_practica_asignatura_codigo ON reserva_practica(asignatura_codigo);
 CREATE INDEX IF NOT EXISTS idx_reserva_practica_estado ON reserva_practica(estado);
 CREATE INDEX IF NOT EXISTS idx_reserva_practica_inicio ON reserva_practica(fecha_inicio);
 

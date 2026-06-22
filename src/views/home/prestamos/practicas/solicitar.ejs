@@ -73,6 +73,43 @@
           <div class="invalid-feedback">Selecciona la categoria de la practica.</div>
         </div>
 
+        <div class="col-md-6">
+          <label for="asignaturaCatalogo" class="form-label">Asignatura configurada</label>
+          <select class="form-select" id="asignaturaCatalogo" disabled>
+            <option value="">Selecciona primero facultad y laboratorio...</option>
+          </select>
+          <div class="form-text" id="catalogoInfoText">
+            Para practicas docentes academicas puedes reutilizar una practica preconfigurada por el laboratorista.
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="practicaCatalogo" class="form-label">Practica academica</label>
+          <select class="form-select" id="practicaCatalogo" disabled>
+            <option value="">Selecciona una asignatura...</option>
+          </select>
+          <div class="form-text">
+            El catalogo se filtra por laboratorio y por la asignatura seleccionada.
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card border-secondary-subtle bg-light-subtle text-dark d-none" id="practiceCatalogPreviewCard">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
+                <div>
+                  <h5 class="mb-1" id="practiceCatalogPreviewTitle">Practica configurada</h5>
+                  <div class="small text-muted" id="practiceCatalogPreviewMeta"></div>
+                </div>
+              </div>
+              <div id="practiceCatalogPreviewBody" class="small"></div>
+            </div>
+          </div>
+          <div class="form-text" id="practiceCatalogPreviewEmpty">
+            Cuando selecciones una practica configurada, aqui veras los insumos, equipos y documentos precargados.
+          </div>
+        </div>
+
         <div class="col-12">
           <label class="form-label">Horarios disponibles *</label>
           <div class="form-text mb-2" id="salaInfoText">
@@ -342,6 +379,14 @@
       : null;
     var pdfStaticRow = modalFormatoPdfEl ? modalFormatoPdfEl.querySelector('.row.g-3') : null;
     var extraContainer = document.getElementById('pdfExtraFields');
+    var catalogInfoText = document.getElementById('catalogoInfoText');
+    var asignaturaCatalogSelect = document.getElementById('asignaturaCatalogo');
+    var practicaCatalogSelect = document.getElementById('practicaCatalogo');
+    var practiceCatalogPreviewCard = document.getElementById('practiceCatalogPreviewCard');
+    var practiceCatalogPreviewTitle = document.getElementById('practiceCatalogPreviewTitle');
+    var practiceCatalogPreviewMeta = document.getElementById('practiceCatalogPreviewMeta');
+    var practiceCatalogPreviewBody = document.getElementById('practiceCatalogPreviewBody');
+    var practiceCatalogPreviewEmpty = document.getElementById('practiceCatalogPreviewEmpty');
     var submitButton = document.getElementById('practicaSubmitBtn');
     var aceptarReglamentoInput = document.getElementById('aceptoReglamento');
     var firmaError = document.getElementById('practicaFirmaError');
@@ -356,6 +401,8 @@
     var hasBoundSignaturePadResize = false;
     var initialReservation = <%- JSON.stringify(initialReservation || null) %>;
     var isEditMode = Boolean(initialReservation && initialReservation.id);
+    var academicCatalogItems = [];
+    var lastAutoJustification = '';
 
     if (!form || !alertsContainer || !facultadSelect || !laboratorioSelect || !salaIdInput || !fechaInput || !salaInfoText || !submitButton) return;
 
@@ -370,6 +417,246 @@
       }
       salaInfoText.textContent = 'Modo correccion: actualiza el formato y reenvía la practica para aprobacion.';
       if (salasContainer) salasContainer.classList.add('d-none');
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function isAcademicCatalogRequired() {
+      var tipoPractica = document.getElementById('tipoPractica');
+      var categoriaPractica = document.getElementById('categoriaPractica');
+      return Boolean(
+        tipoPractica &&
+        categoriaPractica &&
+        tipoPractica.value === 'docente' &&
+        categoriaPractica.value === 'academica'
+      );
+    }
+
+    function getSelectedAcademicPractice() {
+      if (!practicaCatalogSelect || !practicaCatalogSelect.value) return null;
+      return academicCatalogItems.find(function(item) {
+        return String(item.id) === String(practicaCatalogSelect.value);
+      }) || null;
+    }
+
+    function getSelectedAcademicSubject() {
+      var selectedPractice = getSelectedAcademicPractice();
+      if (!selectedPractice || !asignaturaCatalogSelect || !asignaturaCatalogSelect.value) return null;
+      return (selectedPractice.asignaturas || []).find(function(item) {
+        return String(item.codigo) === String(asignaturaCatalogSelect.value);
+      }) || null;
+    }
+
+    function resetAcademicCatalog(message) {
+      academicCatalogItems = [];
+      if (asignaturaCatalogSelect) {
+        asignaturaCatalogSelect.innerHTML = '<option value="">' + (message || 'Selecciona primero facultad y laboratorio...') + '</option>';
+        asignaturaCatalogSelect.disabled = true;
+      }
+      if (practicaCatalogSelect) {
+        practicaCatalogSelect.innerHTML = '<option value="">Selecciona una asignatura...</option>';
+        practicaCatalogSelect.disabled = true;
+      }
+      if (catalogInfoText) {
+        catalogInfoText.textContent = message || 'Selecciona una practica docente academica para habilitar el catalogo.';
+      }
+      if (practiceCatalogPreviewCard) practiceCatalogPreviewCard.classList.add('d-none');
+      if (practiceCatalogPreviewBody) practiceCatalogPreviewBody.innerHTML = '';
+      if (practiceCatalogPreviewEmpty) practiceCatalogPreviewEmpty.classList.remove('d-none');
+    }
+
+    function renderPreviewList(title, items) {
+      if (!Array.isArray(items) || !items.length) return '';
+      return (
+        '<div class="mb-2"><div class="fw-semibold">' +
+        escapeHtml(title) +
+        '</div><div>' +
+        items.map(function(item) {
+          return '<span class="badge text-bg-secondary me-1 mb-1">' + escapeHtml(item) + '</span>';
+        }).join('') +
+        '</div></div>'
+      );
+    }
+
+    function renderAcademicCatalogPreview() {
+      var selectedPractice = getSelectedAcademicPractice();
+      var selectedSubject = getSelectedAcademicSubject();
+      if (!selectedPractice) {
+        if (practiceCatalogPreviewCard) practiceCatalogPreviewCard.classList.add('d-none');
+        if (practiceCatalogPreviewEmpty) practiceCatalogPreviewEmpty.classList.remove('d-none');
+        return;
+      }
+
+      var config = selectedPractice.configuracion_json || {};
+      var documents = Array.isArray(config.documentos) ? config.documentos : [];
+      var html = '';
+
+      if (config.duracion) {
+        html += '<div class="mb-2"><span class="fw-semibold">Duracion:</span> ' + escapeHtml(config.duracion) + ' minuto(s)</div>';
+      }
+      if (selectedPractice.descripcion) {
+        html += '<div class="mb-2"><span class="fw-semibold">Descripcion:</span> ' + escapeHtml(selectedPractice.descripcion) + '</div>';
+      }
+      html += renderPreviewList('Insumos', config.insumos || []);
+      html += renderPreviewList('Equipos', config.equipos || []);
+      html += renderPreviewList('Competencias', config.competencias || []);
+      html += renderPreviewList('Guias', config.guias_trabajo || []);
+      html += renderPreviewList('Seguridad', config.recomendaciones_seguridad || []);
+      html += renderPreviewList('Evaluacion', config.parametros_evaluacion || []);
+      if (documents.length) {
+        html += '<div class="mb-2"><div class="fw-semibold">Documentos</div><div>';
+        html += documents.map(function(item) {
+          var label = item && item.nombre ? item.nombre : item && item.url ? item.url : 'Documento';
+          var href = item && item.url ? item.url : '#';
+          return '<a class="btn btn-outline-secondary btn-sm me-2 mb-2" target="_blank" rel="noopener noreferrer" href="' + escapeHtml(href) + '">' + escapeHtml(label) + '</a>';
+        }).join('');
+        html += '</div></div>';
+      }
+
+      if (practiceCatalogPreviewCard) practiceCatalogPreviewCard.classList.remove('d-none');
+      if (practiceCatalogPreviewTitle) practiceCatalogPreviewTitle.textContent = selectedPractice.nombre || 'Practica configurada';
+      if (practiceCatalogPreviewMeta) {
+        practiceCatalogPreviewMeta.textContent = [
+          selectedSubject ? (selectedSubject.codigo + ' - ' + selectedSubject.nombre) : '',
+          selectedPractice.tipo_practica || ''
+        ].filter(Boolean).join(' | ');
+      }
+      if (practiceCatalogPreviewBody) {
+        practiceCatalogPreviewBody.innerHTML = html || '<span class="text-muted">La practica no tiene datos precargados adicionales.</span>';
+      }
+      if (practiceCatalogPreviewEmpty) practiceCatalogPreviewEmpty.classList.add('d-none');
+    }
+
+    function applyCatalogPracticeToJustification() {
+      var justificacion = document.getElementById('justificacion');
+      var selectedPractice = getSelectedAcademicPractice();
+      var selectedSubject = getSelectedAcademicSubject();
+      if (!justificacion || !selectedPractice || !selectedSubject) return;
+
+      var nextValue =
+        'Desarrollo de la practica "' +
+        selectedPractice.nombre +
+        '" para la asignatura "' +
+        selectedSubject.nombre +
+        '" en el laboratorio "' +
+        (laboratorioSelect.value || '') +
+        '".';
+
+      if (!justificacion.value || justificacion.value === lastAutoJustification) {
+        justificacion.value = nextValue;
+        lastAutoJustification = nextValue;
+      }
+    }
+
+    function populateAcademicPracticeOptions() {
+      var selectedSubjectCode = asignaturaCatalogSelect ? asignaturaCatalogSelect.value : '';
+      var filteredPractices = academicCatalogItems.filter(function(item) {
+        if (!selectedSubjectCode) return false;
+        return (item.asignaturas || []).some(function(subject) {
+          return String(subject.codigo) === String(selectedSubjectCode);
+        });
+      });
+
+      if (practicaCatalogSelect) {
+        practicaCatalogSelect.innerHTML = '<option value="">Selecciona una practica...</option>';
+        filteredPractices.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = item.nombre;
+          practicaCatalogSelect.appendChild(option);
+        });
+        practicaCatalogSelect.disabled = !filteredPractices.length;
+      }
+
+      if (catalogInfoText) {
+        catalogInfoText.textContent = filteredPractices.length
+          ? 'Selecciona la practica configurada que se diligenciara con esta reserva.'
+          : 'No hay practicas activas para la asignatura seleccionada en este laboratorio.';
+      }
+
+      renderAcademicCatalogPreview();
+      updateSubmitAvailability();
+    }
+
+    async function loadAcademicCatalog() {
+      if (!isAcademicCatalogRequired()) {
+        resetAcademicCatalog('El catalogo solo aplica para practicas docentes academicas.');
+        updateSubmitAvailability();
+        return;
+      }
+
+      if (!facultadSelect.value || !laboratorioSelect.value) {
+        resetAcademicCatalog('Selecciona facultad y laboratorio para cargar el catalogo academico.');
+        updateSubmitAvailability();
+        return;
+      }
+
+      resetAcademicCatalog('Cargando practicas configuradas...');
+
+      try {
+        var params = new URLSearchParams({
+          facultad: facultadSelect.value,
+          laboratorio: laboratorioSelect.value,
+        });
+        var response = await fetch('/milab/prestamos/practicas/api/catalogo?' + params.toString());
+        var data = await response.json();
+
+        if (!data.success || !Array.isArray(data.practicas) || !data.practicas.length) {
+          resetAcademicCatalog('No hay practicas academicas configuradas para este laboratorio.');
+          updateSubmitAvailability();
+          return;
+        }
+
+        academicCatalogItems = data.practicas;
+        var subjectMap = new Map();
+        academicCatalogItems.forEach(function(item) {
+          (item.asignaturas || []).forEach(function(subject) {
+            if (subject && subject.codigo && !subjectMap.has(subject.codigo)) {
+              subjectMap.set(subject.codigo, subject);
+            }
+          });
+        });
+
+        if (asignaturaCatalogSelect) {
+          asignaturaCatalogSelect.innerHTML = '<option value="">Selecciona una asignatura...</option>';
+          Array.from(subjectMap.values())
+            .sort(function(a, b) {
+              return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+            })
+            .forEach(function(subject) {
+              var option = document.createElement('option');
+              option.value = subject.codigo;
+              option.textContent = subject.codigo + ' - ' + subject.nombre;
+              asignaturaCatalogSelect.appendChild(option);
+            });
+          asignaturaCatalogSelect.disabled = subjectMap.size === 0;
+        }
+
+        if (catalogInfoText) {
+          catalogInfoText.textContent = 'Selecciona primero la asignatura y luego la practica configurada.';
+        }
+
+        if (initialReservation && initialReservation.asignatura_codigo && !asignaturaCatalogSelect.value) {
+          asignaturaCatalogSelect.value = initialReservation.asignatura_codigo;
+        }
+        populateAcademicPracticeOptions();
+        if (initialReservation && initialReservation.practica_id && !practicaCatalogSelect.value) {
+          practicaCatalogSelect.value = String(initialReservation.practica_id);
+        }
+        renderAcademicCatalogPreview();
+        applyCatalogPracticeToJustification();
+      } catch (error) {
+        resetAcademicCatalog('No fue posible cargar el catalogo academico.');
+      }
+
+      updateSubmitAvailability();
     }
 
     function collectDataKeys(root) {
@@ -583,6 +870,16 @@
         observaciones: (document.getElementById('pdf_observaciones') && document.getElementById('pdf_observaciones').value) || document.getElementById('justificacion').value
       };
 
+      var selectedPractice = getSelectedAcademicPractice();
+      var selectedSubject = getSelectedAcademicSubject();
+      if (selectedPractice) {
+        payload.nombre_practica = payload.nombre_practica || selectedPractice.nombre || '';
+        payload.titulo_practica = payload.titulo_practica || selectedPractice.nombre || '';
+      }
+      if (selectedSubject) {
+        payload.asignatura = payload.asignatura || selectedSubject.nombre || '';
+      }
+
       Object.assign(payload, collectDataKeys(extraContainer));
       return payload;
     }
@@ -745,6 +1042,12 @@
       var hasJustificacion = Boolean(document.getElementById('justificacion').value.trim().length >= 10);
       var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
       var hasFirma = Boolean(getSignatureDataUrl());
+      var hasAcademicCatalog = !isAcademicCatalogRequired() || Boolean(
+        asignaturaCatalogSelect &&
+        asignaturaCatalogSelect.value &&
+        practicaCatalogSelect &&
+        practicaCatalogSelect.value
+      );
       submitButton.disabled = !(
         hasFacultad &&
         hasLaboratorio &&
@@ -755,6 +1058,7 @@
         hasCategoria &&
         hasSala &&
         hasJustificacion &&
+        hasAcademicCatalog &&
         hasReglamento &&
         hasFirma
       );
@@ -806,6 +1110,7 @@
         });
 
         laboratorioSelect.disabled = false;
+        await loadAcademicCatalog();
       } catch (error) {
         laboratorioSelect.innerHTML = '<option value="">No fue posible cargar laboratorios</option>';
       }
@@ -997,6 +1302,7 @@
       fechaInput.value = '';
       fechaInput.disabled = true;
       resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+      resetAcademicCatalog('Selecciona un laboratorio para cargar el catalogo academico.');
 
       if (facultadSelect.value) {
         loadLaboratorios(facultadSelect.value);
@@ -1007,16 +1313,38 @@
       fechaInput.value = '';
       fechaInput.disabled = !laboratorioSelect.value;
       resetSalas('Selecciona una fecha para consultar horarios disponibles.');
+      loadAcademicCatalog();
       updateSubmitAvailability();
     });
     fechaInput.addEventListener('change', loadSalasDisponibles);
     document.getElementById('tipoPractica').addEventListener('change', loadSalasDisponibles);
     document.getElementById('categoriaPractica').addEventListener('change', loadSalasDisponibles);
+    if (asignaturaCatalogSelect) {
+      asignaturaCatalogSelect.addEventListener('change', function() {
+        if (practicaCatalogSelect) {
+          practicaCatalogSelect.value = '';
+        }
+        populateAcademicPracticeOptions();
+      });
+    }
+    if (practicaCatalogSelect) {
+      practicaCatalogSelect.addEventListener('change', function() {
+        renderAcademicCatalogPreview();
+        applyCatalogPracticeToJustification();
+        updateSubmitAvailability();
+      });
+    }
     facultadSelect.addEventListener('change', updateSubmitAvailability);
     laboratorioSelect.addEventListener('change', updateSubmitAvailability);
     fechaInput.addEventListener('input', updateSubmitAvailability);
-    document.getElementById('tipoPractica').addEventListener('change', updateSubmitAvailability);
-    document.getElementById('categoriaPractica').addEventListener('change', updateSubmitAvailability);
+    document.getElementById('tipoPractica').addEventListener('change', function() {
+      loadAcademicCatalog();
+      updateSubmitAvailability();
+    });
+    document.getElementById('categoriaPractica').addEventListener('change', function() {
+      loadAcademicCatalog();
+      updateSubmitAvailability();
+    });
     document.getElementById('justificacion').addEventListener('input', updateSubmitAvailability);
     if (aceptarReglamentoInput) aceptarReglamentoInput.addEventListener('change', updateSubmitAvailability);
     if (formatoArchivoSelect) {
@@ -1142,6 +1470,20 @@
           categoria_practica: document.getElementById('categoriaPractica').value,
           justificacion: document.getElementById('justificacion').value,
           firma_digital: signatureDataUrl,
+          practica_id: practicaCatalogSelect && practicaCatalogSelect.value ? practicaCatalogSelect.value : (initialReservation && initialReservation.practica_id ? initialReservation.practica_id : null),
+          asignatura_codigo: asignaturaCatalogSelect && asignaturaCatalogSelect.value ? asignaturaCatalogSelect.value : (initialReservation && initialReservation.asignatura_codigo ? initialReservation.asignatura_codigo : null),
+          asignatura_nombre: (function() {
+            var selectedSubject = getSelectedAcademicSubject();
+            if (selectedSubject && selectedSubject.nombre) return selectedSubject.nombre;
+            return initialReservation && initialReservation.asignatura_nombre ? initialReservation.asignatura_nombre : null;
+          })(),
+          detalle_practica_json: (function() {
+            var selectedPractice = getSelectedAcademicPractice();
+            if (selectedPractice && selectedPractice.configuracion_json) {
+              return selectedPractice.configuracion_json;
+            }
+            return initialReservation && initialReservation.detalle_practica_json ? initialReservation.detalle_practica_json : null;
+          })(),
           formato_archivo: formatoArchivoSelect ? formatoArchivoSelect.value : null,
           formato_payload: (function() {
             var payload = buildInstitutionalFormatPayload();
@@ -1173,6 +1515,7 @@
           laboratorioSelect.disabled = true;
           fechaInput.disabled = true;
           resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
+          resetAcademicCatalog('Selecciona facultad y laboratorio para cargar el catalogo academico.');
           if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
           resetSignatureInputs();
           syncSelectedFormatInfo();
@@ -1188,7 +1531,32 @@
       }
     });
 
-    loadFacultades();
+    async function initForm() {
+      await loadFacultades();
+      if (initialReservation) {
+        facultadSelect.value = initialReservation.facultad || '';
+        if (facultadSelect.value) {
+          await loadLaboratorios(facultadSelect.value);
+        }
+        laboratorioSelect.value = initialReservation.laboratorio || '';
+        fechaInput.disabled = !laboratorioSelect.value;
+        fechaInput.value = initialReservation.fecha_inicio ? String(initialReservation.fecha_inicio).slice(0, 10) : '';
+        document.getElementById('tipoPractica').value = initialReservation.tipo_practica || document.getElementById('tipoPractica').value;
+        document.getElementById('categoriaPractica').value = initialReservation.categoria_practica || document.getElementById('categoriaPractica').value;
+        document.getElementById('justificacion').value = initialReservation.justificacion || '';
+        if (formatoArchivoSelect) {
+          formatoArchivoSelect.value = initialReservation.formato_archivo || '';
+        }
+        syncSelectedFormatInfo();
+        syncModalFields();
+        await loadAcademicCatalog();
+      } else {
+        resetAcademicCatalog('Selecciona facultad y laboratorio para cargar el catalogo academico.');
+      }
+      updateSubmitAvailability();
+    }
+
+    initForm();
     resetSalas('Completa primero facultad, laboratorio, fecha y tipo de practica...');
     syncSelectedFormatInfo();
     initSignaturePadPractica();
