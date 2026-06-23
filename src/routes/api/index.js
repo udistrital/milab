@@ -5,27 +5,19 @@ const { requireJsonRoles } = require('../middlewares/auth');
 
 var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
-const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase().trim();
-const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalizedNodeEnv);
 const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
   (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()
 );
-const requireAuthForServiceStatus = ['1', 'true', 'yes'].includes(
-  (process.env.REQUIRE_AUTH_FOR_SERVICE_STATUS || '').toLowerCase()
-);
 
-if (!isDevNodeEnvironment && allowPublicServiceStatusEndpoint) {
+if ((process.env.NODE_ENV || '').toLowerCase().trim() !== 'production' && allowPublicServiceStatusEndpoint) {
   throw new Error(
-    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de dev|development|local. ' +
+    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de producción. ' +
       'Deshabilítalo para iniciar la aplicación.'
   );
 }
 
-const requireServiceStatusAccess = allowPublicServiceStatusEndpoint || !requireAuthForServiceStatus
-  ? (req, res, next) => next()
-  : requireJsonRoles('admin', {
-      message: 'No tienes permisos para consultar el estado de servicios',
-    });
+// check-services es público para que el login pueda verificar estado sin autenticación
+const requireServiceStatusAccess = (req, res, next) => next();
 
 // Rutas existentes
 router.use('/generate', require('./generateqr'));
