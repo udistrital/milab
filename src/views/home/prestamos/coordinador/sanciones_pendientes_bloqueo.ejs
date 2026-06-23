@@ -1,0 +1,250 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Sanciones sin bloqueo</h1>
+    <p class="app-page-subtitle">
+      Reporte semestral de incidencias aprobadas cuya decisión fue no bloquear el paz y salvo institucional.
+    </p>
+    <div class="mt-3">
+      <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/incidencias">Volver a incidencias</a>
+    </div>
+  </section>
+
+  <div id="sancionesSinBloqueoAlerts">
+    <% if (successMessage) { %>
+      <div class="alert alert-success" role="alert"><%= successMessage %></div>
+    <% } %>
+
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+    <% } %>
+  </div>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-1">Listado</h5>
+        <div class="small text-light-emphasis">
+          Solo muestra incidencias dentro de tu alcance (facultad y laboratorio).
+        </div>
+      </div>
+      <span class="badge text-bg-secondary"><%= Array.isArray(incidencias) ? incidencias.length : 0 %> registro(s)</span>
+    </div>
+
+    <div class="card-body">
+      <form class="row g-2 align-items-end mb-3" method="GET" action="/milab/prestamos/coordinador/sanciones-pendientes-bloqueo">
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="filtroDesde">Desde</label>
+          <input class="form-control" type="date" id="filtroDesde" name="desde" value="<%= (filtros && filtros.desde) || '' %>">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="filtroHasta">Hasta</label>
+          <input class="form-control" type="date" id="filtroHasta" name="hasta" value="<%= (filtros && filtros.hasta) || '' %>">
+        </div>
+        <div class="col-12 col-md-4">
+          <button type="submit" class="btn btn-outline-light w-100">Aplicar filtro</button>
+        </div>
+      </form>
+
+      <% if (incidencias && incidencias.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="20" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>ID</th>
+                <th>Estudiante</th>
+                <th>Equipo</th>
+                <th>Facultad</th>
+                <th>Laboratorio</th>
+                <th>Incidencia</th>
+                <th>Sanción</th>
+                <th>Fecha aprobación</th>
+                <th>Responsable</th>
+                <th>Justificación</th>
+                <th data-grid-filter="false" data-grid-orderable="false">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% incidencias.forEach(function(item) { %>
+                <tr>
+                  <td class="text-light"><%= item.id %></td>
+                  <td class="text-light">
+                    <%= item.sancionado_nombre || '-' %>
+                    <div class="small">
+                      <%= item.sancionado_codigo ? ('Código: ' + item.sancionado_codigo) : (item.sancionado_documento || '-') %>
+                    </div>
+                  </td>
+                  <td class="text-light">
+                    <%= item.equipo_nombre || '-' %>
+                    <div class="small"><%= item.equipo_codigo || '-' %></div>
+                  </td>
+                  <td class="text-light"><%= item.facultad || '-' %></td>
+                  <td class="text-light"><%= item.laboratorio || '-' %></td>
+                  <td class="text-light">
+                    <%= item.tipo_incidencia ? String(item.tipo_incidencia).replace(/_/g, ' ') : '-' %>
+                    <div class="small mt-1"><%= item.descripcion || '-' %></div>
+                  </td>
+                  <td class="text-light">
+                    <%= item.sancion_tipo ? String(item.sancion_tipo).replace(/_/g, ' ') : '-' %>
+                    <% if (item.sancion_detalle) { %>
+                      <div class="small mt-1"><%= item.sancion_detalle %></div>
+                    <% } %>
+                  </td>
+                  <td class="text-light">
+                    <%= item.paz_y_salvo_decision_at ? new Date(item.paz_y_salvo_decision_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                  </td>
+                  <td class="text-light">
+                    <%= item.decisor_nombre || '-' %>
+                    <div class="small"><%= item.decisor_documento || '-' %></div>
+                  </td>
+                  <td class="text-light"><%= item.paz_y_salvo_decision_justificacion || '-' %></td>
+                  <td class="text-light">
+                    <button
+                      type="button"
+                      class="btn btn-danger btn-sm js-open-convert-modal"
+                      data-incident-id="<%= item.id %>"
+                      data-student="<%= item.sancionado_nombre || '' %>"
+                    >
+                      Convertir a bloqueo
+                    </button>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          No hay sanciones sin bloqueo para el rango y alcance actual.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="convertirBloqueoModal" tabindex="-1" aria-labelledby="convertirBloqueoModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="convertirBloqueoForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title" id="convertirBloqueoModalLabel">Convertir a bloqueo de paz y salvo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="convertirBloqueoId">
+          <p class="mb-2">
+            Esta acción replicará la sanción al módulo de multas y bloqueará la generación de paz y salvo institucional.
+          </p>
+          <p class="mb-2"><strong>Estudiante:</strong> <span id="convertirBloqueoEstudiante">-</span></p>
+          <div class="mb-0">
+            <label for="convertirBloqueoJustificacion" class="form-label">Justificación *</label>
+            <textarea
+              class="form-control"
+              id="convertirBloqueoJustificacion"
+              rows="4"
+              placeholder="Describe por qué se convierte la sanción a bloqueo."
+              required
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger" id="convertirBloqueoSubmitBtn">Confirmar conversión</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var alertsContainer = document.getElementById('sancionesSinBloqueoAlerts');
+    var modalElement = document.getElementById('convertirBloqueoModal');
+    var form = document.getElementById('convertirBloqueoForm');
+    if (!alertsContainer || !modalElement || !form) return;
+
+    var modal = new bootstrap.Modal(modalElement);
+    var idInput = document.getElementById('convertirBloqueoId');
+    var estudianteLabel = document.getElementById('convertirBloqueoEstudiante');
+    var justificacionInput = document.getElementById('convertirBloqueoJustificacion');
+    var submitBtn = document.getElementById('convertirBloqueoSubmitBtn');
+
+    function showAlert(type, message) {
+      var alert = document.createElement('div');
+      alert.className = 'alert alert-' + type + ' alert-dismissible fade show';
+      alert.setAttribute('role', 'alert');
+      alert.innerHTML =
+        message +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      alertsContainer.prepend(alert);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function postJson(url, payload) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    document.querySelectorAll('.js-open-convert-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        idInput.value = button.getAttribute('data-incident-id') || '';
+        estudianteLabel.textContent = button.getAttribute('data-student') || '-';
+        justificacionInput.value = '';
+        justificacionInput.classList.remove('is-invalid');
+        submitBtn.disabled = false;
+        modal.show();
+      });
+    });
+
+    form.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!String(justificacionInput.value || '').trim()) {
+        justificacionInput.classList.add('is-invalid');
+        return;
+      }
+      justificacionInput.classList.remove('is-invalid');
+      submitBtn.disabled = true;
+
+      try {
+        var result = await postJson(
+          '/milab/prestamos/incidencias/' + encodeURIComponent(idInput.value) + '/convertir-bloqueo',
+          { paz_y_salvo_bloqueo_conversion_justificacion: justificacionInput.value }
+        );
+
+        modal.hide();
+        showAlert('success', result.message || 'Conversión realizada correctamente.');
+        window.setTimeout(function() {
+          window.location.reload();
+        }, 900);
+      } catch (error) {
+        showAlert('danger', error.message || 'No fue posible convertir la sanción.');
+        submitBtn.disabled = false;
+      }
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', function() {
+      idInput.value = '';
+      estudianteLabel.textContent = '-';
+      justificacionInput.value = '';
+      justificacionInput.classList.remove('is-invalid');
+      submitBtn.disabled = false;
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>
+

@@ -1,9 +1,21 @@
 <%- include('../../../partials/header'); -%>
+<% const currentRoleValue = Array.isArray(user && user.roles) ? user.roles.join(',') : (user && user.tipo) || ''; %>
+<% const currentRoleLower = String(currentRoleValue || '').toLowerCase(); %>
+<% const isCoordinator = currentRoleLower.includes('coordinador'); %>
+<% const isAdmin = currentRoleLower.includes('admin'); %>
+<% const isLaboratorista = currentRoleLower.includes('laboratorista'); %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Incidencias</h1>
     <p class="app-page-subtitle">Consulta y cierre de incidencias registradas sobre equipos del modulo de prestamos.</p>
+    <% if (user && (isAdmin || isCoordinator)) { %>
+      <div class="mt-3">
+        <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/coordinador/sanciones-pendientes-bloqueo">
+          Ver sanciones sin bloqueo (reporte semestral)
+        </a>
+      </div>
+    <% } %>
   </section>
 
   <div id="incidenciasAlerts">
@@ -23,11 +35,6 @@
     </div>
 
     <div class="card-body">
-      <% const currentRoleValue = Array.isArray(user && user.roles) ? user.roles.join(',') : (user && user.tipo) || ''; %>
-      <% const currentRoleLower = String(currentRoleValue || '').toLowerCase(); %>
-      <% const isCoordinator = currentRoleLower.includes('coordinador'); %>
-      <% const isAdmin = currentRoleLower.includes('admin'); %>
-      <% const isLaboratorista = currentRoleLower.includes('laboratorista'); %>
       <% if (incidencias && incidencias.length > 0) { %>
         <div class="table-responsive">
           <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="20" data-grid-scroll-x="true">
@@ -161,6 +168,9 @@
         <div class="modal-body">
           <input type="hidden" id="aprobarIncidenciaId">
           <p class="mb-2"><strong>Equipo:</strong> <span id="aprobarIncidenciaEquipo">-</span></p>
+          <div class="alert alert-warning small" role="alert">
+            Esta decisión puede afectar servicios académicos como la generación del paz y salvo institucional.
+          </div>
           <div class="mb-3">
             <label for="aprobarSancionTipo" class="form-label">Sancion o medida aplicada *</label>
             <select class="form-select" id="aprobarSancionTipo" required>
@@ -169,6 +179,30 @@
               <option value="reposicion">Reposicion de elemento</option>
               <option value="otro">Otro</option>
             </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label d-block mb-2">Impacto sobre paz y salvo institucional *</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="pazYSalvoDecision" id="pazYSalvoBloquear" value="bloquear" required>
+              <label class="form-check-label" for="pazYSalvoBloquear">Bloquear paz y salvo (se replica a multas)</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="pazYSalvoDecision" id="pazYSalvoNoBloquear" value="no_bloquear" required>
+              <label class="form-check-label" for="pazYSalvoNoBloquear">No bloquear paz y salvo (se mantiene trazabilidad)</label>
+            </div>
+            <div class="invalid-feedback d-block" id="pazYSalvoDecisionError" style="display:none;">
+              Debes seleccionar una opción.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="pazYSalvoJustificacion" class="form-label">Justificación de la decisión *</label>
+            <textarea
+              class="form-control"
+              id="pazYSalvoJustificacion"
+              rows="3"
+              placeholder="Describe por qué esta incidencia debe o no debe bloquear el paz y salvo."
+              required
+            ></textarea>
           </div>
           <div class="mb-0">
             <label for="aprobarSancionDetalle" class="form-label">Detalle</label>
@@ -233,6 +267,8 @@
     var approveEquipoLabel = document.getElementById('aprobarIncidenciaEquipo');
     var approveSancionTipo = document.getElementById('aprobarSancionTipo');
     var approveSancionDetalle = document.getElementById('aprobarSancionDetalle');
+    var pazYSalvoDecisionError = document.getElementById('pazYSalvoDecisionError');
+    var pazYSalvoJustificacion = document.getElementById('pazYSalvoJustificacion');
     var approveSubmitButton = document.getElementById('aprobarIncidenciaSubmitBtn');
     var closeIdInput = document.getElementById('cerrarIncidenciaId');
     var closeEquipoLabel = document.getElementById('cerrarIncidenciaEquipo');
@@ -275,6 +311,14 @@
         approveSancionTipo.value = '';
         approveSancionTipo.classList.remove('is-invalid');
         approveSancionDetalle.value = '';
+        if (pazYSalvoDecisionError) pazYSalvoDecisionError.style.display = 'none';
+        document.querySelectorAll('input[name="pazYSalvoDecision"]').forEach(function(input) {
+          input.checked = false;
+        });
+        if (pazYSalvoJustificacion) {
+          pazYSalvoJustificacion.value = '';
+          pazYSalvoJustificacion.classList.remove('is-invalid');
+        }
         approveSubmitButton.disabled = false;
         approveModal.show();
       });
@@ -322,6 +366,24 @@
         return;
       }
 
+      var pazDecision = null;
+      document.querySelectorAll('input[name="pazYSalvoDecision"]').forEach(function(input) {
+        if (input.checked) pazDecision = input.value;
+      });
+
+      if (!pazDecision) {
+        if (pazYSalvoDecisionError) pazYSalvoDecisionError.style.display = 'block';
+        return;
+      }
+
+      if (pazYSalvoDecisionError) pazYSalvoDecisionError.style.display = 'none';
+
+      if (!pazYSalvoJustificacion || !String(pazYSalvoJustificacion.value || '').trim()) {
+        if (pazYSalvoJustificacion) pazYSalvoJustificacion.classList.add('is-invalid');
+        return;
+      }
+
+      if (pazYSalvoJustificacion) pazYSalvoJustificacion.classList.remove('is-invalid');
       approveSancionTipo.classList.remove('is-invalid');
       approveSubmitButton.disabled = true;
 
@@ -331,6 +393,8 @@
           {
             sancion_tipo: approveSancionTipo.value,
             sancion_detalle: approveSancionDetalle.value,
+            paz_y_salvo_bloqueo_decision: pazDecision,
+            paz_y_salvo_decision_justificacion: pazYSalvoJustificacion ? pazYSalvoJustificacion.value : '',
           }
         );
 
@@ -373,6 +437,14 @@
       approveSancionTipo.value = '';
       approveSancionTipo.classList.remove('is-invalid');
       approveSancionDetalle.value = '';
+      if (pazYSalvoDecisionError) pazYSalvoDecisionError.style.display = 'none';
+      document.querySelectorAll('input[name="pazYSalvoDecision"]').forEach(function(input) {
+        input.checked = false;
+      });
+      if (pazYSalvoJustificacion) {
+        pazYSalvoJustificacion.value = '';
+        pazYSalvoJustificacion.classList.remove('is-invalid');
+      }
       approveSubmitButton.disabled = false;
     });
 

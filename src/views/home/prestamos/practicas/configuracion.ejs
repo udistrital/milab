@@ -5,6 +5,39 @@
   const laboratorioActual = selectedLaboratoryName || 'Sin laboratorio seleccionado';
 %>
 
+<style>
+  .practice-config-card {
+    color: #212529;
+  }
+
+  .practice-config-card .text-light-emphasis {
+    color: #6c757d !important;
+  }
+
+  .practice-schema-table {
+    --bs-table-bg: #ffffff;
+    --bs-table-color: #212529;
+    --bs-table-striped-bg: #f8f9fa;
+    --bs-table-striped-color: #212529;
+    --bs-table-hover-bg: #eef4ff;
+    --bs-table-hover-color: #212529;
+    --bs-table-border-color: #d0d7de;
+    border: 1px solid #d0d7de;
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
+
+  .practice-schema-table thead th {
+    background: #eef4ff;
+    color: #0d6efd;
+    border-bottom-color: #c7d7fe;
+  }
+
+  .practice-schema-table .font-monospace {
+    color: #495057;
+  }
+</style>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Configuracion De Practicas</h1>
@@ -20,7 +53,7 @@
     <% } %>
   </div>
 
-  <section class="card app-form-panel text-light mb-4">
+  <section class="card app-form-panel text-light mb-4 practice-config-card">
     <div class="card-header">
       <h5 class="mb-0">Contexto De Trabajo</h5>
     </div>
@@ -55,7 +88,7 @@
           </select>
         </div>
         <div class="col-md-2 d-flex align-items-end">
-          <button class="btn btn-outline-light w-100" type="submit" <%= facultades && facultades.length ? '' : 'disabled' %>>Cargar</button>
+          <button class="btn btn-outline-primary w-100" type="submit" <%= facultades && facultades.length ? '' : 'disabled' %>>Cargar</button>
         </div>
       </form>
 
@@ -74,7 +107,7 @@
 
   <div class="row g-4">
     <div class="col-xl-5">
-      <section class="card app-form-panel text-light h-100">
+      <section class="card app-form-panel text-light h-100 practice-config-card">
         <div class="card-header">
           <h5 class="mb-0">Reglas De Reserva</h5>
         </div>
@@ -120,13 +153,13 @@
     </div>
 
     <div class="col-xl-7">
-      <section class="card app-form-panel text-light h-100">
+      <section class="card app-form-panel text-light h-100 practice-config-card">
         <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <div>
             <h5 class="mb-0">Esquema Dinamico Del Laboratorio</h5>
-            <div class="small text-light-emphasis">El laboratorista define la estructura JSON y luego cada practica la diligencia con ese mismo esquema.</div>
+            <div class="small text-light-emphasis">Aqui defines la informacion adicional que se pedira en cada practica de este laboratorio.</div>
           </div>
-          <button type="button" class="btn btn-outline-light btn-sm" id="saveDynamicSchemaBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar esquema</button>
+          <button type="button" class="btn btn-primary btn-sm" id="saveDynamicSchemaBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar esquema</button>
         </div>
         <div class="card-body">
           <div class="row g-3 mb-4">
@@ -169,28 +202,28 @@
             </div>
           </div>
 
-          <div class="table-responsive mb-3">
-            <table class="table table-dark table-hover align-middle mb-0">
+          <div class="table-responsive mb-3 practice-schema-table">
+            <table class="table table-hover align-middle mb-0">
               <thead>
                 <tr>
-                  <th>Campo</th>
-                  <th>Llave</th>
+                  <th>Nombre</th>
+                  <th>Identificador</th>
                   <th>Tipo</th>
                   <th>Opciones</th>
-                  <th>Obligatorio</th>
-                  <th class="text-end">Accion</th>
+                  <th>Es obligatorio</th>
+                  <th class="text-end">Quitar</th>
                 </tr>
               </thead>
               <tbody id="dynamicSchemaTableBody">
                 <tr>
-                  <td colspan="6" class="text-center text-light-emphasis">No hay campos dinamicos configurados.</td>
+                  <td colspan="6" class="text-center text-muted">No hay campos dinamicos configurados.</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div>
-            <label for="dynamicSchemaPreview" class="form-label">Vista previa JSON</label>
+            <label for="dynamicSchemaPreview" class="form-label">Resumen de la configuracion</label>
             <textarea class="form-control font-monospace" id="dynamicSchemaPreview" rows="10" readonly></textarea>
           </div>
         </div>
@@ -198,11 +231,11 @@
     </div>
 
     <div class="col-12">
-      <section class="card app-form-panel text-light">
+      <section class="card app-form-panel text-light practice-config-card">
         <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <div>
             <h5 class="mb-0">Catalogo De Practicas Academicas</h5>
-            <div class="small text-light-emphasis">Cada practica toma el esquema del laboratorio activo y guarda su configuracion en JSONB.</div>
+            <div class="small text-light-emphasis">Cada practica usa esta configuracion del laboratorio y guarda la informacion que el docente necesitara seleccionar despues.</div>
           </div>
           <button type="button" class="btn btn-outline-secondary btn-sm" id="resetPracticeFormBtn">Limpiar formulario</button>
         </div>
@@ -276,7 +309,7 @@
             <div class="col-12">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <label class="form-label mb-0">Asignaturas asociadas *</label>
-                <button type="button" class="btn btn-outline-light btn-sm" id="addSubjectBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar asignatura</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addSubjectBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar asignatura</button>
               </div>
               <div id="practiceSubjectsContainer" class="d-grid gap-2"></div>
             </div>
@@ -284,7 +317,7 @@
             <div class="col-12">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <label class="form-label mb-0">Documentos PDF por URL</label>
-                <button type="button" class="btn btn-outline-light btn-sm" id="addDocumentBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar documento</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addDocumentBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar documento</button>
               </div>
               <div id="practiceDocumentsContainer" class="d-grid gap-2"></div>
               <div class="form-text text-light-emphasis">Solo se almacena la URL del documento. El sistema valida automaticamente si el enlace responde.</div>
@@ -304,7 +337,7 @@
     </div>
 
     <div class="col-12">
-      <section class="card app-table-panel text-light">
+      <section class="card app-table-panel text-light practice-config-card">
         <div class="card-header">
           <h5 class="mb-0">Practicas Registradas En El Laboratorio</h5>
         </div>
@@ -342,7 +375,7 @@
                           <div class="d-grid gap-2">
                             <% item.configuracion_json.documentos.forEach(function(documento) { %>
                               <div class="border rounded p-2">
-                                <a class="link-light" href="<%= documento.url %>" target="_blank" rel="noopener noreferrer"><%= documento.url %></a>
+                                <a class="link-primary" href="<%= documento.url %>" target="_blank" rel="noopener noreferrer"><%= documento.url %></a>
                                 <% if (documento.validacion && !documento.validacion.available) { %>
                                   <div class="small text-warning mt-1">Advertencia: <%= documento.validacion.warning %></div>
                                 <% } %>
@@ -355,7 +388,7 @@
                       </div>
 
                       <div class="mt-auto d-flex justify-content-end">
-                        <button type="button" class="btn btn-outline-light btn-sm js-edit-practice" data-practice-id="<%= item.id %>">Editar</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm js-edit-practice" data-practice-id="<%= item.id %>">Editar</button>
                       </div>
                     </div>
                   </article>

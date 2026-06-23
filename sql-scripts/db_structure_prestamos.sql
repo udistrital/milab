@@ -180,6 +180,15 @@ CREATE TABLE IF NOT EXISTS incidencia (
     estado VARCHAR(30) NOT NULL DEFAULT 'abierta',
     sancion_tipo VARCHAR(30),
     sancion_detalle TEXT,
+    paz_y_salvo_bloqueo_decision VARCHAR(20),
+    paz_y_salvo_decision_justificacion TEXT,
+    paz_y_salvo_decision_by_id BIGINT,
+    paz_y_salvo_decision_at TIMESTAMPTZ,
+    paz_y_salvo_bloquea BOOLEAN NOT NULL DEFAULT FALSE,
+    paz_y_salvo_bloqueo_converted_by_id BIGINT,
+    paz_y_salvo_bloqueo_converted_at TIMESTAMPTZ,
+    paz_y_salvo_bloqueo_conversion_justificacion TEXT,
+    paz_y_salvo_multa_id INT,
     descripcion_cierre TEXT,
     evidencia_foto BYTEA,
     evidencia_mime VARCHAR(50),
@@ -194,13 +203,19 @@ CREATE TABLE IF NOT EXISTS incidencia (
     CONSTRAINT ck_origen_incidencia CHECK (origen IN ('prestamo', 'practica')),
     CONSTRAINT ck_practica_tipo_incidencia CHECK (practica_tipo IS NULL OR practica_tipo IN ('libre', 'docente')),
     CONSTRAINT ck_estado_incidencia CHECK (estado IN ('pendiente_confirmacion', 'abierta', 'pendiente_cierre', 'cerrada')),
-    CONSTRAINT ck_sancion_tipo_incidencia CHECK (sancion_tipo IS NULL OR sancion_tipo IN ('pedagogica', 'reposicion', 'otro'))
+    CONSTRAINT ck_sancion_tipo_incidencia CHECK (sancion_tipo IS NULL OR sancion_tipo IN ('pedagogica', 'reposicion', 'otro')),
+    CONSTRAINT ck_paz_y_salvo_bloqueo_decision_incidencia CHECK (
+        paz_y_salvo_bloqueo_decision IS NULL
+        OR paz_y_salvo_bloqueo_decision IN ('bloquear', 'no_bloquear')
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_incidencia_equipo ON incidencia(equipo_id);
 CREATE INDEX IF NOT EXISTS idx_incidencia_solicitud_prestamo ON incidencia(solicitud_prestamo_id);
 CREATE INDEX IF NOT EXISTS idx_incidencia_reserva_practica ON incidencia(reserva_practica_id);
 CREATE INDEX IF NOT EXISTS idx_incidencia_estado ON incidencia(estado);
+CREATE INDEX IF NOT EXISTS idx_incidencia_paz_y_salvo_decision ON incidencia(paz_y_salvo_bloqueo_decision);
+CREATE INDEX IF NOT EXISTS idx_incidencia_paz_y_salvo_bloquea ON incidencia(paz_y_salvo_bloquea);
 
 CREATE TABLE IF NOT EXISTS parametrizacion (
     id SERIAL NOT NULL,

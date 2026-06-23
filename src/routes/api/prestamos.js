@@ -378,6 +378,8 @@ const PRESTAMOS_AUDIT_ACTIONS = [
   'Asignar cola prestamo (Ultima hora)',
   'Reportar incidencia',
   'Aprobar incidencia (Coordinador)',
+  'Definir impacto paz y salvo (Incidencia)',
+  'Convertir incidencia a bloqueo paz y salvo',
   'Solicitar Cierre Incidencia',
   'Solucionar Incidencia (Cerrar)',
   'Configurar Parametrizaciones (Admin)',
@@ -457,6 +459,31 @@ async function ensurePracticeIncidenceSchema(client = pool) {
   await client.query(`ALTER TABLE incidencia ALTER COLUMN equipo_id DROP NOT NULL`);
   await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS reserva_practica_id INT`);
   await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS practica_tipo VARCHAR(20)`);
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_decision VARCHAR(20)`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_justificacion TEXT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_by_id BIGINT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_at TIMESTAMPTZ`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloquea BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_converted_by_id BIGINT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_converted_at TIMESTAMPTZ`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_conversion_justificacion TEXT`
+  );
+  await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_multa_id INT`);
 
   await client.query(
     `ALTER TABLE incidencia DROP CONSTRAINT IF EXISTS fk_incidencia_reserva_practica`
@@ -481,6 +508,18 @@ async function ensurePracticeIncidenceSchema(client = pool) {
     `ALTER TABLE incidencia
       ADD CONSTRAINT ck_practica_tipo_incidencia
       CHECK (practica_tipo IS NULL OR practica_tipo IN ('libre', 'docente'))`
+  );
+
+  await client.query(
+    `ALTER TABLE incidencia DROP CONSTRAINT IF EXISTS ck_paz_y_salvo_bloqueo_decision_incidencia`
+  );
+  await client.query(
+    `ALTER TABLE incidencia
+      ADD CONSTRAINT ck_paz_y_salvo_bloqueo_decision_incidencia
+      CHECK (
+        paz_y_salvo_bloqueo_decision IS NULL
+        OR paz_y_salvo_bloqueo_decision IN ('bloquear', 'no_bloquear')
+      )`
   );
 
   practiceIncidenceSchemaEnsured = true;
@@ -925,6 +964,118 @@ function buildIncidentPayload(body = {}) {
     sancion_tipo: sanitizeText(body.sancion_tipo || body.sancionTipo),
     sancion_detalle: sanitizeText(body.sancion_detalle || body.sancionDetalle),
   };
+}
+
+const PAZ_Y_SALVO_DECISION_OPTIONS = new Set(['bloquear', 'no_bloquear']);
+
+function buildPazYSalvoDecisionPayload(body = {}) {
+  const decision = sanitizeText(body.paz_y_salvo_bloqueo_decision || body.pazYSalvoDecision);
+  const justificacion = sanitizeText(
+    body.paz_y_salvo_decision_justificacion || body.pazYSalvoJustificacion
+  );
+
+  return { decision, justificacion };
+}
+
+function truncateText(value, maxLength) {
+  const text = sanitizeText(value);
+  if (!text) return null;
+  const limit = Number(maxLength) || 0;
+  if (!limit) return text;
+  return text.length > limit ? text.slice(0, limit - 1) : text;
+}
+
+async function resolveLaboratoristaDocumento({ candidatoDocumento, ualId }, client = pool) {
+  const normalizedDoc = sanitizeText(candidatoDocumento);
+  if (normalizedDoc) {
+    const result = await client.query(
+      `
+        SELECT documento
+        FROM laboratorista
+        WHERE documento = $1 OR n_usuario = $1
+        LIMIT 1
+      `,
+      [normalizedDoc]
+    );
+    if (result.rows[0]?.documento) {
+      return result.rows[0].documento;
+    }
+  }
+
+  if (Number.isInteger(Number(ualId))) {
+    const fallback = await client.query(
+      `
+        SELECT lu.laboratorista_documento_id AS documento
+        FROM laboratorista_ual lu
+        WHERE lu.ual_id = $1
+          AND lu.activo = TRUE
+        LIMIT 1
+      `,
+      [Number(ualId)]
+    );
+    if (fallback.rows[0]?.documento) {
+      return fallback.rows[0].documento;
+    }
+  }
+
+  return null;
+}
+
+async function createBlockingFineFromIncident(
+  { incidencia, sancionTipo, sancionDetalle, justificacion, actorLabel },
+  client
+) {
+  const ualId = Number(incidencia?.ual_id);
+  const usuarioSancionadoId = Number(incidencia?.usuario_sancionado_id);
+  const laboratoristaDocumento = await resolveLaboratoristaDocumento(
+    { candidatoDocumento: incidencia?.documento_que_reporto, ualId },
+    client
+  );
+
+  if (!Number.isInteger(ualId)) {
+    throw new Error('No fue posible determinar la UAL asociada a la incidencia.');
+  }
+  if (!Number.isInteger(usuarioSancionadoId)) {
+    throw new Error('No fue posible determinar el usuario sancionado asociado a la incidencia.');
+  }
+  if (!laboratoristaDocumento) {
+    throw new Error('No fue posible determinar el laboratorista asociado para generar la sanción.');
+  }
+
+  const catMulta = 'Incidencia prestamos';
+  const tipoSancion = truncateText(sancionTipo, 100);
+  const obsMulta = truncateText(
+    [
+      `Incidencia #${incidencia.id}`,
+      incidencia.tipo_incidencia ? `Tipo: ${incidencia.tipo_incidencia}` : null,
+      sancionDetalle ? `Detalle: ${sancionDetalle}` : null,
+      justificacion ? `Justificación: ${justificacion}` : null,
+      actorLabel ? `Responsable: ${actorLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | '),
+    500
+  );
+
+  const multaResult = await client.query(
+    `
+      INSERT INTO multa (
+        cat_multa,
+        laboratorista_documento_id,
+        usuario_sancionado_id,
+        ual_id,
+        fecha_multa,
+        con_estado_multa,
+        obs_multa,
+        tipo_sancion
+      )
+      VALUES ($1, $2, $3, $4, CURRENT_DATE, 'ACTIVA', $5, $6)
+      RETURNING id
+    `,
+    [catMulta, laboratoristaDocumento, usuarioSancionadoId, ualId, obsMulta, tipoSancion]
+  );
+
+  return multaResult.rows[0]?.id || null;
 }
 
 function resolveIncidentReporterState(sessionUsuario) {
@@ -4441,17 +4592,31 @@ async function fetchManagedIncident(id, scope) {
         i.equipo_id,
         i.solicitud_prestamo_id,
         i.entrega_equipo_id,
+        i.origen,
+        i.reserva_practica_id,
         i.tipo_incidencia,
         i.descripcion,
         i.estado,
         i.descripcion_cierre,
         i.sancion_tipo,
         i.sancion_detalle,
+        i.paz_y_salvo_bloqueo_decision,
+        i.paz_y_salvo_decision_justificacion,
+        i.paz_y_salvo_decision_by_id,
+        i.paz_y_salvo_decision_at,
+        i.paz_y_salvo_bloquea,
+        i.paz_y_salvo_bloqueo_converted_by_id,
+        i.paz_y_salvo_bloqueo_converted_at,
+        i.paz_y_salvo_bloqueo_conversion_justificacion,
+        i.paz_y_salvo_multa_id,
+        i.documento_que_reporto,
         i.evidencia_mime,
         CASE WHEN i.evidencia_foto IS NOT NULL THEN TRUE ELSE FALSE END AS tiene_evidencia,
         e.estado AS equipo_estado,
         e.laboratorio,
+        u.ual_id,
         sp.estado AS solicitud_estado,
+        COALESCE(sp.usuario_id, rp.usuario_id) AS usuario_sancionado_id,
         COALESCE(e.facultad, f.nombre) AS facultad,
         f.facultad_id
       FROM incidencia i
@@ -4459,6 +4624,8 @@ async function fetchManagedIncident(id, scope) {
         ON e.id = i.equipo_id
       LEFT JOIN solicitud_prestamo sp
         ON sp.id = i.solicitud_prestamo_id
+      LEFT JOIN reserva_practica rp
+        ON rp.id = i.reserva_practica_id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
       LEFT JOIN facultad f
@@ -8823,6 +8990,7 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
   }
 
   const payload = buildIncidentPayload(req.body);
+  const pazYSalvoDecisionPayload = buildPazYSalvoDecisionPayload(req.body);
   if (!payload.sancion_tipo) {
     return res.status(400).json({
       success: false,
@@ -8830,10 +8998,25 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
     });
   }
 
+  if (!PAZ_Y_SALVO_DECISION_OPTIONS.has(pazYSalvoDecisionPayload.decision)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Debes seleccionar el impacto sobre el paz y salvo institucional.',
+    });
+  }
+
+  if (!pazYSalvoDecisionPayload.justificacion) {
+    return res.status(400).json({
+      success: false,
+      message: 'Debes registrar una justificación para la decisión sobre paz y salvo.',
+    });
+  }
+
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+    await ensurePracticeIncidenceSchema(client);
 
     const scope = await resolveLoanManagementScope(req);
     const incidencia = await fetchManagedIncident(req.params.id, scope);
@@ -8854,16 +9037,49 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
       });
     }
 
+    const actorLabel =
+      sanitizeText(req.session?.user?.nombre) || sanitizeText(req.session?.user?.documento);
+    let multaId = null;
+    const shouldBlock = pazYSalvoDecisionPayload.decision === 'bloquear';
+
+    if (shouldBlock) {
+      multaId = await createBlockingFineFromIncident(
+        {
+          incidencia,
+          sancionTipo: payload.sancion_tipo,
+          sancionDetalle: payload.sancion_detalle,
+          justificacion: pazYSalvoDecisionPayload.justificacion,
+          actorLabel,
+        },
+        client
+      );
+    }
+
     await client.query(
       `
           UPDATE incidencia
           SET estado = 'abierta',
               sancion_tipo = $2,
               sancion_detalle = $3,
+              paz_y_salvo_bloqueo_decision = $4,
+              paz_y_salvo_decision_justificacion = $5,
+              paz_y_salvo_decision_by_id = $6,
+              paz_y_salvo_decision_at = CURRENT_TIMESTAMP,
+              paz_y_salvo_bloquea = $7,
+              paz_y_salvo_multa_id = $8,
               fecha_modificacion = CURRENT_TIMESTAMP
           WHERE id = $1
         `,
-      [incidencia.id, payload.sancion_tipo, payload.sancion_detalle || null]
+      [
+        incidencia.id,
+        payload.sancion_tipo,
+        payload.sancion_detalle || null,
+        pazYSalvoDecisionPayload.decision,
+        pazYSalvoDecisionPayload.justificacion,
+        sessionUsuario?.id || null,
+        shouldBlock,
+        multaId,
+      ]
     );
 
     await client.query(
@@ -8884,9 +9100,17 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
       persona: `Incidencia: ${incidencia.id}`,
     });
 
+    await registerPrestamosAuditEntry({
+      req,
+      accion: 'Definir impacto paz y salvo (Incidencia)',
+      persona: `Incidencia: ${incidencia.id} | paz_y_salvo: ${pazYSalvoDecisionPayload.decision}`,
+    });
+
     return res.json({
       success: true,
-      message: 'Incidencia aprobada correctamente.',
+      message: shouldBlock
+        ? 'Incidencia aprobada y sanción aplicada con bloqueo de paz y salvo.'
+        : 'Incidencia aprobada sin bloqueo de paz y salvo.',
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -8899,6 +9123,240 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
     client.release();
   }
 });
+
+const requirePazYSalvoReviewAccess = requireRoles(['admin', 'coordinador'], {
+  message: 'Acceso denegado',
+  message2: 'No tienes permisos para administrar sanciones sin bloqueo.',
+  limit: 'loginOnly',
+});
+
+router.get(
+  '/coordinador/sanciones-pendientes-bloqueo',
+  [requirePazYSalvoReviewAccess],
+  async function (req, res) {
+    try {
+      await ensurePracticeIncidenceSchema();
+      const scope = await resolveLoanManagementScope(req);
+
+      const today = new Date();
+      const defaultFrom = new Date(today);
+      defaultFrom.setMonth(defaultFrom.getMonth() - 6);
+
+      const rawDesde = sanitizeText(req.query.desde);
+      const rawHasta = sanitizeText(req.query.hasta);
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const desde =
+        rawDesde && dateRegex.test(rawDesde) ? rawDesde : defaultFrom.toISOString().slice(0, 10);
+      const hasta =
+        rawHasta && dateRegex.test(rawHasta) ? rawHasta : today.toISOString().slice(0, 10);
+
+      const params = [desde, hasta];
+      const whereParts = [
+        "i.paz_y_salvo_bloqueo_decision = 'no_bloquear'",
+        'i.paz_y_salvo_bloquea = FALSE',
+        'i.paz_y_salvo_decision_at IS NOT NULL',
+        'i.paz_y_salvo_decision_at::date >= $1::date',
+        'i.paz_y_salvo_decision_at::date <= $2::date',
+      ];
+
+      if (scope?.unrestricted) {
+        // no-op
+      } else if (scope?.facultyIds?.length) {
+        params.push(scope.facultyIds);
+        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+      } else {
+        return res.render('home/prestamos/coordinador/sanciones_pendientes_bloqueo', {
+          incidencias: [],
+          filtros: { desde, hasta },
+          successMessage: sanitizeText(req.query.success),
+          errorMessage: sanitizeText(req.query.error),
+          user: req.session?.user || null,
+        });
+      }
+
+      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+      if (laboratoryClause) {
+        whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
+      }
+
+      const result = await pool.query(
+        `
+          SELECT
+            i.id,
+            i.tipo_incidencia,
+            i.descripcion,
+            i.sancion_tipo,
+            i.sancion_detalle,
+            i.paz_y_salvo_decision_justificacion,
+            i.paz_y_salvo_decision_at,
+            e.codigo AS equipo_codigo,
+            e.nombre AS equipo_nombre,
+            e.laboratorio,
+            COALESCE(e.facultad, f.nombre) AS facultad,
+            sancionado.nombre AS sancionado_nombre,
+            sancionado.documento AS sancionado_documento,
+            sancionado.codigo AS sancionado_codigo,
+            decisor.nombre AS decisor_nombre,
+            decisor.documento AS decisor_documento
+          FROM incidencia i
+          JOIN equipo e
+            ON e.id = i.equipo_id
+          LEFT JOIN solicitud_prestamo sp
+            ON sp.id = i.solicitud_prestamo_id
+          LEFT JOIN reserva_practica rp
+            ON rp.id = i.reserva_practica_id
+          LEFT JOIN usuario sancionado
+            ON sancionado.id = COALESCE(sp.usuario_id, rp.usuario_id)
+          LEFT JOIN usuario decisor
+            ON decisor.id = i.paz_y_salvo_decision_by_id
+          LEFT JOIN ual ul
+            ON UPPER(ul.nombre) = UPPER(e.laboratorio)
+          LEFT JOIN facultad f
+            ON f.facultad_id = ul.facultad_id
+          WHERE ${whereParts.join(' AND ')}
+          ORDER BY i.paz_y_salvo_decision_at DESC, i.id DESC
+        `,
+        params
+      );
+
+      return res.render('home/prestamos/coordinador/sanciones_pendientes_bloqueo', {
+        incidencias: result.rows || [],
+        filtros: { desde, hasta },
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+        user: req.session?.user || null,
+      });
+    } catch (error) {
+      console.error('Error cargando sanciones pendientes de bloqueo MiLab:', error);
+      return res.render('home/prestamos/coordinador/sanciones_pendientes_bloqueo', {
+        incidencias: [],
+        filtros: {},
+        successMessage: '',
+        errorMessage: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible cargar el reporte de sanciones pendientes de bloqueo.'
+        ),
+        user: req.session?.user || null,
+      });
+    }
+  }
+);
+
+router.post(
+  '/incidencias/:id/convertir-bloqueo',
+  requirePazYSalvoReviewAccess,
+  async function (req, res) {
+    if (!isValidLoanRequestId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La incidencia seleccionada no es valida.',
+      });
+    }
+
+    const sessionUsuario = await fetchSessionUsuario(req);
+    if (!canApproveIncident(sessionUsuario)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para convertir sanciones.',
+      });
+    }
+
+    const conversionJustificacion = sanitizeText(
+      (req.body || {}).paz_y_salvo_bloqueo_conversion_justificacion ||
+        (req.body || {}).justificacion ||
+        (req.body || {}).pazYSalvoJustificacion
+    );
+
+    if (!conversionJustificacion) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes registrar una justificación para convertir a bloqueo de paz y salvo.',
+      });
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await ensurePracticeIncidenceSchema(client);
+      const scope = await resolveLoanManagementScope(req);
+      const incidencia = await fetchManagedIncident(req.params.id, scope);
+
+      if (!incidencia) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'La incidencia no existe o no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      if (incidencia.paz_y_salvo_bloquea) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: 'La incidencia ya tiene una sanción bloqueante asociada.',
+        });
+      }
+
+      if (incidencia.paz_y_salvo_bloqueo_decision !== 'no_bloquear') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Solo las incidencias aprobadas sin bloqueo pueden convertirse.',
+        });
+      }
+
+      const actorLabel =
+        sanitizeText(req.session?.user?.nombre) || sanitizeText(req.session?.user?.documento);
+      const multaId = await createBlockingFineFromIncident(
+        {
+          incidencia,
+          sancionTipo: incidencia.sancion_tipo,
+          sancionDetalle: incidencia.sancion_detalle,
+          justificacion: conversionJustificacion,
+          actorLabel,
+        },
+        client
+      );
+
+      await client.query(
+        `
+        UPDATE incidencia
+        SET paz_y_salvo_bloquea = TRUE,
+            paz_y_salvo_multa_id = $2,
+            paz_y_salvo_bloqueo_converted_by_id = $3,
+            paz_y_salvo_bloqueo_converted_at = CURRENT_TIMESTAMP,
+            paz_y_salvo_bloqueo_conversion_justificacion = $4,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `,
+        [incidencia.id, multaId, sessionUsuario?.id || null, conversionJustificacion]
+      );
+
+      await client.query('COMMIT');
+
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Convertir incidencia a bloqueo paz y salvo',
+        persona: `Incidencia: ${incidencia.id} | multa: ${multaId || '-'}`,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Sanción convertida a bloqueante correctamente.',
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error convirtiendo sanción a bloqueo MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(error, 'No fue posible convertir la sanción a bloqueo.'),
+      });
+    } finally {
+      client.release();
+    }
+  }
+);
 
 router.post(
   '/incidencias/:id/pendiente-cierre',
