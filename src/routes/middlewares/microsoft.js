@@ -4,10 +4,18 @@ const { config } = require('dotenv');
 
 config();
 
-const callbackBaseUrl =
-  process.env.MICROSOFT_CALLBACK_BASE_URL ||
-  process.env.APP_URL ||
-  'https://labs.udistrital.edu.co';
+function normalizeCallbackUrl(url) {
+  if (!url) return 'https://labs.udistrital.edu.co/milab';
+  // Elimina trailing slash
+  url = url.replace(/\/+$/, '');
+  // Agrega /milab si no lo tiene
+  if (!url.endsWith('/milab')) {
+    url = url + '/milab';
+  }
+  return url;
+}
+
+const callbackBaseUrl = normalizeCallbackUrl(process.env.MICROSOFT_CALLBACK_BASE_URL);
 
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   passport.use(

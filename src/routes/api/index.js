@@ -10,6 +10,9 @@ const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalized
 const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
   (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()
 );
+const requireAuthForServiceStatus = ['1', 'true', 'yes'].includes(
+  (process.env.REQUIRE_AUTH_FOR_SERVICE_STATUS || '').toLowerCase()
+);
 
 if (!isDevNodeEnvironment && allowPublicServiceStatusEndpoint) {
   throw new Error(
@@ -18,7 +21,7 @@ if (!isDevNodeEnvironment && allowPublicServiceStatusEndpoint) {
   );
 }
 
-const requireServiceStatusAccess = allowPublicServiceStatusEndpoint
+const requireServiceStatusAccess = allowPublicServiceStatusEndpoint || !requireAuthForServiceStatus
   ? (req, res, next) => next()
   : requireJsonRoles('admin', {
       message: 'No tienes permisos para consultar el estado de servicios',
