@@ -5,14 +5,17 @@ const { config } = require('dotenv');
 config();
 
 function normalizeCallbackUrl(url) {
-  if (!url) return 'https://labs.udistrital.edu.co/milab';
-  // Elimina trailing slash
-  url = url.replace(/\/+$/, '');
-  // Agrega /milab si no lo tiene
-  if (!url.endsWith('/milab')) {
-    url = url + '/milab';
+  const normalizedUrl = (url || 'https://labs.udistrital.edu.co').replace(/\/+$/, '');
+
+  if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
+    return normalizedUrl;
   }
-  return url;
+
+  if (normalizedUrl.endsWith('/milab')) {
+    return normalizedUrl;
+  }
+
+  return `${normalizedUrl}/milab`;
 }
 
 const callbackBaseUrl = normalizeCallbackUrl(process.env.MICROSOFT_CALLBACK_BASE_URL);

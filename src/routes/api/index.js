@@ -9,11 +9,13 @@ const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
 );
 
 if (
-  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'production' &&
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'dev' &&
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'development' &&
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'local' &&
   allowPublicServiceStatusEndpoint
 ) {
   throw new Error(
-    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de producción. ' +
+    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de dev|development|local. ' +
       'Deshabilítalo para iniciar la aplicación.'
   );
 }
