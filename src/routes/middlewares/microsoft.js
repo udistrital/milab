@@ -4,10 +4,21 @@ const { config } = require('dotenv');
 
 config();
 
-const callbackBaseUrl =
-  process.env.MICROSOFT_CALLBACK_BASE_URL ||
-  process.env.APP_URL ||
-  'https://labs.udistrital.edu.co';
+function normalizeCallbackUrl(url) {
+  const normalizedUrl = (url || 'https://labs.udistrital.edu.co').replace(/\/+$/, '');
+
+  if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
+    return normalizedUrl;
+  }
+
+  if (normalizedUrl.endsWith('/milab')) {
+    return normalizedUrl;
+  }
+
+  return `${normalizedUrl}/milab`;
+}
+
+const callbackBaseUrl = normalizeCallbackUrl(process.env.MICROSOFT_CALLBACK_BASE_URL);
 
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   passport.use(

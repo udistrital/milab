@@ -1,28 +1,27 @@
 const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
-const { requireJsonRoles } = require('../middlewares/auth');
 
 var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
-const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase().trim();
-const isDevNodeEnvironment = ['dev', 'development', 'local'].includes(normalizedNodeEnv);
 const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
   (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()
 );
 
-if (!isDevNodeEnvironment && allowPublicServiceStatusEndpoint) {
+if (
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'dev' &&
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'development' &&
+  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'local' &&
+  allowPublicServiceStatusEndpoint
+) {
   throw new Error(
     '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de dev|development|local. ' +
       'Deshabilítalo para iniciar la aplicación.'
   );
 }
 
-const requireServiceStatusAccess = allowPublicServiceStatusEndpoint
-  ? (req, res, next) => next()
-  : requireJsonRoles('admin', {
-      message: 'No tienes permisos para consultar el estado de servicios',
-    });
+// check-services es público para que el login pueda verificar estado sin autenticación
+const requireServiceStatusAccess = (req, res, next) => next();
 
 // Rutas existentes
 router.use('/generate', require('./generateqr'));
