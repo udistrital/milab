@@ -2,7 +2,7 @@ const express = require('express');
 const { requireRoles } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));

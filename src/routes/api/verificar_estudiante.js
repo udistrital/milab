@@ -42,26 +42,6 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-function extractStudentCodes(records) {
-  if (!Array.isArray(records)) return [];
-  return records
-    .map((item) => String(item?.codigo || '').trim())
-    .filter((value) => value && value !== '0');
-}
-
-async function fetchStudentRecordsByDocumento(documento) {
-  if (!documento || documento === '0') return [];
-
-  try {
-    const response = await requestOati(
-      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
-    );
-    return extractOasStudentRecords(response);
-  } catch {
-    return [];
-  }
-}
-
 async function resolveStudentEmail(documento, codigo) {
   const codigoParam = codigo ? String(codigo) : null;
 
@@ -167,20 +147,6 @@ router.post('/', requireVerificationAction, async (req, res) => {
         message2: 'No es posible generar el certificado para estudiantes egresados.',
         limit: null,
       });
-    }
-
-    let codigoList = extractStudentCodes(studentRecords);
-
-    if (tipo_busqueda === 'codigo' && documento !== '0') {
-      const recordsByDocumento = await fetchStudentRecordsByDocumento(documento);
-      const documentCodes = extractStudentCodes(recordsByDocumento);
-      if (documentCodes.length) {
-        codigoList = documentCodes;
-      }
-    }
-
-    if (!codigoList.length && con_codigo) {
-      codigoList = [String(con_codigo)];
     }
 
     let usuarioId = null;

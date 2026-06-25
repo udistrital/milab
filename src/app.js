@@ -1,5 +1,5 @@
-var express = require('express');
-var passport = require('passport');
+const express = require('express');
+const passport = require('passport');
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
@@ -10,11 +10,12 @@ const rateLimit = require('express-rate-limit');
 
 const rootEnvPath = path.join(process.cwd(), '.env');
 const dockerEnvPath = path.join(__dirname, '../Docker/.env');
-const resolvedEnvPath = fs.existsSync(rootEnvPath)
-  ? rootEnvPath
-  : fs.existsSync(dockerEnvPath)
-    ? dockerEnvPath
-    : null;
+let resolvedEnvPath = null;
+if (fs.existsSync(rootEnvPath)) {
+  resolvedEnvPath = rootEnvPath;
+} else if (fs.existsSync(dockerEnvPath)) {
+  resolvedEnvPath = dockerEnvPath;
+}
 
 if (resolvedEnvPath) {
   dotenv.config({ path: resolvedEnvPath });
@@ -74,7 +75,7 @@ const { renderAuthError } = require('./routes/middlewares/auth');
 installConsoleBridge();
 installProcessHandlers();
 
-var app = express();
+const app = express();
 const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const apiCsrfExemptPaths = [];
@@ -313,7 +314,6 @@ const limiter2 = rateLimit({
     });
   },
 });
-//app.use(limiter);
 app.use(ipBlockMiddleware);
 app.use(limiter2);
 
@@ -391,14 +391,6 @@ app.use((req, res) => {
   });
 });
 app.use(createApplicationErrorHandler(logger));
-
-//app.use("/auth", loginRouter);
-
-// Microsoft Routes
-//router.get('/auth/microsoft', passport.authenticate('microsoft', { session: false }));
-//router.get('/auth/microsoft/redirect', passport.authenticate('microsoft', { session: false, failureRedirect: `https://localhost:3000/login` }), (req, res) => {
-//  res.redirect(req.user);
-//});
 
 if (require.main === module) {
   db.init()

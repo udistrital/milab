@@ -3,7 +3,7 @@ const pool = require('../../libs/db');
 const { requireRoles } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -17,11 +17,8 @@ const requireStudentPdfDownloadAccess = requireRoles(
   }
 );
 
-//const con_codigo_print = require("./get-data");
-
 router.post('/', requireStudentPdfDownloadAccess, async (req, res) => {
   const requestBody = req.body || {};
-  //const pdfPath = path.join('src/public/generate', 'certificado_20171700006-bef6340f-f419-49c2-91e3-c7e863492396.pdf'); // Ruta completa del archivo PDF en el servidor
 
   const certificadoId = requestBody.con_codigo; // Este valor debería ser dinámico según tus necesidades
   if (!/^\d{1,20}$/.test(String(certificadoId || ''))) {

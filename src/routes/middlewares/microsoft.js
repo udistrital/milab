@@ -4,8 +4,29 @@ const { config } = require('dotenv');
 
 config();
 
+function trimTrailingSlashes(value) {
+  let output = (value || '').toString();
+  while (output.length > 0 && output.endsWith('/')) {
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
+function resolveCallbackBaseUrl() {
+  const configuredBase =
+    process.env.MICROSOFT_CALLBACK_BASE_URL || process.env.APP_BASE_URL || process.env.APP_URL;
+
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  return (process.env.NODE_ENV || '').toLowerCase() === 'production'
+    ? 'https://laboratorios.udistrital.edu.co'
+    : `http://localhost:${process.env.PORT || 3000}`;
+}
+
 function normalizeCallbackUrl(url) {
-  const normalizedUrl = (url || 'https://labs.udistrital.edu.co').replace(/\/+$/, '');
+  const normalizedUrl = trimTrailingSlashes(url);
 
   if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
     return normalizedUrl;
@@ -18,7 +39,7 @@ function normalizeCallbackUrl(url) {
   return `${normalizedUrl}/milab`;
 }
 
-const callbackBaseUrl = normalizeCallbackUrl(process.env.MICROSOFT_CALLBACK_BASE_URL);
+const callbackBaseUrl = normalizeCallbackUrl(resolveCallbackBaseUrl());
 
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   passport.use(

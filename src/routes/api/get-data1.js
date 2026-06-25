@@ -12,8 +12,7 @@ require('dotenv').config();
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
-var router = express.Router();
-
+let router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
 
@@ -49,7 +48,7 @@ async function resolveStudentEmailForSession(documento, codigo) {
 router.get('/verificacion', requireStudentSelfServiceAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   console.log('sesion: ' + req.session.user.documento);
-  var con_codigo = 0;
+  let con_codigo = 0;
 
   const query1 =
     'SELECT documento, nombre, codigo, estado, carrera, correo FROM usuario WHERE documento = $1';
@@ -150,11 +149,11 @@ router.post('/', limiter, async function (req, res) {
       selectedType: 'estudiante',
     });
   }
-  var con_codigo;
-  var con_estado;
-  var con_documento;
-  var con_carrera;
-  var con_nombre;
+  let con_codigo;
+  let con_estado;
+  let con_documento;
+  let con_carrera;
+  let con_nombre;
   // con_multado removed (was unused)
 
   const query1 = 'SELECT * FROM usuario WHERE documento = $1';
@@ -174,19 +173,16 @@ router.post('/', limiter, async function (req, res) {
       getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
     );
     // dataString removed (was unused)
-    var cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+    let cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
     con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
     con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
-    //con_documento = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras-1].documento ;
     con_documento = numero_documento_identificacion;
 
     con_carrera = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
     con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
 
     const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
-    //      console.log( dato2.estado.nombre + " Estado1");
-    //      con_estado = dato2.estado.nombre[0].estado_nombre ;
     con_estado = dato2.estado.nombre;
 
     const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
@@ -199,27 +195,6 @@ router.post('/', limiter, async function (req, res) {
     console.log('con_nombre ' + con_nombre);
 
     //--- DB
-
-    // client removed (was unused)
-    /*await client.connect();
-    const query = "SELECT COUNT(*) AS multado FROM multa WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
-    const values = [con_codigo]; 
-
-    const result = await client.query(query, values);
-    con_multado = result.rows[0].multado > 0;
-
-    let multaInfo = null;
-    if (con_multado) {
-      const queryMultaInfo = "SELECT * FROM multa WHERE cod_multado = $1 AND con_estado_multa='ACTIVA'";
-      const valuesMultaInfo = [con_codigo];
-
-      const resultMultaInfo = await client.query(queryMultaInfo, valuesMultaInfo);
-      multaInfo = resultMultaInfo.rows;
-      console.log(`Cantidad de registros de multas: ${multaInfo.length}`);
-      console.log(multaInfo);
-    }
-
-    await client.end();*/
 
     if (con_estado === 'EGRESADO') {
       console.log('El estudiante es egresado. No se puede continuar.');
@@ -261,11 +236,6 @@ router.post('/', limiter, async function (req, res) {
       confirmacion: null,
       error: null,
     });
-
-    // Guardar en la base de datos la solicitud de certificado
-
-    //let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, certificado_id:uniqueId, correo: "correo", multa:con_multado};
-    //submit_data(data_to_submit);
   } catch (error) {
     console.error(error);
     return res.render('home/error-consulta', {

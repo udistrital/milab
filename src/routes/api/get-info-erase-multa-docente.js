@@ -7,7 +7,7 @@ const { requireRoles } = require('../middlewares/auth');
 
 require('dotenv').config();
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));

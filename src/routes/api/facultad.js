@@ -19,21 +19,24 @@ function getLogActorDocument(req) {
   return normalizeLogDocument(req.session?.user?.documento);
 }
 
-function normalizeUalDescription(value) {
+function normalizeOptionalText(value) {
   const normalized = String(value || '').trim();
   return normalized || null;
 }
 
-function normalizeUalSpaceId(value) {
+function normalizeUalDescription(value) {
+  return normalizeOptionalText(value);
+}
+
+function normalizeUpperOptionalText(value) {
   const normalized = String(value || '')
     .trim()
     .toUpperCase();
   return normalized || null;
 }
 
-function normalizeUalOccupants(value) {
-  const normalized = String(value || '').trim();
-  return normalized || null;
+function normalizeUalSpaceId(value) {
+  return normalizeUpperOptionalText(value);
 }
 
 function normalizeUalActiveFlag(value) {
@@ -41,10 +44,7 @@ function normalizeUalActiveFlag(value) {
 }
 
 function normalizeUalShortCode(value) {
-  const normalized = String(value || '')
-    .trim()
-    .toUpperCase();
-  return normalized || null;
+  return normalizeUpperOptionalText(value);
 }
 
 function isValidUalShortCode(value) {
@@ -203,7 +203,7 @@ router.post('/ual/add', async (req, res) => {
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
   const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
-  const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
+  const salOcupantes = normalizeUalDescription(req.body.sal_ocupantes);
   const activo = normalizeUalActiveFlag(req.body.activo);
   if (!facultadId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {
@@ -294,7 +294,7 @@ router.post('/ual/editar', async (req, res) => {
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
   const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
-  const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
+  const salOcupantes = normalizeUalDescription(req.body.sal_ocupantes);
   const activo = normalizeUalActiveFlag(req.body.activo);
   if (!ualId || !nombre || !nombre.trim()) {
     return res.render('home/message_error', {

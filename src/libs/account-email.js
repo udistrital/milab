@@ -1,4 +1,4 @@
-const INSTITUTIONAL_EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$/i;
+const INSTITUTIONAL_EMAIL_PATTERN = /^[a-z0-9._%+-]+@udistrital\.edu\.co$/i;
 
 function normalizeInstitutionalEmail(value) {
   if (typeof value !== 'string') {

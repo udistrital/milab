@@ -1,6 +1,6 @@
-var express = require('express');
-var path = require('path');
-var app = express();
+const express = require('express');
+const path = require('path');
+const app = express();
 const { menuPermissionMiddleware } = require('./routes/middlewares/menu-permissions');
 
 app.disable('x-powered-by');
@@ -15,7 +15,6 @@ app.use('/auth', require('./routes/api/login'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use('/auth', require('./routes/api/logout'));
 app.use('/auth', require('./routes/api/dev-login'));
-//app.use("/", require("./routes/api/metrics"));
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 

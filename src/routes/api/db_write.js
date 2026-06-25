@@ -18,23 +18,7 @@ async function insertarRegistroTabla1(usuario_id, fecha_creacion, certificado_id
   }
 }
 
-// // Función para insertar un registro en la tabla2
-// async function insertarRegistroTabla2(descripcion, fecha_registro) {
-//   const query = 'INSERT INTO tabla2 (descripcion, fecha_registro) VALUES ($1, $2)';
-//   const values = [descripcion, fecha_registro];
-
-//   try {
-//     const client = await pool.connect();
-//     const result = await client.query(query, values);
-//     client.release();
-//     console.log('Registro insertado correctamente en tabla2');
-//   } catch (error) {
-//     console.error('Error al insertar registro en tabla2', error);
-//   }
-// }
-
 // Ejemplo de uso — sólo al ejecutar directamente: node db_write.js
 if (require.main === module) {
   insertarRegistroTabla1(1, '2023_07_04', '783483yehxbkew', 'andres@m2', '2');
-  //insertarRegistroTabla2('Descripción del registro', '2023-07-04');
 }

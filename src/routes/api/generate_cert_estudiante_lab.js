@@ -17,7 +17,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-var router = express.Router();
+let router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -70,27 +70,25 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
     });
   }
 
-  var con_codigo;
-  var con_estado;
-  var con_documento;
-  var con_carrera;
-  var con_nombre;
-  // var switch_exit; // Removed: never assigned or used
-  var qr_name;
-  // var con_multado; // Removed: never used
-  var uniqueId1;
-  var multado;
-  var con_facultad;
+  let con_codigo;
+  let con_estado;
+  let con_documento;
+  let con_carrera;
+  let con_nombre;
+  let qr_name;
+  let uniqueId1;
+  let multado;
+  let con_facultad;
   const actorRole = req.session?.user?.tipo || 'personal autorizado';
 
   console.log(motivo_exp);
 
   // Obtener la fecha de hoy
-  var con_fecha = new Date();
+  let con_fecha = new Date();
   con_fecha = format(con_fecha, 'yyyy/MM/dd HH:mm:ss'); // Ajuste de horario al local
 
   // Obtener la fecha de vencimiento en 2 meses
-  var fechaVencimiento = new Date();
+  let fechaVencimiento = new Date();
   fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 2);
   fechaVencimiento = format(fechaVencimiento, 'yyyy/MM/dd HH:mm:ss');
 
@@ -407,7 +405,6 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       const doc = new PDFDocument({ layout: 'portrait', size: 'A4' });
       const fs = require('fs');
       const stream = fs.createWriteStream(buildGeneratePath(`certificado_${con_codigo}.pdf`));
-      // const { file } = require('pdfkit'); // Removed: never used
 
       // Helper to move to next line
       function jumpLine(doc, lines) {
@@ -416,7 +413,6 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         }
       }
 
-      // doc.pipe(fs.createWriteStream('src/public/generate/output.pdf'));
       doc.pipe(stream);
 
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#fff');
@@ -437,7 +433,6 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       const col1Width = 90;
       const col2Width = 180;
       const col3Width = 110;
-      // const col4Width = 135; // Removed: never used
 
       doc
         .moveTo(startX + col1Width, marginTop)
@@ -595,8 +590,6 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         });
 
       jumpLine(doc, 2);
-
-      // function centeredText(text, font = 'NotoSansJP-Regular.otf') { ... } // Removed: never used
 
       let texto_identificacion = 'con código ' + con_codigo;
       if (con_documento && con_documento !== '0') {

@@ -18,24 +18,7 @@ async function obtenerRegistrosTabla1() {
   }
 }
 
-// Función para obtener todos los registros de la tabla2
-// async function obtenerRegistrosTabla2() {
-//   const query = 'SELECT * FROM tabla2';
-
-//   try {
-//     const client = await pool.connect();
-//     const result = await client.query(query);
-//     client.release();
-
-//     console.log('Registros de tabla2:');
-//     console.table(result.rows);
-//   } catch (error) {
-//     console.error('Error al obtener registros de tabla2', error);
-//   }
-// }
-
 // Ejemplo de uso — sólo al ejecutar directamente: node db_read.js
 if (require.main === module) {
   obtenerRegistrosTabla1();
-  //obtenerRegistrosTabla2();
 }

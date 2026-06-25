@@ -16,7 +16,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-var router = express.Router();
+let router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
@@ -29,11 +29,11 @@ const requireTeacherCertificateGenerationAccess = requireRoles(['admin', 'docent
 
 router.post('/', requireTeacherCertificateGenerationAccess, function (req, res) {
   const { numero_documento_identificacion, motivo_exp, correo } = req.body;
-  var con_estado;
-  var con_documento;
-  var con_nombre;
-  var qr_name;
-  var uniqueId1;
+  let con_estado;
+  let con_documento;
+  let con_nombre;
+  let qr_name;
+  let uniqueId1;
 
   // Determinar origen de la descarga (D: Docente)
   let origen_descarga = 'D';
@@ -41,11 +41,11 @@ router.post('/', requireTeacherCertificateGenerationAccess, function (req, res) 
   console.log(motivo_exp);
 
   // Obtener la fecha de hoy
-  var con_fecha = new Date();
+  let con_fecha = new Date();
   con_fecha = format(con_fecha, 'yyyy/MM/dd HH:mm:ss'); // Ajuste de horario al local
 
   // Obtener la fecha de vencimiento en 2 meses
-  var fechaVencimiento = new Date();
+  let fechaVencimiento = new Date();
   fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 2);
   fechaVencimiento = format(fechaVencimiento, 'yyyy/MM/dd HH:mm:ss');
 

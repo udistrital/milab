@@ -16,7 +16,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-var router = express.Router();
+let router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
@@ -29,26 +29,26 @@ const requireStudentCertificateAccess = requireRoles(['admin', 'estudiante'], {
 
 router.post('/', requireStudentCertificateAccess, async function (req, res) {
   const { numero_documento_identificacion, motivo_exp, correo } = req.body;
-  var con_codigo;
-  var con_estado;
-  var con_documento;
-  var con_carrera;
-  var con_nombre;
-  var qr_name;
-  var con_multado = null;
+  let con_codigo;
+  let con_estado;
+  let con_documento;
+  let con_carrera;
+  let con_nombre;
+  let qr_name;
+  let con_multado = null;
   // con_multado removed (was never assigned)
-  var uniqueId1;
+  let uniqueId1;
   // multado removed (was never used)
-  var con_facultad;
+  let con_facultad;
 
   console.log(motivo_exp);
 
   // Obtener la fecha de hoy
-  var con_fecha = new Date();
+  let con_fecha = new Date();
   con_fecha = format(con_fecha, 'yyyy/MM/dd HH:mm:ss'); // Ajuste de horario al local
 
   // Obtener la fecha de vencimiento en 2 meses
-  var fechaVencimiento = new Date();
+  let fechaVencimiento = new Date();
   fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 2);
   fechaVencimiento = format(fechaVencimiento, 'yyyy/MM/dd HH:mm:ss');
 
@@ -198,11 +198,10 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
       );
       // dataString removed (was never used)
-      var cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+      let cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
       con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
       con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
-      //con_documento = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras-1].documento ;
       con_documento = numero_documento_identificacion;
       con_carrera =
         dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
@@ -340,7 +339,6 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         }
       }
 
-      // doc.pipe(fs.createWriteStream('src/public/generate/output.pdf'));
       doc.pipe(stream);
 
       doc.rect(0, 0, doc.page.width, doc.page.height).fill('#fff');

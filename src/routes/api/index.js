@@ -2,7 +2,7 @@ const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 
-var router = express.Router();
+const router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
 const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
   (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()

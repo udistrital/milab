@@ -308,7 +308,7 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
       [userId]
     );
 
-    let nuevoEstado = true;
+    let nuevoEstado;
     if (result.rows.length > 0) {
       nuevoEstado = !result.rows[0].activo;
       await client2.query(
@@ -322,6 +322,7 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
         [userId, nuevoEstado]
       );
     } else {
+      nuevoEstado = true;
       await client2.query(
         `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
          SELECT $1, id, TRUE FROM rol WHERE nombre = 'coordinador'
@@ -330,7 +331,6 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
              fecha_modificacion = CURRENT_TIMESTAMP`,
         [userId]
       );
-      nuevoEstado = true;
     }
 
     const estadoLabel = nuevoEstado ? 'coordinador' : 'inactivo';
