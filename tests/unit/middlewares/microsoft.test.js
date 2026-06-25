@@ -7,20 +7,32 @@ const passportPath = require.resolve('passport');
 const passportMicrosoftPath = require.resolve('passport-microsoft');
 const dotenvPath = require.resolve('dotenv');
 
-function loadMicrosoftMiddleware({ clientId, clientSecret, tenantId } = {}) {
+function loadMicrosoftMiddleware({
+  clientId,
+  clientSecret,
+  tenantId,
+  microsoftCallbackBaseUrl = 'https://labs.test',
+  appBaseUrl = '',
+  appUrl = 'https://app.test',
+  nodeEnv = '',
+} = {}) {
   const originalEnv = {
     MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID,
     MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET,
     MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID,
     MICROSOFT_CALLBACK_BASE_URL: process.env.MICROSOFT_CALLBACK_BASE_URL,
+    APP_BASE_URL: process.env.APP_BASE_URL,
     APP_URL: process.env.APP_URL,
+    NODE_ENV: process.env.NODE_ENV,
   };
 
   process.env.MICROSOFT_CLIENT_ID = clientId;
   process.env.MICROSOFT_CLIENT_SECRET = clientSecret;
   process.env.MICROSOFT_TENANT_ID = tenantId;
-  process.env.MICROSOFT_CALLBACK_BASE_URL = 'https://labs.test';
-  process.env.APP_URL = 'https://app.test';
+  process.env.MICROSOFT_CALLBACK_BASE_URL = microsoftCallbackBaseUrl;
+  process.env.APP_BASE_URL = appBaseUrl;
+  process.env.APP_URL = appUrl;
+  process.env.NODE_ENV = nodeEnv;
 
   const originalPassport = require.cache[passportPath];
   const originalPassportMicrosoft = require.cache[passportMicrosoftPath];
@@ -121,6 +133,50 @@ test('microsoft middleware skips strategy registration when env vars are missing
 
   try {
     assert.equal(loaded.uses.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('microsoft middleware falls back to APP_BASE_URL when callback base is not provided', () => {
+  const loaded = loadMicrosoftMiddleware({
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    tenantId: 'tenant-id',
+    microsoftCallbackBaseUrl: '',
+    appBaseUrl: 'https://laboratorios.udistrital.edu.co/milab',
+  });
+
+  try {
+    assert.equal(loaded.uses.length, 1);
+    const [, strategy] = loaded.uses[0];
+    assert.equal(
+      strategy.options.callbackURL,
+      'https://laboratorios.udistrital.edu.co/milab/auth/microsoft/callback'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('microsoft middleware uses production default callback base when none is configured', () => {
+  const loaded = loadMicrosoftMiddleware({
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    tenantId: 'tenant-id',
+    microsoftCallbackBaseUrl: '',
+    appBaseUrl: '',
+    appUrl: '',
+    nodeEnv: 'production',
+  });
+
+  try {
+    assert.equal(loaded.uses.length, 1);
+    const [, strategy] = loaded.uses[0];
+    assert.equal(
+      strategy.options.callbackURL,
+      'https://laboratorios.udistrital.edu.co/milab/auth/microsoft/callback'
+    );
   } finally {
     loaded.restore();
   }
