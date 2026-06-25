@@ -1,6 +1,6 @@
-var express = require('express');
+const express = require('express');
 
-var router = express.Router();
+const router = express.Router();
 
 function getAuthenticatedHomePath(user) {
   return user?.tipo ? '/milab/inicio' : null;
@@ -62,9 +62,6 @@ router.get('/reg_multa', function (req, res) {
 router.get('/get-info-multa-docente', function (req, res) {
   res.render('home/get-info-multa-docente');
 });
-/*router.get("/get-info", function(req, res) {
-  res.render("home/get-info2");
-});*/
 
 router.get('/validateqr-ok', function (req, res) {
   res.render('home/validateqr-ok');
@@ -109,10 +106,6 @@ router.get('/login', function (req, res) {
 router.get('/login_2', function (req, res) {
   return redirectToCanonicalPublicRoute(req, res, '/milab/auth/login');
 });
-//Logout view
-/*router.get("/logout", function(req, res) {
-  res.render("home/logout");
-});*/
 
 router.get('/register', function (req, res) {
   return res.redirect('/milab/auth/microsoft');

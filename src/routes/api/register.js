@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomInt } = require('node:crypto');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
@@ -479,11 +480,7 @@ async function create_account(data) {
 
 // --- FUNCIÓN PARA GENERAR EL CÓDIGO DE VERIFICACIÓN ---
 function generarCodigoAleatorio() {
-  const longitudCodigo = 6;
-  const codigoAleatorio =
-    Math.floor(Math.random() * (Math.pow(10, longitudCodigo) - Math.pow(10, longitudCodigo - 1))) +
-    Math.pow(10, longitudCodigo - 1);
-  return codigoAleatorio.toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 module.exports = router;

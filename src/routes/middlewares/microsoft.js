@@ -4,6 +4,14 @@ const { config } = require('dotenv');
 
 config();
 
+function trimTrailingSlashes(value) {
+  let output = (value || '').toString();
+  while (output.length > 0 && output.endsWith('/')) {
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
 function resolveCallbackBaseUrl() {
   const configuredBase =
     process.env.MICROSOFT_CALLBACK_BASE_URL || process.env.APP_BASE_URL || process.env.APP_URL;
@@ -18,7 +26,7 @@ function resolveCallbackBaseUrl() {
 }
 
 function normalizeCallbackUrl(url) {
-  const normalizedUrl = (url || '').replace(/\/+$/, '');
+  const normalizedUrl = trimTrailingSlashes(url);
 
   if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
     return normalizedUrl;

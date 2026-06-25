@@ -8,7 +8,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-var router = express.Router();
+let router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -38,17 +38,16 @@ router.get('/get', requireLaboratoristaFineInfoView, async function (req, res) {
   res.render('home/get-info-multa');
 });
 
-router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
+router.post('/', requireLaboratoristaFineInfoView, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};
   const { tipo_busqueda, valor_busqueda } = requestBody;
-  var con_codigo;
-  var con_estado;
-  var con_documento;
-  var con_carrera;
-  var con_nombre;
-  // let con_multado = false; // Inicialmente asumimos que no está multado
+  let con_codigo;
+  let con_estado;
+  let con_documento;
+  let con_carrera;
+  let con_nombre;
 
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
@@ -128,9 +127,9 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     }
 
     //DATOS LAB
-    var nombre_lab = '';
-    var cc_lab = 0;
-    var uals = '';
+    let nombre_lab = '';
+    let cc_lab = 0;
+    let uals = '';
     if (req.session.user.tipo === 'laboratorista') {
       const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
       const query2 = 'SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1';
@@ -148,7 +147,6 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       uals = result3.rows;
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
-      cc_lab = 0;
       uals = null;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
@@ -183,11 +181,6 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       cc_lab,
       uals,
     });
-
-    // Guardar en la base de datos la solicitud de certificado
-
-    //let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, certificado_id:uniqueId, correo: "correo", multa:con_multado};
-    //submit_data(data_to_submit);
   } catch (error) {
     console.error(error);
     return res.render('home/error-consulta', {
