@@ -45,7 +45,7 @@ async function resolveStudentEmailForSession(documento, codigo) {
   return result.rows[0]?.correo || '';
 }
 
-router.get('/verificacion', requireStudentSelfServiceAccess, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.get('/verificacion', requireStudentSelfServiceAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   console.log('sesion: ' + req.session.user.documento);
   let con_codigo = 0;
@@ -116,7 +116,7 @@ router.get('/verificacion', requireStudentSelfServiceAccess, async function (req
   }
 });
 
-router.post('/', limiter, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.post('/', limiter, async function (req, res) {
   const { numero_documento_identificacion, 'g-recaptcha-response': recaptchaResponse } = req.body;
 
   // Validar reCAPTCHA

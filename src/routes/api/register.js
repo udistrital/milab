@@ -250,7 +250,6 @@ router.post('/enviar-codigo', async (req, res) => {
   const usuario = req.session.usuario_no_verificado;
   const recipient = resolveRegistrationRecipient(usuario.correo);
   const registrationEmailOverrideActive = recipient !== usuario.correo;
-  //console.log("LLEGA CORREO ACA -------" + usuario.correo);
   try {
     const mailOptions = {
       from: process.env.EMAIL_USER,

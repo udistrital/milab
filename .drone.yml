@@ -8,6 +8,21 @@ trigger:
     - push
 
 steps:
+  - name: run_tests_coverage
+    image: node:20-slim
+    commands:
+      - npm ci
+      - npm run test:coverage
+    when:
+      branch:
+        - feature/*
+        - develop
+        - release/*
+        - hotfix/*
+        - master
+      event:
+      - push
+
   - name: run_sonar_scanner
     image: sonarsource/sonar-scanner-cli:latest
     environment:

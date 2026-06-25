@@ -197,7 +197,7 @@ router.post('/eliminar', async (req, res) => {
 });
 
 // Agregar UAL a una facultad
-router.post('/ual/add', async (req, res) => { // NOSONAR - legacy admin workflow kept for compatibility
+router.post('/ual/add', async (req, res) => {
   const { facultad_id: facultadId } = req.body;
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
@@ -288,7 +288,7 @@ router.post('/ual/add', async (req, res) => { // NOSONAR - legacy admin workflow
 });
 
 // Editar UAL (admin o coordinador dentro de su facultad)
-router.post('/ual/editar', async (req, res) => { // NOSONAR - legacy admin workflow kept for compatibility
+router.post('/ual/editar', async (req, res) => {
   const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);

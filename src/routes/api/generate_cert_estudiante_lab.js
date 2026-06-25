@@ -53,7 +53,7 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-router.post('/', requireStaffStudentCertificateAccess, function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   const requestBody = req.body || {};
   const {
     numero_documento_identificacion,

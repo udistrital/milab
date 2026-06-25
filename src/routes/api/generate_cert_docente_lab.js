@@ -30,7 +30,7 @@ const requireStaffTeacherCertificateAccess = requireRoles(
   }
 );
 
-router.post('/', requireStaffTeacherCertificateAccess, function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
   const requestBody = req.body || {};
   const { numero_documento_identificacion, motivo_exp, correo } = requestBody;
 

@@ -38,7 +38,7 @@ router.get('/get', requireLaboratoristaFineInfoView, async function (req, res) {
   res.render('home/get-info-multa');
 });
 
-router.post('/', requireLaboratoristaFineInfoView, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};

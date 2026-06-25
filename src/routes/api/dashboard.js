@@ -467,7 +467,7 @@ function filterUsuarioRowsByScope(rows, role, scope) {
   });
 }
 
-router.get('/', requireDashboardAccess, async (req, res) => { // NOSONAR - legacy dashboard orchestration kept for compatibility
+router.get('/', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
   const filtro = ['dia', 'semana', 'mes', 'anio'].includes(req.query.filtro)

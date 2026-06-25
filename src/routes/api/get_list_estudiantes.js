@@ -124,7 +124,7 @@ router.get('/get_consulta', requireBulkStudentQueryAccess, async function (req, 
   res.render('home/consulta_masiva', { sampleData1: 0, error: null });
 });
 
-router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   const rawInput = String(req.body.consulta_masiva || '');
   const entries = rawInput
@@ -221,7 +221,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
   }
 });
 
-router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, res) { // NOSONAR - legacy flow kept for compatibility
+router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   const PDFDocument = require('pdfkit');
 

@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { publicPageLimiter } = require('../middlewares/public-rate-limit');
 
-var router = express.Router();
+const router = express.Router();
 
 // Ruta para la validación de registros de docentes
 router.get('/:cc', publicPageLimiter, async (req, res) => {
