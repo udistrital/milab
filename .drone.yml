@@ -21,7 +21,7 @@ steps:
         - hotfix/*
         - master
       event:
-      - push
+        - push
 
   - name: run_sonar_scanner
     image: sonarsource/sonar-scanner-cli:latest
@@ -30,7 +30,7 @@ steps:
         from_secret: SONAR_HOST
       SONAR_TOKEN:
         from_secret: SONAR_TOKEN
-      SONAR_SCANNER_OPTS: "-Dsonar.working.directory=/tmp/.scannerwork"
+      SONAR_SCANNER_OPTS: '-Dsonar.working.directory=/tmp/.scannerwork'
     commands:
       - sonar-scanner
     when:
@@ -41,7 +41,7 @@ steps:
         - hotfix/*
         - master
       event:
-      - push
+        - push
 
   - name: image_to_ecr
     image: plugins/ecr

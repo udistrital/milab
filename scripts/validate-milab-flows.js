@@ -95,7 +95,10 @@ async function checkForgotPasswordFlow() {
     return true;
   }
 
-  fail('forgot-password', `status ${res.status}, unknown response snippet: ${res.text.slice(0, 200)}`);
+  fail(
+    'forgot-password',
+    `status ${res.status}, unknown response snippet: ${res.text.slice(0, 200)}`
+  );
   return false;
 }
 

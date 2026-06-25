@@ -236,7 +236,6 @@ router.post('/', limiter, async function (req, res) {
       confirmacion: null,
       error: null,
     });
-
   } catch (error) {
     console.error(error);
     return res.render('home/error-consulta', {
