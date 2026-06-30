@@ -84,8 +84,8 @@ jobs:
           set -eu
           env_file=/opt/milab/Docker/.env
 
-          allow_public=$(grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
-          node_env=$(grep -E '^[[:space:]]*NODE_ENV=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
+          allow_public=$(sudo sh -lc "grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | tr '[:upper:]' '[:lower:]' | xargs || true")
+          node_env=$(sudo sh -lc "grep -E '^[[:space:]]*NODE_ENV=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | tr '[:upper:]' '[:lower:]' | xargs || true")
 
           case "$allow_public" in
             1|true|yes)
@@ -125,9 +125,9 @@ jobs:
           set -eu
           env_file=/opt/milab/Docker/.env
 
-          db_user=$(grep -E '^[[:space:]]*DB_USER=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
-          db_password=$(grep -E '^[[:space:]]*DB_PASSWORD=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
-          db_name=$(grep -E '^[[:space:]]*DB_NAME=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
+          db_user=$(sudo sh -lc "grep -E '^[[:space:]]*DB_USER=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
+          db_password=$(sudo sh -lc "grep -E '^[[:space:]]*DB_PASSWORD=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
+          db_name=$(sudo sh -lc "grep -E '^[[:space:]]*DB_NAME=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
 
           if [ -z "$db_user" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
             echo 'ERROR: DB_USER/DB_PASSWORD/DB_NAME no estan definidos en /opt/milab/Docker/.env' >&2
