@@ -138,13 +138,14 @@ test('microsoft middleware skips strategy registration when env vars are missing
   }
 });
 
-test('microsoft middleware falls back to APP_BASE_URL when callback base is not provided', () => {
+test('microsoft middleware falls back to APP_BASE_URL when callback base and APP_URL are not provided', () => {
   const loaded = loadMicrosoftMiddleware({
     clientId: 'client-id',
     clientSecret: 'client-secret',
     tenantId: 'tenant-id',
     microsoftCallbackBaseUrl: '',
     appBaseUrl: 'https://laboratorios.udistrital.edu.co/milab',
+    appUrl: '',
   });
 
   try {
@@ -175,7 +176,7 @@ test('microsoft middleware uses production default callback base when none is co
     const [, strategy] = loaded.uses[0];
     assert.equal(
       strategy.options.callbackURL,
-      'https://laboratorios.udistrital.edu.co/milab/auth/microsoft/callback'
+      'https://laboratorios.udistrital.edu.co/auth/microsoft/callback'
     );
   } finally {
     loaded.restore();

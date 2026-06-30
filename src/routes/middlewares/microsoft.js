@@ -13,8 +13,13 @@ function trimTrailingSlashes(value) {
 }
 
 function resolveCallbackBaseUrl() {
-  const configuredBase =
-    process.env.MICROSOFT_CALLBACK_BASE_URL || process.env.APP_BASE_URL || process.env.APP_URL;
+  const explicitCallbackBase = process.env.MICROSOFT_CALLBACK_BASE_URL;
+  if (explicitCallbackBase) {
+    return explicitCallbackBase;
+  }
+
+  // Prefer APP_URL over APP_BASE_URL because APP_BASE_URL may include a path prefix (/milab).
+  const configuredBase = process.env.APP_URL || process.env.APP_BASE_URL;
 
   if (configuredBase) {
     return configuredBase;
@@ -25,21 +30,7 @@ function resolveCallbackBaseUrl() {
     : `http://localhost:${process.env.PORT || 3000}`;
 }
 
-function normalizeCallbackUrl(url) {
-  const normalizedUrl = trimTrailingSlashes(url);
-
-  if ((process.env.NODE_ENV || '').toLowerCase() !== 'production') {
-    return normalizedUrl;
-  }
-
-  if (normalizedUrl.endsWith('/milab')) {
-    return normalizedUrl;
-  }
-
-  return `${normalizedUrl}/milab`;
-}
-
-const callbackBaseUrl = normalizeCallbackUrl(resolveCallbackBaseUrl());
+const callbackBaseUrl = trimTrailingSlashes(resolveCallbackBaseUrl());
 
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   passport.use(
