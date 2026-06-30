@@ -66,9 +66,9 @@ jobs:
       - name: Copiar fuentes al runner
         run: |
           if command -v sudo >/dev/null 2>&1; then
-            sudo rsync -a --delete --exclude '.git/' ./ /opt/milab/
+            sudo rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
           else
-            rsync -a --delete --exclude '.git/' ./ /opt/milab/
+            rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
           fi
 
       - name: Validar archivo de entorno de despliegue
