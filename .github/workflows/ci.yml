@@ -71,17 +71,12 @@ jobs:
             rsync -a --delete --exclude '.git/' ./ /opt/milab/
           fi
 
-      - name: Copiar archivo de entorno
+      - name: Validar archivo de entorno de despliegue
         run: |
-          if [ ! -f /opt/.env ]; then
-            echo 'No se encontró el archivo /opt/.env en el runner' >&2
+          if [ ! -f /opt/milab/Docker/.env ]; then
+            echo 'No se encontró el archivo /opt/milab/Docker/.env en el runner.' >&2
+            echo 'Debe existir previamente como prerequisito del despliegue.' >&2
             exit 1
-          fi
-
-          if command -v sudo >/dev/null 2>&1; then
-            sudo install -m 600 /opt/.env /opt/milab/Docker/.env
-          else
-            install -m 600 /opt/.env /opt/milab/Docker/.env
           fi
 
       - name: Validar flags sensibles en entorno
@@ -124,6 +119,43 @@ jobs:
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/milab/Docker/.env down --volumes --remove-orphans
           sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate
+
+      - name: Reparar estructura/seed de BD si faltan tablas criticas
+        run: |
+          set -eu
+          env_file=/opt/milab/Docker/.env
+
+          db_user=$(grep -E '^[[:space:]]*DB_USER=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
+          db_password=$(grep -E '^[[:space:]]*DB_PASSWORD=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
+          db_name=$(grep -E '^[[:space:]]*DB_NAME=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | xargs)
+
+          if [ -z "$db_user" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
+            echo 'ERROR: DB_USER/DB_PASSWORD/DB_NAME no estan definidos en /opt/milab/Docker/.env' >&2
+            exit 1
+          fi
+
+          critical_count=$(sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+            psql -U "$db_user" -d "$db_name" -Atc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='milab' AND table_name IN ('usuario','menu_item');")
+
+          if [ "$critical_count" -lt 2 ]; then
+            echo 'BD incompleta detectada: aplicando db_structure.sql y db_seed_system.sql...'
+            sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+              psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_structure.sql
+            sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+              psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_seed_system.sql
+
+            sudo docker compose --env-file /opt/milab/Docker/.env up -d --force-recreate milabud
+          fi
+
+          final_count=$(sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+            psql -U "$db_user" -d "$db_name" -Atc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='milab' AND table_name IN ('usuario','menu_item');")
+
+          if [ "$final_count" -lt 2 ]; then
+            echo 'ERROR: la BD sigue sin tablas criticas (milab.usuario / milab.menu_item).' >&2
+            exit 1
+          fi
 
       - name: Verificar servicios desplegados
         run: |
