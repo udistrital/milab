@@ -48,7 +48,7 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_unitarias
-    if: github.ref == 'refs/heads/prestamos' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
       - laboratorios_ec2
@@ -114,18 +114,19 @@ jobs:
       - name: Actualizar imagenes base de pruebas
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose pull dbpostgres dbseed
+          sudo docker compose --env-file /opt/milab/Docker/.env pull dbpostgres dbseed
 
       - name: Construir imagen de app para pruebas con Dockerfile.dev
         run: |
           sudo docker build -f /opt/milab/Docker/Dockerfile.dev -t prod-milabud /opt/milab
 
-      - name: Recrear contenedores de pruebas
+      - name: Reiniciar ambiente de pruebas en limpio (sin datos persistentes)
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose up -d --force-recreate dbpostgres milabud
+          sudo docker compose --env-file /opt/milab/Docker/.env down --volumes --remove-orphans
+          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate dbpostgres milabud
 
       - name: Verificar servicios desplegados
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose ps dbpostgres milabud
+          sudo docker compose --env-file /opt/milab/Docker/.env ps dbpostgres milabud
