@@ -51,7 +51,6 @@ jobs:
     if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
-      - laboratorios_ec2
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
