@@ -116,15 +116,12 @@ jobs:
 
       - name: Reiniciar ambiente de pruebas en limpio (sin datos persistentes)
         run: |
+          set -eu
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/milab/Docker/.env down --volumes --remove-orphans
-          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate
+          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate dbpostgres
 
-      - name: Reparar estructura/seed de BD si faltan tablas criticas
-        run: |
-          set -eu
           env_file=/opt/milab/Docker/.env
-
           db_user=$(sudo sh -lc "grep -E '^[[:space:]]*DB_USER=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
           db_password=$(sudo sh -lc "grep -E '^[[:space:]]*DB_PASSWORD=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
           db_name=$(sudo sh -lc "grep -E '^[[:space:]]*DB_NAME=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
@@ -134,29 +131,26 @@ jobs:
             exit 1
           fi
 
-          critical_count=$(sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-            psql -U "$db_user" -d "$db_name" -Atc \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='milab' AND table_name IN ('usuario','menu_item');")
+          for i in $(seq 1 30); do
+            if sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
 
-          if [ "$critical_count" -lt 2 ]; then
-            echo 'BD incompleta detectada: aplicando db_structure.sql y db_seed_system.sql...'
-            sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-              psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_structure.sql
-            sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-              psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_seed_system.sql
-
-            cd /home/ubuntu/prod
-            sudo docker compose --env-file /opt/milab/Docker/.env up -d --force-recreate milabud
-          fi
-
-          final_count=$(sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-            psql -U "$db_user" -d "$db_name" -Atc \
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='milab' AND table_name IN ('usuario','menu_item');")
-
-          if [ "$final_count" -lt 2 ]; then
-            echo 'ERROR: la BD sigue sin tablas criticas (milab.usuario / milab.menu_item).' >&2
+          if ! sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+            echo 'ERROR: dbpostgres no esta listo para inicializacion.' >&2
+            sudo docker logs --tail 200 milabud_db_pruebas || true
             exit 1
           fi
+
+          echo 'Inicializando estructura y seed de BD (orden forzado: estructura -> seed)...'
+          sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+            psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_structure.sql
+          sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
+            psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_seed_system.sql
+
+          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate
 
       - name: Verificar servicios desplegados
         run: |
