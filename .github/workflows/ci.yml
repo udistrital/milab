@@ -123,9 +123,9 @@ jobs:
         run: |
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/milab/Docker/.env down --volumes --remove-orphans
-          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate dbpostgres milabud
+          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate
 
       - name: Verificar servicios desplegados
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/milab/Docker/.env ps dbpostgres milabud
+          sudo docker compose --env-file /opt/milab/Docker/.env ps
