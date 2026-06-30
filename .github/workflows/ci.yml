@@ -99,7 +99,7 @@ jobs:
                   exit 1
                   ;;
               esac
-              ;;
+              ;;  
             *)
               echo 'OK: ALLOW_PUBLIC_SERVICE_STATUS no está activo.'
               ;;
@@ -145,6 +145,7 @@ jobs:
             sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
               psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_seed_system.sql
 
+            cd /home/ubuntu/prod
             sudo docker compose --env-file /opt/milab/Docker/.env up -d --force-recreate milabud
           fi
 
