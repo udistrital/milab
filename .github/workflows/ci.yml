@@ -96,17 +96,22 @@ jobs:
       - name: Copiar fuentes al runner
         run: |
           if command -v sudo >/dev/null 2>&1; then
-            sudo rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
+            sudo rsync -a --delete --exclude '.git/' ./ /opt/milab/
           else
-            rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
+            rsync -a --delete --exclude '.git/' ./ /opt/milab/
           fi
 
       - name: Validar archivo de entorno de despliegue
         run: |
           set -eu
-          if [ ! -f /opt/milab/Docker/.env ]; then
-            echo 'No se encontró el archivo /opt/milab/Docker/.env en el runner.' >&2
+          if [ ! -f /opt/.env ]; then
+            echo 'No se encontró el archivo /opt/.env en el runner.' >&2
             echo 'Debe existir previamente como prerequisito del despliegue.' >&2
+            exit 1
+          fi
+
+          if [ ! -r /opt/.env ]; then
+            echo 'El archivo /opt/.env existe pero no es legible por el usuario del runner.' >&2
             exit 1
           fi
 
@@ -122,7 +127,7 @@ jobs:
       - name: Validar flags sensibles en entorno
         run: |
           set -eu
-          env_file=/opt/milab/Docker/.env
+          env_file=/opt/.env
 
           allow_public=$(grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
           node_env=$(grep -E '^[[:space:]]*NODE_ENV=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
@@ -148,17 +153,17 @@ jobs:
       - name: Actualizar imagenes base de pruebas
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose pull dbpostgres dbseed
+          sudo docker compose --env-file /opt/.env pull dbpostgres dbseed
 
       - name: Recrear contenedores de pruebas
         if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
         run: |
           set -eu
           cd /home/ubuntu/prod
-          sudo docker compose stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
-          sudo docker compose rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker compose --env-file /opt/.env stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker compose --env-file /opt/.env rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
           sudo docker volume rm prod_milab_db_data || true
-          sudo docker compose up -d dbpostgres
+          sudo docker compose --env-file /opt/.env up -d dbpostgres
 
           db_user=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')
           db_name=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_DB" {print $2; exit}')
@@ -188,15 +193,15 @@ jobs:
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure_prestamos.sql
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_seed_prestamos.sql
 
-          sudo docker compose up -d --build milabud
+          sudo docker compose --env-file /opt/.env up -d --build milabud
 
       - name: Desplegar sin recrear DB
         if: github.event_name != 'workflow_dispatch' || inputs.recreate_containers != true
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose up -d --build milabud
+          sudo docker compose --env-file /opt/.env up -d --build milabud
 
       - name: Verificar servicios desplegados
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose ps dbpostgres milabud
+          sudo docker compose --env-file /opt/.env ps dbpostgres milabud
