@@ -11,8 +11,8 @@ on:
       - '**'
   workflow_dispatch:
     inputs:
-      recreate_containers:
-        description: 'Recrear contenedores dbpostgres y milabud'
+      force_recreate:
+        description: 'Forzar reinicio completo del ambiente (contenedores y volumenes)'
         required: false
         default: false
         type: boolean
@@ -78,7 +78,7 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_unitarias
-    if: github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
     steps:
@@ -113,6 +113,17 @@ jobs:
           if [ ! -r /opt/.env ]; then
             echo 'El archivo /opt/.env existe pero no es legible por el usuario del runner.' >&2
             exit 1
+          fi
+
+      - name: Asegurar ruta de compatibilidad para compose
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p /opt/milab/Docker
+            sudo ln -sfn /opt/.env /opt/milab/Docker/.env
+          else
+            mkdir -p /opt/milab/Docker
+            ln -sfn /opt/.env /opt/milab/Docker/.env
           fi
 
       - name: Crear override de compose para pruebas
@@ -155,14 +166,58 @@ jobs:
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/.env pull dbpostgres dbseed
 
-      - name: Recrear contenedores de pruebas
-        if: github.event_name == 'workflow_dispatch' && inputs.recreate_containers == true
+      - name: Definir estrategia de despliegue
+        id: estrategia
+        run: |
+          set -eu
+
+          branch="${GITHUB_REF_NAME}"
+          state_file='/opt/milab_last_deploy_branch'
+          previous_branch=''
+          force_recreate="${{ github.event_name == 'workflow_dispatch' && inputs.force_recreate == true }}"
+
+          if command -v sudo >/dev/null 2>&1; then
+            if sudo test -f "$state_file"; then
+              previous_branch="$(sudo cat "$state_file" | tr -d '[:space:]')"
+            fi
+          else
+            if [ -f "$state_file" ]; then
+              previous_branch="$(cat "$state_file" | tr -d '[:space:]')"
+            fi
+          fi
+
+          recreate='false'
+          reason='misma-rama'
+
+          if [ "$force_recreate" = 'true' ]; then
+            recreate='true'
+            reason='forzado-ui'
+          elif [ -z "$previous_branch" ]; then
+            recreate='true'
+            reason='sin-estado-previo'
+          elif [ "$previous_branch" != "$branch" ]; then
+            recreate='true'
+            reason='cambio-rama'
+          fi
+
+          echo "previous_branch=$previous_branch" >> "$GITHUB_OUTPUT"
+          echo "current_branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "recreate=$recreate" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      - name: Mostrar estrategia elegida
+        run: |
+          echo "Rama previa: ${{ steps.estrategia.outputs.previous_branch }}"
+          echo "Rama actual: ${{ steps.estrategia.outputs.current_branch }}"
+          echo "Recrear ambiente: ${{ steps.estrategia.outputs.recreate }}"
+          echo "Motivo: ${{ steps.estrategia.outputs.reason }}"
+
+      - name: Recrear ambiente de pruebas en limpio
+        if: steps.estrategia.outputs.recreate == 'true'
         run: |
           set -eu
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/.env stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
-          sudo docker compose --env-file /opt/.env rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
-          sudo docker volume rm prod_milab_db_data || true
+          sudo docker compose --env-file /opt/.env down --volumes --remove-orphans
           sudo docker compose --env-file /opt/.env up -d dbpostgres
 
           db_user=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')
@@ -195,11 +250,27 @@ jobs:
 
           sudo docker compose --env-file /opt/.env up -d --build milabud
 
-      - name: Desplegar sin recrear DB
-        if: github.event_name != 'workflow_dispatch' || inputs.recreate_containers != true
+      - name: Desplegar sin recrear ambiente
+        if: steps.estrategia.outputs.recreate != 'true'
         run: |
+          set -eu
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/.env up -d --build milabud
+
+      - name: Guardar ultima rama desplegada
+        if: success()
+        run: |
+          set -eu
+          branch='${{ steps.estrategia.outputs.current_branch }}'
+          state_file='/opt/milab_last_deploy_branch'
+
+          if command -v sudo >/dev/null 2>&1; then
+            printf '%s\n' "$branch" | sudo tee "$state_file" >/dev/null
+            sudo chmod 644 "$state_file"
+          else
+            printf '%s\n' "$branch" > "$state_file"
+            chmod 644 "$state_file"
+          fi
 
       - name: Verificar servicios desplegados
         run: |
