@@ -217,7 +217,9 @@ jobs:
         run: |
           set -eu
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/.env down --volumes --remove-orphans
+          sudo docker compose --env-file /opt/.env stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker compose --env-file /opt/.env rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker volume rm prod_milab_db_data || true
           sudo docker compose --env-file /opt/.env up -d dbpostgres
 
           db_user=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')
@@ -256,6 +258,12 @@ jobs:
           set -eu
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/.env up -d --build milabud
+
+      - name: Asegurar proxy publico operativo
+        run: |
+          set -eu
+          cd /home/ubuntu/prod
+          sudo docker compose --env-file /opt/.env up -d dockerproxy traefik
 
       - name: Guardar ultima rama desplegada
         if: success()
