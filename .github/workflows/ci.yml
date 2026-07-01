@@ -102,32 +102,18 @@ jobs:
       - name: Copiar fuentes al runner
         run: |
           if command -v sudo >/dev/null 2>&1; then
-            sudo rsync -a --delete --exclude '.git/' ./ /opt/milab/
+            sudo rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
           else
-            rsync -a --delete --exclude '.git/' ./ /opt/milab/
+            rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
           fi
 
-      - name: Copiar archivo de entorno
+      - name: Validar archivo de entorno de despliegue
         run: |
           set -eu
-          source_env=''
-
-          for candidate in /opt/.env /opt/milab/Docker/.env /home/ubuntu/prod/.env; do
-            if [ -f "$candidate" ]; then
-              source_env="$candidate"
-              break
-            fi
-          done
-
-          if [ -z "$source_env" ]; then
-            echo 'No se encontró archivo de entorno en rutas esperadas: /opt/.env, /opt/milab/Docker/.env, /home/ubuntu/prod/.env' >&2
+          if [ ! -f /opt/milab/Docker/.env ]; then
+            echo 'No se encontró el archivo /opt/milab/Docker/.env en el runner.' >&2
+            echo 'Debe existir previamente como prerequisito del despliegue.' >&2
             exit 1
-          fi
-
-          if command -v sudo >/dev/null 2>&1; then
-            sudo install -m 600 "$source_env" /opt/milab/Docker/.env
-          else
-            install -m 600 "$source_env" /opt/milab/Docker/.env
           fi
 
       - name: Crear override de compose para pruebas
