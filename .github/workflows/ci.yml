@@ -109,15 +109,25 @@ jobs:
 
       - name: Copiar archivo de entorno
         run: |
-          if [ ! -f /opt/.env ]; then
-            echo 'No se encontró el archivo /opt/.env en el runner' >&2
+          set -eu
+          source_env=''
+
+          for candidate in /opt/.env /opt/milab/Docker/.env /home/ubuntu/prod/.env; do
+            if [ -f "$candidate" ]; then
+              source_env="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$source_env" ]; then
+            echo 'No se encontró archivo de entorno en rutas esperadas: /opt/.env, /opt/milab/Docker/.env, /home/ubuntu/prod/.env' >&2
             exit 1
           fi
 
           if command -v sudo >/dev/null 2>&1; then
-            sudo install -m 600 /opt/.env /opt/milab/Docker/.env
+            sudo install -m 600 "$source_env" /opt/milab/Docker/.env
           else
-            install -m 600 /opt/.env /opt/milab/Docker/.env
+            install -m 600 "$source_env" /opt/milab/Docker/.env
           fi
 
       - name: Crear override de compose para pruebas
