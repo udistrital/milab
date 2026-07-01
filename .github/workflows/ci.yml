@@ -21,8 +21,6 @@ jobs:
   Analisis:
     runs-on:
       - self-hosted
-      - linux
-      - x64
     env:
       NODE_OPTIONS: --no-deprecation
       NPM_CONFIG_LOGLEVEL: error
@@ -54,8 +52,6 @@ jobs:
     needs: Analisis
     runs-on:
       - self-hosted
-      - linux
-      - x64
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
@@ -85,8 +81,6 @@ jobs:
     if: github.ref == 'refs/heads/develop' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
-      - linux
-      - x64
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
