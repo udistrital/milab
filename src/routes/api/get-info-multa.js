@@ -70,6 +70,12 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     con_estado = studentRecord.estado;
     con_documento =
       studentRecord.documento || studentRecord.numero_documento_identificacion || null;
+    if (
+      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
+      tipo_busqueda === 'documento'
+    ) {
+      con_documento = String(valor_busqueda || '').trim();
+    }
     con_carrera = studentRecord.carrera;
     con_nombre = studentRecord.nombre;
 
@@ -138,9 +144,21 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       if (result2.rows.length === 0) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
-      const query3 =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
-      const values3 = [result2.rows[0].facultad_id];
+      const query3 = `
+        SELECT DISTINCT
+          u.ual_id,
+          u.nombre,
+          u.codigo_abreviacion,
+          u.sal_id_espacio,
+          u.sal_ocupantes
+        FROM laboratorista_ual lu
+        INNER JOIN ual u
+          ON u.ual_id = lu.ual_id
+        WHERE lu.laboratorista_documento_id = $1
+          AND u.activo = TRUE
+        ORDER BY u.nombre ASC
+      `;
+      const values3 = [result2.rows[0].documento];
       const result3 = await pool.query(query3, values3);
       nombre_lab = result2.rows[0].nombre;
       cc_lab = result2.rows[0].documento;
