@@ -1,19 +1,9 @@
 const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
-const { requireJsonRoles } = require('../middlewares/auth');
 
 var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
-const publicServiceStatusEnv = (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase();
-const allowPublicServiceStatusEndpoint =
-  publicServiceStatusEnv === '' ? true : ['1', 'true', 'yes'].includes(publicServiceStatusEnv);
-
-const requireServiceStatusAccess = allowPublicServiceStatusEndpoint
-  ? (req, res, next) => next()
-  : requireJsonRoles('admin', {
-      message: 'No tienes permisos para consultar el estado de servicios',
-    });
 
 // Rutas existentes
 router.use('/generate', require('./generateqr'));
@@ -123,7 +113,7 @@ async function checkServiceStatus(log = serviceStatusLogger) {
   }
 }
 
-router.get('/check-services', requireServiceStatusAccess, async (req, res) => {
+router.get('/check-services', async (req, res) => {
   const log = (req.log || serviceStatusLogger).child({ route: '/api/check-services' });
   try {
     const serviceStatus = await checkServiceStatus(log);
