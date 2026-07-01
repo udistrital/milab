@@ -115,6 +115,19 @@ jobs:
             exit 1
           fi
 
+      - name: Validar scripts de prestamos requeridos
+        run: |
+          set -eu
+          for required_file in \
+            /opt/milab/sql-scripts/db_structure_prestamos.sql \
+            /opt/milab/sql-scripts/db_seed_prestamos.sql
+          do
+            if [ ! -f "$required_file" ]; then
+              echo "No se encontró el script requerido: $required_file" >&2
+              exit 1
+            fi
+          done
+
       - name: Asegurar ruta de compatibilidad para compose
         run: |
           set -eu
@@ -217,6 +230,21 @@ jobs:
         run: |
           set -eu
           cd /home/ubuntu/prod
+          sql_dir=/opt/milab/sql-scripts
+          sql_run_dir=/opt/milab/sql-scripts.apply
+
+          sudo rm -rf "$sql_run_dir"
+          sudo mv "$sql_dir" "$sql_run_dir"
+          sudo mkdir -p "$sql_dir"
+
+          cleanup() {
+            sudo rm -rf "$sql_dir"
+            if [ -d "$sql_run_dir" ]; then
+              sudo mv "$sql_run_dir" "$sql_dir"
+            fi
+          }
+          trap cleanup EXIT
+
           sudo docker compose --env-file /opt/.env stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
           sudo docker compose --env-file /opt/.env rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
           sudo docker volume rm prod_milab_db_data || true
@@ -245,10 +273,16 @@ jobs:
             exit 1
           fi
 
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure.sql
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_seed_system.sql
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure_prestamos.sql
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_seed_prestamos.sql
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_system.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure_prestamos.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_prestamos.sql"
+
+          prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
+          if [ "$prestamos_count" != '1' ]; then
+            echo 'ERROR: el seed de prestamos no dejo creado el menu principal.' >&2
+            exit 1
+          fi
 
           sudo docker compose --env-file /opt/.env up -d --build milabud
 
