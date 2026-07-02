@@ -29,6 +29,7 @@
   <section class="card app-form-panel text-light mx-auto col-xl-10">
     <div class="card-body">
       <form action="<%= submitUrl %>" method="post" class="row g-3" id="equiposForm" novalidate>
+        <%- include('../../../partials/csrf_field') %>
         <% if (isEdit) { %>
           <div class="col-md-6">
             <label for="codigo" class="form-label">Codigo</label>

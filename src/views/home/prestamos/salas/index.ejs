@@ -304,10 +304,15 @@
     var editarSalaModalEl = document.getElementById('editarSalaModal');
     var editarSalaForm = document.getElementById('editarSalaForm');
     var editarSalaSubmitBtn = document.getElementById('editarSalaSubmitBtn');
+    var editarFacultad = document.getElementById('editarFacultad');
+    var editarLaboratorio = document.getElementById('editarLaboratorio');
 
-    if (!alertsContainer || !filtroFacultad || !crearSalaForm || !editarSalaModalEl || !editarSalaForm) return;
+    if (!alertsContainer || !filtroFacultad || !filtroLaboratorio || !crearFacultad || !crearLaboratorio || !crearSalaForm) return;
 
-    var editarSalaModal = new bootstrap.Modal(editarSalaModalEl);
+    var editarSalaModal =
+      editarSalaModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
+        ? new bootstrap.Modal(editarSalaModalEl)
+        : null;
 
     function showAlert(type, message) {
       var alert = document.createElement('div');
@@ -416,14 +421,11 @@
       loadLaboratorios(crearFacultad.value, crearLaboratorio, 'Selecciona un laboratorio...', '');
     });
 
-    document.getElementById('editarFacultad').addEventListener('change', function() {
-      loadLaboratorios(
-        document.getElementById('editarFacultad').value,
-        document.getElementById('editarLaboratorio'),
-        'Selecciona un laboratorio...',
-        ''
-      );
-    });
+    if (editarFacultad && editarLaboratorio) {
+      editarFacultad.addEventListener('change', function() {
+        loadLaboratorios(editarFacultad.value, editarLaboratorio, 'Selecciona un laboratorio...', '');
+      });
+    }
 
     crearSalaForm.addEventListener('submit', async function(event) {
       event.preventDefault();
@@ -452,56 +454,72 @@
       }
     });
 
-    document.querySelectorAll('.js-open-edit-sala').forEach(function(button) {
-      button.addEventListener('click', async function() {
-        document.getElementById('editarSalaId').value = button.getAttribute('data-sala-id') || '';
-        document.getElementById('editarNombre').value = button.getAttribute('data-nombre') || '';
-        document.getElementById('editarTipoEspacio').value = button.getAttribute('data-tipo-espacio') || 'Sala';
-        document.getElementById('editarCapacidad').value = button.getAttribute('data-capacidad') || '1';
-        document.getElementById('editarDescripcion').value = button.getAttribute('data-descripcion') || '';
-        document.getElementById('editarEquiposNombres').value = button.getAttribute('data-equipos-nombres') || '';
-        document.getElementById('editarPermiteLibre').checked = button.getAttribute('data-permite-libre') === 'true';
-        document.getElementById('editarPermiteDocente').checked = button.getAttribute('data-permite-docente') === 'true';
-        document.getElementById('editarFormatoLibre').value = button.getAttribute('data-formato-libre') || '';
-        document.getElementById('editarFormatoDocente').value = button.getAttribute('data-formato-docente') || '';
-        document.getElementById('editarActivo').checked = button.getAttribute('data-activo') === 'true';
-        document.getElementById('editarFacultad').value = button.getAttribute('data-facultad') || '';
-        await loadLaboratorios(
-          button.getAttribute('data-facultad') || '',
-          document.getElementById('editarLaboratorio'),
-          'Selecciona un laboratorio...',
-          button.getAttribute('data-laboratorio') || ''
-        );
-        editarSalaModal.show();
+    if (editarSalaModal && editarSalaForm && editarFacultad && editarLaboratorio) {
+      document.querySelectorAll('.js-open-edit-sala').forEach(function(button) {
+        button.addEventListener('click', async function() {
+          document.getElementById('editarSalaId').value = button.getAttribute('data-sala-id') || '';
+          document.getElementById('editarNombre').value = button.getAttribute('data-nombre') || '';
+          document.getElementById('editarTipoEspacio').value =
+            button.getAttribute('data-tipo-espacio') || 'Sala';
+          document.getElementById('editarCapacidad').value =
+            button.getAttribute('data-capacidad') || '1';
+          document.getElementById('editarDescripcion').value =
+            button.getAttribute('data-descripcion') || '';
+          document.getElementById('editarEquiposNombres').value =
+            button.getAttribute('data-equipos-nombres') || '';
+          document.getElementById('editarPermiteLibre').checked =
+            button.getAttribute('data-permite-libre') === 'true';
+          document.getElementById('editarPermiteDocente').checked =
+            button.getAttribute('data-permite-docente') === 'true';
+          document.getElementById('editarFormatoLibre').value =
+            button.getAttribute('data-formato-libre') || '';
+          document.getElementById('editarFormatoDocente').value =
+            button.getAttribute('data-formato-docente') || '';
+          document.getElementById('editarActivo').checked =
+            button.getAttribute('data-activo') === 'true';
+          editarFacultad.value = button.getAttribute('data-facultad') || '';
+          await loadLaboratorios(
+            button.getAttribute('data-facultad') || '',
+            editarLaboratorio,
+            'Selecciona un laboratorio...',
+            button.getAttribute('data-laboratorio') || ''
+          );
+          editarSalaModal.show();
+        });
       });
-    });
+    }
 
-    editarSalaForm.addEventListener('submit', async function(event) {
-      event.preventDefault();
-      if (!editarSalaForm.checkValidity()) {
-        event.stopPropagation();
-        editarSalaForm.classList.add('was-validated');
-        return;
-      }
+    if (editarSalaForm && editarSalaSubmitBtn && editarSalaModal) {
+      editarSalaForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!editarSalaForm.checkValidity()) {
+          event.stopPropagation();
+          editarSalaForm.classList.add('was-validated');
+          return;
+        }
 
-      var salaId = document.getElementById('editarSalaId').value;
-      if (!salaId) return;
+        var salaId = document.getElementById('editarSalaId').value;
+        if (!salaId) return;
 
-      editarSalaSubmitBtn.disabled = true;
+        editarSalaSubmitBtn.disabled = true;
 
-      try {
-        var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId), buildSalaPayload('editar'));
-        editarSalaModal.hide();
-        showAlert('success', result.message || 'Sala actualizada correctamente.');
-        window.setTimeout(function() {
-          window.location.reload();
-        }, 700);
-      } catch (error) {
-        showAlert('danger', error.message || 'No fue posible actualizar la sala.');
-      } finally {
-        editarSalaSubmitBtn.disabled = false;
-      }
-    });
+        try {
+          var result = await postJson(
+            '/milab/prestamos/salas/' + encodeURIComponent(salaId),
+            buildSalaPayload('editar')
+          );
+          editarSalaModal.hide();
+          showAlert('success', result.message || 'Sala actualizada correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 700);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible actualizar la sala.');
+        } finally {
+          editarSalaSubmitBtn.disabled = false;
+        }
+      });
+    }
 
     document.querySelectorAll('.js-delete-sala').forEach(function(button) {
       button.addEventListener('click', async function() {
