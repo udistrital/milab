@@ -360,9 +360,7 @@
     try {
       const response = await fetch(signatureRoute, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
         body: JSON.stringify({ firma_digital: dataUrl })
       });
 

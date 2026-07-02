@@ -578,7 +578,10 @@
       try {
         var response = await fetch('/milab/prestamos/solicitudes/crear', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %>,
+          },
           body: JSON.stringify({
             equipoId: equipoIdInput.value,
             fechaInicio: fechaInicioInput.value,

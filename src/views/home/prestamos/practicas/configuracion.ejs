@@ -450,7 +450,7 @@
     function postJson(url, payload) {
       return fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
         body: JSON.stringify(payload || {})
       }).then(async function(response) {
         var data = await response.json().catch(function() {

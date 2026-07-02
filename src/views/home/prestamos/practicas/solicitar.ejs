@@ -898,7 +898,7 @@
     async function postJson(url, payload) {
       var response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
         body: JSON.stringify(payload || {}),
       });
 
@@ -1392,7 +1392,7 @@
         try {
           var response = await fetch('/milab/prestamos/formatos/audiovisuales/fill', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
             body: JSON.stringify(payload)
           });
           if (!response.ok) {
