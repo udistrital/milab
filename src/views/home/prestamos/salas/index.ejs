@@ -294,6 +294,8 @@
   (function() {
     var selectedFacultad = <%- JSON.stringify(selectedFacultad || '') %>;
     var selectedLaboratorio = <%- JSON.stringify(selectedLaboratorio || '') %>;
+    var availableFacultades = <%- JSON.stringify((availableFacultades || []).map(function(item) { return { facultad: item }; })) %>;
+    var availableLaboratoriosByFaculty = <%- JSON.stringify(availableLaboratoriosByFaculty || {}) %>;
     var alertsContainer = document.getElementById('salasAlerts');
     var filtroFacultad = document.getElementById('filtroFacultad');
     var filtroLaboratorio = document.getElementById('filtroLaboratorio');
@@ -341,7 +343,10 @@
     async function postJson(url, payload) {
       var response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %>,
+        },
         body: JSON.stringify(payload || {}),
       });
 
@@ -374,15 +379,24 @@
       });
     }
 
-    async function loadFacultades() {
-      var data = await fetchJson('/milab/prestamos/salas/api/facultades');
-      fillSelect(filtroFacultad, data.facultades, 'Todas', 'facultad', selectedFacultad);
-      fillSelect(crearFacultad, data.facultades, 'Selecciona una facultad...', 'facultad', '');
-      fillSelect(document.getElementById('editarFacultad'), data.facultades, 'Selecciona una facultad...', 'facultad', '');
-      return data;
+    function getLaboratorioItems(facultad) {
+      return (availableLaboratoriosByFaculty[facultad] || []).map(function(laboratorio) {
+        return { laboratorio: laboratorio };
+      });
     }
 
-    async function loadLaboratorios(facultad, select, placeholder, selectedValue) {
+    function loadFacultades() {
+      fillSelect(filtroFacultad, availableFacultades, 'Todas', 'facultad', selectedFacultad);
+      fillSelect(crearFacultad, availableFacultades, 'Selecciona una facultad...', 'facultad', '');
+      if (editarFacultad) {
+        fillSelect(editarFacultad, availableFacultades, 'Selecciona una facultad...', 'facultad', '');
+      }
+      return {
+        facultades: availableFacultades,
+      };
+    }
+
+    function loadLaboratorios(facultad, select, placeholder, selectedValue) {
       select.disabled = true;
       fillSelect(select, [], 'Cargando laboratorios...', 'laboratorio', '');
 
@@ -391,8 +405,7 @@
         return;
       }
 
-      var data = await fetchJson('/milab/prestamos/salas/api/laboratorios/' + encodeURIComponent(facultad));
-      fillSelect(select, data.laboratorios, placeholder, 'laboratorio', selectedValue || '');
+      fillSelect(select, getLaboratorioItems(facultad), placeholder, 'laboratorio', selectedValue || '');
       select.disabled = false;
     }
 
@@ -423,7 +436,7 @@
 
     if (editarFacultad && editarLaboratorio) {
       editarFacultad.addEventListener('change', function() {
-        loadLaboratorios(editarFacultad.value, editarLaboratorio, 'Selecciona un laboratorio...', '');
+      loadLaboratorios(editarFacultad.value, editarLaboratorio, 'Selecciona un laboratorio...', '');
       });
     }
 
@@ -478,7 +491,7 @@
           document.getElementById('editarActivo').checked =
             button.getAttribute('data-activo') === 'true';
           editarFacultad.value = button.getAttribute('data-facultad') || '';
-          await loadLaboratorios(
+          loadLaboratorios(
             button.getAttribute('data-facultad') || '',
             editarLaboratorio,
             'Selecciona un laboratorio...',
@@ -542,27 +555,27 @@
       });
     });
 
-    loadFacultades()
+    Promise.resolve(loadFacultades())
       .then(function(data) {
         var availableFacultades = Array.isArray(data && data.facultades) ? data.facultades : [];
 
         if (!selectedFacultad && availableFacultades.length === 1) {
           crearFacultad.value = availableFacultades[0].facultad || '';
           if (crearFacultad.value) {
-            return loadLaboratorios(
+            loadLaboratorios(
               crearFacultad.value,
               crearLaboratorio,
               'Selecciona un laboratorio...',
               ''
-            ).then(function() {
-              fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
-              return null;
-            });
+            );
+            fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+            return null;
           }
         }
 
         if (selectedFacultad) {
-          return loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
+          loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
+          return null;
         }
         fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
         return null;

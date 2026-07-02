@@ -404,7 +404,7 @@
   </div>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   (function() {
     var alertsContainer = document.getElementById('configPracticasAlerts');
     var selectedUalId = <%- JSON.stringify(selectedUalId || null) %>;

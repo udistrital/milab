@@ -12744,6 +12744,7 @@ router.post(
 router.get('/salas', requireSalasAuthorized, async function (req, res) {
   try {
     const scope = await resolveLoanManagementScope(req);
+    const formOptions = await fetchEquipmentFormOptions(req);
     const facultad = sanitizeText(req.query.facultad);
     const laboratorio = sanitizeText(req.query.laboratorio);
     const params = [];
@@ -12800,6 +12801,8 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       salas: result.rows || [],
       selectedFacultad: facultad || '',
       selectedLaboratorio: laboratorio || '',
+      availableFacultades: formOptions.facultades || [],
+      availableLaboratoriosByFaculty: formOptions.laboratoriosByFaculty || {},
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -12809,6 +12812,8 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       salas: [],
       selectedFacultad: '',
       selectedLaboratorio: '',
+      availableFacultades: [],
+      availableLaboratoriosByFaculty: {},
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(error, 'No fue posible cargar las salas.'),
     });

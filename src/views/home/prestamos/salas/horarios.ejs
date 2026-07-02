@@ -149,7 +149,7 @@
   </section>
 </main>
 
-<script>
+<script nonce="<%= cspNonce %>">
   (function() {
     var salaId = <%- JSON.stringify(sala && sala.id ? String(sala.id) : '') %>;
     var alertsContainer = document.getElementById('horariosSalaAlerts');

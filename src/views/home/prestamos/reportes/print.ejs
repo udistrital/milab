@@ -213,7 +213,7 @@
     <div class="muted">Documento generado para impresion o guardado como PDF desde el navegador.</div>
 
     <% if (autoPrint) { %>
-      <script>
+      <script nonce="<%= cspNonce %>">
         window.addEventListener('load', function() {
           window.print();
         });
