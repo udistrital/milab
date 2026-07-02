@@ -2232,9 +2232,15 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
 async function renderEquipmentForm(req, res, options) {
   const normalizedItem = normalizeEquipmentForView(options?.item || {});
   const formOptions = await fetchEquipmentFormOptions(req, normalizedItem);
+  const effectiveItem = {
+    ...normalizedItem,
+    facultad:
+      sanitizeText(normalizedItem.facultad) ||
+      (formOptions.facultades.length === 1 ? formOptions.facultades[0] : ''),
+  };
 
   return res.status(options?.statusCode || 200).render('home/prestamos/equipos/form', {
-    item: normalizedItem,
+    item: effectiveItem,
     isEdit: Boolean(options?.isEdit),
     errorMessage: sanitizeText(options?.errorMessage),
     availableFacultades: formOptions.facultades,
@@ -12226,28 +12232,11 @@ router.post(
 
 router.get('/salas/api/facultades', requireSalasAuthorized, async function (req, res) {
   try {
-    const scope = await resolveLoanManagementScope(req);
-    const params = [];
-    const whereParts = ['1 = 1'];
-
-    if (!scope.unrestricted) {
-      params.push(scope.facultyIds);
-      whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
-    }
-
-    const result = await pool.query(
-      `
-        SELECT DISTINCT f.nombre AS facultad
-        FROM facultad f
-        WHERE ${whereParts.join(' AND ')}
-        ORDER BY f.nombre ASC
-      `,
-      params
-    );
+    const formOptions = await fetchEquipmentFormOptions(req);
 
     return res.json({
       success: true,
-      facultades: result.rows || [],
+      facultades: (formOptions.facultades || []).map((facultad) => ({ facultad })),
     });
   } catch (error) {
     console.error('Error cargando facultades de salas MiLab:', error);
@@ -12261,7 +12250,6 @@ router.get('/salas/api/facultades', requireSalasAuthorized, async function (req,
 
 router.get('/salas/api/laboratorios/:facultad', requireSalasAuthorized, async function (req, res) {
   try {
-    const scope = await resolveLoanManagementScope(req);
     const facultad = sanitizeText(req.params.facultad);
 
     if (!facultad) {
@@ -12272,28 +12260,17 @@ router.get('/salas/api/laboratorios/:facultad', requireSalasAuthorized, async fu
       });
     }
 
-    const params = [facultad];
-    const whereParts = ['UPPER(f.nombre) = UPPER($1)'];
-
-    if (!scope.unrestricted) {
-      params.push(scope.facultyIds);
-      whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
-    }
-
-    const result = await pool.query(
-      `
-        SELECT DISTINCT u.nombre AS laboratorio
-        FROM ual u
-        JOIN facultad f ON f.facultad_id = u.facultad_id
-        WHERE ${whereParts.join(' AND ')}
-        ORDER BY u.nombre ASC
-      `,
-      params
+    const formOptions = await fetchEquipmentFormOptions(req);
+    const matchedFaculty = (formOptions.facultades || []).find(
+      (item) => sanitizeText(item).toUpperCase() === facultad.toUpperCase()
     );
+    const laboratorios = matchedFaculty
+      ? formOptions.laboratoriosByFaculty[matchedFaculty] || []
+      : [];
 
     return res.json({
       success: true,
-      laboratorios: result.rows || [],
+      laboratorios: laboratorios.map((laboratorio) => ({ laboratorio })),
     });
   } catch (error) {
     console.error('Error cargando laboratorios de salas MiLab:', error);

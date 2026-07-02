@@ -374,6 +374,7 @@
       fillSelect(filtroFacultad, data.facultades, 'Todas', 'facultad', selectedFacultad);
       fillSelect(crearFacultad, data.facultades, 'Selecciona una facultad...', 'facultad', '');
       fillSelect(document.getElementById('editarFacultad'), data.facultades, 'Selecciona una facultad...', 'facultad', '');
+      return data;
     }
 
     async function loadLaboratorios(facultad, select, placeholder, selectedValue) {
@@ -524,7 +525,24 @@
     });
 
     loadFacultades()
-      .then(function() {
+      .then(function(data) {
+        var availableFacultades = Array.isArray(data && data.facultades) ? data.facultades : [];
+
+        if (!selectedFacultad && availableFacultades.length === 1) {
+          crearFacultad.value = availableFacultades[0].facultad || '';
+          if (crearFacultad.value) {
+            return loadLaboratorios(
+              crearFacultad.value,
+              crearLaboratorio,
+              'Selecciona un laboratorio...',
+              ''
+            ).then(function() {
+              fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+              return null;
+            });
+          }
+        }
+
         if (selectedFacultad) {
           return loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
         }
