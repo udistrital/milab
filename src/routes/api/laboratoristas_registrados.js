@@ -38,6 +38,64 @@ function normalizeSelectedUalIds(rawValue) {
     .filter((value) => Number.isInteger(value) && value > 0);
 }
 
+function normalizeCoordinatorDocument(value) {
+  return String(value || '').trim();
+}
+
+async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
+  const normalizedDocument = normalizeCoordinatorDocument(coordinatorDocument);
+
+  if (!normalizedDocument) {
+    return {
+      coordinatorDocument: null,
+      facultyIds: [],
+    };
+  }
+
+  const coordinatorRes = await client.query(
+    'SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1',
+    [normalizedDocument]
+  );
+
+  if (coordinatorRes.rows.length === 0) {
+    return {
+      coordinatorDocument: null,
+      facultyIds: [],
+    };
+  }
+
+  const facultiesRes = await client.query(
+    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    [normalizedDocument]
+  );
+
+  return {
+    coordinatorDocument: normalizedDocument,
+    facultyIds: [
+      ...new Set(
+        facultiesRes.rows
+          .map((row) => Number(row.facultad_id))
+          .filter((value) => Number.isInteger(value))
+      ),
+    ],
+  };
+}
+
+async function fetchCoordinatorOptions(client) {
+  const result = await client.query(
+    `SELECT c.documento,
+            c.nombre,
+            COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS facultades
+     FROM coordinador c
+     LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+     LEFT JOIN facultad f ON f.facultad_id = cf.facultad_id
+     GROUP BY c.documento, c.nombre
+     ORDER BY c.nombre ASC`
+  );
+
+  return result.rows;
+}
+
 async function resolveActorDocumentForLogs(req, client) {
   if (req.session?.user?.tipo !== 'coordinador') {
     return req.session?.user?.documento;
@@ -169,6 +227,9 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
 router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
   const documento = String(req.query.documento || '').trim();
+  const requestedCoordinatorDocument = normalizeCoordinatorDocument(
+    req.query.coordinador_documento
+  );
 
   if (!documento) {
     return res.render('home/message_error', {
@@ -179,6 +240,12 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
   }
 
   try {
+    const isAdmin = req.session.user.tipo === 'admin';
+    const coordinatorOptions = isAdmin ? await fetchCoordinatorOptions(pool) : [];
+    const coordinatorScope = isAdmin
+      ? await resolveCoordinatorScopeByDocument(pool, requestedCoordinatorDocument)
+      : null;
+
     const laboratoristaRes = await pool.query(
       `
         SELECT documento, nombre, correo, n_usuario, contrato
@@ -216,23 +283,39 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       }
     }
 
-    const facultiesQuery =
-      req.session.user.tipo === 'coordinador'
-        ? 'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC';
-    const facultadesRes =
-      req.session.user.tipo === 'coordinador'
-        ? await pool.query(facultiesQuery, [facultadesPermitidas])
-        : await pool.query(facultiesQuery);
+    let facultadesRes;
+    if (req.session.user.tipo === 'coordinador') {
+      facultadesRes = await pool.query(
+        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [facultadesPermitidas]
+      );
+    } else if (coordinatorScope?.coordinatorDocument && coordinatorScope.facultyIds.length) {
+      facultadesRes = await pool.query(
+        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [coordinatorScope.facultyIds]
+      );
+    } else {
+      facultadesRes = await pool.query(
+        'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC'
+      );
+    }
 
-    const ualsQuery =
-      req.session.user.tipo === 'coordinador'
-        ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC'
-        : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE ORDER BY nombre ASC';
-    const ualsRes =
-      req.session.user.tipo === 'coordinador'
-        ? await pool.query(ualsQuery, [facultadesPermitidas])
-        : await pool.query(ualsQuery);
+    let ualsRes;
+    if (req.session.user.tipo === 'coordinador') {
+      ualsRes = await pool.query(
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [facultadesPermitidas]
+      );
+    } else if (coordinatorScope?.coordinatorDocument && coordinatorScope.facultyIds.length) {
+      ualsRes = await pool.query(
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [coordinatorScope.facultyIds]
+      );
+    } else {
+      ualsRes = await pool.query(
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE ORDER BY nombre ASC'
+      );
+    }
 
     const assignedUalsRes = await pool.query(
       'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1 ORDER BY ual_id ASC',
@@ -241,6 +324,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     const assignedUalIds = assignedUalsRes.rows.map((row) => Number(row.ual_id));
 
     return res.render('home/editar_laboratorista', {
+      tipo: req.session.user.tipo,
       laboratorista: {
         ...laboratorista,
         facultad_id: selectedFacultyId,
@@ -248,6 +332,8 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       facultades: facultadesRes.rows,
       uals: ualsRes.rows,
       assignedUalIds,
+      coordinadores: coordinatorOptions,
+      selectedCoordinatorDocument: coordinatorScope?.coordinatorDocument || '',
       error: null,
     });
   } catch (error) {
@@ -267,6 +353,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
   const correo = normalizeInstitutionalEmail(req.body.correo);
   const selectedFacultyId = Number(req.body.facultad);
   const selectedUalIds = normalizeSelectedUalIds(req.body.ual_ids);
+  const requestedCoordinatorDocument = normalizeCoordinatorDocument(req.body.coordinador_documento);
 
   if (!documento || !nombre || !contrato || !selectedFacultyId || selectedUalIds.length === 0) {
     return res.render('home/message_error', {
@@ -288,6 +375,27 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
 
   try {
     client = await pool.connect();
+
+    if (req.session.user.tipo === 'admin' && requestedCoordinatorDocument) {
+      const scope = await resolveCoordinatorScopeByDocument(client, requestedCoordinatorDocument);
+      if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+        client.release();
+        return res.render('home/message_error', {
+          message: 'Selección inválida de coordinador',
+          message2: 'Selecciona un coordinador válido con facultades asociadas.',
+          limit: null,
+        });
+      }
+
+      if (!scope.facultyIds.includes(selectedFacultyId)) {
+        client.release();
+        return res.render('home/message_error', {
+          message: 'Selección inválida de facultad',
+          message2: 'La facultad seleccionada no pertenece al coordinador indicado.',
+          limit: null,
+        });
+      }
+    }
 
     const laboratoristaRes = await client.query(
       'SELECT documento, n_usuario, usuario_id FROM laboratorista WHERE documento = $1',

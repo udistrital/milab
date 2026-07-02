@@ -22,7 +22,12 @@ function buildApp(route, sessionUser) {
   return app;
 }
 
-function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } = {}) {
+function loadRoute({
+  sessionRole = 'admin',
+  findConflictImpl,
+  clientQueryImpl,
+  poolQueryImpl,
+} = {}) {
   const originals = new Map();
   const clientCalls = [];
   const poolCalls = [];
@@ -78,6 +83,80 @@ function loadRoute({ sessionRole = 'admin', findConflictImpl, clientQueryImpl } 
       {
         async query(sql, params = []) {
           poolCalls.push({ sql, params });
+          if (typeof poolQueryImpl === 'function') {
+            return poolQueryImpl(sql, params);
+          }
+
+          if (sql.includes('FROM coordinador c')) {
+            return {
+              rows: [
+                {
+                  documento: '900',
+                  nombre: 'Coordinador Prueba',
+                  facultades: 'Facultad 10',
+                },
+              ],
+            };
+          }
+
+          if (sql.includes('SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1')) {
+            return { rows: [{ documento: params[0] }] };
+          }
+
+          if (
+            sql.includes(
+              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+            )
+          ) {
+            return { rows: [{ facultad_id: 10 }] };
+          }
+
+          if (sql.includes('SELECT documento, nombre, correo, n_usuario, contrato')) {
+            return {
+              rows: [
+                {
+                  documento: '12345',
+                  nombre: 'Laboratorista Demo',
+                  correo: 'lab.demo@udistrital.edu.co',
+                  n_usuario: '12345',
+                  contrato: 'CPS',
+                },
+              ],
+            };
+          }
+
+          if (sql.includes('SELECT DISTINCT u.facultad_id')) {
+            return { rows: [{ facultad_id: 10 }] };
+          }
+
+          if (
+            sql.includes(
+              'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])'
+            )
+          ) {
+            return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
+          }
+
+          if (
+            sql.includes('SELECT ual_id, nombre') &&
+            sql.includes('facultad_id = ANY($1::int[])')
+          ) {
+            return {
+              rows: [
+                { ual_id: 11, nombre: 'Lab 11', facultad_id: 10, activo: true },
+                { ual_id: 12, nombre: 'Lab 12', facultad_id: 10, activo: true },
+              ],
+            };
+          }
+
+          if (
+            sql.includes(
+              'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1'
+            )
+          ) {
+            return { rows: [{ ual_id: 11 }] };
+          }
+
           return { rows: [] };
         },
         async connect() {
