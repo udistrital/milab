@@ -6,11 +6,36 @@
     <p class="app-page-subtitle">Actualiza los datos operativos del laboratorista y asigna uno o varios laboratorios dentro de la facultad seleccionada.</p>
   </section>
 
+  <% if (tipo === 'admin') { %>
+    <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center mb-4">
+      <div class="card-body">
+        <form method="GET" action="/milab/api/laboratoristas_registrados/editar" class="row g-3 app-form-grid">
+          <input type="hidden" name="documento" value="<%= laboratorista.documento %>">
+          <div class="col-md-12">
+            <label class="form-label" for="coordinador_documento_lookup">Coordinador responsable</label>
+            <select class="form-select" id="coordinador_documento_lookup" name="coordinador_documento">
+              <option value="">Todos los coordinadores</option>
+              <% coordinadores.forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+            <small class="form-text text-muted">Selecciona un coordinador para limitar la edición a sus facultades y laboratorios.</small>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } %>
+
   <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
     <div class="card-body">
       <form method="POST" action="/milab/api/laboratoristas_registrados/editar" class="row g-3 app-form-grid">
         <%- include('../partials/csrf_field') %>
         <input type="hidden" name="documento" value="<%= laboratorista.documento %>">
+        <% if (tipo === 'admin') { %>
+          <input type="hidden" name="coordinador_documento" value="<%= selectedCoordinatorDocument || '' %>">
+        <% } %>
 
         <div class="col-md-6">
           <label class="form-label" for="documento">Documento</label>
@@ -105,6 +130,7 @@
     const facultySelect = document.getElementById('facultad');
     const optionRows = document.querySelectorAll('[data-ual-option="true"]');
     const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+    const coordinatorSelect = document.getElementById('coordinador_documento_lookup');
 
     function refreshUalOptions() {
       const selectedFaculty = facultySelect.value;
@@ -119,6 +145,14 @@
 
         if (!belongsToFaculty) {
           checkbox.checked = false;
+        }
+      });
+    }
+
+    if (coordinatorSelect) {
+      coordinatorSelect.addEventListener('change', function () {
+        if (this.form) {
+          this.form.submit();
         }
       });
     }
