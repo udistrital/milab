@@ -62,7 +62,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.documento AS con_documento,
              c.correo AS con_correo,
              STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
-             CASE WHEN COALESCE(role_state.activo, FALSE)
+             CASE WHEN c.activo = TRUE AND COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
              END AS tipo
@@ -229,18 +229,25 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
     }
     const coordinador = checkResult.rows[0];
     const userId = await resolveCoordinatorUserId(client, coordinador);
+    const nuevoEstado = false;
     await client.query('BEGIN');
-    await client.query('DELETE FROM coordinador WHERE documento = $1', [documento]);
+    await client.query(
+      `UPDATE coordinador
+       SET activo = $2,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE documento = $1`,
+      [documento, nuevoEstado]
+    );
     if (userId) {
       await client.query(
         `UPDATE usuario_rol ur
-         SET activo = FALSE,
+         SET activo = $2,
              fecha_modificacion = CURRENT_TIMESTAMP
          FROM rol r
          WHERE ur.usuario_id = $1
            AND ur.rol_id = r.id
            AND r.nombre = 'coordinador'`,
-        [userId]
+        [userId, nuevoEstado]
       );
     }
     await client.query(
@@ -248,7 +255,7 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
       [
         'admin',
         normalizeLogDocument(req.session.user.documento),
-        'eliminar registro coordinador',
+        'cambiar estado coordinador a inactivo',
         documento,
       ]
     );
@@ -260,9 +267,9 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
       await client.query('ROLLBACK');
       client.release();
     }
-    console.error('Error al eliminar coordinador:', error);
+    console.error('Error al inactivar coordinador:', error);
     res.render('home/message_error', {
-      message: '¡Error al eliminar coordinador!',
+      message: '¡Error al inactivar coordinador!',
       message2: 'Inténtalo nuevamente',
       limit: 'noSession',
     });
@@ -312,6 +319,13 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
     if (result.rows.length > 0) {
       nuevoEstado = !result.rows[0].activo;
       await client2.query(
+        `UPDATE coordinador
+         SET activo = $2,
+             fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE documento = $1`,
+        [documento, nuevoEstado]
+      );
+      await client2.query(
         `UPDATE usuario_rol ur
          SET activo = $2,
              fecha_modificacion = CURRENT_TIMESTAMP
@@ -323,6 +337,13 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
       );
     } else {
       nuevoEstado = true;
+      await client2.query(
+        `UPDATE coordinador
+         SET activo = TRUE,
+             fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE documento = $1`,
+        [documento]
+      );
       await client2.query(
         `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
          SELECT $1, id, TRUE FROM rol WHERE nombre = 'coordinador'
