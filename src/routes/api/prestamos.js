@@ -4669,10 +4669,19 @@ async function fetchManagedIncident(id, scope) {
         ON sp.id = i.solicitud_prestamo_id
       LEFT JOIN reserva_practica rp
         ON rp.id = i.reserva_practica_id
-      LEFT JOIN ual u
-        ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN LATERAL (
+        SELECT
+          u.ual_id,
+          f.facultad_id,
+          f.nombre
+        FROM ual u
+        JOIN facultad f
+          ON f.facultad_id = u.facultad_id
+        WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+        ORDER BY u.ual_id ASC
+        LIMIT 1
+      ) f
+        ON TRUE
       WHERE i.id = $1
         ${facultyCondition}
         ${laboratoryCondition}
