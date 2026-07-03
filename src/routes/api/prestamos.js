@@ -4657,7 +4657,7 @@ async function fetchManagedIncident(id, scope, executor = pool) {
         CASE WHEN i.evidencia_foto IS NOT NULL THEN TRUE ELSE FALSE END AS tiene_evidencia,
         e.estado AS equipo_estado,
         e.laboratorio,
-        u.ual_id,
+        f.ual_id,
         sp.estado AS solicitud_estado,
         COALESCE(sp.usuario_id, rp.usuario_id) AS usuario_sancionado_id,
         COALESCE(e.facultad, f.nombre) AS facultad,
