@@ -4615,7 +4615,7 @@ async function fetchManagedDeliveryLoanRequest(id, scope) {
   return result.rows[0] || null;
 }
 
-async function fetchManagedIncident(id, scope) {
+async function fetchManagedIncident(id, scope, executor = pool) {
   if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
     return null;
   }
@@ -4628,7 +4628,7 @@ async function fetchManagedIncident(id, scope) {
 
   const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
 
-  const result = await pool.query(
+  const result = await executor.query(
     `
       SELECT
         i.id,
@@ -9148,7 +9148,7 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
       }
     );
     // #endregion
-    const incidencia = await fetchManagedIncident(req.params.id, scope);
+    const incidencia = await fetchManagedIncident(req.params.id, scope, client);
     // #region debug-point A:incidencia-aprobar-timeout
     console.warn('[DBG incidencia-aprobar-timeout] 5 after fetchManagedIncident', {
       requestId: req.id || req.requestId || null,
@@ -9495,7 +9495,7 @@ router.post(
       await client.query('BEGIN');
       await ensureIncidentApprovalSchema(client);
       const scope = await resolveLoanManagementScope(req);
-      const incidencia = await fetchManagedIncident(req.params.id, scope);
+      const incidencia = await fetchManagedIncident(req.params.id, scope, client);
 
       if (!incidencia) {
         await client.query('ROLLBACK');
@@ -9680,7 +9680,7 @@ router.post('/incidencias/:id/solucionar', requireIncidenciasAuthorized, async f
     await client.query('BEGIN');
 
     const scope = await resolveLoanManagementScope(req);
-    const incidencia = await fetchManagedIncident(req.params.id, scope);
+    const incidencia = await fetchManagedIncident(req.params.id, scope, client);
 
     if (!incidencia) {
       await client.query('ROLLBACK');
