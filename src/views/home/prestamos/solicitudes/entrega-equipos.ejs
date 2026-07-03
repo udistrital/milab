@@ -135,14 +135,14 @@
                         <% } %>
                       </div>
                     <% } else if (item.estado === 'activo') { %>
-                      <% if (dentroUmbralRecepcion) { %>
-                        <div class="d-flex gap-2 flex-fill">
-                          <% if (item.incidencia_activa || item.equipo_estado === 'mantenimiento') { %>
-                            <div class="w-100 d-grid gap-2">
-                              <div class="alert alert-warning mb-0">
-                                <i class="bi bi-exclamation-triangle"></i>
-                                <strong>Solucionar incidencia para recibir equipo</strong>
-                              </div>
+                      <div class="d-flex gap-2 flex-fill">
+                        <% if (item.incidencia_activa || item.equipo_estado === 'mantenimiento') { %>
+                          <div class="w-100 d-grid gap-2">
+                            <div class="alert alert-warning mb-0">
+                              <i class="bi bi-exclamation-triangle"></i>
+                              <strong>Solucionar incidencia para recibir equipo</strong>
+                            </div>
+                            <% if (dentroUmbralRecepcion) { %>
                               <button
                                 type="button"
                                 class="btn btn-warning btn-sm"
@@ -152,17 +152,25 @@
                                 <i class="bi bi-box-arrow-in-left"></i>
                                 <span>Recibir</span>
                               </button>
-                              <button
-                                type="button"
-                                class="btn btn-outline-danger btn-sm js-open-incident-modal"
-                                data-request-id="<%= item.id %>"
-                                data-equipo="<%= item.equipo_nombre || '' %>"
-                              >
-                                <i class="bi bi-bug"></i>
-                                <span>Incidencia</span>
-                              </button>
-                            </div>
-                          <% } else { %>
+                            <% } else { %>
+                              <div class="alert alert-info mb-0">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Equipo en prestamo activo</strong><br>
+                                <small>Esperando devolucion del usuario</small>
+                              </div>
+                            <% } %>
+                            <button
+                              type="button"
+                              class="btn btn-outline-danger btn-sm js-open-incident-modal"
+                              data-request-id="<%= item.id %>"
+                              data-equipo="<%= item.equipo_nombre || '' %>"
+                            >
+                              <i class="bi bi-bug"></i>
+                              <span>Incidencia</span>
+                            </button>
+                          </div>
+                        <% } else { %>
+                          <% if (dentroUmbralRecepcion) { %>
                             <button
                               type="button"
                               class="btn btn-warning btn-sm flex-fill js-open-return-modal"
@@ -172,24 +180,24 @@
                               <i class="bi bi-box-arrow-in-left"></i>
                               <span>Recibir</span>
                             </button>
-                            <button
-                              type="button"
-                              class="btn btn-outline-danger btn-sm flex-fill js-open-incident-modal"
-                              data-request-id="<%= item.id %>"
-                              data-equipo="<%= item.equipo_nombre || '' %>"
-                            >
-                              <i class="bi bi-bug"></i>
-                              <span>Incidencia</span>
-                            </button>
+                          <% } else { %>
+                            <div class="alert alert-info mb-0 flex-fill">
+                              <i class="bi bi-info-circle"></i>
+                              <strong>Equipo en prestamo activo</strong><br>
+                              <small>Esperando devolucion del usuario</small>
+                            </div>
                           <% } %>
-                        </div>
-                      <% } else { %>
-                        <div class="alert alert-info mb-0 w-100">
-                          <i class="bi bi-info-circle"></i>
-                          <strong>Equipo en prestamo activo</strong><br>
-                          <small>Esperando devolucion del usuario</small>
-                        </div>
-                      <% } %>
+                          <button
+                            type="button"
+                            class="btn btn-outline-danger btn-sm flex-fill js-open-incident-modal"
+                            data-request-id="<%= item.id %>"
+                            data-equipo="<%= item.equipo_nombre || '' %>"
+                          >
+                            <i class="bi bi-bug"></i>
+                            <span>Incidencia</span>
+                          </button>
+                        <% } %>
+                      </div>
                       <% if (item.incidencia_activa) { %>
                         <div class="small text-warning mt-2">
                           Incidencia activa: <%= item.incidencia_descripcion || 'Pendiente de solucion.' %>

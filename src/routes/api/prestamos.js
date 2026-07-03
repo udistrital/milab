@@ -12127,8 +12127,7 @@ router.post(
           req.body?.incidenciaDescripcion ||
           req.body?.descripcion_incidencia
       );
-      const shouldCreateIncidencia =
-        reserva.tipo_practica === 'docente' && Boolean(incidenciaTipo || incidenciaDescripcion);
+      const shouldCreateIncidencia = Boolean(incidenciaTipo || incidenciaDescripcion);
       const client = await pool.connect();
 
       try {
@@ -12199,7 +12198,7 @@ router.post(
         if (shouldCreateIncidencia) {
           await registerPrestamosAuditEntry({
             req,
-            accion: 'Registrar Incidencia Practica Docente',
+            accion: 'Registrar Incidencia Practica',
             persona: `Reserva: ${reserva.id}`,
           });
         }
@@ -12216,7 +12215,7 @@ router.post(
                 : 'Tu practica fue completada',
             estadoEtiqueta: nextState === 'finalizada' ? 'FINALIZADA' : 'COMPLETADA',
             mensaje: shouldCreateIncidencia
-              ? 'Se registró una incidencia docente asociada al cierre de la practica.'
+              ? 'Se registró una incidencia asociada al cierre de la practica.'
               : '',
             usuarioNombre: reserva.usuario_nombre || 'Usuario',
             solicitudId: reserva.id,

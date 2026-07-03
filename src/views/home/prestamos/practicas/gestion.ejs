@@ -376,11 +376,19 @@
                           type="button"
                           class="btn btn-primary btn-sm flex-fill js-complete-practice"
                           data-reservation-id="<%= item.id %>"
-                          data-tipo-practica="<%= item.tipo_practica || '' %>"
-                          data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>"
                         >
                           <i class="bi bi-check2-square"></i>
                           <span>Completar</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-outline-danger btn-sm flex-fill js-open-practice-incidence-modal"
+                          data-reservation-id="<%= item.id %>"
+                          data-tipo-practica="<%= item.tipo_practica || '' %>"
+                          data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>"
+                        >
+                          <i class="bi bi-bug"></i>
+                          <span>Incidencia</span>
                         </button>
                         <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
                           <i class="bi bi-person-x"></i>
@@ -660,7 +668,7 @@
     <div class="modal-content">
       <form id="incidenciaDocenteForm" novalidate>
         <div class="modal-header">
-          <h5 class="modal-title" id="incidenciaDocenteModalLabel">Incidencia docente</h5>
+          <h5 class="modal-title" id="incidenciaDocenteModalLabel">Registrar incidencia de practica</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
         <div class="modal-body">
@@ -683,13 +691,13 @@
               id="incidenciaDocenteDescripcion"
               rows="4"
               maxlength="2000"
-              placeholder="Describe la incidencia. Si dejas ambos campos vacios, solo se finaliza la practica."
+              placeholder="Describe la incidencia para registrar el cierre con novedad."
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Finalizar</button>
+          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Registrar incidencia y finalizar</button>
         </div>
       </form>
     </div>
@@ -727,6 +735,7 @@
     var incidenciaTipoInput = document.getElementById('incidenciaDocenteTipo');
     var incidenciaDescripcionInput = document.getElementById('incidenciaDocenteDescripcion');
     var incidenciaSubmitButton = document.getElementById('incidenciaDocenteSubmitBtn');
+    var incidenciaTitle = document.getElementById('incidenciaDocenteModalLabel');
 
     if (!alertsContainer || !rejectModalElement || !rejectForm || !commentModalElement || !commentForm || !reassignModalElement || !reassignForm || !lastMinuteModalElement || !lastMinuteForm || !queueModalElement || !queueForm || !incidenciaModalElement || !incidenciaForm) return;
 
@@ -832,19 +841,7 @@
     document.querySelectorAll('.js-complete-practice').forEach(function(button) {
       button.addEventListener('click', async function() {
         var reservationId = button.getAttribute('data-reservation-id');
-        var tipoPractica = String(button.getAttribute('data-tipo-practica') || '').toLowerCase();
-        var location = button.getAttribute('data-location') || '-';
         if (!reservationId) return;
-
-        if (tipoPractica === 'docente') {
-          incidenciaIdInput.value = reservationId;
-          incidenciaLocation.textContent = location;
-          incidenciaTipoInput.value = '';
-          incidenciaDescripcionInput.value = '';
-          incidenciaSubmitButton.disabled = false;
-          incidenciaModal.show();
-          return;
-        }
 
         if (!window.confirm('¿Deseas completar esta practica?')) return;
 
@@ -863,6 +860,25 @@
       });
     });
 
+    document.querySelectorAll('.js-open-practice-incidence-modal').forEach(function(button) {
+      button.addEventListener('click', function() {
+        var reservationId = button.getAttribute('data-reservation-id');
+        var tipoPractica = String(button.getAttribute('data-tipo-practica') || 'practica').trim();
+        var location = button.getAttribute('data-location') || '-';
+        if (!reservationId) return;
+
+        incidenciaIdInput.value = reservationId;
+        incidenciaLocation.textContent = location;
+        incidenciaTipoInput.value = '';
+        incidenciaDescripcionInput.value = '';
+        incidenciaSubmitButton.disabled = false;
+        if (incidenciaTitle) {
+          incidenciaTitle.textContent = 'Registrar incidencia de practica ' + tipoPractica.toLowerCase();
+        }
+        incidenciaModal.show();
+      });
+    });
+
     incidenciaForm.addEventListener('submit', async function(event) {
       event.preventDefault();
 
@@ -871,10 +887,10 @@
       var descripcionIncidencia = String(incidenciaDescripcionInput.value || '').trim();
 
       if (!reservationId) return;
-      if (!window.confirm('¿Deseas finalizar esta practica docente?')) return;
+      if (!window.confirm('¿Deseas registrar la incidencia y finalizar esta practica?')) return;
 
-      if ((tipoIncidencia && !descripcionIncidencia) || (!tipoIncidencia && descripcionIncidencia)) {
-        showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion (o dejar ambos vacios).');
+      if (!tipoIncidencia || !descripcionIncidencia) {
+        showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion.');
         return;
       }
 
@@ -896,6 +912,12 @@
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible finalizar la practica.');
         incidenciaSubmitButton.disabled = false;
+      }
+    });
+
+    incidenciaModalElement.addEventListener('hidden.bs.modal', function() {
+      if (incidenciaTitle) {
+        incidenciaTitle.textContent = 'Registrar incidencia de practica';
       }
     });
 
