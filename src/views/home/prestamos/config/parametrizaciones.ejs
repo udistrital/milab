@@ -21,6 +21,7 @@
     </div>
     <div class="card-body">
       <form class="row g-3" method="post" action="/milab/prestamos/admin/parametrizaciones">
+        <%- include('../../../partials/csrf_field') %>
         <div class="col-md-6">
           <label for="max_horas_mes_practica_libre" class="form-label">Tiempo maximo por mes para practicas libres (horas)</label>
           <input

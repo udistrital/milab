@@ -5218,18 +5218,39 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
         e.descripcion,
         e.categoria,
         e.laboratorio,
-        COALESCE(e.facultad, f.nombre) AS facultad,
+        COALESCE(
+          e.facultad,
+          (
+            SELECT f.nombre
+            FROM ual u
+            JOIN facultad f
+              ON f.facultad_id = u.facultad_id
+            WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+            ORDER BY f.nombre ASC
+            LIMIT 1
+          )
+        ) AS facultad,
         e.estado,
         e.ubicacion,
         e.ubicacion_prestamo,
         e.especificaciones
       FROM equipo e
-      LEFT JOIN ual u
-        ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
       WHERE e.estado = 'disponible'
-        AND UPPER(COALESCE(e.facultad, f.nombre, '')) = UPPER($1)
+        AND UPPER(
+          COALESCE(
+            e.facultad,
+            (
+              SELECT f.nombre
+              FROM ual u
+              JOIN facultad f
+                ON f.facultad_id = u.facultad_id
+              WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+              ORDER BY f.nombre ASC
+              LIMIT 1
+            ),
+            ''
+          )
+        ) = UPPER($1)
         AND UPPER(COALESCE(e.laboratorio, '')) LIKE UPPER($2)
       ORDER BY e.nombre ASC
     `,
