@@ -5265,7 +5265,7 @@ async function fetchActiveSanctionsCount(usuarioId) {
     `
       SELECT COUNT(*)::int AS total
       FROM multa
-      WHERE usuario_id_sancionado = $1
+      WHERE usuario_sancionado_id = $1
         AND activo = TRUE
         AND UPPER(COALESCE(con_estado_multa, '')) IN ('ACTIVA', 'PENDIENTE', 'POR SALDAR')
     `,
