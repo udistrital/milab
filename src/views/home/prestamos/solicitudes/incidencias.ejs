@@ -190,7 +190,7 @@
               <input class="form-check-input" type="radio" name="pazYSalvoDecision" id="pazYSalvoNoBloquear" value="no_bloquear" required>
               <label class="form-check-label" for="pazYSalvoNoBloquear">No bloquear paz y salvo (se mantiene trazabilidad)</label>
             </div>
-            <div class="invalid-feedback d-block" id="pazYSalvoDecisionError" style="display:none;">
+            <div class="invalid-feedback" id="pazYSalvoDecisionError" style="display:none;">
               Debes seleccionar una opción.
             </div>
           </div>
@@ -287,21 +287,43 @@
     }
 
     async function postJson(url, payload) {
-      var response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
-        body: JSON.stringify(payload || {}),
-      });
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timeoutId = controller
+        ? window.setTimeout(function() {
+            controller.abort();
+          }, 15000)
+        : null;
 
-      var data = await response.json().catch(function() {
-        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
-      });
+      try {
+        var response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
+          body: JSON.stringify(payload || {}),
+          signal: controller ? controller.signal : undefined,
+        });
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'La operacion no pudo completarse.');
+        var data = await response.json().catch(function() {
+          return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+        });
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'La operacion no pudo completarse.');
+        }
+
+        return data;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          throw new Error(
+            'La solicitud tardó demasiado. Intenta nuevamente; si persiste, revisa el servidor.'
+          );
+        }
+
+        throw error;
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
       }
-
-      return data;
     }
 
     document.querySelectorAll('.js-open-approve-incident-modal').forEach(function(button) {

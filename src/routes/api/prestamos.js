@@ -423,6 +423,7 @@ async function registerPrestamosAuditEntry(options = {}) {
 
 const tableColumnCache = new Map();
 let practiceIncidenceSchemaEnsured = false;
+let incidentApprovalSchemaEnsured = false;
 let academicPracticeSchemaEnsured = false;
 let practiceReservationAcademicFieldsEnsured = false;
 
@@ -523,6 +524,42 @@ async function ensurePracticeIncidenceSchema(client = pool) {
   );
 
   practiceIncidenceSchemaEnsured = true;
+}
+
+async function ensureIncidentApprovalSchema(client = pool) {
+  if (incidentApprovalSchemaEnsured) {
+    return;
+  }
+
+  await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS reserva_practica_id INT`);
+  await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS practica_tipo VARCHAR(20)`);
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_decision VARCHAR(20)`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_justificacion TEXT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_by_id BIGINT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_decision_at TIMESTAMPTZ`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloquea BOOLEAN NOT NULL DEFAULT FALSE`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_converted_by_id BIGINT`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_converted_at TIMESTAMPTZ`
+  );
+  await client.query(
+    `ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_bloqueo_conversion_justificacion TEXT`
+  );
+  await client.query(`ALTER TABLE incidencia ADD COLUMN IF NOT EXISTS paz_y_salvo_multa_id INT`);
+
+  incidentApprovalSchemaEnsured = true;
 }
 
 async function ensureAcademicPracticeSchema(client = pool) {
@@ -7158,10 +7195,16 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
         FROM cola_solicitud c
         JOIN equipo e
           ON e.id = c.equipo_id
-        LEFT JOIN ual u
-          ON UPPER(u.nombre) = UPPER(e.laboratorio)
-        LEFT JOIN facultad f
-          ON f.facultad_id = u.facultad_id
+        LEFT JOIN LATERAL (
+          SELECT f.nombre
+          FROM ual u
+          JOIN facultad f
+            ON f.facultad_id = u.facultad_id
+          WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+          ORDER BY u.ual_id ASC
+          LIMIT 1
+        ) f
+          ON TRUE
         WHERE c.usuario_id = $1
           AND c.tipo = 'prestamo'
           AND c.estado = 'pendiente'
@@ -7193,10 +7236,16 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
         FROM solicitud_prestamo sp
         JOIN equipo e
           ON e.id = sp.equipo_id
-        LEFT JOIN ual u
-          ON UPPER(u.nombre) = UPPER(e.laboratorio)
-        LEFT JOIN facultad f
-          ON f.facultad_id = u.facultad_id
+        LEFT JOIN LATERAL (
+          SELECT f.nombre
+          FROM ual u
+          JOIN facultad f
+            ON f.facultad_id = u.facultad_id
+          WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+          ORDER BY u.ual_id ASC
+          LIMIT 1
+        ) f
+          ON TRUE
         WHERE sp.usuario_id = $1
         ORDER BY sp.fecha_creacion DESC, sp.id DESC
       `,
@@ -9043,7 +9092,7 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
 
   try {
     await client.query('BEGIN');
-    await ensurePracticeIncidenceSchema(client);
+    await ensureIncidentApprovalSchema(client);
 
     const scope = await resolveLoanManagementScope(req);
     const incidencia = await fetchManagedIncident(req.params.id, scope);
@@ -9162,7 +9211,7 @@ router.get(
   [requirePazYSalvoReviewAccess],
   async function (req, res) {
     try {
-      await ensurePracticeIncidenceSchema();
+      await ensureIncidentApprovalSchema();
       const scope = await resolveLoanManagementScope(req);
 
       const today = new Date();
@@ -9305,7 +9354,7 @@ router.post(
 
     try {
       await client.query('BEGIN');
-      await ensurePracticeIncidenceSchema(client);
+      await ensureIncidentApprovalSchema(client);
       const scope = await resolveLoanManagementScope(req);
       const incidencia = await fetchManagedIncident(req.params.id, scope);
 
