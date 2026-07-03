@@ -9050,6 +9050,14 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
 });
 
 router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async function (req, res) {
+  // #region debug-point A:incidencia-aprobar-timeout
+  console.warn('[DBG incidencia-aprobar-timeout] 0 enter route', {
+    requestId: req.id || req.requestId || null,
+    incidentId: req.params.id,
+    userId: req.session?.user?.id || null,
+    userRole: req.session?.user?.tipo || null,
+  });
+  // #endregion
   if (!isValidLoanRequestId(req.params.id)) {
     return res.status(400).json({
       success: false,
@@ -9091,11 +9099,58 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
   const client = await pool.connect();
 
   try {
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 1 before BEGIN', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+    });
+    // #endregion
     await client.query('BEGIN');
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn(
+      '[DBG incidencia-aprobar-timeout] 2 after BEGIN / before ensureIncidentApprovalSchema',
+      {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      }
+    );
+    // #endregion
     await ensureIncidentApprovalSchema(client);
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn(
+      '[DBG incidencia-aprobar-timeout] 3 after ensureIncidentApprovalSchema / before resolveLoanManagementScope',
+      {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      }
+    );
+    // #endregion
 
     const scope = await resolveLoanManagementScope(req);
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn(
+      '[DBG incidencia-aprobar-timeout] 4 after resolveLoanManagementScope / before fetchManagedIncident',
+      {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        unrestricted: Boolean(scope?.unrestricted),
+        facultyIds: Array.isArray(scope?.facultyIds) ? scope.facultyIds : [],
+        laboratoryNames: Array.isArray(scope?.laboratoryNames) ? scope.laboratoryNames : [],
+      }
+    );
+    // #endregion
     const incidencia = await fetchManagedIncident(req.params.id, scope);
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 5 after fetchManagedIncident', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+      found: Boolean(incidencia),
+      estado: incidencia?.estado || null,
+      equipoId: incidencia?.equipo_id || null,
+      usuarioSancionadoId: incidencia?.usuario_sancionado_id || null,
+      ualId: incidencia?.ual_id || null,
+    });
+    // #endregion
 
     if (!incidencia) {
       await client.query('ROLLBACK');
@@ -9119,6 +9174,14 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
     const shouldBlock = pazYSalvoDecisionPayload.decision === 'bloquear';
 
     if (shouldBlock) {
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 6 before createBlockingFineFromIncident', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        shouldBlock,
+        decision: pazYSalvoDecisionPayload.decision,
+      });
+      // #endregion
       multaId = await createBlockingFineFromIncident(
         {
           incidencia,
@@ -9129,8 +9192,23 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
         },
         client
       );
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 7 after createBlockingFineFromIncident', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        multaId,
+      });
+      // #endregion
     }
 
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 8 before UPDATE incidencia', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+      shouldBlock,
+      multaId,
+    });
+    // #endregion
     await client.query(
       `
           UPDATE incidencia
@@ -9157,6 +9235,15 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
         multaId,
       ]
     );
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn(
+      '[DBG incidencia-aprobar-timeout] 9 after UPDATE incidencia / before UPDATE equipo',
+      {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      }
+    );
+    // #endregion
 
     await client.query(
       `
@@ -9167,20 +9254,46 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
       `,
       [incidencia.equipo_id]
     );
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 10 after UPDATE equipo / before COMMIT', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+      equipoId: incidencia.equipo_id,
+    });
+    // #endregion
 
     await client.query('COMMIT');
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 11 after COMMIT / before audit log 1', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+      multaId,
+    });
+    // #endregion
 
     await registerPrestamosAuditEntry({
       req,
       accion: 'Aprobar incidencia (Coordinador)',
       persona: `Incidencia: ${incidencia.id}`,
     });
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 12 after audit log 1 / before audit log 2', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+    });
+    // #endregion
 
     await registerPrestamosAuditEntry({
       req,
       accion: 'Definir impacto paz y salvo (Incidencia)',
       persona: `Incidencia: ${incidencia.id} | paz_y_salvo: ${pazYSalvoDecisionPayload.decision}`,
     });
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] 13 after audit log 2 / before response', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+    });
+    // #endregion
 
     return res.json({
       success: true,
@@ -9190,12 +9303,29 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.error('[DBG incidencia-aprobar-timeout] catch error', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+      error: {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+      },
+    });
+    // #endregion
     console.error('Error aprobando incidencia MiLab:', error);
     return res.status(500).json({
       success: false,
       message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la incidencia.'),
     });
   } finally {
+    // #region debug-point A:incidencia-aprobar-timeout
+    console.warn('[DBG incidencia-aprobar-timeout] finally release client', {
+      requestId: req.id || req.requestId || null,
+      incidentId: req.params.id,
+    });
+    // #endregion
     client.release();
   }
 });
