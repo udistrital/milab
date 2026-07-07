@@ -56,6 +56,7 @@ function loadRoute() {
     [
       authPath,
       {
+        requirePermissions: () => (req, res, next) => next(),
         requireRoles: () => (req, res, next) => next(),
         renderAuthError: () => null,
       },
