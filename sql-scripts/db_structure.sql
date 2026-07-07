@@ -296,6 +296,7 @@ COMMENT ON COLUMN milab.laboratorista_ual.ual_id IS 'Referencia a milab.ual.ual_
 COMMENT ON COLUMN milab.usuario_ual_rol_operativo.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.usuario_ual_rol_operativo.rol_id IS 'Referencia a milab.rol.id';
 COMMENT ON COLUMN milab.usuario_ual_rol_operativo.ual_id IS 'Referencia a milab.ual.ual_id';
+COMMENT ON COLUMN milab.usuario_ual_rol_operativo.creado_por_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.multa.laboratorista_documento_id IS 'Referencia a milab.laboratorista.documento';
 COMMENT ON COLUMN milab.multa.usuario_sancionado_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.multa.ual_id IS 'Referencia a milab.ual.ual_id';
