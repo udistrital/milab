@@ -157,6 +157,21 @@ function buildStaticNavigation(user) {
     );
   }
 
+  if (role === 'monitor') {
+    secondaryGroups.push(
+      createGroup('Prestamos', 'bi-box-seam', [
+        createLink(
+          'Gestion de solicitudes',
+          '/milab/prestamos/gestion-solicitudes',
+          'bi-clipboard-data'
+        ),
+        createLink('Entrega y devolucion', '/milab/prestamos/entrega-equipos', 'bi-box-arrow-left'),
+        createLink('Incidencias', '/milab/prestamos/incidencias', 'bi-bug'),
+        createLink('Reportes', '/milab/prestamos/reportes', 'bi-bar-chart-line'),
+      ])
+    );
+  }
+
   if (role === 'estudiante') {
     primaryLinks.push(
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
@@ -237,7 +252,7 @@ async function buildNavigation(user) {
 
     if (hasMenu) {
       const filteredMenu =
-        accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+        accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
           ? removePrestamosNavigation(menu)
           : menu;
       return {
@@ -250,7 +265,7 @@ async function buildNavigation(user) {
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
     const filteredFallback =
-      accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+      accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
     return {
@@ -261,7 +276,7 @@ async function buildNavigation(user) {
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
   const filteredFallback =
-    accessInfo?.blocked && ['coordinador', 'laboratorista'].includes(accessInfo.role)
+    accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
   return {

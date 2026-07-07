@@ -1,9 +1,13 @@
 <%- include('../../../partials/header'); -%>
+<% const capabilitiesData = capabilities || {}; %>
+<% const canApproveLoanRequests = !!capabilitiesData.canApproveLoanRequests; %>
+<% const canRejectLoanRequests = !!capabilitiesData.canRejectLoanRequests; %>
+<% const canAssignLastMinute = !!capabilitiesData.canAssignLastMinute; %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Gestion de solicitudes</h1>
-    <p class="app-page-subtitle">Revision y decision de solicitudes pendientes de prestamo para laboratoristas, coordinadores y administradores.</p>
+    <p class="app-page-subtitle">Consulta y gestion de solicitudes pendientes de prestamo segun los permisos operativos de tu perfil.</p>
   </section>
 
   <div id="gestionSolicitudesAlerts">
@@ -23,6 +27,11 @@
     </div>
 
     <div class="card-body">
+      <% if (!canApproveLoanRequests && !canRejectLoanRequests && !canAssignLastMinute) { %>
+        <div class="alert alert-info">
+          Tu perfil tiene acceso de consulta sobre las solicitudes, pero no permisos para aprobar, rechazar o reasignar por ultima hora.
+        </div>
+      <% } %>
       <% if (solicitudes && solicitudes.length > 0) { %>
         <div class="row g-3">
           <% solicitudes.forEach(function(item) { %>
@@ -104,7 +113,7 @@
                 <div class="card-footer">
                   <div class="d-grid gap-2">
                     <% if (item.estado === 'en_cola') { %>
-                      <% if (item.cupo_libre) { %>
+                      <% if (item.cupo_libre && canApproveLoanRequests) { %>
                         <button
                           type="button"
                           class="btn btn-success js-approve-request"
@@ -113,7 +122,7 @@
                           <i class="bi bi-check-circle"></i>
                           <span>Aprobar</span>
                         </button>
-                      <% } else if (item.puede_ultima_hora && item.cola_id && item.solicitud_fuente_id) { %>
+                      <% } else if (canAssignLastMinute && item.puede_ultima_hora && item.cola_id && item.solicitud_fuente_id) { %>
                         <button
                           type="button"
                           class="btn btn-warning js-assign-queue-last-minute"
@@ -123,7 +132,7 @@
                           <i class="bi bi-lightning-charge"></i>
                           <span>Asignar ultima hora</span>
                         </button>
-                      <% } else { %>
+                      <% } else if (canApproveLoanRequests || canAssignLastMinute) { %>
                         <button
                           type="button"
                           class="btn btn-secondary"
@@ -133,8 +142,10 @@
                           <i class="bi bi-hourglass-split"></i>
                           <span>En espera de cupo</span>
                         </button>
+                      <% } else { %>
+                        <span class="small text-light-emphasis">Sin acciones disponibles</span>
                       <% } %>
-                    <% } else { %>
+                    <% } else if (canApproveLoanRequests) { %>
                       <button
                         type="button"
                         class="btn btn-success js-approve-request"
@@ -144,15 +155,24 @@
                         <span>Aprobar</span>
                       </button>
                     <% } %>
-                    <button
-                      type="button"
-                      class="btn btn-danger js-open-reject-modal"
-                      data-request-id="<%= item.id %>"
-                      data-equipo="<%= item.equipo_nombre || '' %>"
-                    >
-                      <i class="bi bi-x-circle"></i>
-                      <span><%= item.estado === 'en_cola' ? 'Cancelar Cola' : 'Rechazar' %></span>
-                    </button>
+                    <% if (canRejectLoanRequests) { %>
+                      <button
+                        type="button"
+                        class="btn btn-danger js-open-reject-modal"
+                        data-request-id="<%= item.id %>"
+                        data-equipo="<%= item.equipo_nombre || '' %>"
+                      >
+                        <i class="bi bi-x-circle"></i>
+                        <span><%= item.estado === 'en_cola' ? 'Cancelar Cola' : 'Rechazar' %></span>
+                      </button>
+                    <% } %>
+                    <% if (!canApproveLoanRequests && !canRejectLoanRequests && !canAssignLastMinute) { %>
+                      <span class="small text-light-emphasis">Solo consulta</span>
+                    <% } else if (item.estado !== 'en_cola' && !canApproveLoanRequests && !canRejectLoanRequests) { %>
+                      <span class="small text-light-emphasis">Sin acciones disponibles</span>
+                    <% } else if (item.estado === 'en_cola' && !item.cupo_libre && !item.puede_ultima_hora && !canRejectLoanRequests && !(canApproveLoanRequests || canAssignLastMinute)) { %>
+                      <span class="small text-light-emphasis">Sin acciones disponibles</span>
+                    <% } %>
                   </div>
                 </div>
               </article>

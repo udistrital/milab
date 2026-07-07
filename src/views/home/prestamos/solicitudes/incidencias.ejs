@@ -1,15 +1,14 @@
 <%- include('../../../partials/header'); -%>
-<% const currentRoleValue = Array.isArray(user && user.roles) ? user.roles.join(',') : (user && user.tipo) || ''; %>
-<% const currentRoleLower = String(currentRoleValue || '').toLowerCase(); %>
-<% const isCoordinator = currentRoleLower.includes('coordinador'); %>
-<% const isAdmin = currentRoleLower.includes('admin'); %>
-<% const isLaboratorista = currentRoleLower.includes('laboratorista'); %>
+<% const capabilitiesData = capabilities || {}; %>
+<% const canApproveIncidents = !!capabilitiesData.canApproveIncidents; %>
+<% const canRequestIncidentClose = !!capabilitiesData.canRequestIncidentClose; %>
+<% const canFinalizeIncidentClose = !!capabilitiesData.canFinalizeIncidentClose; %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Incidencias</h1>
     <p class="app-page-subtitle">Consulta y cierre de incidencias registradas sobre equipos del modulo de prestamos.</p>
-    <% if (user && (isAdmin || isCoordinator)) { %>
+    <% if (canApproveIncidents) { %>
       <div class="mt-3">
         <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/coordinador/sanciones-pendientes-bloqueo">
           Ver sanciones sin bloqueo (reporte semestral)
@@ -59,9 +58,9 @@
             <tbody>
               <% incidencias.forEach(function(item) { %>
                 <% const estadoLower = String(item.estado || '').toLowerCase(); %>
-                <% const puedeAprobar = (isCoordinator || isAdmin) && estadoLower === 'pendiente_confirmacion'; %>
-                <% const puedeSolicitarCierre = (isLaboratorista || isAdmin) && estadoLower === 'abierta'; %>
-                <% const puedeCerrar = (isCoordinator || isAdmin) && estadoLower === 'pendiente_cierre'; %>
+                <% const puedeAprobar = canApproveIncidents && estadoLower === 'pendiente_confirmacion'; %>
+                <% const puedeSolicitarCierre = canRequestIncidentClose && estadoLower === 'abierta'; %>
+                <% const puedeCerrar = canFinalizeIncidentClose && estadoLower === 'pendiente_cierre'; %>
                 <tr>
                   <td class="text-light"><%= item.id %></td>
                   <td class="text-light"><%= item.equipo_nombre || '-' %></td>

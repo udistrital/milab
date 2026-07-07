@@ -74,7 +74,7 @@
         <div class="card-body">
           <h2 class="h5 mb-2">Acceso a Prestamos por facultad</h2>
           <p class="text-muted mb-3">
-            Si desactivas una facultad, el coordinador y sus laboratoristas ya no veran ni podran usar el modulo de Prestamos.
+            Si desactivas una facultad, el coordinador, sus laboratoristas y los monitores asignados ya no veran ni podran usar el modulo de Prestamos.
           </p>
           <div class="table-responsive admin-permissions-table">
             <table class="table align-middle">
@@ -83,12 +83,13 @@
                   <th>Facultad</th>
                   <th class="text-center">Coordinador</th>
                   <th class="text-center">Laboratorista</th>
+                  <th class="text-center">Monitor</th>
                 </tr>
               </thead>
               <tbody>
                 <% if (!prestamosFacultyAccess || !prestamosFacultyAccess.length) { %>
                   <tr>
-                    <td colspan="3" class="text-muted">No hay facultades disponibles.</td>
+                    <td colspan="4" class="text-muted">No hay facultades disponibles.</td>
                   </tr>
                 <% } %>
                 <% (prestamosFacultyAccess || []).forEach(function(item) { %>
@@ -112,6 +113,15 @@
                         data-facultad-id="<%= item.facultad_id %>"
                         data-role="laboratorista"
                         <%= item.laboratorista_permitido ? 'checked' : '' %>
+                      />
+                    </td>
+                    <td class="text-center">
+                      <input
+                        type="checkbox"
+                        class="form-check-input prestamos-access-toggle"
+                        data-facultad-id="<%= item.facultad_id %>"
+                        data-role="monitor"
+                        <%= item.monitor_permitido ? 'checked' : '' %>
                       />
                     </td>
                   </tr>

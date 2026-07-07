@@ -124,7 +124,7 @@ DELETE FROM rol_permiso rp
 USING rol r, menu_item mi
 WHERE rp.rol_id = r.id
     AND rp.menu_item_id = mi.id
-    AND r.nombre IN ('admin', 'coordinador', 'laboratorista')
+    AND r.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor')
     AND mi.section = 'secondary'
     AND mi.label IN ('Solicitar equipo', 'Mis solicitudes');
 
@@ -153,7 +153,7 @@ DELETE FROM rol_permiso rp
 USING rol r, menu_item mi
 WHERE rp.rol_id = r.id
     AND rp.menu_item_id = mi.id
-    AND r.nombre IN ('admin', 'coordinador', 'laboratorista')
+    AND r.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor')
     AND mi.section = 'secondary'
     AND mi.label IN ('Solicitar practica', 'Mis practicas');
 
@@ -249,6 +249,14 @@ WHERE (
         'Configuracion de practicas'
     )
 ) OR (
+    role_map.nombre = 'monitor' AND menu_map.label IN (
+        'Prestamos',
+        'Gestion de solicitudes',
+        'Entrega y devolucion',
+        'Incidencias',
+        'Reportes'
+    )
+) OR (
     role_map.nombre = 'estudiante' AND menu_map.label IN (
         'Prestamos',
         'Solicitar equipo',
@@ -269,7 +277,7 @@ ON CONFLICT DO NOTHING;
 
 -- Restringe por defecto el modulo de Prestamos a ASAB, Bosa e Ingenieria/Tecnologica.
 WITH active_roles AS (
-    SELECT unnest(ARRAY['coordinador', 'laboratorista']) AS rol
+    SELECT unnest(ARRAY['coordinador', 'laboratorista', 'monitor']) AS rol
 ),
 all_active_faculties AS (
     SELECT facultad_id
@@ -294,7 +302,7 @@ SET permitido = EXCLUDED.permitido,
     fecha_modificacion = CURRENT_TIMESTAMP;
 
 WITH active_roles AS (
-    SELECT unnest(ARRAY['coordinador', 'laboratorista']) AS rol
+    SELECT unnest(ARRAY['coordinador', 'laboratorista', 'monitor']) AS rol
 ),
 allowed_faculties AS (
     SELECT facultad_id

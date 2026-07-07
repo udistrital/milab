@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS facultad_modulo_acceso (
     CONSTRAINT uq_facultad_modulo_acceso UNIQUE (facultad_id, modulo, rol),
     CONSTRAINT fk_facultad_modulo_acceso_facultad FOREIGN KEY (facultad_id) REFERENCES facultad(facultad_id) ON DELETE CASCADE,
     CONSTRAINT ck_facultad_modulo_acceso_modulo CHECK (modulo IN ('prestamos')),
-    CONSTRAINT ck_facultad_modulo_acceso_rol CHECK (rol IN ('coordinador', 'laboratorista'))
+    CONSTRAINT ck_facultad_modulo_acceso_rol CHECK (rol IN ('coordinador', 'laboratorista', 'monitor'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_facultad_modulo_acceso_facultad_id

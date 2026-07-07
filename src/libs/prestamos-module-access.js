@@ -1,5 +1,6 @@
 const pool = require('./db');
 const { resolveCoordinatorScope } = require('./faculty-scope');
+const { fetchOperationalRoleScopeByUser } = require('./operational-role-assignments');
 const { normalizeRoles } = require('./roles');
 
 function sanitizeText(value) {
@@ -71,6 +72,14 @@ async function resolvePrestamosRestrictedRoleScope(user, client = pool) {
     return {
       role: 'laboratorista',
       facultyIds: await resolveLaboratoristaFacultyIds(client, authDocument),
+    };
+  }
+
+  if (roles.includes('monitor')) {
+    const scope = await fetchOperationalRoleScopeByUser(user, 'monitor', client);
+    return {
+      role: 'monitor',
+      facultyIds: scope.facultyIds || [],
     };
   }
 
@@ -165,7 +174,8 @@ async function listPrestamosFacultyAccess(client = pool) {
           f.facultad_id,
           f.nombre,
           COALESCE(coord.permitido, TRUE) AS coordinador_permitido,
-          COALESCE(lab.permitido, TRUE) AS laboratorista_permitido
+          COALESCE(lab.permitido, TRUE) AS laboratorista_permitido,
+          COALESCE(mon.permitido, TRUE) AS monitor_permitido
         FROM facultad f
         LEFT JOIN facultad_modulo_acceso coord
           ON coord.facultad_id = f.facultad_id
@@ -177,6 +187,11 @@ async function listPrestamosFacultyAccess(client = pool) {
          AND lab.modulo = 'prestamos'
          AND lab.rol = 'laboratorista'
          AND lab.activo = TRUE
+        LEFT JOIN facultad_modulo_acceso mon
+          ON mon.facultad_id = f.facultad_id
+         AND mon.modulo = 'prestamos'
+         AND mon.rol = 'monitor'
+         AND mon.activo = TRUE
         WHERE f.activo = TRUE
         ORDER BY f.nombre ASC
       `
@@ -191,7 +206,8 @@ async function listPrestamosFacultyAccess(client = pool) {
             facultad_id,
             nombre,
             TRUE AS coordinador_permitido,
-            TRUE AS laboratorista_permitido
+            TRUE AS laboratorista_permitido,
+            TRUE AS monitor_permitido
           FROM facultad
           WHERE activo = TRUE
           ORDER BY nombre ASC

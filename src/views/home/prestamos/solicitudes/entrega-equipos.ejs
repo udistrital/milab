@@ -1,4 +1,9 @@
 <%- include('../../../partials/header'); -%>
+<% const capabilitiesData = capabilities || {}; %>
+<% const canAssignLastMinute = !!capabilitiesData.canAssignLastMinute; %>
+<% const canDeliverLoanItems = !!capabilitiesData.canDeliverLoanItems; %>
+<% const canReceiveLoanItems = !!capabilitiesData.canReceiveLoanItems; %>
+<% const canCreateIncidents = !!capabilitiesData.canCreateIncidents; %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
@@ -23,6 +28,11 @@
     </div>
 
     <div class="card-body">
+      <% if (!canDeliverLoanItems && !canReceiveLoanItems && !canCreateIncidents) { %>
+        <div class="alert alert-info">
+          Tu perfil solo tiene acceso de consulta en esta vista.
+        </div>
+      <% } %>
       <% if (solicitudes && solicitudes.length > 0) { %>
         <div class="row g-3">
           <% solicitudes.forEach(function(item) { %>
@@ -113,16 +123,18 @@
                   <div class="d-flex gap-2 flex-wrap">
                     <% if (item.estado === 'aprobado') { %>
                       <div class="d-flex gap-2 flex-fill flex-wrap">
-                        <button
-                          type="button"
-                          class="btn btn-success btn-sm flex-fill js-open-delivery-modal"
-                          data-request-id="<%= item.id %>"
-                          data-equipo="<%= item.equipo_nombre || '' %>"
-                        >
-                          <i class="bi bi-box-arrow-right"></i>
-                          <span>Entregar</span>
-                        </button>
-                        <% if (item.habilitarUltimaHora) { %>
+                        <% if (canDeliverLoanItems) { %>
+                          <button
+                            type="button"
+                            class="btn btn-success btn-sm flex-fill js-open-delivery-modal"
+                            data-request-id="<%= item.id %>"
+                            data-equipo="<%= item.equipo_nombre || '' %>"
+                          >
+                            <i class="bi bi-box-arrow-right"></i>
+                            <span>Entregar</span>
+                          </button>
+                        <% } %>
+                        <% if (canAssignLastMinute && item.habilitarUltimaHora) { %>
                           <button
                             type="button"
                             class="btn btn-outline-secondary btn-sm flex-fill js-open-last-minute-modal"
@@ -133,6 +145,9 @@
                             <span>Ultima hora</span>
                           </button>
                         <% } %>
+                        <% if (!canDeliverLoanItems && !(canAssignLastMinute && item.habilitarUltimaHora)) { %>
+                          <span class="small text-light-emphasis">Sin acciones operativas</span>
+                        <% } %>
                       </div>
                     <% } else if (item.estado === 'activo') { %>
                       <div class="d-flex gap-2 flex-fill">
@@ -142,7 +157,7 @@
                               <i class="bi bi-exclamation-triangle"></i>
                               <strong>Solucionar incidencia para recibir equipo</strong>
                             </div>
-                            <% if (dentroUmbralRecepcion) { %>
+                            <% if (dentroUmbralRecepcion && canReceiveLoanItems) { %>
                               <button
                                 type="button"
                                 class="btn btn-warning btn-sm"
@@ -159,18 +174,20 @@
                                 <small>Esperando devolucion del usuario</small>
                               </div>
                             <% } %>
-                            <button
-                              type="button"
-                              class="btn btn-outline-danger btn-sm js-open-incident-modal"
-                              data-request-id="<%= item.id %>"
-                              data-equipo="<%= item.equipo_nombre || '' %>"
-                            >
-                              <i class="bi bi-bug"></i>
-                              <span>Incidencia</span>
-                            </button>
+                            <% if (canCreateIncidents) { %>
+                              <button
+                                type="button"
+                                class="btn btn-outline-danger btn-sm js-open-incident-modal"
+                                data-request-id="<%= item.id %>"
+                                data-equipo="<%= item.equipo_nombre || '' %>"
+                              >
+                                <i class="bi bi-bug"></i>
+                                <span>Incidencia</span>
+                              </button>
+                            <% } %>
                           </div>
                         <% } else { %>
-                          <% if (dentroUmbralRecepcion) { %>
+                          <% if (dentroUmbralRecepcion && canReceiveLoanItems) { %>
                             <button
                               type="button"
                               class="btn btn-warning btn-sm flex-fill js-open-return-modal"
@@ -187,15 +204,20 @@
                               <small>Esperando devolucion del usuario</small>
                             </div>
                           <% } %>
-                          <button
-                            type="button"
-                            class="btn btn-outline-danger btn-sm flex-fill js-open-incident-modal"
-                            data-request-id="<%= item.id %>"
-                            data-equipo="<%= item.equipo_nombre || '' %>"
-                          >
-                            <i class="bi bi-bug"></i>
-                            <span>Incidencia</span>
-                          </button>
+                          <% if (canCreateIncidents) { %>
+                            <button
+                              type="button"
+                              class="btn btn-outline-danger btn-sm flex-fill js-open-incident-modal"
+                              data-request-id="<%= item.id %>"
+                              data-equipo="<%= item.equipo_nombre || '' %>"
+                            >
+                              <i class="bi bi-bug"></i>
+                              <span>Incidencia</span>
+                            </button>
+                          <% } %>
+                          <% if (!canReceiveLoanItems && !canCreateIncidents) { %>
+                            <span class="small text-light-emphasis">Sin acciones operativas</span>
+                          <% } %>
                         <% } %>
                       </div>
                       <% if (item.incidencia_activa) { %>

@@ -8,9 +8,11 @@ const { PDFDocument: PdfLibDocument, StandardFonts } = require('pdf-lib');
 const { canonicalizeFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const pool = require('../../libs/db');
 const { sendEmailNotification } = require('../../libs/email-notifications');
+const { fetchOperationalRoleScopeByUser } = require('../../libs/operational-role-assignments');
+const { APP_PERMISSIONS, hasPermission } = require('../../libs/permissions');
 const { getPrestamosModuleAccess } = require('../../libs/prestamos-module-access');
 const { normalizeRoles } = require('../../libs/roles');
-const { requireRoles, renderAuthError } = require('../middlewares/auth');
+const { requirePermissions, requireRoles, renderAuthError } = require('../middlewares/auth');
 
 const router = express.Router();
 
@@ -73,7 +75,7 @@ router.use(async function attachPrestamosModuleAccess(req, res, next) {
     const access = await getPrestamosModuleAccess(req.session?.user || null);
     req.prestamosModuleAccess = access;
 
-    if (access?.blocked && ['coordinador', 'laboratorista'].includes(access.role)) {
+    if (access?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(access.role)) {
       return respondPrestamosModuleBlocked(req, res);
     }
 
@@ -92,6 +94,10 @@ router.get('/', function (req, res) {
 
   if (roles.includes('estudiante') || roles.includes('docente')) {
     return res.redirect('/milab/prestamos/solicitar');
+  }
+
+  if (roles.includes('monitor')) {
+    return res.redirect('/milab/prestamos/gestion-solicitudes');
   }
 
   return res.redirect('/milab/prestamos/reportes');
@@ -140,7 +146,7 @@ const PDF_ESCUDO_PATH = path.join(
 );
 const PDF_SIGUD_PATH = path.join(__dirname, '..', '..', 'public', 'img', 'logo_sigud.jpg');
 
-const requireInventarioAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireInventarioAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_INVENTORY_ADMIN, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder al modulo de inventario.',
   limit: 'loginOnly',
@@ -208,7 +214,7 @@ const requireInventarioAuthorized = [
   createMenuPermissionMiddleware(INVENTARIO_MENU_ROUTE),
 ];
 
-const requireEquiposAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireEquiposAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_EQUIPMENT_ADMIN, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder al modulo de equipos.',
   limit: 'loginOnly',
@@ -235,29 +241,39 @@ const requireMisSolicitudesAuthorized = [
   createMenuPermissionMiddleware(MIS_SOLICITUDES_MENU_ROUTE),
 ];
 
-const requireGestionSolicitudesAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para acceder a la gestion de solicitudes de prestamo.',
-  limit: 'loginOnly',
-});
+const requireGestionSolicitudesAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_VIEW_MANAGEMENT,
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para acceder a la gestion de solicitudes de prestamo.',
+    limit: 'loginOnly',
+  }
+);
 
 const requireGestionSolicitudesAuthorized = [
   requireGestionSolicitudesAccess,
   createMenuPermissionMiddleware(GESTION_SOLICITUDES_MENU_ROUTE),
 ];
 
-const requireEntregaEquiposAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para acceder al modulo de entrega y devolucion.',
-  limit: 'loginOnly',
-});
+const requireEntregaEquiposAccess = requirePermissions(
+  [
+    APP_PERMISSIONS.PRESTAMOS_DELIVER,
+    APP_PERMISSIONS.PRESTAMOS_RECEIVE,
+    APP_PERMISSIONS.PRESTAMOS_INCIDENT_CREATE,
+  ],
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para acceder al modulo de entrega y devolucion.',
+    limit: 'loginOnly',
+  }
+);
 
 const requireEntregaEquiposAuthorized = [
   requireEntregaEquiposAccess,
   createMenuPermissionMiddleware(ENTREGA_EQUIPOS_MENU_ROUTE),
 ];
 
-const requireIncidenciasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireIncidenciasAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_INCIDENT_VIEW, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder al modulo de incidencias.',
   limit: 'loginOnly',
@@ -278,18 +294,21 @@ const requirePracticasAuthorized = [requirePracticasAccess];
 
 const requireMisPracticasAuthorized = [requirePracticasAccess];
 
-const requireGestionPracticasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para acceder a la gestion de practicas.',
-  limit: 'loginOnly',
-});
+const requireGestionPracticasAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_PRACTICES_MANAGE,
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para acceder a la gestion de practicas.',
+    limit: 'loginOnly',
+  }
+);
 
 const requireGestionPracticasAuthorized = [
   requireGestionPracticasAccess,
   createMenuPermissionMiddleware(PRACTICAS_GESTION_MENU_ROUTE),
 ];
 
-const requireSalasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireSalasAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_ROOMS_MANAGE, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder al modulo de salas.',
   limit: 'loginOnly',
@@ -300,7 +319,7 @@ const requireSalasAuthorized = [
   createMenuPermissionMiddleware(SALAS_MENU_ROUTE),
 ];
 
-const requireReportesAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireReportesAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_REPORTS_VIEW, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder al modulo de reportes de prestamos.',
   limit: 'loginOnly',
@@ -311,7 +330,7 @@ const requireReportesAuthorized = [
   createMenuPermissionMiddleware(REPORTES_MENU_ROUTE),
 ];
 
-const requireAuditoriaAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+const requireAuditoriaAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_AUDIT_VIEW, {
   message: 'Acceso denegado',
   message2: 'No tienes permisos para acceder a la auditoria de prestamos.',
   limit: 'loginOnly',
@@ -322,38 +341,47 @@ const requireAuditoriaAuthorized = [
   createMenuPermissionMiddleware(AUDITORIA_MENU_ROUTE),
 ];
 
-const requireParametrizacionesAccess = requireRoles(['admin'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para acceder a las parametrizaciones de prestamos.',
-  limit: 'loginOnly',
-});
+const requireParametrizacionesAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_PARAMETERS_ADMIN,
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para acceder a las parametrizaciones de prestamos.',
+    limit: 'loginOnly',
+  }
+);
 
 const requireParametrizacionesAuthorized = [
   requireParametrizacionesAccess,
   createMenuPermissionMiddleware(PARAMETRIZACIONES_MENU_ROUTE),
 ];
 
-const requirePracticasConfigAccess = requireRoles(['admin', 'coordinador', 'laboratorista'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para acceder a la configuracion de practicas.',
-  limit: 'loginOnly',
-});
+const requirePracticasConfigAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_PRACTICES_CONFIG,
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para acceder a la configuracion de practicas.',
+    limit: 'loginOnly',
+  }
+);
 
 const requirePracticasConfigAuthorized = [
   requirePracticasConfigAccess,
   createMenuPermissionMiddleware(PRACTICAS_CONFIG_MENU_ROUTE),
 ];
 
-const requireCoordinatorSignatureAccess = requireRoles(['coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'Solo los coordinadores pueden administrar su firma.',
-  limit: 'loginOnly',
-});
+const requireCoordinatorSignatureAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_COORDINATOR_SIGNATURE,
+  {
+    message: 'Acceso denegado',
+    message2: 'Solo los coordinadores pueden administrar su firma.',
+    limit: 'loginOnly',
+  }
+);
 
 const requireCoordinatorSignatureAuthorized = [requireCoordinatorSignatureAccess];
 
 const requirePrestamosDocumentAccess = requireRoles(
-  ['admin', 'laboratorista', 'coordinador', 'estudiante', 'docente'],
+  ['admin', 'laboratorista', 'monitor', 'coordinador', 'estudiante', 'docente'],
   {
     message: 'Acceso denegado',
     message2: 'No tienes permisos para consultar documentos del modulo de prestamos.',
@@ -363,6 +391,46 @@ const requirePrestamosDocumentAccess = requireRoles(
 
 function toBoolean(value) {
   return value === true || value === 'true' || value === 'on' || value === 'si';
+}
+
+function hasPrestamosPermission(sessionUser, permission) {
+  const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
+  return hasPermission(roles, permission);
+}
+
+function buildPrestamosCapabilities(sessionUser) {
+  return {
+    canApproveLoanRequests: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_REQUEST_APPROVE
+    ),
+    canRejectLoanRequests: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_REQUEST_REJECT
+    ),
+    canAssignLastMinute: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_REQUEST_ASSIGN_LAST_MINUTE
+    ),
+    canDeliverLoanItems: hasPrestamosPermission(sessionUser, APP_PERMISSIONS.PRESTAMOS_DELIVER),
+    canReceiveLoanItems: hasPrestamosPermission(sessionUser, APP_PERMISSIONS.PRESTAMOS_RECEIVE),
+    canCreateIncidents: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_INCIDENT_CREATE
+    ),
+    canApproveIncidents: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_INCIDENT_APPROVE
+    ),
+    canRequestIncidentClose: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_INCIDENT_REQUEST_CLOSE
+    ),
+    canFinalizeIncidentClose: hasPrestamosPermission(
+      sessionUser,
+      APP_PERMISSIONS.PRESTAMOS_INCIDENT_FINALIZE_CLOSE
+    ),
+  };
 }
 
 function sanitizeText(value) {
@@ -1116,12 +1184,11 @@ async function createBlockingFineFromIncident(
 }
 
 function resolveIncidentReporterState(sessionUsuario) {
-  const roles = normalizeRoles(sessionUsuario?.roles);
-  if (roles.includes('admin') || roles.includes('coordinador')) {
+  if (hasPrestamosPermission(sessionUsuario, APP_PERMISSIONS.PRESTAMOS_INCIDENT_APPROVE)) {
     return 'abierta';
   }
 
-  if (roles.includes('laboratorista')) {
+  if (hasPrestamosPermission(sessionUsuario, APP_PERMISSIONS.PRESTAMOS_INCIDENT_CREATE)) {
     return 'pendiente_confirmacion';
   }
 
@@ -1129,18 +1196,15 @@ function resolveIncidentReporterState(sessionUsuario) {
 }
 
 function canApproveIncident(sessionUsuario) {
-  const roles = normalizeRoles(sessionUsuario?.roles);
-  return roles.includes('admin') || roles.includes('coordinador');
+  return hasPrestamosPermission(sessionUsuario, APP_PERMISSIONS.PRESTAMOS_INCIDENT_APPROVE);
 }
 
 function canRequestIncidentClose(sessionUsuario) {
-  const roles = normalizeRoles(sessionUsuario?.roles);
-  return roles.includes('admin') || roles.includes('laboratorista');
+  return hasPrestamosPermission(sessionUsuario, APP_PERMISSIONS.PRESTAMOS_INCIDENT_REQUEST_CLOSE);
 }
 
 function canFinalizeIncidentClose(sessionUsuario) {
-  const roles = normalizeRoles(sessionUsuario?.roles);
-  return roles.includes('admin') || roles.includes('coordinador');
+  return hasPrestamosPermission(sessionUsuario, APP_PERMISSIONS.PRESTAMOS_INCIDENT_FINALIZE_CLOSE);
 }
 
 function buildPracticeManagementPayload(body = {}) {
@@ -2082,6 +2146,22 @@ async function resolveLoanManagementScope(req) {
         (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
       ),
       laboratoryNames,
+      restrictToLaboratories: true,
+    };
+  }
+
+  if (roles.includes('monitor')) {
+    const scope = await fetchOperationalRoleScopeByUser(sessionUser, 'monitor', pool);
+    const allowedFacultyIds = Array.isArray(req?.prestamosModuleAccess?.allowedFacultyIds)
+      ? req.prestamosModuleAccess.allowedFacultyIds
+      : [];
+
+    return {
+      unrestricted: false,
+      facultyIds: (scope.facultyIds || []).filter(
+        (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
+      ),
+      laboratoryNames: scope.laboratoryNames || [],
       restrictToLaboratories: true,
     };
   }
@@ -4500,7 +4580,7 @@ async function fetchLoanReportsViewData(scope, range) {
   };
 }
 
-async function fetchManagedLoanRequest(id, scope) {
+async function fetchManagedLoanRequest(id, scope, executor = pool) {
   if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
     return null;
   }
@@ -4514,7 +4594,7 @@ async function fetchManagedLoanRequest(id, scope) {
 
   const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
 
-  const result = await pool.query(
+  const result = await executor.query(
     `
       SELECT
         sp.id,
@@ -4550,7 +4630,7 @@ async function fetchManagedLoanRequest(id, scope) {
   return result.rows[0] || null;
 }
 
-async function fetchManagedDeliveryLoanRequest(id, scope) {
+async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
   if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
     return null;
   }
@@ -4563,7 +4643,7 @@ async function fetchManagedDeliveryLoanRequest(id, scope) {
 
   const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
 
-  const result = await pool.query(
+  const result = await executor.query(
     `
       SELECT
         sp.id,
@@ -7343,6 +7423,7 @@ router.get(
 
 router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async function (req, res) {
   try {
+    const capabilities = buildPrestamosCapabilities(req.session?.user || null);
     const scope = await resolveLoanManagementScope(req);
     let solicitudes = [];
 
@@ -7468,6 +7549,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
 
     return res.render('home/prestamos/solicitudes/gestion-solicitudes', {
       solicitudes,
+      capabilities,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -7475,6 +7557,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
     console.error('Error cargando gestion de solicitudes MiLab:', error);
     return res.render('home/prestamos/solicitudes/gestion-solicitudes', {
       solicitudes: [],
+      capabilities: buildPrestamosCapabilities(req.session?.user || null),
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(
         error,
@@ -7487,6 +7570,11 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
 router.post(
   '/gestion-solicitudes/:id/aprobar',
   requireGestionSolicitudesAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_REQUEST_APPROVE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para aprobar solicitudes de prestamo.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -7497,7 +7585,7 @@ router.post(
 
     try {
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         return res.status(404).json({
@@ -7614,6 +7702,11 @@ router.post(
 router.post(
   '/gestion-solicitudes/:id/rechazar',
   requireGestionSolicitudesAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_REQUEST_REJECT, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para rechazar solicitudes de prestamo.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -7624,7 +7717,7 @@ router.post(
 
     try {
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         return res.status(404).json({
@@ -7858,6 +7951,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
     return res.render('home/prestamos/solicitudes/entrega-equipos', {
       solicitudes,
       colasPrestamo,
+      capabilities: buildPrestamosCapabilities(req.session?.user || null),
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -7866,6 +7960,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
     return res.render('home/prestamos/solicitudes/entrega-equipos', {
       solicitudes: [],
       colasPrestamo: [],
+      capabilities: buildPrestamosCapabilities(req.session?.user || null),
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(
         error,
@@ -7878,6 +7973,11 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
 router.post(
   '/entrega-equipos/:id/marcar-prestado',
   requireEntregaEquiposAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_DELIVER, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para registrar entregas de equipos.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -7900,7 +8000,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         await client.query('ROLLBACK');
@@ -8022,6 +8122,11 @@ router.post(
 router.post(
   '/entrega-equipos/:id/ultima-hora',
   requireEntregaEquiposAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_REQUEST_ASSIGN_LAST_MINUTE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para gestionar prestamos de ultima hora.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -8047,7 +8152,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         await client.query('ROLLBACK');
@@ -8415,6 +8520,11 @@ router.post(
 router.post(
   '/cola/prestamos/:id/asignar-ultima-hora',
   requireEntregaEquiposAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_REQUEST_ASSIGN_LAST_MINUTE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para asignar solicitudes en cola por ultima hora.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id) || !isValidLoanRequestId(req.body?.solicitud_id)) {
       return res.status(400).json({
@@ -8429,7 +8539,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedDeliveryLoanRequest(req.body.solicitud_id, scope);
+      const solicitud = await fetchManagedDeliveryLoanRequest(req.body.solicitud_id, scope, client);
 
       if (!solicitud) {
         await client.query('ROLLBACK');
@@ -8630,6 +8740,11 @@ router.post(
 router.post(
   '/entrega-equipos/:id/recibir',
   requireEntregaEquiposAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_RECEIVE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para registrar devoluciones de equipos.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -8652,7 +8767,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         await client.query('ROLLBACK');
@@ -8780,6 +8895,11 @@ router.post(
 router.post(
   '/entrega-equipos/:id/incidencia',
   requireEntregaEquiposAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_INCIDENT_CREATE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para registrar incidencias.',
+    limit: 'loginOnly',
+  }),
   parseIncidentEvidenceUpload,
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
@@ -8803,7 +8923,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope);
+      const solicitud = await fetchManagedDeliveryLoanRequest(req.params.id, scope, client);
 
       if (!solicitud) {
         await client.query('ROLLBACK');
@@ -8997,6 +9117,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
 
     return res.render('home/prestamos/solicitudes/incidencias', {
       incidencias,
+      capabilities: buildPrestamosCapabilities(req.session?.user || null),
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
       user: req.session?.user || null,
@@ -9005,6 +9126,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
     console.error('Error cargando incidencias MiLab:', error);
     return res.render('home/prestamos/solicitudes/incidencias', {
       incidencias: [],
+      capabilities: buildPrestamosCapabilities(req.session?.user || null),
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(error, 'No fue posible cargar las incidencias.'),
       user: req.session?.user || null,
@@ -9058,168 +9180,176 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
   }
 });
 
-router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async function (req, res) {
-  // #region debug-point A:incidencia-aprobar-timeout
-  console.warn('[DBG incidencia-aprobar-timeout] 0 enter route', {
-    requestId: req.id || req.requestId || null,
-    incidentId: req.params.id,
-    userId: req.session?.user?.id || null,
-    userRole: req.session?.user?.tipo || null,
-  });
-  // #endregion
-  if (!isValidLoanRequestId(req.params.id)) {
-    return res.status(400).json({
-      success: false,
-      message: 'La incidencia seleccionada no es valida.',
-    });
-  }
-
-  const sessionUsuario = await fetchSessionUsuario(req);
-  if (!canApproveIncident(sessionUsuario)) {
-    return res.status(403).json({
-      success: false,
-      message: 'No tienes permisos para aprobar incidencias.',
-    });
-  }
-
-  const payload = buildIncidentPayload(req.body);
-  const pazYSalvoDecisionPayload = buildPazYSalvoDecisionPayload(req.body);
-  if (!payload.sancion_tipo) {
-    return res.status(400).json({
-      success: false,
-      message: 'Debes seleccionar la medida o sancion aplicada.',
-    });
-  }
-
-  if (!PAZ_Y_SALVO_DECISION_OPTIONS.has(pazYSalvoDecisionPayload.decision)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Debes seleccionar el impacto sobre el paz y salvo institucional.',
-    });
-  }
-
-  if (!pazYSalvoDecisionPayload.justificacion) {
-    return res.status(400).json({
-      success: false,
-      message: 'Debes registrar una justificación para la decisión sobre paz y salvo.',
-    });
-  }
-
-  const client = await pool.connect();
-
-  try {
+router.post(
+  '/incidencias/:id/aprobar',
+  requireIncidenciasAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_INCIDENT_APPROVE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para aprobar incidencias.',
+    limit: 'loginOnly',
+  }),
+  async function (req, res) {
     // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 1 before BEGIN', {
+    console.warn('[DBG incidencia-aprobar-timeout] 0 enter route', {
       requestId: req.id || req.requestId || null,
       incidentId: req.params.id,
+      userId: req.session?.user?.id || null,
+      userRole: req.session?.user?.tipo || null,
     });
     // #endregion
-    await client.query('BEGIN');
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn(
-      '[DBG incidencia-aprobar-timeout] 2 after BEGIN / before ensureIncidentApprovalSchema',
-      {
-        requestId: req.id || req.requestId || null,
-        incidentId: req.params.id,
-      }
-    );
-    // #endregion
-    await ensureIncidentApprovalSchema(client);
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn(
-      '[DBG incidencia-aprobar-timeout] 3 after ensureIncidentApprovalSchema / before resolveLoanManagementScope',
-      {
-        requestId: req.id || req.requestId || null,
-        incidentId: req.params.id,
-      }
-    );
-    // #endregion
-
-    const scope = await resolveLoanManagementScope(req);
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn(
-      '[DBG incidencia-aprobar-timeout] 4 after resolveLoanManagementScope / before fetchManagedIncident',
-      {
-        requestId: req.id || req.requestId || null,
-        incidentId: req.params.id,
-        unrestricted: Boolean(scope?.unrestricted),
-        facultyIds: Array.isArray(scope?.facultyIds) ? scope.facultyIds : [],
-        laboratoryNames: Array.isArray(scope?.laboratoryNames) ? scope.laboratoryNames : [],
-      }
-    );
-    // #endregion
-    const incidencia = await fetchManagedIncident(req.params.id, scope, client);
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 5 after fetchManagedIncident', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-      found: Boolean(incidencia),
-      estado: incidencia?.estado || null,
-      equipoId: incidencia?.equipo_id || null,
-      usuarioSancionadoId: incidencia?.usuario_sancionado_id || null,
-      ualId: incidencia?.ual_id || null,
-    });
-    // #endregion
-
-    if (!incidencia) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        message: 'La incidencia no existe o no pertenece a tu alcance de gestion.',
-      });
-    }
-
-    if (incidencia.estado !== 'pendiente_confirmacion') {
-      await client.query('ROLLBACK');
+    if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: 'Solo las incidencias pendientes de aprobacion pueden aprobarse.',
+        message: 'La incidencia seleccionada no es valida.',
       });
     }
 
-    const actorLabel =
-      sanitizeText(req.session?.user?.nombre) || sanitizeText(req.session?.user?.documento);
-    let multaId = null;
-    const shouldBlock = pazYSalvoDecisionPayload.decision === 'bloquear';
+    const sessionUsuario = await fetchSessionUsuario(req);
+    if (!canApproveIncident(sessionUsuario)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para aprobar incidencias.',
+      });
+    }
 
-    if (shouldBlock) {
+    const payload = buildIncidentPayload(req.body);
+    const pazYSalvoDecisionPayload = buildPazYSalvoDecisionPayload(req.body);
+    if (!payload.sancion_tipo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes seleccionar la medida o sancion aplicada.',
+      });
+    }
+
+    if (!PAZ_Y_SALVO_DECISION_OPTIONS.has(pazYSalvoDecisionPayload.decision)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes seleccionar el impacto sobre el paz y salvo institucional.',
+      });
+    }
+
+    if (!pazYSalvoDecisionPayload.justificacion) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes registrar una justificación para la decisión sobre paz y salvo.',
+      });
+    }
+
+    const client = await pool.connect();
+
+    try {
       // #region debug-point A:incidencia-aprobar-timeout
-      console.warn('[DBG incidencia-aprobar-timeout] 6 before createBlockingFineFromIncident', {
+      console.warn('[DBG incidencia-aprobar-timeout] 1 before BEGIN', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      });
+      // #endregion
+      await client.query('BEGIN');
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn(
+        '[DBG incidencia-aprobar-timeout] 2 after BEGIN / before ensureIncidentApprovalSchema',
+        {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+        }
+      );
+      // #endregion
+      await ensureIncidentApprovalSchema(client);
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn(
+        '[DBG incidencia-aprobar-timeout] 3 after ensureIncidentApprovalSchema / before resolveLoanManagementScope',
+        {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+        }
+      );
+      // #endregion
+
+      const scope = await resolveLoanManagementScope(req);
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn(
+        '[DBG incidencia-aprobar-timeout] 4 after resolveLoanManagementScope / before fetchManagedIncident',
+        {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+          unrestricted: Boolean(scope?.unrestricted),
+          facultyIds: Array.isArray(scope?.facultyIds) ? scope.facultyIds : [],
+          laboratoryNames: Array.isArray(scope?.laboratoryNames) ? scope.laboratoryNames : [],
+        }
+      );
+      // #endregion
+      const incidencia = await fetchManagedIncident(req.params.id, scope, client);
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 5 after fetchManagedIncident', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        found: Boolean(incidencia),
+        estado: incidencia?.estado || null,
+        equipoId: incidencia?.equipo_id || null,
+        usuarioSancionadoId: incidencia?.usuario_sancionado_id || null,
+        ualId: incidencia?.ual_id || null,
+      });
+      // #endregion
+
+      if (!incidencia) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'La incidencia no existe o no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      if (incidencia.estado !== 'pendiente_confirmacion') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Solo las incidencias pendientes de aprobacion pueden aprobarse.',
+        });
+      }
+
+      const actorLabel =
+        sanitizeText(req.session?.user?.nombre) || sanitizeText(req.session?.user?.documento);
+      let multaId = null;
+      const shouldBlock = pazYSalvoDecisionPayload.decision === 'bloquear';
+
+      if (shouldBlock) {
+        // #region debug-point A:incidencia-aprobar-timeout
+        console.warn('[DBG incidencia-aprobar-timeout] 6 before createBlockingFineFromIncident', {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+          shouldBlock,
+          decision: pazYSalvoDecisionPayload.decision,
+        });
+        // #endregion
+        multaId = await createBlockingFineFromIncident(
+          {
+            incidencia,
+            sancionTipo: payload.sancion_tipo,
+            sancionDetalle: payload.sancion_detalle,
+            justificacion: pazYSalvoDecisionPayload.justificacion,
+            actorLabel,
+          },
+          client
+        );
+        // #region debug-point A:incidencia-aprobar-timeout
+        console.warn('[DBG incidencia-aprobar-timeout] 7 after createBlockingFineFromIncident', {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+          multaId,
+        });
+        // #endregion
+      }
+
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 8 before UPDATE incidencia', {
         requestId: req.id || req.requestId || null,
         incidentId: req.params.id,
         shouldBlock,
-        decision: pazYSalvoDecisionPayload.decision,
-      });
-      // #endregion
-      multaId = await createBlockingFineFromIncident(
-        {
-          incidencia,
-          sancionTipo: payload.sancion_tipo,
-          sancionDetalle: payload.sancion_detalle,
-          justificacion: pazYSalvoDecisionPayload.justificacion,
-          actorLabel,
-        },
-        client
-      );
-      // #region debug-point A:incidencia-aprobar-timeout
-      console.warn('[DBG incidencia-aprobar-timeout] 7 after createBlockingFineFromIncident', {
-        requestId: req.id || req.requestId || null,
-        incidentId: req.params.id,
         multaId,
       });
       // #endregion
-    }
-
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 8 before UPDATE incidencia', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-      shouldBlock,
-      multaId,
-    });
-    // #endregion
-    await client.query(
-      `
+      await client.query(
+        `
           UPDATE incidencia
           SET estado = 'abierta',
               sancion_tipo = $2,
@@ -9233,117 +9363,121 @@ router.post('/incidencias/:id/aprobar', requireIncidenciasAuthorized, async func
               fecha_modificacion = CURRENT_TIMESTAMP
           WHERE id = $1
         `,
-      [
-        incidencia.id,
-        payload.sancion_tipo,
-        payload.sancion_detalle || null,
-        pazYSalvoDecisionPayload.decision,
-        pazYSalvoDecisionPayload.justificacion,
-        sessionUsuario?.id || null,
-        shouldBlock,
-        multaId,
-      ]
-    );
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn(
-      '[DBG incidencia-aprobar-timeout] 9 after UPDATE incidencia / before UPDATE equipo',
-      {
-        requestId: req.id || req.requestId || null,
-        incidentId: req.params.id,
-      }
-    );
-    // #endregion
+        [
+          incidencia.id,
+          payload.sancion_tipo,
+          payload.sancion_detalle || null,
+          pazYSalvoDecisionPayload.decision,
+          pazYSalvoDecisionPayload.justificacion,
+          sessionUsuario?.id || null,
+          shouldBlock,
+          multaId,
+        ]
+      );
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn(
+        '[DBG incidencia-aprobar-timeout] 9 after UPDATE incidencia / before UPDATE equipo',
+        {
+          requestId: req.id || req.requestId || null,
+          incidentId: req.params.id,
+        }
+      );
+      // #endregion
 
-    await client.query(
-      `
+      await client.query(
+        `
         UPDATE equipo
         SET estado = 'mantenimiento',
             fecha_modificacion = CURRENT_TIMESTAMP
         WHERE id = $1
       `,
-      [incidencia.equipo_id]
-    );
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 10 after UPDATE equipo / before COMMIT', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-      equipoId: incidencia.equipo_id,
-    });
-    // #endregion
+        [incidencia.equipo_id]
+      );
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 10 after UPDATE equipo / before COMMIT', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        equipoId: incidencia.equipo_id,
+      });
+      // #endregion
 
-    await client.query('COMMIT');
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 11 after COMMIT / before audit log 1', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-      multaId,
-    });
-    // #endregion
+      await client.query('COMMIT');
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 11 after COMMIT / before audit log 1', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        multaId,
+      });
+      // #endregion
 
-    await registerPrestamosAuditEntry({
-      req,
-      accion: 'Aprobar incidencia (Coordinador)',
-      persona: `Incidencia: ${incidencia.id}`,
-    });
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 12 after audit log 1 / before audit log 2', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-    });
-    // #endregion
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Aprobar incidencia (Coordinador)',
+        persona: `Incidencia: ${incidencia.id}`,
+      });
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 12 after audit log 1 / before audit log 2', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      });
+      // #endregion
 
-    await registerPrestamosAuditEntry({
-      req,
-      accion: 'Definir impacto paz y salvo (Incidencia)',
-      persona: `Incidencia: ${incidencia.id} | paz_y_salvo: ${pazYSalvoDecisionPayload.decision}`,
-    });
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] 13 after audit log 2 / before response', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-    });
-    // #endregion
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Definir impacto paz y salvo (Incidencia)',
+        persona: `Incidencia: ${incidencia.id} | paz_y_salvo: ${pazYSalvoDecisionPayload.decision}`,
+      });
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] 13 after audit log 2 / before response', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      });
+      // #endregion
 
-    return res.json({
-      success: true,
-      message: shouldBlock
-        ? 'Incidencia aprobada y sanción aplicada con bloqueo de paz y salvo.'
-        : 'Incidencia aprobada sin bloqueo de paz y salvo.',
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.error('[DBG incidencia-aprobar-timeout] catch error', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-      error: {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-      },
-    });
-    // #endregion
-    console.error('Error aprobando incidencia MiLab:', error);
-    return res.status(500).json({
-      success: false,
-      message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la incidencia.'),
-    });
-  } finally {
-    // #region debug-point A:incidencia-aprobar-timeout
-    console.warn('[DBG incidencia-aprobar-timeout] finally release client', {
-      requestId: req.id || req.requestId || null,
-      incidentId: req.params.id,
-    });
-    // #endregion
-    client.release();
+      return res.json({
+        success: true,
+        message: shouldBlock
+          ? 'Incidencia aprobada y sanción aplicada con bloqueo de paz y salvo.'
+          : 'Incidencia aprobada sin bloqueo de paz y salvo.',
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.error('[DBG incidencia-aprobar-timeout] catch error', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+        error: {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack,
+        },
+      });
+      // #endregion
+      console.error('Error aprobando incidencia MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la incidencia.'),
+      });
+    } finally {
+      // #region debug-point A:incidencia-aprobar-timeout
+      console.warn('[DBG incidencia-aprobar-timeout] finally release client', {
+        requestId: req.id || req.requestId || null,
+        incidentId: req.params.id,
+      });
+      // #endregion
+      client.release();
+    }
   }
-});
+);
 
-const requirePazYSalvoReviewAccess = requireRoles(['admin', 'coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para administrar sanciones sin bloqueo.',
-  limit: 'loginOnly',
-});
+const requirePazYSalvoReviewAccess = requirePermissions(
+  APP_PERMISSIONS.PRESTAMOS_INCIDENT_APPROVE,
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para administrar sanciones sin bloqueo.',
+    limit: 'loginOnly',
+  }
+);
 
 router.get(
   '/coordinador/sanciones-pendientes-bloqueo',
@@ -9576,6 +9710,11 @@ router.post(
 router.post(
   '/incidencias/:id/pendiente-cierre',
   requireIncidenciasAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_INCIDENT_REQUEST_CLOSE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para solicitar el cierre de incidencias.',
+    limit: 'loginOnly',
+  }),
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -9598,7 +9737,7 @@ router.post(
       await client.query('BEGIN');
 
       const scope = await resolveLoanManagementScope(req);
-      const incidencia = await fetchManagedIncident(req.params.id, scope);
+      const incidencia = await fetchManagedIncident(req.params.id, scope, client);
 
       if (!incidencia) {
         await client.query('ROLLBACK');
@@ -9654,71 +9793,79 @@ router.post(
   }
 );
 
-router.post('/incidencias/:id/solucionar', requireIncidenciasAuthorized, async function (req, res) {
-  if (!isValidLoanRequestId(req.params.id)) {
-    return res.status(400).json({
-      success: false,
-      message: 'La incidencia seleccionada no es valida.',
-    });
-  }
-
-  const sessionUsuario = await fetchSessionUsuario(req);
-  if (!canFinalizeIncidentClose(sessionUsuario)) {
-    return res.status(403).json({
-      success: false,
-      message: 'No tienes permisos para cerrar incidencias.',
-    });
-  }
-
-  const payload = buildIncidentPayload(req.body);
-  const closeDescription =
-    payload.descripcion_cierre || 'Incidencia solucionada sin detalle adicional.';
-
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    const scope = await resolveLoanManagementScope(req);
-    const incidencia = await fetchManagedIncident(req.params.id, scope, client);
-
-    if (!incidencia) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        success: false,
-        message: 'La incidencia no existe o no pertenece a tu alcance de gestion.',
-      });
-    }
-
-    if (incidencia.estado === 'cerrada') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        success: false,
-        message: 'La incidencia ya fue cerrada.',
-      });
-    }
-
-    if (incidencia.estado !== 'pendiente_cierre') {
-      await client.query('ROLLBACK');
+router.post(
+  '/incidencias/:id/solucionar',
+  requireIncidenciasAuthorized,
+  requirePermissions(APP_PERMISSIONS.PRESTAMOS_INCIDENT_FINALIZE_CLOSE, {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para cerrar incidencias.',
+    limit: 'loginOnly',
+  }),
+  async function (req, res) {
+    if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
         success: false,
-        message: 'La incidencia debe estar pendiente por cerrar antes del cierre final.',
+        message: 'La incidencia seleccionada no es valida.',
       });
     }
 
-    await client.query(
-      `
+    const sessionUsuario = await fetchSessionUsuario(req);
+    if (!canFinalizeIncidentClose(sessionUsuario)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para cerrar incidencias.',
+      });
+    }
+
+    const payload = buildIncidentPayload(req.body);
+    const closeDescription =
+      payload.descripcion_cierre || 'Incidencia solucionada sin detalle adicional.';
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const scope = await resolveLoanManagementScope(req);
+      const incidencia = await fetchManagedIncident(req.params.id, scope, client);
+
+      if (!incidencia) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          success: false,
+          message: 'La incidencia no existe o no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      if (incidencia.estado === 'cerrada') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: 'La incidencia ya fue cerrada.',
+        });
+      }
+
+      if (incidencia.estado !== 'pendiente_cierre') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'La incidencia debe estar pendiente por cerrar antes del cierre final.',
+        });
+      }
+
+      await client.query(
+        `
         UPDATE incidencia
         SET estado = 'cerrada',
             descripcion_cierre = $2,
             fecha_modificacion = CURRENT_TIMESTAMP
         WHERE id = $1
       `,
-      [incidencia.id, closeDescription]
-    );
+        [incidencia.id, closeDescription]
+      );
 
-    const openIncidentsResult = await client.query(
-      `
+      const openIncidentsResult = await client.query(
+        `
         SELECT 1
         FROM incidencia
         WHERE equipo_id = $1
@@ -9726,45 +9873,46 @@ router.post('/incidencias/:id/solucionar', requireIncidenciasAuthorized, async f
           AND estado <> 'cerrada'
         LIMIT 1
       `,
-      [incidencia.equipo_id, incidencia.id]
-    );
+        [incidencia.equipo_id, incidencia.id]
+      );
 
-    if (!openIncidentsResult.rows.length) {
-      const restoredState = incidencia.solicitud_estado === 'activo' ? 'prestado' : 'disponible';
-      await client.query(
-        `
+      if (!openIncidentsResult.rows.length) {
+        const restoredState = incidencia.solicitud_estado === 'activo' ? 'prestado' : 'disponible';
+        await client.query(
+          `
           UPDATE equipo
           SET estado = $2,
               fecha_modificacion = CURRENT_TIMESTAMP
           WHERE id = $1
         `,
-        [incidencia.equipo_id, restoredState]
-      );
+          [incidencia.equipo_id, restoredState]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Solucionar Incidencia (Cerrar)',
+        persona: `Incidencia: ${incidencia.id}`,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Incidencia cerrada correctamente.',
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error cerrando incidencia MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(error, 'No fue posible cerrar la incidencia.'),
+      });
+    } finally {
+      client.release();
     }
-
-    await client.query('COMMIT');
-
-    await registerPrestamosAuditEntry({
-      req,
-      accion: 'Solucionar Incidencia (Cerrar)',
-      persona: `Incidencia: ${incidencia.id}`,
-    });
-
-    return res.json({
-      success: true,
-      message: 'Incidencia cerrada correctamente.',
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error cerrando incidencia MiLab:', error);
-    return res.status(500).json({
-      success: false,
-      message: resolveLoanDbErrorMessage(error, 'No fue posible cerrar la incidencia.'),
-    });
-  } finally {
-    client.release();
   }
-});
+);
 
 router.post('/formatos/audiovisuales/fill', requirePracticasAuthorized, async function (req, res) {
   const payload = sanitizeJsonObject(req.body) || {};

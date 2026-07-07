@@ -163,6 +163,21 @@ CREATE TABLE laboratorista (
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE monitor (
+    documento CHARACTER VARYING(50) PRIMARY KEY,
+    nombre CHARACTER VARYING(255) NOT NULL,
+    correo CHARACTER VARYING(255) UNIQUE NOT NULL,
+    numero_contrato CHARACTER VARYING(100),
+    tipo_vinculacion CHARACTER VARYING(100),
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    soporte_contrato CHARACTER VARYING(1000),
+    usuario_id BIGINT REFERENCES usuario(id) ON DELETE SET NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE coordinador (
     documento CHARACTER VARYING(50) PRIMARY KEY,
     nombre CHARACTER VARYING(255) NOT NULL,
@@ -202,6 +217,18 @@ CREATE TABLE laboratorista_ual (
         REFERENCES ual(ual_id) ON DELETE RESTRICT
 );
 
+CREATE TABLE usuario_ual_rol_operativo (
+    id SERIAL PRIMARY KEY,
+    usuario_id BIGINT NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+    rol_id INT NOT NULL REFERENCES rol(id) ON DELETE CASCADE,
+    ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE CASCADE,
+    creado_por_id BIGINT REFERENCES usuario(id) ON DELETE SET NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_usuario_ual_rol_operativo UNIQUE (usuario_id, rol_id, ual_id)
+);
+
 CREATE TABLE multa (
     id SERIAL PRIMARY KEY,
     cat_multa CHARACTER VARYING(100),
@@ -232,6 +259,10 @@ CREATE INDEX idx_coordinador_facultad_coordinador_documento_id ON coordinador_fa
 CREATE INDEX idx_coordinador_facultad_facultad_id ON coordinador_facultad(facultad_id);
 CREATE INDEX idx_laboratorista_ual_laboratorista_documento_id ON laboratorista_ual(laboratorista_documento_id);
 CREATE INDEX idx_laboratorista_ual_ual_id ON laboratorista_ual(ual_id);
+CREATE INDEX idx_monitor_usuario_id ON monitor(usuario_id);
+CREATE INDEX idx_usuario_ual_rol_operativo_usuario_id ON usuario_ual_rol_operativo(usuario_id);
+CREATE INDEX idx_usuario_ual_rol_operativo_rol_id ON usuario_ual_rol_operativo(rol_id);
+CREATE INDEX idx_usuario_ual_rol_operativo_ual_id ON usuario_ual_rol_operativo(ual_id);
 CREATE UNIQUE INDEX idx_ual_codigo_abreviacion_unique
     ON ual (LOWER(codigo_abreviacion))
     WHERE codigo_abreviacion IS NOT NULL;
@@ -256,11 +287,15 @@ COMMENT ON COLUMN milab.ual.descripcion IS 'Descripción opcional de la UAL para
 COMMENT ON COLUMN milab.ual.sal_ocupantes IS 'Capacidad u ocupantes reportados del espacio UAL';
 COMMENT ON COLUMN milab.ual.sal_id_espacio IS 'Identificador de espacio (SAL_ID_ESPACIO) proveniente de fuente externa';
 COMMENT ON COLUMN milab.laboratorista.usuario_id IS 'Referencia a milab.usuario.id';
+COMMENT ON COLUMN milab.monitor.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador.usuario_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.coordinador_facultad.coordinador_documento_id IS 'Referencia a milab.coordinador.documento';
 COMMENT ON COLUMN milab.coordinador_facultad.facultad_id IS 'Referencia a milab.facultad.facultad_id';
 COMMENT ON COLUMN milab.laboratorista_ual.laboratorista_documento_id IS 'Referencia a milab.laboratorista.documento';
 COMMENT ON COLUMN milab.laboratorista_ual.ual_id IS 'Referencia a milab.ual.ual_id';
+COMMENT ON COLUMN milab.usuario_ual_rol_operativo.usuario_id IS 'Referencia a milab.usuario.id';
+COMMENT ON COLUMN milab.usuario_ual_rol_operativo.rol_id IS 'Referencia a milab.rol.id';
+COMMENT ON COLUMN milab.usuario_ual_rol_operativo.ual_id IS 'Referencia a milab.ual.ual_id';
 COMMENT ON COLUMN milab.multa.laboratorista_documento_id IS 'Referencia a milab.laboratorista.documento';
 COMMENT ON COLUMN milab.multa.usuario_sancionado_id IS 'Referencia a milab.usuario.id';
 COMMENT ON COLUMN milab.multa.ual_id IS 'Referencia a milab.ual.ual_id';

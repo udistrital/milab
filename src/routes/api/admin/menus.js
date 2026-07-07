@@ -49,11 +49,18 @@ function sanitizeText(value) {
   return value === undefined || value === null ? '' : String(value).trim();
 }
 
+function normalizePrestamosRoleLabel(role) {
+  const normalizedRole = sanitizeText(role).toLowerCase();
+  if (normalizedRole === 'laboratorista') return 'laboratorista';
+  if (normalizedRole === 'monitor') return 'monitor';
+  return 'coordinador';
+}
+
 async function registerPrestamosAccessAudit(req, facultyName, role, permitido) {
   const user = req.session?.user || {};
   const actor = sanitizeText(user?.tipo) || 'admin';
   const document = sanitizeText(user?.documento_real || user?.documento) || '0';
-  const normalizedRole = role === 'laboratorista' ? 'laboratorista' : 'coordinador';
+  const normalizedRole = normalizePrestamosRoleLabel(role);
   const action = permitido
     ? 'Habilitar Modulo Prestamos por Facultad'
     : 'Bloquear Modulo Prestamos por Facultad';
@@ -212,7 +219,7 @@ router.post('/prestamos-access', requireAdmin, async (req, res) => {
     return res.status(400).json({ ok: false, message: 'La facultad es invalida.' });
   }
 
-  if (!['coordinador', 'laboratorista'].includes(role)) {
+  if (!['coordinador', 'laboratorista', 'monitor'].includes(role)) {
     return res.status(400).json({ ok: false, message: 'El rol es invalido.' });
   }
 
