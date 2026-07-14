@@ -1,5 +1,5 @@
-var express = require('express');
-var router = express.Router();
+let express = require('express');
+let router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
@@ -114,7 +114,6 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
       sampleData1: rows,
       selectedType,
     });
-    //res.send(rows); // Puedes cambiar esto a una plantilla HTML para mostrar los datos de manera más amigable
   } catch (error) {
     console.error(error);
 
@@ -189,7 +188,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
             `; //
     const values = [entries.join(',')];
     const sampleData1 = await pool.query(query, values);
-    //console.log(sampleData1.rows);
 
     const processedData = sampleData1.rows.map((row) => {
       const identificador = row.identificador;
@@ -211,7 +209,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
         multas: multas,
       };
     });
-    //console.log(processedData);
 
     const filteredData = processedData.map((row) => {
       const multas = row.multas;
@@ -222,7 +219,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
 
       return row;
     });
-    //console.log(filteredData);
 
     // Modifica el bucle forEach para que sea async
     await Promise.all(
@@ -235,9 +231,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
         }
       })
     );
-    //console.log(filteredData);
 
-    //res.json(sampleData1.rows);
     res.render('home/consulta_masiva', { sampleData1: filteredData, error: null });
   }
 });
@@ -249,11 +243,9 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
   const sampleData1 = JSON.parse(req.query.data || '[]');
   sampleData1.forEach((data) => {
     if (data.multas[0] === null) {
-      return (data.multas[0] = 'El estudiante no tiene multas');
+      data.multas[0] = 'El estudiante no tiene multas';
     } else if (data.multas[0] === 'unknown') {
-      return (data.multas[0] = 'Datos inválidos. Verifica la información e inténtalo nuevamente.');
-    } else {
-      return data.multas;
+      data.multas[0] = 'Datos inválidos. Verifica la información e inténtalo nuevamente.';
     }
   });
 

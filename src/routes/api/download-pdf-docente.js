@@ -3,7 +3,7 @@ const { requireRoles } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));

@@ -3,12 +3,12 @@
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Laboratoristas registrados</h1>
-    <p class="app-page-subtitle">Supervisa el equipo activo por facultad y administra retiros desde una tabla más limpia.</p>
+    <p class="app-page-subtitle">Supervisa el equipo por facultad y administra su estado operativo sin eliminar historial.</p>
   </section>
 
   <section class="card app-table-panel text-light">
     <div class="card-header text-center">
-      <h5>Equipo activo</h5>
+      <h5>Equipo de laboratoristas</h5>
     </div>
     <div class="card-body">
       <% if (successMessage) { %>
@@ -24,7 +24,8 @@
               <th>Laboratorio</th> <!-- cambiado de UAL a Laboratorio -->
               <th>Facultad</th>
               <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Eliminar</th>
+              <th>Estado actual</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
             </tr>
           </thead>
           <tbody class="text-center text-light">
@@ -44,10 +45,20 @@
                   </a>
                 </td>
                 <td>
-                  <form action="/milab/api/laboratoristas_registrados/eliminar" method="POST" onsubmit="return confirmDelete('laboratorista')">
+                  <span class="badge <%= laboratorista.activo ? 'text-bg-success' : 'text-bg-secondary' %>">
+                    <%= laboratorista.activo ? 'Activo' : 'Inactivo' %>
+                  </span>
+                </td>
+                <td>
+                  <form action="/milab/api/laboratoristas_registrados/toggle-estado" method="POST">
                     <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= laboratorista.con_documento %>">
-                    <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                    <button
+                      type="submit"
+                      class="btn btn-sm <%= laboratorista.activo ? 'btn-outline-danger' : 'btn-outline-success' %>"
+                    >
+                      <%= laboratorista.activo ? 'Inactivar' : 'Activar' %>
+                    </button>
                   </form>
                 </td>
               </tr>
@@ -58,11 +69,5 @@
     </div>
   </section>
 </main>
-<!-- Confirmación de eliminación -->
-<script nonce="<%= cspNonce %>">
-  function confirmDelete(type) {
-    return confirm(`¿Está seguro que desea eliminar este ${type}?`);
-  }
-</script>
 
 <%- include('../partials/footer'); -%>
