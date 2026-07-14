@@ -12607,7 +12607,7 @@ router.post(
                 evidencia_mime,
                 fecha_modificacion
               )
-              VALUES ('practica', $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+              VALUES ('practica', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
             `,
             [
               reserva.id,
