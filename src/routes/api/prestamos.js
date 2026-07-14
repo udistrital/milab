@@ -7584,6 +7584,7 @@ router.post(
     }
 
     try {
+      const client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -7601,17 +7602,17 @@ router.post(
         });
       }
 
-      const overlapResult = await pool.query(
+      const overlapResult = await client.query(
         `
-          SELECT 1
-          FROM solicitud_prestamo
-          WHERE equipo_id = $1
-            AND id <> $2
-            AND estado IN ('aprobado', 'activo')
-            AND fecha_inicio < $4
-            AND fecha_fin > $3
-          LIMIT 1
-        `,
+            SELECT 1
+            FROM solicitud_prestamo
+            WHERE equipo_id = $1
+              AND id <> $2
+              AND estado IN ('aprobado', 'activo')
+              AND fecha_inicio < $4
+              AND fecha_fin > $3
+            LIMIT 1
+          `,
         [solicitud.equipo_id, solicitud.id, solicitud.fecha_inicio, solicitud.fecha_fin]
       );
 
@@ -7622,23 +7623,21 @@ router.post(
         });
       }
 
-      const client = await pool.connect();
-
       try {
         await client.query('BEGIN');
         const sessionUsuario = await fetchSessionUsuario(req);
 
         const result = await client.query(
           `
-            UPDATE solicitud_prestamo
-            SET estado = 'aprobado',
-                tipo_aprobacion = 'manual',
-                motivo_rechazo = NULL,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id = $1
-              AND estado IN ('pendiente', 'en_cola')
-            RETURNING id
-          `,
+              UPDATE solicitud_prestamo
+              SET estado = 'aprobado',
+                  tipo_aprobacion = 'manual',
+                  motivo_rechazo = NULL,
+                  fecha_modificacion = CURRENT_TIMESTAMP
+              WHERE id = $1
+                AND estado IN ('pendiente', 'en_cola')
+              RETURNING id
+            `,
           [solicitud.id]
         );
 
@@ -7716,6 +7715,7 @@ router.post(
     }
 
     try {
+      const client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -7734,7 +7734,6 @@ router.post(
       }
 
       const rejectionReason = sanitizeText(req.body.motivo_rechazo || req.body.motivoRechazo);
-      const client = await pool.connect();
 
       try {
         await client.query('BEGIN');
@@ -7742,14 +7741,14 @@ router.post(
 
         const result = await client.query(
           `
-            UPDATE solicitud_prestamo
-            SET estado = 'rechazado',
-                motivo_rechazo = $2,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id = $1
-              AND estado IN ('pendiente', 'en_cola')
-            RETURNING id
-          `,
+              UPDATE solicitud_prestamo
+              SET estado = 'rechazado',
+                  motivo_rechazo = $2,
+                  fecha_modificacion = CURRENT_TIMESTAMP
+              WHERE id = $1
+                AND estado IN ('pendiente', 'en_cola')
+              RETURNING id
+            `,
           [solicitud.id, rejectionReason || 'Sin motivo especificado']
         );
 
