@@ -5,12 +5,10 @@ const path = require('node:path');
 const modulePath = path.resolve(__dirname, '../../../src/libs/db.js');
 const pgPath = require.resolve('pg');
 const configPath = path.resolve(__dirname, '../../../src/config/config.js');
-const credentialsPath = path.resolve(__dirname, '../../../src/libs/db-credentials.js');
 
-function loadDbModule({ resolvedCredentials } = {}) {
+function loadDbModule() {
   const originalPg = require.cache[pgPath];
   const originalConfig = require.cache[configPath];
-  const originalCredentials = require.cache[credentialsPath];
 
   const instances = [];
   class FakePool {
@@ -18,18 +16,6 @@ function loadDbModule({ resolvedCredentials } = {}) {
       this.options = options;
       this.handlers = {};
       instances.push(this);
-    }
-
-    query() {
-      return Promise.resolve({ rows: [] });
-    }
-
-    connect() {
-      return Promise.resolve({ release() {} });
-    }
-
-    end() {
-      return Promise.resolve();
     }
 
     on(eventName, callback) {
@@ -61,23 +47,9 @@ function loadDbModule({ resolvedCredentials } = {}) {
       },
     },
   };
-  require.cache[credentialsPath] = {
-    id: credentialsPath,
-    filename: credentialsPath,
-    loaded: true,
-    exports: {
-      resolveDatabaseCredentials: () =>
-        Promise.resolve(
-          resolvedCredentials || {
-            user: 'usuario_test',
-            password: 'secret_test',
-          }
-        ),
-    },
-  };
 
   return {
-    db: require(modulePath),
+    pool: require(modulePath),
     instances,
     restore() {
       if (originalPg) {
@@ -92,27 +64,19 @@ function loadDbModule({ resolvedCredentials } = {}) {
         delete require.cache[configPath];
       }
 
-      if (originalCredentials) {
-        require.cache[credentialsPath] = originalCredentials;
-      } else {
-        delete require.cache[credentialsPath];
-      }
-
       delete require.cache[modulePath];
     },
   };
 }
 
-test('db creates Pool lazily with config values', async () => {
+test('db creates Pool with config values', () => {
   const loaded = loadDbModule();
 
   try {
-    assert.equal(loaded.instances.length, 0);
-
-    await loaded.db.query('SELECT 1');
     assert.equal(loaded.instances.length, 1);
 
     const createdPool = loaded.instances[0];
+    assert.equal(loaded.pool, createdPool);
     assert.deepEqual(createdPool.options, {
       host: 'db.test',
       port: 5432,
@@ -126,7 +90,7 @@ test('db creates Pool lazily with config values', async () => {
   }
 });
 
-test('db registers pool error handler that logs unexpected errors', async () => {
+test('db registers pool error handler that logs unexpected errors', () => {
   const loaded = loadDbModule();
   const originalConsoleError = console.error;
   const calls = [];
@@ -135,8 +99,6 @@ test('db registers pool error handler that logs unexpected errors', async () => 
   };
 
   try {
-    await loaded.db.query('SELECT 1');
-
     const createdPool = loaded.instances[0];
     assert.equal(typeof createdPool.handlers.error, 'function');
 
@@ -148,25 +110,6 @@ test('db registers pool error handler that logs unexpected errors', async () => 
     assert.equal(calls[0][1], boom);
   } finally {
     console.error = originalConsoleError;
-    loaded.restore();
-  }
-});
-
-test('db uses resolved credentials from secret provider', async () => {
-  const loaded = loadDbModule({
-    resolvedCredentials: {
-      user: 'secret_user',
-      password: 'secret_password',
-    },
-  });
-
-  try {
-    await loaded.db.query('SELECT 1');
-
-    const createdPool = loaded.instances[0];
-    assert.equal(createdPool.options.user, 'secret_user');
-    assert.equal(createdPool.options.password, 'secret_password');
-  } finally {
     loaded.restore();
   }
 });

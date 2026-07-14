@@ -1,5 +1,4 @@
 const express = require('express');
-const { randomInt } = require('node:crypto');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
@@ -251,6 +250,7 @@ router.post('/enviar-codigo', async (req, res) => {
   const usuario = req.session.usuario_no_verificado;
   const recipient = resolveRegistrationRecipient(usuario.correo);
   const registrationEmailOverrideActive = recipient !== usuario.correo;
+  //console.log("LLEGA CORREO ACA -------" + usuario.correo);
   try {
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -509,7 +509,11 @@ async function create_account(data) {
 
 // --- FUNCIÓN PARA GENERAR EL CÓDIGO DE VERIFICACIÓN ---
 function generarCodigoAleatorio() {
-  return randomInt(100000, 1000000).toString();
+  const longitudCodigo = 6;
+  const codigoAleatorio =
+    Math.floor(Math.random() * (Math.pow(10, longitudCodigo) - Math.pow(10, longitudCodigo - 1))) +
+    Math.pow(10, longitudCodigo - 1);
+  return codigoAleatorio.toString();
 }
 
 module.exports = router;

@@ -106,12 +106,6 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     con_estado = studentRecord.estado;
     con_documento =
       studentRecord.documento || studentRecord.numero_documento_identificacion || null;
-    if (
-      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
-      tipo_busqueda === 'documento'
-    ) {
-      con_documento = String(valor_busqueda || '').trim();
-    }
     con_carrera = studentRecord.carrera;
     con_nombre = studentRecord.nombre;
 

@@ -366,46 +366,34 @@
                       </div>
 
                       <div class="d-flex gap-2 mt-auto flex-wrap">
-                        <% if (item.incidencia_activa) { %>
-                          <div class="w-100 d-grid gap-2">
-                            <div class="alert alert-warning mb-0">
-                              <i class="bi bi-exclamation-triangle"></i>
-                              <strong>Solucionar incidencia para completar la practica</strong>
-                            </div>
-                            <div class="small text-warning">
-                              Incidencia activa: <%= item.incidencia_descripcion || 'Pendiente de solucion.' %>
-                            </div>
-                          </div>
-                        <% } else { %>
-                          <% if (item.habilitarUltimaHora) { %>
-                            <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-open-practice-last-minute-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>" data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>">
-                              <i class="bi bi-clock-history"></i>
-                              <span>Ultima hora</span>
-                            </button>
-                          <% } %>
-                          <button
-                            type="button"
-                            class="btn btn-primary btn-sm flex-fill js-complete-practice"
-                            data-reservation-id="<%= item.id %>"
-                          >
-                            <i class="bi bi-check2-square"></i>
-                            <span>Completar</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn-outline-danger btn-sm flex-fill js-open-practice-incidence-modal"
-                            data-reservation-id="<%= item.id %>"
-                            data-tipo-practica="<%= item.tipo_practica || '' %>"
-                            data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>"
-                          >
-                            <i class="bi bi-bug"></i>
-                            <span>Incidencia</span>
-                          </button>
-                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
-                            <i class="bi bi-person-x"></i>
-                            <span>No asistio</span>
+                        <% if (item.habilitarUltimaHora) { %>
+                          <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-open-practice-last-minute-modal" data-reservation-id="<%= item.id %>" data-practice="<%= item.tipo_practica || 'Practica' %>" data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>">
+                            <i class="bi bi-clock-history"></i>
+                            <span>Ultima hora</span>
                           </button>
                         <% } %>
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-sm flex-fill js-complete-practice"
+                          data-reservation-id="<%= item.id %>"
+                        >
+                          <i class="bi bi-check2-square"></i>
+                          <span>Completar</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-outline-danger btn-sm flex-fill js-open-practice-incidence-modal"
+                          data-reservation-id="<%= item.id %>"
+                          data-tipo-practica="<%= item.tipo_practica || '' %>"
+                          data-location="<%= [item.laboratorio || '', item.sala_nombre || ''].filter(Boolean).join(' - ') %>"
+                        >
+                          <i class="bi bi-bug"></i>
+                          <span>Incidencia</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                          <i class="bi bi-person-x"></i>
+                          <span>No asistio</span>
+                        </button>
                       </div>
                     </div>
                   </article>
@@ -706,19 +694,10 @@
               placeholder="Describe la incidencia para registrar el cierre con novedad."
             ></textarea>
           </div>
-          <div class="mb-0">
-            <label for="incidenciaDocenteEvidencia" class="form-label">Evidencia fotografica</label>
-            <input
-              type="file"
-              class="form-control"
-              id="incidenciaDocenteEvidencia"
-              accept="image/*"
-            >
-          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Registrar incidencia y bloquear</button>
+          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Registrar incidencia y finalizar</button>
         </div>
       </form>
     </div>
@@ -755,7 +734,6 @@
     var incidenciaLocation = document.getElementById('incidenciaDocenteLugar');
     var incidenciaTipoInput = document.getElementById('incidenciaDocenteTipo');
     var incidenciaDescripcionInput = document.getElementById('incidenciaDocenteDescripcion');
-    var incidenciaEvidenceInput = document.getElementById('incidenciaDocenteEvidencia');
     var incidenciaSubmitButton = document.getElementById('incidenciaDocenteSubmitBtn');
     var incidenciaTitle = document.getElementById('incidenciaDocenteModalLabel');
 
@@ -893,7 +871,6 @@
         incidenciaLocation.textContent = location;
         incidenciaTipoInput.value = '';
         incidenciaDescripcionInput.value = '';
-        if (incidenciaEvidenceInput) incidenciaEvidenceInput.value = '';
         incidenciaSubmitButton.disabled = false;
         if (incidenciaTitle) {
           incidenciaTitle.textContent = 'Registrar incidencia de practica ' + tipoPractica.toLowerCase();
@@ -910,7 +887,7 @@
       var descripcionIncidencia = String(incidenciaDescripcionInput.value || '').trim();
 
       if (!reservationId) return;
-      if (!window.confirm('Â¿Deseas registrar la incidencia y bloquear esta practica hasta su solucion?')) return;
+      if (!window.confirm('¿Deseas registrar la incidencia y finalizar esta practica?')) return;
 
       if (!tipoIncidencia || !descripcionIncidencia) {
         showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion.');
@@ -920,37 +897,20 @@
       incidenciaSubmitButton.disabled = true;
 
       try {
-        var formData = new FormData();
-        formData.append('incidencia_tipo', tipoIncidencia);
-        formData.append('incidencia_descripcion', descripcionIncidencia);
-        if (incidenciaEvidenceInput && incidenciaEvidenceInput.files && incidenciaEvidenceInput.files[0]) {
-          formData.append('evidencia', incidenciaEvidenceInput.files[0]);
-        }
-
-        var response = await fetch(
+        var result = await postJson(
           '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/completar',
           {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
-            body: formData,
+            incidencia_tipo: tipoIncidencia,
+            incidencia_descripcion: descripcionIncidencia,
           }
         );
-
-        var result = await response.json().catch(function() {
-          return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
-        });
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.message || 'No fue posible registrar la incidencia.');
-        }
-
         incidenciaModal.hide();
-        showAlert('success', result.message || 'Incidencia registrada correctamente.');
+        showAlert('success', result.message || 'Practica finalizada correctamente.');
         window.setTimeout(function() {
           window.location.reload();
         }, 900);
       } catch (error) {
-        showAlert('danger', error.message || 'No fue posible registrar la incidencia.');
+        showAlert('danger', error.message || 'No fue posible finalizar la practica.');
         incidenciaSubmitButton.disabled = false;
       }
     });
@@ -959,7 +919,6 @@
       if (incidenciaTitle) {
         incidenciaTitle.textContent = 'Registrar incidencia de practica';
       }
-      if (incidenciaEvidenceInput) incidenciaEvidenceInput.value = '';
     });
 
     document.querySelectorAll('.js-no-show-practice').forEach(function(button) {

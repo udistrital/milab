@@ -102,7 +102,7 @@
                     <div class="small"><%= item.reportado_por_documento || '-' %></div>
                   </td>
                   <td class="text-light">
-                    <%= item.origen === 'practica' ? (item.reserva_practica_id || '-') : (item.solicitud_prestamo_id || '-') %>
+                    <%= item.solicitud_prestamo_id || '-' %>
                     <div class="small"><%= item.solicitud_estado || '-' %></div>
                   </td>
                   <td class="text-light"><%= item.fecha_creacion ? new Date(item.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></td>

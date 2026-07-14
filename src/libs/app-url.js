@@ -1,15 +1,7 @@
 require('dotenv').config();
 
-function trimTrailingSlashes(value) {
-  let output = (value || '').toString();
-  while (output.length > 0 && output.endsWith('/')) {
-    output = output.slice(0, -1);
-  }
-  return output;
-}
-
 function normalizeBaseUrl(baseUrl) {
-  return trimTrailingSlashes(baseUrl);
+  return baseUrl.replace(/\/+$/, '');
 }
 
 function normalizePath(pathname) {

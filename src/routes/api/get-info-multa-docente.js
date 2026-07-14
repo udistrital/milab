@@ -7,7 +7,7 @@ const { requireRoles } = require('../middlewares/auth');
 
 require('dotenv').config();
 
-let router = express.Router();
+var router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -34,9 +34,11 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
 
   const requestBody = req.body || {};
   const { numero_documento_identificacion } = requestBody;
-  let con_estado;
-  let con_documento;
-  let con_nombre;
+  var con_estado;
+  var con_documento;
+  var con_nombre;
+  // let con_multado = false;
+  // let con_estado_multa = false; // - Estado de la multa
 
   try {
     const dato1 = await requestOati(
@@ -121,6 +123,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       uals = result3.rows;
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
+      cc_lab = 0;
       uals = null;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
