@@ -1,10 +1,9 @@
-// ...existing code...
 const express = require('express');
 const pool = require('../../libs/db');
 const { fetchUserById } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));

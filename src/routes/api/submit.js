@@ -6,7 +6,7 @@ const pool = require('../../libs/db');
 const { resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -37,11 +37,12 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
   const rawIdentificador = String(identificador || cod_multado || '').trim();
   const documentoCapturado = String(numero_documento_identificacion || '').trim();
   const hasDocumento = documentoCapturado !== '';
-  const effectiveTipo = ['codigo', 'documento'].includes(tipoBusqueda)
-    ? tipoBusqueda
-    : hasDocumento
-      ? 'documento'
-      : 'codigo';
+  let effectiveTipo = 'codigo';
+  if (['codigo', 'documento'].includes(tipoBusqueda)) {
+    effectiveTipo = tipoBusqueda;
+  } else if (hasDocumento) {
+    effectiveTipo = 'documento';
+  }
   const rawDocumento = documentoCapturado || null;
   const rawCodigo = rawIdentificador || null;
   const documentoMultado = effectiveTipo === 'documento' ? rawDocumento || rawCodigo : null;

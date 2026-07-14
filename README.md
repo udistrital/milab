@@ -124,6 +124,11 @@ Si ya tienes Node.js 25 instalado y un `package-lock.json` actualizado, también
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
+- `DB_SECRET_ENABLED`: habilita resolución de credenciales de BD desde AWS Secrets Manager. Por defecto es `true` en `production` y `false` en otros ambientes.
+- `DB_SECRET_ID_ENV_VAR`: nombre de la variable de entorno que contiene el identificador del secreto de AWS (por defecto: `DB_AWS_SECRET_ID`).
+- `DB_SECRET_REGION_ENV_VAR`: nombre de la variable de entorno que contiene la región AWS (por defecto: `AWS_REGION`).
+- `DB_SECRET_USER_KEY`: llave JSON dentro del secreto para el usuario de BD (por defecto: `user`).
+- `DB_SECRET_PASSWORD_KEY`: llave JSON dentro del secreto para la contraseña de BD (por defecto: `password`).
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.

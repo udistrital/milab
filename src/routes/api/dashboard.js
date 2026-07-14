@@ -257,6 +257,25 @@ function normalizeIntegerArray(values) {
     : [];
 }
 
+function resolveChartSeries(chartsData, chartId) {
+  if (chartId === 'sanciones') return chartsData.multas;
+  if (chartId === 'sancionesActivas') return chartsData.multasActivas;
+  if (chartId === 'sancionesSaldadas') return chartsData.multasSaldadas;
+  return chartsData[chartId];
+}
+
+function buildScopeCoverageCounter(role, scope) {
+  if (role === 'admin') {
+    return { label: 'Cobertura', value: 'General' };
+  }
+
+  if (role === 'coordinador') {
+    return { label: 'Facultades', value: String(scope.facultyIds.length) };
+  }
+
+  return { label: 'Laboratorios', value: String(scope.ualIds.length) };
+}
+
 async function resolveLaboratoristaScope(client, authDocument) {
   const columns = await resolveDashboardSchemaColumns(client);
   if (
@@ -716,24 +735,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
     const availableCharts = availableChartIds.map((chartId) => ({
       ...CHART_DEFINITIONS[chartId],
-      total: totalFromSeries(
-        chartId === 'sanciones'
-          ? chartsData.multas
-          : chartId === 'sancionesActivas'
-            ? chartsData.multasActivas
-            : chartId === 'sancionesSaldadas'
-              ? chartsData.multasSaldadas
-              : chartsData[chartId]
-      ),
+      total: totalFromSeries(resolveChartSeries(chartsData, chartId)),
     }));
 
     const scopePresentation = buildScopePresentation(dashboardRole, scope);
     const scopeCounters = [
-      dashboardRole === 'admin'
-        ? { label: 'Cobertura', value: 'General' }
-        : dashboardRole === 'coordinador'
-          ? { label: 'Facultades', value: String(scope.facultyIds.length) }
-          : { label: 'Laboratorios', value: String(scope.ualIds.length) },
+      buildScopeCoverageCounter(dashboardRole, scope),
       { label: 'Indicadores', value: String(availableCharts.length) },
       { label: 'Sanciones visibles', value: String(totalFromSeries(chartsData.multas)) },
     ];

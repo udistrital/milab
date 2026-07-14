@@ -4,10 +4,33 @@ const { config } = require('dotenv');
 
 config();
 
-const callbackBaseUrl =
-  process.env.MICROSOFT_CALLBACK_BASE_URL ||
-  process.env.APP_URL ||
-  'https://labs.udistrital.edu.co';
+function trimTrailingSlashes(value) {
+  let output = (value || '').toString();
+  while (output.length > 0 && output.endsWith('/')) {
+    output = output.slice(0, -1);
+  }
+  return output;
+}
+
+function resolveCallbackBaseUrl() {
+  const explicitCallbackBase = process.env.MICROSOFT_CALLBACK_BASE_URL;
+  if (explicitCallbackBase) {
+    return explicitCallbackBase;
+  }
+
+  // Prefer APP_URL over APP_BASE_URL because APP_BASE_URL may include a path prefix (/milab).
+  const configuredBase = process.env.APP_URL || process.env.APP_BASE_URL;
+
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  return (process.env.NODE_ENV || '').toLowerCase() === 'production'
+    ? 'https://laboratorios.udistrital.edu.co'
+    : `http://localhost:${process.env.PORT || 3000}`;
+}
+
+const callbackBaseUrl = trimTrailingSlashes(resolveCallbackBaseUrl());
 
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   passport.use(
