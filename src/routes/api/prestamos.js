@@ -4592,7 +4592,11 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
     params.push(scope.facultyIds);
   }
 
-  const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+  const laboratoryCondition = buildLaboratoryNameScopeClause(
+    'COALESCE(e.laboratorio, rp.laboratorio)',
+    scope,
+    params
+  );
 
   const result = await executor.query(
     `
@@ -4641,7 +4645,11 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
     params.push(scope.facultyIds);
   }
 
-  const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+  const laboratoryCondition = buildLaboratoryNameScopeClause(
+    'COALESCE(e.laboratorio, rp.laboratorio)',
+    scope,
+    params
+  );
 
   const result = await executor.query(
     `
@@ -4706,7 +4714,11 @@ async function fetchManagedIncident(id, scope, executor = pool) {
     params.push(scope.facultyIds);
   }
 
-  const laboratoryCondition = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+  const laboratoryCondition = buildLaboratoryNameScopeClause(
+    'COALESCE(e.laboratorio, rp.laboratorio)',
+    scope,
+    params
+  );
 
   const result = await executor.query(
     `
@@ -4736,14 +4748,14 @@ async function fetchManagedIncident(id, scope, executor = pool) {
         i.evidencia_mime,
         CASE WHEN i.evidencia_foto IS NOT NULL THEN TRUE ELSE FALSE END AS tiene_evidencia,
         e.estado AS equipo_estado,
-        e.laboratorio,
+        COALESCE(e.laboratorio, rp.laboratorio) AS laboratorio,
         f.ual_id,
-        sp.estado AS solicitud_estado,
+        COALESCE(sp.estado, rp.estado) AS solicitud_estado,
         COALESCE(sp.usuario_id, rp.usuario_id) AS usuario_sancionado_id,
-        COALESCE(e.facultad, f.nombre) AS facultad,
+        COALESCE(e.facultad, f.nombre, rp.facultad) AS facultad,
         f.facultad_id
       FROM incidencia i
-      JOIN equipo e
+      LEFT JOIN equipo e
         ON e.id = i.equipo_id
       LEFT JOIN solicitud_prestamo sp
         ON sp.id = i.solicitud_prestamo_id
@@ -4757,7 +4769,7 @@ async function fetchManagedIncident(id, scope, executor = pool) {
         FROM ual u
         JOIN facultad f
           ON f.facultad_id = u.facultad_id
-        WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
+        WHERE UPPER(u.nombre) = UPPER(COALESCE(e.laboratorio, rp.laboratorio))
         ORDER BY u.ual_id ASC
         LIMIT 1
       ) f
@@ -7436,7 +7448,11 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
         whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
       }
 
-      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause(
+        'COALESCE(e.laboratorio, rp.laboratorio)',
+        scope,
+        params
+      );
       if (laboratoryClause) {
         whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
       }
@@ -7825,7 +7841,11 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
         whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
       }
 
-      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause(
+        'COALESCE(e.laboratorio, rp.laboratorio)',
+        scope,
+        params
+      );
       if (laboratoryClause) {
         whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
       }
@@ -9057,7 +9077,11 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
         whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
       }
 
-      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause(
+        'COALESCE(e.laboratorio, rp.laboratorio)',
+        scope,
+        params
+      );
       if (laboratoryClause) {
         whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
       }
@@ -9068,8 +9092,10 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             i.id,
             i.equipo_id,
             i.solicitud_prestamo_id,
+            i.reserva_practica_id,
             i.entrega_equipo_id,
             i.origen,
+            i.practica_tipo,
             i.tipo_incidencia,
             i.descripcion,
             i.estado,
@@ -9079,22 +9105,35 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             CASE WHEN i.evidencia_foto IS NOT NULL THEN TRUE ELSE FALSE END AS tiene_evidencia,
             i.fecha_creacion,
             i.fecha_modificacion,
-            e.codigo AS equipo_codigo,
-            e.nombre AS equipo_nombre,
-            e.laboratorio,
-            COALESCE(e.facultad, f.nombre) AS facultad,
+            COALESCE(e.codigo, CONCAT('PR-', i.reserva_practica_id::text)) AS equipo_codigo,
+            CASE
+              WHEN i.origen = 'practica' THEN CONCAT('Practica ', COALESCE(i.practica_tipo, rp.tipo_practica, ''))
+              ELSE e.nombre
+            END AS equipo_nombre,
+            COALESCE(e.laboratorio, rp.laboratorio) AS laboratorio,
+            COALESCE(e.facultad, f.nombre, rp.facultad) AS facultad,
             u.nombre AS reportado_por_nombre,
             u.documento AS reportado_por_documento,
-            sp.estado AS solicitud_estado
+            COALESCE(sp.estado, rp.estado) AS solicitud_estado
           FROM incidencia i
-          JOIN equipo e
+          LEFT JOIN equipo e
             ON e.id = i.equipo_id
           LEFT JOIN usuario u
             ON u.id = i.reportado_por_id
           LEFT JOIN solicitud_prestamo sp
             ON sp.id = i.solicitud_prestamo_id
-          LEFT JOIN ual ul
-            ON UPPER(ul.nombre) = UPPER(e.laboratorio)
+          LEFT JOIN reserva_practica rp
+            ON rp.id = i.reserva_practica_id
+          LEFT JOIN LATERAL (
+            SELECT
+              ual_id,
+              facultad_id,
+              nombre
+            FROM ual
+            WHERE UPPER(nombre) = UPPER(COALESCE(e.laboratorio, rp.laboratorio))
+            ORDER BY ual_id ASC
+            LIMIT 1
+          ) ul ON TRUE
           LEFT JOIN facultad f
             ON f.facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
@@ -9149,18 +9188,35 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
       params.push(scope.facultyIds);
     }
 
+    const laboratoryCondition = buildLaboratoryNameScopeClause(
+      'COALESCE(e.laboratorio, rp.laboratorio)',
+      scope,
+      params
+    );
+
     const result = await pool.query(
       `
         SELECT i.evidencia_foto, i.evidencia_mime
         FROM incidencia i
-        JOIN equipo e
+        LEFT JOIN equipo e
           ON e.id = i.equipo_id
-        LEFT JOIN ual ul
-          ON UPPER(ul.nombre) = UPPER(e.laboratorio)
+        LEFT JOIN reserva_practica rp
+          ON rp.id = i.reserva_practica_id
+        LEFT JOIN LATERAL (
+          SELECT
+            ual_id,
+            facultad_id,
+            nombre
+          FROM ual
+          WHERE UPPER(nombre) = UPPER(COALESCE(e.laboratorio, rp.laboratorio))
+          ORDER BY ual_id ASC
+          LIMIT 1
+        ) ul ON TRUE
         LEFT JOIN facultad f
           ON f.facultad_id = ul.facultad_id
         WHERE i.id = $1
           ${facultyCondition}
+          ${laboratoryCondition}
         LIMIT 1
       `,
       params
@@ -9383,15 +9439,17 @@ router.post(
       );
       // #endregion
 
-      await client.query(
-        `
-        UPDATE equipo
-        SET estado = 'mantenimiento',
-            fecha_modificacion = CURRENT_TIMESTAMP
-        WHERE id = $1
-      `,
-        [incidencia.equipo_id]
-      );
+      if (incidencia.equipo_id) {
+        await client.query(
+          `
+          UPDATE equipo
+          SET estado = 'mantenimiento',
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+          [incidencia.equipo_id]
+        );
+      }
       // #region debug-point A:incidencia-aprobar-timeout
       console.warn('[DBG incidencia-aprobar-timeout] 10 after UPDATE equipo / before COMMIT', {
         requestId: req.id || req.requestId || null,
@@ -9863,29 +9921,32 @@ router.post(
         [incidencia.id, closeDescription]
       );
 
-      const openIncidentsResult = await client.query(
-        `
-        SELECT 1
-        FROM incidencia
-        WHERE equipo_id = $1
-          AND id <> $2
-          AND estado <> 'cerrada'
-        LIMIT 1
-      `,
-        [incidencia.equipo_id, incidencia.id]
-      );
-
-      if (!openIncidentsResult.rows.length) {
-        const restoredState = incidencia.solicitud_estado === 'activo' ? 'prestado' : 'disponible';
-        await client.query(
+      if (incidencia.equipo_id) {
+        const openIncidentsResult = await client.query(
           `
-          UPDATE equipo
-          SET estado = $2,
-              fecha_modificacion = CURRENT_TIMESTAMP
-          WHERE id = $1
+          SELECT 1
+          FROM incidencia
+          WHERE equipo_id = $1
+            AND id <> $2
+            AND estado <> 'cerrada'
+          LIMIT 1
         `,
-          [incidencia.equipo_id, restoredState]
+          [incidencia.equipo_id, incidencia.id]
         );
+
+        if (!openIncidentsResult.rows.length) {
+          const restoredState =
+            incidencia.solicitud_estado === 'activo' ? 'prestado' : 'disponible';
+          await client.query(
+            `
+            UPDATE equipo
+            SET estado = $2,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1
+          `,
+            [incidencia.equipo_id, restoredState]
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -10990,7 +11051,21 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             s.nombre AS sala_nombre,
             u.nombre AS usuario_nombre,
             u.documento AS usuario_documento,
-            u.correo AS usuario_correo
+            u.correo AS usuario_correo,
+            EXISTS (
+              SELECT 1
+              FROM incidencia i
+              WHERE i.reserva_practica_id = rp.id
+                AND i.estado <> 'cerrada'
+            ) AS incidencia_activa,
+            (
+              SELECT i.descripcion
+              FROM incidencia i
+              WHERE i.reserva_practica_id = rp.id
+                AND i.estado <> 'cerrada'
+              ORDER BY i.fecha_creacion DESC, i.id DESC
+              LIMIT 1
+            ) AS incidencia_descripcion
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
@@ -11059,7 +11134,21 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             s.nombre AS sala_nombre,
             u.nombre AS usuario_nombre,
             u.documento AS usuario_documento,
-            u.correo AS usuario_correo
+            u.correo AS usuario_correo,
+            EXISTS (
+              SELECT 1
+              FROM incidencia i
+              WHERE i.reserva_practica_id = rp.id
+                AND i.estado <> 'cerrada'
+            ) AS incidencia_activa,
+            (
+              SELECT i.descripcion
+              FROM incidencia i
+              WHERE i.reserva_practica_id = rp.id
+                AND i.estado <> 'cerrada'
+              ORDER BY i.fecha_creacion DESC, i.id DESC
+              LIMIT 1
+            ) AS incidencia_descripcion
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
@@ -12426,6 +12515,7 @@ router.post(
 router.post(
   '/practicas/:id/completar',
   requireGestionPracticasAuthorized,
+  parseIncidentEvidenceUpload,
   async function (req, res) {
     if (!isValidLoanRequestId(req.params.id)) {
       return res.status(400).json({
@@ -12463,28 +12553,29 @@ router.post(
           req.body?.descripcion_incidencia
       );
       const shouldCreateIncidencia = Boolean(incidenciaTipo || incidenciaDescripcion);
+      const shouldBlockPracticeByIncident =
+        shouldCreateIncidencia && String(reserva.tipo_practica || '').toLowerCase() !== 'docente';
       const client = await pool.connect();
 
       try {
         await client.query('BEGIN');
-
-        const result = await client.query(
+        const openIncidentResult = await client.query(
           `
-          UPDATE reserva_practica
-          SET estado = $2,
-              fecha_modificacion = CURRENT_TIMESTAMP
-          WHERE id = $1
-            AND estado = $3
-          RETURNING id
-        `,
-          [reserva.id, nextState, currentState]
+            SELECT 1
+            FROM incidencia
+            WHERE reserva_practica_id = $1
+              AND estado <> 'cerrada'
+            LIMIT 1
+          `,
+          [reserva.id]
         );
 
-        if (!result.rows.length) {
+        if (openIncidentResult.rows.length) {
           await client.query('ROLLBACK');
           return res.status(409).json({
             success: false,
-            message: 'La reserva ya fue procesada por otro usuario.',
+            message:
+              'La practica ya tiene una incidencia activa y permanece bloqueada hasta solucionarla.',
           });
         }
 
@@ -12499,6 +12590,7 @@ router.post(
 
           await ensurePracticeIncidenceSchema(client);
           const sessionUsuario = await fetchSessionUsuario(req);
+          const incidentState = resolveIncidentReporterState(sessionUsuario);
           await client.query(
             `
               INSERT INTO incidencia (
@@ -12506,29 +12598,63 @@ router.post(
                 reserva_practica_id,
                 practica_tipo,
                 reportado_por_id,
+                documento_que_reporto,
+                nombre_que_reporto,
                 tipo_incidencia,
                 descripcion,
+                estado,
+                evidencia_foto,
+                evidencia_mime,
                 fecha_modificacion
               )
-              VALUES ('practica', $1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+              VALUES ('practica', $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
             `,
             [
               reserva.id,
               reserva.tipo_practica === 'docente' ? 'docente' : 'libre',
               sessionUsuario?.id || null,
+              sessionUsuario?.documento || null,
+              sessionUsuario?.nombre || null,
               incidenciaTipo,
               incidenciaDescripcion,
+              incidentState,
+              req.file?.buffer || null,
+              req.file?.mimetype || null,
             ]
           );
         }
 
+        if (!shouldBlockPracticeByIncident) {
+          const result = await client.query(
+            `
+            UPDATE reserva_practica
+            SET estado = $2,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1
+              AND estado = $3
+            RETURNING id
+          `,
+            [reserva.id, nextState, currentState]
+          );
+
+          if (!result.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              success: false,
+              message: 'La reserva ya fue procesada por otro usuario.',
+            });
+          }
+        }
+
         await client.query('COMMIT');
 
-        await registerPrestamosAuditEntry({
-          req,
-          accion: 'Finalizar Practica (Recibida)',
-          persona: `Reserva: ${reserva.id}`,
-        });
+        if (!shouldBlockPracticeByIncident) {
+          await registerPrestamosAuditEntry({
+            req,
+            accion: 'Finalizar Practica (Recibida)',
+            persona: `Reserva: ${reserva.id}`,
+          });
+        }
 
         if (shouldCreateIncidencia) {
           await registerPrestamosAuditEntry({
@@ -12538,34 +12664,37 @@ router.post(
           });
         }
 
-        sendPrestamosNotification({
-          sourceSystem: 'prestamos',
-          templateName: 'prestamos/practica_estado',
-          recipient: reserva.usuario_correo,
-          subject: nextState === 'finalizada' ? 'Practica finalizada' : 'Practica completada',
-          variables: {
-            titulo:
-              nextState === 'finalizada'
-                ? 'Tu practica fue finalizada'
-                : 'Tu practica fue completada',
-            estadoEtiqueta: nextState === 'finalizada' ? 'FINALIZADA' : 'COMPLETADA',
-            mensaje: shouldCreateIncidencia
-              ? 'Se registró una incidencia asociada al cierre de la practica.'
-              : '',
-            usuarioNombre: reserva.usuario_nombre || 'Usuario',
-            solicitudId: reserva.id,
-            lugar: buildPracticeNotificationLocation(reserva),
-            fechaInicio: formatPdfDateTime(reserva.fecha_inicio),
-            fechaFin: formatPdfDateTime(reserva.fecha_fin),
-            appUrl: getMilabAppUrl(),
-          },
-          correlationId: `practica-${nextState}-${reserva.id}`,
-        });
+        if (!shouldBlockPracticeByIncident) {
+          sendPrestamosNotification({
+            sourceSystem: 'prestamos',
+            templateName: 'prestamos/practica_estado',
+            recipient: reserva.usuario_correo,
+            subject: nextState === 'finalizada' ? 'Practica finalizada' : 'Practica completada',
+            variables: {
+              titulo:
+                nextState === 'finalizada'
+                  ? 'Tu practica fue finalizada'
+                  : 'Tu practica fue completada',
+              estadoEtiqueta: nextState === 'finalizada' ? 'FINALIZADA' : 'COMPLETADA',
+              mensaje: shouldCreateIncidencia
+                ? 'Se registró una incidencia asociada al cierre de la practica.'
+                : '',
+              usuarioNombre: reserva.usuario_nombre || 'Usuario',
+              solicitudId: reserva.id,
+              lugar: buildPracticeNotificationLocation(reserva),
+              fechaInicio: formatPdfDateTime(reserva.fecha_inicio),
+              fechaFin: formatPdfDateTime(reserva.fecha_fin),
+              appUrl: getMilabAppUrl(),
+            },
+            correlationId: `practica-${nextState}-${reserva.id}`,
+          });
+        }
 
         return res.json({
           success: true,
-          message:
-            nextState === 'finalizada'
+          message: shouldBlockPracticeByIncident
+            ? 'Incidencia registrada en estado pendiente de aprobacion. La practica queda bloqueada hasta solucionar la incidencia.'
+            : nextState === 'finalizada'
               ? 'Practica finalizada correctamente.'
               : 'Practica completada correctamente.',
         });
