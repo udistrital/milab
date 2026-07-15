@@ -113,6 +113,7 @@
         </div>
         <div class="card-body">
           <form class="row g-3" method="post" action="/milab/prestamos/coordinador/practicas/config">
+            <%- include('../../../partials/csrf_field') %>
             <input type="hidden" name="facultad_id" value="<%= selectedFacultyId || '' %>">
             <input type="hidden" name="ual_id" value="<%= selectedUalId || '' %>">
 
