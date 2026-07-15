@@ -652,7 +652,7 @@ async function ensureAcademicPracticeSchema(client = pool) {
   await client.query(`CREATE INDEX IF NOT EXISTS idx_asignatura_nombre ON asignatura(nombre)`);
 
   await client.query(`
-    CREATE TABLE IF NOT EXISTS configuracion_practica (
+    CREATE TABLE IF NOT EXISTS esquema_practica_ual (
       id SERIAL NOT NULL,
       ual_id INT NOT NULL,
       schema_json JSONB NOT NULL DEFAULT '{"campos_adicionales":[]}'::jsonb,
@@ -660,15 +660,15 @@ async function ensureAcademicPracticeSchema(client = pool) {
       activo BOOLEAN NOT NULL DEFAULT TRUE,
       fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT pk_configuracion_practica PRIMARY KEY (id),
-      CONSTRAINT uq_configuracion_practica_ual UNIQUE (ual_id),
-      CONSTRAINT fk_configuracion_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
-      CONSTRAINT fk_configuracion_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
-      CONSTRAINT ck_configuracion_practica_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
+      CONSTRAINT pk_esquema_practica_ual PRIMARY KEY (id),
+      CONSTRAINT uq_esquema_practica_ual_ual UNIQUE (ual_id),
+      CONSTRAINT fk_esquema_practica_ual_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+      CONSTRAINT fk_esquema_practica_ual_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+      CONSTRAINT ck_esquema_practica_ual_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
     )
   `);
   await client.query(
-    `CREATE INDEX IF NOT EXISTS idx_configuracion_practica_ual ON configuracion_practica(ual_id)`
+    `CREATE INDEX IF NOT EXISTS idx_esquema_practica_ual_ual ON esquema_practica_ual(ual_id)`
   );
 
   await client.query(`
@@ -1916,9 +1916,17 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
     if (
       String(error?.message || '')
         .toLowerCase()
-        .includes('practica_config')
+        .includes('parametro_practica_facultad')
     ) {
-      return 'La tabla practica_config no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla parametro_practica_facultad no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+    }
+
+    if (
+      String(error?.message || '')
+        .toLowerCase()
+        .includes('esquema_practica_ual')
+    ) {
+      return 'La tabla esquema_practica_ual no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
     }
 
     if (
@@ -5459,7 +5467,7 @@ async function fetchPracticeConfigurationByFacultyId(facultyId) {
           min_docente_reserva_days,
           max_activas_estudiante,
           dias_sancion_no_asistencia
-        FROM practica_config
+        FROM parametro_practica_facultad
         WHERE facultad_id = $1
         LIMIT 1
       `,
@@ -5640,7 +5648,7 @@ async function fetchDynamicPracticeSchemaByUalId(ualId) {
   const result = await pool.query(
     `
       SELECT schema_json
-      FROM configuracion_practica
+      FROM esquema_practica_ual
       WHERE ual_id = $1
       LIMIT 1
     `,
@@ -12931,7 +12939,7 @@ router.post(
 
       await pool.query(
         `
-          INSERT INTO practica_config (
+          INSERT INTO parametro_practica_facultad (
             facultad_id,
             min_cancel_hours,
             min_reserva_hours,
@@ -13020,7 +13028,7 @@ router.post(
 
       await pool.query(
         `
-          INSERT INTO configuracion_practica (
+          INSERT INTO esquema_practica_ual (
             ual_id,
             schema_json,
             creado_por_id,

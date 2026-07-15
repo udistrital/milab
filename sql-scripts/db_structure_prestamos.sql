@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS parametrizacion (
     CONSTRAINT ck_max_horas_mes_prestamos_parametrizacion CHECK (max_horas_mes_prestamos >= 0)
 );
 
-CREATE TABLE IF NOT EXISTS practica_config (
+CREATE TABLE IF NOT EXISTS parametro_practica_facultad (
     id SERIAL NOT NULL,
     facultad_id INT NOT NULL,
     min_cancel_hours INT NOT NULL DEFAULT 1,
@@ -240,17 +240,17 @@ CREATE TABLE IF NOT EXISTS practica_config (
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT pk_practica_config PRIMARY KEY (id),
-    CONSTRAINT fk_practica_config_facultad FOREIGN KEY (facultad_id) REFERENCES facultad(facultad_id) ON DELETE CASCADE,
-    CONSTRAINT uq_facultad_id_practica_config UNIQUE (facultad_id),
-    CONSTRAINT ck_min_cancel_hours_practica_config CHECK (min_cancel_hours >= 1),
-    CONSTRAINT ck_min_reserva_hours_practica_config CHECK (min_reserva_hours >= 2),
-    CONSTRAINT ck_min_docente_reserva_days_practica_config CHECK (min_docente_reserva_days >= 0),
-    CONSTRAINT ck_max_activas_estudiante_practica_config CHECK (max_activas_estudiante >= 1),
-    CONSTRAINT ck_dias_sancion_no_asistencia_practica_config CHECK (dias_sancion_no_asistencia >= 0)
+    CONSTRAINT pk_parametro_practica_facultad PRIMARY KEY (id),
+    CONSTRAINT fk_parametro_practica_facultad_facultad FOREIGN KEY (facultad_id) REFERENCES facultad(facultad_id) ON DELETE CASCADE,
+    CONSTRAINT uq_parametro_practica_facultad_facultad UNIQUE (facultad_id),
+    CONSTRAINT ck_parametro_practica_facultad_min_cancel_hours CHECK (min_cancel_hours >= 1),
+    CONSTRAINT ck_parametro_practica_facultad_min_reserva_hours CHECK (min_reserva_hours >= 2),
+    CONSTRAINT ck_parametro_practica_facultad_min_docente_reserva_days CHECK (min_docente_reserva_days >= 0),
+    CONSTRAINT ck_parametro_practica_facultad_max_activas_estudiante CHECK (max_activas_estudiante >= 1),
+    CONSTRAINT ck_parametro_practica_facultad_dias_sancion_no_asistencia CHECK (dias_sancion_no_asistencia >= 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_practica_config_facultad ON practica_config(facultad_id);
+CREATE INDEX IF NOT EXISTS idx_parametro_practica_facultad_facultad ON parametro_practica_facultad(facultad_id);
 
 CREATE TABLE IF NOT EXISTS asignatura (
     id SERIAL NOT NULL,
@@ -267,7 +267,7 @@ CREATE TABLE IF NOT EXISTS asignatura (
 CREATE INDEX IF NOT EXISTS idx_asignatura_codigo ON asignatura(codigo);
 CREATE INDEX IF NOT EXISTS idx_asignatura_nombre ON asignatura(nombre);
 
-CREATE TABLE IF NOT EXISTS configuracion_practica (
+CREATE TABLE IF NOT EXISTS esquema_practica_ual (
     id SERIAL NOT NULL,
     ual_id INT NOT NULL,
     schema_json JSONB NOT NULL DEFAULT '{"campos_adicionales":[]}'::jsonb,
@@ -275,14 +275,14 @@ CREATE TABLE IF NOT EXISTS configuracion_practica (
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT pk_configuracion_practica PRIMARY KEY (id),
-    CONSTRAINT uq_configuracion_practica_ual UNIQUE (ual_id),
-    CONSTRAINT fk_configuracion_practica_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
-    CONSTRAINT fk_configuracion_practica_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
-    CONSTRAINT ck_configuracion_practica_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
+    CONSTRAINT pk_esquema_practica_ual PRIMARY KEY (id),
+    CONSTRAINT uq_esquema_practica_ual_ual UNIQUE (ual_id),
+    CONSTRAINT fk_esquema_practica_ual_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+    CONSTRAINT fk_esquema_practica_ual_usuario FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_esquema_practica_ual_schema_json CHECK (jsonb_typeof(schema_json) = 'object')
 );
 
-CREATE INDEX IF NOT EXISTS idx_configuracion_practica_ual ON configuracion_practica(ual_id);
+CREATE INDEX IF NOT EXISTS idx_esquema_practica_ual_ual ON esquema_practica_ual(ual_id);
 
 CREATE TABLE IF NOT EXISTS practica (
     id SERIAL NOT NULL,
