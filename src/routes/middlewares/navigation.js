@@ -15,6 +15,115 @@ function createGroup(title, icon, items) {
   return { title, icon, items };
 }
 
+function normalizeHoursValue(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+  return numeric;
+}
+
+async function getStudentMonthlyUsageSummary(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  if (!user?.id || !roles.includes('estudiante')) {
+    return null;
+  }
+
+  try {
+    const [limitsResult, loansResult, practicesResult] = await Promise.all([
+      pool.query(
+        `
+          SELECT max_horas_mes_practica_libre, max_horas_mes_prestamos
+          FROM parametrizacion
+          WHERE id = 1
+          LIMIT 1
+        `
+      ),
+      pool.query(
+        `
+          SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio)) / 3600), 0) AS horas
+          FROM solicitud_prestamo
+          WHERE usuario_id = $1
+            AND estado NOT IN ('cancelado', 'rechazado')
+            AND fecha_inicio >= date_trunc('month', CURRENT_TIMESTAMP)
+            AND fecha_inicio < date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month'
+        `,
+        [user.id]
+      ),
+      pool.query(
+        `
+          SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio)) / 3600), 0) AS horas
+          FROM reserva_practica
+          WHERE usuario_id = $1
+            AND tipo_practica = 'libre'
+            AND estado NOT IN ('cancelada', 'rechazada')
+            AND fecha_inicio >= date_trunc('month', CURRENT_TIMESTAMP)
+            AND fecha_inicio < date_trunc('month', CURRENT_TIMESTAMP) + interval '1 month'
+        `,
+        [user.id]
+      ),
+    ]);
+
+    const limits = limitsResult.rows[0] || {};
+    const loanLimit = normalizeHoursValue(limits.max_horas_mes_prestamos);
+    const freePracticeLimit = normalizeHoursValue(limits.max_horas_mes_practica_libre);
+    const loanUsed = normalizeHoursValue(loansResult.rows[0]?.horas);
+    const freePracticeUsed = normalizeHoursValue(practicesResult.rows[0]?.horas);
+
+    function buildUsageItem(label, used, limit, icon) {
+      const hasLimit = limit > 0;
+      const remaining = hasLimit ? Math.max(limit - used, 0) : null;
+      const percentage = hasLimit ? Math.min((used / limit) * 100, 100) : 0;
+
+      return {
+        label,
+        icon,
+        used,
+        limit,
+        hasLimit,
+        remaining,
+        percentage,
+      };
+    }
+
+    return {
+      items: [
+        buildUsageItem('Practicas libres', freePracticeUsed, freePracticeLimit, 'bi-journal-check'),
+        buildUsageItem('Prestamos de equipos', loanUsed, loanLimit, 'bi-box-seam'),
+      ],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ensureCoordinatorSignatureAccountLink(navigation, roles) {
+  const normalizedRoles = normalizeRoles(roles);
+  if (!normalizedRoles.includes('coordinador')) {
+    return navigation;
+  }
+
+  const accountLinks = Array.isArray(navigation.accountLinks) ? [...navigation.accountLinks] : [];
+  const signatureHref = '/milab/prestamos/coordinador/firma';
+  const hasExistingLink = accountLinks.some((item) => item?.href === signatureHref);
+
+  if (!hasExistingLink) {
+    const signatureLink = createLink('Firma del coordinador', signatureHref, 'bi-pen');
+    const profileIndex = accountLinks.findIndex((item) => item?.href === '/milab/api/profile');
+
+    if (profileIndex >= 0) {
+      accountLinks.splice(profileIndex, 0, signatureLink);
+    } else {
+      accountLinks.push(signatureLink);
+    }
+  }
+
+  return {
+    ...navigation,
+    accountLinks,
+  };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -167,6 +276,7 @@ function buildStaticNavigation(user) {
         ),
         createLink('Entrega y devolucion', '/milab/prestamos/entrega-equipos', 'bi-box-arrow-left'),
         createLink('Incidencias', '/milab/prestamos/incidencias', 'bi-bug'),
+        createLink('Gestion de practicas', '/milab/prestamos/practicas/gestion', 'bi-journal-text'),
         createLink('Reportes', '/milab/prestamos/reportes', 'bi-bar-chart-line'),
       ])
     );
@@ -192,14 +302,17 @@ function buildStaticNavigation(user) {
     accountLinks.push(createLink('Perfil', '/milab/api/profile', 'bi-person-circle'));
   }
 
-  return {
-    isAuthenticated,
-    role,
-    roleLabel: formatRoleLabel(role),
-    primaryLinks,
-    secondaryGroups,
-    accountLinks,
-  };
+  return ensureCoordinatorSignatureAccountLink(
+    {
+      isAuthenticated,
+      role,
+      roleLabel: formatRoleLabel(role),
+      primaryLinks,
+      secondaryGroups,
+      accountLinks,
+    },
+    role
+  );
 }
 
 async function getPendingSanctionsCount(user, role) {
@@ -255,12 +368,15 @@ async function buildNavigation(user) {
         accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
           ? removePrestamosNavigation(menu)
           : menu;
-      return {
-        isAuthenticated,
-        role: getPrimaryRole(roles),
-        roleLabel: formatRoleLabel(roles),
-        ...filteredMenu,
-      };
+      return ensureCoordinatorSignatureAccountLink(
+        {
+          isAuthenticated,
+          role: getPrimaryRole(roles),
+          roleLabel: formatRoleLabel(roles),
+          ...filteredMenu,
+        },
+        roles
+      );
     }
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -292,6 +408,7 @@ async function navigationMiddleware(req, res, next) {
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
     const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
 
     if (sessionUser) {
       Object.assign(res.locals, sessionUser);
@@ -305,6 +422,7 @@ async function navigationMiddleware(req, res, next) {
     res.locals.isAuthenticated = navigation.isAuthenticated;
     res.locals.sessionRoleLabel = navigation.roleLabel;
     res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    res.locals.studentUsageSummary = studentUsageSummary;
 
     return next();
   } catch (error) {

@@ -254,6 +254,7 @@ WHERE (
         'Gestion de solicitudes',
         'Entrega y devolucion',
         'Incidencias',
+        'Gestion de practicas',
         'Reportes'
     )
 ) OR (
