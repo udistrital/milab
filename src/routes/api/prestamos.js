@@ -7448,11 +7448,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
         whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
       }
 
-      const laboratoryClause = buildLaboratoryNameScopeClause(
-        'COALESCE(e.laboratorio, rp.laboratorio)',
-        scope,
-        params
-      );
+      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
       if (laboratoryClause) {
         whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
       }
@@ -7841,11 +7837,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
         whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
       }
 
-      const laboratoryClause = buildLaboratoryNameScopeClause(
-        'COALESCE(e.laboratorio, rp.laboratorio)',
-        scope,
-        params
-      );
+      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
       if (laboratoryClause) {
         whereParts.push(laboratoryClause.replace(/^\s*AND\s+/i, ''));
       }
