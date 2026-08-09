@@ -11,6 +11,12 @@ MILab ya cuenta con una suite formal de pruebas unitarias ejecutada con `node:te
 - `npm test`
 - `npm run test:unit`
 
+Además, la suite HTTP de integración ya quedó incorporada a la ejecución principal de pruebas:
+
+- `npm run test:integration`
+
+Hoy `npm test` ejecuta primero unit y luego integración, que es también la ruta usada por CI.
+
 La suite actual cubre helpers, middlewares y algunas rutas con dependencias simuladas. Todavía no existe una capa amplia de pruebas de integración end-to-end, pero ya hay una red útil de seguridad sobre invariantes críticos:
 
 1. correos institucionales y conflictos de email,

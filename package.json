@@ -4,7 +4,7 @@
   "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {
-    "test": "node --test tests/unit/**/*.test.js",
+    "test": "npm run test:unit && npm run test:integration",
     "test:unit": "node --test tests/unit/**/*.test.js",
     "test:integration": "node --test tests/integration/**/*.test.js",
     "start": "nodemon src/app",

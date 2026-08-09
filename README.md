@@ -111,7 +111,7 @@ También puedes documentar comandos para lint o pruebas. Estos pasos ayudan a as
 
 ## Análisis local
 
-El pipeline de calidad usa Node.js 25 y ejecuta formato, ESLint y auditoría de dependencias.
+El pipeline de calidad usa Node.js 25 y ejecuta formato, ESLint, auditoría de dependencias y la suite automatizada de pruebas.
 
 Para ejecutar el mismo análisis localmente con Docker:
 
@@ -120,6 +120,15 @@ Para ejecutar el mismo análisis localmente con Docker:
 Si ya tienes Node.js 25 instalado y un `package-lock.json` actualizado, también puedes usar:
 
 `npm run ci:check`
+
+Para ejecutar la misma puerta de pruebas que usa CI:
+
+`npm test`
+
+`npm test` ahora agrega:
+
+- `npm run test:unit`
+- `npm run test:integration`
 
 ## Variables de entorno relevantes
 

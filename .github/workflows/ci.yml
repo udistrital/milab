@@ -47,8 +47,8 @@ jobs:
       - name: Ejecutar análisis de formato, lint y auditoría
         run: npm run ci:check
 
-  pruebas_unitarias:
-    name: Pruebas unitarias
+  pruebas_automatizadas:
+    name: Pruebas automatizadas
     needs: Analisis
     runs-on:
       - self-hosted
@@ -72,12 +72,12 @@ jobs:
           node-version: '25.x'
       - name: Instalar dependencias
         run: npm ci
-      - name: Ejecutar pruebas unitarias
+      - name: Ejecutar pruebas unitarias e integración
         run: npm test
 
   despliegue_pruebas:
     name: Despliegue a pruebas
-    needs: pruebas_unitarias
+    needs: pruebas_automatizadas
     if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
