@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const Module = require('node:module');
+const express = require('express');
+const request = require('supertest');
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/prestamos.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
@@ -119,6 +121,100 @@ function loadRoute() {
         }
       }
 
+      delete require.cache[routePath];
+    },
+  };
+}
+
+function buildApp(route, sessionUser = null) {
+  const app = express();
+
+  app.use((req, res, next) => {
+    req.session = { user: sessionUser };
+    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    next();
+  });
+  app.use('/', route);
+
+  return app;
+}
+
+function loadRouteWithAccess(access) {
+  const originals = new Map();
+  const originalLoad = Module._load;
+  const stubs = [
+    [
+      dbPath,
+      {
+        query: async () => ({ rows: [] }),
+        connect: async () => ({ query: async () => ({ rows: [] }), release() {} }),
+      },
+    ],
+    [
+      facultyScopePath,
+      {
+        canonicalizeFacultyName: (value) => value,
+        resolveCoordinatorScope: async () => ({ coordinatorDocument: null, facultyIds: [] }),
+      },
+    ],
+    [emailNotificationsPath, { sendEmailNotification: async () => ({ success: true }) }],
+    [prestamosModuleAccessPath, { getPrestamosModuleAccess: async () => access }],
+    [
+      authPath,
+      {
+        requirePermissions: () => (req, res, next) => next(),
+        requireRoles: () => (req, res, next) => next(),
+        renderAuthError: (res, payload) => res.status(403).json({ authError: true, payload }),
+      },
+    ],
+  ];
+  const packageStubs = {
+    multer: Object.assign(
+      function multer() {
+        return {
+          single() {
+            return function (_req, _res, next) {
+              next();
+            };
+          },
+        };
+      },
+      { memoryStorage() { return {}; } }
+    ),
+    pdfkit: function PDFDocument() {},
+    'pdf-lib': { PDFDocument: class {}, StandardFonts: {} },
+  };
+
+  delete require.cache[routePath];
+  Module._load = function patchedLoader(requestName, parent, isMain) {
+    if (Object.prototype.hasOwnProperty.call(packageStubs, requestName)) {
+      return packageStubs[requestName];
+    }
+
+    return originalLoad.call(this, requestName, parent, isMain);
+  };
+
+  for (const [modulePath, stub] of stubs) {
+    originals.set(modulePath, require.cache[modulePath]);
+    require.cache[modulePath] = {
+      id: modulePath,
+      filename: modulePath,
+      loaded: true,
+      exports: stub,
+    };
+  }
+
+  return {
+    route: require(routePath),
+    restore() {
+      Module._load = originalLoad;
+      for (const [modulePath, original] of originals.entries()) {
+        if (original) {
+          require.cache[modulePath] = original;
+        } else {
+          delete require.cache[modulePath];
+        }
+      }
       delete require.cache[routePath];
     },
   };
@@ -261,6 +357,69 @@ test('prestamos exige practica y asignatura configuradas para practicas docentes
 
     assert.equal(missingPracticeMessage, 'Debes seleccionar una practica academica configurada.');
     assert.equal(validMessage, '');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos redirects users by role from the module root', async () => {
+  const loaded = loadRouteWithAccess({ blocked: false, role: null, allowedFacultyIds: [] });
+
+  try {
+    let app = buildApp(loaded.route, { tipo: 'estudiante' });
+    let response = await request(app).get('/');
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/prestamos/solicitar');
+
+    app = buildApp(loaded.route, { tipo: 'monitor' });
+    response = await request(app).get('/');
+    assert.equal(response.headers.location, '/milab/prestamos/gestion-solicitudes');
+
+    app = buildApp(loaded.route, { tipo: 'admin' });
+    response = await request(app).get('/');
+    assert.equal(response.headers.location, '/milab/prestamos/reportes');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos blocks disabled module access with html response for GET requests', async () => {
+  const loaded = loadRouteWithAccess({
+    blocked: true,
+    role: 'coordinador',
+    allowedFacultyIds: [],
+    facultyIds: [10],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const response = await request(app).get('/reportes');
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.authError, true);
+    assert.match(response.body.payload.message2, /Prestamos esta deshabilitado/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos blocks disabled module access with json response for POST requests', async () => {
+  const loaded = loadRouteWithAccess({
+    blocked: true,
+    role: 'monitor',
+    allowedFacultyIds: [],
+    facultyIds: [10],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'monitor', documento: '900' });
+    const response = await request(app).post('/solicitudes/crear').send({});
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(response.body, {
+      success: false,
+      message: 'El modulo de Prestamos esta deshabilitado para tu facultad.',
+    });
   } finally {
     loaded.restore();
   }
