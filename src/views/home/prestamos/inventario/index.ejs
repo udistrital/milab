@@ -1,0 +1,92 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Inventario de prestamos</h1>
+    <p class="app-page-subtitle">Piloto inicial para integrar el modulo de inventario del sistema de prestamos dentro de MiLab.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-0">Inventario</h5>
+      </div>
+      <a class="btn btn-perso" href="/milab/prestamos/inventario/crear">
+        <i class="bi bi-plus-circle"></i>
+        <span>Agregar elemento</span>
+      </a>
+    </div>
+
+    <div class="card-body">
+      <% if (items && items.length > 0) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>Serie</th>
+                <th>Placa</th>
+                <th>Nombre del bien</th>
+                <th>Grupo</th>
+                <th>Nivel</th>
+                <th>Doc. funcionario</th>
+                <th>Nombre funcionario</th>
+                <th>Fecha registro</th>
+                <th>Sede</th>
+                <th>Dependencia</th>
+                <th>Espacio fisico</th>
+                <th>Disponible</th>
+                <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% items.forEach(function(item) { %>
+                <tr>
+                  <td class="text-light"><%= item.serie || '-' %></td>
+                  <td class="text-light"><%= item.placa || '-' %></td>
+                  <td class="text-light"><%= item.nombre_bien || '-' %></td>
+                  <td class="text-light"><%= item.grupo_inventario || '-' %></td>
+                  <td class="text-light"><%= item.nivel_inventario || '-' %></td>
+                  <td class="text-light"><%= item.funcionario_doc || '-' %></td>
+                  <td class="text-light"><%= item.nombre_funcionario || '-' %></td>
+                  <td class="text-light"><%= item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '-' %></td>
+                  <td class="text-light"><%= item.sede || '-' %></td>
+                  <td class="text-light"><%= item.dependencia || '-' %></td>
+                  <td class="text-light"><%= item.espacio_fisico || '-' %></td>
+                  <td class="text-light"><%= item.disponible_prestamo ? 'Si' : 'No' %></td>
+                  <td class="text-light">
+                    <div class="d-flex gap-2">
+                      <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/inventario/<%= item.id %>/editar">
+                        <i class="bi bi-pencil"></i>
+                        <span>Editar</span>
+                      </a>
+                      <form action="/milab/prestamos/inventario/<%= item.id %>/eliminar" method="post" onsubmit="return confirm('¿Deseas eliminar este elemento del inventario?');">
+                        <button class="btn btn-outline-danger btn-sm" type="submit">
+                          <i class="bi bi-trash"></i>
+                          <span>Eliminar</span>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">
+          No hay elementos cargados en inventario todavia. Usa `Agregar elemento` para crear el primero.
+        </div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<%- include('../../../partials/footer'); -%>

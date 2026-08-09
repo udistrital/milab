@@ -1,5 +1,4 @@
 const express = require('express');
-const { randomInt } = require('node:crypto');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
@@ -12,6 +11,7 @@ require('dotenv').config();
 const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 const router = express.Router();
 
 router.use(express.json());
@@ -250,6 +250,7 @@ router.post('/enviar-codigo', async (req, res) => {
   const usuario = req.session.usuario_no_verificado;
   const recipient = resolveRegistrationRecipient(usuario.correo);
   const registrationEmailOverrideActive = recipient !== usuario.correo;
+  //console.log("LLEGA CORREO ACA -------" + usuario.correo);
   try {
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -382,7 +383,21 @@ router.post('/enviar-codigo', async (req, res) => {
     res.send('Código de verificación enviado al correo (Si no ve el correo, revise su spam).');
   } catch (error) {
     console.error('Error al enviar el correo:', error.message);
-    res.send('Error al enviar el correo.');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible enviar el correo de verificación.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible enviar el correo de verificación.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 
@@ -419,10 +434,25 @@ router.post('/create_account', limiter, securityLogger, async (req, res) => {
         req.session.destroy((err) => {
           if (err) {
             console.error('Error al destruir la sesión:', err);
-            res.status(500).send('Error al cerrar sesión');
+
+            if (wantsJson(req)) {
+              return res.status(500).json({
+                ok: false,
+                message: 'No fue posible cerrar la sesión.',
+                message2: 'Intenta nuevamente.',
+              });
+            }
+
+            return renderApplicationError(res, {
+              status: 500,
+              message: 'No fue posible cerrar la sesión.',
+              message2: 'Intenta nuevamente.',
+              limit: null,
+            });
           }
+
+          return res.render('home/login_2', { error: null, confirmacion: 'cuenta_creada' });
         });
-        res.render('home/login_2', { error: null, confirmacion: 'cuenta_creada' });
       }
     } catch {
       res.render('home/message_error', {
@@ -479,7 +509,11 @@ async function create_account(data) {
 
 // --- FUNCIÓN PARA GENERAR EL CÓDIGO DE VERIFICACIÓN ---
 function generarCodigoAleatorio() {
-  return randomInt(100000, 1000000).toString();
+  const longitudCodigo = 6;
+  const codigoAleatorio =
+    Math.floor(Math.random() * (Math.pow(10, longitudCodigo) - Math.pow(10, longitudCodigo - 1))) +
+    Math.pow(10, longitudCodigo - 1);
+  return codigoAleatorio.toString();
 }
 
 module.exports = router;

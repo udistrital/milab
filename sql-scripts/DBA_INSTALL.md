@@ -47,9 +47,9 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
 Consultas sugeridas despues de ejecutar los scripts:
 
 - Tablas base:
-  SELECT COUNT(*) FROM rol;
-  SELECT COUNT(*) FROM menu_item;
-  SELECT COUNT(*) FROM rol_permiso;
+  SELECT COUNT(_) FROM rol;
+  SELECT COUNT(_) FROM menu_item;
+  SELECT COUNT(\*) FROM rol_permiso;
 
 - Usuarios admin:
   SELECT u.documento, u.correo, r.nombre AS rol

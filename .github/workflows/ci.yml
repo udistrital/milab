@@ -10,16 +10,34 @@ on:
     branches:
       - '**'
   workflow_dispatch:
+    inputs:
+      force_recreate:
+        description: 'Forzar reinicio completo del ambiente (contenedores y volumenes)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   Analisis:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
     env:
       NODE_OPTIONS: --no-deprecation
       NPM_CONFIG_LOGLEVEL: error
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+      - name: Validar dependencia del runner (libatomic)
+        run: |
+          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y libatomic1
+            else
+              apt-get update
+              apt-get install -y libatomic1
+            fi
+          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
@@ -32,10 +50,22 @@ jobs:
   pruebas_unitarias:
     name: Pruebas unitarias
     needs: Analisis
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+      - name: Validar dependencia del runner (libatomic)
+        run: |
+          if ! ldconfig -p | grep -q 'libatomic.so.1'; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y libatomic1
+            else
+              apt-get update
+              apt-get install -y libatomic1
+            fi
+          fi
       - name: Usar Node.js 25.x
         uses: actions/setup-node@v5
         with:
@@ -48,7 +78,7 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_unitarias
-    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
     steps:
@@ -66,26 +96,65 @@ jobs:
       - name: Copiar fuentes al runner
         run: |
           if command -v sudo >/dev/null 2>&1; then
-            sudo rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
+            sudo rsync -a --delete --exclude '.git/' ./ /opt/milab/
           else
-            rsync -a --delete --exclude '.git/' --exclude 'Docker/.env' ./ /opt/milab/
+            rsync -a --delete --exclude '.git/' ./ /opt/milab/
           fi
 
       - name: Validar archivo de entorno de despliegue
         run: |
-          if [ ! -f /opt/milab/Docker/.env ]; then
-            echo 'No se encontró el archivo /opt/milab/Docker/.env en el runner.' >&2
+          set -eu
+          if [ ! -f /opt/.env ]; then
+            echo 'No se encontró el archivo /opt/.env en el runner.' >&2
             echo 'Debe existir previamente como prerequisito del despliegue.' >&2
             exit 1
           fi
 
+          if [ ! -r /opt/.env ]; then
+            echo 'El archivo /opt/.env existe pero no es legible por el usuario del runner.' >&2
+            exit 1
+          fi
+
+      - name: Validar scripts de prestamos requeridos
+        run: |
+          set -eu
+          for required_file in \
+            /opt/milab/sql-scripts/db_structure_prestamos.sql \
+            /opt/milab/sql-scripts/db_seed_prestamos.sql
+          do
+            if [ ! -f "$required_file" ]; then
+              echo "No se encontró el script requerido: $required_file" >&2
+              exit 1
+            fi
+          done
+
+      - name: Asegurar ruta de compatibilidad para compose
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p /opt/milab/Docker
+            sudo ln -sfn /opt/.env /opt/milab/Docker/.env
+          else
+            mkdir -p /opt/milab/Docker
+            ln -sfn /opt/.env /opt/milab/Docker/.env
+          fi
+
+      - name: Crear override de compose para pruebas
+        run: |
+          cat > /home/ubuntu/prod/docker-compose.override.yml <<'YAML'
+          services:
+            milabud:
+              environment:
+                DB_SCHEMA: milab
+          YAML
+
       - name: Validar flags sensibles en entorno
         run: |
           set -eu
-          env_file=/opt/milab/Docker/.env
+          env_file=/opt/.env
 
-          allow_public=$(sudo sh -lc "grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | tr '[:upper:]' '[:lower:]' | xargs || true")
-          node_env=$(sudo sh -lc "grep -E '^[[:space:]]*NODE_ENV=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | tr '[:upper:]' '[:lower:]' | xargs || true")
+          allow_public=$(grep -E '^[[:space:]]*ALLOW_PUBLIC_SERVICE_STATUS=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
+          node_env=$(grep -E '^[[:space:]]*NODE_ENV=' "$env_file" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' | xargs || true)
 
           case "$allow_public" in
             1|true|yes)
@@ -99,7 +168,7 @@ jobs:
                   exit 1
                   ;;
               esac
-              ;;  
+              ;;
             *)
               echo 'OK: ALLOW_PUBLIC_SERVICE_STATUS no está activo.'
               ;;
@@ -108,51 +177,144 @@ jobs:
       - name: Actualizar imagenes base de pruebas
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/milab/Docker/.env pull dbpostgres dbseed
+          sudo docker compose --env-file /opt/.env pull dbpostgres dbseed
 
-      - name: Construir imagen de app para pruebas con Dockerfile.dev
+      - name: Definir estrategia de despliegue
+        id: estrategia
         run: |
-          sudo docker build -f /opt/milab/Docker/Dockerfile.dev -t prod-milabud /opt/milab
+          set -eu
 
-      - name: Reiniciar ambiente de pruebas en limpio (sin datos persistentes)
+          branch="${GITHUB_REF_NAME}"
+          state_file='/opt/milab_last_deploy_branch'
+          previous_branch=''
+          force_recreate="${{ github.event_name == 'workflow_dispatch' && inputs.force_recreate == true }}"
+
+          if command -v sudo >/dev/null 2>&1; then
+            if sudo test -f "$state_file"; then
+              previous_branch="$(sudo cat "$state_file" | tr -d '[:space:]')"
+            fi
+          else
+            if [ -f "$state_file" ]; then
+              previous_branch="$(cat "$state_file" | tr -d '[:space:]')"
+            fi
+          fi
+
+          recreate='false'
+          reason='misma-rama'
+
+          if [ "$force_recreate" = 'true' ]; then
+            recreate='true'
+            reason='forzado-ui'
+          elif [ -z "$previous_branch" ]; then
+            recreate='true'
+            reason='sin-estado-previo'
+          elif [ "$previous_branch" != "$branch" ]; then
+            recreate='true'
+            reason='cambio-rama'
+          fi
+
+          echo "previous_branch=$previous_branch" >> "$GITHUB_OUTPUT"
+          echo "current_branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "recreate=$recreate" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+      - name: Mostrar estrategia elegida
+        run: |
+          echo "Rama previa: ${{ steps.estrategia.outputs.previous_branch }}"
+          echo "Rama actual: ${{ steps.estrategia.outputs.current_branch }}"
+          echo "Recrear ambiente: ${{ steps.estrategia.outputs.recreate }}"
+          echo "Motivo: ${{ steps.estrategia.outputs.reason }}"
+
+      - name: Recrear ambiente de pruebas en limpio
+        if: steps.estrategia.outputs.recreate == 'true'
         run: |
           set -eu
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/milab/Docker/.env down --volumes --remove-orphans
-          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate dbpostgres
+          sql_dir=/opt/milab/sql-scripts
+          sql_run_dir=/opt/milab/sql-scripts.apply
 
-          env_file=/opt/milab/Docker/.env
-          db_user=$(sudo sh -lc "grep -E '^[[:space:]]*DB_USER=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
-          db_password=$(sudo sh -lc "grep -E '^[[:space:]]*DB_PASSWORD=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
-          db_name=$(sudo sh -lc "grep -E '^[[:space:]]*DB_NAME=' '$env_file' | tail -n 1 | cut -d= -f2- | tr -d '\"' | xargs")
+          sudo rm -rf "$sql_run_dir"
+          sudo mv "$sql_dir" "$sql_run_dir"
+          sudo mkdir -p "$sql_dir"
 
-          if [ -z "$db_user" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
-            echo 'ERROR: DB_USER/DB_PASSWORD/DB_NAME no estan definidos en /opt/milab/Docker/.env' >&2
+          cleanup() {
+            sudo rm -rf "$sql_dir"
+            if [ -d "$sql_run_dir" ]; then
+              sudo mv "$sql_run_dir" "$sql_dir"
+            fi
+          }
+          trap cleanup EXIT
+
+          sudo docker compose --env-file /opt/.env stop milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker compose --env-file /opt/.env rm -sf milabud dbseed dbpostgres >/dev/null 2>&1 || true
+          sudo docker volume rm prod_milab_db_data || true
+          sudo docker compose --env-file /opt/.env up -d dbpostgres
+
+          db_user=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_USER" {print $2; exit}')
+          db_name=$(sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= '$1=="POSTGRES_DB" {print $2; exit}')
+
+          if [ -z "$db_user" ] || [ -z "$db_name" ]; then
+            echo 'No se pudieron resolver POSTGRES_USER o POSTGRES_DB desde el contenedor dbpostgres.' >&2
+            sudo docker inspect milabud_db_pruebas --format '{{range .Config.Env}}{{println .}}{{end}}' | sort
             exit 1
           fi
 
-          for i in $(seq 1 30); do
-            if sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+          ready=0
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+            if sudo docker exec milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+              ready=1
               break
             fi
             sleep 2
           done
 
-          if ! sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
-            echo 'ERROR: dbpostgres no esta listo para inicializacion.' >&2
-            sudo docker logs --tail 200 milabud_db_pruebas || true
+          if [ "$ready" -ne 1 ]; then
+            echo 'La base de pruebas no quedó lista a tiempo.' >&2
             exit 1
           fi
 
-          echo 'Inicializando estructura y seed de BD (orden forzado: estructura -> seed)...'
-          sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-            psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_structure.sql
-          sudo docker exec -e PGPASSWORD="$db_password" -i milabud_db_pruebas \
-            psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -f /docker-entrypoint-initdb.d/db_seed_system.sql
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_system.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure_prestamos.sql"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_prestamos.sql"
 
-          sudo docker compose --env-file /opt/milab/Docker/.env up -d --build --force-recreate
+          prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
+          if [ "$prestamos_count" != '1' ]; then
+            echo 'ERROR: el seed de prestamos no dejo creado el menu principal.' >&2
+            exit 1
+          fi
+
+          sudo docker compose --env-file /opt/.env up -d --build milabud
+
+      - name: Desplegar sin recrear ambiente
+        if: steps.estrategia.outputs.recreate != 'true'
+        run: |
+          set -eu
+          cd /home/ubuntu/prod
+          sudo docker compose --env-file /opt/.env up -d --build milabud
+
+      - name: Asegurar proxy publico operativo
+        run: |
+          set -eu
+          cd /home/ubuntu/prod
+          sudo docker compose --env-file /opt/.env up -d dockerproxy traefik
+
+      - name: Guardar ultima rama desplegada
+        if: success()
+        run: |
+          set -eu
+          branch='${{ steps.estrategia.outputs.current_branch }}'
+          state_file='/opt/milab_last_deploy_branch'
+
+          if command -v sudo >/dev/null 2>&1; then
+            printf '%s\n' "$branch" | sudo tee "$state_file" >/dev/null
+            sudo chmod 644 "$state_file"
+          else
+            printf '%s\n' "$branch" > "$state_file"
+            chmod 644 "$state_file"
+          fi
 
       - name: Verificar servicios desplegados
         run: |
           cd /home/ubuntu/prod
-          sudo docker compose --env-file /opt/milab/Docker/.env ps
+          sudo docker compose --env-file /opt/.env ps dbpostgres milabud

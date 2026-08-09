@@ -8,6 +8,7 @@ const {
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -62,7 +63,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.documento AS con_documento,
              c.correo AS con_correo,
              STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
-             CASE WHEN c.activo = TRUE AND COALESCE(role_state.activo, FALSE)
+             CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
              END AS tipo
@@ -89,7 +90,21 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
     res.render('home/coordinadores_registrados', { coordinadores });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
-    res.status(500).send('Error al obtener coordinadores');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible cargar los coordinadores registrados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar los coordinadores registrados.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 
@@ -229,25 +244,18 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
     }
     const coordinador = checkResult.rows[0];
     const userId = await resolveCoordinatorUserId(client, coordinador);
-    const nuevoEstado = false;
     await client.query('BEGIN');
-    await client.query(
-      `UPDATE coordinador
-       SET activo = $2,
-           fecha_modificacion = CURRENT_TIMESTAMP
-       WHERE documento = $1`,
-      [documento, nuevoEstado]
-    );
+    await client.query('DELETE FROM coordinador WHERE documento = $1', [documento]);
     if (userId) {
       await client.query(
         `UPDATE usuario_rol ur
-         SET activo = $2,
+         SET activo = FALSE,
              fecha_modificacion = CURRENT_TIMESTAMP
          FROM rol r
          WHERE ur.usuario_id = $1
            AND ur.rol_id = r.id
            AND r.nombre = 'coordinador'`,
-        [userId, nuevoEstado]
+        [userId]
       );
     }
     await client.query(
@@ -255,7 +263,7 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
       [
         'admin',
         normalizeLogDocument(req.session.user.documento),
-        'cambiar estado coordinador a inactivo',
+        'eliminar registro coordinador',
         documento,
       ]
     );
@@ -267,9 +275,9 @@ router.post('/eliminar', requireAdminOrLabCoordinatorAction, async (req, res) =>
       await client.query('ROLLBACK');
       client.release();
     }
-    console.error('Error al inactivar coordinador:', error);
+    console.error('Error al eliminar coordinador:', error);
     res.render('home/message_error', {
-      message: '¡Error al inactivar coordinador!',
+      message: '¡Error al eliminar coordinador!',
       message2: 'Inténtalo nuevamente',
       limit: 'noSession',
     });
@@ -315,16 +323,9 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
       [userId]
     );
 
-    let nuevoEstado;
+    let nuevoEstado = true;
     if (result.rows.length > 0) {
       nuevoEstado = !result.rows[0].activo;
-      await client2.query(
-        `UPDATE coordinador
-         SET activo = $2,
-             fecha_modificacion = CURRENT_TIMESTAMP
-         WHERE documento = $1`,
-        [documento, nuevoEstado]
-      );
       await client2.query(
         `UPDATE usuario_rol ur
          SET activo = $2,
@@ -336,14 +337,6 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
         [userId, nuevoEstado]
       );
     } else {
-      nuevoEstado = true;
-      await client2.query(
-        `UPDATE coordinador
-         SET activo = TRUE,
-             fecha_modificacion = CURRENT_TIMESTAMP
-         WHERE documento = $1`,
-        [documento]
-      );
       await client2.query(
         `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
          SELECT $1, id, TRUE FROM rol WHERE nombre = 'coordinador'
@@ -352,6 +345,7 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
              fecha_modificacion = CURRENT_TIMESTAMP`,
         [userId]
       );
+      nuevoEstado = true;
     }
 
     const estadoLabel = nuevoEstado ? 'coordinador' : 'inactivo';

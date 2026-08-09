@@ -16,7 +16,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-let router = express.Router();
+var router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -42,11 +42,14 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
     });
   }
 
-  let con_estado;
-  let con_documento;
-  let con_nombre;
-  let qr_name;
-  let uniqueId1;
+  var con_estado;
+  var con_documento;
+  var con_nombre;
+  // var switch_exit; // Removed: never used
+  var qr_name;
+  // var con_multado; // Removed: always undefined
+  var uniqueId1;
+  // var multado; // Removed: never used
   const actorRole = req.session?.user?.tipo || 'personal autorizado';
 
   console.log(motivo_exp);
@@ -57,11 +60,11 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
   let correo_to_save = correo;
 
   // Obtener la fecha de hoy
-  let con_fecha = new Date();
+  var con_fecha = new Date();
   con_fecha = format(con_fecha, 'yyyy/MM/dd HH:mm:ss'); // Ajuste de horario al local
 
   // Obtener la fecha de vencimiento en 2 meses
-  let fechaVencimiento = new Date();
+  var fechaVencimiento = new Date();
   fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 2);
   fechaVencimiento = format(fechaVencimiento, 'yyyy/MM/dd HH:mm:ss');
 
@@ -109,6 +112,8 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       qr_name = con_documento + '-' + uniqueId;
       uniqueId1 = uniqueId;
       console.log(qr_name);
+
+      // const req_consultar_multas = await consultar_multas(con_documento); // Removed: never used
 
       const usuarioId = await ensurePerfilDocente({
         documento: con_documento,
@@ -209,6 +214,8 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
 
       console.log(`PDF file should be generated at: ${pdfFilePath}`);
 
+      // const { file } = require('pdfkit'); // Removed: never used
+
       // Helper to move to next line
       function jumpLine(doc, lines) {
         for (let index = 0; index < lines; index++) {
@@ -234,6 +241,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       const col1Width = 90;
       const col2Width = 180;
       const col3Width = 110;
+      // const col4Width = 135; // Removed: never used
 
       doc
         .moveTo(startX + col1Width, marginTop)

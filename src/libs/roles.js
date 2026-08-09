@@ -1,20 +1,16 @@
-const ROLE_PRIORITY = ['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante'];
+const ROLE_PRIORITY = ['admin', 'coordinador', 'laboratorista', 'monitor', 'docente', 'estudiante'];
 
 const ROLE_LABELS = {
   admin: 'Admin',
   coordinador: 'Coordinador',
   laboratorista: 'Laboratorista',
+  monitor: 'Monitor',
   estudiante: 'Estudiante',
   docente: 'Docente',
 };
 
 function normalizeRoles(roles) {
-  let list = [];
-  if (Array.isArray(roles)) {
-    list = roles;
-  } else if (roles) {
-    list = [roles];
-  }
+  const list = Array.isArray(roles) ? roles : roles ? [roles] : [];
   const normalized = list
     .map((role) => (role || '').toString().trim().toLowerCase())
     .filter(Boolean);
