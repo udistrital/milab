@@ -179,7 +179,11 @@ function loadRouteWithAccess(access) {
           },
         };
       },
-      { memoryStorage() { return {}; } }
+      {
+        memoryStorage() {
+          return {};
+        },
+      }
     ),
     pdfkit: function PDFDocument() {},
     'pdf-lib': { PDFDocument: class {}, StandardFonts: {} },

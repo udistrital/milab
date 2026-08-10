@@ -87,7 +87,8 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
     `;
     const result = await pool.query(query);
     const coordinadores = result.rows;
-    res.render('home/coordinadores_registrados', { coordinadores });
+
+    return res.render('home/coordinadores_registrados', { coordinadores });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
 
@@ -323,9 +324,10 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
       [userId]
     );
 
-    let nuevoEstado = true;
-    if (result.rows.length > 0) {
-      nuevoEstado = !result.rows[0].activo;
+    const hasExistingCoordinatorRole = result.rows.length > 0;
+    const nuevoEstado = hasExistingCoordinatorRole ? !result.rows[0].activo : true;
+
+    if (hasExistingCoordinatorRole) {
       await client2.query(
         `UPDATE usuario_rol ur
          SET activo = $2,
@@ -345,7 +347,6 @@ router.post('/toggle-estado', requireAdminOrLabCoordinatorToggle, async (req, re
              fecha_modificacion = CURRENT_TIMESTAMP`,
         [userId]
       );
-      nuevoEstado = true;
     }
 
     const estadoLabel = nuevoEstado ? 'coordinador' : 'inactivo';

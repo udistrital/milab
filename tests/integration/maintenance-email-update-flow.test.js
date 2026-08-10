@@ -39,7 +39,10 @@ function commonStubs(client) {
         isInstitutionalEmail: (value) => String(value || '').endsWith('@udistrital.edu.co'),
         isUniqueViolation: () => false,
         normalizeLogDocument: (value) => value,
-        normalizeInstitutionalEmail: (value) => String(value || '').trim().toLowerCase(),
+        normalizeInstitutionalEmail: (value) =>
+          String(value || '')
+            .trim()
+            .toLowerCase(),
       },
     ],
     [
@@ -55,12 +58,24 @@ function commonStubs(client) {
 test('coordinator email maintenance updates institutional addresses through JSON flow', async () => {
   const client = createDbClient((sql, params = []) => {
     if (sql.includes('FROM coordinador WHERE documento = $1')) {
-      return { rows: [{ documento: params[0], nombre: 'Coord', correo: 'old@udistrital.edu.co', nombre_u: 'coord', usuario_id: 7 }] };
+      return {
+        rows: [
+          {
+            documento: params[0],
+            nombre: 'Coord',
+            correo: 'old@udistrital.edu.co',
+            nombre_u: 'coord',
+            usuario_id: 7,
+          },
+        ],
+      };
     }
 
     return { rows: [] };
   });
-  const sessionHarness = createSessionHarness({ user: createUser({ tipo: 'admin', roles: ['admin'] }) });
+  const sessionHarness = createSessionHarness({
+    user: createUser({ tipo: 'admin', roles: ['admin'] }),
+  });
   const loaded = buildApp({
     entryPath: coordinadoresPath,
     sessionHarness,

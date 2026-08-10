@@ -7,7 +7,7 @@ const { requireRoles } = require('../middlewares/auth');
 
 require('dotenv').config();
 
-var router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -34,11 +34,9 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
 
   const requestBody = req.body || {};
   const { numero_documento_identificacion } = requestBody;
-  var con_estado;
-  var con_documento;
-  var con_nombre;
-  // let con_multado = false;
-  // let con_estado_multa = false; // - Estado de la multa
+  let con_estado;
+  let con_documento;
+  let con_nombre;
 
   try {
     const dato1 = await requestOati(
@@ -81,7 +79,6 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       });
     }
 
-    // --- Base de datos
     const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1';
     const values = [usuarioId];
     let con_multado = false;
@@ -100,8 +97,8 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
     }
 
     let nombre_lab = '';
-    let cc_lab = 0;
-    let uals = '';
+    let cc_lab;
+    let uals;
 
     if (req.session.user.tipo === 'laboratorista') {
       const sessionDocumento = req.session.user.documento_real || req.session.user.documento;

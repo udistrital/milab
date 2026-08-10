@@ -37,16 +37,21 @@ test('fetchOperationalRoleAssignmentsByUserId returns empty for invalid inputs',
   const result = await fetchOperationalRoleAssignmentsByUserId('bad', '', executor);
 
   assert.deepEqual(result, []);
-  assert.equal(executor.calls.some((call) => call.sql.includes('FROM usuario_ual_rol_operativo a')), false);
+  assert.equal(
+    executor.calls.some((call) => call.sql.includes('FROM usuario_ual_rol_operativo a')),
+    false
+  );
 });
 
 test('fetchOperationalRoleScopeByUser returns normalized unique faculty ids, uals and lab names', async () => {
   const executor = createExecutor([
-    { rows: [
-      { id: 1, usuario_id: 10, ual_id: 4, ual_nombre: 'Lab Redes', facultad_id: 7 },
-      { id: 2, usuario_id: 10, ual_id: 4, ual_nombre: 'lab redes', facultad_id: 7 },
-      { id: 3, usuario_id: 10, ual_id: 8, ual_nombre: 'Electronica', facultad_id: 9 },
-    ] },
+    {
+      rows: [
+        { id: 1, usuario_id: 10, ual_id: 4, ual_nombre: 'Lab Redes', facultad_id: 7 },
+        { id: 2, usuario_id: 10, ual_id: 4, ual_nombre: 'lab redes', facultad_id: 7 },
+        { id: 3, usuario_id: 10, ual_id: 8, ual_nombre: 'Electronica', facultad_id: 9 },
+      ],
+    },
   ]);
 
   const scope = await fetchOperationalRoleScopeByUser(
@@ -93,8 +98,12 @@ test('replaceOperationalRoleAssignments deactivates scoped assignments and upser
     client: executor,
   });
 
-  const updateCall = executor.calls.find((call) => call.sql.includes('UPDATE usuario_ual_rol_operativo'));
-  const insertCall = executor.calls.find((call) => call.sql.includes('INSERT INTO usuario_ual_rol_operativo'));
+  const updateCall = executor.calls.find((call) =>
+    call.sql.includes('UPDATE usuario_ual_rol_operativo')
+  );
+  const insertCall = executor.calls.find((call) =>
+    call.sql.includes('INSERT INTO usuario_ual_rol_operativo')
+  );
 
   assert.deepEqual(updateCall.params, [42, 'monitor', 5]);
   assert.deepEqual(insertCall.params, [42, 'monitor', [8, 12], 9]);

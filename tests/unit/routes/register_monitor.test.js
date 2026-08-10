@@ -74,7 +74,11 @@ function loadRoute({ poolQueryImpl, connectQueryImpl, requestOatiImpl, scopeImpl
             return { rows: [{ documento: params[0] }] };
           }
 
-          if (sql.includes('SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1')) {
+          if (
+            sql.includes(
+              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+            )
+          ) {
             return { rows: [{ facultad_id: 10 }] };
           }
 
@@ -90,12 +94,18 @@ function loadRoute({ poolQueryImpl, connectQueryImpl, requestOatiImpl, scopeImpl
             return { rows: [{ ual_id: 11 }] };
           }
 
-          if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])')) {
+          if (
+            sql.includes(
+              'SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])'
+            )
+          ) {
             return { rows: [{ ual_id: 11 }] };
           }
 
           if (sql.includes('SELECT c.documento,')) {
-            return { rows: [{ documento: '900', nombre: 'Coordinador Demo', facultades: 'Facultad 10' }] };
+            return {
+              rows: [{ documento: '900', nombre: 'Coordinador Demo', facultades: 'Facultad 10' }],
+            };
           }
 
           return { rows: [] };
@@ -252,11 +262,19 @@ test('register_monitor post rejects labs outside the selected faculty', async ()
         return { rows: [{ documento: params[0] }] };
       }
 
-      if (sql.includes('SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1')) {
+      if (
+        sql.includes(
+          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+        )
+      ) {
         return { rows: [{ facultad_id: 10 }] };
       }
 
-      if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])')) {
+      if (
+        sql.includes(
+          'SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1 AND ual_id = ANY($2::int[])'
+        )
+      ) {
         return { rows: [] };
       }
 
@@ -305,15 +323,26 @@ test('register_monitor post persists a valid monitor registration flow', async (
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/register_monitor');
-    assert.match(response.body.locals.successMessage, /Monitor registrado o actualizado correctamente/i);
+    assert.match(
+      response.body.locals.successMessage,
+      /Monitor registrado o actualizado correctamente/i
+    );
 
     const clientCalls = loaded.getClientCalls();
-    assert.equal(clientCalls.some((call) => call.sql === 'BEGIN'), true);
     assert.equal(
-      clientCalls.some((call) => call.sql.includes('INSERT INTO log (nombre, documento, accion, persona)')),
+      clientCalls.some((call) => call.sql === 'BEGIN'),
       true
     );
-    assert.equal(clientCalls.some((call) => call.sql === 'COMMIT'), true);
+    assert.equal(
+      clientCalls.some((call) =>
+        call.sql.includes('INSERT INTO log (nombre, documento, accion, persona)')
+      ),
+      true
+    );
+    assert.equal(
+      clientCalls.some((call) => call.sql === 'COMMIT'),
+      true
+    );
   } finally {
     loaded.restore();
   }

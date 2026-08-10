@@ -52,12 +52,32 @@ function loadRegisterLabsApp({ sessionState, queryImpl }) {
     stubs: [
       [dbPath, { query: client.query.bind(client), connect: async () => client }],
       [oatiClientPath, { getAcademicServicePath: (value) => value, requestOati: async () => ({}) }],
-      [facultyScopePath, { resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [10] }) }],
+      [
+        facultyScopePath,
+        { resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [10] }) },
+      ],
       [mailPath, { sendMail: async () => {} }],
-      [emailLayoutPath, { buildBrandedEmailAttachments: () => [], buildEmailFooterHtml: () => '', buildEmailHeaderHtml: () => '', escapeHtml: (value) => String(value || '') }],
-      [appUrlPath, { appBaseUrl: 'https://milab.test', buildAppUrl: (path) => `https://milab.test${path}` }],
+      [
+        emailLayoutPath,
+        {
+          buildBrandedEmailAttachments: () => [],
+          buildEmailFooterHtml: () => '',
+          buildEmailHeaderHtml: () => '',
+          escapeHtml: (value) => String(value || ''),
+        },
+      ],
+      [
+        appUrlPath,
+        { appBaseUrl: 'https://milab.test', buildAppUrl: (path) => `https://milab.test${path}` },
+      ],
       [tokenPath, { getRegistrationTokenSecret: () => 'secret' }],
-      [authPath, { requireRoles: () => (req, res, next) => next(), requireUser: () => (req, res, next) => next() }],
+      [
+        authPath,
+        {
+          requireRoles: () => (req, res, next) => next(),
+          requireUser: () => (req, res, next) => next(),
+        },
+      ],
       [limiterPath, (req, res, next) => next()],
       [securityLoggerPath, { securityLogger: (req, res, next) => next() }],
     ],

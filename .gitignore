@@ -184,5 +184,4 @@ env
 data_piloto_paz_y_salvos.xlsx
 .vscode/tasks.json
 Docker/.prodenv
-.scannerwork/.sonar_lock
-.scannerwork/report-task.txt
+.scannerwork/

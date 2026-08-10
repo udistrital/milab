@@ -50,14 +50,8 @@ function buildPassportStub(user) {
 function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail }) {
   const sessionHarness = createSessionHarness(sessionState);
   const stubs = [
-    [
-      indexPath,
-      buildApiIndexStub(),
-    ],
-    [
-      passportPath,
-      buildPassportStub(microsoftUser),
-    ],
+    [indexPath, buildApiIndexStub()],
+    [passportPath, buildPassportStub(microsoftUser)],
     [
       dbPath,
       {
@@ -164,11 +158,14 @@ test('microsoft callback keeps pending profile identification flow for first-tim
 
     assert.equal(callbackResponse.status, 302);
     assert.equal(callbackResponse.headers.location, '/milab/api/profile/identify');
-    assert.deepEqual(loaded.sessionHarness.state.microsoftProfile, createMicrosoftProfile({
-      nombre: 'Persona Microsoft',
-      correo: 'nueva@udistrital.edu.co',
-      microsoftId: 'ms-456',
-    }));
+    assert.deepEqual(
+      loaded.sessionHarness.state.microsoftProfile,
+      createMicrosoftProfile({
+        nombre: 'Persona Microsoft',
+        correo: 'nueva@udistrital.edu.co',
+        microsoftId: 'ms-456',
+      })
+    );
 
     const identifyResponse = await request(loaded.app).get('/api/profile/identify');
     assert.equal(identifyResponse.status, 200);

@@ -57,7 +57,9 @@ test('mounted home flow renders public landing and preserves canonical redirects
 });
 
 test('mounted home flow redirects authenticated users away from public auth pages', async () => {
-  const loaded = loadMilabHomeApp({ user: createUser({ tipo: 'coordinador', roles: ['coordinador'] }) });
+  const loaded = loadMilabHomeApp({
+    user: createUser({ tipo: 'coordinador', roles: ['coordinador'] }),
+  });
 
   try {
     const response = await request(loaded.app).get('/auth/login');

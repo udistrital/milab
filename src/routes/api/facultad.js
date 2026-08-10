@@ -24,13 +24,6 @@ function normalizeUalDescription(value) {
   return normalized || null;
 }
 
-function normalizeUalSpaceId(value) {
-  const normalized = String(value || '')
-    .trim()
-    .toUpperCase();
-  return normalized || null;
-}
-
 function normalizeUalOccupants(value) {
   const normalized = String(value || '').trim();
   return normalized || null;
@@ -202,7 +195,7 @@ router.post('/ual/add', async (req, res) => {
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
-  const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
+  const salIdEspacio = normalizeUalShortCode(req.body.sal_id_espacio);
   const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
   const activo = normalizeUalActiveFlag(req.body.activo);
   if (!facultadId || !nombre || !nombre.trim()) {
@@ -293,7 +286,7 @@ router.post('/ual/editar', async (req, res) => {
   const { nombre } = req.body;
   const codigoAbreviacion = normalizeUalShortCode(req.body.codigo_abreviacion);
   const descripcion = normalizeUalDescription(req.body.descripcion);
-  const salIdEspacio = normalizeUalSpaceId(req.body.sal_id_espacio);
+  const salIdEspacio = normalizeUalShortCode(req.body.sal_id_espacio);
   const salOcupantes = normalizeUalOccupants(req.body.sal_ocupantes);
   const activo = normalizeUalActiveFlag(req.body.activo);
   if (!ualId || !nombre || !nombre.trim()) {

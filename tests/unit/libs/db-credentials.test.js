@@ -6,10 +6,7 @@ const modulePath = path.resolve(__dirname, '../../../src/libs/db-credentials.js'
 const configPath = path.resolve(__dirname, '../../../src/config/config.js');
 const awsModulePath = require.resolve('@aws-sdk/client-secrets-manager');
 
-function loadDbCredentialsModule({
-  configOverrides = {},
-  sendImpl,
-} = {}) {
+function loadDbCredentialsModule({ configOverrides = {}, sendImpl } = {}) {
   const originalConfig = require.cache[configPath];
   const originalAws = require.cache[awsModulePath];
   const originalEnv = { ...process.env };

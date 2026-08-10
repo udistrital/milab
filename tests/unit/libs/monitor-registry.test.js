@@ -36,7 +36,10 @@ test('fetchMonitorByDocumento returns null for empty documento', async () => {
   const result = await fetchMonitorByDocumento('   ', executor);
 
   assert.equal(result, null);
-  assert.equal(executor.calls.some((call) => call.sql.includes('FROM monitor')), false);
+  assert.equal(
+    executor.calls.some((call) => call.sql.includes('FROM monitor')),
+    false
+  );
 });
 
 test('fetchMonitorByDocumento returns the first matching row', async () => {

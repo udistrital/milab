@@ -64,7 +64,9 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
     [
       dbPath,
       {
-        query: poolQueryImpl || (async () => ({ rows: [{ con_documento: '900', con_nombre: 'Coord Demo' }] })),
+        query:
+          poolQueryImpl ||
+          (async () => ({ rows: [{ con_documento: '900', con_nombre: 'Coord Demo' }] })),
         connect: async () => client,
       },
     ],
@@ -75,7 +77,10 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
         isInstitutionalEmail: (correo) => /@udistrital\.edu\.co$/i.test(String(correo || '')),
         isUniqueViolation: () => false,
         normalizeLogDocument: (value) => value,
-        normalizeInstitutionalEmail: (value) => String(value || '').trim().toLowerCase(),
+        normalizeInstitutionalEmail: (value) =>
+          String(value || '')
+            .trim()
+            .toLowerCase(),
       },
     ],
     [
@@ -179,8 +184,14 @@ test('coordinadores_registrados actualizar-correo updates coordinator and linked
     assert.equal(response.body.ok, true);
 
     const calls = loaded.getClientCalls();
-    assert.equal(calls.some((call) => call.sql.includes('UPDATE coordinador SET correo = $1')), true);
-    assert.equal(calls.some((call) => call.sql.includes('UPDATE usuario')), true);
+    assert.equal(
+      calls.some((call) => call.sql.includes('UPDATE coordinador SET correo = $1')),
+      true
+    );
+    assert.equal(
+      calls.some((call) => call.sql.includes('UPDATE usuario')),
+      true
+    );
   } finally {
     loaded.restore();
   }

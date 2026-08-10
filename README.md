@@ -130,6 +130,37 @@ Para ejecutar la misma puerta de pruebas que usa CI:
 - `npm run test:unit`
 - `npm run test:integration`
 
+## Análisis local con SonarQube
+
+`preprod` ahora incluye `sonar-project.properties` en la raíz y un runner local basado en contenedores.
+
+Para levantar SonarQube local, generar un token automáticamente y ejecutar el escaneo del proyecto:
+
+`npm run sonar:local`
+
+La interfaz queda disponible en:
+
+`http://localhost:9000`
+
+Credenciales locales por defecto del bootstrap:
+
+- usuario: `admin`
+- contraseña: `admin_milab_local`
+
+Si necesitas cambiar la contraseña local del contenedor antes del bootstrap, puedes hacerlo así:
+
+`SONARQUBE_LOCAL_PASSWORD='tu_clave_local' npm run sonar:local`
+
+Para detener y eliminar el contenedor local de SonarQube:
+
+`npm run sonar:stop`
+
+Notas operativas:
+
+- El script usa las imágenes `sonarqube:community` y `sonarsource/sonar-scanner-cli:5.0` por compatibilidad con SonarQube 9.9 LTS local.
+- Mantiene volúmenes Docker con estado local para no reinicializar SonarQube en cada corrida.
+- El análisis sirve para detectar bugs, code smells y hallazgos de seguridad o security hotspots reportados por SonarQube en esta edición.
+
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.

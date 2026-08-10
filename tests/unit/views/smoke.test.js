@@ -37,7 +37,8 @@ function buildBaseViewLocals(overrides = {}) {
 }
 
 test('register_monitor view renders with minimal monitor registration context', async () => {
-  const html = await renderView('src/views/home/register_monitor.ejs',
+  const html = await renderView(
+    'src/views/home/register_monitor.ejs',
     buildBaseViewLocals({
       error: null,
       coordinadores: [],
@@ -58,10 +59,12 @@ test('register_monitor view renders with minimal monitor registration context', 
 });
 
 test('monitores_registrados view renders empty-state and populated tables', async () => {
-  const emptyHtml = await renderView('src/views/home/monitores_registrados.ejs',
+  const emptyHtml = await renderView(
+    'src/views/home/monitores_registrados.ejs',
     buildBaseViewLocals({ monitores: [], successMessage: null })
   );
-  const populatedHtml = await renderView('src/views/home/monitores_registrados.ejs',
+  const populatedHtml = await renderView(
+    'src/views/home/monitores_registrados.ejs',
     buildBaseViewLocals({
       monitores: [
         {
@@ -87,7 +90,8 @@ test('monitores_registrados view renders empty-state and populated tables', asyn
 });
 
 test('prestamos practicas configuracion view renders with minimal configuration context', async () => {
-  const html = await renderView('src/views/home/prestamos/practicas/configuracion.ejs',
+  const html = await renderView(
+    'src/views/home/prestamos/practicas/configuracion.ejs',
     buildBaseViewLocals({
       selectedFacultyName: 'Facultad 10',
       selectedLaboratoryName: 'Lab 11',

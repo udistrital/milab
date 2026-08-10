@@ -714,26 +714,34 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ),
     };
 
-    const availableCharts = availableChartIds.map((chartId) => ({
-      ...CHART_DEFINITIONS[chartId],
-      total: totalFromSeries(
-        chartId === 'sanciones'
-          ? chartsData.multas
-          : chartId === 'sancionesActivas'
-            ? chartsData.multasActivas
-            : chartId === 'sancionesSaldadas'
-              ? chartsData.multasSaldadas
-              : chartsData[chartId]
-      ),
-    }));
+    const availableCharts = availableChartIds.map((chartId) => {
+      let series = chartsData[chartId];
+
+      if (chartId === 'sanciones') {
+        series = chartsData.multas;
+      } else if (chartId === 'sancionesActivas') {
+        series = chartsData.multasActivas;
+      } else if (chartId === 'sancionesSaldadas') {
+        series = chartsData.multasSaldadas;
+      }
+
+      return {
+        ...CHART_DEFINITIONS[chartId],
+        total: totalFromSeries(series),
+      };
+    });
 
     const scopePresentation = buildScopePresentation(dashboardRole, scope);
+    let scopeCounter = { label: 'Laboratorios', value: String(scope.ualIds.length) };
+
+    if (dashboardRole === 'admin') {
+      scopeCounter = { label: 'Cobertura', value: 'General' };
+    } else if (dashboardRole === 'coordinador') {
+      scopeCounter = { label: 'Facultades', value: String(scope.facultyIds.length) };
+    }
+
     const scopeCounters = [
-      dashboardRole === 'admin'
-        ? { label: 'Cobertura', value: 'General' }
-        : dashboardRole === 'coordinador'
-          ? { label: 'Facultades', value: String(scope.facultyIds.length) }
-          : { label: 'Laboratorios', value: String(scope.ualIds.length) },
+      scopeCounter,
       { label: 'Indicadores', value: String(availableCharts.length) },
       { label: 'Sanciones visibles', value: String(totalFromSeries(chartsData.multas)) },
     ];

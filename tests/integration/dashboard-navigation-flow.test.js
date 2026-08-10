@@ -41,7 +41,8 @@ function loadDashboardApp({ user, scopeImpl, scopeRows }) {
         facultyScopePath,
         {
           resolveAcademicFacultyName: (value) => value,
-          resolveCoordinatorScope: scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
+          resolveCoordinatorScope:
+            scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
         },
       ],
     ],

@@ -1,4 +1,4 @@
-const path = require('path');
+const path = require('node:path');
 const ejs = require('ejs');
 
 const pool = require('./db');
@@ -62,10 +62,10 @@ async function ensureEmailNotificationsSchema() {
   schemaEnsured = true;
 }
 
-async function renderTemplate(templateName, variables) {
+async function renderTemplate(templateName, variables = {}) {
   const templatePath = path.join(__dirname, '..', 'email-templates', `${templateName}.ejs`);
   return ejs.renderFile(templatePath, {
-    ...(variables || {}),
+    ...variables,
     buildEmailFooterHtml,
     buildEmailHeaderHtml,
   });
@@ -118,6 +118,58 @@ async function markFailed(id, errorMessage) {
   );
 }
 
+function errorToMessage(error) {
+  return String(error?.message || error);
+}
+
+function buildFailedResponse(id, error) {
+  return {
+    id: id || null,
+    status: 'FAILED',
+    error: errorToMessage(error),
+  };
+}
+
+function throwIfRequired(error, throwOnError) {
+  if (throwOnError) {
+    throw error;
+  }
+}
+
+async function createNotificationRecord(payload, throwOnError) {
+  try {
+    const id = await createPendingNotification(payload);
+    return { ok: true, id };
+  } catch (error) {
+    throwIfRequired(error, throwOnError);
+    return { ok: false, response: buildFailedResponse(null, error) };
+  }
+}
+
+async function sendNotificationEmail(templateName, variables, recipient, subject) {
+  const html = await renderTemplate(templateName, variables || {});
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to: recipient,
+    subject,
+    html,
+    attachments: buildBrandedEmailAttachments(),
+  });
+}
+
+async function markFailedSafely(id, error) {
+  if (!id) {
+    return;
+  }
+
+  try {
+    await markFailed(id, errorToMessage(error));
+  } catch (markError) {
+    console.error('Error registrando fallo de notificacion por correo:', markError);
+  }
+}
+
 async function sendEmailNotification({
   sourceSystem = 'prestamos',
   templateName,
@@ -139,61 +191,32 @@ async function sendEmailNotification({
     throw new Error('subject es obligatorio');
   }
 
-  let id;
-
-  try {
-    id = await createPendingNotification({
+  const creationResult = await createNotificationRecord(
+    {
       sourceSystem,
       templateName,
       recipient,
       subject,
       correlationId,
-    });
-  } catch (error) {
-    if (throwOnError) {
-      throw error;
-    }
-
-    return {
-      id: null,
-      status: 'FAILED',
-      error: String(error?.message || error),
-    };
+    },
+    throwOnError
+  );
+  if (!creationResult.ok) {
+    return creationResult.response;
   }
+  const id = creationResult.id;
 
   try {
-    const html = await renderTemplate(templateName, variables || {});
-
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-      to: recipient,
-      subject,
-      html,
-      attachments: buildBrandedEmailAttachments(),
-    });
+    await sendNotificationEmail(templateName, variables, recipient, subject);
 
     if (id) {
       await markSent(id);
     }
     return { id: id || null, status: 'SENT' };
   } catch (error) {
-    try {
-      if (id) {
-        await markFailed(id, String(error?.message || error));
-      }
-    } catch (markError) {
-      console.error('Error registrando fallo de notificacion por correo:', markError);
-    }
-
-    if (throwOnError) {
-      throw error;
-    }
-
-    return {
-      id: id || null,
-      status: 'FAILED',
-      error: String(error?.message || error),
-    };
+    await markFailedSafely(id, error);
+    throwIfRequired(error, throwOnError);
+    return buildFailedResponse(id, error);
   }
 }
 

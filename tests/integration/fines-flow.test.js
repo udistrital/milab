@@ -16,9 +16,7 @@ const emailLayoutPath = resolveRepoPath('src/libs/email-layout.js');
 const userIdentityPath = resolveRepoPath('src/libs/user-identity.js');
 
 function authStubs() {
-  return [
-    [authPath, { requireRoles: () => (req, res, next) => next() }],
-  ];
+  return [[authPath, { requireRoles: () => (req, res, next) => next() }]];
 }
 
 test('fine submission rejects requests without a sanction date', async () => {
@@ -60,9 +58,20 @@ test('fine approval rejects unsupported sanction types before touching coordinat
     stubs: [
       ...authStubs(),
       [dbPath, { query: async () => ({ rows: [] }) }],
-      [facultyScopePath, { resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [10] }) }],
+      [
+        facultyScopePath,
+        { resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [10] }) },
+      ],
       [mailPath, { sendMail: async () => {} }],
-      [emailLayoutPath, { buildBrandedEmailAttachments: () => [], buildEmailFooterHtml: () => '', buildEmailHeaderHtml: () => '', escapeHtml: (value) => String(value || '') }],
+      [
+        emailLayoutPath,
+        {
+          buildBrandedEmailAttachments: () => [],
+          buildEmailFooterHtml: () => '',
+          buildEmailHeaderHtml: () => '',
+          escapeHtml: (value) => String(value || ''),
+        },
+      ],
     ],
     purgePaths: [approvalPath],
   });

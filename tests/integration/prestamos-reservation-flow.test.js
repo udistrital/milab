@@ -61,9 +61,21 @@ function loadReservationApp(queryImpl) {
           connect: async () => ({ query: async () => ({ rows: [] }), release() {} }),
         },
       ],
-      [permissionsPath, { APP_PERMISSIONS: new Proxy({}, { get: (_, key) => String(key) }), hasPermission: () => true }],
-      [prestamosModuleAccessPath, { getPrestamosModuleAccess: async () => ({ blocked: false, role: 'estudiante' }) }],
-      [operationalRolesPath, { fetchOperationalRoleScopeByUser: async () => ({ facultyIds: [], ualIds: [] }) }],
+      [
+        permissionsPath,
+        {
+          APP_PERMISSIONS: new Proxy({}, { get: (_, key) => String(key) }),
+          hasPermission: () => true,
+        },
+      ],
+      [
+        prestamosModuleAccessPath,
+        { getPrestamosModuleAccess: async () => ({ blocked: false, role: 'estudiante' }) },
+      ],
+      [
+        operationalRolesPath,
+        { fetchOperationalRoleScopeByUser: async () => ({ facultyIds: [], ualIds: [] }) },
+      ],
       [emailNotificationsPath, { sendEmailNotification: async () => {} }],
     ],
     purgePaths: [routePath],

@@ -15,6 +15,10 @@ Además, la suite HTTP de integración ya quedó incorporada a la ejecución pri
 
 - `npm run test:integration`
 
+Para análisis estático local adicional fuera de `node:test`, el repositorio también dispone de `sonar-project.properties` y del comando:
+
+- `npm run sonar:local`
+
 Hoy `npm test` ejecuta primero unit y luego integración, que es también la ruta usada por CI.
 
 La suite actual cubre helpers, middlewares y algunas rutas con dependencias simuladas. Todavía no existe una capa amplia de pruebas de integración end-to-end, pero ya hay una red útil de seguridad sobre invariantes críticos:

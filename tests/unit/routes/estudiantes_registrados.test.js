@@ -27,7 +27,12 @@ function buildApp(route, sessionUser) {
   return app;
 }
 
-function loadRoute({ connectQueryImpl, facultyNamesImpl, findConflictImpl, resolveAcademicFacultyNameImpl } = {}) {
+function loadRoute({
+  connectQueryImpl,
+  facultyNamesImpl,
+  findConflictImpl,
+  resolveAcademicFacultyNameImpl,
+} = {}) {
   const originals = new Map();
   const clientCalls = [];
 
@@ -90,7 +95,10 @@ function loadRoute({ connectQueryImpl, facultyNamesImpl, findConflictImpl, resol
         isInstitutionalEmail: (correo) => /@udistrital\.edu\.co$/i.test(String(correo || '')),
         isUniqueViolation: () => false,
         normalizeLogDocument: (value) => value,
-        normalizeInstitutionalEmail: (value) => String(value || '').trim().toLowerCase(),
+        normalizeInstitutionalEmail: (value) =>
+          String(value || '')
+            .trim()
+            .toLowerCase(),
       },
     ],
     [

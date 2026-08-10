@@ -28,10 +28,25 @@ function loadPrestamosApp({ user, access }) {
           renderAuthError: (res, payload) => res.render('home/message_error', payload),
         },
       ],
-      [dbPath, { query: async () => ({ rows: [] }), connect: async () => ({ query: async () => ({ rows: [] }), release() {} }) }],
-      [permissionsPath, { APP_PERMISSIONS: new Proxy({}, { get: (_, key) => String(key) }), hasPermission: () => true }],
+      [
+        dbPath,
+        {
+          query: async () => ({ rows: [] }),
+          connect: async () => ({ query: async () => ({ rows: [] }), release() {} }),
+        },
+      ],
+      [
+        permissionsPath,
+        {
+          APP_PERMISSIONS: new Proxy({}, { get: (_, key) => String(key) }),
+          hasPermission: () => true,
+        },
+      ],
       [prestamosModuleAccessPath, { getPrestamosModuleAccess: async () => access }],
-      [operationalRolesPath, { fetchOperationalRoleScopeByUser: async () => ({ facultyIds: [], ualIds: [] }) }],
+      [
+        operationalRolesPath,
+        { fetchOperationalRoleScopeByUser: async () => ({ facultyIds: [], ualIds: [] }) },
+      ],
       [emailNotificationsPath, { sendEmailNotification: async () => {} }],
     ],
     purgePaths: [routePath],

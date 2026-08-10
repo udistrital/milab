@@ -10,11 +10,7 @@ const operationalRoleAssignmentsPath = path.resolve(
   '../../../src/libs/operational-role-assignments.js'
 );
 
-function loadPrestamosModuleAccess({
-  queryImpl,
-  scopeImpl,
-  operationalScopeImpl,
-} = {}) {
+function loadPrestamosModuleAccess({ queryImpl, scopeImpl, operationalScopeImpl } = {}) {
   const originals = new Map();
 
   const stubs = [
@@ -121,7 +117,10 @@ test('getPrestamosModuleAccess blocks coordinador when all faculties are explici
   });
 
   try {
-    const result = await loaded.getPrestamosModuleAccess({ documento: '123', roles: ['coordinador'] });
+    const result = await loaded.getPrestamosModuleAccess({
+      documento: '123',
+      roles: ['coordinador'],
+    });
 
     assert.deepEqual(result, {
       role: 'coordinador',
@@ -140,10 +139,7 @@ test('removePrestamosNavigation strips prestamos links from all navigation secti
 
   try {
     const navigation = loaded.removePrestamosNavigation({
-      primaryLinks: [
-        { href: '/milab/prestamos' },
-        { href: '/milab/api/dashboard' },
-      ],
+      primaryLinks: [{ href: '/milab/prestamos' }, { href: '/milab/api/dashboard' }],
       accountLinks: [{ href: '/milab/prestamos/perfil' }, { href: '/milab/api/profile' }],
       secondaryGroups: [
         {
