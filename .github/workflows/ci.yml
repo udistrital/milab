@@ -115,18 +115,37 @@ jobs:
             exit 1
           fi
 
-      - name: Validar scripts de prestamos requeridos
+      - name: Validar scripts SQL requeridos para reset de BD
         run: |
           set -eu
+          base_dir=/opt/milab/sql-scripts
+
+          if [ -f "$base_dir/db_seed.sql" ]; then
+            db_seed_file="$base_dir/db_seed.sql"
+          elif [ -f "$base_dir/db_seed_system.sql" ]; then
+            db_seed_file="$base_dir/db_seed_system.sql"
+          else
+            echo 'No se encontró db_seed.sql ni db_seed_system.sql en sql-scripts.' >&2
+            exit 1
+          fi
+
           for required_file in \
-            /opt/milab/sql-scripts/db_structure_prestamos.sql \
-            /opt/milab/sql-scripts/db_seed_prestamos.sql
+            "$base_dir/db_structure.sql" \
+            "$db_seed_file" \
+            "$base_dir/db_structure_prestamos.sql" \
+            "$base_dir/db_seed_prestamos.sql"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido: $required_file" >&2
               exit 1
             fi
           done
+
+          echo "Secuencia de reset BD validada:"
+          echo "1) $base_dir/db_structure.sql"
+          echo "2) $db_seed_file"
+          echo "3) $base_dir/db_structure_prestamos.sql"
+          echo "4) $base_dir/db_seed_prestamos.sql"
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
@@ -237,6 +256,27 @@ jobs:
           sudo mv "$sql_dir" "$sql_run_dir"
           sudo mkdir -p "$sql_dir"
 
+          db_structure_script="$sql_run_dir/db_structure.sql"
+          if [ -f "$sql_run_dir/db_seed.sql" ]; then
+            db_seed_script="$sql_run_dir/db_seed.sql"
+          else
+            db_seed_script="$sql_run_dir/db_seed_system.sql"
+          fi
+          db_structure_prestamos_script="$sql_run_dir/db_structure_prestamos.sql"
+          db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
+
+          for required_file in \
+            "$db_structure_script" \
+            "$db_seed_script" \
+            "$db_structure_prestamos_script" \
+            "$db_seed_prestamos_script"
+          do
+            if [ ! -f "$required_file" ]; then
+              echo "No se encontró el script requerido para reset de BD: $required_file" >&2
+              exit 1
+            fi
+          done
+
           cleanup() {
             sudo rm -rf "$sql_dir"
             if [ -d "$sql_run_dir" ]; then
@@ -273,10 +313,16 @@ jobs:
             exit 1
           fi
 
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure.sql"
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_system.sql"
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_structure_prestamos.sql"
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$sql_run_dir/db_seed_prestamos.sql"
+          echo 'Aplicando scripts de BD en secuencia:'
+          echo "1) $db_structure_script"
+          echo "2) $db_seed_script"
+          echo "3) $db_structure_prestamos_script"
+          echo "4) $db_seed_prestamos_script"
+
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_prestamos_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_prestamos_script"
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
