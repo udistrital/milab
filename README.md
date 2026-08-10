@@ -185,12 +185,33 @@ Resumen operativo de procesos y responsabilidades por rol:
 
 ## SQL de base
 
-La inicialización de base queda consolidada en dos archivos:
+La inicialización de base para recreación completa del entorno de pruebas usa cuatro scripts en secuencia:
 
-- [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql): estructura completa de la BD, constraints, índices y ajustes idempotentes del esquema.
-- [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql): catálogos base, admins por defecto y bootstrap del modelo RBAC.
+1. [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql)
+2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql) (o `db_seed.sql` si existe en el ambiente)
+3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
+4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
 
-El stack local y el despliegue usan únicamente esos dos scripts al crear una base nueva. La precarga local de estudiantes, coordinadores y datos piloto queda fuera del flujo oficial para mantener instalaciones limpias desde cero.
+La recreación en CI y en reset manual de pruebas aplica los cuatro scripts de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
+
+## Reset completo en EC2 (pruebas)
+
+El entorno de pruebas se despliega en el host remoto con Compose en [home/ubuntu/prod/docker-compose.yml](home/ubuntu/prod/docker-compose.yml) y código en [opt/milab](opt/milab).
+
+Puntos operativos aplicados en el flujo actual:
+
+1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
+2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
+3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 4 scripts SQL en secuencia y luego se reconstruye `milabud`.
+4. La validación mínima post-seed comprueba que exista el menú principal de préstamos.
+
+Script de apoyo:
+
+- [scripts/reset-ec2-test-stack.sh](scripts/reset-ec2-test-stack.sh)
+
+Pipeline relacionado:
+
+- [.github/workflows/ci.yml](.github/workflows/ci.yml)
 
 ## Logging
 
