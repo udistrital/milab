@@ -151,7 +151,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (process.env.APP_VERSION || 'dev').toString().trim();
+const appVersion = (process.env.APP_VERSION || '2.0.0').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
