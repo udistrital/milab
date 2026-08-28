@@ -108,6 +108,8 @@
     const key = navigationGuideMap[label];
     return key ? `data-guide="${key}"` : '';
   }
+  function isPrestamosNavLink(link) { const label = String(link?.label || '').trim().toLowerCase(); const href = String(link?.href || '').toLowerCase(); return label === 'prestamos' || href === '/milab/prestamos/'; }
+  function getPrestamosNavLinkClass(link) { if (!isPrestamosNavLink(link)) return ''; return ' nav-link--prestamos-accent'; }
   function formatUsageHours(value) {
     const numeric = Number(value || 0);
     if (!Number.isFinite(numeric)) return '0.00';
@@ -153,7 +155,7 @@
             <ul class="navbar-nav app-nav-inline">
               <% primaryLinks.forEach(function(link) { %>
                 <li class="nav-item">
-                  <a class="nav-link" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
+                  <a class="nav-link<%= getPrestamosNavLinkClass(link) %>" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
                     <i class="bi <%= link.icon %>" aria-hidden="true"></i>
                     <span><%= link.label %></span>
                     <% if (shouldShowSanctionsBadge(link)) { %>

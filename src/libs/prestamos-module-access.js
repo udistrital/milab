@@ -242,7 +242,15 @@ async function updatePrestamosFacultyAccess({ facultadId, role, permitido }, cli
 }
 
 function filterPrestamosLinks(items = []) {
-  return (items || []).filter((item) => !String(item?.href || '').startsWith('/milab/prestamos'));
+  return (items || []).filter((item) => {
+    const normalizedHref = String(item?.href || '');
+    if (normalizedHref.startsWith('/milab/prestamos')) return false;
+    const normalizedLabel = String(item?.label || '')
+      .trim()
+      .toLowerCase();
+    if (normalizedLabel === 'prestamos' && normalizedHref === '/milab/prestamos/') return false;
+    return true;
+  });
 }
 
 function removePrestamosNavigation(navigation = {}) {

@@ -1,0 +1,965 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  const roles = Array.isArray(locals.roles) ? locals.roles : [];
+  const primaryRole = (locals.tipo || '').toString().trim().toLowerCase();
+  const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole);
+  const isStudentOrTeacher = ['estudiante', 'docente'].includes(primaryRole);
+  const statsData = locals.stats || {};
+  const activeLoans = Array.isArray(locals.activeLoans) ? locals.activeLoans : [];
+  const pendingRequests = Array.isArray(locals.pendingRequests) ? locals.pendingRequests : [];
+  const recentActivity = Array.isArray(locals.recentActivity) ? locals.recentActivity : [];
+  const moduleCards = Array.isArray(locals.moduleCards) ? locals.moduleCards : [];
+  const quickLinks = Array.isArray(locals.quickLinks) ? locals.quickLinks : [];
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${d.getDate()}/${months[d.getMonth()]}/${d.getFullYear()}`;
+  }
+
+  function timeAgo(dateStr) {
+    if (!dateStr) return 'Hace un tiempo';
+    const now = new Date();
+    const d = new Date(dateStr);
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'Ahora mismo';
+    if (diffMins < 60) return `Hace ${diffMins} minuto${diffMins === 1 ? '' : 's'}`;
+    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours === 1 ? '' : 's'}`;
+    if (diffDays < 30) return `Hace ${diffDays} día${diffDays === 1 ? '' : 's'}`;
+    return formatDate(dateStr);
+  }
+%>
+
+<main class="container app-page-shell">
+  <section
+    class="card app-page-header"
+    style="background: linear-gradient(135deg, #f8f5ff 0%, #f0f4ff 55%, #eef7ff 100%); border: 1px solid rgba(124, 58, 237, 0.12); border-radius: 18px;"
+  >
+    <div class="d-flex flex-column flex-lg-row gap-4 align-items-lg-center justify-content-between">
+      <div style="flex: 1 1 auto; min-width: 0;">
+        <p
+          class="mb-2"
+          style="font-size: 0.82rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #7c3aed; margin: 0;"
+        >
+          Préstamos
+        </p>
+        <h1 class="app-page-title mb-2" style="font-size: clamp(1.8rem, 2.6vw, 2.3rem); color: #111827;">
+          Dashboard de préstamos
+          <span style="display: inline-block; margin-left: 0.35rem; opacity: 0.85;">📦</span>
+        </h1>
+        <p class="app-page-subtitle" style="color: #4b5563;">
+          Gestiona y consulta de manera ágil los préstamos de equipos y elementos de laboratorio.
+        </p>
+      </div>
+      <div style="flex: 0 0 auto; max-width: 220px;">
+        <svg viewBox="0 0 220 170" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="gClipA" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#818cf8" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="gClipB" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#a7f3d0" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#6ee7b7" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="gClipC" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="#fde68a" stop-opacity="0.95"/>
+              <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.95"/>
+            </linearGradient>
+          </defs>
+          <rect x="20" y="18" rx="22" ry="22" width="140" height="126" fill="url(#gClipA)" opacity="0.18"/>
+          <rect x="32" y="28" rx="18" ry="18" width="120" height="96" fill="#ffffff" stroke="rgba(124,58,237,0.18)"/>
+          <rect x="46" y="44" rx="10" ry="10" width="68" height="14" fill="#ede9fe"/>
+          <rect x="46" y="64" rx="8" ry="8" width="92" height="10" fill="#e0e7ff"/>
+          <rect x="46" y="80" rx="8" ry="8" width="76" height="10" fill="#e0e7ff"/>
+          <rect x="46" y="96" rx="8" ry="8" width="56" height="10" fill="#e0e7ff"/>
+          <path d="M160 108 L196 108 L196 146 L160 146 Z" fill="url(#gClipC)" opacity="0.9"/>
+          <rect x="166" y="116" rx="6" ry="6" width="22" height="6" fill="#ffffff" opacity="0.9"/>
+          <rect x="166" y="128" rx="6" ry="6" width="16" height="6" fill="#ffffff" opacity="0.85"/>
+          <circle cx="178" cy="60" r="30" fill="url(#gClipB)" opacity="0.9"/>
+          <path d="M165 58 l7 7 l14 -14" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="row g-3">
+    <div class="col-md-6 col-xl-3">
+      <article
+        class="card h-100"
+        style="border: 1px solid rgba(124, 58, 237, 0.12); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
+      >
+        <div class="card-body d-flex flex-column gap-3">
+          <div class="d-flex align-items-start gap-3">
+            <div
+              style="
+                width: 44px; height: 44px; border-radius: 12px;
+                display: inline-flex; align-items: center; justify-content: center;
+                background: rgba(124, 58, 237, 0.12); color: #7c3aed; font-size: 1.25rem;
+              "
+            >
+              <i class="bi bi-box-seam-fill"></i>
+            </div>
+            <div>
+              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
+                Préstamos activos
+              </p>
+              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
+                <%= Number.isFinite(statsData.activos) ? statsData.activos : 0 %>
+              </strong>
+            </div>
+          </div>
+          <% if (isManagementRole) { %>
+            <a
+              href="/milab/prestamos/entrega-equipos"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #7c3aed; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver detalles
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } else if (isStudentOrTeacher) { %>
+            <a
+              href="/milab/prestamos/mis-solicitudes"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #7c3aed; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver detalles
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } %>
+        </div>
+      </article>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+      <article
+        class="card h-100"
+        style="border: 1px solid rgba(251, 146, 60, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
+      >
+        <div class="card-body d-flex flex-column gap-3">
+          <div class="d-flex align-items-start gap-3">
+            <div
+              style="
+                width: 44px; height: 44px; border-radius: 12px;
+                display: inline-flex; align-items: center; justify-content: center;
+                background: rgba(251, 146, 60, 0.12); color: #f59e0b; font-size: 1.25rem;
+              "
+            >
+              <i class="bi bi-hourglass-split"></i>
+            </div>
+            <div>
+              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
+                Solicitudes pendientes
+              </p>
+              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
+                <%= Number.isFinite(statsData.pendientes) ? statsData.pendientes : 0 %>
+              </strong>
+            </div>
+          </div>
+          <% if (isManagementRole) { %>
+            <a
+              href="/milab/prestamos/gestion-solicitudes"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #f59e0b; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver solicitudes
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } else if (isStudentOrTeacher) { %>
+            <a
+              href="/milab/prestamos/mis-solicitudes"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #f59e0b; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver solicitudes
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } %>
+        </div>
+      </article>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+      <article
+        class="card h-100"
+        style="border: 1px solid rgba(16, 185, 129, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
+      >
+        <div class="card-body d-flex flex-column gap-3">
+          <div class="d-flex align-items-start gap-3">
+            <div
+              style="
+                width: 44px; height: 44px; border-radius: 12px;
+                display: inline-flex; align-items: center; justify-content: center;
+                background: rgba(16, 185, 129, 0.12); color: #10b981; font-size: 1.25rem;
+              "
+            >
+              <i class="bi bi-check2-circle"></i>
+            </div>
+            <div>
+              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
+                Préstamos finalizados
+              </p>
+              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
+                <%= Number.isFinite(statsData.finalizados) ? statsData.finalizados : 0 %>
+              </strong>
+            </div>
+          </div>
+          <% if (isManagementRole) { %>
+            <a
+              href="/milab/prestamos/reportes"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #10b981; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver historial
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } else if (isStudentOrTeacher) { %>
+            <a
+              href="/milab/prestamos/mis-solicitudes"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #10b981; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver historial
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } %>
+        </div>
+      </article>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+      <article
+        class="card h-100"
+        style="border: 1px solid rgba(59, 130, 246, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
+      >
+        <div class="card-body d-flex flex-column gap-3">
+          <div class="d-flex align-items-start gap-3">
+            <div
+              style="
+                width: 44px; height: 44px; border-radius: 12px;
+                display: inline-flex; align-items: center; justify-content: center;
+                background: rgba(59, 130, 246, 0.12); color: #3b82f6; font-size: 1.25rem;
+              "
+            >
+              <i class="bi bi-calendar2-check"></i>
+            </div>
+            <div>
+              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
+                Equipos disponibles
+              </p>
+              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
+                <%= Number.isFinite(statsData.disponibles) ? statsData.disponibles : 0 %>
+              </strong>
+            </div>
+          </div>
+          <% if (isManagementRole) { %>
+            <a
+              href="/milab/prestamos/equipos"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #3b82f6; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver inventario
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } else if (isStudentOrTeacher) { %>
+            <a
+              href="/milab/prestamos/solicitar"
+              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
+              style="color: #3b82f6; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
+            >
+              Ver disponibles
+              <i class="bi bi-arrow-right-short"></i>
+            </a>
+          <% } %>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <div class="row g-4">
+    <div class="col-xl-8">
+      <% if (isManagementRole) { %>
+        <section class="row g-4">
+          <div class="col-lg-6">
+            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
+              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
+                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
+                  <i class="bi bi-box-seam me-2" style="color: #7c3aed;"></i>
+                  Préstamos activos
+                </h5>
+                <a
+                  href="/milab/prestamos/entrega-equipos"
+                  class="btn btn-sm px-3"
+                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
+                >
+                  Ver todos
+                  <i class="bi bi-arrow-right-short ms-1"></i>
+                </a>
+              </div>
+              <div class="card-body d-flex flex-column gap-3">
+                <% if (activeLoans && activeLoans.length) { %>
+                  <% activeLoans.slice(0, 3).forEach(function(loan) { %>
+                    <div
+                      class="d-flex align-items-start gap-3 p-3"
+                      style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.05);"
+                    >
+                      <div
+                        style="
+                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
+                          display: inline-flex; align-items: center; justify-content: center;
+                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
+                        "
+                      >
+                        <i class="bi bi-cpu" style="font-size: 1.15rem; color: #6b7280;"></i>
+                      </div>
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
+                            <%= loan.equipo_nombre || loan.nombre || 'Equipo' %>
+                          </h6>
+                          <span
+                            class="badge"
+                            style="
+                              background: rgba(16, 185, 129, 0.14); color: #059669;
+                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
+                            "
+                          >
+                            En curso
+                          </span>
+                        </div>
+                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
+                          Código: <strong style="color: #374151;"><%= loan.equipo_codigo || loan.codigo || '-' %></strong>
+                        </p>
+                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
+                          Solicitado por: <strong style="color: #374151;"><%= loan.solicitante_nombre || loan.usuario_nombre || '-' %></strong>
+                        </p>
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                            Fecha de préstamo: <strong style="color: #374151;"><%= formatDate(loan.fecha_inicio) %></strong>
+                          </p>
+                          <a
+                            href="<%= isManagementRole ? '/milab/prestamos/entrega-equipos' : '/milab/prestamos/mis-solicitudes' %>"
+                            class="d-inline-flex align-items-center gap-1"
+                            style="font-weight: 700; font-size: 0.8rem; color: #6b7280; text-decoration: none;"
+                          >
+                            Fecha de devolución
+                            <strong style="color: #374151;"><%= formatDate(loan.fecha_fin) %></strong>
+                            <i class="bi bi-chevron-right" style="font-size: 0.8rem;"></i>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div
+                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
+                    style="color: #6b7280;"
+                  >
+                    <i class="bi bi-check2-circle" style="font-size: 2rem; color: #10b981; opacity: 0.8;"></i>
+                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin préstamos activos</p>
+                    <p class="mb-0" style="font-size: 0.84rem;">No hay préstamos en curso en este momento.</p>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          </div>
+
+          <div class="col-lg-6">
+            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
+              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
+                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
+                  <i class="bi bi-hourglass-split me-2" style="color: #f59e0b;"></i>
+                  Solicitudes pendientes
+                </h5>
+                <a
+                  href="/milab/prestamos/gestion-solicitudes"
+                  class="btn btn-sm px-3"
+                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
+                >
+                  Ver todas
+                  <i class="bi bi-arrow-right-short ms-1"></i>
+                </a>
+              </div>
+              <div class="card-body d-flex flex-column gap-3">
+                <% if (pendingRequests && pendingRequests.length) { %>
+                  <% pendingRequests.slice(0, 3).forEach(function(reqItem) { %>
+                    <div
+                      class="d-flex align-items-start gap-3 p-3"
+                      style="border-radius: 14px; background: rgba(251, 146, 60, 0.04); border: 1px solid rgba(251, 146, 60, 0.10);"
+                    >
+                      <div
+                        style="
+                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
+                          display: inline-flex; align-items: center; justify-content: center;
+                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
+                        "
+                      >
+                        <i class="bi bi-camera" style="font-size: 1.15rem; color: #6b7280;"></i>
+                      </div>
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
+                            <%= reqItem.equipo_nombre || reqItem.nombre || 'Equipo' %>
+                          </h6>
+                          <span
+                            class="badge"
+                            style="
+                              background: rgba(251, 146, 60, 0.14); color: #d97706;
+                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
+                            "
+                          >
+                            Pendiente
+                          </span>
+                        </div>
+                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
+                          Solicitado por: <strong style="color: #374151;"><%= reqItem.solicitante_nombre || reqItem.usuario_nombre || '-' %></strong>
+                        </p>
+                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                          Fecha de solicitud: <strong style="color: #374151;"><%= formatDate(reqItem.fecha_inicio || reqItem.fecha_solicitud) %></strong>
+                        </p>
+                      </div>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div
+                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
+                    style="color: #6b7280;"
+                  >
+                    <i class="bi bi-patch-check" style="font-size: 2rem; color: #3b82f6; opacity: 0.8;"></i>
+                    <p class="mb-0" style="font-weight: 700; color: #374151;">Todo al día</p>
+                    <p class="mb-0" style="font-size: 0.84rem;">No hay solicitudes pendientes por revisar.</p>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          </div>
+        </section>
+      <% } %>
+
+      <% if (isStudentOrTeacher) { %>
+        <section class="row g-4">
+          <div class="col-lg-6">
+            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
+              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
+                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
+                  <i class="bi bi-box-seam me-2" style="color: #7c3aed;"></i>
+                  Mis préstamos activos
+                </h5>
+                <a
+                  href="/milab/prestamos/mis-solicitudes"
+                  class="btn btn-sm px-3"
+                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
+                >
+                  Ver todos
+                  <i class="bi bi-arrow-right-short ms-1"></i>
+                </a>
+              </div>
+              <div class="card-body d-flex flex-column gap-3">
+                <% if (activeLoans && activeLoans.length) { %>
+                  <% activeLoans.slice(0, 3).forEach(function(loan) { %>
+                    <div
+                      class="d-flex align-items-start gap-3 p-3"
+                      style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.05);"
+                    >
+                      <div
+                        style="
+                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
+                          display: inline-flex; align-items: center; justify-content: center;
+                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
+                        "
+                      >
+                        <i class="bi bi-cpu" style="font-size: 1.15rem; color: #6b7280;"></i>
+                      </div>
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
+                            <%= loan.equipo_nombre || loan.nombre || 'Equipo' %>
+                          </h6>
+                          <span
+                            class="badge"
+                            style="
+                              background: rgba(16, 185, 129, 0.14); color: #059669;
+                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
+                            "
+                          >
+                            En curso
+                          </span>
+                        </div>
+                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
+                          Código: <strong style="color: #374151;"><%= loan.equipo_codigo || loan.codigo || '-' %></strong>
+                        </p>
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                            Inicio: <strong style="color: #374151;"><%= formatDate(loan.fecha_inicio) %></strong>
+                          </p>
+                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                            Devolución: <strong style="color: #374151;"><%= formatDate(loan.fecha_fin) %></strong>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div
+                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
+                    style="color: #6b7280;"
+                  >
+                    <i class="bi bi-box-seam" style="font-size: 2rem; color: #7c3aed; opacity: 0.8;"></i>
+                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin préstamos activos</p>
+                    <p class="mb-0" style="font-size: 0.84rem;">Solicita un equipo desde el panel de accesos rápidos.</p>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          </div>
+
+          <div class="col-lg-6">
+            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
+              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
+                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
+                  <i class="bi bi-hourglass-split me-2" style="color: #f59e0b;"></i>
+                  Mis solicitudes pendientes
+                </h5>
+                <a
+                  href="/milab/prestamos/mis-solicitudes"
+                  class="btn btn-sm px-3"
+                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
+                >
+                  Ver todas
+                  <i class="bi bi-arrow-right-short ms-1"></i>
+                </a>
+              </div>
+              <div class="card-body d-flex flex-column gap-3">
+                <% if (pendingRequests && pendingRequests.length) { %>
+                  <% pendingRequests.slice(0, 3).forEach(function(reqItem) { %>
+                    <div
+                      class="d-flex align-items-start gap-3 p-3"
+                      style="border-radius: 14px; background: rgba(251, 146, 60, 0.04); border: 1px solid rgba(251, 146, 60, 0.10);"
+                    >
+                      <div
+                        style="
+                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
+                          display: inline-flex; align-items: center; justify-content: center;
+                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
+                        "
+                      >
+                        <i class="bi bi-camera" style="font-size: 1.15rem; color: #6b7280;"></i>
+                      </div>
+                      <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
+                            <%= reqItem.equipo_nombre || reqItem.nombre || 'Equipo' %>
+                          </h6>
+                          <span
+                            class="badge"
+                            style="
+                              background: rgba(251, 146, 60, 0.14); color: #d97706;
+                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
+                            "
+                          >
+                            Pendiente
+                          </span>
+                        </div>
+                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
+                          Código: <strong style="color: #374151;"><%= reqItem.equipo_codigo || reqItem.codigo || '-' %></strong>
+                        </p>
+                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                          Solicitado: <strong style="color: #374151;"><%= formatDate(reqItem.fecha_inicio || reqItem.fecha_solicitud) %></strong>
+                        </p>
+                      </div>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div
+                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
+                    style="color: #6b7280;"
+                  >
+                    <i class="bi bi-patch-check" style="font-size: 2rem; color: #3b82f6; opacity: 0.8;"></i>
+                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin solicitudes pendientes</p>
+                    <p class="mb-0" style="font-size: 0.84rem;">Todas tus solicitudes han sido procesadas.</p>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          </div>
+        </section>
+      <% } %>
+
+      <section class="mt-4">
+        <article class="card" style="border-radius: 16px; border: 1px solid var(--app-border);">
+          <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
+            <div>
+              <h5 class="mb-1" style="font-weight: 800; color: #111827; font-size: 1.05rem;">
+                <i class="bi bi-bar-chart-line me-2" style="color: #111827; opacity: 0.7;"></i>
+                Estadísticas de préstamos
+              </h5>
+              <p class="mb-0" style="font-size: 0.84rem; color: #6b7280;">
+                Resumen general del estado del módulo de préstamos.
+              </p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <select class="form-select form-select-sm" style="border-radius: 10px; font-weight: 700; font-size: 0.82rem;">
+                <option>Este mes</option>
+                <option>Últimos 3 meses</option>
+                <option>Últimos 6 meses</option>
+                <option>Este año</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-lg-3 col-md-6">
+                <div
+                  class="p-4 h-100"
+                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
+                >
+                  <p class="mb-2" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
+                    Préstamos por estado
+                  </p>
+                  <div class="d-flex align-items-center gap-3">
+                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#10b981" stroke-width="4"
+                        stroke-dasharray="<%= ((statsData.finalizados || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
+                        stroke-dashoffset="25" stroke-linecap="round"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7c3aed" stroke-width="4"
+                        stroke-dasharray="<%= ((statsData.activos || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
+                        stroke-dashoffset="<%= 25 - ((statsData.finalizados || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100) %>"
+                        stroke-linecap="round"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f59e0b" stroke-width="4"
+                        stroke-dasharray="<%= ((statsData.pendientes || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
+                        stroke-dashoffset="<%= 25 - (((statsData.finalizados || 0) + (statsData.activos || 0)) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100) %>"
+                        stroke-linecap="round"/>
+                    </svg>
+                    <div class="d-flex flex-column gap-1" style="font-size: 0.78rem;">
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #7c3aed;"></span>
+                        <span style="color: #4b5563;">
+                          Activos <strong style="color: #111827;"><%= statsData.activos || 0 %></strong>
+                        </span>
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #f59e0b;"></span>
+                        <span style="color: #4b5563;">
+                          Pendientes <strong style="color: #111827;"><%= statsData.pendientes || 0 %></strong>
+                        </span>
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #10b981;"></span>
+                        <span style="color: #4b5563;">
+                          Finalizados <strong style="color: #111827;"><%= statsData.finalizados || 0 %></strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-lg-3 col-md-6">
+                <div
+                  class="p-4 h-100"
+                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
+                >
+                  <p class="mb-2" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
+                    Préstamos por categoría
+                  </p>
+                  <div class="d-flex align-items-center gap-3">
+                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#3b82f6" stroke-width="4"
+                        stroke-dasharray="60 100" stroke-dashoffset="25" stroke-linecap="round"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#06b6d4" stroke-width="4"
+                        stroke-dasharray="33 100" stroke-dashoffset="-35" stroke-linecap="round"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#8b5cf6" stroke-width="4"
+                        stroke-dasharray="7 100" stroke-dashoffset="-68" stroke-linecap="round"/>
+                    </svg>
+                    <div class="d-flex flex-column gap-1" style="font-size: 0.78rem;">
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #3b82f6;"></span>
+                        <span style="color: #4b5563;">Equipos</span>
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #06b6d4;"></span>
+                        <span style="color: #4b5563;">Elementos</span>
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #8b5cf6;"></span>
+                        <span style="color: #4b5563;">Otros</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-lg-3 col-md-6">
+                <div
+                  class="p-4 h-100 d-flex flex-column gap-2"
+                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
+                >
+                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
+                    Tasa de cumplimiento
+                  </p>
+                  <div class="d-flex align-items-center gap-3">
+                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
+                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#10b981" stroke-width="5"
+                        stroke-dasharray="92 100" stroke-dashoffset="25" stroke-linecap="round"/>
+                      <text x="18" y="20.35" text-anchor="middle" font-size="9" font-weight="800" fill="#111827">92%</text>
+                    </svg>
+                    <div style="font-size: 0.78rem;">
+                      <p class="mb-1" style="font-weight: 700; color: #111827;">Devoluciones a tiempo</p>
+                      <p class="mb-0" style="color: #059669; font-weight: 800;">
+                        Excelente trabajo 🎉
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-lg-3 col-md-6">
+                <div
+                  class="p-4 h-100 d-flex flex-column gap-2"
+                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
+                >
+                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
+                    Tiempo promedio
+                  </p>
+                  <div class="d-flex align-items-center gap-3">
+                    <div
+                      style="
+                        width: 72px; height: 72px; border-radius: 50%;
+                        background: rgba(124, 58, 237, 0.08); color: #7c3aed;
+                        display: inline-flex; align-items: center; justify-content: center;
+                        border: 4px solid rgba(124, 58, 237, 0.18);
+                      "
+                    >
+                      <i class="bi bi-alarm" style="font-size: 1.5rem;"></i>
+                    </div>
+                    <div style="font-size: 0.78rem;">
+                      <p class="mb-1" style="font-weight: 800; color: #111827; font-size: 1.1rem;">
+                        5.2 días
+                      </p>
+                      <p class="mb-0" style="color: #6b7280;">
+                        Tiempo promedio de préstamo
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <% if (moduleCards && moduleCards.length) { %>
+        <section class="mt-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 style="font-weight: 800; color: #111827; font-size: 1.05rem; margin: 0;">
+              Módulos disponibles
+            </h5>
+          </div>
+          <div class="row g-3">
+            <% moduleCards.forEach(function(mod) { %>
+              <div class="col-md-4 col-xl-3">
+                <a
+                  href="<%= mod.href %>"
+                  class="card h-100 text-decoration-none d-block"
+                  style="
+                    border: 1px solid rgba(17, 24, 39, 0.08); border-radius: 16px;
+                    transition: all 0.18s ease; background: #ffffff;
+                  "
+                  onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='rgba(124, 58, 237, 0.25)';this.style.boxShadow='0 14px 28px rgba(17, 24, 39, 0.08)';"
+                  onmouseout="this.style.transform='';this.style.borderColor='';this.style.boxShadow='';"
+                >
+                  <div class="card-body d-flex flex-column gap-3">
+                    <div
+                      style="
+                        width: 48px; height: 48px; border-radius: 12px;
+                        display: inline-flex; align-items: center; justify-content: center;
+                        background: <%= mod.tone || 'rgba(124, 58, 237, 0.12)' %>;
+                        color: <%= mod.iconColor || '#7c3aed' %>;
+                        font-size: 1.3rem;
+                      "
+                    >
+                      <i class="bi <%= mod.icon || 'bi-box-seam' %>"></i>
+                    </div>
+                    <div>
+                      <h6 class="mb-1" style="font-weight: 800; color: #111827; font-size: 0.98rem;">
+                        <%= mod.label %>
+                      </h6>
+                      <p class="mb-0" style="font-size: 0.82rem; color: #6b7280; line-height: 1.5;">
+                        <%= mod.description || '' %>
+                      </p>
+                    </div>
+                    <div
+                      class="d-inline-flex align-items-center gap-1 mt-auto"
+                      style="font-weight: 700; font-size: 0.82rem; color: #7c3aed;"
+                    >
+                      Abrir módulo
+                      <i class="bi bi-arrow-right-short"></i>
+                    </div>
+                  </div>
+                </a>
+              </div>
+            <% }) %>
+          </div>
+        </section>
+      <% } %>
+    </div>
+
+    <div class="col-xl-4">
+      <aside
+        class="card"
+        style="
+          position: sticky; top: 1rem;
+          border-radius: 18px;
+          border: 1px solid var(--app-border);
+          background: linear-gradient(180deg, #ffffff 0%, rgba(248, 250, 252, 0.8) 100%);
+        "
+      >
+        <div class="card-body d-flex flex-column gap-4">
+          <section>
+            <h5 class="mb-3" style="font-weight: 800; color: #111827; font-size: 1rem;">
+              <i class="bi bi-lightning-charge-fill me-2" style="color: #7c3aed;"></i>
+              Accesos rápidos
+            </h5>
+            <div class="d-flex flex-column gap-2">
+              <% if (quickLinks && quickLinks.length) { %>
+                <% quickLinks.forEach(function(link) { %>
+                  <a
+                    href="<%= link.href %>"
+                    class="d-flex align-items-center gap-3 p-3 text-decoration-none"
+                    style="
+                      border-radius: 14px;
+                      border: 1px solid rgba(17, 24, 39, 0.06);
+                      background: #ffffff;
+                      transition: all 0.18s ease;
+                    "
+                    onmouseover="this.style.borderColor='rgba(124, 58, 237, 0.25)';this.style.background='rgba(124, 58, 237, 0.03)';"
+                    onmouseout="this.style.borderColor='';this.style.background='';"
+                  >
+                    <div
+                      style="
+                        width: 40px; height: 40px; border-radius: 10px; flex: 0 0 40px;
+                        display: inline-flex; align-items: center; justify-content: center;
+                        background: <%= link.tone || 'rgba(124, 58, 237, 0.1)' %>;
+                        color: <%= link.iconColor || '#7c3aed' %>;
+                        font-size: 1rem;
+                      "
+                    >
+                      <i class="bi <%= link.icon || 'bi-arrow-right-circle' %>"></i>
+                    </div>
+                    <div class="flex-grow-1 min-w-0">
+                      <p class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.92rem;">
+                        <%= link.label %>
+                      </p>
+                      <% if (link.helper) { %>
+                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
+                          <%= link.helper %>
+                        </p>
+                      <% } %>
+                    </div>
+                    <i class="bi bi-chevron-right" style="color: #9ca3af; font-size: 0.9rem;"></i>
+                  </a>
+                <% }) %>
+              <% } %>
+
+              <a
+                href="<%= isManagementRole ? '/milab/prestamos/reportes' : '/milab/prestamos/mis-solicitudes' %>"
+                class="d-flex align-items-center justify-content-center gap-2 mt-2 p-3 text-decoration-none"
+                style="
+                  border-radius: 14px;
+                  border: 1px dashed rgba(124, 58, 237, 0.35);
+                  background: rgba(124, 58, 237, 0.04);
+                  color: #7c3aed;
+                  font-weight: 800;
+                  font-size: 0.9rem;
+                "
+              >
+                Ver todas las opciones
+                <i class="bi bi-arrow-right-short"></i>
+              </a>
+            </div>
+          </section>
+
+          <hr style="border-color: rgba(17, 24, 39, 0.08); margin: 0;">
+
+          <section>
+            <h5 class="mb-3" style="font-weight: 800; color: #111827; font-size: 1rem;">
+              <i class="bi bi-activity me-2" style="color: #0ea5e9;"></i>
+              Actividad reciente
+            </h5>
+            <div class="d-flex flex-column gap-3">
+              <% if (recentActivity && recentActivity.length) { %>
+                <% recentActivity.forEach(function(activity) { %>
+                  <div class="d-flex align-items-start gap-3">
+                    <div
+                      style="
+                        width: 32px; height: 32px; border-radius: 50%; flex: 0 0 32px;
+                        display: inline-flex; align-items: center; justify-content: center;
+                        background: <%= activity.tone || 'rgba(124, 58, 237, 0.12)' %>;
+                        color: <%= activity.iconColor || '#7c3aed' %>;
+                        font-size: 0.8rem;
+                      "
+                    >
+                      <i class="bi <%= activity.icon || 'bi-circle-fill' %>"></i>
+                    </div>
+                    <div class="flex-grow-1 min-w-0">
+                      <p class="mb-0" style="font-size: 0.86rem; font-weight: 700; color: #111827;">
+                        <%= activity.title %>
+                      </p>
+                      <p class="mb-0" style="font-size: 0.76rem; color: #6b7280;">
+                        <%= activity.subject || '' %>
+                      </p>
+                      <p class="mb-0" style="font-size: 0.72rem; color: #9ca3af; margin-top: 2px;">
+                        <%= timeAgo(activity.date) %>
+                      </p>
+                    </div>
+                  </div>
+                <% }) %>
+              <% } else { %>
+                <div
+                  class="d-flex flex-column align-items-center justify-content-center gap-1 text-center py-3"
+                  style="color: #9ca3af;"
+                >
+                  <i class="bi bi-clock-history" style="font-size: 1.5rem;"></i>
+                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #6b7280;">
+                    Sin actividad reciente
+                  </p>
+                  <p class="mb-0" style="font-size: 0.76rem;">
+                    Las novedades aparecerán aquí.
+                  </p>
+                </div>
+              <% } %>
+            </div>
+
+            <% if (isManagementRole) { %>
+              <a
+                href="/milab/prestamos/auditoria"
+                class="d-flex align-items-center justify-content-center gap-2 mt-3 p-2 text-decoration-none"
+                style="
+                  border-radius: 12px;
+                  color: #7c3aed;
+                  font-weight: 700;
+                  font-size: 0.84rem;
+                "
+              >
+                Ver toda la actividad
+                <i class="bi bi-arrow-right-short"></i>
+              </a>
+            <% } %>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<%- include('../../../partials/footer'); -%>

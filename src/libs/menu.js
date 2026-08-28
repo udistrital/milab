@@ -1,6 +1,10 @@
 const pool = require('./db');
 const { normalizeRoles } = require('./roles');
 
+function sanitizeTitle(value) {
+  return value === undefined || value === null ? '' : String(value).trim().toLowerCase();
+}
+
 async function getMenuForRoles(roles) {
   const normalizedRoles = normalizeRoles(roles);
 
@@ -71,6 +75,15 @@ async function getMenuForRoles(roles) {
     .map((group) => {
       const groupItems = (childrenMap.get(group.id) || []).map(buildLink);
       if (!groupItems.length) return null;
+      const normalizedTitle = sanitizeTitle(group.label);
+      if (normalizedTitle === 'prestamos') {
+        primaryLinks.push({
+          label: group.label,
+          href: '/milab/prestamos/',
+          icon: group.icon || 'bi-box-seam',
+        });
+        return null;
+      }
       return {
         title: group.label,
         icon: group.icon || 'bi-folder',
