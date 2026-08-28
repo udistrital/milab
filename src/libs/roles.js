@@ -10,7 +10,14 @@ const ROLE_LABELS = {
 };
 
 function normalizeRoles(roles) {
-  const list = Array.isArray(roles) ? roles : roles ? [roles] : [];
+  let list = [];
+
+  if (Array.isArray(roles)) {
+    list = roles;
+  } else if (roles) {
+    list = [roles];
+  }
+
   const normalized = list
     .map((role) => (role || '').toString().trim().toLowerCase())
     .filter(Boolean);

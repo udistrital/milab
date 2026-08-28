@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
@@ -250,13 +251,11 @@ router.post('/enviar-codigo', async (req, res) => {
   const usuario = req.session.usuario_no_verificado;
   const recipient = resolveRegistrationRecipient(usuario.correo);
   const registrationEmailOverrideActive = recipient !== usuario.correo;
-  //console.log("LLEGA CORREO ACA -------" + usuario.correo);
   try {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: recipient,
       subject: 'Verificación de correo - MILab Laboratorios UD',
-      //text: `Hola Tu código de verificación es: ${usuario.codigoVerificacion}`
       text: `Hola ${usuario.nombre || 'usuario'},
 
             ${registrationEmailOverrideActive ? `Este correo fue redirigido a un buzón de pruebas. Destinatario original: ${usuario.correo}\n` : ''}
@@ -510,9 +509,10 @@ async function create_account(data) {
 // --- FUNCIÓN PARA GENERAR EL CÓDIGO DE VERIFICACIÓN ---
 function generarCodigoAleatorio() {
   const longitudCodigo = 6;
-  const codigoAleatorio =
-    Math.floor(Math.random() * (Math.pow(10, longitudCodigo) - Math.pow(10, longitudCodigo - 1))) +
-    Math.pow(10, longitudCodigo - 1);
+  const codigoAleatorio = crypto.randomInt(
+    Math.pow(10, longitudCodigo - 1),
+    Math.pow(10, longitudCodigo)
+  );
   return codigoAleatorio.toString();
 }
 

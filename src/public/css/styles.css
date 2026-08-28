@@ -123,9 +123,6 @@ body:not(.app-shell) .navbar .dropdown-menu {
   z-index: 1050;
 }
 
-body:not(.app-shell) .dropdown-menu {
-  z-index: 1060 !important;
-}
 body:not(.app-shell) .modal-backdrop {
   display: none !important;
 }

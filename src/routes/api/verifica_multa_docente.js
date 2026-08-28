@@ -5,7 +5,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-var router = express.Router();
+const router = express.Router();
 
 const requireTeacherCertificateAccess = requireRoles(['admin', 'docente', 'coordinador'], {
   message: '¡Algo ha salido mal!',

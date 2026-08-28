@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const multer = require('multer');
@@ -29,6 +30,11 @@ const incidentEvidenceUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 1024 * 1024,
+    files: 1,
+    fields: 20,
+    parts: 25,
+    fieldNameSize: 100,
+    fieldSize: 64 * 1024,
   },
   fileFilter: function (req, file, cb) {
     if (!file?.mimetype || !String(file.mimetype).startsWith('image/')) {
@@ -1146,6 +1152,28 @@ function sanitizeText(value) {
   return value === undefined || value === null ? null : String(value).trim() || null;
 }
 
+function normalizeArrayInput(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value) {
+    return [value];
+  }
+
+  return [];
+}
+
+function resolveArrayInput(...values) {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
 const PRESTAMOS_AUDIT_ACTIONS = [
   'Aprobar Solicitud Prestamo',
   'Rechazar Solicitud Prestamo',
@@ -1628,7 +1656,12 @@ function isValidEquipmentId(id) {
 }
 
 function generateEquipmentCode() {
-  return `EQ-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const randomSuffix = crypto
+    .randomInt(36 ** 4)
+    .toString(36)
+    .padStart(4, '0')
+    .toUpperCase();
+  return `EQ-${Date.now()}-${randomSuffix}`;
 }
 
 function sanitizeLocalDateTime(value) {
@@ -1758,11 +1791,13 @@ function buildLoanDeliveryPayload(body = {}) {
 }
 
 function buildLoanReturnPayload(body = {}) {
-  const componentes = Array.isArray(body.lista_componentes)
-    ? body.lista_componentes
-    : typeof body.lista_componentes === 'string'
-      ? body.lista_componentes.split(',')
-      : [];
+  let componentes = [];
+
+  if (Array.isArray(body.lista_componentes)) {
+    componentes = body.lista_componentes;
+  } else if (typeof body.lista_componentes === 'string') {
+    componentes = body.lista_componentes.split(',');
+  }
 
   return {
     condicion_devolucion: sanitizeText(body.condicion_devolucion || body.condicionDevolucion),
@@ -2031,12 +2066,21 @@ function validatePracticeReservationPayload(payload) {
 }
 
 function normalizeSlugPart(value) {
-  return String(value || '')
+  let normalized = String(value || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/[^a-z0-9]+/g, '_');
+
+  while (normalized.startsWith('_')) {
+    normalized = normalized.slice(1);
+  }
+
+  while (normalized.endsWith('_')) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  return normalized;
 }
 
 function normalizeStringList(value) {
@@ -2348,8 +2392,8 @@ function buildSalaSchedulePayload(body = {}) {
 }
 
 function validateSalaSchedulePayload(payload) {
-  var hasFecha = Boolean(payload.fecha);
-  var hasDia =
+  const hasFecha = Boolean(payload.fecha);
+  const hasDia =
     payload.dia_semana !== null && payload.dia_semana !== undefined && payload.dia_semana !== '';
 
   if (hasFecha === hasDia) {
@@ -2361,7 +2405,7 @@ function validateSalaSchedulePayload(payload) {
   }
 
   if (hasDia) {
-    var dia = Number(payload.dia_semana);
+    const dia = Number(payload.dia_semana);
     if (!Number.isInteger(dia) || dia < 0 || dia > 6) {
       return 'El dia de la semana no es valido.';
     }
@@ -2429,7 +2473,7 @@ function generateDefaultEquipmentSchedules(daysAhead = 14) {
 
     schedules.push({
       fecha: targetDate.toISOString().split('T')[0],
-      hora_inicio: day === 6 ? '08:00' : '08:00',
+      hora_inicio: '08:00',
       hora_fin: day === 6 ? '12:00' : '17:00',
       activo: true,
     });
@@ -2439,21 +2483,9 @@ function generateDefaultEquipmentSchedules(daysAhead = 14) {
 }
 
 function parseScheduleEntries(body = {}) {
-  const fechas = Array.isArray(body.schedule_fecha)
-    ? body.schedule_fecha
-    : body.schedule_fecha
-      ? [body.schedule_fecha]
-      : [];
-  const horasInicio = Array.isArray(body.schedule_hora_inicio)
-    ? body.schedule_hora_inicio
-    : body.schedule_hora_inicio
-      ? [body.schedule_hora_inicio]
-      : [];
-  const horasFin = Array.isArray(body.schedule_hora_fin)
-    ? body.schedule_hora_fin
-    : body.schedule_hora_fin
-      ? [body.schedule_hora_fin]
-      : [];
+  const fechas = normalizeArrayInput(body.schedule_fecha);
+  const horasInicio = normalizeArrayInput(body.schedule_hora_inicio);
+  const horasFin = normalizeArrayInput(body.schedule_hora_fin);
 
   const total = Math.max(fechas.length, horasInicio.length, horasFin.length);
   const schedules = [];
@@ -2509,9 +2541,8 @@ function validateSchedules(schedules) {
       left.hora_inicio.localeCompare(right.hora_inicio)
     );
 
-    for (let index = 1; index < sortedEntries.length; index += 1) {
-      const previous = sortedEntries[index - 1];
-      const current = sortedEntries[index];
+    for (const [previousIndex, current] of sortedEntries.slice(1).entries()) {
+      const previous = sortedEntries[previousIndex];
 
       if (current.hora_inicio < previous.hora_fin) {
         return 'Hay horarios traslapados en una misma fecha.';
@@ -3244,9 +3275,12 @@ function formatPdfDateTime(value) {
 }
 
 function getMilabAppUrl() {
-  const raw = String(process.env.APP_BASE_URL || '')
-    .trim()
-    .replace(/\/+$/, '');
+  let raw = String(process.env.APP_BASE_URL || '').trim();
+
+  while (raw.endsWith('/')) {
+    raw = raw.slice(0, -1);
+  }
+
   if (!raw) {
     return '';
   }
@@ -3981,11 +4015,7 @@ async function renderInstitutionalFormatPdf(res, archivo, payload, responseFileN
     ];
     const materiales = Array.isArray(payload?.materiales) ? payload.materiales : [];
     const reactivos = Array.isArray(payload?.reactivos) ? payload.reactivos : [];
-    const concentracion = Array.isArray(payload?.concentracion)
-      ? payload.concentracion
-      : Array.isArray(payload?.concentraciones)
-        ? payload.concentraciones
-        : [];
+    const concentracion = resolveArrayInput(payload?.concentracion, payload?.concentraciones);
     const cantidad = Array.isArray(payload?.cantidad) ? payload.cantidad : [];
     const observaciones = String(payload?.observaciones || '').split(/\r?\n/);
 
@@ -4043,23 +4073,11 @@ async function renderInstitutionalFormatPdf(res, archivo, payload, responseFileN
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
     const observaciones = String(payload?.observaciones || '').split(/\r?\n/);
-    const desc = Array.isArray(payload?.desc)
-      ? payload.desc
-      : Array.isArray(payload?.descripcion)
-        ? payload.descripcion
-        : [];
-    const cant = Array.isArray(payload?.cant)
-      ? payload.cant
-      : Array.isArray(payload?.cantidad)
-        ? payload.cantidad
-        : [];
+    const desc = resolveArrayInput(payload?.desc, payload?.descripcion);
+    const cant = resolveArrayInput(payload?.cant, payload?.cantidad);
     const interno = Array.isArray(payload?.interno) ? payload.interno : [];
     const entrega = Array.isArray(payload?.entrega) ? payload.entrega : [];
-    const devolucion = Array.isArray(payload?.devol)
-      ? payload.devol
-      : Array.isArray(payload?.devolucion)
-        ? payload.devolucion
-        : [];
+    const devolucion = resolveArrayInput(payload?.devol, payload?.devolucion);
     const rows = [
       222, 236, 250, 264, 277, 291, 305, 320, 334, 347, 362, 376, 389, 404, 418, 432, 446, 463,
     ];
@@ -4148,11 +4166,7 @@ async function renderInstitutionalFormatPdf(res, archivo, payload, responseFileN
     addOrSet('Docente', payload?.docente || '', LTop(431, 555, 136, 9), textOptions);
   } else if (archivo === 'GL-PR-001-FR-004.pdf') {
     const textOptions = { wrap: false, baselineAdjust: -1, size: 9 };
-    const desc = Array.isArray(payload?.desc)
-      ? payload.desc
-      : Array.isArray(payload?.descripcion)
-        ? payload.descripcion
-        : [];
+    const desc = resolveArrayInput(payload?.desc, payload?.descripcion);
     const groups = Array.from({ length: 15 }, (_, index) =>
       Array.isArray(payload?.[`g${index + 1}`]) ? payload[`g${index + 1}`] : []
     );
@@ -4207,16 +4221,8 @@ async function renderInstitutionalFormatPdf(res, archivo, payload, responseFileN
       .replace(/[\u0300-\u036f]/g, '');
     const desc = Array.isArray(payload?.desc) ? payload.desc : [];
     const placa = Array.isArray(payload?.placa) ? payload.placa : [];
-    const fSalida = Array.isArray(payload?.fSalida)
-      ? payload.fSalida
-      : Array.isArray(payload?.fecha_salida)
-        ? payload.fecha_salida
-        : [];
-    const fDevol = Array.isArray(payload?.fDevol)
-      ? payload.fDevol
-      : Array.isArray(payload?.fecha_devol)
-        ? payload.fecha_devol
-        : [];
+    const fSalida = resolveArrayInput(payload?.fSalida, payload?.fecha_salida);
+    const fDevol = resolveArrayInput(payload?.fDevol, payload?.fecha_devol);
     const precio = Array.isArray(payload?.precio) ? payload.precio : [];
     const rows = [250, 263, 277, 291];
     const userRows = [528, 542, 556, 570, 584];
@@ -11089,6 +11095,14 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
     try {
       await client.query('BEGIN');
 
+      let reservationStatus = 'pendiente';
+
+      if (payload.tipo_practica === 'docente') {
+        reservationStatus = 'por_aprobacion';
+      } else if (shouldQueueReservation) {
+        reservationStatus = 'en_cola';
+      }
+
       const insertColumns = [
         'usuario_id',
         'sala_id',
@@ -11120,11 +11134,7 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
         payload.tipo_practica,
         payload.categoria_practica,
         payload.tipo_practica === 'libre' ? salaSeleccionada?.modalidad_libre || 'uno_a_uno' : null,
-        payload.tipo_practica === 'docente'
-          ? 'por_aprobacion'
-          : shouldQueueReservation
-            ? 'en_cola'
-            : 'pendiente',
+        reservationStatus,
         payload.justificacion,
         payload.formato_archivo,
         payload.formato_payload,
@@ -13399,13 +13409,18 @@ router.post(
           });
         }
 
+        let successMessage = 'Practica completada correctamente.';
+
+        if (shouldBlockPracticeByIncident) {
+          successMessage =
+            'Incidencia registrada en estado pendiente de aprobacion. La practica queda bloqueada hasta solucionar la incidencia.';
+        } else if (nextState === 'finalizada') {
+          successMessage = 'Practica finalizada correctamente.';
+        }
+
         return res.json({
           success: true,
-          message: shouldBlockPracticeByIncident
-            ? 'Incidencia registrada en estado pendiente de aprobacion. La practica queda bloqueada hasta solucionar la incidencia.'
-            : nextState === 'finalizada'
-              ? 'Practica finalizada correctamente.'
-              : 'Practica completada correctamente.',
+          message: successMessage,
         });
       } catch (error) {
         await client.query('ROLLBACK');
