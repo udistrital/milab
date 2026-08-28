@@ -4,11 +4,6 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-## Release Notes
-
-- Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
-- Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
-
 ## Arquitectura y Estructura del Proyecto
 
 - **Backend:** Node.js + Express
@@ -116,7 +111,7 @@ También puedes documentar comandos para lint o pruebas. Estos pasos ayudan a as
 
 ## Análisis local
 
-El pipeline de calidad usa Node.js 25 y ejecuta formato, ESLint, auditoría de dependencias y la suite automatizada de pruebas.
+El pipeline de calidad usa Node.js 25 y ejecuta formato, ESLint y auditoría de dependencias.
 
 Para ejecutar el mismo análisis localmente con Docker:
 
@@ -126,50 +121,9 @@ Si ya tienes Node.js 25 instalado y un `package-lock.json` actualizado, también
 
 `npm run ci:check`
 
-Para ejecutar la misma puerta de pruebas que usa CI:
-
-`npm test`
-
-`npm test` ahora agrega:
-
-- `npm run test:unit`
-- `npm run test:integration`
-
-## Análisis local con SonarQube
-
-`preprod` ahora incluye `sonar-project.properties` en la raíz y un runner local basado en contenedores.
-
-Para levantar SonarQube local, generar un token automáticamente y ejecutar el escaneo del proyecto:
-
-`npm run sonar:local`
-
-La interfaz queda disponible en:
-
-`http://localhost:9000`
-
-Credenciales locales por defecto del bootstrap:
-
-- usuario: `admin`
-- contraseña: `admin_milab_local`
-
-Si necesitas cambiar la contraseña local del contenedor antes del bootstrap, puedes hacerlo así:
-
-`SONARQUBE_LOCAL_PASSWORD='tu_clave_local' npm run sonar:local`
-
-Para detener y eliminar el contenedor local de SonarQube:
-
-`npm run sonar:stop`
-
-Notas operativas:
-
-- El script usa las imágenes `sonarqube:community` y `sonarsource/sonar-scanner-cli:5.0` por compatibilidad con SonarQube 9.9 LTS local.
-- Mantiene volúmenes Docker con estado local para no reinicializar SonarQube en cada corrida.
-- El análisis sirve para detectar bugs, code smells y hallazgos de seguridad o security hotspots reportados por SonarQube en esta edición.
-
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release de Préstamos usar `2.0.0`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.
@@ -191,33 +145,12 @@ Resumen operativo de procesos y responsabilidades por rol:
 
 ## SQL de base
 
-La inicialización de base para recreación completa del entorno de pruebas usa cuatro scripts en secuencia:
+La inicialización de base queda consolidada en dos archivos:
 
-1. [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql)
-2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql) (o `db_seed.sql` si existe en el ambiente)
-3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
-4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
+- [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql): estructura completa de la BD, constraints, índices y ajustes idempotentes del esquema.
+- [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql): catálogos base, admins por defecto y bootstrap del modelo RBAC.
 
-La recreación en CI y en reset manual de pruebas aplica los cuatro scripts de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
-
-## Reset completo en EC2 (pruebas)
-
-El entorno de pruebas se despliega en el host remoto con Compose en [home/ubuntu/prod/docker-compose.yml](home/ubuntu/prod/docker-compose.yml) y código en [opt/milab](opt/milab).
-
-Puntos operativos aplicados en el flujo actual:
-
-1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
-2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
-3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 4 scripts SQL en secuencia y luego se reconstruye `milabud`.
-4. La validación mínima post-seed comprueba que exista el menú principal de préstamos.
-
-Script de apoyo:
-
-- [scripts/reset-ec2-test-stack.sh](scripts/reset-ec2-test-stack.sh)
-
-Pipeline relacionado:
-
-- [.github/workflows/ci.yml](.github/workflows/ci.yml)
+El stack local y el despliegue usan únicamente esos dos scripts al crear una base nueva. La precarga local de estudiantes, coordinadores y datos piloto queda fuera del flujo oficial para mantener instalaciones limpias desde cero.
 
 ## Logging
 

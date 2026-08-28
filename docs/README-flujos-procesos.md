@@ -18,7 +18,6 @@ Este documento resume los procesos funcionales principales que maneja MiLab y lo
 - Matriz de accesos: docs/matriz-accesos.md
 - Seguridad y RBAC: docs/architecture/security-rbac.md
 - Modelo de datos: docs/architecture/erd.md
-- Release notes de prestamos 2.0: docs/release-notes-prestamos-2.0.md
 
 ## Flujo 1. Login Institucional (Microsoft Entra)
 

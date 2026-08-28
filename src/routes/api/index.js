@@ -2,7 +2,7 @@ const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 
-const router = express.Router();
+var router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
 
 // Rutas existentes

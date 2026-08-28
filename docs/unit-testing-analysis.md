@@ -11,23 +11,6 @@ MILab ya cuenta con una suite formal de pruebas unitarias ejecutada con `node:te
 - `npm test`
 - `npm run test:unit`
 
-Además, la suite HTTP de integración ya quedó incorporada a la ejecución principal de pruebas:
-
-- `npm run test:integration`
-
-Para análisis estático local adicional fuera de `node:test`, el repositorio también dispone de `sonar-project.properties` y del comando:
-
-- `npm run sonar:local`
-
-Hoy `npm test` ejecuta primero unit y luego integración, que es también la ruta usada por CI.
-
-Actualización operativa de hoy:
-
-1. Se estabilizó la suite eliminando una cancelación intermitente en `coordinadores_registrados` causada por una ruta que no cerraba respuesta en todos los caminos.
-2. Se corrigieron bloqueos de calidad que impedían el pipeline completo (`format:check`, `lint` y un test unit cancelado).
-3. Se dejó validado el recorrido completo de CI local (`ci:check`, unit e integración) en verde.
-4. Se confirmó análisis Sonar local en cero para `code_smells`, `bugs`, `vulnerabilities` y `security_hotspots` tras los ajustes.
-
 La suite actual cubre helpers, middlewares y algunas rutas con dependencias simuladas. Todavía no existe una capa amplia de pruebas de integración end-to-end, pero ya hay una red útil de seguridad sobre invariantes críticos:
 
 1. correos institucionales y conflictos de email,
@@ -50,12 +33,7 @@ La estructura actual incluye al menos:
 - `tests/unit/middlewares/*.test.js`
 - `tests/unit/routes/*.test.js`
 
-La ejecución actual validada localmente pasa con éxito sobre la suite unitaria y de integración.
-
-Última corrida de referencia:
-
-1. Unit: 229 pruebas `pass`, 0 `fail`, 0 `cancelled`.
-2. Integración: 20 pruebas `pass`, 0 `fail`, 0 `cancelled`.
+La ejecución actual validada localmente pasa con éxito sobre la suite unitaria.
 
 ## Superficie Ya Cubierta
 
@@ -249,11 +227,6 @@ Orden sugerido:
 2. dashboard por rol y alcance,
 3. recuperación de contraseña y correo,
 4. integración HTTP de flujos autenticados clave.
-
-Adicional para operación CI:
-
-1. Mantener la ejecución por puertas (`ci:check` -> `npm test` -> despliegue) como baseline de regresión.
-2. Para cambios de despliegue o semillas SQL, validar también el flujo de recreación de ambiente en `.github/workflows/ci.yml`.
 
 ## Conclusión
 

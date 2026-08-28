@@ -2,23 +2,6 @@ const nodemailer = require('nodemailer');
 
 require('dotenv').config();
 
-function resolveSmtpHost(value, fallback = '') {
-  const normalized = String(value || fallback)
-    .trim()
-    .replace(/^[a-z]+:\/\//i, '')
-    .replace(/\/$/, '');
-
-  if (!normalized) {
-    return fallback;
-  }
-
-  if (!/^[a-z0-9.-]+$/i.test(normalized)) {
-    throw new Error('EMAIL_HOST contiene caracteres no permitidos para un host SMTP.');
-  }
-
-  return normalized;
-}
-
 function normalizeEmailOverride(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -89,7 +72,7 @@ function buildTransportConfig() {
   }
 
   return {
-    host: resolveSmtpHost(process.env.EMAIL_HOST),
+    host: process.env.EMAIL_HOST,
     port: Number(process.env.EMAIL_PORT || 587),
     secure: process.env.EMAIL_SECURE === 'true',
     auth,

@@ -54,29 +54,17 @@ flowchart TB
 ### Pruebas
 
 - El despliegue de pruebas está automatizado en `.github/workflows/ci.yml`.
-- Despliega automáticamente desde las ramas:
-  - `develop`
-  - `preprod`
-  - `vsa`
+- Solo despliega automáticamente desde las ramas:
+  - `prestamos`
+  - `normalizacion_bd`
 - El workflow ejecuta:
   1. checkout,
   2. `npm ci`,
   3. validaciones de formato, lint y audit,
-  4. pruebas unitarias e integración,
+  4. pruebas unitarias,
   5. copia de código al host,
-  6. enlace de `/opt/.env` a `/opt/milab/Docker/.env`,
-  7. estrategia de despliegue (`recreate` por cambio de rama, estado vacío o forzado por UI),
-  8. si hay recreación: reset de contenedores + volumen y recreación de BD con secuencia SQL explícita,
-  9. reconstrucción de `milabud`.
-
-Secuencia SQL de recreación de BD en pruebas:
-
-1. `db_structure.sql`
-2. `db_seed.sql` (si existe) o `db_seed_system.sql`
-3. `db_structure_prestamos.sql`
-4. `db_seed_prestamos.sql`
-
-El proceso usa `psql -v ON_ERROR_STOP=1` y aborta si falta alguno de los scripts requeridos.
+  6. copia de `/opt/.env` a `/opt/milab/Docker/.env`,
+  7. `docker compose up -d --build --force-recreate dbpostgres milabud`.
 
 ## Variables Y Comportamiento De Entorno
 
@@ -103,4 +91,3 @@ El proceso usa `psql -v ON_ERROR_STOP=1` y aborta si falta alguno de los scripts
 2. El entorno de pruebas debe considerarse no productivo; por eso el banner depende de `NODE_ENV`.
 3. El despliegue por CI ya valida formato, lint, auditoría y pruebas unitarias antes de recrear contenedores.
 4. Los errores de arranque por rutas o vistas corruptas se reflejan inmediatamente en los logs del contenedor `milabud`.
-5. En resets completos, `dbpostgres` debe quedar `healthy` antes de aplicar scripts y subir `milabud`.

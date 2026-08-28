@@ -8,7 +8,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-let router = express.Router();
+var router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -27,6 +27,41 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
+async function resolveLaboratoristaUals(laboratorista) {
+  if (!laboratorista?.documento) {
+    return [];
+  }
+
+  const assignedUalsResult = await pool.query(
+    `SELECT DISTINCT u.ual_id, u.nombre, u.codigo_abreviacion, u.sal_id_espacio, u.sal_ocupantes
+     FROM laboratorista_ual lu
+     JOIN ual u ON u.ual_id = lu.ual_id
+     WHERE lu.laboratorista_documento_id = $1
+       AND u.activo = TRUE
+     ORDER BY u.nombre ASC`,
+    [laboratorista.documento]
+  );
+
+  if (assignedUalsResult.rows.length > 0) {
+    return assignedUalsResult.rows;
+  }
+
+  if (!laboratorista.facultad_id) {
+    return [];
+  }
+
+  const legacyFacultyUalsResult = await pool.query(
+    `SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes
+     FROM ual
+     WHERE activo = TRUE
+       AND facultad_id = $1
+     ORDER BY nombre ASC`,
+    [laboratorista.facultad_id]
+  );
+
+  return legacyFacultyUalsResult.rows;
+}
+
 const requireLaboratoristaFineInfoView = requireRoles('laboratorista', {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
@@ -43,11 +78,12 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 
   const requestBody = req.body || {};
   const { tipo_busqueda, valor_busqueda } = requestBody;
-  let con_codigo;
-  let con_estado;
-  let con_documento;
-  let con_carrera;
-  let con_nombre;
+  var con_codigo;
+  var con_estado;
+  var con_documento;
+  var con_carrera;
+  var con_nombre;
+  // let con_multado = false; // Inicialmente asumimos que no está multado
 
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
@@ -70,12 +106,6 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     con_estado = studentRecord.estado;
     con_documento =
       studentRecord.documento || studentRecord.numero_documento_identificacion || null;
-    if (
-      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
-      tipo_busqueda === 'documento'
-    ) {
-      con_documento = String(valor_busqueda || '').trim();
-    }
     con_carrera = studentRecord.carrera;
     con_nombre = studentRecord.nombre;
 
@@ -133,9 +163,9 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
     }
 
     //DATOS LAB
-    let nombre_lab = '';
-    let cc_lab = 0;
-    let uals = '';
+    var nombre_lab = '';
+    var cc_lab = 0;
+    var uals = '';
     if (req.session.user.tipo === 'laboratorista') {
       const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
       const query2 = 'SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1';
@@ -144,27 +174,13 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       if (result2.rows.length === 0) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
-      const query3 = `
-        SELECT DISTINCT
-          u.ual_id,
-          u.nombre,
-          u.codigo_abreviacion,
-          u.sal_id_espacio,
-          u.sal_ocupantes
-        FROM laboratorista_ual lu
-        INNER JOIN ual u
-          ON u.ual_id = lu.ual_id
-        WHERE lu.laboratorista_documento_id = $1
-          AND u.activo = TRUE
-        ORDER BY u.nombre ASC
-      `;
-      const values3 = [result2.rows[0].documento];
-      const result3 = await pool.query(query3, values3);
-      nombre_lab = result2.rows[0].nombre;
-      cc_lab = result2.rows[0].documento;
-      uals = result3.rows;
+      const laboratorista = result2.rows[0];
+      nombre_lab = laboratorista.nombre;
+      cc_lab = laboratorista.documento;
+      uals = await resolveLaboratoristaUals(laboratorista);
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
+      cc_lab = 0;
       uals = null;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
@@ -199,6 +215,11 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       cc_lab,
       uals,
     });
+
+    // Guardar en la base de datos la solicitud de certificado
+
+    //let data_to_submit = {nombre:con_nombre, cc:con_documento, codigo:con_codigo, programa:con_carrera, estado_estudiante:con_estado, fecha_creacion: con_fecha, fecha_vencimiento: fechaVencimiento, certificado_id:uniqueId, correo: "correo", multa:con_multado};
+    //submit_data(data_to_submit);
   } catch (error) {
     console.error(error);
     return res.render('home/error-consulta', {
@@ -208,5 +229,10 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 });
 
 // Función para consultar multas asignadas al usuario
+
+router.__private = {
+  extractOasStudentRecords,
+  resolveLaboratoristaUals,
+};
 
 module.exports = router;

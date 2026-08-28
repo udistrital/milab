@@ -42,6 +42,26 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
+function extractStudentCodes(records) {
+  if (!Array.isArray(records)) return [];
+  return records
+    .map((item) => String(item?.codigo || '').trim())
+    .filter((value) => value && value !== '0');
+}
+
+async function fetchStudentRecordsByDocumento(documento) {
+  if (!documento || documento === '0') return [];
+
+  try {
+    const response = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+    );
+    return extractOasStudentRecords(response);
+  } catch {
+    return [];
+  }
+}
+
 async function resolveStudentEmail(documento, codigo) {
   const codigoParam = codigo ? String(codigo) : null;
 
@@ -100,7 +120,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
       });
     }
 
-    const ultimoEstudiante = studentRecords.at(-1);
+    const ultimoEstudiante = studentRecords[studentRecords.length - 1];
 
     const con_codigo = ultimoEstudiante.codigo;
     const con_nombre = ultimoEstudiante.nombre;
@@ -122,14 +142,18 @@ router.post('/', requireVerificationAction, async (req, res) => {
       const carreraResponse = await requestOati(
         getAcademicServicePath(`carrera/${con_carrera_code}`)
       );
-      if (carreraResponse?.carrerasCollection?.carrera) {
+      if (
+        carreraResponse &&
+        carreraResponse.carrerasCollection &&
+        carreraResponse.carrerasCollection.carrera
+      ) {
         con_carrera_nombre = carreraResponse.carrerasCollection.carrera[0].nombre;
       }
 
       const estadoResponse = await requestOati(
         getAcademicServicePath(`estados_codigo/${con_estado_code}`)
       );
-      if (estadoResponse?.estado?.nombre) {
+      if (estadoResponse && estadoResponse.estado && estadoResponse.estado.nombre) {
         con_estado_nombre = estadoResponse.estado.nombre;
       }
     } catch (apiError) {
@@ -143,6 +167,20 @@ router.post('/', requireVerificationAction, async (req, res) => {
         message2: 'No es posible generar el certificado para estudiantes egresados.',
         limit: null,
       });
+    }
+
+    let codigoList = extractStudentCodes(studentRecords);
+
+    if (tipo_busqueda === 'codigo' && documento !== '0') {
+      const recordsByDocumento = await fetchStudentRecordsByDocumento(documento);
+      const documentCodes = extractStudentCodes(recordsByDocumento);
+      if (documentCodes.length) {
+        codigoList = documentCodes;
+      }
+    }
+
+    if (!codigoList.length && con_codigo) {
+      codigoList = [String(con_codigo)];
     }
 
     let usuarioId = null;

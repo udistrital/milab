@@ -9,11 +9,7 @@ let cachedTokenExpiresAt = 0;
 const httpsAgent = new https.Agent({
   rejectUnauthorized: config.oatiRejectUnauthorized,
 });
-const insecureHttpsAgent = new https.Agent({
-  rejectUnauthorized: false,
-});
 const oatiRetryDelaysMs = [500, 1500, 3000].slice(0, config.oatiMaxRetries);
-let hasWarnedAboutTlsFallback = false;
 
 function ensureOatiCredentials() {
   if (!config.oatiClientId || !config.oatiSecret) {
@@ -30,36 +26,6 @@ function isRetryableOatiError(error) {
   }
 
   return status === 429 || status >= 500;
-}
-
-function isTlsCertificateError(error) {
-  const code = (error?.code || '').toString().toUpperCase();
-  const message = (error?.message || '').toString().toLowerCase();
-
-  return (
-    ['CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'DEPTH_ZERO_SELF_SIGNED_CERT'].includes(
-      code
-    ) || message.includes('certificate has expired')
-  );
-}
-
-async function withOatiTlsFallback(operation) {
-  try {
-    return await operation(httpsAgent);
-  } catch (error) {
-    if (!config.oatiRejectUnauthorized || !isTlsCertificateError(error)) {
-      throw error;
-    }
-
-    if (!hasWarnedAboutTlsFallback) {
-      hasWarnedAboutTlsFallback = true;
-      console.warn(
-        '[OATI] TLS certificate validation failed. Applying temporary insecure fallback for OATI requests.'
-      );
-    }
-
-    return operation(insecureHttpsAgent);
-  }
 }
 
 async function withOatiRetry(operation) {
@@ -91,22 +57,20 @@ async function fetchAccessToken() {
   }
 
   const tokenResponse = await withOatiRetry(() =>
-    withOatiTlsFallback((agent) =>
-      axios.post(
-        config.oatiTokenUrl,
-        new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-        {
-          auth: {
-            username: config.oatiClientId,
-            password: config.oatiSecret,
-          },
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          httpsAgent: agent,
-          timeout: config.oatiTokenTimeoutMs,
-        }
-      )
+    axios.post(
+      config.oatiTokenUrl,
+      new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+      {
+        auth: {
+          username: config.oatiClientId,
+          password: config.oatiSecret,
+        },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        httpsAgent,
+        timeout: config.oatiTokenTimeoutMs,
+      }
     )
   );
 
@@ -119,12 +83,10 @@ async function fetchAccessToken() {
 
 async function requestOatiPublic(pathname) {
   const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
-  const response = await withOatiTlsFallback((agent) =>
-    axios.get(url, {
-      httpsAgent: agent,
-      timeout: config.oatiRequestTimeoutMs,
-    })
-  );
+  const response = await axios.get(url, {
+    httpsAgent,
+    timeout: config.oatiRequestTimeoutMs,
+  });
   return response.data;
 }
 
@@ -137,15 +99,13 @@ async function requestOati(pathname) {
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
 
   const response = await withOatiRetry(() =>
-    withOatiTlsFallback((agent) =>
-      axios.get(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        httpsAgent: agent,
-        timeout: config.oatiRequestTimeoutMs,
-      })
-    )
+    axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      httpsAgent,
+      timeout: config.oatiRequestTimeoutMs,
+    })
   );
 
   return response.data;

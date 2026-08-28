@@ -110,61 +110,6 @@ test('buildTransportConfig uses host, port and secure when service is absent', (
   }
 });
 
-test('buildTransportConfig strips protocols and trailing slash from EMAIL_HOST', () => {
-  delete process.env.EMAIL_SERVICE;
-  process.env.EMAIL_USER = 'sistema@udistrital.edu.co';
-  process.env.EMAIL_PASSWORD = 'secret';
-  process.env.EMAIL_HOST = 'https://smtp-mail.outlook.com/';
-  process.env.EMAIL_PORT = '587';
-  process.env.EMAIL_SECURE = 'false';
-
-  const loaded = loadMailModule();
-
-  try {
-    assert.deepEqual(loaded.getCapturedConfig(), {
-      host: 'smtp-mail.outlook.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: 'sistema@udistrital.edu.co',
-        pass: 'secret',
-      },
-    });
-  } finally {
-    loaded.restore();
-  }
-});
-
-test('buildTransportConfig rejects EMAIL_HOST values with invalid hostname characters', () => {
-  const originalEnv = {
-    EMAIL_SERVICE: process.env.EMAIL_SERVICE,
-    EMAIL_USER: process.env.EMAIL_USER,
-    EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
-    EMAIL_HOST: process.env.EMAIL_HOST,
-    EMAIL_PORT: process.env.EMAIL_PORT,
-    EMAIL_SECURE: process.env.EMAIL_SECURE,
-  };
-
-  delete process.env.EMAIL_SERVICE;
-  process.env.EMAIL_USER = 'sistema@udistrital.edu.co';
-  process.env.EMAIL_PASSWORD = 'secret';
-  process.env.EMAIL_HOST = 'smtp-mail.outlook.com/ruta';
-  process.env.EMAIL_PORT = '587';
-  process.env.EMAIL_SECURE = 'false';
-
-  try {
-    assert.throws(() => loadMailModule(), /EMAIL_HOST contiene caracteres no permitidos/i);
-  } finally {
-    Object.entries(originalEnv).forEach(([key, value]) => {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    });
-  }
-});
-
 test('sendMail applies recipient override and preserves original recipients in headers', async () => {
   process.env.REGISTRATION_EMAIL_OVERRIDE = 'qa@udistrital.edu.co';
   process.env.EMAIL_USER = 'sistema@udistrital.edu.co';

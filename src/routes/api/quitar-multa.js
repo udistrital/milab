@@ -4,7 +4,7 @@ const pool = require('../../libs/db');
 const { fetchUserById } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 
-const router = express.Router();
+var router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));

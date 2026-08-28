@@ -1,6 +1,6 @@
-const express = require('express');
+var express = require('express');
 
-const router = express.Router();
+var router = express.Router();
 const pool = require('../../libs/db');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
@@ -116,6 +116,7 @@ router.get('/', requireMultasAccess, async (req, res) => {
       sancionesEstudiantes,
       sancionesDocentes,
     });
+    //res.send(rows); // Puedes cambiar esto a una plantilla HTML para mostrar los datos de manera más amigable
   } catch (error) {
     if (client) {
       client.release();
