@@ -1,125 +1,26 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const transporter = require('../../libs/mail');
-const {
-  buildBrandedEmailAttachments,
-  buildEmailFooterHtml,
-  buildEmailHeaderHtml,
-  escapeHtml,
-} = require('../../libs/email-layout');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
+const {
+  SANCTION_TYPES,
+  isValidSanctionType,
+  fetchMultaConfigsForFacultyIds,
+  upsertConfigForFacultyId,
+  logConfigChangeToAuditoria,
+} = require('../../libs/multa-config');
+const {
+  resolveStudentContactByUsuarioId,
+  sendSanctionActivationEmail,
+} = require('../../libs/sanction-email');
 
 const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
 
-const SANCTION_TYPES = [
-  'Suspensión temporal del acceso al laboratorio',
-  'Realizar cursos de buenas prácticas o seguridad',
-  'Amonestación verbal o escrita',
-  'Firma de compromiso de buen uso',
-  'Apoyo en organización del laboratorio',
-  'Reposición de materiales o insumos',
-  'Reemplazar exactamente lo que dañó o perdió',
-];
-
 function normalizeSanctionType(value) {
   return (value || '').toString().trim();
-}
-
-async function resolveStudentContactByUsuarioId(usuarioId) {
-  if (!usuarioId) return null;
-
-  const result = await pool.query(
-    `
-      SELECT u.nombre, u.documento, u.codigo, u.correo
-      FROM usuario u
-      WHERE u.id = $1
-      LIMIT 1
-    `,
-    [usuarioId]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function sendSanctionActivationEmail({
-  correo,
-  nombre,
-  codigo,
-  tipoSancion,
-  observaciones,
-  laboratorio,
-  fecha,
-}) {
-  if (!correo) return;
-
-  const safeNombre = nombre || 'estudiante';
-  const h = escapeHtml;
-
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: correo,
-    subject: 'Notificación de sanción activada - MILab Laboratorios UD',
-    text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\nSi tienes dudas, comunícate con la coordinación de laboratorios.`,
-    html: `
-      <!DOCTYPE html>
-      <html lang="es">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="color-scheme" content="light only">
-        <meta name="supported-color-schemes" content="light only">
-        <title>Sanción activada</title>
-      </head>
-      <body style="margin:0;padding:0;background-color:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f8f9fa;">
-          <tr>
-            <td align="center" style="padding:20px 10px;">
-              <table width="600" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.06);">
-                ${buildEmailHeaderHtml()}
-                <tr>
-                  <td align="center" style="padding:30px 30px 20px 30px;">
-                    <h1 style="font-size:22px;margin:0;color:#202124;">Se activó una sanción</h1>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding:0 30px 20px 30px;">
-                    <p style="font-size:16px;line-height:1.6;color:#5f6368;margin:0;">
-                      Hola ${h(safeNombre)},
-                    </p>
-                    <p style="font-size:15px;line-height:1.6;color:#5f6368;margin-top:16px;">
-                      Se ha activado una sanción asociada a tu registro con código <strong>${h(codigo)}</strong>.
-                    </p>
-                    <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #e53935;margin-top:16px;">
-                      <p style="margin:0;font-size:14px;color:#202124;"><strong>Tipo de sanción:</strong> ${h(tipoSancion)}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Laboratorio:</strong> ${h(laboratorio || 'N/A')}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Fecha:</strong> ${h(fecha || 'N/A')}</p>
-                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Observaciones:</strong> ${h(observaciones || 'Sin observaciones')}</p>
-                    </div>
-                    <p style="font-size:14px;line-height:1.6;color:#5f6368;margin-top:18px;">
-                      Si tienes dudas, comunícate con la coordinación de laboratorios.
-                    </p>
-                  </td>
-                </tr>
-                ${buildEmailFooterHtml(`
-                  <p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">
-                    MILab - Coordinación General de Laboratorios
-                  </p>
-                `)}
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-    `,
-    attachments: buildBrandedEmailAttachments(),
-  };
-
-  await transporter.sendMail(mailOptions);
 }
 
 const requireCoordinadorApprovalAccess = requireRoles('coordinador', {
@@ -184,10 +85,30 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
 
     const multasPendientes = result.rows;
 
+    const facultadesResult = await pool.query(
+      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+      [scope.facultyIds]
+    );
+    const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
+    const facultadesParaAutorizar = facultadesResult.rows.map((row) => {
+      const cfg = configMap.get(Number(row.facultad_id)) || {};
+      return {
+        facultad_id: Number(row.facultad_id),
+        nombre: row.nombre,
+        permite_crear_multas_activas_directas: Boolean(cfg.permite_crear_multas_activas_directas),
+        permite_saldar_multas_directas: Boolean(cfg.permite_saldar_multas_directas),
+        fecha_ultima_modificacion: cfg.fecha_ultima_modificacion || null,
+        documento_ultimo_autorizador: cfg.documento_ultimo_autorizador || null,
+        accion_ultima: cfg.accion_ultima || 'inicial',
+      };
+    });
+
     res.set('Cache-Control', 'no-store');
     return res.render('home/aprobacion_multa', {
       multas: multasPendientes,
       nombreCoordinador: req.session.user.nombre,
+      SANCTION_TYPES,
+      facultadesParaAutorizar,
     });
   } catch (error) {
     console.error('Error en /aprobacion_multa:', error);
@@ -205,7 +126,7 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
   const { multa_id } = body;
   const tipo_sancion = normalizeSanctionType(body.tipo_sancion);
 
-  if (!SANCTION_TYPES.includes(tipo_sancion)) {
+  if (!isValidSanctionType(tipo_sancion)) {
     return res.render('home/message_error', {
       message: 'Tipo de sanción inválido',
       message2: 'Selecciona una opción válida antes de activar la sanción.',
@@ -358,5 +279,90 @@ router.post('/saldar', requireCoordinadorApprovalAction, async function (req, re
     });
   }
 });
+
+function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, descripcionBase) {
+  return async function (req, res) {
+    try {
+      const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+      if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'La cuenta no tiene facultades asociadas.',
+          limit: null,
+        });
+      }
+      const facultadIdParam = Number(req.params.facultad_id);
+      if (!Number.isFinite(facultadIdParam)) {
+        return res.render('home/message_error', {
+          message: 'Facultad inválida',
+          message2: 'No se pudo interpretar el identificador de la facultad.',
+          limit: null,
+        });
+      }
+      if (!scope.facultyIds.includes(facultadIdParam)) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'No puedes gestionar la configuración de esta facultad.',
+          limit: null,
+        });
+      }
+      const currentCfg =
+        scope.facultyIds && scope.facultyIds.length
+          ? (await fetchMultaConfigsForFacultyIds([facultadIdParam])).get(facultadIdParam)
+          : null;
+      const currentValue = Boolean(currentCfg && currentCfg[flag]);
+      const nextValue = !currentValue;
+      const accionAudit = nextValue ? accionHabilitar : accionDeshabilitar;
+      const descripcion = nextValue
+        ? `${descripcionBase} habilitada para facultad ${facultadIdParam}`
+        : `${descripcionBase} deshabilitada para facultad ${facultadIdParam}`;
+      await upsertConfigForFacultyId(
+        facultadIdParam,
+        { [flag]: nextValue },
+        scope.coordinatorDocument,
+        accionAudit
+      );
+      await logConfigChangeToAuditoria(pool, scope.coordinatorDocument, accionAudit, descripcion, {
+        facultad_id: facultadIdParam,
+        flag,
+        nuevo_valor: nextValue,
+      });
+      await pool.query(
+        `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
+        [req.session.user.tipo, scope.coordinatorDocument, accionAudit, String(facultadIdParam)]
+      );
+      return res.redirect('./');
+    } catch (error) {
+      console.error('Error al cambiar configuración de facultad:', error);
+      return res.render('home/message_error', {
+        message: 'Error al actualizar configuración.',
+        message2: 'Por favor, intenta nuevamente.',
+        limit: null,
+      });
+    }
+  };
+}
+
+router.post(
+  '/configuracion/:facultad_id/toggle-crear-directa',
+  requireCoordinadorApprovalAction,
+  buildToggleConfigHandler(
+    'permite_crear_multas_activas_directas',
+    'CONFIG_MULTAS_HABILITAR_CREACION_DIRECTA',
+    'CONFIG_MULTAS_DESHABILITAR_CREACION_DIRECTA',
+    'Autorización de creación de sanciones activas directas'
+  )
+);
+
+router.post(
+  '/configuracion/:facultad_id/toggle-saldar-directa',
+  requireCoordinadorApprovalAction,
+  buildToggleConfigHandler(
+    'permite_saldar_multas_directas',
+    'CONFIG_MULTAS_HABILITAR_SALDO_DIRECTO',
+    'CONFIG_MULTAS_DESHABILITAR_SALDO_DIRECTO',
+    'Autorización de saldo directo de sanciones'
+  )
+);
 
 module.exports = router;

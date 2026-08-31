@@ -54,12 +54,23 @@
         <select class="form-select" id="ual_id" name="ual_id" required>
           <option value="" selected disabled>Selecciona una UAL</option>
           <% uals.forEach(ual => { %>
-            <option value="<%= ual.ual_id %>"><%= ual.nombre %></option>
+            <option value="<%= ual.ual_id %>" data-permite-crear-activa-directa="<%= ual._permiteCrearActivaDirecta ? '1' : '0' %>"><%= ual.nombre %></option>
           <% }) %>
         </select>
       <% } else { %>
         <input type="text" value="No Aplica" class="form-control" name="ual_id" readonly>
       <% } %>
+    </div>
+
+    <div class="col-md-6" id="tipo_sancion_wrap" style="display:none;">
+      <label for="tipo_sancion" class="form-label">Tipo de sanción (Aplica inmediatamente)</label>
+      <select class="form-select" id="tipo_sancion" name="tipo_sancion">
+        <option value="">Selecciona tipo de sanción</option>
+        <% (Array.isArray(SANCTION_TYPES) ? SANCTION_TYPES : []).forEach(function (tipo) { %>
+          <option value="<%= tipo %>"><%= tipo %></option>
+        <% }) %>
+      </select>
+      <div class="form-text text-muted">Esta UAL pertenece a una facultad autorizada. La sanción se marcará como ACTIVA inmediatamente y se enviará el correo de notificación.</div>
     </div>
 
     <div class="col-md-6">
@@ -99,5 +110,34 @@
       .slice(0, 10);
 
     fechaInput.max = localToday;
+
+    const ualSelect = document.getElementById('ual_id');
+    const tipoWrap = document.getElementById('tipo_sancion_wrap');
+    const tipoSelect = document.getElementById('tipo_sancion');
+    const estadoInput = document.getElementById('con_estado_multa');
+    function syncUalSeleccionada() {
+      if (!ualSelect || !tipoWrap || !estadoInput) return;
+      const selected = ualSelect.options[ualSelect.selectedIndex];
+      if (!selected || !selected.value) {
+        tipoWrap.style.display = 'none';
+        if (tipoSelect) tipoSelect.required = false;
+        estadoInput.value = 'Pendiente';
+        return;
+      }
+      const permite = selected.getAttribute('data-permite-crear-activa-directa') === '1';
+      if (permite) {
+        tipoWrap.style.display = 'block';
+        if (tipoSelect) tipoSelect.required = true;
+        estadoInput.value = 'ACTIVA';
+      } else {
+        tipoWrap.style.display = 'none';
+        if (tipoSelect) tipoSelect.required = false;
+        estadoInput.value = 'Pendiente';
+      }
+    }
+    if (ualSelect) {
+      ualSelect.addEventListener('change', syncUalSeleccionada);
+      syncUalSeleccionada();
+    }
   })();
 </script>

@@ -11,8 +11,78 @@
   </style>
   <section class="app-page-header">
     <h1 class="app-page-title">Autorizaciones de sanciones</h1>
-    <p class="app-page-subtitle">Gestiona el paso de sanciones pendientes a activas o saldadas desde una lectura más clara del estado actual.</p>
+    <p class="app-page-subtitle">Desde aquí puedes autorizar a los laboratoristas de tu facultad para que apliquen y salden multas directamente sin pasar por tu aprobación. También puedes gestionar el paso de sanciones pendientes a activas o saldadas.</p>
   </section>
+
+  <section class="card app-table-panel mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <h3 class="app-panel-title mb-0">Autorizaciones de facultades</h3>
+        <small class="text-muted">Activa los switches por facultad para otorgar permisos directos sobre el ciclo de vida de las multas.</small>
+      </div>
+
+      <% if (!Array.isArray(facultadesParaAutorizar) || facultadesParaAutorizar.length === 0) { %>
+        <div class="alert alert-info text-center mb-0">No se encontraron facultades asociadas a tu coordinación para gestionar autorizaciones.</div>
+      <% } else { %>
+        <div class="row g-3">
+          <% facultadesParaAutorizar.forEach(function (facultad) { %>
+            <div class="col-12 col-lg-6">
+              <div class="card border-0 bg-body-secondary">
+                <div class="card-body">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
+                    <h5 class="card-title mb-0"><%= facultad.nombre %></h5>
+                    <div>
+                      <% if (facultad.permite_crear_multas_activas_directas) { %>
+                        <span class="badge text-bg-success me-2">Crear directo</span>
+                      <% } %>
+                      <% if (facultad.permite_saldar_multas_directas) { %>
+                        <span class="badge text-bg-primary">Saldar directo</span>
+                      <% } %>
+                      <% if (!facultad.permite_crear_multas_activas_directas && !facultad.permite_saldar_multas_directas) { %>
+                        <span class="badge text-bg-secondary">Flujo tradicional</span>
+                      <% } %>
+                    </div>
+                  </div>
+
+                  <div class="row g-2 mb-3">
+                    <div class="col-md-6 d-flex flex-column gap-2">
+                      <div class="form-check form-switch ms-1">
+                        <form action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-crear-directa" method="POST" class="d-inline-flex align-items-center gap-2">
+                          <%- include('../partials/csrf_field') %>
+                          <input class="form-check-input" type="checkbox" role="switch" id="toggle_crear_<%= facultad.facultad_id %>" <%= facultad.permite_crear_multas_activas_directas ? 'checked' : '' %> onchange="this.form.submit()">
+                          <label class="form-check-label" for="toggle_crear_<%= facultad.facultad_id %>">Crear sanciones ACTIVAS directamente</label>
+                        </form>
+                      </div>
+                      <div class="small text-muted ps-1">El laboratorista asigna directamente el tipo de sanción y la multa queda vigente de inmediato, enviando correo al sancionado.</div>
+                    </div>
+                    <div class="col-md-6 d-flex flex-column gap-2">
+                      <div class="form-check form-switch ms-1">
+                        <form action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-saldar-directa" method="POST" class="d-inline-flex align-items-center gap-2">
+                          <%- include('../partials/csrf_field') %>
+                          <input class="form-check-input" type="checkbox" role="switch" id="toggle_saldar_<%= facultad.facultad_id %>" <%= facultad.permite_saldar_multas_directas ? 'checked' : '' %> onchange="this.form.submit()">
+                          <label class="form-check-label" for="toggle_saldar_<%= facultad.facultad_id %>">Saldar sanciones directamente</label>
+                        </form>
+                      </div>
+                      <div class="small text-muted ps-1">El laboratorista cierra la multa como SALDADA inmediatamente, sin pasar por POR SALDAR.</div>
+                    </div>
+                  </div>
+
+                  <% if (facultad.fecha_ultima_modificacion) { %>
+                    <div class="small text-muted ps-1">
+                      Última modificación: <%= new Date(facultad.fecha_ultima_modificacion).toLocaleString('es-CO') %>
+                      <% if (facultad.documento_ultimo_autorizador) { %> · Coordinador: <%= facultad.documento_ultimo_autorizador %><% } %>
+                      <% if (facultad.accion_ultima && facultad.accion_ultima !== 'inicial') { %> · Acción: <%= facultad.accion_ultima.replace(/_/g, ' ') %><% } %>
+                    </div>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
   <section class="card app-table-panel p-0">
   <div class="card-body">
   
@@ -127,13 +197,9 @@
               <label class="form-label" for="tipo_sancion_detalle">Tipo de sanción</label>
               <select id="tipo_sancion_detalle" name="tipo_sancion" class="form-select" required>
                 <option value="">Selecciona tipo de sanción</option>
-                <option value="Suspensión temporal del acceso al laboratorio">Suspensión temporal del acceso al laboratorio</option>
-                <option value="Realizar cursos de buenas prácticas o seguridad">Realizar cursos de buenas prácticas o seguridad</option>
-                <option value="Amonestación verbal o escrita">Amonestación verbal o escrita</option>
-                <option value="Firma de compromiso de buen uso">Firma de compromiso de buen uso</option>
-                <option value="Apoyo en organización del laboratorio">Apoyo en organización del laboratorio</option>
-                <option value="Reposición de materiales o insumos">Reposición de materiales o insumos</option>
-                <option value="Reemplazar exactamente lo que dañó o perdió">Reemplazar exactamente lo que dañó o perdió</option>
+                <% (Array.isArray(SANCTION_TYPES) ? SANCTION_TYPES : []).forEach(function (tipo) { %>
+                  <option value="<%= tipo %>"><%= tipo %></option>
+                <% }) %>
               </select>
             </div>
             <div class="col-12 d-flex justify-content-end gap-2">
