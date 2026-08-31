@@ -139,6 +139,7 @@ function buildStaticNavigation(user) {
 
   if (role === 'admin') {
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
     secondaryGroups.push(
       createGroup('Registro', 'bi-person-plus', [
@@ -194,6 +195,7 @@ function buildStaticNavigation(user) {
     primaryLinks.push(
       createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
     );
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
     secondaryGroups.push(
       createGroup('Registro', 'bi-person-plus', [
@@ -236,6 +238,7 @@ function buildStaticNavigation(user) {
 
   if (role === 'laboratorista') {
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
     secondaryGroups.push(
       createGroup('Consultas', 'bi-search', [
         createLink(
@@ -267,25 +270,14 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'monitor') {
-    secondaryGroups.push(
-      createGroup('Prestamos', 'bi-box-seam', [
-        createLink(
-          'Gestion de solicitudes',
-          '/milab/prestamos/gestion-solicitudes',
-          'bi-clipboard-data'
-        ),
-        createLink('Entrega y devolucion', '/milab/prestamos/entrega-equipos', 'bi-box-arrow-left'),
-        createLink('Incidencias', '/milab/prestamos/incidencias', 'bi-bug'),
-        createLink('Gestion de practicas', '/milab/prestamos/practicas/gestion', 'bi-journal-text'),
-        createLink('Reportes', '/milab/prestamos/reportes', 'bi-bar-chart-line'),
-      ])
-    );
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
   }
 
   if (role === 'estudiante') {
     primaryLinks.push(
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
     );
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
   }
 
   if (role === 'docente') {
@@ -296,6 +288,7 @@ function buildStaticNavigation(user) {
         'bi-patch-check'
       )
     );
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
   }
 
   if (isAuthenticated) {

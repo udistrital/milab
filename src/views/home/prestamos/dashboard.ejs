@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title || 'Prestamos' %> - MILab</title>
+  <%- include('../../partials/head') %>
+  <style>
+    .prestamos-hero {
+      background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 45%, #7c3aed 100%);
+      border-radius: 18px;
+      padding: 28px 32px;
+      color: #ffffff;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(124, 58, 237, 0.22);
+    }
+    .prestamos-hero::after {
+      content: '';
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 70%);
+      pointer-events: none;
+    }
+    .prestamos-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #e9d5ff;
+    }
+    .prestamos-hero-title {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      color: #ffffff;
+    }
+    .prestamos-hero-subtitle {
+      font-size: 0.98rem;
+      color: rgba(255, 255, 255, 0.82);
+      max-width: 620px;
+      line-height: 1.55;
+    }
+    .prestamos-kpi-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-card {
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+      border-color: #ddd6fe;
+    }
+    .prestamos-kpi-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      margin-bottom: 10px;
+    }
+    .prestamos-kpi-icon--activos { background: rgba(16, 185, 129, 0.12); color: #059669; }
+    .prestamos-kpi-icon--pendientes { background: rgba(245, 158, 11, 0.12); color: #d97706; }
+    .prestamos-kpi-icon--finalizados { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+    .prestamos-kpi-icon--disponibles { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
+    .prestamos-kpi-value {
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1;
+      margin: 4px 0 6px;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-value { color: #f8fafc; }
+    .prestamos-kpi-label {
+      font-size: 0.86rem;
+      color: #64748b;
+      font-weight: 500;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-label { color: #94a3b8; }
+    .prestamos-panel {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 20px;
+      height: 100%;
+    }
+    html[data-bs-theme='dark'] .prestamos-panel {
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-panel-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 0 0 4px;
+    }
+    html[data-bs-theme='dark'] .prestamos-panel-title { color: #f1f5f9; }
+    .prestamos-panel-subtitle {
+      font-size: 0.84rem;
+      color: #64748b;
+      margin: 0 0 14px;
+    }
+    html[data-bs-theme='dark'] .prestamos-panel-subtitle { color: #94a3b8; }
+    .prestamos-list-item {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #eef2f7;
+      margin-bottom: 8px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item {
+      border-color: #1f2937;
+      background: rgba(255,255,255,0.02);
+    }
+    .prestamos-list-item:hover {
+      background: #f8fafc;
+      border-color: #e0e7ff;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: #312e81;
+    }
+    .prestamos-list-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .prestamos-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #4338ca;
+      background: rgba(67, 56, 202, 0.08);
+      padding: 2px 8px;
+      border-radius: 8px;
+    }
+    html[data-bs-theme='dark'] .prestamos-code {
+      background: rgba(129, 140, 248, 0.14);
+      color: #a5b4fc;
+    }
+    .prestamos-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      line-height: 1.2;
+    }
+    .prestamos-badge--activa { background: rgba(16,185,129,0.12); color: #047857; }
+    .prestamos-badge--aprobada { background: rgba(59,130,246,0.12); color: #1d4ed8; }
+    .prestamos-badge--en_entrega { background: rgba(139,92,246,0.14); color: #6d28d9; }
+    .prestamos-badge--pendiente { background: rgba(234,179,8,0.14); color: #a16207; }
+    .prestamos-badge--por_aprobar { background: rgba(249,115,22,0.14); color: #c2410c; }
+    .prestamos-badge--finalizada { background: rgba(71,85,105,0.12); color: #334155; }
+    .prestamos-badge--cerrada { background: rgba(100,116,139,0.14); color: #334155; }
+    html[data-bs-theme='dark'] .prestamos-badge--activa { background: rgba(16,185,129,0.18); color: #34d399; }
+    html[data-bs-theme='dark'] .prestamos-badge--aprobada { background: rgba(59,130,246,0.18); color: #60a5fa; }
+    html[data-bs-theme='dark'] .prestamos-badge--en_entrega { background: rgba(139,92,246,0.2); color: #a78bfa; }
+    html[data-bs-theme='dark'] .prestamos-badge--pendiente { background: rgba(234,179,8,0.18); color: #fcd34d; }
+    html[data-bs-theme='dark'] .prestamos-badge--por_aprobar { background: rgba(249,115,22,0.18); color: #fb923c; }
+    html[data-bs-theme='dark'] .prestamos-badge--finalizada,
+    html[data-bs-theme='dark'] .prestamos-badge--cerrada { background: rgba(148,163,184,0.18); color: #cbd5e1; }
+    .prestamos-list-item-title {
+      font-weight: 600;
+      color: #0f172a;
+      font-size: 0.92rem;
+      margin: 6px 0 2px;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item-title { color: #f1f5f9; }
+    .prestamos-list-item-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item-meta { color: #94a3b8; }
+    .prestamos-empty {
+      padding: 22px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 0.88rem;
+      border: 1px dashed #e2e8f0;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+    html[data-bs-theme='dark'] .prestamos-empty {
+      background: rgba(255,255,255,0.02);
+      border-color: #374151;
+      color: #9ca3af;
+    }
+    .prestamos-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    @media (min-width: 768px) {
+      .prestamos-stats-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .prestamos-stat-donut {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 10px;
+      border-radius: 14px;
+      background: #fafafa;
+      border: 1px solid #eef2f7;
+    }
+    html[data-bs-theme='dark'] .prestamos-stat-donut {
+      background: #0b1220;
+      border-color: #1f2937;
+    }
+    .prestamos-donut-wrap {
+      position: relative;
+      width: 88px;
+      height: 88px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .prestamos-donut-value {
+      position: absolute;
+      text-align: center;
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: #0f172a;
+    }
+    html[data-bs-theme='dark'] .prestamos-donut-value { color: #f1f5f9; }
+    .prestamos-donut-label {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #475569;
+      text-align: center;
+    }
+    html[data-bs-theme='dark'] .prestamos-donut-label { color: #cbd5e1; }
+    .prestamos-modules-grid {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (min-width: 640px) {
+      .prestamos-modules-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1024px) {
+      .prestamos-modules-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    .prestamos-module-card {
+      display: block;
+      padding: 18px 18px 16px;
+      border-radius: 14px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      text-decoration: none !important;
+      color: inherit;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    html[data-bs-theme='dark'] .prestamos-module-card {
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-module-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 80px;
+      height: 80px;
+      border-radius: 0 0 0 80px;
+      opacity: 0.08;
+    }
+    .prestamos-module-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+      border-color: #c7d2fe;
+    }
+    .prestamos-module-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 12px;
+    }
+    .prestamos-module-icon--indigo { background: rgba(99,102,241,0.12); color: #4338ca; }
+    .prestamos-module-icon--violet { background: rgba(139,92,246,0.14); color: #6d28d9; }
+    .prestamos-module-icon--emerald { background: rgba(16,185,129,0.12); color: #047857; }
+    .prestamos-module-icon--sky { background: rgba(14,165,233,0.12); color: #0369a1; }
+    .prestamos-module-icon--amber { background: rgba(245,158,11,0.12); color: #b45309; }
+    .prestamos-module-icon--rose { background: rgba(244,63,94,0.12); color: #be123c; }
+    .prestamos-module-icon--pink { background: rgba(236,72,153,0.14); color: #be185d; }
+    .prestamos-module-icon--fuchsia { background: rgba(217,70,239,0.14); color: #a21caf; }
+    .prestamos-module-icon--cyan { background: rgba(6,182,212,0.12); color: #0e7490; }
+    .prestamos-module-icon--slate { background: rgba(100,116,139,0.14); color: #334155; }
+    .prestamos-module-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 6px;
+    }
+    html[data-bs-theme='dark'] .prestamos-module-title { color: #f1f5f9; }
+    .prestamos-module-description {
+      font-size: 0.84rem;
+      color: #64748b;
+      line-height: 1.5;
+      margin: 0;
+    }
+    html[data-bs-theme='dark'] .prestamos-module-description { color: #94a3b8; }
+    .prestamos-module-arrow {
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #6366f1;
+    }
+    .prestamos-aside-sticky {
+      position: sticky;
+      top: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .prestamos-quick-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      text-decoration: none !important;
+      color: #334155;
+      transition: background 0.14s ease, color 0.14s ease;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-link { color: #cbd5e1; }
+    .prestamos-quick-link:hover {
+      background: rgba(99, 102, 241, 0.08);
+      color: #4338ca;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-link:hover {
+      background: rgba(129, 140, 248, 0.12);
+      color: #c7d2fe;
+    }
+    .prestamos-quick-link i {
+      font-size: 1rem;
+      color: #6366f1;
+    }
+    .prestamos-activity-item {
+      padding: 10px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-item {
+      border-color: #1f2937;
+    }
+    .prestamos-activity-item:last-child { border-bottom: none; }
+    .prestamos-activity-title {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 0 0 2px;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-title { color: #e2e8f0; }
+    .prestamos-activity-meta {
+      font-size: 0.74rem;
+      color: #64748b;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-meta { color: #94a3b8; }
+    .prestamos-role-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #faf5ff;
+    }
+    .prestamos-section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .prestamos-section-title h3 {
+      font-size: 1.06rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+    }
+    html[data-bs-theme='dark'] .prestamos-section-title h3 { color: #f1f5f9; }
+    .prestamos-section-title span {
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+    html[data-bs-theme='dark'] .prestamos-section-title span { color: #94a3b8; }
+    .prestamos-tone-indigo::after { background: #6366f1; }
+    .prestamos-tone-violet::after { background: #8b5cf6; }
+    .prestamos-tone-emerald::after { background: #10b981; }
+    .prestamos-tone-sky::after { background: #0ea5e9; }
+    .prestamos-tone-amber::after { background: #f59e0b; }
+    .prestamos-tone-rose::after { background: #f43f5e; }
+    .prestamos-tone-pink::after { background: #ec4899; }
+    .prestamos-tone-fuchsia::after { background: #d946ef; }
+    .prestamos-tone-cyan::after { background: #06b6d4; }
+    .prestamos-tone-slate::after { background: #64748b; }
+    html[data-bs-theme='dark'] .prestamos-tone-indigo::after,
+    html[data-bs-theme='dark'] .prestamos-tone-violet::after,
+    html[data-bs-theme='dark'] .prestamos-tone-emerald::after,
+    html[data-bs-theme='dark'] .prestamos-tone-sky::after,
+    html[data-bs-theme='dark'] .prestamos-tone-amber::after,
+    html[data-bs-theme='dark'] .prestamos-tone-rose::after,
+    html[data-bs-theme='dark'] .prestamos-tone-pink::after,
+    html[data-bs-theme='dark'] .prestamos-tone-fuchsia::after,
+    html[data-bs-theme='dark'] .prestamos-tone-cyan::after,
+    html[data-bs-theme='dark'] .prestamos-tone-slate::after {
+      opacity: 0.12;
+    }
+  </style>
+</head>
+<body class="app-shell" data-is-authenticated="true">
+  <%- include('../../partials/header') %>
+
+  <main class="app-main container-fluid py-4 px-3 px-sm-4">
+    <%
+      const rolesList = Array.isArray(roles) ? roles : [];
+      const primaryRole = typeof tipo === 'string' ? tipo : (rolesList[0] || '');
+      const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole);
+      const userName = typeof user === 'object' && user ? (user.nombre || user.nombre_usuario || 'Usuario') : 'Usuario';
+      const totalKpis = (stats?.activos || 0) + (stats?.pendientes || 0) + (stats?.finalizados || 0) + (stats?.disponibles || 0);
+      function calcPercent(value) {
+        const base = Number(totalKpis || 0);
+        if (!base) return 0;
+        const v = Number(value || 0);
+        const pct = Math.round((v / base) * 100);
+        return Math.max(0, Math.min(100, pct));
+      }
+      function mapDonutPercent(pct) {
+        const circumference = 2 * Math.PI * 38;
+        const offset = circumference * (1 - (pct / 100));
+        return { circumference, offset };
+      }
+      function badgeClassForEstado(estado) {
+        const e = String(estado || '').toLowerCase();
+        if (e === 'activa' || e === 'aprobada' || e === 'en_entrega') return `prestamos-badge prestamos-badge--${e}`;
+        if (e === 'pendiente' || e === 'por_aprobar') return `prestamos-badge prestamos-badge--${e}`;
+        if (e === 'finalizada' || e === 'cerrada') return `prestamos-badge prestamos-badge--${e}`;
+        return 'prestamos-badge prestamos-badge--pendiente';
+      }
+      function humanizeAccion(accion) {
+        const map = {
+          SOLICITUD_CREADA: 'Solicitud creada',
+          SOLICITUD_APROBADA: 'Solicitud aprobada',
+          SOLICITUD_RECHAZADA: 'Solicitud rechazada',
+          SOLICITUD_CANCELADA: 'Solicitud cancelada',
+          PRESTAMO_INICIADO: 'Prestamo iniciado',
+          PRESTAMO_ENTREGADO: 'Equipo entregado',
+          PRESTAMO_DEVUELTO: 'Equipo devuelto',
+          PRESTAMO_FINALIZADO: 'Prestamo finalizado',
+          INCIDENCIA_REPORTADA: 'Incidencia reportada',
+          INCIDENCIA_RESUELTA: 'Incidencia resuelta',
+        };
+        return map[String(accion || '').toUpperCase()] || String(accion || 'Actividad registrada');
+      }
+      function formatFecha(value) {
+        if (!value) return '';
+        try {
+          const d = value instanceof Date ? value : new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          const pad = (n) => String(n).padStart(2, '0');
+          return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch (e) {
+          return String(value);
+        }
+      }
+      function moduleToneClass(tone) {
+        const safeTone = String(tone || 'indigo').trim().toLowerCase();
+        return `prestamos-tone-${safeTone} prestamos-module-icon--${safeTone}`;
+      }
+    %>
+
+    <section class="prestamos-hero mb-4">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+          <span class="prestamos-hero-badge">
+            <i class="bi bi-box-seam"></i>
+            Prestamos
+          </span>
+          <h1 class="prestamos-hero-title">Panel de control del modulo de prestamos</h1>
+          <p class="prestamos-hero-subtitle">
+            Hola, <%= userName %>. Desde aqui puedes acceder rapidamente a los modulos, visualizar el estado de los prestamos y hacer seguimiento a la actividad reciente del ciclo de prestamos.
+          </p>
+        </div>
+        <div class="d-flex flex-column align-items-sm-end gap-2">
+          <span class="prestamos-role-tag">
+            <i class="bi bi-person-badge me-1"></i>
+            Perfil: <%= String(primaryRole || 'invitado').charAt(0).toUpperCase() + String(primaryRole || '').slice(1) %>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="prestamos-stats-grid mb-4">
+      <div class="prestamos-kpi-card">
+        <div class="prestamos-kpi-icon prestamos-kpi-icon--activos">
+          <i class="bi bi-arrow-repeat"></i>
+        </div>
+        <div class="prestamos-kpi-value"><%= stats?.activos ?? 0 %></div>
+        <div class="prestamos-kpi-label">Prestamos activos</div>
+      </div>
+      <div class="prestamos-kpi-card">
+        <div class="prestamos-kpi-icon prestamos-kpi-icon--pendientes">
+          <i class="bi bi-hourglass-split"></i>
+        </div>
+        <div class="prestamos-kpi-value"><%= stats?.pendientes ?? 0 %></div>
+        <div class="prestamos-kpi-label">Solicitudes pendientes</div>
+      </div>
+      <div class="prestamos-kpi-card">
+        <div class="prestamos-kpi-icon prestamos-kpi-icon--finalizados">
+          <i class="bi bi-clipboard2-check"></i>
+        </div>
+        <div class="prestamos-kpi-value"><%= stats?.finalizados ?? 0 %></div>
+        <div class="prestamos-kpi-label">Prestamos finalizados</div>
+      </div>
+      <div class="prestamos-kpi-card">
+        <div class="prestamos-kpi-icon prestamos-kpi-icon--disponibles">
+          <i class="bi bi-boxes"></i>
+        </div>
+        <div class="prestamos-kpi-value"><%= stats?.disponibles ?? 0 %></div>
+        <div class="prestamos-kpi-label">Equipos disponibles</div>
+      </div>
+    </section>
+
+    <div class="row g-4">
+      <div class="col-xl-8">
+        <% if (isManagementRole) { %>
+          <section class="mb-4">
+            <div class="prestamos-section-title">
+              <h3>Seguimiento del ciclo de prestamos</h3>
+              <span>Vista de gestor · <%= primaryRole %></span>
+            </div>
+            <div class="row g-4">
+              <div class="col-lg-6">
+                <div class="prestamos-panel">
+                  <h5 class="prestamos-panel-title">Prestamos activos</h5>
+                  <p class="prestamos-panel-subtitle">Solicitudes aprobadas, en entrega o en curso.</p>
+                  <% if (Array.isArray(activeLoans) && activeLoans.length) { %>
+                    <% activeLoans.forEach(function(item) { %>
+                      <div class="prestamos-list-item">
+                        <div class="prestamos-list-item-header">
+                          <span class="prestamos-code"><%= item.codigo || ('SP-' + (item.id || '')) %></span>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            <%= String(item.estado || '').replace(/_/g, ' ') %>
+                          </span>
+                        </div>
+                        <div class="prestamos-list-item-title"><%= item.finalidad || 'Prestamo de equipos' %></div>
+                        <div class="prestamos-list-item-meta">
+                          <i class="bi bi-person me-1"></i><%= item.nombre_solicitante || 'Solicitante' %>
+                          <% if (item.facultad || item.laboratorio) { %>
+                            · <i class="bi bi-building me-1"></i><%= [item.facultad, item.laboratorio].filter(Boolean).join(' · ') || 'Sin asignar' %>
+                          <% } %>
+                          <% if (item.fecha_solicitud) { %>
+                            · <i class="bi bi-calendar3 me-1"></i><%= formatFecha(item.fecha_solicitud) %>
+                          <% } %>
+                        </div>
+                      </div>
+                    <% }) %>
+                  <% } else { %>
+                    <div class="prestamos-empty">
+                      <i class="bi bi-check2-circle me-1"></i>
+                      No hay prestamos activos en este momento.
+                    </div>
+                  <% } %>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="prestamos-panel">
+                  <h5 class="prestamos-panel-title">Solicitudes pendientes</h5>
+                  <p class="prestamos-panel-subtitle">Solicitudes en cola por aprobar o confirmar.</p>
+                  <% if (Array.isArray(pendingRequests) && pendingRequests.length) { %>
+                    <% pendingRequests.forEach(function(item) { %>
+                      <div class="prestamos-list-item">
+                        <div class="prestamos-list-item-header">
+                          <span class="prestamos-code"><%= item.codigo || ('SP-' + (item.id || '')) %></span>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            <%= String(item.estado || '').replace(/_/g, ' ') %>
+                          </span>
+                        </div>
+                        <div class="prestamos-list-item-title"><%= item.finalidad || 'Solicitud de prestamo' %></div>
+                        <div class="prestamos-list-item-meta">
+                          <i class="bi bi-person me-1"></i><%= item.nombre_solicitante || 'Solicitante' %>
+                          <% if (item.facultad || item.laboratorio) { %>
+                            · <i class="bi bi-building me-1"></i><%= [item.facultad, item.laboratorio].filter(Boolean).join(' · ') || 'Sin asignar' %>
+                          <% } %>
+                          <% if (item.fecha_solicitud) { %>
+                            · <i class="bi bi-calendar3 me-1"></i><%= formatFecha(item.fecha_solicitud) %>
+                          <% } %>
+                        </div>
+                      </div>
+                    <% }) %>
+                  <% } else { %>
+                    <div class="prestamos-empty">
+                      <i class="bi bi-inbox me-1"></i>
+                      Cola de solicitudes pendientes vacia.
+                    </div>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mb-4">
+            <div class="prestamos-panel">
+              <div class="prestamos-section-title" style="margin-bottom: 16px;">
+                <h3>Estadisticas del modulo</h3>
+                <span>Distribucion general del ciclo actual</span>
+              </div>
+              <%
+                const pActivos = calcPercent(stats?.activos || 0);
+                const pPendientes = calcPercent(stats?.pendientes || 0);
+                const pFinalizados = calcPercent(stats?.finalizados || 0);
+                const pDisponibles = calcPercent(stats?.disponibles || 0);
+                const donutActivos = mapDonutPercent(pActivos);
+                const donutPendientes = mapDonutPercent(pPendientes);
+                const donutFinalizados = mapDonutPercent(pFinalizados);
+                const donutDisponibles = mapDonutPercent(pDisponibles);
+              %>
+              <div class="prestamos-stats-grid">
+                <div class="prestamos-stat-donut">
+                  <div class="prestamos-donut-wrap">
+                    <svg width="88" height="88" viewBox="0 0 88 88">
+                      <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                      <circle cx="44" cy="44" r="38" stroke="#10b981" stroke-width="8" fill="none"
+                        stroke-dasharray="<%= donutActivos.circumference %>"
+                        stroke-dashoffset="<%= donutActivos.offset %>"
+                        stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                    </svg>
+                    <span class="prestamos-donut-value"><%= pActivos %>%</span>
+                  </div>
+                  <div class="prestamos-donut-label">Activos</div>
+                </div>
+                <div class="prestamos-stat-donut">
+                  <div class="prestamos-donut-wrap">
+                    <svg width="88" height="88" viewBox="0 0 88 88">
+                      <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                      <circle cx="44" cy="44" r="38" stroke="#f59e0b" stroke-width="8" fill="none"
+                        stroke-dasharray="<%= donutPendientes.circumference %>"
+                        stroke-dashoffset="<%= donutPendientes.offset %>"
+                        stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                    </svg>
+                    <span class="prestamos-donut-value"><%= pPendientes %>%</span>
+                  </div>
+                  <div class="prestamos-donut-label">Pendientes</div>
+                </div>
+                <div class="prestamos-stat-donut">
+                  <div class="prestamos-donut-wrap">
+                    <svg width="88" height="88" viewBox="0 0 88 88">
+                      <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                      <circle cx="44" cy="44" r="38" stroke="#3b82f6" stroke-width="8" fill="none"
+                        stroke-dasharray="<%= donutFinalizados.circumference %>"
+                        stroke-dashoffset="<%= donutFinalizados.offset %>"
+                        stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                    </svg>
+                    <span class="prestamos-donut-value"><%= pFinalizados %>%</span>
+                  </div>
+                  <div class="prestamos-donut-label">Finalizados</div>
+                </div>
+                <div class="prestamos-stat-donut">
+                  <div class="prestamos-donut-wrap">
+                    <svg width="88" height="88" viewBox="0 0 88 88">
+                      <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                      <circle cx="44" cy="44" r="38" stroke="#7c3aed" stroke-width="8" fill="none"
+                        stroke-dasharray="<%= donutDisponibles.circumference %>"
+                        stroke-dashoffset="<%= donutDisponibles.offset %>"
+                        stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                    </svg>
+                    <span class="prestamos-donut-value"><%= pDisponibles %>%</span>
+                  </div>
+                  <div class="prestamos-donut-label">Disponibles</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        <% } else { %>
+          <section class="mb-4">
+            <div class="prestamos-section-title">
+              <h3>Mis prestamos</h3>
+              <span>Vista personalizada · <%= primaryRole %></span>
+            </div>
+            <div class="row g-4">
+              <div class="col-lg-6">
+                <div class="prestamos-panel">
+                  <h5 class="prestamos-panel-title">Prestamos activos</h5>
+                  <p class="prestamos-panel-subtitle">Solicitudes que se encuentran en curso.</p>
+                  <% if (Array.isArray(activeLoans) && activeLoans.length) { %>
+                    <% activeLoans.forEach(function(item) { %>
+                      <div class="prestamos-list-item">
+                        <div class="prestamos-list-item-header">
+                          <span class="prestamos-code"><%= item.codigo || ('SP-' + (item.id || '')) %></span>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            <%= String(item.estado || '').replace(/_/g, ' ') %>
+                          </span>
+                        </div>
+                        <div class="prestamos-list-item-title"><%= item.finalidad || 'Prestamo de equipos' %></div>
+                        <div class="prestamos-list-item-meta">
+                          <% if (item.facultad || item.laboratorio) { %>
+                            <i class="bi bi-building me-1"></i><%= [item.facultad, item.laboratorio].filter(Boolean).join(' · ') || 'Sin asignar' %>
+                          <% } %>
+                          <% if (item.fecha_solicitud) { %>
+                            · <i class="bi bi-calendar3 me-1"></i><%= formatFecha(item.fecha_solicitud) %>
+                          <% } %>
+                        </div>
+                      </div>
+                    <% }) %>
+                  <% } else { %>
+                    <div class="prestamos-empty">
+                      <i class="bi bi-emoji-smile me-1"></i>
+                      Aun no tienes prestamos activos. Puedes solicitar un equipo desde el boton de acceso rapido.
+                    </div>
+                  <% } %>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="prestamos-panel">
+                  <h5 class="prestamos-panel-title">Solicitudes en proceso</h5>
+                  <p class="prestamos-panel-subtitle">Solicitudes pendientes por aprobacion o confirmacion.</p>
+                  <% if (Array.isArray(pendingRequests) && pendingRequests.length) { %>
+                    <% pendingRequests.forEach(function(item) { %>
+                      <div class="prestamos-list-item">
+                        <div class="prestamos-list-item-header">
+                          <span class="prestamos-code"><%= item.codigo || ('SP-' + (item.id || '')) %></span>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            <%= String(item.estado || '').replace(/_/g, ' ') %>
+                          </span>
+                        </div>
+                        <div class="prestamos-list-item-title"><%= item.finalidad || 'Solicitud de prestamo' %></div>
+                        <div class="prestamos-list-item-meta">
+                          <% if (item.facultad || item.laboratorio) { %>
+                            <i class="bi bi-building me-1"></i><%= [item.facultad, item.laboratorio].filter(Boolean).join(' · ') || 'Sin asignar' %>
+                          <% } %>
+                          <% if (item.fecha_solicitud) { %>
+                            · <i class="bi bi-calendar3 me-1"></i><%= formatFecha(item.fecha_solicitud) %>
+                          <% } %>
+                        </div>
+                      </div>
+                    <% }) %>
+                  <% } else { %>
+                    <div class="prestamos-empty">
+                      <i class="bi bi-check2-circle me-1"></i>
+                      No tienes solicitudes pendientes en este momento.
+                    </div>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          </section>
+        <% } %>
+
+        <section>
+          <div class="prestamos-section-title">
+            <h3>Modulos del sistema de prestamos</h3>
+            <span>Selecciona un modulo para continuar</span>
+          </div>
+          <div class="prestamos-modules-grid">
+            <% (Array.isArray(moduleCards) ? moduleCards : []).forEach(function(card) { %>
+              <a href="<%= card.href %>" class="prestamos-module-card prestamos-tone-<%= String(card.tone || 'indigo').trim().toLowerCase() %>">
+                <div class="prestamos-module-icon <%= moduleToneClass(card.tone) %>">
+                  <i class="bi <%= card.icon || 'bi-grid-3x3-gap-fill' %>"></i>
+                </div>
+                <h5 class="prestamos-module-title"><%= card.label %></h5>
+                <p class="prestamos-module-description"><%= card.description || '' %></p>
+                <div class="prestamos-module-arrow">
+                  Ingresar al modulo <i class="bi bi-arrow-right"></i>
+                </div>
+              </a>
+            <% }) %>
+          </div>
+        </section>
+      </div>
+
+      <aside class="col-xl-4">
+        <div class="prestamos-aside-sticky">
+          <section class="prestamos-panel">
+            <h5 class="prestamos-panel-title">Accesos rapidos</h5>
+            <p class="prestamos-panel-subtitle">Atajos a las acciones mas frecuentes.</p>
+            <div>
+              <% (Array.isArray(quickLinks) ? quickLinks : []).forEach(function(link) { %>
+                <a href="<%= link.href %>" class="prestamos-quick-link">
+                  <i class="bi <%= link.icon || 'bi-link-45deg' %>"></i>
+                  <span><%= link.label %></span>
+                </a>
+              <% }) %>
+            </div>
+          </section>
+
+          <section class="prestamos-panel">
+            <h5 class="prestamos-panel-title">Actividad reciente</h5>
+            <p class="prestamos-panel-subtitle">Ultimos eventos del modulo de prestamos.</p>
+            <% if (Array.isArray(recentActivity) && recentActivity.length) { %>
+              <div>
+                <% recentActivity.forEach(function(entry) { %>
+                  <div class="prestamos-activity-item">
+                    <p class="prestamos-activity-title"><%= humanizeAccion(entry.accion) %></p>
+                    <div class="prestamos-activity-meta">
+                      <i class="bi bi-person me-1"></i><%= entry.usuario_nombre || 'Sistema' %>
+                      <% if (entry.entidad_tipo) { %>
+                        · <i class="bi bi-geo-alt me-1"></i><%= entry.entidad_tipo %>
+                      <% } %>
+                      <% if (entry.fecha_creacion) { %>
+                        · <i class="bi bi-clock me-1"></i><%= formatFecha(entry.fecha_creacion) %>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
+            <% } else { %>
+              <div class="prestamos-empty">
+                <i class="bi bi-clock-history me-1"></i>
+                No hay actividad reciente registrada.
+              </div>
+            <% } %>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <%- include('../../partials/footer') %>
+</body>
+</html>
