@@ -4,6 +4,7 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const {
   SANCTION_TYPES,
+  normalizeSanctionType,
   isValidSanctionType,
   fetchMultaConfigsForFacultyIds,
   upsertConfigForFacultyId,
@@ -18,10 +19,6 @@ const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
-
-function normalizeSanctionType(value) {
-  return (value || '').toString().trim();
-}
 
 const requireCoordinadorApprovalAccess = requireRoles('coordinador', {
   message: '¡Algo ha salido mal!',

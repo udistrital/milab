@@ -1,5 +1,6 @@
 const pool = require('./db');
 const transporter = require('./mail');
+const { normalizeSanctionType } = require('./multa-config');
 const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
