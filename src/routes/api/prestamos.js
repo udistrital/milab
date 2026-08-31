@@ -601,7 +601,19 @@ async function fetchRecentActivityForUser(usuarioId) {
   return result.rows || [];
 }
 
-router.get('/', async function (req, res) {
+function resolvePrestamosRootRedirect(primaryRole) {
+  if (['estudiante', 'docente'].includes(primaryRole)) {
+    return '/milab/prestamos/solicitar';
+  }
+
+  if (primaryRole === 'monitor') {
+    return '/milab/prestamos/gestion-solicitudes';
+  }
+
+  return '/milab/prestamos/reportes';
+}
+
+async function renderPrestamosDashboard(req, res) {
   try {
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     if (!roles.length) {
@@ -650,15 +662,21 @@ router.get('/', async function (req, res) {
     console.error('[Dashboard Prestamos] Error renderizando dashboard:', error);
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    if (['estudiante', 'docente'].includes(primaryRole)) {
-      return res.redirect('/milab/prestamos/solicitar');
-    }
-    if (primaryRole === 'monitor') {
-      return res.redirect('/milab/prestamos/gestion-solicitudes');
-    }
-    return res.redirect('/milab/prestamos/reportes');
+    return res.redirect(resolvePrestamosRootRedirect(primaryRole));
   }
+}
+
+router.get('/', function (req, res) {
+  const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+  if (!roles.length) {
+    return res.redirect('/milab/auth/login');
+  }
+
+  const primaryRole = getPrimaryRole(roles);
+  return res.redirect(resolvePrestamosRootRedirect(primaryRole));
 });
+
+router.get('/dashboard', renderPrestamosDashboard);
 
 const INVENTARIO_MENU_ROUTE = '/milab/prestamos/inventario';
 const EQUIPOS_MENU_ROUTE = '/milab/prestamos/equipos';
