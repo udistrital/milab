@@ -32,7 +32,12 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute({ scopeImpl, queryImpl, resolveStudentContactImpl, sendSanctionEmailImpl } = {}) {
+function loadRoute({
+  scopeImpl,
+  queryImpl,
+  resolveStudentContactImpl,
+  sendSanctionEmailImpl,
+} = {}) {
   const originals = new Map();
 
   const stubs = [
