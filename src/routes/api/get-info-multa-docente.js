@@ -4,10 +4,11 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
+const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 
 require('dotenv').config();
 
-let router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -79,7 +80,6 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       });
     }
 
-    // --- Base de datos
     const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1';
     const values = [usuarioId];
     let con_multado = false;
@@ -98,8 +98,8 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
     }
 
     let nombre_lab = '';
-    let cc_lab = 0;
-    let uals = '';
+    let cc_lab;
+    let uals;
 
     if (req.session.user.tipo === 'laboratorista') {
       const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
@@ -112,7 +112,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       }
 
       const query3 =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
       const values3 = [result2.rows[0].facultad_id];
       const result3 = await pool.query(query3, values3);
 
@@ -121,7 +121,11 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       uals = result3.rows;
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
-      uals = null;
+      cc_lab = 0;
+      const queryUalsTodas =
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE ORDER BY nombre ASC';
+      const resultAdminUals = await pool.query(queryUalsTodas);
+      uals = resultAdminUals.rows;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
       const values = [req.session.user.documento];
@@ -129,12 +133,30 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
 
       const facultadId = result.rows[0].facultad_id;
       const queryUals =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
       const resultUals = await pool.query(queryUals, [facultadId]);
 
       nombre_lab = result.rows[0].nombre;
       cc_lab = result.rows[0].documento;
       uals = resultUals.rows;
+    }
+
+    if (Array.isArray(uals) && uals.length > 0) {
+      const facultyIds = [
+        ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
+      ];
+      const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
+      uals = uals.map((u) => {
+        const cfg = Number.isFinite(Number(u.facultad_id))
+          ? configMap.get(Number(u.facultad_id))
+          : null;
+        return {
+          ...u,
+          _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
+        };
+      });
+    } else if (uals === null) {
+      uals = [];
     }
 
     if (con_estado === 'INACTIVO') {
@@ -154,6 +176,7 @@ router.post('/', requireTeacherFineInfoAction, async function (req, res) {
       cc_lab,
       uals,
       multaInfo,
+      SANCTION_TYPES,
     });
   } catch (error) {
     console.error('Error durante la consulta o procesamiento:', error);

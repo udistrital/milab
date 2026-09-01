@@ -110,6 +110,7 @@ test('db creates Pool lazily with config values', async () => {
     assert.equal(loaded.instances.length, 0);
 
     await loaded.db.query('SELECT 1');
+
     assert.equal(loaded.instances.length, 1);
 
     const createdPool = loaded.instances[0];

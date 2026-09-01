@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const rootEnvPath = path.join(process.cwd(), '.env');
 const dockerEnvPath = path.join(__dirname, '../Docker/.env');
 let resolvedEnvPath = null;
+
 if (fs.existsSync(rootEnvPath)) {
   resolvedEnvPath = rootEnvPath;
 } else if (fs.existsSync(dockerEnvPath)) {
@@ -56,7 +57,6 @@ function resolveTrustProxySetting() {
 require('./routes/middlewares/microsoft');
 
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
-const db = require('./libs/db');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const {
@@ -151,7 +151,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (process.env.APP_VERSION || 'dev').toString().trim();
+const appVersion = (process.env.APP_VERSION || '2.0.0').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
@@ -393,23 +393,16 @@ app.use((req, res) => {
 app.use(createApplicationErrorHandler(logger));
 
 if (require.main === module) {
-  db.init()
-    .then(() => {
-      app.listen(app.get('port'), app.get('host'), function () {
-        logger.info(
-          {
-            host: app.get('host'),
-            port: app.get('port'),
-            version: appVersion,
-          },
-          'Server started'
-        );
-      });
-    })
-    .catch((error) => {
-      logger.error({ err: error }, 'Database initialization failed during startup');
-      process.exit(1);
-    });
+  app.listen(app.get('port'), app.get('host'), function () {
+    logger.info(
+      {
+        host: app.get('host'),
+        port: app.get('port'),
+        version: appVersion,
+      },
+      'Server started'
+    );
+  });
 }
 
 module.exports = app;

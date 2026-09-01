@@ -1,5 +1,7 @@
 # ERD (Modelo de datos)
+
     SERIAL facultad_id PK
+
 ## Proposito
 
 Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
@@ -218,25 +220,25 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
 
 ## Referencias De Esquema
 
-| Tabla | Columnas principales |
-| --- | --- |
-| `log` | id, nombre, documento, fecha_creacion, accion, persona, activo, fecha_modificacion |
-| `usuario` | id, correo, documento, nombre, codigo, estado, carrera, activo, fecha_creacion, fecha_modificacion |
-| `rol` | id, nombre, activo, fecha_creacion, fecha_modificacion |
-| `usuario_rol` | usuario_id, rol_id, activo, meta, fecha_creacion, fecha_modificacion |
-| `perfil_estudiante` | usuario_id, documento, nombre, codigo, programa, estado, activo, fecha_creacion, fecha_modificacion |
-| `perfil_docente` | usuario_id, documento, nombre, estado, activo, fecha_creacion, fecha_modificacion |
-| `menu_item` | id, parent_id, section, label, route, icon, order_index, activo, fecha_creacion, fecha_modificacion |
-| `rol_permiso` | rol_id, menu_item_id, can_view, can_use, activo, fecha_creacion, fecha_modificacion |
-| `certificado_estudiante` | id, usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, motivo_expedicion, correo, motivo_exp, multa, activo, fecha_modificacion |
-| `certificado_docente` | id, usuario_id, fecha_creacion, certificado_id, correo, motivo_exp, multa, origen_descarga, estado_docente, activo, fecha_modificacion |
-| `facultad` | facultad_id, nombre, activo, fecha_creacion, fecha_modificacion |
-| `ual` | ual_id, nombre, facultad_id, activo, fecha_creacion, fecha_modificacion |
-| `laboratorista` | documento, nombre, n_usuario, correo, contrato, usuario_id, activo, fecha_creacion, fecha_modificacion |
-| `coordinador` | documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion, nombre_u, usuario_id, activo, fecha_creacion, fecha_modificacion |
-| `coordinador_facultad` | coordinador_documento_id, facultad_id, activo, fecha_creacion, fecha_modificacion |
-| `laboratorista_ual` | laboratorista_documento_id, ual_id, activo, fecha_creacion, fecha_modificacion |
-| `multa` | id, cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion, activo, fecha_creacion, fecha_modificacion |
+| Tabla                    | Columnas principales                                                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `log`                    | id, nombre, documento, fecha_creacion, accion, persona, activo, fecha_modificacion                                                                                           |
+| `usuario`                | id, correo, documento, nombre, codigo, estado, carrera, activo, fecha_creacion, fecha_modificacion                                                                           |
+| `rol`                    | id, nombre, activo, fecha_creacion, fecha_modificacion                                                                                                                       |
+| `usuario_rol`            | usuario_id, rol_id, activo, meta, fecha_creacion, fecha_modificacion                                                                                                         |
+| `perfil_estudiante`      | usuario_id, documento, nombre, codigo, programa, estado, activo, fecha_creacion, fecha_modificacion                                                                          |
+| `perfil_docente`         | usuario_id, documento, nombre, estado, activo, fecha_creacion, fecha_modificacion                                                                                            |
+| `menu_item`              | id, parent_id, section, label, route, icon, order_index, activo, fecha_creacion, fecha_modificacion                                                                          |
+| `rol_permiso`            | rol_id, menu_item_id, can_view, can_use, activo, fecha_creacion, fecha_modificacion                                                                                          |
+| `certificado_estudiante` | id, usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, motivo_expedicion, correo, motivo_exp, multa, activo, fecha_modificacion                                  |
+| `certificado_docente`    | id, usuario_id, fecha_creacion, certificado_id, correo, motivo_exp, multa, origen_descarga, estado_docente, activo, fecha_modificacion                                       |
+| `facultad`               | facultad_id, nombre, activo, fecha_creacion, fecha_modificacion                                                                                                              |
+| `ual`                    | ual_id, nombre, facultad_id, activo, fecha_creacion, fecha_modificacion                                                                                                      |
+| `laboratorista`          | documento, nombre, n_usuario, correo, contrato, usuario_id, activo, fecha_creacion, fecha_modificacion                                                                       |
+| `coordinador`            | documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion, nombre_u, usuario_id, activo, fecha_creacion, fecha_modificacion                               |
+| `coordinador_facultad`   | coordinador_documento_id, facultad_id, activo, fecha_creacion, fecha_modificacion                                                                                            |
+| `laboratorista_ual`      | laboratorista_documento_id, ual_id, activo, fecha_creacion, fecha_modificacion                                                                                               |
+| `multa`                  | id, cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion, activo, fecha_creacion, fecha_modificacion |
 
 ## Notas De Modelado
 

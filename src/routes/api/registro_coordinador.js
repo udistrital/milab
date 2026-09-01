@@ -23,6 +23,26 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
+async function resolveExistingColumn(tableName, candidateColumns) {
+  const candidates = Array.isArray(candidateColumns) ? candidateColumns : [];
+  if (!candidates.length) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'milab'
+       AND table_name = $1
+       AND column_name = ANY($2::text[])
+     ORDER BY array_position($2::text[], column_name)
+     LIMIT 1`,
+    [tableName, candidates]
+  );
+
+  return result.rows[0]?.column_name || null;
+}
+
 function normalizeEmail(value) {
   return (value || '').toString().trim().toLowerCase();
 }
@@ -196,7 +216,20 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const result = await pool.query('SELECT * FROM facultad');
+    const facultyIdColumn = await resolveExistingColumn('facultad', ['facultad_id', 'id_facultad']);
+    if (!facultyIdColumn) {
+      return res.render('home/message_error', {
+        message: '¡Algo ha salido mal!',
+        message2: 'No fue posible cargar las facultades.',
+        limit: null,
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT ${facultyIdColumn} AS facultad_id, nombre
+       FROM facultad
+       ORDER BY nombre ASC`
+    );
     const documentoQuery = (req.query.documento || '').toString().trim();
     let lookupData = null;
     let lookupMessage = null;
@@ -267,15 +300,25 @@ router.post(
       .escape(),
     body('nombre').notEmpty().withMessage('El nombre es obligatorio').trim().escape(),
     // Soporte de múltiples facultades: acepta array o string único
-    body('facultad_ids').custom((val) => {
-      if (Array.isArray(val)) {
-        return val.length > 0 && val.every((v) => /^\d+$/.test(String(v)));
-      }
-      if (typeof val === 'string') {
-        return /^\d+$/.test(val);
-      }
-      throw new Error('Debe seleccionar al menos una facultad');
-    }),
+    body('facultad_ids')
+      .custom((val) => {
+        if (Array.isArray(val)) {
+          if (!val.length || !val.every((v) => /^\d+$/.test(String(v)))) {
+            throw new Error('Debe seleccionar al menos una facultad válida');
+          }
+          return true;
+        }
+
+        if (typeof val === 'string') {
+          if (!/^\d+$/.test(val)) {
+            throw new Error('Debe seleccionar al menos una facultad válida');
+          }
+          return true;
+        }
+
+        throw new Error('Debe seleccionar al menos una facultad válida');
+      })
+      .bail(),
     body('numero_resolucion_coordinador')
       .notEmpty()
       .withMessage('El numero y ano de la resolucion es obligatorio')
@@ -336,8 +379,22 @@ router.post(
       }
 
       // Validar que las facultades existan
+      const facultyIdColumn = await resolveExistingColumn('facultad', [
+        'facultad_id',
+        'id_facultad',
+      ]);
+      if (!facultyIdColumn) {
+        return res.render('home/message_error', {
+          message: '¡Algo ha salido mal!',
+          message2: 'No fue posible validar las facultades seleccionadas.',
+          limit: null,
+        });
+      }
+
       const facs = await pool.query(
-        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])',
+        `SELECT ${facultyIdColumn} AS facultad_id, nombre
+         FROM facultad
+         WHERE ${facultyIdColumn} = ANY($1::int[])`,
         [facultyIds]
       );
       if (facs.rows.length !== facultyIds.length) {
@@ -375,9 +432,23 @@ router.post(
       ]);
 
       // Insertar todas las asociaciones en la tabla de unión
+      const coordinatorFacultyIdColumn = await resolveExistingColumn('coordinador_facultad', [
+        'facultad_id',
+        'id_facultad',
+      ]);
+      if (!coordinatorFacultyIdColumn) {
+        return res.render('home/message_error', {
+          message: '¡Algo ha salido mal!',
+          message2: 'No fue posible asociar las facultades al coordinador.',
+          limit: null,
+        });
+      }
+
       for (const facId of facultyIds) {
         await pool.query(
-          'INSERT INTO coordinador_facultad (coordinador_documento_id, facultad_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
           [documento, facId]
         );
       }

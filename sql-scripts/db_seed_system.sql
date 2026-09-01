@@ -931,6 +931,7 @@ VALUES
     ('admin'),
     ('coordinador'),
     ('laboratorista'),
+    ('monitor'),
     ('docente'),
     ('estudiante')
 ON CONFLICT (nombre) DO NOTHING;
@@ -1105,6 +1106,12 @@ WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.pare
 ON CONFLICT DO NOTHING;
 
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Registro de monitores', '/milab/api/register_monitor/load_info', 'bi-person-badge', 3
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Certificados', '/milab/api/get_list_estudiantes', 'bi-file-earmark-check', 1
 FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
@@ -1142,6 +1149,12 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Laboratoristas registrados', '/milab/api/laboratoristas_registrados', 'bi-person-workspace', 7
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Monitores registrados', '/milab/api/monitores_registrados', 'bi-person-bounding-box', 8
 FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Consulta y control' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
@@ -1265,7 +1278,7 @@ SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'primary'
 WHERE (
-    role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
+    role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente')
     AND menu_map.label = 'Inicio'
 ) OR (
     role_map.nombre IN ('admin', 'coordinador', 'laboratorista') AND menu_map.label = 'Monitoreo'
@@ -1284,7 +1297,7 @@ INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'account'
-WHERE role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'estudiante', 'docente')
+WHERE role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente')
 ON CONFLICT DO NOTHING;
 
 WITH role_map AS (SELECT id, nombre FROM rol),
@@ -1298,6 +1311,7 @@ WHERE (
         'Registro',
         'Registro de coordinadores',
         'Registro de laboratoristas',
+        'Registro de monitores',
         'Consulta y control',
         'Certificados',
         'Consulta masiva',
@@ -1307,6 +1321,7 @@ WHERE (
         'Facultades y UAL',
         'Logs',
         'Laboratoristas registrados',
+        'Monitores registrados',
         'Agregar admin',
         'Sanciones',
         'Paz y Salvos',
@@ -1317,11 +1332,13 @@ WHERE (
     role_map.nombre = 'coordinador' AND menu_map.label IN (
         'Registro',
         'Registro de laboratoristas',
+        'Registro de monitores',
         'Consulta y control',
         'Consulta masiva',
         'Listado de sanciones',
         'Estudiantes y docentes registrados',
         'Laboratoristas registrados',
+        'Monitores registrados',
         'Sanciones',
         'Paz y Salvos',
         'Verificar estudiante',

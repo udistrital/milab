@@ -4,6 +4,7 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
+const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
 require('dotenv').config();
 
@@ -111,6 +112,15 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
       const valuesMultaInfo = [usuarioId];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
+      if (multaInfo && multaInfo.length) {
+        const configs = await Promise.all(multaInfo.map((m) => resolveMultaConfigForMultaId(m.id)));
+        multaInfo = multaInfo.map((m, idx) => ({
+          ...m,
+          _permiteSaldarDirecta: Boolean(
+            configs[idx] && configs[idx].permite_saldar_multas_directas
+          ),
+        }));
+      }
 
       console.log(`Cantidad de multas activas encontradas para retiro: ${multaInfo.length}`);
       console.log(multaInfo);

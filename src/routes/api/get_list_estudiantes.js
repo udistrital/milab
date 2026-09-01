@@ -1,7 +1,8 @@
-let express = require('express');
-let router = express.Router();
+const express = require('express');
+const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const bp = require('body-parser');
 
@@ -115,7 +116,21 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).send('Error en el servidor');
+
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible cargar el listado de certificados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar el listado de certificados.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
   }
 });
 
@@ -170,7 +185,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                   LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
                   GROUP BY
                     t.identificador;
-            `; //
+                `;
     const values = [entries.join(',')];
     const sampleData1 = await pool.query(query, values);
 
@@ -194,7 +209,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
         multas: multas,
       };
     });
-
     const filteredData = processedData.map((row) => {
       const multas = row.multas;
 
@@ -204,8 +218,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
 
       return row;
     });
-
-    // Modifica el bucle forEach para que sea async
     await Promise.all(
       filteredData.map(async (row) => {
         if (row.multas[0] !== null) return;
@@ -216,7 +228,6 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
         }
       })
     );
-
     res.render('home/consulta_masiva', { sampleData1: filteredData, error: null });
   }
 });
@@ -229,7 +240,10 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
   sampleData1.forEach((data) => {
     if (data.multas[0] === null) {
       data.multas[0] = 'El estudiante no tiene multas';
-    } else if (data.multas[0] === 'unknown') {
+      return;
+    }
+
+    if (data.multas[0] === 'unknown') {
       data.multas[0] = 'Datos inválidos. Verifica la información e inténtalo nuevamente.';
     }
   });
@@ -237,9 +251,6 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
   if (sampleData1.length > 0) {
     const doc = new PDFDocument();
     const fileName = 'consulta_estudiantes.pdf';
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
-    doc.pipe(res);
 
     try {
       //  imagen izquierda
@@ -251,9 +262,26 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
       doc.image(rightImagePath, doc.page.width - 120, 20, { width: 100, height: 100 });
     } catch (error) {
       console.error('Error al cargar la imagen:', error);
-      res.status(500).send('Error al cargar la imagen en el PDF');
-      return;
+
+      if (wantsJson(req)) {
+        return res.status(500).json({
+          ok: false,
+          message: 'No fue posible generar el PDF de consulta masiva.',
+          message2: 'Intenta nuevamente en unos minutos.',
+        });
+      }
+
+      return renderApplicationError(res, {
+        status: 500,
+        message: 'No fue posible generar el PDF de consulta masiva.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      });
     }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+    doc.pipe(res);
 
     doc.fontSize(16).text('Universidad Distrital Francisco José de Caldas', { align: 'center' });
 

@@ -96,24 +96,6 @@ async function fetchCoordinatorOptions(client) {
   return result.rows;
 }
 
-async function resolveLaboratoristaUserId(client, laboratorista) {
-  if (laboratorista?.usuario_id) {
-    return laboratorista.usuario_id;
-  }
-
-  const result = await client.query(
-    `SELECT id
-     FROM usuario
-     WHERE documento = $1
-        OR documento = $2
-        OR (correo IS NOT NULL AND LOWER(correo) = LOWER($3))
-     LIMIT 1`,
-    [laboratorista?.documento || '', laboratorista?.n_usuario || '', laboratorista?.correo || '']
-  );
-
-  return result.rows[0]?.id || null;
-}
-
 async function resolveActorDocumentForLogs(req, client) {
   if (req.session?.user?.tipo !== 'coordinador') {
     return req.session?.user?.documento;
@@ -167,7 +149,6 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         l.nombre AS con_nombre,
         l.documento AS con_documento,
         l.correo AS con_correo,
-        l.activo AS activo,
         COALESCE(STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre), '') AS con_ual,
         COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS con_facultad
       FROM laboratorista l
@@ -179,7 +160,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     if (req.session.user.tipo === 'admin') {
       const result = await pool.query(
         `${baseQuery}
-         GROUP BY l.nombre, l.documento, l.correo, l.activo
+         GROUP BY l.nombre, l.documento, l.correo
          ORDER BY l.nombre ASC`
       );
       laboratoristas = result.rows;
@@ -222,7 +203,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
            WHERE lu_scope.laboratorista_documento_id = l.documento
              AND u_scope.facultad_id = ANY($1::int[])
          )
-         GROUP BY l.nombre, l.documento, l.correo, l.activo
+         GROUP BY l.nombre, l.documento, l.correo
          ORDER BY l.nombre ASC`,
         [facultadesCoord]
       );
@@ -232,11 +213,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     res.render('home/laboratoristas_registrados', {
       laboratoristas,
       successMessage:
-        req.query.updated === '1'
-          ? 'El laboratorista se actualizó correctamente.'
-          : req.query.toggled === '1'
-            ? 'El estado del laboratorista se actualizó correctamente.'
-            : null,
+        req.query.updated === '1' ? 'El laboratorista se actualizó correctamente.' : null,
     });
   } catch (error) {
     console.error('Error al obtener laboratoristas:', error);
@@ -693,10 +670,10 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
   }
 });
 
-router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, res) => {
+// Nueva ruta para manejar la eliminación
+router.post('/eliminar', requireAdminOrCoordinadorLabAction, async (req, res) => {
   const { documento } = req.body;
 
-  let client;
   if (!documento) {
     return res.render('home/message_error', {
       message: '¡Error en los datos!',
@@ -706,13 +683,11 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
   }
 
   try {
-    client = await pool.connect();
     const checkQuery =
-      'SELECT documento, n_usuario, correo, usuario_id, activo FROM laboratorista WHERE documento = $1';
-    const checkResult = await client.query(checkQuery, [documento]);
+      'SELECT documento, n_usuario, correo, usuario_id FROM laboratorista WHERE documento = $1';
+    const checkResult = await pool.query(checkQuery, [documento]);
 
     if (checkResult.rows.length === 0) {
-      client.release();
       return res.render('home/message_error', {
         message: '¡Laboratorista no encontrado!',
         message2: 'El laboratorista ya no existe en la base de datos',
@@ -721,58 +696,39 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
     }
 
     const laboratorista = checkResult.rows[0];
-    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
+    const userIdResult = await pool.query(
+      `SELECT id
+       FROM usuario
+       WHERE id = $1
+          OR documento = $2
+          OR documento = $3
+          OR (correo IS NOT NULL AND LOWER(correo) = LOWER($4))
+       LIMIT 1`,
+      [laboratorista.usuario_id || 0, documento, laboratorista.n_usuario, laboratorista.correo]
+    );
+    const userId = userIdResult.rows[0]?.id || null;
 
-    if (req.session.user.tipo === 'coordinador') {
-      const facultadesPermitidas = await resolveCoordinatorFacultyIds(
-        client,
-        req.session.user.documento
-      );
-      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
-        facultadesPermitidas.includes(facultyId)
-      );
-
-      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
-        client.release();
-        return res.render('home/message_error', {
-          message: '¡Acceso denegado!',
-          message2: 'No tienes permisos para cambiar el estado de este laboratorista.',
-          limit: null,
-        });
-      }
-    }
-
-    const userId = await resolveLaboratoristaUserId(client, laboratorista);
-    const nuevoEstado = !laboratorista.activo;
-
-    await client.query('BEGIN');
+    await pool.query('BEGIN');
 
     try {
-      await client.query(
-        `UPDATE laboratorista
-         SET activo = $2,
-             fecha_modificacion = CURRENT_TIMESTAMP
-         WHERE documento = $1`,
-        [documento, nuevoEstado]
-      );
-
+      await pool.query('DELETE FROM laboratorista WHERE documento = $1', [documento]);
       if (userId) {
-        await client.query(
+        await pool.query(
           `UPDATE usuario_rol ur
-           SET activo = $2,
+           SET activo = FALSE,
                fecha_modificacion = CURRENT_TIMESTAMP
            FROM rol r
            WHERE ur.usuario_id = $1
              AND ur.rol_id = r.id
              AND r.nombre = 'laboratorista'`,
-          [userId, nuevoEstado]
+          [userId]
         );
       }
 
       let documentoReal = req.session.user.documento;
 
       if (req.session.user.tipo === 'coordinador') {
-        const result = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
+        const result = await pool.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
           req.session.user.documento,
         ]);
         if (result.rows.length > 0) {
@@ -780,37 +736,22 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
         }
       }
 
-      await client.query(
+      await pool.query(
         'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
-        [
-          req.session.user.tipo,
-          documentoReal,
-          `Cambiar estado laboratorista a ${nuevoEstado ? 'activo' : 'inactivo'}`,
-          documento,
-        ]
+        [req.session.user.tipo, documentoReal, 'Eliminar laboratorista', documento]
       );
 
-      await client.query('COMMIT');
-      client.release();
-      client = null;
+      await pool.query('COMMIT');
 
-      res.redirect('/milab/api/laboratoristas_registrados?toggled=1');
+      res.redirect('/milab/api/laboratoristas_registrados');
     } catch (transactionError) {
-      await client.query('ROLLBACK');
+      await pool.query('ROLLBACK');
       throw transactionError;
     }
   } catch (error) {
-    if (client) {
-      try {
-        await client.query('ROLLBACK');
-      } catch (rollbackError) {
-        console.error('Error al revertir cambio de estado de laboratorista:', rollbackError);
-      }
-      client.release();
-    }
-    console.error('Error al cambiar estado del laboratorista:', error);
+    console.error('Error al eliminar laboratorista:', error);
     res.render('home/message_error', {
-      message: '¡Error al cambiar estado del laboratorista!',
+      message: '¡Error al eliminar laboratorista!',
       message2: 'Inténtalo nuevamente',
       limit: null,
     });

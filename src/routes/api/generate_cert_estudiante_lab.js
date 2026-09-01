@@ -17,7 +17,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-let router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
@@ -590,6 +590,8 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         });
 
       jumpLine(doc, 2);
+
+      // function centeredText(text, font = 'NotoSansJP-Regular.otf') { ... } // Removed: never used
 
       let texto_identificacion = 'con código ' + con_codigo;
       if (con_documento && con_documento !== '0') {

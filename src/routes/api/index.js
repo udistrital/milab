@@ -4,24 +4,6 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 
 const router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
-const allowPublicServiceStatusEndpoint = ['1', 'true', 'yes'].includes(
-  (process.env.ALLOW_PUBLIC_SERVICE_STATUS || '').toLowerCase()
-);
-
-if (
-  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'dev' &&
-  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'development' &&
-  (process.env.NODE_ENV || '').toLowerCase().trim() !== 'local' &&
-  allowPublicServiceStatusEndpoint
-) {
-  throw new Error(
-    '[SECURITY] ALLOW_PUBLIC_SERVICE_STATUS no puede estar activo fuera de dev|development|local. ' +
-      'Deshabilítalo para iniciar la aplicación.'
-  );
-}
-
-// check-services es público para que el login pueda verificar estado sin autenticación
-const requireServiceStatusAccess = (req, res, next) => next();
 
 // Rutas existentes
 router.use('/generate', require('./generateqr'));
@@ -45,8 +27,10 @@ router.use('/verifica_multa_docente', require('./verifica_multa_docente'));
 router.use('/quitar-multa', require('./quitar-multa'));
 router.use('/register', require('./register'));
 router.use('/register_labs', require('./register_labs'));
+router.use('/register_monitor', require('./register_monitor'));
 router.use('/estudiantes_registrados', require('./estudiantes_registrados'));
 router.use('/laboratoristas_registrados', require('./laboratoristas_registrados'));
+router.use('/monitores_registrados', require('./monitores_registrados'));
 router.use('/coordinadores_registrados', require('./coordinadores_registrados'));
 router.use('/registro_coordinador', require('./registro_coordinador'));
 router.use('/admins', require('./admins'));
@@ -131,7 +115,7 @@ async function checkServiceStatus(log = serviceStatusLogger) {
   }
 }
 
-router.get('/check-services', requireServiceStatusAccess, async (req, res) => {
+router.get('/check-services', async (req, res) => {
   const log = (req.log || serviceStatusLogger).child({ route: '/api/check-services' });
   try {
     const serviceStatus = await checkServiceStatus(log);

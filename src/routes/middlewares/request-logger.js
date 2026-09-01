@@ -1,4 +1,4 @@
-const { randomInt } = require('node:crypto');
+const crypto = require('crypto');
 const { createRequestId, logger, loggerConfig, maskIdentifier } = require('../../libs/logger');
 
 const STATIC_ASSET_PATTERN = /\.(?:css|js|mjs|png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|map)$/i;
@@ -22,7 +22,11 @@ function shouldSample(statusCode) {
     return true;
   }
 
-  return randomInt(0, 10000) / 10000 <= loggerConfig.requestSampleRate;
+  if (loggerConfig.requestSampleRate <= 0) {
+    return false;
+  }
+
+  return crypto.randomInt(1000000) < Math.floor(loggerConfig.requestSampleRate * 1000000);
 }
 
 function resolveRequestLevel(statusCode, durationMs) {
