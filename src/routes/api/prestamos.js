@@ -419,23 +419,103 @@ function buildDashboardModuleCardsForRole(role) {
       tone: 'cyan',
       description: 'Explora la disponibilidad de salas de laboratorio para tus clases.',
     });
+  } else {
+    cards.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+      tone: 'indigo',
+      description: 'Consulta el catalogo general de equipos y elementos.',
+    });
+    cards.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+      tone: 'violet',
+      description: 'Consulta fichas tecnicas y estados de equipos.',
+    });
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Crea nuevas solicitudes de prestamo de equipos.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el estado y el historial de tus solicitudes.',
+    });
+    cards.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+      tone: 'amber',
+      description: 'Atiende la cola de solicitudes recibidas.',
+    });
+    cards.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+      tone: 'rose',
+      description: 'Registra entregas y recepciones de equipos.',
+    });
+    cards.push({
+      label: 'Incidencias',
+      href: '/milab/prestamos/incidencias',
+      icon: 'bi-exclamation-triangle',
+      tone: 'pink',
+      description: 'Reporta y hace seguimiento a incidentes.',
+    });
+    cards.push({
+      label: 'Gestion de practicas',
+      href: '/milab/prestamos/practicas/gestion',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Gestiona practicas de laboratorio.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Consulta agenda y disponibilidad de salas.',
+    });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Consulta reportes del modulo de prestamos.',
+    });
+    cards.push({
+      label: 'Auditoria',
+      href: '/milab/prestamos/auditoria',
+      icon: 'bi-receipt-cutoff',
+      tone: 'indigo',
+      description: 'Revisa el historial y trazabilidad de movimientos.',
+    });
   }
   return cards;
 }
 
 function buildDashboardQuickLinksForRole(role) {
-  const isManagement = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(role);
+  const isAdminOrCoordinator = role === 'admin' || role === 'coordinador';
+  const isLabOrMonitor = role === 'laboratorista' || role === 'monitor';
+  const isEndUser = role === 'estudiante' || role === 'docente';
   const links = [];
-  if (isManagement) {
+  if (isAdminOrCoordinator) {
     links.push({
-      label: 'Nueva solicitud',
-      href: '/milab/prestamos/solicitar',
-      icon: 'bi-plus-circle',
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
     });
     links.push({
-      label: 'Mis prestamos',
-      href: '/milab/prestamos/mis-solicitudes',
-      icon: 'bi-journal-text',
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
     });
     links.push({
       label: 'Inventario',
@@ -443,11 +523,32 @@ function buildDashboardQuickLinksForRole(role) {
       icon: 'bi-clipboard-data',
     });
     links.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+    });
+  } else if (isLabOrMonitor) {
+    links.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+    });
+    links.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+    });
+    links.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+    });
+    links.push({
       label: 'Entrega y devolucion',
       href: '/milab/prestamos/entrega-equipos',
       icon: 'bi-box-arrow-left-right',
     });
-  } else {
+  } else if (isEndUser) {
     links.push({
       label: 'Solicitar equipo',
       href: '/milab/prestamos/solicitar',
