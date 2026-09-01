@@ -366,22 +366,40 @@ test('prestamos exige practica y asignatura configuradas para practicas docentes
   }
 });
 
-test('prestamos redirects users by role from the module root', async () => {
+test('prestamos renders the dashboard for every role at the module root', async () => {
   const loaded = loadRouteWithAccess({ blocked: false, role: null, allowedFacultyIds: [] });
 
   try {
     let app = buildApp(loaded.route, { tipo: 'estudiante' });
     let response = await request(app).get('/');
-    assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/milab/prestamos/solicitar');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
+    assert.match(response.text, /Accesos rapidos/i);
 
     app = buildApp(loaded.route, { tipo: 'monitor' });
     response = await request(app).get('/');
-    assert.equal(response.headers.location, '/milab/prestamos/gestion-solicitudes');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
 
     app = buildApp(loaded.route, { tipo: 'admin' });
     response = await request(app).get('/');
-    assert.equal(response.headers.location, '/milab/prestamos/reportes');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
+
+    app = buildApp(loaded.route, { tipo: 'laboratorista' });
+    response = await request(app).get('/');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
+
+    app = buildApp(loaded.route, { tipo: 'coordinador' });
+    response = await request(app).get('/');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
+
+    app = buildApp(loaded.route, { tipo: 'docente' });
+    response = await request(app).get('/');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /Dashboard de prestamos/i);
   } finally {
     loaded.restore();
   }
