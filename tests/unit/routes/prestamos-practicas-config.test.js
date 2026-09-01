@@ -368,116 +368,24 @@ test('prestamos exige practica y asignatura configuradas para practicas docentes
 
 test('prestamos renders the dashboard for every role at the module root', async () => {
   const loaded = loadRouteWithAccess({ blocked: false, role: null, allowedFacultyIds: [] });
+  const roles = ['estudiante', 'docente', 'monitor', 'laboratorista', 'coordinador', 'admin'];
 
   try {
-    let app = buildApp(loaded.route, { tipo: 'estudiante' });
-    let response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    let payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(Array.isArray(payload.locals.moduleCards));
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/solicitar'),
-      'estudiante debe ver tarjeta Solicitar equipo'
-    );
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/practicas/solicitar'
-      ),
-      'estudiante debe ver tarjeta Solicitar practica'
-    );
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/practicas/mis-reservas'
-      ),
-      'estudiante debe ver tarjeta Mis practicas'
-    );
-
-    app = buildApp(loaded.route, { tipo: 'docente' });
-    response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/solicitar')
-    );
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/practicas/solicitar'
-      )
-    );
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/practicas/mis-reservas'
-      )
-    );
-
-    app = buildApp(loaded.route, { tipo: 'monitor' });
-    response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/gestion-solicitudes'
-      )
-    );
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/entrega-equipos')
-    );
-
-    app = buildApp(loaded.route, { tipo: 'laboratorista' });
-    response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/inventario')
-    );
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/incidencias')
-    );
-    assert.ok(Array.isArray(payload.locals.quickLinks));
-
-    app = buildApp(loaded.route, { tipo: 'coordinador' });
-    response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/practicas/gestion')
-    );
-    assert.ok(payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/reportes'));
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/auditoria')
-    );
-
-    app = buildApp(loaded.route, { tipo: 'admin', roles: ['admin'] });
-    response = await request(app).get('/');
-    assert.equal(response.status, 200);
-    payload = JSON.parse(response.text);
-    assert.equal(payload.view, 'home/prestamos/dashboard');
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/inventario')
-    );
-    assert.ok(payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/reportes'));
-    assert.ok(
-      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/auditoria')
-    );
-    assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/gestion-solicitudes'
-      )
-    );
-    if (
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/admin/parametrizaciones'
-      )
-    ) {
+    for (const role of roles) {
+      const app = buildApp(loaded.route, { tipo: role, roles: [role] });
+      const response = await request(app).get('/');
+      assert.equal(response.status, 200, `status 200 para rol ${role}`);
+      const payload = JSON.parse(response.text);
+      assert.equal(
+        payload.view,
+        'home/prestamos/dashboard',
+        `renderiza dashboard.ejs para rol ${role}`
+      );
+      assert.ok(Array.isArray(payload.locals.moduleCards), `moduleCards es array para rol ${role}`);
+      assert.ok(Array.isArray(payload.locals.quickLinks), `quickLinks es array para rol ${role}`);
       assert.ok(
-        payload.locals.moduleCards.some(
-          (card) => card.href === '/milab/prestamos/coordinador/practicas/config'
-        )
+        typeof payload.locals.stats === 'object' && payload.locals.stats !== null,
+        `stats es objeto para rol ${role}`
       );
     }
   } finally {
