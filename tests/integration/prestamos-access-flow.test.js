@@ -53,7 +53,7 @@ function loadPrestamosApp({ user, access }) {
   });
 }
 
-test('prestamos root redirects students to solicitar and monitors to management', async () => {
+test('prestamos root renders the dashboard with cards and quick links for every role', async () => {
   let loaded = loadPrestamosApp({
     user: createUser({ tipo: 'estudiante', roles: ['estudiante'] }),
     access: { blocked: false, role: 'estudiante' },
@@ -61,8 +61,14 @@ test('prestamos root redirects students to solicitar and monitors to management'
 
   try {
     const student = await request(loaded.app).get('/');
-    assert.equal(student.status, 302);
-    assert.equal(student.headers.location, '/milab/prestamos/solicitar');
+    assert.equal(student.status, 200);
+    assert.equal(student.body.view, 'home/prestamos/dashboard');
+    assert.ok(Array.isArray(student.body.locals.moduleCards));
+    assert.ok(Array.isArray(student.body.locals.quickLinks));
+    assert.ok(
+      student.body.locals.moduleCards.some((card) => card.href === '/milab/prestamos/solicitar'),
+      'estudiante ve tarjeta Solicitar equipo en dashboard'
+    );
   } finally {
     loaded.restore();
   }
@@ -74,8 +80,10 @@ test('prestamos root redirects students to solicitar and monitors to management'
 
   try {
     const monitor = await request(loaded.app).get('/');
-    assert.equal(monitor.status, 302);
-    assert.equal(monitor.headers.location, '/milab/prestamos/gestion-solicitudes');
+    assert.equal(monitor.status, 200);
+    assert.equal(monitor.body.view, 'home/prestamos/dashboard');
+    assert.ok(Array.isArray(monitor.body.locals.moduleCards));
+    assert.ok(Array.isArray(monitor.body.locals.quickLinks));
   } finally {
     loaded.restore();
   }
