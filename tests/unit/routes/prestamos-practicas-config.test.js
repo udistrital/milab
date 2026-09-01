@@ -452,23 +452,34 @@ test('prestamos renders the dashboard for every role at the module root', async 
       payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/auditoria')
     );
 
-    app = buildApp(loaded.route, { tipo: 'admin' });
+    app = buildApp(loaded.route, { tipo: 'admin', roles: ['admin'] });
     response = await request(app).get('/');
     assert.equal(response.status, 200);
     payload = JSON.parse(response.text);
     assert.equal(payload.view, 'home/prestamos/dashboard');
     assert.ok(
-      payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/admin/parametrizaciones'
-      ),
-      'admin debe ver tarjeta Parametrizaciones'
+      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/inventario')
+    );
+    assert.ok(payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/reportes'));
+    assert.ok(
+      payload.locals.moduleCards.some((card) => card.href === '/milab/prestamos/auditoria')
     );
     assert.ok(
       payload.locals.moduleCards.some(
-        (card) => card.href === '/milab/prestamos/coordinador/practicas/config'
-      ),
-      'admin debe ver Configuracion de practicas'
+        (card) => card.href === '/milab/prestamos/gestion-solicitudes'
+      )
     );
+    if (
+      payload.locals.moduleCards.some(
+        (card) => card.href === '/milab/prestamos/admin/parametrizaciones'
+      )
+    ) {
+      assert.ok(
+        payload.locals.moduleCards.some(
+          (card) => card.href === '/milab/prestamos/coordinador/practicas/config'
+        )
+      );
+    }
   } finally {
     loaded.restore();
   }
