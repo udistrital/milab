@@ -736,7 +736,13 @@ async function renderPrestamosDashboard(req, res) {
 }
 
 router.get('/', function (req, res) {
-  return renderPrestamosDashboard(req, res);
+  const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+  if (!roles.length) {
+    return res.redirect('/milab/auth/login');
+  }
+
+  const primaryRole = getPrimaryRole(roles);
+  return res.redirect(resolvePrestamosRootRedirect(primaryRole));
 });
 
 router.get('/dashboard', renderPrestamosDashboard);

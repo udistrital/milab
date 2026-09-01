@@ -164,39 +164,39 @@ router.post('/activar', requireCoordinadorApprovalAction, async function (req, r
       });
     }
 
-    try {
-      const multaInfo = await pool.query(
-        'SELECT m.usuario_sancionado_id, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
-        [multa_id]
-      );
-      const usuarioId = multaInfo.rows[0]?.usuario_sancionado_id;
-      const studentInfo = await resolveStudentContactByUsuarioId(usuarioId);
-      const referencia = studentInfo?.codigo || studentInfo?.documento || '';
-      await pool.query(
-        `
+    const multaInfo = await pool.query(
+      'SELECT m.usuario_sancionado_id, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
+      [multa_id]
+    );
+    const usuarioId = multaInfo.rows[0]?.usuario_sancionado_id;
+    const studentInfo = await resolveStudentContactByUsuarioId(usuarioId);
+    const referencia = studentInfo?.codigo || studentInfo?.documento || '';
+    await pool.query(
+      `
         INSERT INTO log (nombre, documento, accion, persona)
         VALUES ($1, $2, $3, $4)
       `,
-        [
-          req.session.user.tipo,
-          scope.coordinatorDocument,
-          'Cambiar estado de multa a ACTIVA',
-          referencia || String(multa_id),
-        ]
-      );
-      if (studentInfo?.correo) {
-        await sendSanctionActivationEmail({
-          correo: studentInfo.correo,
-          nombre: studentInfo.nombre,
-          codigo: referencia,
-          tipoSancion: tipo_sancion,
-          observaciones: multaInfo.rows[0]?.obs_multa,
-          laboratorio: multaInfo.rows[0]?.ual,
-          fecha: multaInfo.rows[0]?.fecha_multa,
-        });
+      [
+        req.session.user.tipo,
+        scope.coordinatorDocument,
+        'Cambiar estado de multa a ACTIVA',
+        referencia || String(multa_id),
+      ]
+    );
+    if (studentInfo?.correo) {
+      const emailResult = await sendSanctionActivationEmail({
+        correo: studentInfo.correo,
+        nombre: studentInfo.nombre,
+        codigo: referencia,
+        tipoSancion: tipo_sancion,
+        observaciones: multaInfo.rows[0]?.obs_multa,
+        laboratorio: multaInfo.rows[0]?.ual,
+        fecha: multaInfo.rows[0]?.fecha_multa,
+      });
+
+      if (!emailResult || emailResult.ok !== true) {
+        throw new Error('No fue posible enviar el correo de sanción activada.');
       }
-    } catch (emailError) {
-      console.error('Error al enviar correo de sanción activada:', emailError);
     }
 
     res.redirect('./');
