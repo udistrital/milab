@@ -369,6 +369,20 @@ function buildDashboardModuleCardsForRole(role) {
       tone: 'cyan',
       description: 'Consulta la agenda y disponibilidad de salas.',
     });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Consulta reportes y estadisticas operativas del modulo.',
+    });
+    cards.push({
+      label: 'Auditoria',
+      href: '/milab/prestamos/auditoria',
+      icon: 'bi-receipt-cutoff',
+      tone: 'indigo',
+      description: 'Revisa el historial y la trazabilidad de movimientos.',
+    });
   } else if (role === 'estudiante' || role === 'docente') {
     cards.push({
       label: 'Solicitar equipo',

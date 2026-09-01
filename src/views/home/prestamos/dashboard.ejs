@@ -1058,51 +1058,28 @@
               Accesos rapidos
             </h5>
             <div>
-              <%
-                const allQuickLinks = [
-                  {
-                    label: 'Nueva solicitud',
-                    desc: 'Solicitar prestamo de equipo',
-                    icon: 'bi-plus-circle-fill',
-                    href: '/milab/prestamos/solicitar',
-                  },
-                  {
-                    label: 'Mis prestamos',
-                    desc: 'Revisa tus prestamos activos',
-                    icon: 'bi-calendar-check-fill',
-                    href: isManagementRole ? '/milab/prestamos/gestion-solicitudes' : '/milab/prestamos/mis-solicitudes',
-                  },
-                  {
-                    label: 'Inventario',
-                    desc: 'Consulta equipos disponibles',
-                    icon: 'bi-boxes',
-                    href: '/milab/prestamos/inventario',
-                  },
-                  {
-                    label: 'Entrega y devolucion',
-                    desc: 'Registra entregas o devoluciones',
-                    icon: 'bi-box-arrow-left-right',
-                    href: '/milab/prestamos/entrega-equipos',
-                  },
-                ];
-                allQuickLinks.forEach(function(link) { %>
-                  <a href="<%= link.href %>" class="prestamos-quick-link">
-                    <span class="prestamos-quick-icon">
-                      <i class="bi <%= link.icon %>"></i>
-                    </span>
-                    <div class="prestamos-quick-texts">
-                      <p class="prestamos-quick-title"><%= link.label %></p>
+              <% (Array.isArray(quickLinks) ? quickLinks : []).forEach(function(link) { %>
+                <a href="<%= link.href %>" class="prestamos-quick-link">
+                  <span class="prestamos-quick-icon">
+                    <i class="bi <%= link.icon || 'bi-grid-3x3-gap-fill' %>"></i>
+                  </span>
+                  <div class="prestamos-quick-texts">
+                    <p class="prestamos-quick-title"><%= link.label %></p>
+                    <% if (link.desc) { %>
                       <p class="prestamos-quick-desc"><%= link.desc %></p>
-                    </div>
-                    <span class="prestamos-quick-arrow">
-                      <i class="bi bi-chevron-right"></i>
-                    </span>
-                  </a>
-                <% }); %>
+                    <% } else if (link.description) { %>
+                      <p class="prestamos-quick-desc"><%= link.description %></p>
+                    <% } %>
+                  </div>
+                  <span class="prestamos-quick-arrow">
+                    <i class="bi bi-chevron-right"></i>
+                  </span>
+                </a>
+              <% }); %>
             </div>
-            <a href="#all-modules" data-toggle="modules-expand" class="prestamos-quick-cta">
+            <button type="button" id="btn-expand-modules" class="prestamos-quick-cta" style="width: 100%; cursor: pointer; border: none;">
               Ver todas las opciones <i class="bi bi-arrow-right ms-1"></i>
-            </a>
+            </button>
             <div id="all-modules" style="display:none; margin-top: 14px;">
               <% (Array.isArray(moduleCards) ? moduleCards : []).forEach(function(card) { %>
                 <a href="<%= card.href %>" class="prestamos-quick-link">
@@ -1168,17 +1145,22 @@
   <%- include('../../partials/footer') %>
   <script>
     (function () {
-      const expandBtn = document.querySelector('[data-toggle="modules-expand"]');
+      const expandBtn = document.getElementById('btn-expand-modules');
       const allModules = document.getElementById('all-modules');
-      if (expandBtn && allModules) {
-        expandBtn.addEventListener('click', function (ev) {
-          ev.preventDefault();
-          const isHidden = allModules.style.display === 'none';
-          allModules.style.display = isHidden ? 'block' : 'none';
-          expandBtn.innerHTML = isHidden
-            ? 'Ocultar opciones <i class="bi bi-arrow-up ms-1"></i>'
-            : 'Ver todas las opciones <i class="bi bi-arrow-right ms-1"></i>';
-        });
+      if (!expandBtn || !allModules) {
+        if (allModules) {
+          allModules.style.display = 'block';
+        }
+        return;
       }
+      expandBtn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const isHidden = allModules.style.display === 'none' || allModules.style.display === '';
+        allModules.style.display = isHidden ? 'block' : 'none';
+        expandBtn.innerHTML = isHidden
+          ? 'Ocultar opciones <i class="bi bi-arrow-up ms-1"></i>'
+          : 'Ver todas las opciones <i class="bi bi-arrow-right ms-1"></i>';
+      });
     })();
   </script>
