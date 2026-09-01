@@ -385,18 +385,25 @@ function buildDashboardModuleCardsForRole(role) {
       description: 'Consulta el estado y el historial completo de tus solicitudes.',
     });
     cards.push({
+      label: 'Solicitar practica',
+      href: '/milab/prestamos/practicas/solicitar',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Solicita y reserva espacios de practica para tus clases.',
+    });
+    cards.push({
+      label: 'Mis practicas',
+      href: '/milab/prestamos/practicas/mis-reservas',
+      icon: 'bi-calendar-check',
+      tone: 'indigo',
+      description: 'Consulta las practicas que tienes agendadas y su estado.',
+    });
+    cards.push({
       label: 'Salas',
       href: '/milab/prestamos/salas',
       icon: 'bi-door-open',
       tone: 'cyan',
       description: 'Explora la disponibilidad de salas de laboratorio para tus clases.',
-    });
-    cards.push({
-      label: 'Solicitar practica',
-      href: '/milab/prestamos/practicas/gestion',
-      icon: 'bi-mortarboard',
-      tone: 'fuchsia',
-      description: 'Consulta el calendario y estado de las practicas programadas.',
     });
   }
   return cards;
@@ -405,38 +412,45 @@ function buildDashboardModuleCardsForRole(role) {
 function buildDashboardQuickLinksForRole(role) {
   const isManagement = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(role);
   const links = [];
-  links.push({
-    label: 'Crear solicitud',
-    href: '/milab/prestamos/solicitar',
-    icon: 'bi-plus-circle',
-  });
-  links.push({
-    label: 'Mis solicitudes',
-    href: '/milab/prestamos/mis-solicitudes',
-    icon: 'bi-journal-text',
-  });
-  links.push({ label: 'Salas disponibles', href: '/milab/prestamos/salas', icon: 'bi-door-open' });
   if (isManagement) {
     links.push({
-      label: 'Gestionar solicitudes',
-      href: '/milab/prestamos/gestion-solicitudes',
-      icon: 'bi-clipboard-check',
+      label: 'Nueva solicitud',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-plus-circle',
     });
     links.push({
-      label: 'Entrega / Devolucion',
+      label: 'Mis prestamos',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+    });
+    links.push({ label: 'Inventario', href: '/milab/prestamos/inventario', icon: 'bi-clipboard-data' });
+    links.push({
+      label: 'Entrega y devolucion',
       href: '/milab/prestamos/entrega-equipos',
       icon: 'bi-box-arrow-left-right',
     });
+  } else {
     links.push({
-      label: 'Incidencias abiertas',
-      href: '/milab/prestamos/incidencias',
-      icon: 'bi-exclamation-triangle',
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
     });
     links.push({
-      label: 'Reportes operativos',
-      href: '/milab/prestamos/reportes',
-      icon: 'bi-bar-chart-line',
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
     });
+    links.push({
+      label: 'Solicitar practica',
+      href: '/milab/prestamos/practicas/solicitar',
+      icon: 'bi-mortarboard',
+    });
+    links.push({
+      label: 'Mis practicas',
+      href: '/milab/prestamos/practicas/mis-reservas',
+      icon: 'bi-calendar-check',
+    });
+    links.push({ label: 'Salas disponibles', href: '/milab/prestamos/salas', icon: 'bi-door-open' });
   }
   return links;
 }
@@ -656,18 +670,6 @@ async function fetchRecentActivityForUser(usuarioId) {
   );
 }
 
-function resolvePrestamosRootRedirect(primaryRole) {
-  if (['estudiante', 'docente'].includes(primaryRole)) {
-    return '/milab/prestamos/solicitar';
-  }
-
-  if (primaryRole === 'monitor') {
-    return '/milab/prestamos/gestion-solicitudes';
-  }
-
-  return '/milab/prestamos/reportes';
-}
-
 async function renderPrestamosDashboard(req, res) {
   try {
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
@@ -740,9 +742,7 @@ router.get('/', function (req, res) {
   if (!roles.length) {
     return res.redirect('/milab/auth/login');
   }
-
-  const primaryRole = getPrimaryRole(roles);
-  return res.redirect(resolvePrestamosRootRedirect(primaryRole));
+  return renderPrestamosDashboard(req, res);
 });
 
 router.get('/dashboard', renderPrestamosDashboard);
