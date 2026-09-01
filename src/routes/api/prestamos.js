@@ -621,7 +621,7 @@ async function fetchPendingRequestsForUser(usuarioId) {
   );
 }
 
-async function fetchRecentActivityForManagement(req) {
+async function fetchRecentActivityForManagement() {
   return safeFetch(
     async () => {
       const params = [];
@@ -691,7 +691,7 @@ async function renderPrestamosDashboard(req, res) {
         fetchDashboardStatsForManagement(req),
         fetchActiveLoansForManagement(req),
         fetchPendingRequestsForManagement(req),
-        fetchRecentActivityForManagement(req),
+        fetchRecentActivityForManagement(),
       ]);
     } else {
       [stats, activeLoans, pendingRequests, recentActivity] = await Promise.all([
