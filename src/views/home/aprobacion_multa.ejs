@@ -26,20 +26,20 @@
       <% } else { %>
         <div class="row g-3">
           <% facultadesParaAutorizar.forEach(function (facultad) { %>
-            <div class="col-12 col-lg-6">
+            <div class="col-12 col-lg-6" data-facultad-card="<%= facultad.facultad_id %>">
               <div class="card border-0 bg-body-secondary">
                 <div class="card-body">
                   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
                     <h5 class="card-title mb-0"><%= facultad.nombre %></h5>
-                    <div>
+                    <div data-facultad-badges="<%= facultad.facultad_id %>">
                       <% if (facultad.permite_crear_multas_activas_directas) { %>
-                        <span class="badge text-bg-success me-2">Crear directo</span>
+                        <span class="badge text-bg-success me-2" data-badge-crear="<%= facultad.facultad_id %>">Crear directo</span>
                       <% } %>
                       <% if (facultad.permite_saldar_multas_directas) { %>
-                        <span class="badge text-bg-primary">Saldar directo</span>
+                        <span class="badge text-bg-primary" data-badge-saldar="<%= facultad.facultad_id %>">Saldar directo</span>
                       <% } %>
                       <% if (!facultad.permite_crear_multas_activas_directas && !facultad.permite_saldar_multas_directas) { %>
-                        <span class="badge text-bg-secondary">Flujo tradicional</span>
+                        <span class="badge text-bg-secondary" data-badge-tradicional="<%= facultad.facultad_id %>">Flujo tradicional</span>
                       <% } %>
                     </div>
                   </div>
@@ -50,18 +50,19 @@
                         id="form_toggle_crear_<%= facultad.facultad_id %>"
                         action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-crear-directa"
                         method="POST"
-                        class="m-0"
+                        class="m-0 js-form-toggle-config"
+                        data-config-flag="permite_crear_multas_activas_directas"
+                        data-config-facultad="<%= facultad.facultad_id %>"
                       >
                         <%- include('../partials/csrf_field') %>
                         <div class="form-check form-switch ms-1">
                           <input
-                            class="form-check-input"
+                            class="form-check-input js-toggle-config"
                             type="checkbox"
                             role="switch"
                             form="form_toggle_crear_<%= facultad.facultad_id %>"
                             id="toggle_crear_<%= facultad.facultad_id %>"
                             <%= facultad.permite_crear_multas_activas_directas ? 'checked' : '' %>
-                            onchange="document.getElementById('form_toggle_crear_<%= facultad.facultad_id %>').submit();"
                           >
                           <label class="form-check-label" for="toggle_crear_<%= facultad.facultad_id %>">Crear sanciones ACTIVAS directamente</label>
                         </div>
@@ -73,18 +74,19 @@
                         id="form_toggle_saldar_<%= facultad.facultad_id %>"
                         action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-saldar-directa"
                         method="POST"
-                        class="m-0"
+                        class="m-0 js-form-toggle-config"
+                        data-config-flag="permite_saldar_multas_directas"
+                        data-config-facultad="<%= facultad.facultad_id %>"
                       >
                         <%- include('../partials/csrf_field') %>
                         <div class="form-check form-switch ms-1">
                           <input
-                            class="form-check-input"
+                            class="form-check-input js-toggle-config"
                             type="checkbox"
                             role="switch"
                             form="form_toggle_saldar_<%= facultad.facultad_id %>"
                             id="toggle_saldar_<%= facultad.facultad_id %>"
                             <%= facultad.permite_saldar_multas_directas ? 'checked' : '' %>
-                            onchange="document.getElementById('form_toggle_saldar_<%= facultad.facultad_id %>').submit();"
                           >
                           <label class="form-check-label" for="toggle_saldar_<%= facultad.facultad_id %>">Saldar sanciones directamente</label>
                         </div>
@@ -93,13 +95,15 @@
                     </div>
                   </div>
 
-                  <% if (facultad.fecha_ultima_modificacion) { %>
-                    <div class="small text-muted ps-1">
+                  <div class="small text-muted ps-1" data-facultad-last-mod="<%= facultad.facultad_id %>">
+                    <% if (facultad.fecha_ultima_modificacion) { %>
                       Última modificación: <%= new Date(facultad.fecha_ultima_modificacion).toLocaleString('es-CO') %>
                       <% if (facultad.documento_ultimo_autorizador) { %> · Coordinador: <%= facultad.documento_ultimo_autorizador %><% } %>
                       <% if (facultad.accion_ultima && facultad.accion_ultima !== 'inicial') { %> · Acción: <%= facultad.accion_ultima.replace(/_/g, ' ') %><% } %>
-                    </div>
-                  <% } %>
+                    <% } else { %>
+                      Sin cambios de configuración registrados aún.
+                    <% } %>
+                  </div>
                 </div>
               </div>
             </div>
@@ -252,6 +256,141 @@
 </div>
 
 <script nonce="<%= cspNonce %>">
+  (function configureToggles() {
+    const forms = document.querySelectorAll('.js-form-toggle-config');
+    if (!forms.length) {
+      return;
+    }
+
+    function readCsrfToken(form) {
+      const tokenInput = form.querySelector('input[name="_csrf"]');
+      return tokenInput ? tokenInput.value : '';
+    }
+
+    function rebuildBadges(facultadId, permiteCrear, permiteSaldar) {
+      const badgesWrap = document.querySelector(`[data-facultad-badges="${facultadId}"]`);
+      if (!badgesWrap) {
+        return;
+      }
+      badgesWrap.innerHTML = '';
+      if (permiteCrear) {
+        const span = document.createElement('span');
+        span.className = 'badge text-bg-success me-2';
+        span.setAttribute('data-badge-crear', String(facultadId));
+        span.textContent = 'Crear directo';
+        badgesWrap.appendChild(span);
+      }
+      if (permiteSaldar) {
+        const span = document.createElement('span');
+        span.className = 'badge text-bg-primary';
+        span.setAttribute('data-badge-saldar', String(facultadId));
+        span.textContent = 'Saldar directo';
+        badgesWrap.appendChild(span);
+      }
+      if (!permiteCrear && !permiteSaldar) {
+        const span = document.createElement('span');
+        span.className = 'badge text-bg-secondary';
+        span.setAttribute('data-badge-tradicional', String(facultadId));
+        span.textContent = 'Flujo tradicional';
+        badgesWrap.appendChild(span);
+      }
+    }
+
+    function updateLastMod(facultadId, fechaIso, documentoAutorizador, accion) {
+      const target = document.querySelector(`[data-facultad-last-mod="${facultadId}"]`);
+      if (!target) {
+        return;
+      }
+      const fecha = new Date(fechaIso);
+      const fechaTexto = fecha.toLocaleString('es-CO');
+      let accionTexto = '';
+      if (accion && accion !== 'inicial') {
+        accionTexto = ' · Acción: ' + String(accion).replace(/_/g, ' ');
+      }
+      const autorTexto = documentoAutorizador ? ' · Coordinador: ' + String(documentoAutorizador) : '';
+      target.innerHTML = 'Última modificación: ' + fechaTexto + autorTexto + accionTexto;
+    }
+
+    function getCurrentFlags(facultadId) {
+      const crearBadge = document.querySelector(`[data-badge-crear="${facultadId}"]`);
+      const saldarBadge = document.querySelector(`[data-badge-saldar="${facultadId}"]`);
+      return {
+        permiteCrear: !!crearBadge,
+        permiteSaldar: !!saldarBadge,
+      };
+    }
+
+    forms.forEach(function (form) {
+      const flag = form.getAttribute('data-config-flag');
+      const facultadId = form.getAttribute('data-config-facultad');
+      const toggleInput = form.querySelector('.js-toggle-config');
+      if (!flag || !facultadId || !toggleInput) {
+        return;
+      }
+
+      toggleInput.addEventListener('change', function (ev) {
+        ev.preventDefault();
+        const newValue = toggleInput.checked;
+        const previousValue = !newValue;
+        const url = form.getAttribute('action') || '';
+        const csrf = readCsrfToken(form);
+
+        toggleInput.disabled = true;
+        toggleInput.style.cursor = 'progress';
+
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          body: '_csrf=' + encodeURIComponent(csrf),
+          credentials: 'same-origin',
+        })
+          .then(function (res) {
+            if (res.status >= 400) {
+              return res.json().then(
+                function (payload) {
+                  throw new Error((payload && payload.message) || ('HTTP ' + res.status));
+                },
+                function () {
+                  throw new Error('HTTP ' + res.status);
+                }
+              );
+            }
+            return res.json();
+          })
+          .then(function (payload) {
+            if (!payload || !payload.ok) {
+              throw new Error((payload && payload.message) || 'Respuesta inválida del servidor');
+            }
+            const current = getCurrentFlags(facultadId);
+            const siguiente = {
+              permiteCrear: current.permiteCrear,
+              permiteSaldar: current.permiteSaldar,
+            };
+            if (flag === 'permite_crear_multas_activas_directas') {
+              siguiente.permiteCrear = !!payload.nextValue;
+            } else if (flag === 'permite_saldar_multas_directas') {
+              siguiente.permiteSaldar = !!payload.nextValue;
+            }
+            rebuildBadges(facultadId, siguiente.permiteCrear, siguiente.permiteSaldar);
+            updateLastMod(facultadId, payload.fecha_modificacion, payload.documento_autorizador, payload.accion_ultima);
+          })
+          .catch(function (err) {
+            console.error('Error actualizando configuración de facultad:', err);
+            toggleInput.checked = previousValue;
+          })
+          .finally(function () {
+            toggleInput.disabled = false;
+            toggleInput.style.cursor = '';
+          });
+      });
+    });
+  })();
+
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('.app-detail-button');
 
