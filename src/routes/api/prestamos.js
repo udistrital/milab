@@ -519,19 +519,19 @@ async function fetchDashboardStatsForManagement(req) {
       );
       const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause ? `AND ${activosFacultadClause}` : ''} ${activosLaboratorioClause ? `AND ${activosLaboratorioClause}` : ''}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause} ${activosLaboratorioClause}`,
           activosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause ? `AND ${pendientesFacultadClause}` : ''} ${pendientesLaboratorioClause ? `AND ${pendientesLaboratorioClause}` : ''}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause} ${pendientesLaboratorioClause}`,
           pendientesParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause ? `AND ${finalizadosFacultadClause}` : ''} ${finalizadosLaboratorioClause ? `AND ${finalizadosLaboratorioClause}` : ''}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause} ${finalizadosLaboratorioClause}`,
           finalizadosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause ? `AND ${disponiblesFacultadClause}` : ''} ${disponiblesLaboratorioClause ? `AND ${disponiblesLaboratorioClause}` : ''}`,
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
           disponiblesParams
         ),
       ]);
@@ -587,7 +587,7 @@ async function fetchActiveLoansForManagement(req) {
       const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
       const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
         params
       );
       return result.rows || [];
@@ -605,7 +605,7 @@ async function fetchPendingRequestsForManagement(req) {
       const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
       const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
         params
       );
       return result.rows || [];

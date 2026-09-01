@@ -211,6 +211,7 @@ async function logConfigChangeToAuditoria(
 
 module.exports = {
   SANCTION_TYPES,
+  normalizeSanctionType,
   isValidSanctionType,
   fetchMultaConfigsForFacultyIds,
   resolveMultaConfigForFacultyId,
