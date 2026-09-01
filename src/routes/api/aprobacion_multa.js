@@ -328,7 +328,7 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
         `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
         [req.session.user.tipo, scope.coordinatorDocument, accionAudit, String(facultadIdParam)]
       );
-      return res.redirect('./');
+      return res.redirect('/milab/aprobacion_multa');
     } catch (error) {
       console.error('Error al cambiar configuración de facultad:', error);
       return res.render('home/message_error', {

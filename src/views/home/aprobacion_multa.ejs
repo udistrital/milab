@@ -46,23 +46,49 @@
 
                   <div class="row g-2 mb-3">
                     <div class="col-md-6 d-flex flex-column gap-2">
-                      <div class="form-check form-switch ms-1">
-                        <form action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-crear-directa" method="POST" class="d-inline-flex align-items-center gap-2">
-                          <%- include('../partials/csrf_field') %>
-                          <input class="form-check-input" type="checkbox" role="switch" id="toggle_crear_<%= facultad.facultad_id %>" <%= facultad.permite_crear_multas_activas_directas ? 'checked' : '' %> onchange="this.form.submit()">
+                      <form
+                        id="form_toggle_crear_<%= facultad.facultad_id %>"
+                        action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-crear-directa"
+                        method="POST"
+                        class="m-0"
+                      >
+                        <%- include('../partials/csrf_field') %>
+                        <div class="form-check form-switch ms-1">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            form="form_toggle_crear_<%= facultad.facultad_id %>"
+                            id="toggle_crear_<%= facultad.facultad_id %>"
+                            <%= facultad.permite_crear_multas_activas_directas ? 'checked' : '' %>
+                            onchange="document.getElementById('form_toggle_crear_<%= facultad.facultad_id %>').submit();"
+                          >
                           <label class="form-check-label" for="toggle_crear_<%= facultad.facultad_id %>">Crear sanciones ACTIVAS directamente</label>
-                        </form>
-                      </div>
+                        </div>
+                      </form>
                       <div class="small text-muted ps-1">El laboratorista asigna directamente el tipo de sanción y la multa queda vigente de inmediato, enviando correo al sancionado.</div>
                     </div>
                     <div class="col-md-6 d-flex flex-column gap-2">
-                      <div class="form-check form-switch ms-1">
-                        <form action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-saldar-directa" method="POST" class="d-inline-flex align-items-center gap-2">
-                          <%- include('../partials/csrf_field') %>
-                          <input class="form-check-input" type="checkbox" role="switch" id="toggle_saldar_<%= facultad.facultad_id %>" <%= facultad.permite_saldar_multas_directas ? 'checked' : '' %> onchange="this.form.submit()">
+                      <form
+                        id="form_toggle_saldar_<%= facultad.facultad_id %>"
+                        action="/milab/api/aprobacion_multa/configuracion/<%= facultad.facultad_id %>/toggle-saldar-directa"
+                        method="POST"
+                        class="m-0"
+                      >
+                        <%- include('../partials/csrf_field') %>
+                        <div class="form-check form-switch ms-1">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            form="form_toggle_saldar_<%= facultad.facultad_id %>"
+                            id="toggle_saldar_<%= facultad.facultad_id %>"
+                            <%= facultad.permite_saldar_multas_directas ? 'checked' : '' %>
+                            onchange="document.getElementById('form_toggle_saldar_<%= facultad.facultad_id %>').submit();"
+                          >
                           <label class="form-check-label" for="toggle_saldar_<%= facultad.facultad_id %>">Saldar sanciones directamente</label>
-                        </form>
-                      </div>
+                        </div>
+                      </form>
                       <div class="small text-muted ps-1">El laboratorista cierra la multa como SALDADA inmediatamente, sin pasar por POR SALDAR.</div>
                     </div>
                   </div>

@@ -441,164 +441,219 @@ function buildDashboardQuickLinksForRole(role) {
   return links;
 }
 
+async function safeFetch(fn, fallback, label) {
+  try {
+    const result = await fn();
+    return result;
+  } catch (error) {
+    console.error(`[Dashboard Prestamos] ${label || 'fetch'} fallo:`, error?.message || error);
+    return fallback;
+  }
+}
+
 async function fetchDashboardStatsForManagement(req) {
-  const scope = await resolveLoanManagementScope(req);
-  const activosParams = [];
-  const activosFacultadClause = buildFacultyNameScopeClause('s.facultad', scope, activosParams);
-  const activosLaboratorioClause = buildLaboratoryNameScopeClause(
-    's.laboratorio',
-    scope,
-    activosParams
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const activosParams = [];
+      const activosFacultadClause = buildFacultyNameScopeClause('s.facultad', scope, activosParams);
+      const activosLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
+        activosParams
+      );
+      const pendientesParams = [];
+      const pendientesFacultadClause = buildFacultyNameScopeClause(
+        's.facultad',
+        scope,
+        pendientesParams
+      );
+      const pendientesLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
+        pendientesParams
+      );
+      const finalizadosParams = [];
+      const finalizadosFacultadClause = buildFacultyNameScopeClause(
+        's.facultad',
+        scope,
+        finalizadosParams
+      );
+      const finalizadosLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
+        finalizadosParams
+      );
+      const disponiblesParams = [];
+      const disponiblesFacultadClause = buildFacultyNameScopeClause(
+        'e.facultad',
+        scope,
+        disponiblesParams
+      );
+      const disponiblesLaboratorioClause = buildLaboratoryNameScopeClause(
+        'e.laboratorio',
+        scope,
+        disponiblesParams
+      );
+      const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause ? `AND ${activosFacultadClause}` : ''} ${activosLaboratorioClause ? `AND ${activosLaboratorioClause}` : ''}`,
+          activosParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause ? `AND ${pendientesFacultadClause}` : ''} ${pendientesLaboratorioClause ? `AND ${pendientesLaboratorioClause}` : ''}`,
+          pendientesParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause ? `AND ${finalizadosFacultadClause}` : ''} ${finalizadosLaboratorioClause ? `AND ${finalizadosLaboratorioClause}` : ''}`,
+          finalizadosParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause ? `AND ${disponiblesFacultadClause}` : ''} ${disponiblesLaboratorioClause ? `AND ${disponiblesLaboratorioClause}` : ''}`,
+          disponiblesParams
+        ),
+      ]);
+      return {
+        activos: Number(activosRow.rows[0]?.total || 0),
+        pendientes: Number(pendientesRow.rows[0]?.total || 0),
+        finalizados: Number(finalizadosRow.rows[0]?.total || 0),
+        disponibles: Number(disponiblesRow.rows[0]?.total || 0),
+      };
+    },
+    { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 },
+    'fetchDashboardStatsForManagement'
   );
-  const pendientesParams = [];
-  const pendientesFacultadClause = buildFacultyNameScopeClause(
-    's.facultad',
-    scope,
-    pendientesParams
-  );
-  const pendientesLaboratorioClause = buildLaboratoryNameScopeClause(
-    's.laboratorio',
-    scope,
-    pendientesParams
-  );
-  const finalizadosParams = [];
-  const finalizadosFacultadClause = buildFacultyNameScopeClause(
-    's.facultad',
-    scope,
-    finalizadosParams
-  );
-  const finalizadosLaboratorioClause = buildLaboratoryNameScopeClause(
-    's.laboratorio',
-    scope,
-    finalizadosParams
-  );
-  const disponiblesParams = [];
-  const disponiblesFacultadClause = buildFacultyNameScopeClause(
-    'e.facultad',
-    scope,
-    disponiblesParams
-  );
-  const disponiblesLaboratorioClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    disponiblesParams
-  );
-  const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause ? `AND ${activosFacultadClause}` : ''} ${activosLaboratorioClause ? `AND ${activosLaboratorioClause}` : ''}`,
-      activosParams
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause ? `AND ${pendientesFacultadClause}` : ''} ${pendientesLaboratorioClause ? `AND ${pendientesLaboratorioClause}` : ''}`,
-      pendientesParams
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause ? `AND ${finalizadosFacultadClause}` : ''} ${finalizadosLaboratorioClause ? `AND ${finalizadosLaboratorioClause}` : ''}`,
-      finalizadosParams
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause ? `AND ${disponiblesFacultadClause}` : ''} ${disponiblesLaboratorioClause ? `AND ${disponiblesLaboratorioClause}` : ''}`,
-      disponiblesParams
-    ),
-  ]);
-  return {
-    activos: Number(activosRow.rows[0]?.total || 0),
-    pendientes: Number(pendientesRow.rows[0]?.total || 0),
-    finalizados: Number(finalizadosRow.rows[0]?.total || 0),
-    disponibles: Number(disponiblesRow.rows[0]?.total || 0),
-  };
 }
 
 async function fetchDashboardStatsForUser(usuarioId) {
-  const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa')`,
-      [usuarioId || null]
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar')`,
-      [usuarioId || null]
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('finalizada', 'cerrada')`,
-      [usuarioId || null]
-    ),
-    pool.query(
-      `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible'`
-    ),
-  ]);
-  return {
-    activos: Number(activosRow.rows[0]?.total || 0),
-    pendientes: Number(pendientesRow.rows[0]?.total || 0),
-    finalizados: Number(finalizadosRow.rows[0]?.total || 0),
-    disponibles: Number(disponiblesRow.rows[0]?.total || 0),
-  };
+  return safeFetch(
+    async () => {
+      const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('finalizada', 'cerrada')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible'`
+        ),
+      ]);
+      return {
+        activos: Number(activosRow.rows[0]?.total || 0),
+        pendientes: Number(pendientesRow.rows[0]?.total || 0),
+        finalizados: Number(finalizadosRow.rows[0]?.total || 0),
+        disponibles: Number(disponiblesRow.rows[0]?.total || 0),
+      };
+    },
+    { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 },
+    'fetchDashboardStatsForUser'
+  );
 }
 
 async function fetchActiveLoansForManagement(req) {
-  const scope = await resolveLoanManagementScope(req);
-  const params = [];
-  const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
-  const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
-  const result = await pool.query(
-    `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
-    params
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const params = [];
+      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchActiveLoansForManagement'
   );
-  return result.rows || [];
 }
 
 async function fetchPendingRequestsForManagement(req) {
-  const scope = await resolveLoanManagementScope(req);
-  const params = [];
-  const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
-  const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
-  const result = await pool.query(
-    `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
-    params
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const params = [];
+      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchPendingRequestsForManagement'
   );
-  return result.rows || [];
 }
 
 async function fetchActiveLoansForUser(usuarioId) {
-  const result = await pool.query(
-    `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
-    [usuarioId || null]
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchActiveLoansForUser'
   );
-  return result.rows || [];
 }
 
 async function fetchPendingRequestsForUser(usuarioId) {
-  const result = await pool.query(
-    `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
-    [usuarioId || null]
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchPendingRequestsForUser'
   );
-  return result.rows || [];
 }
 
 async function fetchRecentActivityForManagement(req) {
-  const scope = await resolveLoanManagementScope(req);
-  const params = [];
-  const facultadClause = buildFacultyNameScopeClause('a.facultad', scope, params);
-  const laboratorioClause = buildLaboratoryNameScopeClause('a.laboratorio', scope, params);
-  const actionsFilter = PRESTAMOS_AUDIT_ACTIONS.length
-    ? `AND a.accion = ANY($${params.length + 1}::text[])`
-    : '';
-  if (PRESTAMOS_AUDIT_ACTIONS.length) {
-    params.push(PRESTAMOS_AUDIT_ACTIONS);
-  }
-  const result = await pool.query(
-    `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' ${facultadClause ? `AND ${facultadClause}` : ''} ${laboratorioClause ? `AND ${laboratorioClause}` : ''} ${actionsFilter} ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
-    params
+  return safeFetch(
+    async () => {
+      const params = [];
+      const actionsFilter = PRESTAMOS_AUDIT_ACTIONS.length
+        ? `AND a.accion = ANY($${params.length + 1}::text[])`
+        : '';
+      if (PRESTAMOS_AUDIT_ACTIONS.length) {
+        params.push(PRESTAMOS_AUDIT_ACTIONS);
+      }
+      const result = await pool.query(
+        `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' ${actionsFilter} ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchRecentActivityForManagement'
   );
-  return result.rows || [];
 }
 
 async function fetchRecentActivityForUser(usuarioId) {
-  const result = await pool.query(
-    `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' AND a.usuario_id = $1 ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
-    [usuarioId || null]
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' AND a.usuario_id = $1 ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchRecentActivityForUser'
   );
-  return result.rows || [];
 }
 
 function resolvePrestamosRootRedirect(primaryRole) {
@@ -662,7 +717,21 @@ async function renderPrestamosDashboard(req, res) {
     console.error('[Dashboard Prestamos] Error renderizando dashboard:', error);
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    return res.redirect(resolvePrestamosRootRedirect(primaryRole));
+    const moduleCards = buildDashboardModuleCardsForRole(primaryRole);
+    const quickLinks = buildDashboardQuickLinksForRole(primaryRole);
+    const fallbackStats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
+    return res.render('home/prestamos/dashboard', {
+      title: 'Prestamos',
+      user: req.session?.user || null,
+      tipo: primaryRole,
+      roles,
+      stats: fallbackStats,
+      activeLoans: [],
+      pendingRequests: [],
+      moduleCards,
+      quickLinks,
+      recentActivity: [],
+    });
   }
 }
 
