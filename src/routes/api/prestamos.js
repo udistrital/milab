@@ -423,7 +423,11 @@ function buildDashboardQuickLinksForRole(role) {
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
     });
-    links.push({ label: 'Inventario', href: '/milab/prestamos/inventario', icon: 'bi-clipboard-data' });
+    links.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+    });
     links.push({
       label: 'Entrega y devolucion',
       href: '/milab/prestamos/entrega-equipos',
@@ -450,7 +454,11 @@ function buildDashboardQuickLinksForRole(role) {
       href: '/milab/prestamos/practicas/mis-reservas',
       icon: 'bi-calendar-check',
     });
-    links.push({ label: 'Salas disponibles', href: '/milab/prestamos/salas', icon: 'bi-door-open' });
+    links.push({
+      label: 'Salas disponibles',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+    });
   }
   return links;
 }
