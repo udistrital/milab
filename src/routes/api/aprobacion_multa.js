@@ -282,17 +282,32 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
     try {
       const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
       if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
-        const msg = { message: 'No autorizado', message2: 'La cuenta no tiene facultades asociadas.' };
-        return req.accepts('json') ? res.status(401).json({ ok: false, ...msg }) : res.render('home/message_error', { ...msg, limit: null });
+        const msg = {
+          message: 'No autorizado',
+          message2: 'La cuenta no tiene facultades asociadas.',
+        };
+        return req.accepts('json')
+          ? res.status(401).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
       }
       const facultadIdParam = Number(req.params.facultad_id);
       if (!Number.isFinite(facultadIdParam)) {
-        const msg = { message: 'Facultad inválida', message2: 'No se pudo interpretar el identificador de la facultad.' };
-        return req.accepts('json') ? res.status(400).json({ ok: false, ...msg }) : res.render('home/message_error', { ...msg, limit: null });
+        const msg = {
+          message: 'Facultad inválida',
+          message2: 'No se pudo interpretar el identificador de la facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(400).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
       }
       if (!scope.facultyIds.includes(facultadIdParam)) {
-        const msg = { message: 'No autorizado', message2: 'No puedes gestionar la configuración de esta facultad.' };
-        return req.accepts('json') ? res.status(403).json({ ok: false, ...msg }) : res.render('home/message_error', { ...msg, limit: null });
+        const msg = {
+          message: 'No autorizado',
+          message2: 'No puedes gestionar la configuración de esta facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(403).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
       }
       const currentCfg =
         scope.facultyIds && scope.facultyIds.length
@@ -334,8 +349,13 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
       return res.redirect('/milab/api/aprobacion_multa');
     } catch (error) {
       console.error('Error al cambiar configuración de facultad:', error);
-      const msg = { message: 'Error al actualizar configuración.', message2: 'Por favor, intenta nuevamente.' };
-      return req.accepts('json') ? res.status(500).json({ ok: false, ...msg }) : res.render('home/message_error', { ...msg, limit: null });
+      const msg = {
+        message: 'Error al actualizar configuración.',
+        message2: 'Por favor, intenta nuevamente.',
+      };
+      return req.accepts('json')
+        ? res.status(500).json({ ok: false, ...msg })
+        : res.render('home/message_error', { ...msg, limit: null });
     }
   };
 }
