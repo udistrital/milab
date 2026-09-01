@@ -14,6 +14,8 @@ const facultyScopePath = resolveRepoPath('src/libs/faculty-scope.js');
 const mailPath = resolveRepoPath('src/libs/mail.js');
 const emailLayoutPath = resolveRepoPath('src/libs/email-layout.js');
 const userIdentityPath = resolveRepoPath('src/libs/user-identity.js');
+const multaConfigPath = resolveRepoPath('src/libs/multa-config.js');
+const sanctionEmailPath = resolveRepoPath('src/libs/sanction-email.js');
 
 function authStubs() {
   return [[authPath, { requireRoles: () => (req, res, next) => next() }]];
@@ -64,6 +66,25 @@ test('fine approval rejects unsupported sanction types before touching coordinat
       ],
       [mailPath, { sendMail: async () => {} }],
       [
+        multaConfigPath,
+        {
+          SANCTION_TYPES: ['Firma de compromiso de buen uso'],
+          normalizeSanctionType: (value) => (value || '').toString().trim(),
+          isValidSanctionType: (value) =>
+            ['Firma de compromiso de buen uso'].includes((value || '').toString().trim()),
+          fetchMultaConfigsForFacultyIds: async () => new Map(),
+          upsertConfigForFacultyId: async () => ({}),
+          logConfigChangeToAuditoria: async () => {},
+        },
+      ],
+      [
+        sanctionEmailPath,
+        {
+          resolveStudentContactByUsuarioId: async () => null,
+          sendSanctionActivationEmail: async () => ({ ok: true }),
+        },
+      ],
+      [
         emailLayoutPath,
         {
           buildBrandedEmailAttachments: () => [],
@@ -73,7 +94,7 @@ test('fine approval rejects unsupported sanction types before touching coordinat
         },
       ],
     ],
-    purgePaths: [approvalPath],
+    purgePaths: [approvalPath, multaConfigPath, sanctionEmailPath],
   });
 
   try {
@@ -103,8 +124,8 @@ test('fine removal updates the sanction status and renders success feedback', as
         dbPath,
         {
           query: async (sql) => {
-            if (sql.includes('SELECT usuario_sancionado_id FROM multa')) {
-              return { rows: [{ usuario_sancionado_id: 44 }] };
+            if (sql.includes('SELECT usuario_sancionado_id, con_estado_multa FROM multa')) {
+              return { rows: [{ usuario_sancionado_id: 44, con_estado_multa: 'ACTIVA' }] };
             }
 
             if (sql.includes('SELECT documento FROM laboratorista')) {

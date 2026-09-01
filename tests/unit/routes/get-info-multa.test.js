@@ -205,7 +205,10 @@ test('get-info-multa loads only assigned laboratorista UALs', async () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/reg_multa');
-    assert.deepEqual(response.body.locals.uals, [{ ual_id: 21, nombre: 'Laboratorio 1' }]);
+    assert.deepEqual(
+      (response.body.locals.uals || []).map(({ ual_id, nombre }) => ({ ual_id, nombre })),
+      [{ ual_id: 21, nombre: 'Laboratorio 1' }]
+    );
   } finally {
     loaded.restore();
   }

@@ -10,6 +10,8 @@ const mailPath = path.resolve(__dirname, '../../../src/libs/mail.js');
 const emailLayoutPath = path.resolve(__dirname, '../../../src/libs/email-layout.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const multaConfigPath = path.resolve(__dirname, '../../../src/libs/multa-config.js');
+const sanctionEmailPath = path.resolve(__dirname, '../../../src/libs/sanction-email.js');
 
 function buildApp(route) {
   const app = express();
@@ -30,7 +32,7 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute({ scopeImpl, queryImpl } = {}) {
+function loadRoute({ scopeImpl, queryImpl, resolveStudentContactImpl, sendSanctionEmailImpl } = {}) {
   const originals = new Map();
 
   const stubs = [
@@ -51,6 +53,32 @@ function loadRoute({ scopeImpl, queryImpl } = {}) {
       },
     ],
     [mailPath, { sendMail: async () => {} }],
+    [
+      multaConfigPath,
+      {
+        SANCTION_TYPES: ['Firma de compromiso de buen uso'],
+        normalizeSanctionType: (value) => (value || '').toString().trim(),
+        isValidSanctionType: (value) =>
+          ['Firma de compromiso de buen uso'].includes((value || '').toString().trim()),
+        fetchMultaConfigsForFacultyIds: async () => new Map(),
+        upsertConfigForFacultyId: async () => ({}),
+        logConfigChangeToAuditoria: async () => {},
+      },
+    ],
+    [
+      sanctionEmailPath,
+      {
+        resolveStudentContactByUsuarioId:
+          resolveStudentContactImpl ||
+          (async () => ({
+            nombre: 'Estudiante',
+            documento: '123',
+            codigo: '2024',
+            correo: '',
+          })),
+        sendSanctionActivationEmail: sendSanctionEmailImpl || (async () => ({ ok: true })),
+      },
+    ],
     [
       emailLayoutPath,
       {
@@ -168,6 +196,47 @@ test('aprobacion_multa activar redirects on successful update', async () => {
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, './');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('aprobacion_multa activar fails when sanction email cannot be sent', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes('UPDATE multa AS m')) {
+        return { rowCount: 1, rows: [] };
+      }
+
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
+        return {
+          rows: [
+            { usuario_sancionado_id: 77, fecha_multa: '2026-01-01', ual: 'Lab', obs_multa: '' },
+          ],
+        };
+      }
+
+      return { rows: [], rowCount: 1 };
+    },
+    resolveStudentContactImpl: async () => ({
+      nombre: 'Estudiante',
+      documento: '123',
+      codigo: '2024',
+      correo: 'estudiante@udistrital.edu.co',
+    }),
+    sendSanctionEmailImpl: async () => ({ ok: false, reason: 'send-mail-error' }),
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/activar').type('form').send({
+      multa_id: '1',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /Error al activar la sanción/i);
   } finally {
     loaded.restore();
   }

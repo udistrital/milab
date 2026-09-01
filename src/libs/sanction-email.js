@@ -102,18 +102,39 @@ async function sendSanctionActivationEmail({
   };
 
   return new Promise((resolve) => {
-    transporter.sendMail(mailOptions, (err) => {
-      if (err) {
-        console.error('[sanction-email] sendMail falló:', err && err.message ? err.message : err);
-        resolve({
-          ok: false,
-          reason: 'send-mail-error',
-          error: err && err.message ? err.message : String(err),
-        });
-        return;
+    let settled = false;
+    const done = (payload) => {
+      if (!settled) {
+        settled = true;
+        resolve(payload);
       }
-      resolve({ ok: true, to: correo });
-    });
+    };
+
+    const handleError = (err) => {
+      console.error('[sanction-email] sendMail falló:', err && err.message ? err.message : err);
+      done({
+        ok: false,
+        reason: 'send-mail-error',
+        error: err && err.message ? err.message : String(err),
+      });
+    };
+
+    try {
+      const maybePromise = transporter.sendMail(mailOptions, (err) => {
+        if (err) {
+          handleError(err);
+          return;
+        }
+        done({ ok: true, to: correo });
+      });
+
+      // Some test doubles and transporters expose a Promise API instead of callbacks.
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(() => done({ ok: true, to: correo })).catch(handleError);
+      }
+    } catch (err) {
+      handleError(err);
+    }
   });
 }
 
