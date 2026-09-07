@@ -1,0 +1,57 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Monitores registrados</h1>
+    <p class="app-page-subtitle">Consulta operativa de monitores asignados por facultad y laboratorio.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <% if (monitores && monitores.length) { %>
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Documento</th>
+                <th>Correo</th>
+                <th>Código</th>
+                <th>Contrato</th>
+                <th>Vinculación</th>
+                <th>Vigencia</th>
+                <th>Facultades</th>
+                <th>Laboratorios</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% monitores.forEach(function(item) { %>
+                <tr>
+                  <td><%= item.nombre || '-' %></td>
+                  <td><%= item.documento || '-' %></td>
+                  <td><%= item.correo || '-' %></td>
+                  <td><%= item.codigo || '-' %></td>
+                  <td><%= item.numero_contrato || '-' %></td>
+                  <td><%= item.tipo_vinculacion || '-' %></td>
+                  <td>
+                    <%= item.fecha_inicio ? new Date(item.fecha_inicio).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                    -
+                    <%= item.fecha_fin ? new Date(item.fecha_fin).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '-' %>
+                  </td>
+                  <td><%= item.facultades || '-' %></td>
+                  <td><%= item.uales || '-' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">No hay monitores registrados en tu alcance actual.</div>
+      <% } %>
+    </div>
+  </section>
+</main>

@@ -40,6 +40,8 @@ services:
     volumes:
       - ./sql-scripts/db_structure.sql:/docker-entrypoint-initdb.d/01_db_structure.sql:ro
       - ./sql-scripts/db_seed_system.sql:/docker-entrypoint-initdb.d/02_db_seed_system.sql:ro
+      - ./sql-scripts/db_structure_prestamos.sql:/docker-entrypoint-initdb.d/03_db_structure_prestamos.sql:ro
+      - ./sql-scripts/db_seed_prestamos.sql:/docker-entrypoint-initdb.d/04_db_seed_prestamos.sql:ro
       - my-db6:/var/lib/postgresql/data
 
 # Names our volume

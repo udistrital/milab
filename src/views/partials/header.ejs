@@ -36,6 +36,7 @@
   const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
   const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
   const activeRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  const studentUsageSummary = locals.studentUsageSummary || null;
   const environmentName = (locals.environmentName || 'development').toString().trim();
   const isNonProductionEnvironment = Boolean(locals.isNonProductionEnvironment);
   const helpManualsGeneralUrl = 'https://udistritaleduco-my.sharepoint.com/:f:/g/personal/laboratoriosgeneral_udistrital_edu_co/IgDBJFgDwv7HSogEaqdp0roXAdwuFV8JMJQ6aKDHSIe9mK4?e=Ms7JNz';
@@ -86,10 +87,40 @@
     'Administración': 'nav-administracion',
     'Sanciones de estudiantes': 'nav-sanciones-estudiantes',
     'Sanciones de docentes': 'nav-sanciones-docentes',
+    'Prestamos': 'nav-prestamos',
+    'Inventario': 'nav-prestamos-inventario',
+    'Equipos': 'nav-prestamos-equipos',
+    'Solicitar equipo': 'nav-prestamos-solicitar-equipo',
+    'Mis solicitudes': 'nav-prestamos-mis-solicitudes',
+    'Gestion de solicitudes': 'nav-prestamos-gestion-solicitudes',
+    'Entrega y devolucion': 'nav-prestamos-entrega-devolucion',
+    'Incidencias': 'nav-prestamos-incidencias',
+    'Solicitar practica': 'nav-prestamos-solicitar-practica',
+    'Mis practicas': 'nav-prestamos-mis-practicas',
+    'Gestion de practicas': 'nav-prestamos-gestion-practicas',
+    'Salas': 'nav-prestamos-salas',
+    'Reportes': 'nav-prestamos-reportes',
+    'Auditoria': 'nav-prestamos-auditoria',
+    'Parametrizaciones': 'nav-prestamos-parametrizaciones',
+    'Configuracion de practicas': 'nav-prestamos-configuracion-practicas',
   };
   function getNavigationGuideAttribute(label) {
     const key = navigationGuideMap[label];
     return key ? `data-guide="${key}"` : '';
+  }
+  function isPrestamosNavLink(link) {
+    const label = String(link?.label || '').trim().toLowerCase();
+    const href = String(link?.href || '').toLowerCase();
+    return label === 'prestamos' || href === '/milab/prestamos/';
+  }
+  function getPrestamosNavLinkClass(link) {
+    if (!isPrestamosNavLink(link)) return '';
+    return ' nav-link--prestamos-accent';
+  }
+  function formatUsageHours(value) {
+    const numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return '0.00';
+    return numeric.toFixed(2);
   }
 %>
 
@@ -131,7 +162,7 @@
             <ul class="navbar-nav app-nav-inline">
               <% primaryLinks.forEach(function(link) { %>
                 <li class="nav-item">
-                  <a class="nav-link" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
+                  <a class="nav-link<%= getPrestamosNavLinkClass(link) %>" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
                     <i class="bi <%= link.icon %>" aria-hidden="true"></i>
                     <span><%= link.label %></span>
                     <% if (shouldShowSanctionsBadge(link)) { %>
@@ -198,6 +229,43 @@
                         <span class="app-user-menu-value"><%= sessionRole %></span>
                       </div>
                     </li>
+                    <% if (studentUsageSummary && Array.isArray(studentUsageSummary.items) && studentUsageSummary.items.length) { %>
+                      <li><hr class="dropdown-divider"></li>
+                      <li class="app-user-menu-summary">
+                        <div class="app-user-menu-item">
+                          <span class="app-user-menu-label">Uso mensual</span>
+                        </div>
+                        <% studentUsageSummary.items.forEach(function(item) { %>
+                          <div class="app-user-menu-item">
+                            <div class="d-flex justify-content-between align-items-center gap-2">
+                              <span class="app-user-menu-label">
+                                <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                                <span><%= item.label %></span>
+                              </span>
+                              <% if (item.hasLimit) { %>
+                                <span class="app-user-menu-value">
+                                  <%= formatUsageHours(item.used) %> / <%= formatUsageHours(item.limit) %> h
+                                </span>
+                              <% } else { %>
+                                <span class="app-user-menu-value">
+                                  <%= formatUsageHours(item.used) %> h usadas
+                                </span>
+                              <% } %>
+                            </div>
+                            <% if (item.hasLimit) { %>
+                              <div class="progress mt-2" role="progressbar" aria-label="<%= item.label %>" aria-valuenow="<%= Math.round(item.percentage) %>" aria-valuemin="0" aria-valuemax="100" style="height: 0.45rem;">
+                                <div class="progress-bar <%= item.percentage >= 100 ? 'bg-danger' : item.percentage >= 80 ? 'bg-warning' : 'bg-success' %>" style="width: <%= item.percentage %>%"></div>
+                              </div>
+                              <span class="app-user-menu-value d-block mt-1">
+                                Disponible: <%= formatUsageHours(item.remaining) %> h
+                              </span>
+                            <% } else { %>
+                              <span class="app-user-menu-value d-block mt-1">Sin limite configurado</span>
+                            <% } %>
+                          </div>
+                        <% }) %>
+                      </li>
+                    <% } %>
                     <li><hr class="dropdown-divider"></li>
 
                     <% if (accountLinks.length) { %>
@@ -299,6 +367,43 @@
                         <span class="app-user-menu-value"><%= sessionRole %></span>
                       </div>
                     </li>
+                    <% if (studentUsageSummary && Array.isArray(studentUsageSummary.items) && studentUsageSummary.items.length) { %>
+                      <li><hr class="dropdown-divider"></li>
+                      <li class="app-user-menu-summary">
+                        <div class="app-user-menu-item">
+                          <span class="app-user-menu-label">Uso mensual</span>
+                        </div>
+                        <% studentUsageSummary.items.forEach(function(item) { %>
+                          <div class="app-user-menu-item">
+                            <div class="d-flex justify-content-between align-items-center gap-2">
+                              <span class="app-user-menu-label">
+                                <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                                <span><%= item.label %></span>
+                              </span>
+                              <% if (item.hasLimit) { %>
+                                <span class="app-user-menu-value">
+                                  <%= formatUsageHours(item.used) %> / <%= formatUsageHours(item.limit) %> h
+                                </span>
+                              <% } else { %>
+                                <span class="app-user-menu-value">
+                                  <%= formatUsageHours(item.used) %> h usadas
+                                </span>
+                              <% } %>
+                            </div>
+                            <% if (item.hasLimit) { %>
+                              <div class="progress mt-2" role="progressbar" aria-label="<%= item.label %>" aria-valuenow="<%= Math.round(item.percentage) %>" aria-valuemin="0" aria-valuemax="100" style="height: 0.45rem;">
+                                <div class="progress-bar <%= item.percentage >= 100 ? 'bg-danger' : item.percentage >= 80 ? 'bg-warning' : 'bg-success' %>" style="width: <%= item.percentage %>%"></div>
+                              </div>
+                              <span class="app-user-menu-value d-block mt-1">
+                                Disponible: <%= formatUsageHours(item.remaining) %> h
+                              </span>
+                            <% } else { %>
+                              <span class="app-user-menu-value d-block mt-1">Sin limite configurado</span>
+                            <% } %>
+                          </div>
+                        <% }) %>
+                      </li>
+                    <% } %>
                     <li><hr class="dropdown-divider"></li>
 
                     <% if (accountLinks.length) { %>

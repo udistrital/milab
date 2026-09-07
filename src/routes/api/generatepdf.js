@@ -2,7 +2,7 @@ const express = require('express');
 const { requireUser } = require('../middlewares/auth');
 const { buildGeneratePath } = require('../../libs/generate-path');
 
-let router = express.Router();
+const router = express.Router();
 
 const requireLegacyPdfGenerationSession = requireUser({
   message: '¡Algo ha salido mal!',

@@ -1,3 +1,5 @@
+const { hasAllPermissions, hasAnyPermission } = require('../../libs/permissions');
+
 function renderAuthError(res, overrides = {}) {
   const payload = {
     message: '¡Algo ha salido mal!',
@@ -75,8 +77,42 @@ function requireJsonRoles(roles, overrides = {}) {
   };
 }
 
+function requirePermissions(permissions, overrides = {}) {
+  const mode = overrides.mode === 'all' ? 'all' : 'any';
+  const requiredPermissions = Array.isArray(permissions) ? permissions : [permissions];
+
+  return function requireAuthorizedPermission(req, res, next) {
+    const user = req.session?.user;
+    const userRoles = getUserRoles(user);
+
+    if (!user) {
+      return renderAuthError(res, {
+        message: 'Acceso denegado',
+        message2: overrides.message2 || 'Debe iniciar sesion para continuar.',
+        limit: overrides.limit || 'loginOnly',
+      });
+    }
+
+    const allowed =
+      mode === 'all'
+        ? hasAllPermissions(userRoles, requiredPermissions)
+        : hasAnyPermission(userRoles, requiredPermissions);
+
+    if (!allowed) {
+      return renderAuthError(res, {
+        message: overrides.message || 'Acceso denegado',
+        message2: overrides.message2 || 'No tienes permisos para esta accion.',
+        limit: overrides.limit || 'loginOnly',
+      });
+    }
+
+    return next();
+  };
+}
+
 module.exports = {
   renderAuthError,
+  requirePermissions,
   requireJsonRoles,
   requireUser,
   requireRoles,

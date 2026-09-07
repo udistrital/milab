@@ -16,7 +16,7 @@ const { requireRoles } = require('../middlewares/auth');
 // Variables de entorno
 require('dotenv').config();
 
-let router = express.Router();
+const router = express.Router();
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
@@ -197,8 +197,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       const dato1 = await requestOati(
         getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
       );
-      // dataString removed (was never used)
-      let cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+      const cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
       con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
       con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
@@ -218,7 +217,6 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         buildGeneratePath(`${con_codigo}.png`),
         buildAppUrl(`/api/validateqr/${uniqueId}`),
         {
-          // QRCode.toDataURL(`src/public/generate/${con_codigo}.png`, 'https://validateQR/' + uniqueId, {
           errorCorrectionLevel: 'H',
         },
         function (err) {
@@ -330,7 +328,6 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       const doc = new PDFDocument({ layout: 'portrait', size: 'A4' });
       const fs = require('fs');
       const stream = fs.createWriteStream(buildGeneratePath(`certificado_${con_codigo}.pdf`));
-      // file removed (was never used)
 
       // Helper to move to next line
       function jumpLine(doc, lines) {
