@@ -4,8 +4,12 @@
   "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {
-    "test": "node --test tests/unit/**/*.test.js",
-    "test:unit": "node --test tests/unit/**/*.test.js",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:coverage": "npm test",
+    "test:unit": "node --test $(find tests/unit -type f -name '*.test.js' | sort)",
+    "test:integration": "node --test $(find tests/integration -type f -name '*.test.js' | sort)",
+    "sonar:local": "sh scripts/run-local-sonar.sh",
+    "sonar:stop": "sh scripts/run-local-sonar.sh stop",
     "start": "nodemon src/app",
     "lint": "npx eslint .",
     "format": "npx prettier --write . --ignore-unknown",
@@ -51,6 +55,10 @@
     "tar": "^7.5.11",
     "util": "^0.12.5",
     "uuid": "^11.1.1"
+  },
+  "overrides": {
+    "qs": "^6.16.0",
+    "jake": "^12.10.1"
   },
   "devDependencies": {
     "@eslint/css": "^1.0.0",

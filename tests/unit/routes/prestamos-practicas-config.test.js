@@ -265,3 +265,72 @@ test('prestamos exige practica y asignatura configuradas para practicas docentes
     loaded.restore();
   }
 });
+
+test('prestamos renders the dashboard for every role at the module root', async () => {
+  const loaded = loadRouteWithAccess({ blocked: false, role: null, allowedFacultyIds: [] });
+  const roles = ['estudiante', 'docente', 'monitor', 'laboratorista', 'coordinador', 'admin'];
+
+  try {
+    for (const role of roles) {
+      const app = buildApp(loaded.route, { tipo: role, roles: [role] });
+      const response = await request(app).get('/');
+      assert.equal(response.status, 200, `status 200 para rol ${role}`);
+      const payload = JSON.parse(response.text);
+      assert.equal(
+        payload.view,
+        'home/prestamos/dashboard',
+        `renderiza dashboard.ejs para rol ${role}`
+      );
+      assert.ok(Array.isArray(payload.locals.moduleCards), `moduleCards es array para rol ${role}`);
+      assert.ok(Array.isArray(payload.locals.quickLinks), `quickLinks es array para rol ${role}`);
+      assert.ok(
+        typeof payload.locals.stats === 'object' && payload.locals.stats !== null,
+        `stats es objeto para rol ${role}`
+      );
+    }
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos blocks disabled module access with html response for GET requests', async () => {
+  const loaded = loadRouteWithAccess({
+    blocked: true,
+    role: 'coordinador',
+    allowedFacultyIds: [],
+    facultyIds: [10],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const response = await request(app).get('/reportes');
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.authError, true);
+    assert.match(response.body.payload.message2, /Prestamos esta deshabilitado/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos blocks disabled module access with json response for POST requests', async () => {
+  const loaded = loadRouteWithAccess({
+    blocked: true,
+    role: 'monitor',
+    allowedFacultyIds: [],
+    facultyIds: [10],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'monitor', documento: '900' });
+    const response = await request(app).post('/solicitudes/crear').send({});
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(response.body, {
+      success: false,
+      message: 'El modulo de Prestamos esta deshabilitado para tu facultad.',
+    });
+  } finally {
+    loaded.restore();
+  }
+});

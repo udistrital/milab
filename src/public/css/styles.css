@@ -606,6 +606,7 @@ body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
   border-radius: 10px;
   color: #7c3aed !important;
 }
+
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:hover,
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:focus {
   background: rgba(124, 58, 237, 0.14);
@@ -614,11 +615,13 @@ body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:focus {
   box-shadow: 0 10px 20px rgba(124, 58, 237, 0.18);
   transform: translateY(-1px);
 }
+
 html[data-bs-theme='dark'] body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
   background: rgba(167, 139, 250, 0.12);
   border-color: rgba(167, 139, 250, 0.28);
   color: #c4b5fd !important;
 }
+
 html[data-bs-theme='dark']
   body.app-shell
   .app-nav-inline

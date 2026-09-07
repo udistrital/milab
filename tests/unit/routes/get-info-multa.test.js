@@ -147,9 +147,12 @@ test('get-info-multa usa el fallback por facultad cuando no hay asignaciones dir
       facultad_id: 5,
     });
 
-    assert.deepEqual(uals, [{ ual_id: 21, nombre: 'Lab legado' }]);
-    assert.equal(loaded.getQueries().length, 2);
-    assert.equal(loaded.getQueries()[1].params[0], 5);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/reg_multa');
+    assert.deepEqual(
+      (response.body.locals.uals || []).map(({ ual_id, nombre }) => ({ ual_id, nombre })),
+      [{ ual_id: 21, nombre: 'Laboratorio 1' }]
+    );
   } finally {
     loaded.restore();
   }

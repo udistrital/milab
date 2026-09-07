@@ -62,7 +62,7 @@ async function getMenuForRoles(roles) {
     icon: item.icon || 'bi-circle',
   });
 
-  const primaryLinks = uniqueItems
+  let primaryLinks = uniqueItems
     .filter((item) => item.section === 'primary' && !item.parent_id && item.route)
     .map(buildLink);
 

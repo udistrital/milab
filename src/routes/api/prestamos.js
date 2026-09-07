@@ -93,705 +93,736 @@ router.use(async function attachPrestamosModuleAccess(req, res, next) {
 
 async function fetchUsuarioBySessionData(sessionUser) {
   if (!sessionUser) return null;
-  if (sessionUser.id) {
-    const byId = await fetchUserById(sessionUser.id).catch(() => null);
-    if (byId) return byId;
+  const userId = sessionUser.id ? Number(sessionUser.id) : null;
+  const userEmail = typeof sessionUser.correo === 'string' ? sessionUser.correo.trim() : '';
+  const userDocument =
+    typeof sessionUser.documento === 'string' ? sessionUser.documento.trim() : '';
+  const userRoles = normalizeRoles(sessionUser.roles || sessionUser.tipo);
+  const primaryRole = getPrimaryRole(userRoles);
+  let usuario = null;
+  if (userId) {
+    usuario = await fetchUserById(userId);
   }
-  if (sessionUser.correo) {
-    const byEmail = await fetchUserByEmail(sessionUser.correo).catch(() => null);
-    if (byEmail) return byEmail;
+  if (!usuario && userEmail) {
+    usuario = await fetchUserByEmail(userEmail);
   }
-  const documento = sessionUser.documento || sessionUser.documento_real;
-  if (documento) {
-    const roles = normalizeRoles(sessionUser.roles || sessionUser.tipo);
-    const primary = getPrimaryRole(roles);
-    let usuarioId = null;
-    if (primary === 'estudiante')
-      usuarioId = await resolveUsuarioIdForStudent({ documento, codigo: sessionUser.codigo }).catch(
-        () => null
-      );
-    else if (primary === 'docente')
-      usuarioId = await resolveUsuarioIdForDocente(documento).catch(() => null);
-    if (usuarioId) {
-      const resolved = await fetchUserById(usuarioId).catch(() => null);
-      if (resolved) return resolved;
+  if (!usuario && userDocument) {
+    let resolvedId = null;
+    if (primaryRole === 'estudiante') {
+      resolvedId = await resolveUsuarioIdForStudent({
+        documento: userDocument,
+        codigo: sessionUser.codigo || null,
+      });
+    } else if (primaryRole === 'docente') {
+      resolvedId = await resolveUsuarioIdForDocente(userDocument);
+    }
+    if (resolvedId) {
+      usuario = await fetchUserById(resolvedId);
     }
   }
-  return null;
-}
-function fetchUsuarioBySession(sessionUser) {
-  return fetchUsuarioBySessionData(sessionUser);
+  return usuario;
 }
 
-function buildDashboardModuleCardsForRole(primaryRole) {
-  const role = (primaryRole || '').toString().trim().toLowerCase();
+async function fetchUsuarioBySession(req) {
+  return fetchUsuarioBySessionData(req.session?.user || null);
+}
+
+function buildDashboardModuleCardsForRole(role) {
   const cards = [];
-
   if (role === 'admin') {
-    cards.push(
-      {
-        label: 'Inventario',
-        description: 'Consulta y gestión del inventario institucional.',
-        href: '/milab/prestamos/inventario',
-        icon: 'bi-box-seam',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Equipos',
-        description: 'Administra catálogo y disponibilidad de equipos.',
-        href: '/milab/prestamos/equipos',
-        icon: 'bi-pc-display',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Gestión de solicitudes',
-        description: 'Aprueba, rechaza o da trámite a las solicitudes.',
-        href: '/milab/prestamos/gestion-solicitudes',
-        icon: 'bi-clipboard-data',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Entrega y devolución',
-        description: 'Registra entrega de equipos y su devolución.',
-        href: '/milab/prestamos/entrega-equipos',
-        icon: 'bi-box-arrow-left-right',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      },
-      {
-        label: 'Incidencias',
-        description: 'Seguimiento y solución de incidencias.',
-        href: '/milab/prestamos/incidencias',
-        icon: 'bi-bug',
-        tone: 'rgba(239, 68, 68, 0.12)',
-        iconColor: '#ef4444',
-      },
-      {
-        label: 'Gestión de prácticas',
-        description: 'Reservas y programación de prácticas de laboratorio.',
-        href: '/milab/prestamos/practicas/gestion',
-        icon: 'bi-journal-text',
-        tone: 'rgba(14, 165, 233, 0.12)',
-        iconColor: '#0ea5e9',
-      },
-      {
-        label: 'Salas',
-        description: 'Horarios y disponibilidad de salas de laboratorio.',
-        href: '/milab/prestamos/salas',
-        icon: 'bi-door-open',
-        tone: 'rgba(236, 72, 153, 0.12)',
-        iconColor: '#ec4899',
-      },
-      {
-        label: 'Reportes',
-        description: 'Tablero operativo e impresión de estadísticas.',
-        href: '/milab/prestamos/reportes',
-        icon: 'bi-bar-chart-line',
-        tone: 'rgba(99, 102, 241, 0.12)',
-        iconColor: '#6366f1',
-      },
-      {
-        label: 'Auditoría',
-        description: 'Registro de acciones y trazabilidad del módulo.',
-        href: '/milab/prestamos/auditoria',
-        icon: 'bi-journal-check',
-        tone: 'rgba(17, 24, 39, 0.08)',
-        iconColor: '#374151',
-      },
-      {
-        label: 'Configuración de prácticas',
-        description: 'Parámetros y límites para reserva de prácticas.',
-        href: '/milab/prestamos/coordinador/practicas/config',
-        icon: 'bi-gear',
-        tone: 'rgba(139, 92, 246, 0.12)',
-        iconColor: '#8b5cf6',
-      },
-      {
-        label: 'Parametrizaciones',
-        description: 'Configuración global del módulo de préstamos.',
-        href: '/milab/prestamos/admin/parametrizaciones',
-        icon: 'bi-sliders',
-        tone: 'rgba(251, 146, 60, 0.12)',
-        iconColor: '#fb923c',
-      }
-    );
+    cards.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+      tone: 'indigo',
+      description: 'Administra el catalogo general de equipos y elementos.',
+    });
+    cards.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+      tone: 'violet',
+      description: 'Gestiona fichas tecnicas, estados y asignaciones de equipos.',
+    });
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Crea nuevas solicitudes de prestamo de equipos.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el estado historico de tus solicitudes de prestamo.',
+    });
+    cards.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+      tone: 'amber',
+      description: 'Aprueba, rechaza y da seguimiento a las solicitudes recibidas.',
+    });
+    cards.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+      tone: 'rose',
+      description: 'Registra entregas, devoluciones y novedades de equipos.',
+    });
+    cards.push({
+      label: 'Incidencias',
+      href: '/milab/prestamos/incidencias',
+      icon: 'bi-exclamation-triangle',
+      tone: 'pink',
+      description: 'Reporta y gestiona incidentes asociados a prestamos.',
+    });
+    cards.push({
+      label: 'Gestion de practicas',
+      href: '/milab/prestamos/practicas/gestion',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Programa y realiza seguimiento a practicas de laboratorio.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Consulta y agenda disponibilidad de salas de laboratorio.',
+    });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Explora metricas, indicadores y reportes oficiales de prestamos.',
+    });
+    cards.push({
+      label: 'Auditoria',
+      href: '/milab/prestamos/auditoria',
+      icon: 'bi-shield-check',
+      tone: 'slate',
+      description: 'Consulta el registro de auditoria del modulo de prestamos.',
+    });
+    cards.push({
+      label: 'Parametrizaciones',
+      href: '/milab/prestamos/admin/parametrizaciones',
+      icon: 'bi-gear-wide-connected',
+      tone: 'indigo',
+      description: 'Configura reglas, limites y parametros generales del modulo.',
+    });
+    cards.push({
+      label: 'Configuracion de practicas',
+      href: '/milab/prestamos/coordinador/practicas/config',
+      icon: 'bi-tools',
+      tone: 'violet',
+      description: 'Ajusta parametros operativos de la gestion de practicas.',
+    });
+  } else if (role === 'coordinador') {
+    cards.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+      tone: 'indigo',
+      description: 'Consulta y actualiza el inventario de tu facultad.',
+    });
+    cards.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+      tone: 'violet',
+      description: 'Supervisa el ciclo de vida de los equipos asignados.',
+    });
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Crea solicitudes de prestamo para actividades academicas.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el historial y estado de tus solicitudes.',
+    });
+    cards.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+      tone: 'amber',
+      description: 'Gestiona la cola de solicitudes pendientes de tu alcance.',
+    });
+    cards.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+      tone: 'rose',
+      description: 'Formaliza entregas y recepciones de equipos prestados.',
+    });
+    cards.push({
+      label: 'Incidencias',
+      href: '/milab/prestamos/incidencias',
+      icon: 'bi-exclamation-triangle',
+      tone: 'pink',
+      description: 'Atiende incidentes reportados durante los prestamos.',
+    });
+    cards.push({
+      label: 'Gestion de practicas',
+      href: '/milab/prestamos/practicas/gestion',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Aprueba y agenda practicas de laboratorio.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Coordina la agenda de salas y espacios de laboratorio.',
+    });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Consulta reportes operativos y estadisticos del modulo.',
+    });
+    cards.push({
+      label: 'Configuracion de practicas',
+      href: '/milab/prestamos/coordinador/practicas/config',
+      icon: 'bi-tools',
+      tone: 'violet',
+      description: 'Ajusta la parametrizacion del ciclo de practicas.',
+    });
+  } else if (role === 'laboratorista' || role === 'monitor') {
+    cards.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+      tone: 'indigo',
+      description: 'Consulta el inventario de equipos y elementos disponibles.',
+    });
+    cards.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+      tone: 'violet',
+      description: 'Consulta fichas tecnicas y estados de los equipos.',
+    });
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Registra nuevas solicitudes de prestamo de equipos.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el estado de tus propias solicitudes.',
+    });
+    cards.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+      tone: 'amber',
+      description: 'Atiende y actualiza el estado de las solicitudes recibidas.',
+    });
+    cards.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+      tone: 'rose',
+      description: 'Registra el movimiento fisico de entrega y recepcion.',
+    });
+    cards.push({
+      label: 'Incidencias',
+      href: '/milab/prestamos/incidencias',
+      icon: 'bi-exclamation-triangle',
+      tone: 'pink',
+      description: 'Reporta y hace seguimiento a incidentes de prestamos.',
+    });
+    cards.push({
+      label: 'Gestion de practicas',
+      href: '/milab/prestamos/practicas/gestion',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Apoya la programacion y ejecucion de practicas.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Consulta la agenda y disponibilidad de salas.',
+    });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Consulta reportes y estadisticas operativas del modulo.',
+    });
+    cards.push({
+      label: 'Auditoria',
+      href: '/milab/prestamos/auditoria',
+      icon: 'bi-receipt-cutoff',
+      tone: 'indigo',
+      description: 'Revisa el historial y la trazabilidad de movimientos.',
+    });
+  } else if (role === 'estudiante' || role === 'docente') {
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Crea nuevas solicitudes de prestamo de equipos para tus actividades.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el estado y el historial completo de tus solicitudes.',
+    });
+    cards.push({
+      label: 'Solicitar practica',
+      href: '/milab/prestamos/practicas/solicitar',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Solicita y reserva espacios de practica para tus clases.',
+    });
+    cards.push({
+      label: 'Mis practicas',
+      href: '/milab/prestamos/practicas/mis-reservas',
+      icon: 'bi-calendar-check',
+      tone: 'indigo',
+      description: 'Consulta las practicas que tienes agendadas y su estado.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Explora la disponibilidad de salas de laboratorio para tus clases.',
+    });
+  } else {
+    cards.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+      tone: 'indigo',
+      description: 'Consulta el catalogo general de equipos y elementos.',
+    });
+    cards.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+      tone: 'violet',
+      description: 'Consulta fichas tecnicas y estados de equipos.',
+    });
+    cards.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+      tone: 'emerald',
+      description: 'Crea nuevas solicitudes de prestamo de equipos.',
+    });
+    cards.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+      tone: 'sky',
+      description: 'Consulta el estado y el historial de tus solicitudes.',
+    });
+    cards.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+      tone: 'amber',
+      description: 'Atiende la cola de solicitudes recibidas.',
+    });
+    cards.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+      tone: 'rose',
+      description: 'Registra entregas y recepciones de equipos.',
+    });
+    cards.push({
+      label: 'Incidencias',
+      href: '/milab/prestamos/incidencias',
+      icon: 'bi-exclamation-triangle',
+      tone: 'pink',
+      description: 'Reporta y hace seguimiento a incidentes.',
+    });
+    cards.push({
+      label: 'Gestion de practicas',
+      href: '/milab/prestamos/practicas/gestion',
+      icon: 'bi-mortarboard',
+      tone: 'fuchsia',
+      description: 'Gestiona practicas de laboratorio.',
+    });
+    cards.push({
+      label: 'Salas',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+      tone: 'cyan',
+      description: 'Consulta agenda y disponibilidad de salas.',
+    });
+    cards.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+      tone: 'slate',
+      description: 'Consulta reportes del modulo de prestamos.',
+    });
+    cards.push({
+      label: 'Auditoria',
+      href: '/milab/prestamos/auditoria',
+      icon: 'bi-receipt-cutoff',
+      tone: 'indigo',
+      description: 'Revisa el historial y trazabilidad de movimientos.',
+    });
   }
-
-  if (role === 'coordinador') {
-    cards.push(
-      {
-        label: 'Inventario',
-        description: 'Consulta el inventario de tu facultad.',
-        href: '/milab/prestamos/inventario',
-        icon: 'bi-box-seam',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Equipos',
-        description: 'Gestiona equipos disponibles para préstamo.',
-        href: '/milab/prestamos/equipos',
-        icon: 'bi-pc-display',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Gestión de solicitudes',
-        description: 'Aprueba o rechaza solicitudes de préstamo.',
-        href: '/milab/prestamos/gestion-solicitudes',
-        icon: 'bi-clipboard-data',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Entrega y devolución',
-        description: 'Registra entrega y recepción de equipos.',
-        href: '/milab/prestamos/entrega-equipos',
-        icon: 'bi-box-arrow-left-right',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      },
-      {
-        label: 'Incidencias',
-        description: 'Reporta y da seguimiento a incidencias.',
-        href: '/milab/prestamos/incidencias',
-        icon: 'bi-bug',
-        tone: 'rgba(239, 68, 68, 0.12)',
-        iconColor: '#ef4444',
-      },
-      {
-        label: 'Gestión de prácticas',
-        description: 'Administra reservas de prácticas.',
-        href: '/milab/prestamos/practicas/gestion',
-        icon: 'bi-journal-text',
-        tone: 'rgba(14, 165, 233, 0.12)',
-        iconColor: '#0ea5e9',
-      },
-      {
-        label: 'Salas',
-        description: 'Consulta horarios y disponibilidad de salas.',
-        href: '/milab/prestamos/salas',
-        icon: 'bi-door-open',
-        tone: 'rgba(236, 72, 153, 0.12)',
-        iconColor: '#ec4899',
-      },
-      {
-        label: 'Reportes',
-        description: 'Estadísticas e impresión de reportes.',
-        href: '/milab/prestamos/reportes',
-        icon: 'bi-bar-chart-line',
-        tone: 'rgba(99, 102, 241, 0.12)',
-        iconColor: '#6366f1',
-      },
-      {
-        label: 'Auditoría',
-        description: 'Trazabilidad de acciones del módulo.',
-        href: '/milab/prestamos/auditoria',
-        icon: 'bi-journal-check',
-        tone: 'rgba(17, 24, 39, 0.08)',
-        iconColor: '#374151',
-      },
-      {
-        label: 'Configuración de prácticas',
-        description: 'Configura reglas para reservas de prácticas.',
-        href: '/milab/prestamos/coordinador/practicas/config',
-        icon: 'bi-gear',
-        tone: 'rgba(139, 92, 246, 0.12)',
-        iconColor: '#8b5cf6',
-      }
-    );
-  }
-
-  if (role === 'laboratorista' || role === 'monitor') {
-    cards.push(
-      {
-        label: 'Inventario',
-        description: 'Consulta inventario de equipos y elementos.',
-        href: '/milab/prestamos/inventario',
-        icon: 'bi-box-seam',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Equipos',
-        description: 'Consulta y actualiza estado de equipos.',
-        href: '/milab/prestamos/equipos',
-        icon: 'bi-pc-display',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Gestión de solicitudes',
-        description: 'Da trámite a las solicitudes recibidas.',
-        href: '/milab/prestamos/gestion-solicitudes',
-        icon: 'bi-clipboard-data',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Entrega y devolución',
-        description: 'Registra entrega y recepción de equipos.',
-        href: '/milab/prestamos/entrega-equipos',
-        icon: 'bi-box-arrow-left-right',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      },
-      {
-        label: 'Incidencias',
-        description: 'Registra y consulta incidencias.',
-        href: '/milab/prestamos/incidencias',
-        icon: 'bi-bug',
-        tone: 'rgba(239, 68, 68, 0.12)',
-        iconColor: '#ef4444',
-      },
-      {
-        label: 'Gestión de prácticas',
-        description: 'Seguimiento de prácticas programadas.',
-        href: '/milab/prestamos/practicas/gestion',
-        icon: 'bi-journal-text',
-        tone: 'rgba(14, 165, 233, 0.12)',
-        iconColor: '#0ea5e9',
-      },
-      {
-        label: 'Salas',
-        description: 'Horarios y disponibilidad de salas.',
-        href: '/milab/prestamos/salas',
-        icon: 'bi-door-open',
-        tone: 'rgba(236, 72, 153, 0.12)',
-        iconColor: '#ec4899',
-      },
-      {
-        label: 'Reportes',
-        description: 'Visualiza reportes operativos.',
-        href: '/milab/prestamos/reportes',
-        icon: 'bi-bar-chart-line',
-        tone: 'rgba(99, 102, 241, 0.12)',
-        iconColor: '#6366f1',
-      },
-      {
-        label: 'Auditoría',
-        description: 'Consulta el registro de auditoría.',
-        href: '/milab/prestamos/auditoria',
-        icon: 'bi-journal-check',
-        tone: 'rgba(17, 24, 39, 0.08)',
-        iconColor: '#374151',
-      }
-    );
-  }
-
-  if (role === 'estudiante' || role === 'docente') {
-    cards.push(
-      {
-        label: 'Solicitar equipo',
-        description: 'Solicita un equipo o elemento en préstamo.',
-        href: '/milab/prestamos/solicitar',
-        icon: 'bi-clipboard-check',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Mis solicitudes',
-        description: 'Consulta el estado de tus préstamos y solicitudes.',
-        href: '/milab/prestamos/mis-solicitudes',
-        icon: 'bi-list-check',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Solicitar práctica',
-        description: 'Reserva una práctica libre o docente en laboratorio.',
-        href: '/milab/prestamos/practicas/solicitar',
-        icon: 'bi-journal-plus',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Mis prácticas',
-        description: 'Consulta tus reservas de prácticas y su estado.',
-        href: '/milab/prestamos/practicas/mis-reservas',
-        icon: 'bi-journal-check',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      }
-    );
-  }
-
   return cards;
 }
 
-function buildDashboardQuickLinksForRole(primaryRole) {
-  const role = (primaryRole || '').toString().trim().toLowerCase();
+function buildDashboardQuickLinksForRole(role) {
+  const isAdminOrCoordinator = role === 'admin' || role === 'coordinador';
+  const isLabOrMonitor = role === 'laboratorista' || role === 'monitor';
+  const isEndUser = role === 'estudiante' || role === 'docente';
   const links = [];
-
-  if (
-    role === 'admin' ||
-    role === 'coordinador' ||
-    role === 'laboratorista' ||
-    role === 'monitor'
-  ) {
-    links.push(
-      {
-        label: 'Nueva solicitud',
-        helper: 'Solicitar préstamo de equipo',
-        href: '/milab/prestamos/solicitar',
-        icon: 'bi-plus-square-dotted',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Mis préstamos',
-        helper: 'Revisa tus préstamos activos',
-        href: '/milab/prestamos/mis-solicitudes',
-        icon: 'bi-calendar-week',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Inventario',
-        helper: 'Consulta equipos disponibles',
-        href: '/milab/prestamos/inventario',
-        icon: 'bi-box2-heart',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Entrega y devolución',
-        helper: 'Registra entregas o devoluciones',
-        href: '/milab/prestamos/entrega-equipos',
-        icon: 'bi-send-check',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      }
-    );
+  if (isAdminOrCoordinator) {
+    links.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+    });
+    links.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+    });
+    links.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+    });
+    links.push({
+      label: 'Reportes',
+      href: '/milab/prestamos/reportes',
+      icon: 'bi-bar-chart-line',
+    });
+  } else if (isLabOrMonitor) {
+    links.push({
+      label: 'Inventario',
+      href: '/milab/prestamos/inventario',
+      icon: 'bi-clipboard-data',
+    });
+    links.push({
+      label: 'Equipos',
+      href: '/milab/prestamos/equipos',
+      icon: 'bi-cpu',
+    });
+    links.push({
+      label: 'Gestion de solicitudes',
+      href: '/milab/prestamos/gestion-solicitudes',
+      icon: 'bi-clipboard-check',
+    });
+    links.push({
+      label: 'Entrega y devolucion',
+      href: '/milab/prestamos/entrega-equipos',
+      icon: 'bi-box-arrow-left-right',
+    });
+  } else if (isEndUser) {
+    links.push({
+      label: 'Solicitar equipo',
+      href: '/milab/prestamos/solicitar',
+      icon: 'bi-handbag',
+    });
+    links.push({
+      label: 'Mis solicitudes',
+      href: '/milab/prestamos/mis-solicitudes',
+      icon: 'bi-journal-text',
+    });
+    links.push({
+      label: 'Solicitar practica',
+      href: '/milab/prestamos/practicas/solicitar',
+      icon: 'bi-mortarboard',
+    });
+    links.push({
+      label: 'Mis practicas',
+      href: '/milab/prestamos/practicas/mis-reservas',
+      icon: 'bi-calendar-check',
+    });
+    links.push({
+      label: 'Salas disponibles',
+      href: '/milab/prestamos/salas',
+      icon: 'bi-door-open',
+    });
   }
-
-  if (role === 'estudiante' || role === 'docente') {
-    links.push(
-      {
-        label: 'Nueva solicitud',
-        helper: 'Solicitar préstamo de equipo',
-        href: '/milab/prestamos/solicitar',
-        icon: 'bi-plus-square-dotted',
-        tone: 'rgba(124, 58, 237, 0.12)',
-        iconColor: '#7c3aed',
-      },
-      {
-        label: 'Mis préstamos',
-        helper: 'Revisa tus préstamos activos',
-        href: '/milab/prestamos/mis-solicitudes',
-        icon: 'bi-calendar-week',
-        tone: 'rgba(59, 130, 246, 0.12)',
-        iconColor: '#3b82f6',
-      },
-      {
-        label: 'Equipos disponibles',
-        helper: 'Consulta equipos disponibles',
-        href: '/milab/prestamos/solicitar',
-        icon: 'bi-box2-heart',
-        tone: 'rgba(16, 185, 129, 0.12)',
-        iconColor: '#10b981',
-      },
-      {
-        label: 'Solicitar práctica',
-        helper: 'Reserva tu próxima práctica',
-        href: '/milab/prestamos/practicas/solicitar',
-        icon: 'bi-journal-plus',
-        tone: 'rgba(245, 158, 11, 0.12)',
-        iconColor: '#f59e0b',
-      }
-    );
-  }
-
   return links;
 }
 
-async function fetchDashboardStatsForManagement(scope) {
-  const equipmentParams = [];
-  const equipmentScopeClause = buildFacultyNameScopeClause('e.facultad', scope, equipmentParams);
-  const equipmentLaboratoryClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    equipmentParams
-  );
-  const activosParams = [];
-  const activosScopeClause = buildFacultyNameScopeClause('e.facultad', scope, activosParams);
-  const activosLaboratoryClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    activosParams
-  );
-  const pendientesParams = [];
-  const pendientesScopeClause = buildFacultyNameScopeClause('e.facultad', scope, pendientesParams);
-  const pendientesLaboratoryClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    pendientesParams
-  );
-  const finalizadosParams = [];
-  const finalizadosScopeClause = buildFacultyNameScopeClause(
-    'e.facultad',
-    scope,
-    finalizadosParams
-  );
-  const finalizadosLaboratoryClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    finalizadosParams
-  );
-  const disponiblesParams = [];
-  const disponiblesScopeClause = buildFacultyNameScopeClause(
-    'e.facultad',
-    scope,
-    disponiblesParams
-  );
-  const disponiblesLaboratoryClause = buildLaboratoryNameScopeClause(
-    'e.laboratorio',
-    scope,
-    disponiblesParams
-  );
+async function safeFetch(fn, fallback, label) {
+  try {
+    const result = await fn();
+    return result;
+  } catch (error) {
+    console.error(`[Dashboard Prestamos] ${label || 'fetch'} fallo:`, error?.message || error);
+    return fallback;
+  }
+}
 
-  const [activosResult, pendientesResult, finalizadosResult, disponiblesResult] = await Promise.all(
-    [
-      pool.query(
-        `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id WHERE sp.estado = 'activo' ${activosScopeClause} ${activosLaboratoryClause}`,
+async function fetchDashboardStatsForManagement(req) {
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const activosParams = [];
+      const activosFacultadClause = buildFacultyNameScopeClause('s.facultad', scope, activosParams);
+      const activosLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
         activosParams
-      ),
-      pool.query(
-        `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id WHERE sp.estado IN ('pendiente', 'en_cola', 'aprobado') ${pendientesScopeClause} ${pendientesLaboratoryClause}`,
+      );
+      const pendientesParams = [];
+      const pendientesFacultadClause = buildFacultyNameScopeClause(
+        's.facultad',
+        scope,
         pendientesParams
-      ),
-      pool.query(
-        `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id WHERE sp.estado = 'finalizado' ${finalizadosScopeClause} ${finalizadosLaboratoryClause}`,
+      );
+      const pendientesLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
+        pendientesParams
+      );
+      const finalizadosParams = [];
+      const finalizadosFacultadClause = buildFacultyNameScopeClause(
+        's.facultad',
+        scope,
         finalizadosParams
-      ),
-      pool.query(
-        `SELECT COUNT(*)::int AS total FROM equipo e WHERE e.estado = 'disponible' ${disponiblesScopeClause} ${disponiblesLaboratoryClause}`,
+      );
+      const finalizadosLaboratorioClause = buildLaboratoryNameScopeClause(
+        's.laboratorio',
+        scope,
+        finalizadosParams
+      );
+      const disponiblesParams = [];
+      const disponiblesFacultadClause = buildFacultyNameScopeClause(
+        'e.facultad',
+        scope,
         disponiblesParams
-      ),
-    ]
+      );
+      const disponiblesLaboratorioClause = buildLaboratoryNameScopeClause(
+        'e.laboratorio',
+        scope,
+        disponiblesParams
+      );
+      const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause} ${activosLaboratorioClause}`,
+          activosParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause} ${pendientesLaboratorioClause}`,
+          pendientesParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause} ${finalizadosLaboratorioClause}`,
+          finalizadosParams
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
+          disponiblesParams
+        ),
+      ]);
+      return {
+        activos: Number(activosRow.rows[0]?.total || 0),
+        pendientes: Number(pendientesRow.rows[0]?.total || 0),
+        finalizados: Number(finalizadosRow.rows[0]?.total || 0),
+        disponibles: Number(disponiblesRow.rows[0]?.total || 0),
+      };
+    },
+    { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 },
+    'fetchDashboardStatsForManagement'
   );
-
-  return {
-    activos: Number(activosResult.rows[0]?.total || 0),
-    pendientes: Number(pendientesResult.rows[0]?.total || 0),
-    finalizados: Number(finalizadosResult.rows[0]?.total || 0),
-    disponibles: Number(disponiblesResult.rows[0]?.total || 0),
-  };
 }
 
 async function fetchDashboardStatsForUser(usuarioId) {
-  const params = usuarioId ? [usuarioId] : [];
-  const whereClause = usuarioId ? 'WHERE sp.usuario_id = $1' : 'WHERE FALSE';
-
-  const [activosResult, pendientesResult, finalizadosResult, disponiblesResult] = await Promise.all(
-    [
-      usuarioId
-        ? pool.query(
-            `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp ${whereClause} AND sp.estado = 'activo'`,
-            params
-          )
-        : Promise.resolve({ rows: [{ total: 0 }] }),
-      usuarioId
-        ? pool.query(
-            `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp ${whereClause} AND sp.estado IN ('pendiente', 'en_cola', 'aprobado')`,
-            params
-          )
-        : Promise.resolve({ rows: [{ total: 0 }] }),
-      usuarioId
-        ? pool.query(
-            `SELECT COUNT(*)::int AS total FROM solicitud_prestamo sp ${whereClause} AND sp.estado = 'finalizado'`,
-            params
-          )
-        : Promise.resolve({ rows: [{ total: 0 }] }),
-      pool.query(`SELECT COUNT(*)::int AS total FROM equipo e WHERE e.estado = 'disponible'`),
-    ]
+  return safeFetch(
+    async () => {
+      const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('finalizada', 'cerrada')`,
+          [usuarioId || null]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible'`
+        ),
+      ]);
+      return {
+        activos: Number(activosRow.rows[0]?.total || 0),
+        pendientes: Number(pendientesRow.rows[0]?.total || 0),
+        finalizados: Number(finalizadosRow.rows[0]?.total || 0),
+        disponibles: Number(disponiblesRow.rows[0]?.total || 0),
+      };
+    },
+    { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 },
+    'fetchDashboardStatsForUser'
   );
-
-  return {
-    activos: Number(activosResult.rows[0]?.total || 0),
-    pendientes: Number(pendientesResult.rows[0]?.total || 0),
-    finalizados: Number(finalizadosResult.rows[0]?.total || 0),
-    disponibles: Number(disponiblesResult.rows[0]?.total || 0),
-  };
 }
 
-async function fetchActiveLoansForManagement(scope, limit = 3) {
-  const params = [];
-  const scopeClause = buildFacultyNameScopeClause('e.facultad', scope, params);
-  const labClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
-  const result = await pool.query(
-    `SELECT sp.id, sp.estado, sp.fecha_inicio, sp.fecha_fin, e.id AS equipo_id, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre, u.nombre AS solicitante_nombre, u.documento AS solicitante_documento FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id JOIN usuario u ON u.id = sp.usuario_id WHERE sp.estado = 'activo' ${scopeClause} ${labClause} ORDER BY sp.fecha_fin ASC LIMIT $${params.length + 1}::int`,
-    [...params, limit]
+async function fetchActiveLoansForManagement(req) {
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const params = [];
+      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchActiveLoansForManagement'
   );
-  return result.rows || [];
 }
 
-async function fetchPendingRequestsForManagement(scope, limit = 3) {
-  const params = [];
-  const scopeClause = buildFacultyNameScopeClause('e.facultad', scope, params);
-  const labClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
-  const result = await pool.query(
-    `SELECT sp.id, sp.estado, sp.fecha_inicio, sp.fecha_creacion AS fecha_solicitud, e.id AS equipo_id, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre, u.nombre AS solicitante_nombre, u.documento AS solicitante_documento FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id JOIN usuario u ON u.id = sp.usuario_id WHERE sp.estado IN ('pendiente', 'en_cola', 'aprobado') ${scopeClause} ${labClause} ORDER BY sp.fecha_creacion DESC LIMIT $${params.length + 1}::int`,
-    [...params, limit]
+async function fetchPendingRequestsForManagement(req) {
+  return safeFetch(
+    async () => {
+      const scope = await resolveLoanManagementScope(req);
+      const params = [];
+      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchPendingRequestsForManagement'
   );
-  return result.rows || [];
 }
 
-async function fetchActiveLoansForUser(usuarioId, limit = 3) {
-  if (!usuarioId) return [];
-  const result = await pool.query(
-    `SELECT sp.id, sp.estado, sp.fecha_inicio, sp.fecha_fin, e.id AS equipo_id, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id WHERE sp.usuario_id = $1::bigint AND sp.estado = 'activo' ORDER BY sp.fecha_fin ASC LIMIT $2::int`,
-    [usuarioId, limit]
+async function fetchActiveLoansForUser(usuarioId) {
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchActiveLoansForUser'
   );
-  return result.rows || [];
 }
 
-async function fetchPendingRequestsForUser(usuarioId, limit = 3) {
-  if (!usuarioId) return [];
-  const result = await pool.query(
-    `SELECT sp.id, sp.estado, sp.fecha_inicio, sp.fecha_creacion AS fecha_solicitud, e.id AS equipo_id, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre FROM solicitud_prestamo sp JOIN equipo e ON e.id = sp.equipo_id WHERE sp.usuario_id = $1::bigint AND sp.estado IN ('pendiente', 'en_cola', 'aprobado') ORDER BY sp.fecha_creacion DESC LIMIT $2::int`,
-    [usuarioId, limit]
+async function fetchPendingRequestsForUser(usuarioId) {
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchPendingRequestsForUser'
   );
-  return result.rows || [];
 }
 
-async function fetchRecentActivityForManagement(scope, limit = 5) {
-  const result = await pool.query(
-    `SELECT l.fecha, l.nombre, l.accion, l.persona FROM log l WHERE l.accion = ANY($1::text[]) ORDER BY l.fecha DESC LIMIT $2::int`,
-    [PRESTAMOS_AUDIT_ACTIONS, limit]
+async function fetchRecentActivityForManagement() {
+  return safeFetch(
+    async () => {
+      const params = [];
+      const actionsFilter = PRESTAMOS_AUDIT_ACTIONS.length
+        ? `AND a.accion = ANY($${params.length + 1}::text[])`
+        : '';
+      if (PRESTAMOS_AUDIT_ACTIONS.length) {
+        params.push(PRESTAMOS_AUDIT_ACTIONS);
+      }
+      const result = await pool.query(
+        `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' ${actionsFilter} ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
+        params
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchRecentActivityForManagement'
   );
-  return (result.rows || []).map((row) => {
-    const action = String(row.accion || '');
-    let icon = 'bi-circle-fill',
-      tone = 'rgba(124, 58, 237, 0.12)',
-      iconColor = '#7c3aed',
-      title = action;
-    const subject = row.persona || '';
-    if (
-      action.includes('Entregar') ||
-      (action.includes('Prestamo') && action.includes('Aprobar'))
-    ) {
-      icon = 'bi-box-arrow-right';
-      title = 'Préstamo aprobado';
-    } else if (action.includes('Recibir') || action.includes('Finalizar')) {
-      icon = 'bi-check2-circle';
-      tone = 'rgba(16, 185, 129, 0.12)';
-      iconColor = '#10b981';
-      title = 'Devolución registrada';
-    } else if (
-      action.includes('Solicitar') ||
-      action.includes('solicitud') ||
-      action.includes('Solicitud')
-    ) {
-      icon = 'bi-hourglass-split';
-      tone = 'rgba(245, 158, 11, 0.12)';
-      iconColor = '#f59e0b';
-      title = 'Nueva solicitud recibida';
-    } else if (action.includes('Incidencia') || action.includes('incidencia')) {
-      icon = 'bi-bug';
-      tone = 'rgba(239, 68, 68, 0.12)';
-      iconColor = '#ef4444';
-      title = 'Incidencia reportada';
-    } else if (action.includes('Rechazar') || action.includes('rechazada')) {
-      icon = 'bi-x-circle';
-      tone = 'rgba(239, 68, 68, 0.12)';
-      iconColor = '#ef4444';
-      title = 'Solicitud rechazada';
-    }
-    return { date: row.fecha, icon, tone, iconColor, title, subject };
-  });
 }
 
-async function fetchRecentActivityForUser(usuarioId, limit = 5) {
-  if (!usuarioId) return [];
-  const user = await pool.query(
-    `SELECT documento, nombre FROM usuario WHERE id = $1::bigint LIMIT 1`,
-    [usuarioId]
+async function fetchRecentActivityForUser(usuarioId) {
+  return safeFetch(
+    async () => {
+      const result = await pool.query(
+        `SELECT a.id, a.accion, a.entidad_tipo, a.entidad_id, a.fecha_creacion, a.usuario_nombre, a.detalle FROM auditoria a WHERE a.modulo = 'prestamos' AND a.usuario_id = $1 ORDER BY a.fecha_creacion DESC NULLS LAST LIMIT 10`,
+        [usuarioId || null]
+      );
+      return result.rows || [];
+    },
+    [],
+    'fetchRecentActivityForUser'
   );
-  const doc = user.rows[0]?.documento || '';
-  const name = user.rows[0]?.nombre || '';
-  const result = await pool.query(
-    `SELECT l.fecha, l.accion, l.persona FROM log l WHERE (l.persona ILIKE $1::text OR l.persona ILIKE $2::text) OR (l.accion = ANY($3::text[]) AND l.persona ILIKE $1::text) ORDER BY l.fecha DESC LIMIT $4::int`,
-    [`%${name || ''}%`, `%${doc || ''}%`, PRESTAMOS_AUDIT_ACTIONS, limit]
-  );
-  return (result.rows || []).map((row) => {
-    const action = String(row.accion || '');
-    let icon = 'bi-circle-fill',
-      tone = 'rgba(124, 58, 237, 0.12)',
-      iconColor = '#7c3aed',
-      title = action;
-    const subject = '';
-    if (action.includes('Entregar')) {
-      icon = 'bi-box-arrow-right';
-      title = 'Préstamo aprobado';
-    } else if (action.includes('Recibir') || action.includes('Finalizar')) {
-      icon = 'bi-check2-circle';
-      tone = 'rgba(16, 185, 129, 0.12)';
-      iconColor = '#10b981';
-      title = 'Devolución registrada';
-    } else if (action.includes('Solicitud')) {
-      icon = 'bi-hourglass-split';
-      tone = 'rgba(245, 158, 11, 0.12)';
-      iconColor = '#f59e0b';
-      title = 'Estado de solicitud actualizado';
-    } else if (action.includes('Incidencia')) {
-      icon = 'bi-bug';
-      tone = 'rgba(239, 68, 68, 0.12)';
-      iconColor = '#ef4444';
-      title = 'Incidencia reportada';
-    } else if (action.includes('Rechazar')) {
-      icon = 'bi-x-circle';
-      tone = 'rgba(239, 68, 68, 0.12)';
-      iconColor = '#ef4444';
-      title = 'Solicitud rechazada';
-    }
-    return { date: row.fecha, icon, tone, iconColor, title, subject };
-  });
 }
 
-router.get('/', async function (req, res) {
+async function renderPrestamosDashboard(req, res) {
   try {
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
-    if (!roles.length) return res.redirect('/milab/auth/login');
-
+    if (!roles.length) {
+      return res.redirect('/milab/auth/login');
+    }
     const primaryRole = getPrimaryRole(roles);
     const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(
       primaryRole
     );
-    const isStudentOrTeacher = ['estudiante', 'docente'].includes(primaryRole);
-    if (!isManagementRole && !isStudentOrTeacher) return res.redirect('/milab/inicio');
-
-    let stats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
-    let activeLoans = [],
-      pendingRequests = [],
-      recentActivity = [];
+    const usuario = await fetchUsuarioBySession(req);
+    const usuarioId = usuario?.id ? Number(usuario.id) : null;
     const moduleCards = buildDashboardModuleCardsForRole(primaryRole);
     const quickLinks = buildDashboardQuickLinksForRole(primaryRole);
-
+    let stats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
+    let activeLoans = [];
+    let pendingRequests = [];
+    let recentActivity = [];
     if (isManagementRole) {
-      const scope = await resolveLoanManagementScope(req);
       [stats, activeLoans, pendingRequests, recentActivity] = await Promise.all([
-        fetchDashboardStatsForManagement(scope),
-        fetchActiveLoansForManagement(scope, 3),
-        fetchPendingRequestsForManagement(scope, 3),
-        fetchRecentActivityForManagement(scope, 5),
+        fetchDashboardStatsForManagement(req),
+        fetchActiveLoansForManagement(req),
+        fetchPendingRequestsForManagement(req),
+        fetchRecentActivityForManagement(),
       ]);
-    } else if (isStudentOrTeacher) {
-      const sessionUser = req.session?.user;
-      const usuario = await fetchUsuarioBySession(sessionUser).catch(() => null);
-      const usuarioId = usuario?.id || null;
+    } else {
       [stats, activeLoans, pendingRequests, recentActivity] = await Promise.all([
         fetchDashboardStatsForUser(usuarioId),
-        fetchActiveLoansForUser(usuarioId, 3),
-        fetchPendingRequestsForUser(usuarioId, 3),
-        fetchRecentActivityForUser(usuarioId, 5),
+        fetchActiveLoansForUser(usuarioId),
+        fetchPendingRequestsForUser(usuarioId),
+        fetchRecentActivityForUser(usuarioId),
       ]);
     }
-
     return res.render('home/prestamos/dashboard', {
+      title: 'Prestamos',
+      user: req.session?.user || null,
       tipo: primaryRole,
       roles,
       stats,
@@ -802,15 +833,36 @@ router.get('/', async function (req, res) {
       recentActivity,
     });
   } catch (error) {
-    console.error('Error cargando dashboard de prestamos MiLab:', error);
+    console.error('[Dashboard Prestamos] Error renderizando dashboard:', error);
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    if (primaryRole === 'estudiante' || primaryRole === 'docente')
-      return res.redirect('/milab/prestamos/solicitar');
-    if (primaryRole === 'monitor') return res.redirect('/milab/prestamos/gestion-solicitudes');
-    return res.redirect('/milab/prestamos/reportes');
+    const moduleCards = buildDashboardModuleCardsForRole(primaryRole);
+    const quickLinks = buildDashboardQuickLinksForRole(primaryRole);
+    const fallbackStats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
+    return res.render('home/prestamos/dashboard', {
+      title: 'Prestamos',
+      user: req.session?.user || null,
+      tipo: primaryRole,
+      roles,
+      stats: fallbackStats,
+      activeLoans: [],
+      pendingRequests: [],
+      moduleCards,
+      quickLinks,
+      recentActivity: [],
+    });
   }
+}
+
+router.get('/', function (req, res) {
+  const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+  if (!roles.length) {
+    return res.redirect('/milab/auth/login');
+  }
+  return renderPrestamosDashboard(req, res);
 });
+
+router.get('/dashboard', renderPrestamosDashboard);
 
 const INVENTARIO_MENU_ROUTE = '/milab/prestamos/inventario';
 const EQUIPOS_MENU_ROUTE = '/milab/prestamos/equipos';

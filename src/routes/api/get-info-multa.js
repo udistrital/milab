@@ -4,6 +4,7 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
+const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 
 // Variables de entorno
 require('dotenv').config();
@@ -174,14 +175,33 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       if (result2.rows.length === 0) {
         throw new Error('No se encontró laboratorista con ese documento');
       }
-      const laboratorista = result2.rows[0];
-      nombre_lab = laboratorista.nombre;
-      cc_lab = laboratorista.documento;
-      uals = await resolveLaboratoristaUals(laboratorista);
+      const query3 = `
+        SELECT DISTINCT
+          u.ual_id,
+          u.nombre,
+          u.codigo_abreviacion,
+          u.sal_id_espacio,
+          u.sal_ocupantes,
+          u.facultad_id
+        FROM laboratorista_ual lu
+        INNER JOIN ual u
+          ON u.ual_id = lu.ual_id
+        WHERE lu.laboratorista_documento_id = $1
+          AND u.activo = TRUE
+        ORDER BY u.nombre ASC
+      `;
+      const values3 = [result2.rows[0].documento];
+      const result3 = await pool.query(query3, values3);
+      nombre_lab = result2.rows[0].nombre;
+      cc_lab = result2.rows[0].documento;
+      uals = result3.rows;
     } else if (req.session.user.tipo === 'admin') {
       nombre_lab = 'admin';
       cc_lab = 0;
-      uals = null;
+      const queryUalsTodas =
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE ORDER BY nombre ASC';
+      const resultAdminUals = await pool.query(queryUalsTodas);
+      uals = resultAdminUals.rows;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
       const values = [req.session.user.documento];
@@ -189,12 +209,30 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
 
       const facultadId = result.rows[0].facultad_id;
       const queryUals =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
+        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
       const resultUals = await pool.query(queryUals, [facultadId]);
 
       nombre_lab = result.rows[0].nombre;
       cc_lab = result.rows[0].documento;
       uals = resultUals.rows;
+    }
+
+    if (Array.isArray(uals) && uals.length > 0) {
+      const facultyIds = [
+        ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
+      ];
+      const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
+      uals = uals.map((u) => {
+        const cfg = Number.isFinite(Number(u.facultad_id))
+          ? configMap.get(Number(u.facultad_id))
+          : null;
+        return {
+          ...u,
+          _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
+        };
+      });
+    } else if (uals === null) {
+      uals = [];
     }
 
     if (con_estado === 'EGRESADO') {
@@ -214,6 +252,7 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
       nombre_lab,
       cc_lab,
       uals,
+      SANCTION_TYPES,
     });
 
     // Guardar en la base de datos la solicitud de certificado

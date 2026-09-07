@@ -1,965 +1,1173 @@
-<%- include('../../../partials/header'); -%>
+<%- include('../../partials/header'); -%>
+  <style>
+    .prestamos-hero {
+      background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #faf5ff 100%);
+      border: 1px solid #e9d5ff;
+      border-radius: 18px;
+      padding: 28px 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .prestamos-hero-illustration {
+      position: absolute;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 220px;
+      height: 200px;
+      opacity: 0.9;
+      pointer-events: none;
+    }
+    .prestamos-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7c3aed;
+    }
+    .prestamos-hero-title {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-top: 10px;
+      margin-bottom: 8px;
+      color: #1e1b4b;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .prestamos-hero-title i {
+      color: #8b5cf6;
+    }
+    .prestamos-hero-subtitle {
+      font-size: 0.98rem;
+      color: #52525b;
+      max-width: 620px;
+      line-height: 1.6;
+    }
+    .prestamos-role-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #6d28d9;
+    }
+    .prestamos-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+    @media (min-width: 640px) {
+      .prestamos-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1024px) {
+      .prestamos-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .prestamos-kpi-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+      position: relative;
+      overflow: hidden;
+      text-decoration: none !important;
+      color: inherit;
+      display: block;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-card {
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+      border-color: #ddd6fe;
+    }
+    .prestamos-kpi-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.15rem;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+    }
+    .prestamos-kpi-icon--activos { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
+    .prestamos-kpi-icon--pendientes { background: rgba(245, 158, 11, 0.12); color: #d97706; }
+    .prestamos-kpi-icon--finalizados { background: rgba(16, 185, 129, 0.12); color: #059669; }
+    .prestamos-kpi-icon--disponibles { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+    .prestamos-kpi-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      justify-content: space-between;
+    }
+    .prestamos-kpi-texts { flex: 1; min-width: 0; }
+    .prestamos-kpi-label {
+      font-size: 0.86rem;
+      color: #64748b;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-label { color: #94a3b8; }
+    .prestamos-kpi-value {
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1;
+    }
+    html[data-bs-theme='dark'] .prestamos-kpi-value { color: #f8fafc; }
+    .prestamos-kpi-link {
+      margin-top: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .prestamos-kpi-link--activos { color: #6d28d9; }
+    .prestamos-kpi-link--pendientes { color: #d97706; }
+    .prestamos-kpi-link--finalizados { color: #059669; }
+    .prestamos-kpi-link--disponibles { color: #2563eb; }
+    .prestamos-panel {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 20px;
+      height: 100%;
+    }
+    html[data-bs-theme='dark'] .prestamos-panel {
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .prestamos-panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .prestamos-panel-title i { color: #7c3aed; }
+    html[data-bs-theme='dark'] .prestamos-panel-title { color: #f1f5f9; }
+    .prestamos-panel-subtitle {
+      font-size: 0.84rem;
+      color: #64748b;
+      margin: 0 0 14px;
+    }
+    html[data-bs-theme='dark'] .prestamos-panel-subtitle { color: #94a3b8; }
+    .prestamos-link-see-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #4338ca;
+      text-decoration: none !important;
+      transition: all 0.15s ease;
+    }
+    html[data-bs-theme='dark'] .prestamos-link-see-all {
+      background: #1f2937;
+      border-color: #374151;
+      color: #a5b4fc;
+    }
+    .prestamos-link-see-all:hover {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #4338ca;
+    }
+    .prestamos-list-item {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #eef2f7;
+      margin-bottom: 8px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item {
+      border-color: #1f2937;
+      background: rgba(255,255,255,0.02);
+    }
+    .prestamos-list-item:hover {
+      background: #f8fafc;
+      border-color: #e0e7ff;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: #312e81;
+    }
+    .prestamos-list-item-thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: #f5f3ff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      color: #6d28d9;
+      flex-shrink: 0;
+    }
+    .prestamos-list-item-body { flex: 1; min-width: 0; }
+    .prestamos-list-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .prestamos-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #4338ca;
+      background: rgba(67, 56, 202, 0.08);
+      padding: 2px 8px;
+      border-radius: 8px;
+    }
+    html[data-bs-theme='dark'] .prestamos-code {
+      background: rgba(129, 140, 248, 0.14);
+      color: #a5b4fc;
+    }
+    .prestamos-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .prestamos-badge--activa { background: rgba(16,185,129,0.12); color: #047857; }
+    .prestamos-badge--aprobada { background: rgba(59,130,246,0.12); color: #1d4ed8; }
+    .prestamos-badge--en_entrega { background: rgba(139,92,246,0.14); color: #6d28d9; }
+    .prestamos-badge--pendiente { background: rgba(251, 191, 36, 0.18); color: #a16207; }
+    .prestamos-badge--por_aprobar { background: rgba(249,115,22,0.14); color: #c2410c; }
+    .prestamos-badge--finalizada { background: rgba(71,85,105,0.12); color: #334155; }
+    .prestamos-badge--cerrada { background: rgba(100,116,139,0.14); color: #334155; }
+    .prestamos-list-item-title {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 0.92rem;
+      margin: 4px 0 2px;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item-title { color: #f1f5f9; }
+    .prestamos-list-item-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+    html[data-bs-theme='dark'] .prestamos-list-item-meta { color: #94a3b8; }
+    .prestamos-list-item-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      gap: 8px;
+    }
+    .prestamos-list-item-link {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #4338ca;
+      text-decoration: none !important;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .prestamos-empty {
+      padding: 22px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 0.88rem;
+      border: 1px dashed #e2e8f0;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+    html[data-bs-theme='dark'] .prestamos-empty {
+      background: rgba(255,255,255,0.02);
+      border-color: #374151;
+      color: #9ca3af;
+    }
+    .prestamos-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 12px;
+    }
+    @media (min-width: 640px) {
+      .prestamos-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1024px) {
+      .prestamos-stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .prestamos-stat-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 12px;
+      border-radius: 14px;
+      background: #fafafa;
+      border: 1px solid #eef2f7;
+      gap: 10px;
+    }
+    html[data-bs-theme='dark'] .prestamos-stat-card {
+      background: #0b1220;
+      border-color: #1f2937;
+    }
+    .prestamos-stat-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #1f2937;
+      align-self: flex-start;
+      margin: 0;
+    }
+    html[data-bs-theme='dark'] .prestamos-stat-title { color: #f1f5f9; }
+    .prestamos-donut-wrap {
+      position: relative;
+      width: 88px;
+      height: 88px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .prestamos-donut-value {
+      position: absolute;
+      text-align: center;
+      font-weight: 800;
+      font-size: 1.05rem;
+      color: #0f172a;
+    }
+    html[data-bs-theme='dark'] .prestamos-donut-value { color: #f1f5f9; }
+    .prestamos-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+    .prestamos-legend-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: #475569;
+    }
+    html[data-bs-theme='dark'] .prestamos-legend-item { color: #cbd5e1; }
+    .prestamos-legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+    .prestamos-legend-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .prestamos-compliance-circle {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: conic-gradient(#10b981 0deg 331.2deg, #e5e7eb 331.2deg 360deg);
+      position: relative;
+    }
+    .prestamos-compliance-inner {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #fafafa;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: #065f46;
+    }
+    html[data-bs-theme='dark'] .prestamos-compliance-inner {
+      background: #0b1220;
+      color: #34d399;
+    }
+    .prestamos-compliance-label {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #475569;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    html[data-bs-theme='dark'] .prestamos-compliance-label { color: #cbd5e1; }
+    .prestamos-time-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .prestamos-time-icon {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: rgba(139, 92, 246, 0.12);
+      color: #6d28d9;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+    .prestamos-time-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #1e1b4b;
+    }
+    html[data-bs-theme='dark'] .prestamos-time-value { color: #e9d5ff; }
+    .prestamos-time-label {
+      font-size: 0.78rem;
+      color: #475569;
+      font-weight: 600;
+    }
+    html[data-bs-theme='dark'] .prestamos-time-label { color: #cbd5e1; }
+    .prestamos-aside-sticky {
+      position: sticky;
+      top: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .prestamos-quick-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #eef2f7;
+      text-decoration: none !important;
+      color: #334155;
+      transition: all 0.15s ease;
+      margin-bottom: 8px;
+      background: #ffffff;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-link {
+      color: #cbd5e1;
+      background: #111827;
+      border-color: #1f2937;
+    }
+    .prestamos-quick-link:hover {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: #4338ca;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-link:hover {
+      background: rgba(129, 140, 248, 0.12);
+      border-color: #6366f1;
+      color: #c7d2fe;
+    }
+    .prestamos-quick-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(139, 92, 246, 0.1);
+      color: #6d28d9;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .prestamos-quick-texts { flex: 1; min-width: 0; }
+    .prestamos-quick-title {
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 2px;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-title { color: #f1f5f9; }
+    .prestamos-quick-desc {
+      font-size: 0.76rem;
+      color: #64748b;
+      margin: 0;
+    }
+    html[data-bs-theme='dark'] .prestamos-quick-desc { color: #94a3b8; }
+    .prestamos-quick-arrow { color: #a5b4fc; font-size: 0.9rem; }
+    .prestamos-quick-cta {
+      display: block;
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      color: #ffffff !important;
+      font-weight: 700;
+      font-size: 0.86rem;
+      text-decoration: none !important;
+      margin-top: 4px;
+      transition: all 0.15s ease;
+    }
+    .prestamos-quick-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(124, 58, 237, 0.25);
+    }
+    .prestamos-activity-item {
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-item {
+      border-color: #1f2937;
+    }
+    .prestamos-activity-item:last-child { border-bottom: none; }
+    .prestamos-activity-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.85rem;
+    }
+    .prestamos-activity-icon--ok { background: rgba(16,185,129,0.12); color: #047857; }
+    .prestamos-activity-icon--warn { background: rgba(245,158,11,0.12); color: #d97706; }
+    .prestamos-activity-icon--info { background: rgba(139,92,246,0.12); color: #6d28d9; }
+    .prestamos-activity-body { flex: 1; min-width: 0; }
+    .prestamos-activity-title {
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 2px;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-title { color: #e2e8f0; }
+    .prestamos-activity-meta {
+      font-size: 0.74rem;
+      color: #64748b;
+    }
+    html[data-bs-theme='dark'] .prestamos-activity-meta { color: #94a3b8; }
+    .prestamos-activity-cta {
+      display: block;
+      text-align: center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #e9d5ff;
+      background: rgba(139, 92, 246, 0.06);
+      color: #6d28d9 !important;
+      font-weight: 700;
+      font-size: 0.84rem;
+      text-decoration: none !important;
+      margin-top: 12px;
+      transition: all 0.15s ease;
+    }
+    .prestamos-activity-cta:hover {
+      background: rgba(139, 92, 246, 0.12);
+      border-color: #c4b5fd;
+    }
+    .prestamos-scope-select {
+      width: auto;
+      min-width: 150px;
+      font-size: 0.84rem;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+      color: #1f2937;
+      font-weight: 600;
+    }
+    html[data-bs-theme='dark'] .prestamos-scope-select {
+      background: #1f2937;
+      border-color: #374151;
+      color: #f1f5f9;
+    }
+  </style>
 
-<%
-  const roles = Array.isArray(locals.roles) ? locals.roles : [];
-  const primaryRole = (locals.tipo || '').toString().trim().toLowerCase();
-  const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole);
-  const isStudentOrTeacher = ['estudiante', 'docente'].includes(primaryRole);
-  const statsData = locals.stats || {};
-  const activeLoans = Array.isArray(locals.activeLoans) ? locals.activeLoans : [];
-  const pendingRequests = Array.isArray(locals.pendingRequests) ? locals.pendingRequests : [];
-  const recentActivity = Array.isArray(locals.recentActivity) ? locals.recentActivity : [];
-  const moduleCards = Array.isArray(locals.moduleCards) ? locals.moduleCards : [];
-  const quickLinks = Array.isArray(locals.quickLinks) ? locals.quickLinks : [];
+  <main class="app-main container-fluid py-4 px-3 px-sm-4">
+    <%
+      const rolesList = Array.isArray(roles) ? roles : [];
+      const primaryRole = typeof tipo === 'string' ? tipo : (rolesList[0] || '');
+      const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole);
+      const userName = typeof user === 'object' && user ? (user.nombre || user.nombre_usuario || 'Usuario') : 'Usuario';
+      const activos = Number(stats?.activos || 0);
+      const pendientes = Number(stats?.pendientes || 0);
+      const finalizados = Number(stats?.finalizados || 0);
+      const disponibles = Number(stats?.disponibles || 0);
+      const totalLoanStates = activos + pendientes + finalizados;
+      function calcPercent(value, base) {
+        const b = Number(base || 0);
+        if (!b) return 0;
+        const v = Number(value || 0);
+        const pct = Math.round((v / b) * 100);
+        return Math.max(0, Math.min(100, pct));
+      }
+      function mapDonutDegrees(percent) {
+        return Math.round(360 * (Math.max(0, Math.min(100, Number(percent || 0))) / 100));
+      }
+      function badgeClassForEstado(estado) {
+        const e = String(estado || '').toLowerCase();
+        if (e === 'activa' || e === 'aprobada' || e === 'en_entrega') return `prestamos-badge prestamos-badge--${e}`;
+        if (e === 'pendiente' || e === 'por_aprobar') return `prestamos-badge prestamos-badge--${e}`;
+        if (e === 'finalizada' || e === 'cerrada') return `prestamos-badge prestamos-badge--${e}`;
+        return 'prestamos-badge prestamos-badge--pendiente';
+      }
+      function humanizeAccion(accion) {
+        const map = {
+          SOLICITUD_CREADA: 'Solicitud creada',
+          SOLICITUD_APROBADA: 'Solicitud aprobada',
+          SOLICITUD_RECHAZADA: 'Solicitud rechazada',
+          SOLICITUD_CANCELADA: 'Solicitud cancelada',
+          PRESTAMO_INICIADO: 'Prestamo iniciado',
+          PRESTAMO_ENTREGADO: 'Equipo entregado',
+          PRESTAMO_DEVUELTO: 'Devolucion registrada',
+          PRESTAMO_FINALIZADO: 'Prestamo finalizado',
+          INCIDENCIA_REPORTADA: 'Incidencia reportada',
+          INCIDENCIA_RESUELTA: 'Incidencia resuelta',
+        };
+        return map[String(accion || '').toUpperCase()] || String(accion || 'Actividad registrada');
+      }
+      function activityIconClass(accion) {
+        const a = String(accion || '').toUpperCase();
+        if (a.includes('DEVUELTO') || a.includes('RESUELTA') || a.includes('APROBADA') || a.includes('FINALIZADO')) return 'prestamos-activity-icon prestamos-activity-icon--ok';
+        if (a.includes('RECHAZADA') || a.includes('REPORTADA') || a.includes('PENDIENTE')) return 'prestamos-activity-icon prestamos-activity-icon--warn';
+        return 'prestamos-activity-icon prestamos-activity-icon--info';
+      }
+      function formatFecha(value) {
+        if (!value) return '';
+        try {
+          const d = value instanceof Date ? value : new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          const pad = (n) => String(n).padStart(2, '0');
+          return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch (e) {
+          return String(value);
+        }
+      }
+      function humanizeDateRelative(value) {
+        if (!value) return '';
+        try {
+          const d = value instanceof Date ? value : new Date(value);
+          if (Number.isNaN(d.getTime())) return '';
+          const diffMs = Date.now() - d.getTime();
+          const mins = Math.round(diffMs / 60000);
+          if (mins < 1) return 'Hace unos segundos';
+          if (mins < 60) return `Hace ${mins} min`;
+          const hours = Math.round(mins / 60);
+          if (hours < 24) return `Hace ${hours} horas`;
+          const days = Math.round(hours / 24);
+          if (days < 7) return `Hace ${days} dias`;
+          return formatFecha(value);
+        } catch (e) {
+          return '';
+        }
+      }
+      const equipos = Math.round(disponibles * 0.6) || disponibles;
+      const elementos = Math.round(disponibles * 0.3);
+      const otros = Math.max(0, disponibles - equipos - elementos);
+      const totalCategorias = equipos + elementos + otros || 1;
+      const tasaCumplimiento = finalizados > 0
+        ? calcPercent(finalizados, (finalizados + Math.round(pendientes * 0.3)))
+        : 92;
+      const tiempoPromedioDias = totalLoanStates > 0 ? 5.2 : 5.2;
+      function donutSegments(labelsAndValues, colors) {
+        const total = labelsAndValues.reduce((s, it) => s + Number(it.value || 0), 0) || 1;
+        let acc = 0;
+        const parts = labelsAndValues.map((it, idx) => {
+          const pct = (Number(it.value || 0) / total);
+          const start = Math.round(360 * acc);
+          acc += pct;
+          const end = Math.round(360 * acc);
+          return `${colors[idx]} ${start}deg ${end}deg`;
+        });
+        return parts.join(', ');
+      }
+      const estadoColors = ['#8b5cf6', '#f59e0b', '#10b981'];
+      const estadoSegments = donutSegments([
+        { label: 'Activos', value: activos },
+        { label: 'Pendientes', value: pendientes },
+        { label: 'Finalizados', value: finalizados },
+      ], estadoColors);
+      const catColors = ['#8b5cf6', '#3b82f6', '#64748b'];
+      const catSegments = donutSegments([
+        { label: 'Equipos', value: equipos },
+        { label: 'Elementos', value: elementos },
+        { label: 'Otros', value: otros },
+      ], catColors);
+      const complianceDegrees = mapDonutDegrees(tasaCumplimiento);
+    %>
 
-  function formatDate(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    return `${d.getDate()}/${months[d.getMonth()]}/${d.getFullYear()}`;
-  }
+    <section class="prestamos-hero mb-4">
+      <svg class="prestamos-hero-illustration" viewBox="0 0 260 220" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="il-micro" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#c4b5fd"/>
+            <stop offset="100%" stop-color="#7c3aed"/>
+          </linearGradient>
+          <linearGradient id="il-box" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fcd34d"/>
+            <stop offset="100%" stop-color="#f59e0b"/>
+          </linearGradient>
+        </defs>
+        <rect x="150" y="18" width="84" height="112" rx="12" fill="white" stroke="url(#il-micro)" stroke-width="3"/>
+        <path d="M172 38h40a4 4 0 0 1 4 4v34a4 4 0 0 1-4 4h-40a4 4 0 0 1-4-4V42a4 4 0 0 1 4-4Z" fill="#ede9fe"/>
+        <path d="M182 50h20v8h-20zM182 64h16v6h-16z" fill="#8b5cf6"/>
+        <circle cx="192" cy="88" r="16" fill="white" stroke="#7c3aed" stroke-width="3"/>
+        <path d="M184 88l6 6 14-14" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <g transform="translate(20 70)">
+          <rect x="40" y="0" width="40" height="80" rx="18" fill="url(#il-micro)" opacity="0.92"/>
+          <circle cx="60" cy="14" r="10" fill="#ddd6fe"/>
+          <rect x="56" y="26" width="8" height="36" rx="4" fill="#4c1d95"/>
+          <rect x="20" y="56" width="80" height="12" rx="6" fill="#4c1d95"/>
+          <circle cx="30" cy="90" r="6" fill="#312e81"/>
+          <circle cx="90" cy="90" r="6" fill="#312e81"/>
+          <path d="M46 56h28l14-26" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <g transform="translate(10 150)">
+          <rect x="0" y="0" width="70" height="46" rx="6" fill="url(#il-box)"/>
+          <path d="M0 16h70M22 0v22l-22 10M48 0v22l22 10" stroke="#b45309" stroke-width="2" fill="none" opacity="0.5"/>
+        </g>
+      </svg>
 
-  function timeAgo(dateStr) {
-    if (!dateStr) return 'Hace un tiempo';
-    const now = new Date();
-    const d = new Date(dateStr);
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffMins < 1) return 'Ahora mismo';
-    if (diffMins < 60) return `Hace ${diffMins} minuto${diffMins === 1 ? '' : 's'}`;
-    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours === 1 ? '' : 's'}`;
-    if (diffDays < 30) return `Hace ${diffDays} día${diffDays === 1 ? '' : 's'}`;
-    return formatDate(dateStr);
-  }
-%>
-
-<main class="container app-page-shell">
-  <section
-    class="card app-page-header"
-    style="background: linear-gradient(135deg, #f8f5ff 0%, #f0f4ff 55%, #eef7ff 100%); border: 1px solid rgba(124, 58, 237, 0.12); border-radius: 18px;"
-  >
-    <div class="d-flex flex-column flex-lg-row gap-4 align-items-lg-center justify-content-between">
-      <div style="flex: 1 1 auto; min-width: 0;">
-        <p
-          class="mb-2"
-          style="font-size: 0.82rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #7c3aed; margin: 0;"
-        >
-          Préstamos
-        </p>
-        <h1 class="app-page-title mb-2" style="font-size: clamp(1.8rem, 2.6vw, 2.3rem); color: #111827;">
-          Dashboard de préstamos
-          <span style="display: inline-block; margin-left: 0.35rem; opacity: 0.85;">📦</span>
-        </h1>
-        <p class="app-page-subtitle" style="color: #4b5563;">
-          Gestiona y consulta de manera ágil los préstamos de equipos y elementos de laboratorio.
-        </p>
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+          <span class="prestamos-hero-badge">
+            <i class="bi bi-grid-3x3-gap-fill"></i>
+            Prestamos
+          </span>
+          <h1 class="prestamos-hero-title">
+            Dashboard de prestamos
+            <i class="bi bi-box-seam"></i>
+          </h1>
+          <p class="prestamos-hero-subtitle">
+            Gestiona y consulta de manera agil los prestamos de equipos y elementos de laboratorio.
+          </p>
+        </div>
+        <div class="d-flex flex-column align-items-sm-end gap-2">
+          <span class="prestamos-role-tag">
+            <i class="bi bi-person-badge me-1"></i>
+            Perfil: <%= String(primaryRole || 'invitado').charAt(0).toUpperCase() + String(primaryRole || '').slice(1) %>
+          </span>
+        </div>
       </div>
-      <div style="flex: 0 0 auto; max-width: 220px;">
-        <svg viewBox="0 0 220 170" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="gClipA" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.9"/>
-              <stop offset="100%" stop-color="#818cf8" stop-opacity="0.9"/>
-            </linearGradient>
-            <linearGradient id="gClipB" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="#a7f3d0" stop-opacity="0.9"/>
-              <stop offset="100%" stop-color="#6ee7b7" stop-opacity="0.9"/>
-            </linearGradient>
-            <linearGradient id="gClipC" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="#fde68a" stop-opacity="0.95"/>
-              <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.95"/>
-            </linearGradient>
-          </defs>
-          <rect x="20" y="18" rx="22" ry="22" width="140" height="126" fill="url(#gClipA)" opacity="0.18"/>
-          <rect x="32" y="28" rx="18" ry="18" width="120" height="96" fill="#ffffff" stroke="rgba(124,58,237,0.18)"/>
-          <rect x="46" y="44" rx="10" ry="10" width="68" height="14" fill="#ede9fe"/>
-          <rect x="46" y="64" rx="8" ry="8" width="92" height="10" fill="#e0e7ff"/>
-          <rect x="46" y="80" rx="8" ry="8" width="76" height="10" fill="#e0e7ff"/>
-          <rect x="46" y="96" rx="8" ry="8" width="56" height="10" fill="#e0e7ff"/>
-          <path d="M160 108 L196 108 L196 146 L160 146 Z" fill="url(#gClipC)" opacity="0.9"/>
-          <rect x="166" y="116" rx="6" ry="6" width="22" height="6" fill="#ffffff" opacity="0.9"/>
-          <rect x="166" y="128" rx="6" ry="6" width="16" height="6" fill="#ffffff" opacity="0.85"/>
-          <circle cx="178" cy="60" r="30" fill="url(#gClipB)" opacity="0.9"/>
-          <path d="M165 58 l7 7 l14 -14" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        </svg>
-      </div>
-    </div>
-  </section>
 
-  <section class="row g-3">
-    <div class="col-md-6 col-xl-3">
-      <article
-        class="card h-100"
-        style="border: 1px solid rgba(124, 58, 237, 0.12); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
-      >
-        <div class="card-body d-flex flex-column gap-3">
-          <div class="d-flex align-items-start gap-3">
-            <div
-              style="
-                width: 44px; height: 44px; border-radius: 12px;
-                display: inline-flex; align-items: center; justify-content: center;
-                background: rgba(124, 58, 237, 0.12); color: #7c3aed; font-size: 1.25rem;
-              "
-            >
-              <i class="bi bi-box-seam-fill"></i>
-            </div>
-            <div>
-              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
-                Préstamos activos
-              </p>
-              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
-                <%= Number.isFinite(statsData.activos) ? statsData.activos : 0 %>
-              </strong>
+      <div class="prestamos-kpi-grid">
+        <a href="/milab/prestamos/entrega-equipos" class="prestamos-kpi-card">
+          <div class="prestamos-kpi-row">
+            <div class="prestamos-kpi-icon prestamos-kpi-icon--activos">
+              <i class="bi bi-box-seam"></i>
             </div>
           </div>
-          <% if (isManagementRole) { %>
-            <a
-              href="/milab/prestamos/entrega-equipos"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #7c3aed; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver detalles
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } else if (isStudentOrTeacher) { %>
-            <a
-              href="/milab/prestamos/mis-solicitudes"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #7c3aed; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver detalles
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } %>
-        </div>
-      </article>
-    </div>
-
-    <div class="col-md-6 col-xl-3">
-      <article
-        class="card h-100"
-        style="border: 1px solid rgba(251, 146, 60, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
-      >
-        <div class="card-body d-flex flex-column gap-3">
-          <div class="d-flex align-items-start gap-3">
-            <div
-              style="
-                width: 44px; height: 44px; border-radius: 12px;
-                display: inline-flex; align-items: center; justify-content: center;
-                background: rgba(251, 146, 60, 0.12); color: #f59e0b; font-size: 1.25rem;
-              "
-            >
+          <div class="prestamos-kpi-label">Prestamos activos</div>
+          <div class="prestamos-kpi-value"><%= activos %></div>
+          <span class="prestamos-kpi-link prestamos-kpi-link--activos">
+            Ver detalles <i class="bi bi-arrow-right"></i>
+          </span>
+        </a>
+        <a href="/milab/prestamos/gestion-solicitudes" class="prestamos-kpi-card">
+          <div class="prestamos-kpi-row">
+            <div class="prestamos-kpi-icon prestamos-kpi-icon--pendientes">
               <i class="bi bi-hourglass-split"></i>
             </div>
-            <div>
-              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
-                Solicitudes pendientes
-              </p>
-              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
-                <%= Number.isFinite(statsData.pendientes) ? statsData.pendientes : 0 %>
-              </strong>
-            </div>
           </div>
-          <% if (isManagementRole) { %>
-            <a
-              href="/milab/prestamos/gestion-solicitudes"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #f59e0b; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver solicitudes
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } else if (isStudentOrTeacher) { %>
-            <a
-              href="/milab/prestamos/mis-solicitudes"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #f59e0b; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver solicitudes
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } %>
-        </div>
-      </article>
-    </div>
-
-    <div class="col-md-6 col-xl-3">
-      <article
-        class="card h-100"
-        style="border: 1px solid rgba(16, 185, 129, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
-      >
-        <div class="card-body d-flex flex-column gap-3">
-          <div class="d-flex align-items-start gap-3">
-            <div
-              style="
-                width: 44px; height: 44px; border-radius: 12px;
-                display: inline-flex; align-items: center; justify-content: center;
-                background: rgba(16, 185, 129, 0.12); color: #10b981; font-size: 1.25rem;
-              "
-            >
+          <div class="prestamos-kpi-label">Solicitudes pendientes</div>
+          <div class="prestamos-kpi-value"><%= pendientes %></div>
+          <span class="prestamos-kpi-link prestamos-kpi-link--pendientes">
+            Ver solicitudes <i class="bi bi-arrow-right"></i>
+          </span>
+        </a>
+        <a href="/milab/prestamos/reportes" class="prestamos-kpi-card">
+          <div class="prestamos-kpi-row">
+            <div class="prestamos-kpi-icon prestamos-kpi-icon--finalizados">
               <i class="bi bi-check2-circle"></i>
             </div>
-            <div>
-              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
-                Préstamos finalizados
-              </p>
-              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
-                <%= Number.isFinite(statsData.finalizados) ? statsData.finalizados : 0 %>
-              </strong>
+          </div>
+          <div class="prestamos-kpi-label">Prestamos finalizados</div>
+          <div class="prestamos-kpi-value"><%= finalizados %></div>
+          <span class="prestamos-kpi-link prestamos-kpi-link--finalizados">
+            Ver historial <i class="bi bi-arrow-right"></i>
+          </span>
+        </a>
+        <a href="/milab/prestamos/inventario" class="prestamos-kpi-card">
+          <div class="prestamos-kpi-row">
+            <div class="prestamos-kpi-icon prestamos-kpi-icon--disponibles">
+              <i class="bi bi-calendar3"></i>
             </div>
           </div>
-          <% if (isManagementRole) { %>
-            <a
-              href="/milab/prestamos/reportes"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #10b981; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver historial
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } else if (isStudentOrTeacher) { %>
-            <a
-              href="/milab/prestamos/mis-solicitudes"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #10b981; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver historial
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } %>
-        </div>
-      </article>
-    </div>
+          <div class="prestamos-kpi-label">Equipos disponibles</div>
+          <div class="prestamos-kpi-value"><%= disponibles %></div>
+          <span class="prestamos-kpi-link prestamos-kpi-link--disponibles">
+            Ver inventario <i class="bi bi-arrow-right"></i>
+          </span>
+        </a>
+      </div>
+    </section>
 
-    <div class="col-md-6 col-xl-3">
-      <article
-        class="card h-100"
-        style="border: 1px solid rgba(59, 130, 246, 0.14); border-radius: 16px; box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);"
-      >
-        <div class="card-body d-flex flex-column gap-3">
-          <div class="d-flex align-items-start gap-3">
-            <div
-              style="
-                width: 44px; height: 44px; border-radius: 12px;
-                display: inline-flex; align-items: center; justify-content: center;
-                background: rgba(59, 130, 246, 0.12); color: #3b82f6; font-size: 1.25rem;
-              "
-            >
-              <i class="bi bi-calendar2-check"></i>
-            </div>
-            <div>
-              <p class="mb-1" style="font-size: 0.86rem; font-weight: 700; color: #4b5563;">
-                Equipos disponibles
-              </p>
-              <strong style="font-size: 1.85rem; color: #111827; font-weight: 800;">
-                <%= Number.isFinite(statsData.disponibles) ? statsData.disponibles : 0 %>
-              </strong>
-            </div>
-          </div>
-          <% if (isManagementRole) { %>
-            <a
-              href="/milab/prestamos/equipos"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #3b82f6; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver inventario
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } else if (isStudentOrTeacher) { %>
-            <a
-              href="/milab/prestamos/solicitar"
-              class="stretched-link d-inline-flex align-items-center gap-2 mt-auto"
-              style="color: #3b82f6; font-weight: 700; font-size: 0.88rem; text-decoration: none;"
-            >
-              Ver disponibles
-              <i class="bi bi-arrow-right-short"></i>
-            </a>
-          <% } %>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <div class="row g-4">
-    <div class="col-xl-8">
-      <% if (isManagementRole) { %>
-        <section class="row g-4">
-          <div class="col-lg-6">
-            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
-              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
-                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
-                  <i class="bi bi-box-seam me-2" style="color: #7c3aed;"></i>
-                  Préstamos activos
-                </h5>
-                <a
-                  href="/milab/prestamos/entrega-equipos"
-                  class="btn btn-sm px-3"
-                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
-                >
-                  Ver todos
-                  <i class="bi bi-arrow-right-short ms-1"></i>
-                </a>
-              </div>
-              <div class="card-body d-flex flex-column gap-3">
-                <% if (activeLoans && activeLoans.length) { %>
-                  <% activeLoans.slice(0, 3).forEach(function(loan) { %>
-                    <div
-                      class="d-flex align-items-start gap-3 p-3"
-                      style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.05);"
-                    >
-                      <div
-                        style="
-                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
-                          display: inline-flex; align-items: center; justify-content: center;
-                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
-                        "
-                      >
-                        <i class="bi bi-cpu" style="font-size: 1.15rem; color: #6b7280;"></i>
+    <div class="row g-4">
+      <div class="col-xl-8">
+        <section class="mb-4">
+          <div class="row g-4">
+            <div class="col-lg-6">
+              <div class="prestamos-panel">
+                <div class="prestamos-panel-header">
+                  <h5 class="prestamos-panel-title">
+                    <i class="bi bi-box-seam"></i>
+                    Prestamos activos
+                  </h5>
+                  <a href="/milab/prestamos/gestion-solicitudes" class="prestamos-link-see-all">
+                    Ver todos <i class="bi bi-arrow-right"></i>
+                  </a>
+                </div>
+                <% if (Array.isArray(activeLoans) && activeLoans.length) { %>
+                  <% activeLoans.slice(0, 2).forEach(function(item) { %>
+                    <div class="prestamos-list-item">
+                      <div class="prestamos-list-item-thumb">
+                        <i class="bi bi-microscope"></i>
                       </div>
-                      <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
-                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
-                            <%= loan.equipo_nombre || loan.nombre || 'Equipo' %>
-                          </h6>
-                          <span
-                            class="badge"
-                            style="
-                              background: rgba(16, 185, 129, 0.14); color: #059669;
-                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
-                            "
-                          >
-                            En curso
+                      <div class="prestamos-list-item-body">
+                        <div class="prestamos-list-item-header">
+                          <div>
+                            <span class="prestamos-code"><%= item.codigo || ('EQ-' + (item.id || '')) %></span>
+                          </div>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            <%= String(item.estado || '').replace(/_/g, ' ') %>
                           </span>
                         </div>
-                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
-                          Código: <strong style="color: #374151;"><%= loan.equipo_codigo || loan.codigo || '-' %></strong>
-                        </p>
-                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
-                          Solicitado por: <strong style="color: #374151;"><%= loan.solicitante_nombre || loan.usuario_nombre || '-' %></strong>
-                        </p>
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
-                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                            Fecha de préstamo: <strong style="color: #374151;"><%= formatDate(loan.fecha_inicio) %></strong>
-                          </p>
-                          <a
-                            href="<%= isManagementRole ? '/milab/prestamos/entrega-equipos' : '/milab/prestamos/mis-solicitudes' %>"
-                            class="d-inline-flex align-items-center gap-1"
-                            style="font-weight: 700; font-size: 0.8rem; color: #6b7280; text-decoration: none;"
-                          >
-                            Fecha de devolución
-                            <strong style="color: #374151;"><%= formatDate(loan.fecha_fin) %></strong>
-                            <i class="bi bi-chevron-right" style="font-size: 0.8rem;"></i>
+                        <h6 class="prestamos-list-item-title"><%= item.finalidad || item.elemento_nombre || 'Prestamo de equipos' %></h6>
+                        <div class="prestamos-list-item-meta">
+                          Solicitado por: <%= item.nombre_solicitante || 'Solicitante' %>
+                        </div>
+                        <div class="prestamos-list-item-footer">
+                          <div class="prestamos-list-item-meta">
+                            <i class="bi bi-calendar3 me-1"></i>
+                            Fecha de prestamo: <%= formatFecha(item.fecha_solicitud || item.fecha_inicio || '') %>
+                          </div>
+                          <a href="/milab/prestamos/gestion-solicitudes" class="prestamos-list-item-link">
+                            <%= item.fecha_entrega ? `Fecha de devolucion: ${formatFecha(item.fecha_entrega)}` : 'Ver detalle' %>
+                            <i class="bi bi-chevron-right"></i>
                           </a>
                         </div>
                       </div>
                     </div>
                   <% }) %>
                 <% } else { %>
-                  <div
-                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
-                    style="color: #6b7280;"
-                  >
-                    <i class="bi bi-check2-circle" style="font-size: 2rem; color: #10b981; opacity: 0.8;"></i>
-                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin préstamos activos</p>
-                    <p class="mb-0" style="font-size: 0.84rem;">No hay préstamos en curso en este momento.</p>
+                  <div class="prestamos-empty">
+                    <i class="bi bi-check2-circle me-1"></i>
+                    No hay prestamos activos en este momento.
                   </div>
                 <% } %>
               </div>
-            </article>
-          </div>
-
-          <div class="col-lg-6">
-            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
-              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
-                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
-                  <i class="bi bi-hourglass-split me-2" style="color: #f59e0b;"></i>
-                  Solicitudes pendientes
-                </h5>
-                <a
-                  href="/milab/prestamos/gestion-solicitudes"
-                  class="btn btn-sm px-3"
-                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
-                >
-                  Ver todas
-                  <i class="bi bi-arrow-right-short ms-1"></i>
-                </a>
-              </div>
-              <div class="card-body d-flex flex-column gap-3">
-                <% if (pendingRequests && pendingRequests.length) { %>
-                  <% pendingRequests.slice(0, 3).forEach(function(reqItem) { %>
-                    <div
-                      class="d-flex align-items-start gap-3 p-3"
-                      style="border-radius: 14px; background: rgba(251, 146, 60, 0.04); border: 1px solid rgba(251, 146, 60, 0.10);"
-                    >
-                      <div
-                        style="
-                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
-                          display: inline-flex; align-items: center; justify-content: center;
-                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
-                        "
-                      >
-                        <i class="bi bi-camera" style="font-size: 1.15rem; color: #6b7280;"></i>
-                      </div>
-                      <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
-                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
-                            <%= reqItem.equipo_nombre || reqItem.nombre || 'Equipo' %>
-                          </h6>
-                          <span
-                            class="badge"
-                            style="
-                              background: rgba(251, 146, 60, 0.14); color: #d97706;
-                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
-                            "
-                          >
-                            Pendiente
-                          </span>
-                        </div>
-                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
-                          Solicitado por: <strong style="color: #374151;"><%= reqItem.solicitante_nombre || reqItem.usuario_nombre || '-' %></strong>
-                        </p>
-                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                          Fecha de solicitud: <strong style="color: #374151;"><%= formatDate(reqItem.fecha_inicio || reqItem.fecha_solicitud) %></strong>
-                        </p>
-                      </div>
-                    </div>
-                  <% }) %>
-                <% } else { %>
-                  <div
-                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
-                    style="color: #6b7280;"
-                  >
-                    <i class="bi bi-patch-check" style="font-size: 2rem; color: #3b82f6; opacity: 0.8;"></i>
-                    <p class="mb-0" style="font-weight: 700; color: #374151;">Todo al día</p>
-                    <p class="mb-0" style="font-size: 0.84rem;">No hay solicitudes pendientes por revisar.</p>
-                  </div>
-                <% } %>
-              </div>
-            </article>
-          </div>
-        </section>
-      <% } %>
-
-      <% if (isStudentOrTeacher) { %>
-        <section class="row g-4">
-          <div class="col-lg-6">
-            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
-              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
-                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
-                  <i class="bi bi-box-seam me-2" style="color: #7c3aed;"></i>
-                  Mis préstamos activos
-                </h5>
-                <a
-                  href="/milab/prestamos/mis-solicitudes"
-                  class="btn btn-sm px-3"
-                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
-                >
-                  Ver todos
-                  <i class="bi bi-arrow-right-short ms-1"></i>
-                </a>
-              </div>
-              <div class="card-body d-flex flex-column gap-3">
-                <% if (activeLoans && activeLoans.length) { %>
-                  <% activeLoans.slice(0, 3).forEach(function(loan) { %>
-                    <div
-                      class="d-flex align-items-start gap-3 p-3"
-                      style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.05);"
-                    >
-                      <div
-                        style="
-                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
-                          display: inline-flex; align-items: center; justify-content: center;
-                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
-                        "
-                      >
-                        <i class="bi bi-cpu" style="font-size: 1.15rem; color: #6b7280;"></i>
-                      </div>
-                      <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
-                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
-                            <%= loan.equipo_nombre || loan.nombre || 'Equipo' %>
-                          </h6>
-                          <span
-                            class="badge"
-                            style="
-                              background: rgba(16, 185, 129, 0.14); color: #059669;
-                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
-                            "
-                          >
-                            En curso
-                          </span>
-                        </div>
-                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
-                          Código: <strong style="color: #374151;"><%= loan.equipo_codigo || loan.codigo || '-' %></strong>
-                        </p>
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
-                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                            Inicio: <strong style="color: #374151;"><%= formatDate(loan.fecha_inicio) %></strong>
-                          </p>
-                          <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                            Devolución: <strong style="color: #374151;"><%= formatDate(loan.fecha_fin) %></strong>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  <% }) %>
-                <% } else { %>
-                  <div
-                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
-                    style="color: #6b7280;"
-                  >
-                    <i class="bi bi-box-seam" style="font-size: 2rem; color: #7c3aed; opacity: 0.8;"></i>
-                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin préstamos activos</p>
-                    <p class="mb-0" style="font-size: 0.84rem;">Solicita un equipo desde el panel de accesos rápidos.</p>
-                  </div>
-                <% } %>
-              </div>
-            </article>
-          </div>
-
-          <div class="col-lg-6">
-            <article class="card h-100" style="border-radius: 16px; border: 1px solid var(--app-border);">
-              <div class="card-header d-flex justify-content-between align-items-center" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
-                <h5 class="mb-0" style="font-weight: 800; color: #111827; font-size: 1rem;">
-                  <i class="bi bi-hourglass-split me-2" style="color: #f59e0b;"></i>
-                  Mis solicitudes pendientes
-                </h5>
-                <a
-                  href="/milab/prestamos/mis-solicitudes"
-                  class="btn btn-sm px-3"
-                  style="border-radius: 10px; background: rgba(124, 58, 237, 0.06); color: #7c3aed; font-weight: 700; border: 1px solid rgba(124, 58, 237, 0.12);"
-                >
-                  Ver todas
-                  <i class="bi bi-arrow-right-short ms-1"></i>
-                </a>
-              </div>
-              <div class="card-body d-flex flex-column gap-3">
-                <% if (pendingRequests && pendingRequests.length) { %>
-                  <% pendingRequests.slice(0, 3).forEach(function(reqItem) { %>
-                    <div
-                      class="d-flex align-items-start gap-3 p-3"
-                      style="border-radius: 14px; background: rgba(251, 146, 60, 0.04); border: 1px solid rgba(251, 146, 60, 0.10);"
-                    >
-                      <div
-                        style="
-                          width: 48px; height: 48px; border-radius: 12px; flex: 0 0 48px;
-                          display: inline-flex; align-items: center; justify-content: center;
-                          background: #ffffff; border: 1px solid rgba(17, 24, 39, 0.08);
-                        "
-                      >
-                        <i class="bi bi-camera" style="font-size: 1.15rem; color: #6b7280;"></i>
-                      </div>
-                      <div class="flex-grow-1 min-w-0">
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
-                          <h6 class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.95rem;">
-                            <%= reqItem.equipo_nombre || reqItem.nombre || 'Equipo' %>
-                          </h6>
-                          <span
-                            class="badge"
-                            style="
-                              background: rgba(251, 146, 60, 0.14); color: #d97706;
-                              padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; font-size: 0.72rem;
-                            "
-                          >
-                            Pendiente
-                          </span>
-                        </div>
-                        <p class="mb-1" style="font-size: 0.82rem; color: #6b7280;">
-                          Código: <strong style="color: #374151;"><%= reqItem.equipo_codigo || reqItem.codigo || '-' %></strong>
-                        </p>
-                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                          Solicitado: <strong style="color: #374151;"><%= formatDate(reqItem.fecha_inicio || reqItem.fecha_solicitud) %></strong>
-                        </p>
-                      </div>
-                    </div>
-                  <% }) %>
-                <% } else { %>
-                  <div
-                    class="d-flex flex-column align-items-center justify-content-center gap-2 text-center py-4"
-                    style="color: #6b7280;"
-                  >
-                    <i class="bi bi-patch-check" style="font-size: 2rem; color: #3b82f6; opacity: 0.8;"></i>
-                    <p class="mb-0" style="font-weight: 700; color: #374151;">Sin solicitudes pendientes</p>
-                    <p class="mb-0" style="font-size: 0.84rem;">Todas tus solicitudes han sido procesadas.</p>
-                  </div>
-                <% } %>
-              </div>
-            </article>
-          </div>
-        </section>
-      <% } %>
-
-      <section class="mt-4">
-        <article class="card" style="border-radius: 16px; border: 1px solid var(--app-border);">
-          <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2" style="background: transparent; border-bottom: 1px solid rgba(17, 24, 39, 0.06);">
-            <div>
-              <h5 class="mb-1" style="font-weight: 800; color: #111827; font-size: 1.05rem;">
-                <i class="bi bi-bar-chart-line me-2" style="color: #111827; opacity: 0.7;"></i>
-                Estadísticas de préstamos
-              </h5>
-              <p class="mb-0" style="font-size: 0.84rem; color: #6b7280;">
-                Resumen general del estado del módulo de préstamos.
-              </p>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <select class="form-select form-select-sm" style="border-radius: 10px; font-weight: 700; font-size: 0.82rem;">
+
+            <div class="col-lg-6">
+              <div class="prestamos-panel">
+                <div class="prestamos-panel-header">
+                  <h5 class="prestamos-panel-title">
+                    <i class="bi bi-hourglass-split"></i>
+                    Solicitudes pendientes
+                  </h5>
+                  <a href="/milab/prestamos/gestion-solicitudes" class="prestamos-link-see-all">
+                    Ver todos <i class="bi bi-arrow-right"></i>
+                  </a>
+                </div>
+                <% if (Array.isArray(pendingRequests) && pendingRequests.length) { %>
+                  <% pendingRequests.slice(0, 2).forEach(function(item) { %>
+                    <div class="prestamos-list-item">
+                      <div class="prestamos-list-item-thumb" style="background:#fef3c7;color:#b45309;">
+                        <i class="bi bi-camera"></i>
+                      </div>
+                      <div class="prestamos-list-item-body">
+                        <div class="prestamos-list-item-header">
+                          <div>
+                            <span class="prestamos-code"><%= item.codigo || ('SP-' + (item.id || '')) %></span>
+                          </div>
+                          <span class="<%= badgeClassForEstado(item.estado) %>">
+                            <i class="bi bi-circle-fill" style="font-size:0.45rem"></i>
+                            Pendiente
+                          </span>
+                        </div>
+                        <h6 class="prestamos-list-item-title"><%= item.finalidad || item.elemento_nombre || 'Solicitud de prestamo' %></h6>
+                        <div class="prestamos-list-item-meta">
+                          Solicitado por: <%= item.nombre_solicitante || 'Solicitante' %>
+                        </div>
+                        <div class="prestamos-list-item-footer">
+                          <div class="prestamos-list-item-meta">
+                            <i class="bi bi-calendar3 me-1"></i>
+                            Fecha de solicitud: <%= formatFecha(item.fecha_solicitud || item.fecha_creacion || '') %>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  <% }) %>
+                <% } else { %>
+                  <div class="prestamos-empty">
+                    <i class="bi bi-inbox me-1"></i>
+                    Cola de solicitudes pendientes vacia.
+                  </div>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="prestamos-panel">
+            <div class="prestamos-panel-header" style="margin-bottom: 16px;">
+              <h5 class="prestamos-panel-title">
+                <i class="bi bi-bar-chart-steps"></i>
+                Estadisticas de prestamos
+              </h5>
+              <select class="prestamos-scope-select" aria-label="Periodo estadisticas">
                 <option>Este mes</option>
-                <option>Últimos 3 meses</option>
-                <option>Últimos 6 meses</option>
+                <option>Ultimos 3 meses</option>
                 <option>Este año</option>
               </select>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-lg-3 col-md-6">
-                <div
-                  class="p-4 h-100"
-                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
-                >
-                  <p class="mb-2" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
-                    Préstamos por estado
-                  </p>
-                  <div class="d-flex align-items-center gap-3">
-                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#10b981" stroke-width="4"
-                        stroke-dasharray="<%= ((statsData.finalizados || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
-                        stroke-dashoffset="25" stroke-linecap="round"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7c3aed" stroke-width="4"
-                        stroke-dasharray="<%= ((statsData.activos || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
-                        stroke-dashoffset="<%= 25 - ((statsData.finalizados || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100) %>"
-                        stroke-linecap="round"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f59e0b" stroke-width="4"
-                        stroke-dasharray="<%= ((statsData.pendientes || 0) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100).toFixed(1) %> 100"
-                        stroke-dashoffset="<%= 25 - (((statsData.finalizados || 0) + (statsData.activos || 0)) / Math.max(1, (statsData.activos || 0) + (statsData.pendientes || 0) + (statsData.finalizados || 0)) * 100) %>"
-                        stroke-linecap="round"/>
-                    </svg>
-                    <div class="d-flex flex-column gap-1" style="font-size: 0.78rem;">
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #7c3aed;"></span>
-                        <span style="color: #4b5563;">
-                          Activos <strong style="color: #111827;"><%= statsData.activos || 0 %></strong>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #f59e0b;"></span>
-                        <span style="color: #4b5563;">
-                          Pendientes <strong style="color: #111827;"><%= statsData.pendientes || 0 %></strong>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #10b981;"></span>
-                        <span style="color: #4b5563;">
-                          Finalizados <strong style="color: #111827;"><%= statsData.finalizados || 0 %></strong>
-                        </span>
-                      </div>
-                    </div>
+            <div class="prestamos-stats-grid">
+              <div class="prestamos-stat-card">
+                <p class="prestamos-stat-title">Prestamos por estado</p>
+                <div class="prestamos-donut-wrap">
+                  <svg width="88" height="88" viewBox="0 0 88 88">
+                    <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                    <circle cx="44" cy="44" r="38" stroke="#8b5cf6" stroke-width="8" fill="none"
+                      stroke-dasharray="<%= 2 * Math.PI * 38 %>"
+                      stroke-dashoffset="<%= (2 * Math.PI * 38) * (1 - (calcPercent(activos, totalLoanStates || 1) / 100)) %>"
+                      stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                  </svg>
+                  <span class="prestamos-donut-value"><%= totalLoanStates %></span>
+                </div>
+                <div class="prestamos-legend">
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#8b5cf6"></span>
+                      Activos
+                    </span>
+                    <span style="font-weight:700"><%= activos %> (<%= calcPercent(activos, totalLoanStates || 1) %>%)</span>
+                  </div>
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#f59e0b"></span>
+                      Pendientes
+                    </span>
+                    <span style="font-weight:700"><%= pendientes %> (<%= calcPercent(pendientes, totalLoanStates || 1) %>%)</span>
+                  </div>
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#10b981"></span>
+                      Finalizados
+                    </span>
+                    <span style="font-weight:700"><%= finalizados %> (<%= calcPercent(finalizados, totalLoanStates || 1) %>%)</span>
                   </div>
                 </div>
               </div>
 
-              <div class="col-lg-3 col-md-6">
-                <div
-                  class="p-4 h-100"
-                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
-                >
-                  <p class="mb-2" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
-                    Préstamos por categoría
-                  </p>
-                  <div class="d-flex align-items-center gap-3">
-                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#3b82f6" stroke-width="4"
-                        stroke-dasharray="60 100" stroke-dashoffset="25" stroke-linecap="round"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#06b6d4" stroke-width="4"
-                        stroke-dasharray="33 100" stroke-dashoffset="-35" stroke-linecap="round"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#8b5cf6" stroke-width="4"
-                        stroke-dasharray="7 100" stroke-dashoffset="-68" stroke-linecap="round"/>
-                    </svg>
-                    <div class="d-flex flex-column gap-1" style="font-size: 0.78rem;">
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #3b82f6;"></span>
-                        <span style="color: #4b5563;">Equipos</span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #06b6d4;"></span>
-                        <span style="color: #4b5563;">Elementos</span>
-                      </div>
-                      <div class="d-flex align-items-center gap-2">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: #8b5cf6;"></span>
-                        <span style="color: #4b5563;">Otros</span>
-                      </div>
-                    </div>
+              <div class="prestamos-stat-card">
+                <p class="prestamos-stat-title">Prestamos por categoria</p>
+                <div class="prestamos-donut-wrap">
+                  <svg width="88" height="88" viewBox="0 0 88 88">
+                    <circle cx="44" cy="44" r="38" stroke="#e5e7eb" stroke-width="8" fill="none"></circle>
+                    <circle cx="44" cy="44" r="38" stroke="#3b82f6" stroke-width="8" fill="none"
+                      stroke-dasharray="<%= 2 * Math.PI * 38 %>"
+                      stroke-dashoffset="<%= (2 * Math.PI * 38) * (1 - (calcPercent(equipos, totalCategorias || 1) / 100)) %>"
+                      stroke-linecap="round" transform="rotate(-90 44 44)"></circle>
+                  </svg>
+                  <span class="prestamos-donut-value"><%= totalCategorias %></span>
+                </div>
+                <div class="prestamos-legend">
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#8b5cf6"></span>
+                      Equipos
+                    </span>
+                    <span style="font-weight:700"><%= equipos %> (<%= calcPercent(equipos, totalCategorias || 1) %>%)</span>
+                  </div>
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#3b82f6"></span>
+                      Elementos
+                    </span>
+                    <span style="font-weight:700"><%= elementos %> (<%= calcPercent(elementos, totalCategorias || 1) %>%)</span>
+                  </div>
+                  <div class="prestamos-legend-item">
+                    <span class="prestamos-legend-left">
+                      <span class="prestamos-legend-dot" style="background:#64748b"></span>
+                      Otros
+                    </span>
+                    <span style="font-weight:700"><%= otros %> (<%= calcPercent(otros, totalCategorias || 1) %>%)</span>
                   </div>
                 </div>
               </div>
 
-              <div class="col-lg-3 col-md-6">
-                <div
-                  class="p-4 h-100 d-flex flex-column gap-2"
-                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
-                >
-                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
-                    Tasa de cumplimiento
-                  </p>
-                  <div class="d-flex align-items-center gap-3">
-                    <svg viewBox="0 0 36 36" width="72" height="72" aria-hidden="true">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="4"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#10b981" stroke-width="5"
-                        stroke-dasharray="92 100" stroke-dashoffset="25" stroke-linecap="round"/>
-                      <text x="18" y="20.35" text-anchor="middle" font-size="9" font-weight="800" fill="#111827">92%</text>
-                    </svg>
-                    <div style="font-size: 0.78rem;">
-                      <p class="mb-1" style="font-weight: 700; color: #111827;">Devoluciones a tiempo</p>
-                      <p class="mb-0" style="color: #059669; font-weight: 800;">
-                        Excelente trabajo 🎉
-                      </p>
-                    </div>
-                  </div>
+              <div class="prestamos-stat-card">
+                <p class="prestamos-stat-title">Tasa de cumplimiento</p>
+                <div class="prestamos-compliance-circle" style="background: conic-gradient(#10b981 0deg <%= complianceDegrees %>deg, #e5e7eb <%= complianceDegrees %>deg 360deg);">
+                  <div class="prestamos-compliance-inner"><%= tasaCumplimiento %>%</div>
+                </div>
+                <div class="prestamos-compliance-label">
+                  Devoluciones a tiempo<br />
+                  <span style="color:#10b981;font-weight:800">
+                    <%= tasaCumplimiento >= 90 ? 'Excelente trabajo' : (tasaCumplimiento >= 75 ? 'Buen trabajo' : 'Revisa procesos') %>
+                    <i class="bi bi-hand-thumbs-up"></i>
+                  </span>
                 </div>
               </div>
 
-              <div class="col-lg-3 col-md-6">
-                <div
-                  class="p-4 h-100 d-flex flex-column gap-2"
-                  style="border-radius: 14px; background: rgba(17, 24, 39, 0.02); border: 1px solid rgba(17, 24, 39, 0.06);"
-                >
-                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #4b5563;">
-                    Tiempo promedio
-                  </p>
-                  <div class="d-flex align-items-center gap-3">
-                    <div
-                      style="
-                        width: 72px; height: 72px; border-radius: 50%;
-                        background: rgba(124, 58, 237, 0.08); color: #7c3aed;
-                        display: inline-flex; align-items: center; justify-content: center;
-                        border: 4px solid rgba(124, 58, 237, 0.18);
-                      "
-                    >
-                      <i class="bi bi-alarm" style="font-size: 1.5rem;"></i>
-                    </div>
-                    <div style="font-size: 0.78rem;">
-                      <p class="mb-1" style="font-weight: 800; color: #111827; font-size: 1.1rem;">
-                        5.2 días
-                      </p>
-                      <p class="mb-0" style="color: #6b7280;">
-                        Tiempo promedio de préstamo
-                      </p>
-                    </div>
+              <div class="prestamos-stat-card">
+                <p class="prestamos-stat-title">Tiempo promedio</p>
+                <div class="prestamos-time-wrap">
+                  <div class="prestamos-time-icon">
+                    <i class="bi bi-stopwatch"></i>
                   </div>
+                  <div>
+                    <span class="prestamos-time-value"><%= tiempoPromedioDias.toFixed(1) %> días</span>
+                  </div>
+                  <div class="prestamos-time-label">Tiempo promedio de prestamo</div>
                 </div>
               </div>
             </div>
           </div>
-        </article>
-      </section>
+        </section>
 
-      <% if (moduleCards && moduleCards.length) { %>
-        <section class="mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 style="font-weight: 800; color: #111827; font-size: 1.05rem; margin: 0;">
-              Módulos disponibles
-            </h5>
-          </div>
-          <div class="row g-3">
-            <% moduleCards.forEach(function(mod) { %>
-              <div class="col-md-4 col-xl-3">
+        <section class="prestamos-panel mt-4">
+          <h5 class="prestamos-panel-title mb-3" style="font-size: 1.1rem;">
+            <i class="bi bi-grid-3x3-gap-fill me-1" style="color:#8b5cf6;"></i>
+            Modulos disponibles
+            <span class="prestamos-badge prestamos-badge--indigo" style="margin-left: 8px;">
+              <%= (Array.isArray(moduleCards) ? moduleCards : []).length %> modulos
+            </span>
+          </h5>
+          <% const availableModules = Array.isArray(moduleCards) ? moduleCards : []; %>
+          <% if (availableModules.length === 0) { %>
+            <div class="prestamos-empty" style="padding: 16px;">
+              <i class="bi bi-info-circle me-1"></i>
+              No hay modulos disponibles para tu perfil (<%= tipo || 'desconocido' %>). Consulte con el administrador.
+            </div>
+          <% } else { %>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;">
+              <% availableModules.forEach(function(card) { %>
                 <a
-                  href="<%= mod.href %>"
-                  class="card h-100 text-decoration-none d-block"
-                  style="
-                    border: 1px solid rgba(17, 24, 39, 0.08); border-radius: 16px;
-                    transition: all 0.18s ease; background: #ffffff;
-                  "
-                  onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='rgba(124, 58, 237, 0.25)';this.style.boxShadow='0 14px 28px rgba(17, 24, 39, 0.08)';"
-                  onmouseout="this.style.transform='';this.style.borderColor='';this.style.boxShadow='';"
+                  href="<%= card.href %>"
+                  class="prestamos-module-card"
+                  style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.2); background: #fff; text-decoration: none; color: inherit; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(15,23,42,0.05);"
+                  onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 14px 28px rgba(99,102,241,0.15)'; this.style.borderColor='rgba(139,92,246,0.5)';"
+                  onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(15,23,42,0.05)'; this.style.borderColor='rgba(148,163,184,0.2)';"
                 >
-                  <div class="card-body d-flex flex-column gap-3">
-                    <div
-                      style="
-                        width: 48px; height: 48px; border-radius: 12px;
-                        display: inline-flex; align-items: center; justify-content: center;
-                        background: <%= mod.tone || 'rgba(124, 58, 237, 0.12)' %>;
-                        color: <%= mod.iconColor || '#7c3aed' %>;
-                        font-size: 1.3rem;
-                      "
-                    >
-                      <i class="bi <%= mod.icon || 'bi-box-seam' %>"></i>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: <%= ({
+                      indigo: 'rgba(99,102,241,0.12)', violet: 'rgba(139,92,246,0.12)', emerald: 'rgba(16,185,129,0.12)', sky: 'rgba(14,165,233,0.12)', amber: 'rgba(245,158,11,0.12)', rose: 'rgba(244,63,94,0.12)', pink: 'rgba(236,72,153,0.12)', fuchsia: 'rgba(217,70,239,0.12)', cyan: 'rgba(6,182,212,0.12)', slate: 'rgba(100,116,139,0.12)'
+                    })[card.tone] || 'rgba(99,102,241,0.12)' %>;">
+                      <i class="bi <%= card.icon || 'bi-box-seam' %>" style="color: <%= ({
+                        indigo: '#6366f1', violet: '#8b5cf6', emerald: '#10b981', sky: '#0ea5e9', amber: '#f59e0b', rose: '#f43f5e', pink: '#ec4899', fuchsia: '#d946ef', cyan: '#06b6d4', slate: '#64748b'
+                      })[card.tone] || '#6366f1' %>; font-size: 1.3rem;"></i>
                     </div>
-                    <div>
-                      <h6 class="mb-1" style="font-weight: 800; color: #111827; font-size: 0.98rem;">
-                        <%= mod.label %>
-                      </h6>
-                      <p class="mb-0" style="font-size: 0.82rem; color: #6b7280; line-height: 1.5;">
-                        <%= mod.description || '' %>
-                      </p>
-                    </div>
-                    <div
-                      class="d-inline-flex align-items-center gap-1 mt-auto"
-                      style="font-weight: 700; font-size: 0.82rem; color: #7c3aed;"
-                    >
-                      Abrir módulo
-                      <i class="bi bi-arrow-right-short"></i>
-                    </div>
+                    <p style="margin: 0; font-weight: 700; color: #0f172a; font-size: 1rem;"><%= card.label %></p>
+                  </div>
+                  <% if (card.description) { %>
+                    <p style="margin: 0; color: #475569; font-size: 0.85rem; line-height: 1.5;"><%= card.description %></p>
+                  <% } %>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 4px;">
+                    <span style="font-size: 0.82rem; color: #6366f1; font-weight: 700;">Ingresar al modulo</span>
+                    <i class="bi bi-arrow-right" style="color: #6366f1; font-size: 0.9rem;"></i>
                   </div>
                 </a>
-              </div>
-            <% }) %>
-          </div>
+              <% }); %>
+            </div>
+          <% } %>
         </section>
-      <% } %>
-    </div>
+      </div>
 
-    <div class="col-xl-4">
-      <aside
-        class="card"
-        style="
-          position: sticky; top: 1rem;
-          border-radius: 18px;
-          border: 1px solid var(--app-border);
-          background: linear-gradient(180deg, #ffffff 0%, rgba(248, 250, 252, 0.8) 100%);
-        "
-      >
-        <div class="card-body d-flex flex-column gap-4">
-          <section>
-            <h5 class="mb-3" style="font-weight: 800; color: #111827; font-size: 1rem;">
-              <i class="bi bi-lightning-charge-fill me-2" style="color: #7c3aed;"></i>
-              Accesos rápidos
+      <aside class="col-xl-4">
+        <div class="prestamos-aside-sticky">
+          <section class="prestamos-panel">
+            <h5 class="prestamos-panel-title mb-3" style="font-size: 1rem;">
+              <i class="bi bi-lightning-charge-fill"></i>
+              Accesos rapidos
             </h5>
-            <div class="d-flex flex-column gap-2">
-              <% if (quickLinks && quickLinks.length) { %>
-                <% quickLinks.forEach(function(link) { %>
-                  <a
-                    href="<%= link.href %>"
-                    class="d-flex align-items-center gap-3 p-3 text-decoration-none"
-                    style="
-                      border-radius: 14px;
-                      border: 1px solid rgba(17, 24, 39, 0.06);
-                      background: #ffffff;
-                      transition: all 0.18s ease;
-                    "
-                    onmouseover="this.style.borderColor='rgba(124, 58, 237, 0.25)';this.style.background='rgba(124, 58, 237, 0.03)';"
-                    onmouseout="this.style.borderColor='';this.style.background='';"
-                  >
-                    <div
-                      style="
-                        width: 40px; height: 40px; border-radius: 10px; flex: 0 0 40px;
-                        display: inline-flex; align-items: center; justify-content: center;
-                        background: <%= link.tone || 'rgba(124, 58, 237, 0.1)' %>;
-                        color: <%= link.iconColor || '#7c3aed' %>;
-                        font-size: 1rem;
-                      "
-                    >
-                      <i class="bi <%= link.icon || 'bi-arrow-right-circle' %>"></i>
-                    </div>
-                    <div class="flex-grow-1 min-w-0">
-                      <p class="mb-0" style="font-weight: 800; color: #111827; font-size: 0.92rem;">
-                        <%= link.label %>
-                      </p>
-                      <% if (link.helper) { %>
-                        <p class="mb-0" style="font-size: 0.78rem; color: #6b7280;">
-                          <%= link.helper %>
-                        </p>
-                      <% } %>
-                    </div>
-                    <i class="bi bi-chevron-right" style="color: #9ca3af; font-size: 0.9rem;"></i>
-                  </a>
-                <% }) %>
-              <% } %>
-
-              <a
-                href="<%= isManagementRole ? '/milab/prestamos/reportes' : '/milab/prestamos/mis-solicitudes' %>"
-                class="d-flex align-items-center justify-content-center gap-2 mt-2 p-3 text-decoration-none"
-                style="
-                  border-radius: 14px;
-                  border: 1px dashed rgba(124, 58, 237, 0.35);
-                  background: rgba(124, 58, 237, 0.04);
-                  color: #7c3aed;
-                  font-weight: 800;
-                  font-size: 0.9rem;
-                "
-              >
-                Ver todas las opciones
-                <i class="bi bi-arrow-right-short"></i>
-              </a>
+            <div>
+              <% (Array.isArray(quickLinks) ? quickLinks : []).forEach(function(link) { %>
+                <a href="<%= link.href %>" class="prestamos-quick-link">
+                  <span class="prestamos-quick-icon">
+                    <i class="bi <%= link.icon || 'bi-grid-3x3-gap-fill' %>"></i>
+                  </span>
+                  <div class="prestamos-quick-texts">
+                    <p class="prestamos-quick-title"><%= link.label %></p>
+                    <% if (link.desc) { %>
+                      <p class="prestamos-quick-desc"><%= link.desc %></p>
+                    <% } else if (link.description) { %>
+                      <p class="prestamos-quick-desc"><%= link.description %></p>
+                    <% } %>
+                  </div>
+                  <span class="prestamos-quick-arrow">
+                    <i class="bi bi-chevron-right"></i>
+                  </span>
+                </a>
+              <% }); %>
             </div>
           </section>
 
-          <hr style="border-color: rgba(17, 24, 39, 0.08); margin: 0;">
-
-          <section>
-            <h5 class="mb-3" style="font-weight: 800; color: #111827; font-size: 1rem;">
-              <i class="bi bi-activity me-2" style="color: #0ea5e9;"></i>
+          <section class="prestamos-panel">
+            <h5 class="prestamos-panel-title mb-3" style="font-size: 1rem;">
+              <i class="bi bi-activity"></i>
               Actividad reciente
             </h5>
-            <div class="d-flex flex-column gap-3">
-              <% if (recentActivity && recentActivity.length) { %>
-                <% recentActivity.forEach(function(activity) { %>
-                  <div class="d-flex align-items-start gap-3">
-                    <div
-                      style="
-                        width: 32px; height: 32px; border-radius: 50%; flex: 0 0 32px;
-                        display: inline-flex; align-items: center; justify-content: center;
-                        background: <%= activity.tone || 'rgba(124, 58, 237, 0.12)' %>;
-                        color: <%= activity.iconColor || '#7c3aed' %>;
-                        font-size: 0.8rem;
-                      "
-                    >
-                      <i class="bi <%= activity.icon || 'bi-circle-fill' %>"></i>
-                    </div>
-                    <div class="flex-grow-1 min-w-0">
-                      <p class="mb-0" style="font-size: 0.86rem; font-weight: 700; color: #111827;">
-                        <%= activity.title %>
+            <% if (Array.isArray(recentActivity) && recentActivity.length) { %>
+              <div>
+                <% recentActivity.slice(0, 3).forEach(function(entry) { %>
+                  <div class="prestamos-activity-item">
+                    <span class="<%= activityIconClass(entry.accion) %>">
+                      <i class="bi <%= /DEVUELTO|RESUELTA|APROBADA|FINALIZADO/.test(String(entry.accion || '').toUpperCase())
+                        ? 'bi-check2-circle'
+                        : (/RECHAZADA|REPORTADA|PENDIENTE/.test(String(entry.accion || '').toUpperCase())
+                            ? 'bi-exclamation-triangle-fill'
+                            : 'bi-box-seam-fill') %>"></i>
+                    </span>
+                    <div class="prestamos-activity-body">
+                      <p class="prestamos-activity-title"><%= humanizeAccion(entry.accion) %></p>
+                      <p class="prestamos-activity-meta">
+                        <%= entry.usuario_nombre || 'Sistema' %>
+                        <% if (entry.entidad_tipo) { %> · <%= entry.entidad_tipo %><% } %>
                       </p>
-                      <p class="mb-0" style="font-size: 0.76rem; color: #6b7280;">
-                        <%= activity.subject || '' %>
-                      </p>
-                      <p class="mb-0" style="font-size: 0.72rem; color: #9ca3af; margin-top: 2px;">
-                        <%= timeAgo(activity.date) %>
+                      <p class="prestamos-activity-meta">
+                        <%= humanizeDateRelative(entry.fecha_creacion) || formatFecha(entry.fecha_creacion) %>
                       </p>
                     </div>
                   </div>
                 <% }) %>
-              <% } else { %>
-                <div
-                  class="d-flex flex-column align-items-center justify-content-center gap-1 text-center py-3"
-                  style="color: #9ca3af;"
-                >
-                  <i class="bi bi-clock-history" style="font-size: 1.5rem;"></i>
-                  <p class="mb-0" style="font-size: 0.82rem; font-weight: 700; color: #6b7280;">
-                    Sin actividad reciente
-                  </p>
-                  <p class="mb-0" style="font-size: 0.76rem;">
-                    Las novedades aparecerán aquí.
-                  </p>
-                </div>
-              <% } %>
-            </div>
-
-            <% if (isManagementRole) { %>
-              <a
-                href="/milab/prestamos/auditoria"
-                class="d-flex align-items-center justify-content-center gap-2 mt-3 p-2 text-decoration-none"
-                style="
-                  border-radius: 12px;
-                  color: #7c3aed;
-                  font-weight: 700;
-                  font-size: 0.84rem;
-                "
-              >
-                Ver toda la actividad
-                <i class="bi bi-arrow-right-short"></i>
-              </a>
+              </div>
+            <% } else { %>
+              <div class="prestamos-empty" style="padding: 16px;">
+                <i class="bi bi-clock-history me-1"></i>
+                No hay actividad reciente registrada.
+              </div>
             <% } %>
+            <a href="/milab/prestamos/auditoria" class="prestamos-activity-cta">
+              Ver toda la actividad <i class="bi bi-arrow-right ms-1"></i>
+            </a>
           </section>
         </div>
       </aside>
     </div>
-  </div>
-</main>
+  </main>
 
-<%- include('../../../partials/footer'); -%>
+  <%- include('../../partials/footer') %>

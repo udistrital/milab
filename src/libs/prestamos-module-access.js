@@ -243,11 +243,11 @@ async function updatePrestamosFacultyAccess({ facultadId, role, permitido }, cli
 
 function filterPrestamosLinks(items = []) {
   return (items || []).filter((item) => {
-    const normalizedHref = String(item?.href || '');
-    if (normalizedHref.startsWith('/milab/prestamos')) return false;
+    const normalizedHref = String(item?.href || '').toLowerCase();
     const normalizedLabel = String(item?.label || '')
       .trim()
       .toLowerCase();
+    if (normalizedHref.startsWith('/milab/prestamos')) return false;
     if (normalizedLabel === 'prestamos' && normalizedHref === '/milab/prestamos/') return false;
     return true;
   });

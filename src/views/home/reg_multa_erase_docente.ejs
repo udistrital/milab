@@ -91,6 +91,7 @@
                       data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                       data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
                       data-sancion-can-remove="<%= canRemove ? 'true' : 'false' %>"
+                      data-sancion-saldar-directa="<%= data._permiteSaldarDirecta ? 'true' : 'false' %>"
                     >
                       <i class="bi bi-eye"></i>
                       Ver detalle
@@ -157,13 +158,15 @@
           </div>
 
           <div class="border-top pt-3 mt-3 d-none" data-detail-action="remove">
-            <h6 class="mb-3">Quitar sanción</h6>
+            <h6 class="mb-3" data-detail-title="quitar">Quitar sanción</h6>
+            <div class="alert alert-info d-none mb-3" data-detail-alert="directa" role="alert">Esta facultad tiene autorización para saldar directamente. La sanción pasará inmediatamente a SALDADA.</div>
+            <div class="alert alert-secondary d-none mb-3" data-detail-alert="pendiente" role="alert">La sanción se marcará como POR SALDAR y el coordinador deberá aprobarla para cerrarla.</div>
             <form action="/milab/api/quitar-multa" method="post" class="row g-3">
               <%- include('../partials/csrf_field') %>
               <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
               <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-                <button class="btn btn-perso" type="submit">Quitar sanción</button>
+                <button class="btn btn-perso" type="submit" data-detail-button="quitar">Quitar sanción</button>
               </div>
             </form>
           </div>
@@ -208,11 +211,24 @@
     });
 
     const canRemove = trigger.getAttribute('data-sancion-can-remove') === 'true';
+    const saldarDirecta = trigger.getAttribute('data-sancion-saldar-directa') === 'true';
     const removeSection = document.querySelector('[data-detail-action="remove"]');
     const noRemoveSection = document.querySelector('[data-detail-action="no-remove"]');
 
     if (removeSection) {
       removeSection.classList.toggle('d-none', !canRemove);
+      const titleQuitar = removeSection.querySelector('[data-detail-title="quitar"]');
+      const alertDirecta = removeSection.querySelector('[data-detail-alert="directa"]');
+      const alertPendiente = removeSection.querySelector('[data-detail-alert="pendiente"]');
+      const btnQuitar = removeSection.querySelector('[data-detail-button="quitar"]');
+      if (titleQuitar) {
+        titleQuitar.textContent = saldarDirecta ? 'Saldar sanción directamente' : 'Quitar sanción';
+      }
+      if (alertDirecta) alertDirecta.classList.toggle('d-none', !saldarDirecta);
+      if (alertPendiente) alertPendiente.classList.toggle('d-none', saldarDirecta);
+      if (btnQuitar) {
+        btnQuitar.textContent = saldarDirecta ? 'Saldar sanción definitivamente' : 'Quitar sanción';
+      }
     }
     if (noRemoveSection) {
       noRemoveSection.classList.toggle('d-none', canRemove);
