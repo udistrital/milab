@@ -12,7 +12,8 @@ require('dotenv').config();
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
-let router = express.Router();
+const router = express.Router();
+
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
 
@@ -173,7 +174,7 @@ router.post('/', limiter, async function (req, res) {
       getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
     );
     // dataString removed (was unused)
-    let cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+    const cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
 
     con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
     con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
@@ -193,8 +194,6 @@ router.post('/', limiter, async function (req, res) {
     console.log('con_documento ' + con_documento);
     console.log('con_carrera ' + con_carrera);
     console.log('con_nombre ' + con_nombre);
-
-    //--- DB
 
     if (con_estado === 'EGRESADO') {
       console.log('El estudiante es egresado. No se puede continuar.');
@@ -243,7 +242,5 @@ router.post('/', limiter, async function (req, res) {
     });
   }
 });
-
-// Función para consultar multas asignadas al usuario
 
 module.exports = router;

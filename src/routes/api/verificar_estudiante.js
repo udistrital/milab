@@ -100,7 +100,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
       });
     }
 
-    const ultimoEstudiante = studentRecords[studentRecords.length - 1];
+    const ultimoEstudiante = studentRecords.at(-1);
 
     const con_codigo = ultimoEstudiante.codigo;
     const con_nombre = ultimoEstudiante.nombre;
@@ -122,18 +122,14 @@ router.post('/', requireVerificationAction, async (req, res) => {
       const carreraResponse = await requestOati(
         getAcademicServicePath(`carrera/${con_carrera_code}`)
       );
-      if (
-        carreraResponse &&
-        carreraResponse.carrerasCollection &&
-        carreraResponse.carrerasCollection.carrera
-      ) {
+      if (carreraResponse?.carrerasCollection?.carrera) {
         con_carrera_nombre = carreraResponse.carrerasCollection.carrera[0].nombre;
       }
 
       const estadoResponse = await requestOati(
         getAcademicServicePath(`estados_codigo/${con_estado_code}`)
       );
-      if (estadoResponse && estadoResponse.estado && estadoResponse.estado.nombre) {
+      if (estadoResponse?.estado?.nombre) {
         con_estado_nombre = estadoResponse.estado.nombre;
       }
     } catch (apiError) {

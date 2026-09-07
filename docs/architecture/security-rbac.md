@@ -34,23 +34,23 @@ flowchart TB
 
 ## Roles Operativos
 
-| Rol | Capacidades principales |
-| --- | --- |
-| `admin` | Vista global, administración, configuración, consultas operativas, monitoreo completo |
-| `coordinador` | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades |
-| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL |
-| `estudiante` | Solicitud y descarga de su certificado |
-| `docente` | Solicitud y descarga de su certificado |
+| Rol             | Capacidades principales                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------- |
+| `admin`         | Vista global, administración, configuración, consultas operativas, monitoreo completo                    |
+| `coordinador`   | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades |
+| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL                    |
+| `estudiante`    | Solicitud y descarga de su certificado                                                                   |
+| `docente`       | Solicitud y descarga de su certificado                                                                   |
 
 ## Alcance De Monitoreo
 
 El acceso a `/milab/api/dashboard` depende de rol y alcance:
 
-| Rol | Fuente de alcance | Cobertura |
-| --- | --- | --- |
-| `admin` | No aplica | Toda la plataforma |
-| `coordinador` | `resolveCoordinatorScope(...)` + `coordinador_facultad` | Solo facultades asignadas |
-| `laboratorista` | `laboratorista` + `laboratorista_ual` | Solo UAL asignadas |
+| Rol             | Fuente de alcance                                       | Cobertura                 |
+| --------------- | ------------------------------------------------------- | ------------------------- |
+| `admin`         | No aplica                                               | Toda la plataforma        |
+| `coordinador`   | `resolveCoordinatorScope(...)` + `coordinador_facultad` | Solo facultades asignadas |
+| `laboratorista` | `laboratorista` + `laboratorista_ual`                   | Solo UAL asignadas        |
 
 Indicadores disponibles:
 
@@ -70,15 +70,15 @@ Indicadores disponibles:
 
 ## Ejemplos De Rutas Y Controles
 
-| Ruta | Control aplicado | Origen |
-| --- | --- | --- |
-| `/milab/api` | `menuPermissionMiddleware` con `menu_item` + `rol_permiso` | `src/milab_routes.js` + `src/routes/middlewares/menu-permissions.js` |
-| `/milab/api/dashboard` | `requireRoles(['admin', 'coordinador', 'laboratorista'])` + resolución de alcance | `src/routes/api/dashboard.js` |
-| `/milab/api/aprobacion_multa` | `requireRoles('coordinador')` + alcance por facultades | `src/routes/api/aprobacion_multa.js` |
-| `/milab/api/register_labs` | `requireRoles(['admin', 'coordinador'])` + validaciones de conflicto con coordinador | `src/routes/api/register_labs.js` |
-| `/milab/api/download-pdf` | `requireRoles(...)` + validación de ownership estudiante | `src/routes/api/download-pdf.js` |
-| `/milab/api/get-estado-multa/:codigo` | `publicApiLimiter` + validación numérica | `src/routes/api/get-estado-multa.js` |
-| `/milab/api/consulta-invit` | reCAPTCHA en POST | `src/routes/api/consulta-invit.js` |
+| Ruta                                  | Control aplicado                                                                     | Origen                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `/milab/api`                          | `menuPermissionMiddleware` con `menu_item` + `rol_permiso`                           | `src/milab_routes.js` + `src/routes/middlewares/menu-permissions.js` |
+| `/milab/api/dashboard`                | `requireRoles(['admin', 'coordinador', 'laboratorista'])` + resolución de alcance    | `src/routes/api/dashboard.js`                                        |
+| `/milab/api/aprobacion_multa`         | `requireRoles('coordinador')` + alcance por facultades                               | `src/routes/api/aprobacion_multa.js`                                 |
+| `/milab/api/register_labs`            | `requireRoles(['admin', 'coordinador'])` + validaciones de conflicto con coordinador | `src/routes/api/register_labs.js`                                    |
+| `/milab/api/download-pdf`             | `requireRoles(...)` + validación de ownership estudiante                             | `src/routes/api/download-pdf.js`                                     |
+| `/milab/api/get-estado-multa/:codigo` | `publicApiLimiter` + validación numérica                                             | `src/routes/api/get-estado-multa.js`                                 |
+| `/milab/api/consulta-invit`           | reCAPTCHA en POST                                                                    | `src/routes/api/consulta-invit.js`                                   |
 
 ## Menú Persistido Y Menú De Respaldo
 

@@ -1,0 +1,358 @@
+<%- include('../partials/header'); -%>
+<% const monitorForm = formValues || {}; %>
+<% const selectedFacultyId = String(monitorForm.facultad_id || ''); %>
+<% const selectedUalIds = Array.isArray(monitorForm.ual_ids) ? monitorForm.ual_ids.map(String) : []; %>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Registro de monitor</h1>
+    <p class="app-page-subtitle">Asigna monitores operativos por facultad y laboratorio. El monitor debe ser estudiante activo y queda restringido a las UAL seleccionadas.</p>
+  </section>
+
+  <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
+    <div class="card-body">
+      <form
+        method="get"
+        action="/milab/api/register_monitor/load_info"
+        class="row g-2 justify-content-center align-items-end app-form-grid mb-4"
+      >
+        <% if (tipo === 'admin') { %>
+          <div class="col-12 col-md-8 mx-auto text-center">
+            <label for="coordinador_documento_lookup" class="form-label">Coordinador responsable</label>
+            <select class="form-select" id="coordinador_documento_lookup" name="coordinador_documento" required>
+              <option value="">Selecciona un coordinador</option>
+              <% coordinadores.forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+            <small class="form-text text-muted">El admin registra el monitor dentro del alcance de este coordinador.</small>
+          </div>
+        <% } %>
+
+        <div class="col-12 col-md-8 mx-auto text-center">
+          <label for="documento_lookup" class="form-label">Consulta en OATI por documento</label>
+          <div class="input-group justify-content-center">
+            <input
+              type="text"
+              inputmode="numeric"
+              class="form-control"
+              id="documento_lookup"
+              name="documento"
+              placeholder="Ej: 90000000"
+              value="<%= lookupDocumento || '' %>"
+            >
+            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar">
+              <i class="bi bi-search" aria-hidden="true"></i>
+            </button>
+          </div>
+          <small class="form-text text-muted">Solo se permiten estudiantes activos como monitores.</small>
+        </div>
+      </form>
+
+      <% if (lookupMessage) { %>
+        <div class="alert alert-<%= lookupStatus || 'warning' %>" role="alert">
+          <%= lookupMessage %>
+        </div>
+      <% } %>
+
+      <% if (successMessage) { %>
+        <div class="alert alert-success" role="alert"><%= successMessage %></div>
+      <% } %>
+
+      <form
+        method="post"
+        action="/milab/api/register_monitor"
+        class="row g-3 mx-auto d-flex justify-content-center app-form-grid"
+        onsubmit="return validarCorreo() && validarCampos() && validarContrato() && validarUales()"
+      >
+        <%- include('../partials/csrf_field') %>
+
+        <p class="app-page-subtitle mb-2">
+          <em>El monitor solo recibe permisos operativos. No puede aprobar solicitudes, sanciones ni administrar el laboratorio.</em>
+        </p>
+
+        <% if (tipo === 'admin') { %>
+          <input type="hidden" name="coordinador_documento" value="<%= selectedCoordinatorDocument || '' %>">
+
+          <div class="col-md-12">
+            <label for="coordinador_documento_display" class="form-label">Coordinador responsable</label>
+            <select class="form-select" id="coordinador_documento_display" disabled required>
+              <option value="">Selecciona un coordinador arriba</option>
+              <% coordinadores.forEach(function(coordinador) { %>
+                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
+                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
+                </option>
+              <% }); %>
+            </select>
+          </div>
+        <% } %>
+
+        <div class="col-md-6">
+          <label for="nombre" class="form-label">Nombre completo</label>
+          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required readonly>
+        </div>
+
+        <div class="col-md-6">
+          <label for="documento" class="form-label">Número de documento</label>
+          <input
+            type="text"
+            class="form-control"
+            id="documento"
+            name="documento"
+            inputmode="numeric"
+            value="<%= lookupData?.documento || lookupDocumento || '' %>"
+            required
+            readonly
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label for="codigo" class="form-label">Código estudiantil</label>
+          <input type="text" class="form-control" id="codigo" value="<%= lookupData?.codigo || '' %>" readonly>
+        </div>
+
+        <div class="col-md-6">
+          <label for="programa" class="form-label">Programa</label>
+          <input type="text" class="form-control" id="programa" value="<%= lookupData?.programa || '' %>" readonly>
+        </div>
+
+        <div class="col-md-12">
+          <label for="correo" class="form-label">Correo electrónico institucional</label>
+          <input type="email" class="form-control" id="correo" name="correo" value="<%= monitorForm.correo || '' %>" autocomplete="email" required>
+        </div>
+
+        <div class="col-md-6">
+          <label for="numero_contrato" class="form-label">Número de contrato</label>
+          <input
+            type="text"
+            class="form-control"
+            id="numero_contrato"
+            name="numero_contrato"
+            value="<%= monitorForm.numero_contrato || '' %>"
+            required
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label for="tipo_vinculacion" class="form-label">Tipo de vinculación</label>
+          <input
+            type="text"
+            class="form-control"
+            id="tipo_vinculacion"
+            name="tipo_vinculacion"
+            value="<%= monitorForm.tipo_vinculacion || '' %>"
+            placeholder="Ej: Monitoria academica"
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label for="fecha_inicio" class="form-label">Fecha de inicio</label>
+          <input
+            type="date"
+            class="form-control"
+            id="fecha_inicio"
+            name="fecha_inicio"
+            value="<%= monitorForm.fecha_inicio || '' %>"
+          >
+        </div>
+
+        <div class="col-md-6">
+          <label for="fecha_fin" class="form-label">Fecha de fin</label>
+          <input
+            type="date"
+            class="form-control"
+            id="fecha_fin"
+            name="fecha_fin"
+            value="<%= monitorForm.fecha_fin || '' %>"
+          >
+        </div>
+
+        <div class="col-md-12">
+          <label for="soporte_contrato" class="form-label">Soporte o referencia contractual</label>
+          <input
+            type="text"
+            class="form-control"
+            id="soporte_contrato"
+            name="soporte_contrato"
+            value="<%= monitorForm.soporte_contrato || '' %>"
+            placeholder="Ej: radicado, resolución o enlace interno"
+          >
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Asignación institucional</label>
+          <p class="form-text mt-0">Selecciona la facultad y uno o varios laboratorios donde el monitor podrá operar.</p>
+        </div>
+
+        <div class="col-md-6">
+          <label for="facultad" class="form-label">Sede / Facultad</label>
+          <select class="form-select" id="facultad" name="facultad_id" required <%= tipo === 'admin' && !selectedCoordinatorDocument ? 'disabled' : '' %>>
+            <option value=""><%= tipo === 'admin' && !selectedCoordinatorDocument ? 'Selecciona primero un coordinador' : 'Selecciona una sede' %></option>
+            <% facultades.forEach(function(facultad) { %>
+              <option value="<%= facultad.facultad_id %>" <%= selectedFacultyId === String(facultad.facultad_id) ? 'selected' : '' %>><%= facultad.nombre %></option>
+            <% }); %>
+          </select>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Laboratorios asignados</label>
+          <p class="form-text mt-0">Todos deben pertenecer a la facultad seleccionada.</p>
+          <div class="row g-2" id="ualOptions">
+            <% uals.forEach(function(ual) { %>
+              <div class="col-md-6" data-ual-option="true" data-facultad="<%= ual.facultad_id %>">
+                <label class="form-check app-check-card w-100 h-100 p-3 border rounded-3">
+                  <input
+                    class="form-check-input me-2"
+                    type="checkbox"
+                    name="ual_ids"
+                    value="<%= ual.ual_id %>"
+                    data-ual-checkbox="true"
+                    data-facultad="<%= ual.facultad_id %>"
+                    <%= selectedUalIds.includes(String(ual.ual_id)) ? 'checked' : '' %>
+                  >
+                  <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <% if (ual.codigo_abreviacion) { %>
+                    <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
+                  <% } %>
+                  <% if (ual.descripcion) { %>
+                    <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
+                  <% } %>
+                </label>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+
+        <div id="mensajeError" class="col-md-12 alert alert-danger d-none mb-0" role="alert"></div>
+
+        <% if (error) { %>
+          <div class="col-md-12 alert alert-danger mb-0" role="alert">
+            <%= error %>
+          </div>
+        <% } %>
+
+        <div class="col-md-12 d-flex flex-wrap justify-content-center gap-3 pt-2">
+          <button class="btn btn-perso col-md-6" type="submit">Registrar o actualizar monitor</button>
+          <a href="/milab/api/monitores_registrados" class="btn btn-outline-secondary col-md-5">Ver monitores registrados</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>
+
+<script nonce="<%= cspNonce %>">
+  const tipoUsuario = '<%= tipo %>';
+  const selectedCoordinatorDocument = '<%= selectedCoordinatorDocument || "" %>';
+
+  window.addEventListener('DOMContentLoaded', function () {
+    const facultadSelect = document.getElementById('facultad');
+    const optionRows = document.querySelectorAll('[data-ual-option="true"]');
+    const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
+    const coordinatorLookupSelect = document.getElementById('coordinador_documento_lookup');
+
+    if (!facultadSelect) return;
+
+    if (tipoUsuario === 'admin' && coordinatorLookupSelect) {
+      coordinatorLookupSelect.addEventListener('change', function () {
+        if (this.form) this.form.submit();
+      });
+    }
+
+    if (tipoUsuario === 'admin' && !selectedCoordinatorDocument) {
+      filtrarUalsPorFacultad('', optionRows, checkboxes);
+      return;
+    }
+
+    filtrarUalsPorFacultad(facultadSelect.value, optionRows, checkboxes);
+  });
+
+  document.getElementById('facultad') && document.getElementById('facultad').addEventListener('change', function () {
+    filtrarUalsPorFacultad(
+      this.value,
+      document.querySelectorAll('[data-ual-option="true"]'),
+      document.querySelectorAll('[data-ual-checkbox="true"]')
+    );
+  });
+
+  function filtrarUalsPorFacultad(selectedFacultadId, optionRows, checkboxes) {
+    optionRows.forEach(function (row) {
+      const belongsToFaculty = row.getAttribute('data-facultad') === selectedFacultadId;
+      row.hidden = !belongsToFaculty;
+    });
+
+    checkboxes.forEach(function (checkbox) {
+      if (checkbox.getAttribute('data-facultad') !== selectedFacultadId) {
+        checkbox.checked = false;
+      }
+    });
+  }
+
+  function mostrarError(mensaje) {
+    const messageNode = document.getElementById('mensajeError');
+    if (!messageNode) return false;
+    messageNode.textContent = mensaje;
+    messageNode.classList.remove('d-none');
+    return false;
+  }
+
+  function limpiarError() {
+    const messageNode = document.getElementById('mensajeError');
+    if (!messageNode) return;
+    messageNode.textContent = '';
+    messageNode.classList.add('d-none');
+  }
+
+  function validarCorreo() {
+    limpiarError();
+    const correo = (document.getElementById('correo')?.value || '').trim().toLowerCase();
+    if (!correo.endsWith('@udistrital.edu.co')) {
+      return mostrarError('El correo debe ser institucional (@udistrital.edu.co).');
+    }
+    return true;
+  }
+
+  function validarCampos() {
+    limpiarError();
+    const documento = (document.getElementById('documento')?.value || '').trim();
+    const nombre = (document.getElementById('nombre')?.value || '').trim();
+
+    if (!documento || !/^\d+$/.test(documento)) {
+      return mostrarError('Consulta primero un estudiante activo por documento.');
+    }
+
+    if (!nombre) {
+      return mostrarError('No se encontró el nombre del estudiante activo.');
+    }
+
+    return true;
+  }
+
+  function validarContrato() {
+    limpiarError();
+    const numeroContrato = (document.getElementById('numero_contrato')?.value || '').trim();
+    if (!numeroContrato) {
+      return mostrarError('Debes ingresar el numero de contrato del monitor.');
+    }
+    return true;
+  }
+
+  function validarUales() {
+    limpiarError();
+    const facultad = document.getElementById('facultad');
+    const checked = document.querySelectorAll('[data-ual-checkbox="true"]:checked');
+
+    if (!facultad || !facultad.value) {
+      return mostrarError('Debes seleccionar una facultad.');
+    }
+
+    if (!checked.length) {
+      return mostrarError('Debes seleccionar al menos un laboratorio.');
+    }
+
+    return true;
+  }
+</script>
