@@ -372,6 +372,16 @@ app.use(legacyBasePath, (req, res, next) => {
 app.use(canonicalBasePath, verifyCsrfToken, require('./milab_routes'));
 app.use(legacyBasePath, verifyCsrfToken, require('./milab_routes'));
 
+// Redirección desde la raíz del dominio hacia la aplicación milab
+// Garantiza que https://laboratorios.udistrital.edu.co/ lleve a /milab/
+app.get('/', (req, res) => {
+  const authenticatedHomePath = req.session?.user?.tipo ? '/milab/inicio' : '/milab/';
+  return res.redirect(301, authenticatedHomePath);
+});
+app.head('/', (req, res) => {
+  return res.redirect(301, '/milab/');
+});
+
 // 404 handler: evita respuestas default de Express tipo "Cannot POST ..."
 app.use((req, res) => {
   const requestUrl = String(req.originalUrl || '');
