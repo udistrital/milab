@@ -598,25 +598,25 @@ html[data-bs-theme='dark'] body.app-shell .app-logout-pill:focus {
 }
 
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px solid rgba(124, 58, 237, 0.2);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 10px;
-  color: #7c3aed !important;
+  color: #2d4a52;
 }
 
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:hover,
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:focus {
-  background: rgba(124, 58, 237, 0.14);
-  border-color: rgba(124, 58, 237, 0.35);
-  color: #5b21b6 !important;
-  box-shadow: 0 10px 20px rgba(124, 58, 237, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(72, 111, 122, 0.24);
+  box-shadow: 0 10px 20px rgba(56, 88, 97, 0.14);
+  color: #14333a !important;
   transform: translateY(-1px);
 }
 
 html[data-bs-theme='dark'] body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
-  background: rgba(167, 139, 250, 0.12);
-  border-color: rgba(167, 139, 250, 0.28);
-  color: #c4b5fd !important;
+  background: transparent;
+  border-color: transparent;
+  color: #a8c5cc;
 }
 
 html[data-bs-theme='dark']
@@ -627,9 +627,9 @@ html[data-bs-theme='dark']
   body.app-shell
   .app-nav-inline
   .nav-link.nav-link--prestamos-accent:focus {
-  background: rgba(167, 139, 250, 0.18);
-  border-color: rgba(196, 181, 253, 0.4);
-  color: #ddd6fe !important;
+  background: rgba(144, 190, 204, 0.12);
+  border-color: rgba(144, 190, 204, 0.28);
+  color: #dceff4 !important;
 }
 
 body.app-shell .app-navbar-actions {
