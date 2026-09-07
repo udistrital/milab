@@ -5,6 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
+    "test:coverage": "npm test",
     "test:unit": "node --test tests/unit/**/*.test.js",
     "test:integration": "node --test tests/integration/**/*.test.js",
     "sonar:local": "sh scripts/run-local-sonar.sh",
@@ -57,6 +58,7 @@
     "uuid": "^11.1.1"
   },
   "overrides": {
+    "qs": "^6.16.0",
     "jake": "^12.10.1"
   },
   "devDependencies": {
