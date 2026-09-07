@@ -700,11 +700,7 @@ async function fetchActiveLoansForManagement(req) {
       const scope = await resolveLoanManagementScope(req);
       const params = [];
       const facultadClause = buildFacultyNameScopeClause('eq.facultad', scope, params);
-      const laboratorioClause = buildLaboratoryNameScopeClause(
-        'eq.laboratorio',
-        scope,
-        params
-      );
+      const laboratorioClause = buildLaboratoryNameScopeClause('eq.laboratorio', scope, params);
       const result = await pool.query(
         `SELECT s.id,
                 NULL AS codigo,
@@ -747,11 +743,7 @@ async function fetchPendingRequestsForManagement(req) {
       const scope = await resolveLoanManagementScope(req);
       const params = [];
       const facultadClause = buildFacultyNameScopeClause('eq.facultad', scope, params);
-      const laboratorioClause = buildLaboratoryNameScopeClause(
-        'eq.laboratorio',
-        scope,
-        params
-      );
+      const laboratorioClause = buildLaboratoryNameScopeClause('eq.laboratorio', scope, params);
       const result = await pool.query(
         `SELECT s.id,
                 NULL AS codigo,
