@@ -6,8 +6,8 @@
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
     "test:coverage": "npm test",
-    "test:unit": "node --test tests/unit/**/*.test.js",
-    "test:integration": "node --test tests/integration/**/*.test.js",
+    "test:unit": "node --test $(find tests/unit -type f -name '*.test.js' | sort)",
+    "test:integration": "node --test $(find tests/integration -type f -name '*.test.js' | sort)",
     "sonar:local": "sh scripts/run-local-sonar.sh",
     "sonar:stop": "sh scripts/run-local-sonar.sh stop",
     "start": "nodemon src/app",
