@@ -44,7 +44,7 @@ steps:
         - push
 
   - name: image_to_ecr
-    image: plugins/ecr
+    image: plugins/ecr:20.18.8
     settings:
       access_key: ${AWS_ACCESS_KEY_ID}
       create_repository: true
