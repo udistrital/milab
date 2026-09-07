@@ -634,19 +634,19 @@ async function fetchDashboardStatsForManagement(req) {
       );
       const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${activosFacultadClause} ${activosLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobado', 'activo') ${activosFacultadClause} ${activosLaboratorioClause}`,
           activosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${pendientesFacultadClause} ${pendientesLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'en_cola') ${pendientesFacultadClause} ${pendientesLaboratorioClause}`,
           pendientesParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizada', 'cerrada') ${finalizadosFacultadClause} ${finalizadosLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizado', 'cancelado', 'rechazado') ${finalizadosFacultadClause} ${finalizadosLaboratorioClause}`,
           finalizadosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
           disponiblesParams
         ),
       ]);
@@ -667,19 +667,19 @@ async function fetchDashboardStatsForUser(usuarioId) {
     async () => {
       const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa')`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobado', 'activo')`,
           [usuarioId || null]
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar')`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'en_cola')`,
           [usuarioId || null]
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('finalizada', 'cerrada')`,
+          `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('finalizado', 'cancelado', 'rechazado')`,
           [usuarioId || null]
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado_prestamo = 'disponible'`
+          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible'`
         ),
       ]);
       return {
@@ -699,10 +699,39 @@ async function fetchActiveLoansForManagement(req) {
     async () => {
       const scope = await resolveLoanManagementScope(req);
       const params = [];
-      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
-      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const facultadClause = buildFacultyNameScopeClause('eq.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause(
+        'eq.laboratorio',
+        scope,
+        params
+      );
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('aprobada', 'en_entrega', 'activa') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id,
+                NULL AS codigo,
+                s.fecha_inicio AS fecha_solicitud,
+                s.fecha_creacion AS fecha_creacion,
+                CASE s.estado
+                  WHEN 'aprobado' THEN 'aprobada'
+                  WHEN 'activo' THEN 'activa'
+                  WHEN 'en_cola' THEN 'por_aprobar'
+                  WHEN 'pendiente' THEN 'pendiente'
+                  WHEN 'finalizado' THEN 'finalizada'
+                  WHEN 'cancelado' THEN 'cerrada'
+                  WHEN 'rechazado' THEN 'rechazada'
+                  ELSE s.estado
+                END AS estado,
+                s.categoria_practica AS tipo,
+                s.justificacion_academica AS finalidad,
+                u.nombre AS nombre_solicitante,
+                eq.facultad AS facultad,
+                eq.laboratorio AS laboratorio
+         FROM solicitud_prestamo s
+         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+        WHERE s.estado IN ('aprobado', 'activo')
+        ${facultadClause} ${laboratorioClause}
+        ORDER BY s.fecha_inicio DESC NULLS LAST
+        LIMIT 8`,
         params
       );
       return result.rows || [];
@@ -717,10 +746,39 @@ async function fetchPendingRequestsForManagement(req) {
     async () => {
       const scope = await resolveLoanManagementScope(req);
       const params = [];
-      const facultadClause = buildFacultyNameScopeClause('s.facultad', scope, params);
-      const laboratorioClause = buildLaboratoryNameScopeClause('s.laboratorio', scope, params);
+      const facultadClause = buildFacultyNameScopeClause('eq.facultad', scope, params);
+      const laboratorioClause = buildLaboratoryNameScopeClause(
+        'eq.laboratorio',
+        scope,
+        params
+      );
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'por_aprobar') ${facultadClause} ${laboratorioClause} ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id,
+                NULL AS codigo,
+                s.fecha_inicio AS fecha_solicitud,
+                s.fecha_creacion AS fecha_creacion,
+                CASE s.estado
+                  WHEN 'aprobado' THEN 'aprobada'
+                  WHEN 'activo' THEN 'activa'
+                  WHEN 'en_cola' THEN 'por_aprobar'
+                  WHEN 'pendiente' THEN 'pendiente'
+                  WHEN 'finalizado' THEN 'finalizada'
+                  WHEN 'cancelado' THEN 'cerrada'
+                  WHEN 'rechazado' THEN 'rechazada'
+                  ELSE s.estado
+                END AS estado,
+                s.categoria_practica AS tipo,
+                s.justificacion_academica AS finalidad,
+                u.nombre AS nombre_solicitante,
+                eq.facultad AS facultad,
+                eq.laboratorio AS laboratorio
+         FROM solicitud_prestamo s
+         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+        WHERE s.estado IN ('pendiente', 'en_cola')
+        ${facultadClause} ${laboratorioClause}
+        ORDER BY s.fecha_inicio DESC NULLS LAST
+        LIMIT 8`,
         params
       );
       return result.rows || [];
@@ -734,7 +792,31 @@ async function fetchActiveLoansForUser(usuarioId) {
   return safeFetch(
     async () => {
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('aprobada', 'en_entrega', 'activa') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id,
+                NULL AS codigo,
+                s.fecha_inicio AS fecha_solicitud,
+                s.fecha_creacion AS fecha_creacion,
+                CASE s.estado
+                  WHEN 'aprobado' THEN 'aprobada'
+                  WHEN 'activo' THEN 'activa'
+                  WHEN 'en_cola' THEN 'por_aprobar'
+                  WHEN 'pendiente' THEN 'pendiente'
+                  WHEN 'finalizado' THEN 'finalizada'
+                  WHEN 'cancelado' THEN 'cerrada'
+                  WHEN 'rechazado' THEN 'rechazada'
+                  ELSE s.estado
+                END AS estado,
+                s.categoria_practica AS tipo,
+                s.justificacion_academica AS finalidad,
+                u.nombre AS nombre_solicitante,
+                eq.facultad AS facultad,
+                eq.laboratorio AS laboratorio
+         FROM solicitud_prestamo s
+         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+        WHERE s.usuario_id = $1 AND s.estado IN ('aprobado', 'activo')
+        ORDER BY s.fecha_inicio DESC NULLS LAST
+        LIMIT 8`,
         [usuarioId || null]
       );
       return result.rows || [];
@@ -748,7 +830,31 @@ async function fetchPendingRequestsForUser(usuarioId) {
   return safeFetch(
     async () => {
       const result = await pool.query(
-        `SELECT s.id, s.codigo, s.fecha_solicitud, s.estado, s.tipo, s.finalidad, s.nombre_solicitante, s.facultad, s.laboratorio FROM solicitud_prestamo s WHERE s.solicitante_id = $1 AND s.estado IN ('pendiente', 'por_aprobar') ORDER BY s.fecha_solicitud DESC NULLS LAST LIMIT 8`,
+        `SELECT s.id,
+                NULL AS codigo,
+                s.fecha_inicio AS fecha_solicitud,
+                s.fecha_creacion AS fecha_creacion,
+                CASE s.estado
+                  WHEN 'aprobado' THEN 'aprobada'
+                  WHEN 'activo' THEN 'activa'
+                  WHEN 'en_cola' THEN 'por_aprobar'
+                  WHEN 'pendiente' THEN 'pendiente'
+                  WHEN 'finalizado' THEN 'finalizada'
+                  WHEN 'cancelado' THEN 'cerrada'
+                  WHEN 'rechazado' THEN 'rechazada'
+                  ELSE s.estado
+                END AS estado,
+                s.categoria_practica AS tipo,
+                s.justificacion_academica AS finalidad,
+                u.nombre AS nombre_solicitante,
+                eq.facultad AS facultad,
+                eq.laboratorio AS laboratorio
+         FROM solicitud_prestamo s
+         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+        WHERE s.usuario_id = $1 AND s.estado IN ('pendiente', 'en_cola')
+        ORDER BY s.fecha_inicio DESC NULLS LAST
+        LIMIT 8`,
         [usuarioId || null]
       );
       return result.rows || [];

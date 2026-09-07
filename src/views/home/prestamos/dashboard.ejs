@@ -727,57 +727,7 @@
 </style>
 
 <main class="app-main container-fluid py-4 px-3 px-sm-4">
-  <% const rolesList = Array.isArray(roles) ? roles : []; const primaryRole = typeof tipo ===
-  'string' ? tipo : (rolesList[0] || ''); const isManagementRole = ['admin', 'coordinador',
-  'laboratorista', 'monitor'].includes(primaryRole); const userName = typeof user === 'object' &&
-  user ? (user.nombre || user.nombre_usuario || 'Usuario') : 'Usuario'; const activos =
-  Number(stats?.activos || 0); const pendientes = Number(stats?.pendientes || 0); const finalizados
-  = Number(stats?.finalizados || 0); const disponibles = Number(stats?.disponibles || 0); const
-  totalLoanStates = activos + pendientes + finalizados; function calcPercent(value, base) { const b
-  = Number(base || 0); if (!b) return 0; const v = Number(value || 0); const pct = Math.round((v /
-  b) * 100); return Math.max(0, Math.min(100, pct)); } function mapDonutDegrees(percent) { return
-  Math.round(360 * (Math.max(0, Math.min(100, Number(percent || 0))) / 100)); } function
-  badgeClassForEstado(estado) { const e = String(estado || '').toLowerCase(); if (e === 'activa' ||
-  e === 'aprobada' || e === 'en_entrega') return `prestamos-badge prestamos-badge--${e}`; if (e ===
-  'pendiente' || e === 'por_aprobar') return `prestamos-badge prestamos-badge--${e}`; if (e ===
-  'finalizada' || e === 'cerrada') return `prestamos-badge prestamos-badge--${e}`; return
-  'prestamos-badge prestamos-badge--pendiente'; } function humanizeAccion(accion) { const map = {
-  SOLICITUD_CREADA: 'Solicitud creada', SOLICITUD_APROBADA: 'Solicitud aprobada',
-  SOLICITUD_RECHAZADA: 'Solicitud rechazada', SOLICITUD_CANCELADA: 'Solicitud cancelada',
-  PRESTAMO_INICIADO: 'Prestamo iniciado', PRESTAMO_ENTREGADO: 'Equipo entregado', PRESTAMO_DEVUELTO:
-  'Devolucion registrada', PRESTAMO_FINALIZADO: 'Prestamo finalizado', INCIDENCIA_REPORTADA:
-  'Incidencia reportada', INCIDENCIA_RESUELTA: 'Incidencia resuelta', }; return map[String(accion ||
-  '').toUpperCase()] || String(accion || 'Actividad registrada'); } function
-  activityIconClass(accion) { const a = String(accion || '').toUpperCase(); if
-  (a.includes('DEVUELTO') || a.includes('RESUELTA') || a.includes('APROBADA') ||
-  a.includes('FINALIZADO')) return 'prestamos-activity-icon prestamos-activity-icon--ok'; if
-  (a.includes('RECHAZADA') || a.includes('REPORTADA') || a.includes('PENDIENTE')) return
-  'prestamos-activity-icon prestamos-activity-icon--warn'; return 'prestamos-activity-icon
-  prestamos-activity-icon--info'; } function formatFecha(value) { if (!value) return ''; try { const
-  d = value instanceof Date ? value : new Date(value); if (Number.isNaN(d.getTime())) return
-  String(value); const pad = (n) => String(n).padStart(2, '0'); return
-  `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}
-  ${pad(d.getHours())}:${pad(d.getMinutes())}`; } catch (e) { return String(value); } } function
-  humanizeDateRelative(value) { if (!value) return ''; try { const d = value instanceof Date ? value
-  : new Date(value); if (Number.isNaN(d.getTime())) return ''; const diffMs = Date.now() -
-  d.getTime(); const mins = Math.round(diffMs / 60000); if (mins < 1) return 'Hace unos segundos';
-  if (mins < 60) return `Hace ${mins} min`; const hours = Math.round(mins / 60); if (hours < 24)
-  return `Hace ${hours} horas`; const days = Math.round(hours / 24); if (days < 7) return `Hace
-  ${days} dias`; return formatFecha(value); } catch (e) { return ''; } } const equipos =
-  Math.round(disponibles * 0.6) || disponibles; const elementos = Math.round(disponibles * 0.3);
-  const otros = Math.max(0, disponibles - equipos - elementos); const totalCategorias = equipos +
-  elementos + otros || 1; const tasaCumplimiento = finalizados > 0 ? calcPercent(finalizados,
-  (finalizados + Math.round(pendientes * 0.3))) : 92; const tiempoPromedioDias = totalLoanStates > 0
-  ? 5.2 : 5.2; function donutSegments(labelsAndValues, colors) { const total =
-  labelsAndValues.reduce((s, it) => s + Number(it.value || 0), 0) || 1; let acc = 0; const parts =
-  labelsAndValues.map((it, idx) => { const pct = (Number(it.value || 0) / total); const start =
-  Math.round(360 * acc); acc += pct; const end = Math.round(360 * acc); return `${colors[idx]}
-  ${start}deg ${end}deg`; }); return parts.join(', '); } const estadoColors = ['#8b5cf6', '#f59e0b',
-  '#10b981']; const estadoSegments = donutSegments([ { label: 'Activos', value: activos }, { label:
-  'Pendientes', value: pendientes }, { label: 'Finalizados', value: finalizados }, ], estadoColors);
-  const catColors = ['#8b5cf6', '#3b82f6', '#64748b']; const catSegments = donutSegments([ { label:
-  'Equipos', value: equipos }, { label: 'Elementos', value: elementos }, { label: 'Otros', value:
-  otros }, ], catColors); const complianceDegrees = mapDonutDegrees(tasaCumplimiento); %>
+  <% const rolesList = Array.isArray(roles) ? roles : []; const primaryRole = typeof tipo === 'string' ? tipo : (rolesList[0] || ''); const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole); const userName = typeof user === 'object' && user ? (user.nombre || user.nombre_usuario || 'Usuario') : 'Usuario'; const activos = Number(stats?.activos || 0); const pendientes = Number(stats?.pendientes || 0); const finalizados = Number(stats?.finalizados || 0); const disponibles = Number(stats?.disponibles || 0); const totalLoanStates = activos + pendientes + finalizados; function calcPercent(value, base) { const b = Number(base || 0); if (!b) return 0; const v = Number(value || 0); const pct = Math.round((v / b) * 100); return Math.max(0, Math.min(100, pct)); } function mapDonutDegrees(percent) { return Math.round(360 * (Math.max(0, Math.min(100, Number(percent || 0))) / 100)); } function badgeClassForEstado(estado) { const e = String(estado || '').toLowerCase(); if (e === 'activa' || e === 'aprobada' || e === 'en_entrega') return 'prestamos-badge prestamos-badge--' + e; if (e === 'pendiente' || e === 'por_aprobar') return 'prestamos-badge prestamos-badge--' + e; if (e === 'finalizada' || e === 'cerrada') return 'prestamos-badge prestamos-badge--' + e; return 'prestamos-badge prestamos-badge--pendiente'; } function humanizeAccion(accion) { const map = { SOLICITUD_CREADA: 'Solicitud creada', SOLICITUD_APROBADA: 'Solicitud aprobada', SOLICITUD_RECHAZADA: 'Solicitud rechazada', SOLICITUD_CANCELADA: 'Solicitud cancelada', PRESTAMO_INICIADO: 'Prestamo iniciado', PRESTAMO_ENTREGADO: 'Equipo entregado', PRESTAMO_DEVUELTO: 'Devolucion registrada', PRESTAMO_FINALIZADO: 'Prestamo finalizado', INCIDENCIA_REPORTADA: 'Incidencia reportada', INCIDENCIA_RESUELTA: 'Incidencia resuelta' }; return map[String(accion || '').toUpperCase()] || String(accion || 'Actividad registrada'); } function activityIconClass(accion) { const a = String(accion || '').toUpperCase(); if (a.includes('DEVUELTO') || a.includes('RESUELTA') || a.includes('APROBADA') || a.includes('FINALIZADO')) return 'prestamos-activity-icon prestamos-activity-icon--ok'; if (a.includes('RECHAZADA') || a.includes('REPORTADA') || a.includes('PENDIENTE')) return 'prestamos-activity-icon prestamos-activity-icon--warn'; return 'prestamos-activity-icon prestamos-activity-icon--info'; } function formatFecha(value) { if (!value) return ''; try { const d = value instanceof Date ? value : new Date(value); if (Number.isNaN(d.getTime())) return String(value); const pad = (n) => String(n).padStart(2, '0'); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); } catch (e) { return String(value); } } function humanizeDateRelative(value) { if (!value) return ''; try { const d = value instanceof Date ? value : new Date(value); if (Number.isNaN(d.getTime())) return ''; const diffMs = Date.now() - d.getTime(); const mins = Math.round(diffMs / 60000); if (mins < 1) return 'Hace unos segundos'; if (mins < 60) return 'Hace ' + mins + ' min'; const hours = Math.round(mins / 60); if (hours < 24) return 'Hace ' + hours + ' horas'; const days = Math.round(hours / 24); if (days < 7) return 'Hace ' + days + ' dias'; return formatFecha(value); } catch (e) { return ''; } } const equipos = Math.round(disponibles * 0.6) || disponibles; const elementos = Math.round(disponibles * 0.3); const otros = Math.max(0, disponibles - equipos - elementos); const totalCategorias = equipos + elementos + otros || 1; const tasaCumplimiento = finalizados > 0 ? calcPercent(finalizados, (finalizados + Math.round(pendientes * 0.3))) : 92; const tiempoPromedioDias = 5.2; function donutSegments(labelsAndValues, colors) { const total = labelsAndValues.reduce((s, it) => s + Number(it.value || 0), 0) || 1; let acc = 0; const parts = labelsAndValues.map((it, idx) => { const pct = (Number(it.value || 0) / total); const start = Math.round(360 * acc); acc += pct; const end = Math.round(360 * acc); return colors[idx] + ' ' + start + 'deg ' + end + 'deg'; }); return parts.join(', '); } const estadoColors = ['#8b5cf6', '#f59e0b', '#10b981']; const estadoSegments = donutSegments([{ label: 'Activos', value: activos }, { label: 'Pendientes', value: pendientes }, { label: 'Finalizados', value: finalizados }], estadoColors); const catColors = ['#8b5cf6', '#3b82f6', '#64748b']; const catSegments = donutSegments([{ label: 'Equipos', value: equipos }, { label: 'Elementos', value: elementos }, { label: 'Otros', value: otros }], catColors); const complianceDegrees = mapDonutDegrees(tasaCumplimiento); const MODULE_TONE_BG = { indigo: 'rgba(99,102,241,0.12)', violet: 'rgba(139,92,246,0.12)', emerald: 'rgba(16,185,129,0.12)', sky: 'rgba(14,165,233,0.12)', amber: 'rgba(245,158,11,0.12)', rose: 'rgba(244,63,94,0.12)', pink: 'rgba(236,72,153,0.12)', fuchsia: 'rgba(217,70,239,0.12)', cyan: 'rgba(6,182,212,0.12)', slate: 'rgba(100,116,139,0.12)' }; const MODULE_TONE_FG = { indigo: '#6366f1', violet: '#8b5cf6', emerald: '#10b981', sky: '#0ea5e9', amber: '#f59e0b', rose: '#f43f5e', pink: '#ec4899', fuchsia: '#d946ef', cyan: '#06b6d4', slate: '#64748b' }; %>
 
   <section class="prestamos-hero mb-4">
     <svg
@@ -1180,8 +1130,7 @@
               <div class="prestamos-compliance-label">
                 Devoluciones a tiempo<br />
                 <span style="color: #10b981; font-weight: 800">
-                  <%= tasaCumplimiento >= 90 ? 'Excelente trabajo' : (tasaCumplimiento >= 75 ? 'Buen
-                  trabajo' : 'Revisa procesos') %>
+                  <%= tasaCumplimiento >= 90 ? 'Excelente trabajo' : (tasaCumplimiento >= 75 ? 'Buen trabajo' : 'Revisa procesos') %>
                   <i class="bi bi-hand-thumbs-up"></i>
                 </span>
               </div>
@@ -1265,39 +1214,13 @@
                   display: flex;
                   align-items: center;
                   justify-content: center;
-                  background: <%=
-                    (
-                      {indigo: 'rgba(99,102,241,0.12)',
-                      violet: 'rgba(139,92,246,0.12)',
-                      emerald: 'rgba(16,185,129,0.12)',
-                      sky: 'rgba(14,165,233,0.12)',
-                      amber: 'rgba(245,158,11,0.12)',
-                      rose: 'rgba(244,63,94,0.12)',
-                      pink: 'rgba(236,72,153,0.12)',
-                      fuchsia: 'rgba(217,70,239,0.12)',
-                      cyan: 'rgba(6,182,212,0.12)',
-                      slate: 'rgba(100,116,139,0.12)'}
-                    )
-                    [card.tone] || 'rgba(99,102,241,0.12)' %>;
+                  background: <%= MODULE_TONE_BG[card.tone] || 'rgba(99,102,241,0.12)' %>;
                 "
               >
                 <i
                   class="bi <%= card.icon || 'bi-box-seam' %>"
                   style="
-                    color: <%=
-                      (
-                        {indigo: '#6366f1',
-                        violet: '#8b5cf6',
-                        emerald: '#10b981',
-                        sky: '#0ea5e9',
-                        amber: '#f59e0b',
-                        rose: '#f43f5e',
-                        pink: '#ec4899',
-                        fuchsia: '#d946ef',
-                        cyan: '#06b6d4',
-                        slate: '#64748b'}
-                      )
-                      [card.tone] || '#6366f1' %>;
+                    color: <%= MODULE_TONE_FG[card.tone] || '#6366f1' %>;
                     font-size: 1.3rem;
                   "
                 ></i>
