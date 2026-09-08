@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+﻿const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const multer = require('multer');
@@ -132,7 +132,7 @@ async function fetchUsuarioBySessionData(sessionUser) {
 const PRESTAMOS_MODULE_CARD_META = {
   '/milab/prestamos/inventario': {
     icon: 'bi-clipboard-data',
-    tone: 'indigo',
+    tone: 'amber',
     descriptions: {
       admin: 'Administra el catalogo general de equipos y elementos.',
       coordinador: 'Consulta y actualiza el inventario de tu facultad.',
@@ -143,7 +143,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/equipos': {
     icon: 'bi-cpu',
-    tone: 'violet',
+    tone: 'sand',
     descriptions: {
       admin: 'Gestiona fichas tecnicas, estados y asignaciones de equipos.',
       coordinador: 'Supervisa el ciclo de vida de los equipos asignados.',
@@ -167,7 +167,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/mis-solicitudes': {
     icon: 'bi-journal-text',
-    tone: 'sky',
+    tone: 'warm',
     descriptions: {
       admin: 'Consulta el estado historico de tus solicitudes de prestamo.',
       coordinador: 'Consulta el historial y estado de tus solicitudes.',
@@ -211,7 +211,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/practicas/gestion': {
     icon: 'bi-mortarboard',
-    tone: 'fuchsia',
+    tone: 'warm',
     descriptions: {
       admin: 'Programa y realiza seguimiento a practicas de laboratorio.',
       coordinador: 'Aprueba y agenda practicas de laboratorio.',
@@ -233,7 +233,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/reportes': {
     icon: 'bi-bar-chart-line',
-    tone: 'slate',
+    tone: 'sand',
     descriptions: {
       admin: 'Explora metricas, indicadores y reportes oficiales de prestamos.',
       coordinador: 'Consulta reportes operativos y estadisticos del modulo.',
@@ -244,7 +244,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/auditoria': {
     icon: 'bi-shield-check',
-    tone: 'slate',
+    tone: 'sand',
     descriptions: {
       admin: 'Consulta el registro de auditoria del modulo de prestamos.',
       laboratorista: 'Revisa el historial y la trazabilidad de movimientos.',
@@ -252,13 +252,13 @@ const PRESTAMOS_MODULE_CARD_META = {
       fallback: 'Consulta el registro de auditoria del modulo.',
     },
     overrides: {
-      laboratorista: { icon: 'bi-receipt-cutoff', tone: 'indigo' },
-      monitor: { icon: 'bi-receipt-cutoff', tone: 'indigo' },
+      laboratorista: { icon: 'bi-receipt-cutoff', tone: 'amber' },
+      monitor: { icon: 'bi-receipt-cutoff', tone: 'amber' },
     },
   },
   '/milab/prestamos/admin/parametrizaciones': {
     icon: 'bi-gear-wide-connected',
-    tone: 'indigo',
+    tone: 'amber',
     descriptions: {
       admin: 'Configura reglas, limites y parametros generales del modulo.',
       fallback: 'Configura reglas, limites y parametros generales del modulo.',
@@ -266,7 +266,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/coordinador/practicas/config': {
     icon: 'bi-tools',
-    tone: 'violet',
+    tone: 'sand',
     descriptions: {
       admin: 'Ajusta parametros operativos de la gestion de practicas.',
       coordinador: 'Ajusta la parametrizacion del ciclo de practicas.',
@@ -275,7 +275,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/practicas/solicitar': {
     icon: 'bi-mortarboard',
-    tone: 'fuchsia',
+    tone: 'warm',
     descriptions: {
       estudiante: 'Solicita y reserva espacios de practica para tus clases.',
       docente: 'Solicita y reserva espacios de practica para tus clases.',
@@ -284,7 +284,7 @@ const PRESTAMOS_MODULE_CARD_META = {
   },
   '/milab/prestamos/practicas/mis-reservas': {
     icon: 'bi-calendar-check',
-    tone: 'indigo',
+    tone: 'amber',
     descriptions: {
       estudiante: 'Consulta las practicas que tienes agendadas y su estado.',
       docente: 'Consulta las practicas que tienes agendadas y su estado.',
@@ -456,14 +456,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Inventario',
       href: '/milab/prestamos/inventario',
       icon: 'bi-clipboard-data',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Administra el catalogo general de equipos y elementos.',
     });
     cards.push({
       label: 'Equipos',
       href: '/milab/prestamos/equipos',
       icon: 'bi-cpu',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Gestiona fichas tecnicas, estados y asignaciones de equipos.',
     });
     cards.push({
@@ -477,7 +477,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Mis solicitudes',
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
-      tone: 'sky',
+      tone: 'warm',
       description: 'Consulta el estado historico de tus solicitudes de prestamo.',
     });
     cards.push({
@@ -505,7 +505,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Gestion de practicas',
       href: '/milab/prestamos/practicas/gestion',
       icon: 'bi-mortarboard',
-      tone: 'fuchsia',
+      tone: 'warm',
       description: 'Programa y realiza seguimiento a practicas de laboratorio.',
     });
     cards.push({
@@ -519,28 +519,28 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Reportes',
       href: '/milab/prestamos/reportes',
       icon: 'bi-bar-chart-line',
-      tone: 'slate',
+      tone: 'sand',
       description: 'Explora metricas, indicadores y reportes oficiales de prestamos.',
     });
     cards.push({
       label: 'Auditoria',
       href: '/milab/prestamos/auditoria',
       icon: 'bi-shield-check',
-      tone: 'slate',
+      tone: 'sand',
       description: 'Consulta el registro de auditoria del modulo de prestamos.',
     });
     cards.push({
       label: 'Parametrizaciones',
       href: '/milab/prestamos/admin/parametrizaciones',
       icon: 'bi-gear-wide-connected',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Configura reglas, limites y parametros generales del modulo.',
     });
     cards.push({
       label: 'Configuracion de practicas',
       href: '/milab/prestamos/coordinador/practicas/config',
       icon: 'bi-tools',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Ajusta parametros operativos de la gestion de practicas.',
     });
   } else if (role === 'coordinador') {
@@ -548,14 +548,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Inventario',
       href: '/milab/prestamos/inventario',
       icon: 'bi-clipboard-data',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Consulta y actualiza el inventario de tu facultad.',
     });
     cards.push({
       label: 'Equipos',
       href: '/milab/prestamos/equipos',
       icon: 'bi-cpu',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Supervisa el ciclo de vida de los equipos asignados.',
     });
     cards.push({
@@ -569,7 +569,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Mis solicitudes',
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
-      tone: 'sky',
+      tone: 'warm',
       description: 'Consulta el historial y estado de tus solicitudes.',
     });
     cards.push({
@@ -597,7 +597,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Gestion de practicas',
       href: '/milab/prestamos/practicas/gestion',
       icon: 'bi-mortarboard',
-      tone: 'fuchsia',
+      tone: 'warm',
       description: 'Aprueba y agenda practicas de laboratorio.',
     });
     cards.push({
@@ -611,14 +611,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Reportes',
       href: '/milab/prestamos/reportes',
       icon: 'bi-bar-chart-line',
-      tone: 'slate',
+      tone: 'sand',
       description: 'Consulta reportes operativos y estadisticos del modulo.',
     });
     cards.push({
       label: 'Configuracion de practicas',
       href: '/milab/prestamos/coordinador/practicas/config',
       icon: 'bi-tools',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Ajusta la parametrizacion del ciclo de practicas.',
     });
   } else if (role === 'laboratorista' || role === 'monitor') {
@@ -626,14 +626,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Inventario',
       href: '/milab/prestamos/inventario',
       icon: 'bi-clipboard-data',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Consulta el inventario de equipos y elementos disponibles.',
     });
     cards.push({
       label: 'Equipos',
       href: '/milab/prestamos/equipos',
       icon: 'bi-cpu',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Consulta fichas tecnicas y estados de los equipos.',
     });
     cards.push({
@@ -647,7 +647,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Mis solicitudes',
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
-      tone: 'sky',
+      tone: 'warm',
       description: 'Consulta el estado de tus propias solicitudes.',
     });
     cards.push({
@@ -675,7 +675,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Gestion de practicas',
       href: '/milab/prestamos/practicas/gestion',
       icon: 'bi-mortarboard',
-      tone: 'fuchsia',
+      tone: 'warm',
       description: 'Apoya la programacion y ejecucion de practicas.',
     });
     cards.push({
@@ -689,14 +689,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Reportes',
       href: '/milab/prestamos/reportes',
       icon: 'bi-bar-chart-line',
-      tone: 'slate',
+      tone: 'sand',
       description: 'Consulta reportes y estadisticas operativas del modulo.',
     });
     cards.push({
       label: 'Auditoria',
       href: '/milab/prestamos/auditoria',
       icon: 'bi-receipt-cutoff',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Revisa el historial y la trazabilidad de movimientos.',
     });
   } else if (role === 'estudiante' || role === 'docente') {
@@ -711,21 +711,21 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Mis solicitudes',
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
-      tone: 'sky',
+      tone: 'warm',
       description: 'Consulta el estado y el historial completo de tus solicitudes.',
     });
     cards.push({
       label: 'Solicitar practica',
       href: '/milab/prestamos/practicas/solicitar',
       icon: 'bi-mortarboard',
-      tone: 'fuchsia',
+      tone: 'warm',
       description: 'Solicita y reserva espacios de practica para tus clases.',
     });
     cards.push({
       label: 'Mis practicas',
       href: '/milab/prestamos/practicas/mis-reservas',
       icon: 'bi-calendar-check',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Consulta las practicas que tienes agendadas y su estado.',
     });
   } else {
@@ -733,14 +733,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Inventario',
       href: '/milab/prestamos/inventario',
       icon: 'bi-clipboard-data',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Consulta el catalogo general de equipos y elementos.',
     });
     cards.push({
       label: 'Equipos',
       href: '/milab/prestamos/equipos',
       icon: 'bi-cpu',
-      tone: 'violet',
+      tone: 'sand',
       description: 'Consulta fichas tecnicas y estados de equipos.',
     });
     cards.push({
@@ -754,7 +754,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Mis solicitudes',
       href: '/milab/prestamos/mis-solicitudes',
       icon: 'bi-journal-text',
-      tone: 'sky',
+      tone: 'warm',
       description: 'Consulta el estado y el historial de tus solicitudes.',
     });
     cards.push({
@@ -782,7 +782,7 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Gestion de practicas',
       href: '/milab/prestamos/practicas/gestion',
       icon: 'bi-mortarboard',
-      tone: 'fuchsia',
+      tone: 'warm',
       description: 'Gestiona practicas de laboratorio.',
     });
     cards.push({
@@ -796,14 +796,14 @@ function buildDashboardModuleCardsForRole(role) {
       label: 'Reportes',
       href: '/milab/prestamos/reportes',
       icon: 'bi-bar-chart-line',
-      tone: 'slate',
+      tone: 'sand',
       description: 'Consulta reportes del modulo de prestamos.',
     });
     cards.push({
       label: 'Auditoria',
       href: '/milab/prestamos/auditoria',
       icon: 'bi-receipt-cutoff',
-      tone: 'indigo',
+      tone: 'amber',
       description: 'Revisa el historial y trazabilidad de movimientos.',
     });
   }
@@ -2353,7 +2353,9 @@ async function createBlockingFineFromIncident(
     throw new Error('No fue posible determinar el usuario sancionado asociado a la incidencia.');
   }
   if (!laboratoristaDocumento) {
-    throw new Error('No fue posible determinar el laboratorista asociado para generar la sanción.');
+    throw new Error(
+      'No fue posible determinar el laboratorista asociado para generar la sanciÃ³n.'
+    );
   }
 
   const catMulta = 'Incidencia prestamos';
@@ -2363,7 +2365,7 @@ async function createBlockingFineFromIncident(
       `Incidencia #${incidencia.id}`,
       incidencia.tipo_incidencia ? `Tipo: ${incidencia.tipo_incidencia}` : null,
       sancionDetalle ? `Detalle: ${sancionDetalle}` : null,
-      justificacion ? `Justificación: ${justificacion}` : null,
+      justificacion ? `JustificaciÃ³n: ${justificacion}` : null,
       actorLabel ? `Responsable: ${actorLabel}` : null,
     ]
       .filter(Boolean)
@@ -9409,7 +9411,7 @@ router.post(
         `
           UPDATE solicitud_prestamo
           SET estado = 'cancelado',
-              motivo_rechazo = 'No asistió - prestamo de ultima hora',
+              motivo_rechazo = 'No asistiÃ³ - prestamo de ultima hora',
               fecha_modificacion = CURRENT_TIMESTAMP
           WHERE id = $1
             AND estado = 'aprobado'
@@ -9860,7 +9862,7 @@ router.post(
         `
           UPDATE solicitud_prestamo
           SET estado = 'cancelado',
-              motivo_rechazo = 'No asistió - asignado desde cola',
+              motivo_rechazo = 'No asistiÃ³ - asignado desde cola',
               fecha_modificacion = CURRENT_TIMESTAMP
           WHERE id = $1
             AND estado = 'aprobado'
@@ -10466,7 +10468,7 @@ router.post(
     if (!pazYSalvoDecisionPayload.justificacion) {
       return res.status(400).json({
         success: false,
-        message: 'Debes registrar una justificación para la decisión sobre paz y salvo.',
+        message: 'Debes registrar una justificaciÃ³n para la decisiÃ³n sobre paz y salvo.',
       });
     }
 
@@ -10674,7 +10676,7 @@ router.post(
       return res.json({
         success: true,
         message: shouldBlock
-          ? 'Incidencia aprobada y sanción aplicada con bloqueo de paz y salvo.'
+          ? 'Incidencia aprobada y sanciÃ³n aplicada con bloqueo de paz y salvo.'
           : 'Incidencia aprobada sin bloqueo de paz y salvo.',
       });
     } catch (error) {
@@ -10856,7 +10858,7 @@ router.post(
     if (!conversionJustificacion) {
       return res.status(400).json({
         success: false,
-        message: 'Debes registrar una justificación para convertir a bloqueo de paz y salvo.',
+        message: 'Debes registrar una justificaciÃ³n para convertir a bloqueo de paz y salvo.',
       });
     }
 
@@ -10880,7 +10882,7 @@ router.post(
         await client.query('ROLLBACK');
         return res.status(409).json({
           success: false,
-          message: 'La incidencia ya tiene una sanción bloqueante asociada.',
+          message: 'La incidencia ya tiene una sanciÃ³n bloqueante asociada.',
         });
       }
 
@@ -10929,14 +10931,17 @@ router.post(
 
       return res.json({
         success: true,
-        message: 'Sanción convertida a bloqueante correctamente.',
+        message: 'SanciÃ³n convertida a bloqueante correctamente.',
       });
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Error convirtiendo sanción a bloqueo MiLab:', error);
+      console.error('Error convirtiendo sanciÃ³n a bloqueo MiLab:', error);
       return res.status(500).json({
         success: false,
-        message: resolveLoanDbErrorMessage(error, 'No fue posible convertir la sanción a bloqueo.'),
+        message: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible convertir la sanciÃ³n a bloqueo.'
+        ),
       });
     } finally {
       client.release();
@@ -13861,7 +13866,7 @@ router.post(
                   : 'Tu practica fue completada',
               estadoEtiqueta: nextState === 'finalizada' ? 'FINALIZADA' : 'COMPLETADA',
               mensaje: shouldCreateIncidencia
-                ? 'Se registró una incidencia asociada al cierre de la practica.'
+                ? 'Se registrÃ³ una incidencia asociada al cierre de la practica.'
                 : '',
               usuarioNombre: reserva.usuario_nombre || 'Usuario',
               solicitudId: reserva.id,
