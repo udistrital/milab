@@ -598,25 +598,25 @@ html[data-bs-theme='dark'] body.app-shell .app-logout-pill:focus {
 }
 
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px solid rgba(124, 58, 237, 0.2);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 10px;
-  color: #7c3aed !important;
+  color: #2d4a52;
 }
 
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:hover,
 body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent:focus {
-  background: rgba(124, 58, 237, 0.14);
-  border-color: rgba(124, 58, 237, 0.35);
-  color: #5b21b6 !important;
-  box-shadow: 0 10px 20px rgba(124, 58, 237, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(72, 111, 122, 0.24);
+  box-shadow: 0 10px 20px rgba(56, 88, 97, 0.14);
+  color: #14333a !important;
   transform: translateY(-1px);
 }
 
 html[data-bs-theme='dark'] body.app-shell .app-nav-inline .nav-link.nav-link--prestamos-accent {
-  background: rgba(167, 139, 250, 0.12);
-  border-color: rgba(167, 139, 250, 0.28);
-  color: #c4b5fd !important;
+  background: transparent;
+  border-color: transparent;
+  color: #a8c5cc;
 }
 
 html[data-bs-theme='dark']
@@ -627,9 +627,9 @@ html[data-bs-theme='dark']
   body.app-shell
   .app-nav-inline
   .nav-link.nav-link--prestamos-accent:focus {
-  background: rgba(167, 139, 250, 0.18);
-  border-color: rgba(196, 181, 253, 0.4);
-  color: #ddd6fe !important;
+  background: rgba(144, 190, 204, 0.12);
+  border-color: rgba(144, 190, 204, 0.28);
+  color: #dceff4 !important;
 }
 
 body.app-shell .app-navbar-actions {
@@ -2279,10 +2279,59 @@ body.app-shell .table-multas td:nth-child(7) {
   width: 1%;
 }
 
-body.app-shell .table-multas th:nth-child(2),
-body.app-shell .table-multas td:nth-child(2),
-body.app-shell .table-multas th:nth-child(3),
-body.app-shell .table-multas td:nth-child(3),
+body.app-shell .table-laboratoristas th:nth-child(4),
+body.app-shell .table-laboratoristas td:nth-child(4),
+body.app-shell .table-laboratoristas th:nth-child(5),
+body.app-shell .table-laboratoristas td:nth-child(5) {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 340px;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .table-laboratoristas td:nth-child(4) {
+  line-height: 1.35;
+}
+
+body.app-shell .table-laboratoristas .app-labs-cell-text {
+  display: block;
+}
+
+body.app-shell .table-laboratoristas .app-labs-cell-text.is-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body.app-shell .table-laboratoristas .app-labs-toggle {
+  margin-top: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+body.app-shell .table-laboratoristas .app-labs-toggle:hover,
+body.app-shell .table-laboratoristas .app-labs-toggle:focus {
+  color: var(--app-accent-deep);
+}
+
+body.app-shell .table-laboratoristas th:nth-child(6),
+body.app-shell .table-laboratoristas td:nth-child(6),
+body.app-shell .table-laboratoristas th:nth-child(7),
+body.app-shell .table-laboratoristas td:nth-child(7),
+body.app-shell .table-laboratoristas th:nth-child(8),
+body.app-shell .table-laboratoristas td:nth-child(8) {
+  width: 1%;
+}
+
 body.app-shell .table-multas th:nth-child(5),
 body.app-shell .table-multas td:nth-child(5),
 body.app-shell .table-multas th:nth-child(8),
@@ -2648,6 +2697,42 @@ body.app-shell .message-card h4,
 body.app-shell .status-card h3,
 body.app-shell .status-card h4 {
   color: var(--app-text-main) !important;
+}
+
+body.app-shell .app-error-detail {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(23, 23, 23, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  text-align: left;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-error-detail {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.app-shell .app-error-detail-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .app-error-detail-body {
+  margin: 0;
+  max-height: 230px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--app-text-main);
 }
 
 body.app-shell .footer-note-shell {

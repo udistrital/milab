@@ -235,6 +235,40 @@
     });
   }
 
+  function initializeLaboratorioCellToggle() {
+    document.addEventListener('click', function (event) {
+      const toggleButton = event.target.closest('[data-labs-toggle="true"]');
+
+      if (!toggleButton) {
+        return;
+      }
+
+      const cell = toggleButton.closest('td');
+
+      if (!cell) {
+        return;
+      }
+
+      const textElement = cell.querySelector('[data-labs-text="true"]');
+
+      if (!textElement) {
+        return;
+      }
+
+      const isCollapsed = textElement.classList.contains('is-collapsed');
+
+      if (isCollapsed) {
+        textElement.classList.remove('is-collapsed');
+        toggleButton.textContent = 'Ver menos';
+        toggleButton.setAttribute('aria-expanded', 'true');
+      } else {
+        textElement.classList.add('is-collapsed');
+        toggleButton.textContent = 'Ver más';
+        toggleButton.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
   function initializeEmailEditor() {
     const modalElement = document.querySelector('[data-email-editor-modal]');
 
@@ -870,6 +904,7 @@
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
     $('.ocultar-columna').hide();
+    initializeLaboratorioCellToggle();
     initializeEmailEditor();
     initializeFirstVisitGuide();
   });
