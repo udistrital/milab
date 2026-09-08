@@ -379,7 +379,7 @@ function routeLabelFromPath(route) {
 }
 
 function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOverrides) {
-  if (!allowedRoutes) {
+  if (!allowedRoutes || (allowedRoutes instanceof Set && allowedRoutes.size === 0)) {
     return buildDashboardModuleCardsForRole(primaryRole);
   }
   const labels = new Map(
@@ -420,7 +420,7 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
 }
 
 function buildDashboardQuickLinksFromRoutes(allowedRoutes, primaryRole) {
-  if (!allowedRoutes) {
+  if (!allowedRoutes || (allowedRoutes instanceof Set && allowedRoutes.size === 0)) {
     return buildDashboardQuickLinksForRole(primaryRole);
   }
   const links = [];
