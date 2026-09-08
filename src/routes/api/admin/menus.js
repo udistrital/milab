@@ -5,6 +5,7 @@ const {
   updatePrestamosFacultyAccess,
 } = require('../../../libs/prestamos-module-access');
 const { requireRoles } = require('../../middlewares/auth');
+const { renderApplicationError } = require('../../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -96,11 +97,16 @@ router.get('/', requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error cargando menus:', error);
-    return res.render('home/message_error', {
-      message: '¡Algo ha salido mal!',
-      message2: 'No fue posible cargar los menus.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        message: '¡Algo ha salido mal!',
+        message2: 'No fue posible cargar los menus.',
+        limit: null,
+      },
+      req,
+      error
+    );
   }
 });
 

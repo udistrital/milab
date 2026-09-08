@@ -6,6 +6,12 @@
             <h3><%- message -%></h3>
             <h4 class="app-page-subtitle"><%- message2 -%></h4>
         </div>
+        <% if (adminErrorDetail) { %>
+        <section class="app-error-detail mt-3" aria-label="Detalle técnico de error para administrador">
+            <h5 class="app-error-detail-title">Detalle técnico (solo administrador)</h5>
+            <pre class="app-error-detail-body"><%= adminErrorDetail %></pre>
+        </section>
+        <% } %>
         <% if (!limit){ %>
         <% } else if(limit === 'noSession'){ %>
             <div class="text-center mt-3">

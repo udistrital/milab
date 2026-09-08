@@ -2699,6 +2699,42 @@ body.app-shell .status-card h4 {
   color: var(--app-text-main) !important;
 }
 
+body.app-shell .app-error-detail {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(23, 23, 23, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  text-align: left;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-error-detail {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.app-shell .app-error-detail-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .app-error-detail-body {
+  margin: 0;
+  max-height: 230px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--app-text-main);
+}
+
 body.app-shell .footer-note-shell {
   display: grid;
   gap: 0.35rem;
