@@ -129,6 +129,322 @@ async function fetchUsuarioBySessionData(sessionUser) {
   return usuario;
 }
 
+const PRESTAMOS_MODULE_CARD_META = {
+  '/milab/prestamos/inventario': {
+    icon: 'bi-clipboard-data',
+    tone: 'indigo',
+    descriptions: {
+      admin: 'Administra el catalogo general de equipos y elementos.',
+      coordinador: 'Consulta y actualiza el inventario de tu facultad.',
+      laboratorista: 'Consulta el inventario de equipos y elementos disponibles.',
+      monitor: 'Consulta el inventario de equipos y elementos disponibles.',
+      fallback: 'Consulta el catalogo general de equipos y elementos.',
+    },
+  },
+  '/milab/prestamos/equipos': {
+    icon: 'bi-cpu',
+    tone: 'violet',
+    descriptions: {
+      admin: 'Gestiona fichas tecnicas, estados y asignaciones de equipos.',
+      coordinador: 'Supervisa el ciclo de vida de los equipos asignados.',
+      laboratorista: 'Consulta fichas tecnicas y estados de los equipos.',
+      monitor: 'Consulta fichas tecnicas y estados de los equipos.',
+      fallback: 'Consulta fichas tecnicas y estados de equipos.',
+    },
+  },
+  '/milab/prestamos/solicitar': {
+    icon: 'bi-handbag',
+    tone: 'emerald',
+    descriptions: {
+      admin: 'Crea nuevas solicitudes de prestamo de equipos.',
+      coordinador: 'Crea solicitudes de prestamo para actividades academicas.',
+      laboratorista: 'Registra nuevas solicitudes de prestamo de equipos.',
+      monitor: 'Registra nuevas solicitudes de prestamo de equipos.',
+      estudiante: 'Crea nuevas solicitudes de prestamo de equipos para tus actividades.',
+      docente: 'Crea nuevas solicitudes de prestamo de equipos para tus actividades.',
+      fallback: 'Crea nuevas solicitudes de prestamo de equipos.',
+    },
+  },
+  '/milab/prestamos/mis-solicitudes': {
+    icon: 'bi-journal-text',
+    tone: 'sky',
+    descriptions: {
+      admin: 'Consulta el estado historico de tus solicitudes de prestamo.',
+      coordinador: 'Consulta el historial y estado de tus solicitudes.',
+      estudiante: 'Consulta el estado y el historial completo de tus solicitudes.',
+      docente: 'Consulta el estado y el historial completo de tus solicitudes.',
+      fallback: 'Consulta el estado y el historial de tus solicitudes.',
+    },
+  },
+  '/milab/prestamos/gestion-solicitudes': {
+    icon: 'bi-clipboard-check',
+    tone: 'amber',
+    descriptions: {
+      admin: 'Aprueba, rechaza y da seguimiento a las solicitudes recibidas.',
+      coordinador: 'Gestiona la cola de solicitudes pendientes de tu alcance.',
+      laboratorista: 'Atiende y actualiza el estado de las solicitudes recibidas.',
+      monitor: 'Atiende y actualiza el estado de las solicitudes recibidas.',
+      fallback: 'Atiende la cola de solicitudes recibidas.',
+    },
+  },
+  '/milab/prestamos/entrega-equipos': {
+    icon: 'bi-box-arrow-left-right',
+    tone: 'rose',
+    descriptions: {
+      admin: 'Registra entregas, devoluciones y novedades de equipos.',
+      coordinador: 'Formaliza entregas y recepciones de equipos prestados.',
+      laboratorista: 'Registra el movimiento fisico de entrega y recepcion.',
+      monitor: 'Registra el movimiento fisico de entrega y recepcion.',
+      fallback: 'Registra entregas, devoluciones y novedades de equipos.',
+    },
+  },
+  '/milab/prestamos/incidencias': {
+    icon: 'bi-exclamation-triangle',
+    tone: 'pink',
+    descriptions: {
+      admin: 'Reporta y gestiona incidentes asociados a prestamos.',
+      coordinador: 'Atiende incidentes reportados durante los prestamos.',
+      laboratorista: 'Reporta y hace seguimiento a incidentes de prestamos.',
+      monitor: 'Reporta y hace seguimiento a incidentes de prestamos.',
+      fallback: 'Reporta y gestiona incidentes de prestamos.',
+    },
+  },
+  '/milab/prestamos/practicas/gestion': {
+    icon: 'bi-mortarboard',
+    tone: 'fuchsia',
+    descriptions: {
+      admin: 'Programa y realiza seguimiento a practicas de laboratorio.',
+      coordinador: 'Aprueba y agenda practicas de laboratorio.',
+      laboratorista: 'Apoya la programacion y ejecucion de practicas.',
+      monitor: 'Apoya la programacion y ejecucion de practicas.',
+      fallback: 'Gestiona practicas de laboratorio.',
+    },
+  },
+  '/milab/prestamos/salas': {
+    icon: 'bi-door-open',
+    tone: 'cyan',
+    descriptions: {
+      admin: 'Consulta y agenda disponibilidad de salas de laboratorio.',
+      coordinador: 'Coordina la agenda de salas y espacios de laboratorio.',
+      laboratorista: 'Consulta la agenda y disponibilidad de salas.',
+      monitor: 'Consulta la agenda y disponibilidad de salas.',
+      fallback: 'Consulta y agenda disponibilidad de salas de laboratorio.',
+    },
+  },
+  '/milab/prestamos/reportes': {
+    icon: 'bi-bar-chart-line',
+    tone: 'slate',
+    descriptions: {
+      admin: 'Explora metricas, indicadores y reportes oficiales de prestamos.',
+      coordinador: 'Consulta reportes operativos y estadisticos del modulo.',
+      laboratorista: 'Consulta reportes y estadisticas operativas del modulo.',
+      monitor: 'Consulta reportes y estadisticas operativas del modulo.',
+      fallback: 'Consulta reportes y estadisticas del modulo.',
+    },
+  },
+  '/milab/prestamos/auditoria': {
+    icon: 'bi-shield-check',
+    tone: 'slate',
+    descriptions: {
+      admin: 'Consulta el registro de auditoria del modulo de prestamos.',
+      laboratorista: 'Revisa el historial y la trazabilidad de movimientos.',
+      monitor: 'Revisa el historial y la trazabilidad de movimientos.',
+      fallback: 'Consulta el registro de auditoria del modulo.',
+    },
+    overrides: {
+      laboratorista: { icon: 'bi-receipt-cutoff', tone: 'indigo' },
+      monitor: { icon: 'bi-receipt-cutoff', tone: 'indigo' },
+    },
+  },
+  '/milab/prestamos/admin/parametrizaciones': {
+    icon: 'bi-gear-wide-connected',
+    tone: 'indigo',
+    descriptions: {
+      admin: 'Configura reglas, limites y parametros generales del modulo.',
+      fallback: 'Configura reglas, limites y parametros generales del modulo.',
+    },
+  },
+  '/milab/prestamos/coordinador/practicas/config': {
+    icon: 'bi-tools',
+    tone: 'violet',
+    descriptions: {
+      admin: 'Ajusta parametros operativos de la gestion de practicas.',
+      coordinador: 'Ajusta la parametrizacion del ciclo de practicas.',
+      fallback: 'Ajusta la parametrizacion del ciclo de practicas.',
+    },
+  },
+  '/milab/prestamos/practicas/solicitar': {
+    icon: 'bi-mortarboard',
+    tone: 'fuchsia',
+    descriptions: {
+      estudiante: 'Solicita y reserva espacios de practica para tus clases.',
+      docente: 'Solicita y reserva espacios de practica para tus clases.',
+      fallback: 'Solicita y reserva espacios de practica para tus clases.',
+    },
+  },
+  '/milab/prestamos/practicas/mis-reservas': {
+    icon: 'bi-calendar-check',
+    tone: 'indigo',
+    descriptions: {
+      estudiante: 'Consulta las practicas que tienes agendadas y su estado.',
+      docente: 'Consulta las practicas que tienes agendadas y su estado.',
+      fallback: 'Consulta las practicas que tienes agendadas y su estado.',
+    },
+  },
+};
+
+const PRESTAMOS_QUICK_LINK_ALIASES = {
+  '/milab/prestamos/solicitar': 'Solicitar equipo',
+  '/milab/prestamos/mis-solicitudes': 'Mis solicitudes',
+  '/milab/prestamos/practicas/solicitar': 'Solicitar practica',
+  '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
+  '/milab/prestamos/salas': 'Salas disponibles',
+  '/milab/prestamos/inventario': 'Inventario',
+  '/milab/prestamos/equipos': 'Equipos',
+  '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
+  '/milab/prestamos/entrega-equipos': 'Entrega y devolucion',
+  '/milab/prestamos/reportes': 'Reportes',
+};
+
+const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
+  ['/milab/prestamos/gestion-solicitudes', 1],
+  ['/milab/prestamos/entrega-equipos', 2],
+  ['/milab/prestamos/inventario', 3],
+  ['/milab/prestamos/equipos', 4],
+  ['/milab/prestamos/reportes', 5],
+  ['/milab/prestamos/solicitar', 6],
+  ['/milab/prestamos/mis-solicitudes', 7],
+  ['/milab/prestamos/practicas/solicitar', 8],
+  ['/milab/prestamos/practicas/mis-reservas', 9],
+  ['/milab/prestamos/salas', 10],
+]);
+
+async function fetchPrestamosAllowedMenuRoutes(roles, client = pool) {
+  const normalizedRoles = normalizeRoles(roles);
+  if (!normalizedRoles.length) {
+    return new Set();
+  }
+  try {
+    const result = await client.query(
+      `
+        SELECT DISTINCT mi.route
+        FROM menu_item mi
+        JOIN rol_permiso rp
+          ON rp.menu_item_id = mi.id
+         AND (rp.can_use = TRUE OR rp.can_view = TRUE)
+        JOIN rol r
+          ON r.id = rp.rol_id
+        WHERE r.nombre = ANY($1)
+          AND mi.activo = TRUE
+          AND mi.route IS NOT NULL
+          AND LOWER(mi.route) LIKE '/milab/prestamos%'
+      `,
+      [normalizedRoles]
+    );
+    return new Set(
+      (result.rows || []).map((row) => String(row.route || '').trim()).filter(Boolean)
+    );
+  } catch (error) {
+    const errCode = error?.code;
+    if (errCode === '42P01' || errCode === '42703') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function resolveModuleCardMeta(route, primaryRole) {
+  const meta = PRESTAMOS_MODULE_CARD_META[route];
+  if (!meta) return null;
+  const role = String(primaryRole || 'fallback').toLowerCase();
+  const override = meta.overrides?.[role] || {};
+  const descriptions = meta.descriptions || {};
+  const description = descriptions[role] || descriptions.fallback || '';
+  return {
+    icon: override.icon || meta.icon || 'bi-box-seam',
+    tone: override.tone || meta.tone || 'indigo',
+    description,
+  };
+}
+
+function routeLabelFromPath(route) {
+  const parts = String(route || '')
+    .split('/')
+    .filter(Boolean);
+  const last = parts[parts.length - 1] || 'modulo';
+  return last
+    .replace(/-/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOverrides) {
+  if (!allowedRoutes) {
+    return buildDashboardModuleCardsForRole(primaryRole);
+  }
+  const labels = new Map(
+    Array.from(labelOverrides || []).concat([
+      ['/milab/prestamos/solicitar', 'Solicitar equipo'],
+      ['/milab/prestamos/mis-solicitudes', 'Mis solicitudes'],
+      ['/milab/prestamos/gestion-solicitudes', 'Gestion de solicitudes'],
+      ['/milab/prestamos/entrega-equipos', 'Entrega y devolucion'],
+      ['/milab/prestamos/practicas/gestion', 'Gestion de practicas'],
+      ['/milab/prestamos/practicas/solicitar', 'Solicitar practica'],
+      ['/milab/prestamos/practicas/mis-reservas', 'Mis practicas'],
+      ['/milab/prestamos/admin/parametrizaciones', 'Parametrizaciones'],
+      ['/milab/prestamos/coordinador/practicas/config', 'Configuracion de practicas'],
+    ])
+  );
+  const cards = [];
+  for (const route of Array.from(allowedRoutes)) {
+    const meta = resolveModuleCardMeta(route, primaryRole);
+    if (!meta) continue;
+    cards.push({
+      label: labels.get(route) || routeLabelFromPath(route),
+      href: route,
+      icon: meta.icon,
+      tone: meta.tone,
+      description: meta.description,
+    });
+  }
+  const order = Array.from(PRESTAMOS_QUICK_LINK_PRIORITY.keys());
+  cards.sort((a, b) => {
+    const ia = order.indexOf(a.href);
+    const ib = order.indexOf(b.href);
+    if (ia === -1 && ib === -1) return String(a.label || '').localeCompare(String(b.label || ''));
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  return cards;
+}
+
+function buildDashboardQuickLinksFromRoutes(allowedRoutes, primaryRole) {
+  if (!allowedRoutes) {
+    return buildDashboardQuickLinksForRole(primaryRole);
+  }
+  const links = [];
+  const seen = new Set();
+  for (const route of Array.from(allowedRoutes)) {
+    const label = PRESTAMOS_QUICK_LINK_ALIASES[route];
+    if (!label) continue;
+    if (seen.has(route)) continue;
+    seen.add(route);
+    links.push({
+      label,
+      href: route,
+      icon: resolveModuleCardMeta(route, primaryRole)?.icon || 'bi-grid-3x3-gap-fill',
+    });
+  }
+  links.sort((a, b) => {
+    const pa = PRESTAMOS_QUICK_LINK_PRIORITY.get(a.href) ?? 999;
+    const pb = PRESTAMOS_QUICK_LINK_PRIORITY.get(b.href) ?? 999;
+    if (pa !== pb) return pa - pb;
+    return String(a.label || '').localeCompare(String(b.label || ''));
+  });
+  return links;
+}
+
 async function fetchUsuarioBySession(req) {
   return fetchUsuarioBySessionData(req.session?.user || null);
 }
@@ -411,13 +727,6 @@ function buildDashboardModuleCardsForRole(role) {
       icon: 'bi-calendar-check',
       tone: 'indigo',
       description: 'Consulta las practicas que tienes agendadas y su estado.',
-    });
-    cards.push({
-      label: 'Salas',
-      href: '/milab/prestamos/salas',
-      icon: 'bi-door-open',
-      tone: 'cyan',
-      description: 'Explora la disponibilidad de salas de laboratorio para tus clases.',
     });
   } else {
     cards.push({
@@ -903,8 +1212,13 @@ async function renderPrestamosDashboard(req, res) {
     );
     const usuario = await fetchUsuarioBySession(req);
     const usuarioId = usuario?.id ? Number(usuario.id) : null;
-    const moduleCards = buildDashboardModuleCardsForRole(primaryRole);
-    const quickLinks = buildDashboardQuickLinksForRole(primaryRole);
+    const allowedRoutes = await safeFetch(
+      async () => fetchPrestamosAllowedMenuRoutes(roles, pool),
+      null,
+      'fetchPrestamosAllowedMenuRoutes'
+    );
+    const moduleCards = buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole);
+    const quickLinks = buildDashboardQuickLinksFromRoutes(allowedRoutes, primaryRole);
     let stats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
     let activeLoans = [];
     let pendingRequests = [];
@@ -940,8 +1254,9 @@ async function renderPrestamosDashboard(req, res) {
     console.error('[Dashboard Prestamos] Error renderizando dashboard:', error);
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    const moduleCards = buildDashboardModuleCardsForRole(primaryRole);
-    const quickLinks = buildDashboardQuickLinksForRole(primaryRole);
+    const allowedRoutes = null;
+    const moduleCards = buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole);
+    const quickLinks = buildDashboardQuickLinksFromRoutes(allowedRoutes, primaryRole);
     const fallbackStats = { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
     return res.render('home/prestamos/dashboard', {
       title: 'Prestamos',
