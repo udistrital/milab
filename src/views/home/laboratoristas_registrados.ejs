@@ -15,7 +15,7 @@
         <div class="alert alert-success" role="alert"><%= successMessage %></div>
       <% } %>
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid table-laboratoristas" data-grid-page-length="25" data-grid-scroll-x="false">
           <thead class="thead-dark text-center">
             <tr>
               <th>Nombres y Apellidos</th>
@@ -30,11 +30,28 @@
           </thead>
           <tbody class="text-center text-light">
             <% laboratoristas.forEach(laboratorista => { %>
+              <% const laboratorioTexto = String(laboratorista.con_ual || ''); %>
+              <% const mostrarToggleLaboratorio = laboratorioTexto.length > 140; %>
               <tr>
                 <td><%= laboratorista.con_nombre %></td>
                 <td><%= laboratorista.con_documento %></td>
                 <td data-email-cell="true"><%= laboratorista.con_correo %></td>
-                <td><%= laboratorista.con_ual %></td> <!-- nombre del laboratorio -->
+                <td>
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleLaboratorio ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= laboratorioTexto %></span>
+                  <% if (mostrarToggleLaboratorio) { %>
+                    <button
+                      type="button"
+                      class="app-labs-toggle"
+                      data-labs-toggle="true"
+                      aria-expanded="false"
+                    >
+                      Ver más
+                    </button>
+                  <% } %>
+                </td> <!-- nombre del laboratorio -->
                 <td><%= laboratorista.con_facultad %></td> <!-- nombre de la facultad -->
                 <td>
                   <a
