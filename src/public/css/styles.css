@@ -2310,7 +2310,7 @@ body.app-shell .table-laboratoristas .app-labs-toggle {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--app-primary-strong);
+  color: var(--app-accent);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -2320,7 +2320,7 @@ body.app-shell .table-laboratoristas .app-labs-toggle {
 
 body.app-shell .table-laboratoristas .app-labs-toggle:hover,
 body.app-shell .table-laboratoristas .app-labs-toggle:focus {
-  color: var(--app-primary-ink);
+  color: var(--app-accent-deep);
 }
 
 body.app-shell .table-laboratoristas th:nth-child(6),
