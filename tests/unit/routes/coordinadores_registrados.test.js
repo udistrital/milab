@@ -51,6 +51,56 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
         };
       }
 
+      if (
+        sql.includes('FROM coordinador c') &&
+        sql.includes('JOIN coordinador_facultad') &&
+        sql.includes('STRING_AGG(DISTINCT f.nombre')
+      ) {
+        return {
+          rows: [
+            {
+              con_nombre: 'Coord Demo',
+              con_documento: '900',
+              con_correo: 'coord@udistrital.edu.co',
+              facultad_nombre: 'Facultad de Ingenieria',
+              facultad_ids: [1],
+              tipo: 'coordinador',
+            },
+          ],
+        };
+      }
+
+      if (
+        sql.includes('SELECT facultad_id, nombre FROM facultad') &&
+        sql.includes('ORDER BY nombre ASC') &&
+        !sql.includes('WHERE')
+      ) {
+        return {
+          rows: [
+            { facultad_id: 1, nombre: 'Facultad de Ingenieria' },
+            { facultad_id: 2, nombre: 'Facultad de Artes' },
+          ],
+        };
+      }
+
+      if (sql.includes('SELECT column_name FROM information_schema.columns')) {
+        return {
+          rows: [{ column_name: 'facultad_id' }],
+        };
+      }
+
+      if (sql.includes('DELETE FROM coordinador_facultad WHERE coordinador_documento_id')) {
+        return { rows: [] };
+      }
+
+      if (sql.includes('INSERT INTO coordinador_facultad (coordinador_documento_id')) {
+        return { rows: [] };
+      }
+
+      if (sql.includes('INSERT INTO log (nombre, documento, accion, persona) VALUES')) {
+        return { rows: [] };
+      }
+
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return { rows: [] };
       }

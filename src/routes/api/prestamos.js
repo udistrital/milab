@@ -1298,6 +1298,23 @@ const PARAMETRIZACIONES_MENU_ROUTE = '/milab/prestamos/admin/parametrizaciones';
 const PRACTICAS_CONFIG_MENU_ROUTE = '/milab/prestamos/coordinador/practicas/config';
 const COORDINADOR_FIRMA_ROUTE = '/milab/prestamos/coordinador/firma';
 
+const ROLES_RESERVATION_RULES_EDITORS = new Set(['admin', 'coordinador']);
+const ROLES_SCHEMA_CATALOG_EDITORS = new Set(['admin', 'laboratorista']);
+
+function canEditReservationRulesByRole(rolesOrRequest) {
+  const normalized = Array.isArray(rolesOrRequest)
+    ? normalizeRoles(rolesOrRequest)
+    : normalizeRoles(rolesOrRequest?.session?.user?.roles || rolesOrRequest?.session?.user?.tipo);
+  return normalized.some((role) => ROLES_RESERVATION_RULES_EDITORS.has(role));
+}
+
+function canEditSchemaAndCatalogByRole(rolesOrRequest) {
+  const normalized = Array.isArray(rolesOrRequest)
+    ? normalizeRoles(rolesOrRequest)
+    : normalizeRoles(rolesOrRequest?.session?.user?.roles || rolesOrRequest?.session?.user?.tipo);
+  return normalized.some((role) => ROLES_SCHEMA_CATALOG_EDITORS.has(role));
+}
+
 const ALLOWED_INSTITUTIONAL_FORMAT_FILES = new Set([
   'GL-PR-001-FR-001.pdf',
   'GL-PR-001-FR-002.pdf',
@@ -14040,14 +14057,74 @@ router.get(
   async function (req, res) {
     try {
       await ensureAcademicPracticeSchema();
-      const facultades = await fetchScopedPracticeConfigurationFaculties(req);
-      const selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
-      const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
-      const laboratorios = selectedFaculty
-        ? await fetchScopedPracticeConfigurationLaboratories(req, selectedFaculty.facultad_id)
+
+      const canEditReservationRules = canEditReservationRulesByRole(req);
+      const canEditSchemaAndCatalog = canEditSchemaAndCatalogByRole(req);
+      const pageRoleHint =
+        canEditReservationRules && canEditSchemaAndCatalog
+          ? 'Administra reglas de reserva, define el esquema dinamico por laboratorio y crea practicas academicas asociadas a asignaturas.'
+          : canEditReservationRules
+            ? 'Configura las reglas de reserva y parametros generales de practicas por facultad.'
+            : 'Define el esquema dinamico por laboratorio y crea/actualiza el catalogo de practicas academicas.';
+
+      const facultades = canEditReservationRules
+        ? await fetchScopedPracticeConfigurationFaculties(req)
         : [];
+      let selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
+      if (selectedId && !facultades.some((f) => Number(f.facultad_id) === selectedId)) {
+        selectedId = Number(facultades[0]?.facultad_id || 0);
+      }
+      const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
+
+      let laboratorios = [];
+      if (canEditSchemaAndCatalog) {
+        if (selectedFaculty) {
+          laboratorios = await fetchScopedPracticeConfigurationLaboratories(
+            req,
+            selectedFaculty.facultad_id
+          );
+        }
+        if (!laboratorios.length) {
+          const scope = await resolveLoanManagementScope(req);
+          if (
+            scope.unrestricted ||
+            Array.isArray(scope.laboratoryNames) ||
+            scope.facultyIds.length
+          ) {
+            const unrestrictedLabs = scope.unrestricted
+              ? null
+              : {
+                  facultyIds: scope.facultyIds,
+                  laboratoryNames: scope.laboratoryNames,
+                };
+            const params = [];
+            const whereParts = ['u.activo = TRUE'];
+            if (unrestrictedLabs?.facultyIds?.length) {
+              params.push(unrestrictedLabs.facultyIds);
+              whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
+            }
+            if (unrestrictedLabs?.laboratoryNames?.length) {
+              params.push(unrestrictedLabs.laboratoryNames);
+              whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+            }
+            const labsQ = await pool.query(
+              `
+                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+                FROM ual u
+                JOIN facultad f ON f.facultad_id = u.facultad_id
+                WHERE ${whereParts.join(' AND ') || 'TRUE'}
+                ORDER BY f.nombre ASC, u.nombre ASC
+              `,
+              params
+            );
+            laboratorios = labsQ.rows || [];
+          }
+        }
+      }
+
       const selectedUalId = Number(req.query?.ual_id || laboratorios[0]?.ual_id || 0);
       const selectedLaboratory = laboratorios.find((item) => Number(item.ual_id) === selectedUalId);
+
       const dynamicPracticeSchema = selectedLaboratory
         ? await fetchDynamicPracticeSchemaByUalId(selectedLaboratory.ual_id)
         : { ...DEFAULT_DYNAMIC_PRACTICE_SCHEMA };
@@ -14056,25 +14133,45 @@ router.get(
         : [];
 
       return res.render('home/prestamos/practicas/configuracion', {
+        pageRoleHint,
+        canEditReservationRules,
+        canEditSchemaAndCatalog,
         facultades,
         selectedFacultyId: selectedFaculty?.facultad_id || null,
         selectedFacultyName: selectedFaculty?.nombre || '',
         laboratorios,
         selectedUalId: selectedLaboratory?.ual_id || null,
         selectedLaboratoryName: selectedLaboratory?.nombre || '',
-        config: selectedFaculty
-          ? await fetchPracticeConfigurationByFacultyId(selectedFaculty.facultad_id)
-          : { ...DEFAULT_PRACTICE_CONFIGURATION },
+        config:
+          canEditReservationRules && selectedFaculty
+            ? await fetchPracticeConfigurationByFacultyId(selectedFaculty.facultad_id)
+            : { ...DEFAULT_PRACTICE_CONFIGURATION },
         dynamicPracticeSchema,
         academicPractices,
         successMessage: sanitizeText(req.query.success),
         errorMessage:
           sanitizeText(req.query.error) ||
-          (!facultades.length ? 'No hay facultades asociadas para configurar practicas.' : ''),
+          (!facultades.length && canEditReservationRules
+            ? 'No hay facultades asociadas para configurar reglas de reserva.'
+            : '') ||
+          (!laboratorios.length && canEditSchemaAndCatalog
+            ? 'No hay laboratorios asignados para configurar el esquema dinamico o catalogo de practicas.'
+            : ''),
       });
     } catch (error) {
       console.error('Error cargando configuracion de practicas MiLab:', error);
+      const canEditReservationRules = canEditReservationRulesByRole(req);
+      const canEditSchemaAndCatalog = canEditSchemaAndCatalogByRole(req);
+      const pageRoleHint =
+        canEditReservationRules && canEditSchemaAndCatalog
+          ? 'Administra reglas de reserva, define el esquema dinamico por laboratorio y crea practicas academicas asociadas a asignaturas.'
+          : canEditReservationRules
+            ? 'Configura las reglas de reserva y parametros generales de practicas por facultad.'
+            : 'Define el esquema dinamico por laboratorio y crea/actualiza el catalogo de practicas academicas.';
       return res.render('home/prestamos/practicas/configuracion', {
+        pageRoleHint,
+        canEditReservationRules,
+        canEditSchemaAndCatalog,
         facultades: [],
         selectedFacultyId: null,
         selectedFacultyName: '',
@@ -14098,6 +14195,12 @@ router.post(
   '/coordinador/practicas/config',
   requirePracticasConfigAuthorized,
   async function (req, res) {
+    if (!canEditReservationRulesByRole(req)) {
+      return res.redirect(
+        '/milab/prestamos/coordinador/practicas/config?error=' +
+          encodeURIComponent('Tu perfil no puede editar las reglas de reserva.')
+      );
+    }
     try {
       const facultades = await fetchScopedPracticeConfigurationFaculties(req);
       const selectedId = Number(req.body?.facultad_id || 0);
@@ -14190,6 +14293,12 @@ router.post(
   '/coordinador/practicas/config/schema',
   requirePracticasConfigAuthorized,
   async function (req, res) {
+    if (!canEditSchemaAndCatalogByRole(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Tu perfil no puede editar el esquema dinamico del laboratorio.',
+      });
+    }
     const payload = buildDynamicPracticeSchemaPayload(req.body);
     const schemaError = validateDynamicPracticeSchema(payload.schema_json);
 
@@ -14267,6 +14376,12 @@ router.post(
   '/coordinador/practicas/catalogo',
   requirePracticasConfigAuthorized,
   async function (req, res) {
+    if (!canEditSchemaAndCatalogByRole(req)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Tu perfil no puede editar el catalogo de practicas academicas.',
+      });
+    }
     const payload = buildAcademicPracticePayload(req.body);
 
     try {

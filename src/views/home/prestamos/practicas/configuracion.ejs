@@ -41,7 +41,7 @@
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Configuracion De Practicas</h1>
-    <p class="app-page-subtitle">Administra reglas de reserva, define el esquema dinamico por laboratorio y crea practicas academicas asociadas a asignaturas.</p>
+    <p class="app-page-subtitle"><%= typeof pageRoleHint === 'string' && pageRoleHint ? pageRoleHint : 'Administra reglas de reserva, define el esquema dinamico por laboratorio y crea practicas academicas asociadas a asignaturas.' %></p>
   </section>
 
   <div id="configPracticasAlerts">
@@ -53,12 +53,14 @@
     <% } %>
   </div>
 
+  <% if ((typeof canEditReservationRules !== 'undefined' && canEditReservationRules) || (typeof canEditSchemaAndCatalog !== 'undefined' && canEditSchemaAndCatalog)) { %>
   <section class="card app-form-panel text-light mb-4 practice-config-card">
     <div class="card-header">
       <h5 class="mb-0">Contexto De Trabajo</h5>
     </div>
     <div class="card-body">
       <form class="row g-3" method="get" action="/milab/prestamos/coordinador/practicas/config">
+        <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
         <div class="col-md-5">
           <label for="facultad_id_filtro" class="form-label">Facultad</label>
           <select class="form-select" id="facultad_id_filtro" name="facultad_id" <%= facultades && facultades.length ? '' : 'disabled' %>>
@@ -73,6 +75,8 @@
             <% } %>
           </select>
         </div>
+        <% } %>
+        <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
         <div class="col-md-5">
           <label for="ual_id_filtro" class="form-label">Laboratorio</label>
           <select class="form-select" id="ual_id_filtro" name="ual_id" <%= laboratorios && laboratorios.length ? '' : 'disabled' %>>
@@ -87,25 +91,32 @@
             <% } %>
           </select>
         </div>
+        <% } %>
         <div class="col-md-2 d-flex align-items-end">
-          <button class="btn btn-outline-primary w-100" type="submit" <%= facultades && facultades.length ? '' : 'disabled' %>>Cargar</button>
+          <button class="btn btn-outline-primary w-100" type="submit" <%= ((typeof canEditReservationRules === 'undefined' || canEditReservationRules) && facultades && facultades.length) || ((typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) && laboratorios && laboratorios.length) ? '' : 'disabled' %>>Cargar</button>
         </div>
       </form>
 
       <div class="row g-3 mt-1">
+        <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
         <div class="col-md-6">
           <div class="small text-light-emphasis">Facultad activa</div>
           <div class="fw-semibold"><%= facultadActual %></div>
         </div>
+        <% } %>
+        <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
         <div class="col-md-6">
           <div class="small text-light-emphasis">Laboratorio activo</div>
           <div class="fw-semibold"><%= laboratorioActual %></div>
         </div>
+        <% } %>
       </div>
     </div>
   </section>
+  <% } %>
 
   <div class="row g-4">
+    <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
     <div class="col-xl-5">
       <section class="card app-form-panel text-light h-100 practice-config-card">
         <div class="card-header">
@@ -152,8 +163,10 @@
         </div>
       </section>
     </div>
+    <% } %>
 
-    <div class="col-xl-7">
+    <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
+    <div class="<%= (typeof canEditReservationRules === 'undefined' || canEditReservationRules) ? 'col-xl-7' : 'col-12' %>">
       <section class="card app-form-panel text-light h-100 practice-config-card">
         <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <div>
@@ -230,6 +243,9 @@
         </div>
       </section>
     </div>
+    <% } %>
+
+    <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
 
     <div class="col-12">
       <section class="card app-form-panel text-light practice-config-card">
@@ -402,6 +418,7 @@
         </div>
       </section>
     </div>
+    <% } %>
   </div>
 </main>
 
