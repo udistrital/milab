@@ -61,7 +61,7 @@ async function resolveExistingColumn(tableName, candidateColumns) {
       [tableName, candidateColumns]
     );
     return res.rows[0]?.column_name || candidateColumns[0];
-  } catch (_e) {
+  } catch {
     return candidateColumns[0];
   }
 }
