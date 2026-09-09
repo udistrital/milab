@@ -1,0 +1,291 @@
+<div class="alert alert-success d-none" role="alert" data-coordinador-editor-page-feedback="true"></div>
+
+<div
+  class="modal fade"
+  id="coordinadorEditorModal"
+  tabindex="-1"
+  aria-labelledby="coordinadorEditorModalLabel"
+  aria-hidden="true"
+  data-coordinador-editor-modal="true"
+>
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="POST" action="<%= actionUrl %>" data-coordinador-editor-form="true">
+        <%- include('./csrf_field') %>
+        <input type="hidden" name="documento" value="" data-coordinador-editor-hidden-document="true">
+
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="coordinadorEditorModalLabel" data-coordinador-editor-title="true">Editar coordinador</h5>
+            <p class="text-muted mb-0 small" data-coordinador-editor-subtitle="true">Actualiza el correo institucional y la asignaci&oacute;n de sedes / facultades.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="alert alert-danger d-none" role="alert" data-coordinador-editor-feedback="true"></div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorName">Nombre</label>
+              <input type="text" class="form-control" id="coordinadorEditorName" readonly data-coordinador-editor-name="true">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorDocument">Documento</label>
+              <input type="text" class="form-control" id="coordinadorEditorDocument" readonly data-coordinador-editor-document="true">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorCurrent">Correo actual</label>
+              <input type="text" class="form-control" id="coordinadorEditorCurrent" readonly data-coordinador-editor-current="true">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorInput">Nuevo correo institucional</label>
+              <input
+                type="email"
+                class="form-control"
+                id="coordinadorEditorInput"
+                name="correo"
+                required
+                autocomplete="off"
+                pattern="^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$"
+                data-coordinador-editor-input="true"
+              >
+              <div class="form-text">Solo se permiten correos institucionales con dominio @udistrital.edu.co.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">- Seleccione Sedes / Facultades (una o varias) -</label>
+              <div class="row" data-coordinador-editor-facultades-container="true">
+                <% if (Array.isArray(facultadesDisponibles) && facultadesDisponibles.length) { %>
+                  <% for (var i = 0; i < facultadesDisponibles.length; i++) { %>
+                    <div class="col-md-6 mb-2">
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          id="coordinadorFacultad_<%= facultadesDisponibles[i].facultad_id %>"
+                          name="facultad_ids"
+                          value="<%= facultadesDisponibles[i].facultad_id %>"
+                          data-coordinador-editor-facultad="<%= facultadesDisponibles[i].facultad_id %>"
+                        >
+                        <label class="form-check-label" for="coordinadorFacultad_<%= facultadesDisponibles[i].facultad_id %>">
+                          <%= facultadesDisponibles[i].nombre %>
+                        </label>
+                      </div>
+                    </div>
+                  <% } %>
+                <% } else { %>
+                  <div class="col-12 small text-muted">No hay facultades disponibles para seleccionar.</div>
+                <% } %>
+              </div>
+              <small class="form-text text-muted">Elija al menos una sede / facultad.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" data-coordinador-editor-save="true">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  (function() {
+    var modalEl = document.querySelector('[data-coordinador-editor-modal="true"]');
+    if (!modalEl || typeof bootstrap === 'undefined') return;
+
+    var modal = new bootstrap.Modal(modalEl);
+    var form = modalEl.querySelector('[data-coordinador-editor-form="true"]');
+    var pageFeedback = document.querySelector('[data-coordinador-editor-page-feedback="true"]');
+    var feedback = modalEl.querySelector('[data-coordinador-editor-feedback="true"]');
+    var hiddenDocument = modalEl.querySelector('[data-coordinador-editor-hidden-document="true"]');
+    var titleEl = modalEl.querySelector('[data-coordinador-editor-title="true"]');
+    var subtitleEl = modalEl.querySelector('[data-coordinador-editor-subtitle="true"]');
+    var nameEl = modalEl.querySelector('[data-coordinador-editor-name="true"]');
+    var documentEl = modalEl.querySelector('[data-coordinador-editor-document="true"]');
+    var currentEl = modalEl.querySelector('[data-coordinador-editor-current="true"]');
+    var inputEl = modalEl.querySelector('[data-coordinador-editor-input="true"]');
+    var facultadesContainer = modalEl.querySelector('[data-coordinador-editor-facultades-container="true"]');
+    var saveBtn = modalEl.querySelector('[data-coordinador-editor-save="true"]');
+
+    var endpoint = '';
+
+    function showFeedback(el, type, message) {
+      if (!el) return;
+      el.className = 'alert alert-' + type + ' fade show';
+      el.innerHTML = message + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
+      if (el === pageFeedback) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+
+    function hideFeedback(el) {
+      if (!el) return;
+      el.classList.add('d-none');
+      el.className = 'alert d-none';
+    }
+
+    function clearModalState() {
+      hideFeedback(feedback);
+      if (form) form.classList.remove('was-validated');
+      if (saveBtn) saveBtn.disabled = false;
+    }
+
+    function readCsrfToken() {
+      if (!form) return '';
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+      var input = form.querySelector('input[name="_csrf"]');
+      return input ? input.value || '' : '';
+    }
+
+    function updateFacultadesCell(documento, facultadesText) {
+      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
+      if (!row) return;
+      var cell = row.querySelector('[data-facultades-cell="true"]');
+      if (cell) cell.textContent = facultadesText || '';
+    }
+
+    function updateEmailCell(documento, email) {
+      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
+      if (!row) return;
+      var cell = row.querySelector('[data-email-cell="true"]');
+      if (cell) cell.textContent = email || '';
+    }
+
+    function computeFacultadesLabel(selectedIds) {
+      if (!facultadesContainer) return '';
+      var checks = facultadesContainer.querySelectorAll('input[name="facultad_ids"][data-coordinador-editor-facultad]');
+      var labels = [];
+      checks.forEach(function(check) {
+        var id = check.getAttribute('data-coordinador-editor-facultad');
+        if (selectedIds.indexOf(id) >= 0 || selectedIds.indexOf(Number(id)) >= 0) {
+          var lbl = check.parentElement.querySelector('label');
+          if (lbl && lbl.textContent.trim()) labels.push(lbl.textContent.trim());
+        }
+      });
+      return labels.sort().join(', ');
+    }
+
+    document.querySelectorAll('[data-coordinador-editor-trigger="true"]').forEach(function(button) {
+      button.addEventListener('click', function() {
+        clearModalState();
+        endpoint = button.getAttribute('data-coordinador-editor-endpoint') || form.getAttribute('action') || '';
+        if (form && endpoint) form.setAttribute('action', endpoint);
+
+        var documento = button.getAttribute('data-coordinador-editor-document') || '';
+        var nombre = button.getAttribute('data-coordinador-editor-name') || '';
+        var correo = button.getAttribute('data-coordinador-editor-current-email') || '';
+        var rawFacIds = button.getAttribute('data-coordinador-editor-facultad-ids') || '[]';
+        var selectedIds = [];
+        try {
+          var parsed = JSON.parse(rawFacIds);
+          selectedIds = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          selectedIds = [];
+        }
+
+        if (hiddenDocument) hiddenDocument.value = documento;
+        if (titleEl) titleEl.textContent = 'Editar coordinador';
+        if (subtitleEl) subtitleEl.textContent = 'Actualiza el correo institucional y las facultades asignadas a esta cuenta.';
+        if (nameEl) nameEl.value = nombre;
+        if (documentEl) documentEl.value = documento;
+        if (currentEl) currentEl.value = correo;
+        if (inputEl) {
+          inputEl.value = correo;
+        }
+
+        if (facultadesContainer) {
+          var checks = facultadesContainer.querySelectorAll('input[name="facultad_ids"][data-coordinador-editor-facultad]');
+          checks.forEach(function(check) {
+            var id = check.getAttribute('data-coordinador-editor-facultad');
+            check.checked =
+              selectedIds.indexOf(id) >= 0 || selectedIds.indexOf(Number(id)) >= 0;
+          });
+        }
+
+        modal.show();
+      });
+    });
+
+    if (form) {
+      form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!form.checkValidity()) {
+          event.stopPropagation();
+          form.classList.add('was-validated');
+          return;
+        }
+
+        var selectedChecks = facultadesContainer
+          ? facultadesContainer.querySelectorAll('input[name="facultad_ids"][data-coordinador-editor-facultad]:checked')
+          : [];
+        if (selectedChecks.length === 0) {
+          showFeedback(feedback, 'warning', 'Debes seleccionar al menos una sede / facultad.');
+          return;
+        }
+
+        hideFeedback(feedback);
+        if (saveBtn) saveBtn.disabled = true;
+
+        var documento = hiddenDocument ? hiddenDocument.value : '';
+        var correo = inputEl ? inputEl.value : '';
+        var facultadIds = [];
+        selectedChecks.forEach(function(check) {
+          facultadIds.push(check.value);
+        });
+
+        try {
+          var response = await fetch(endpoint || form.getAttribute('action') || '', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': readCsrfToken() || '',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+              documento: documento,
+              correo: correo,
+              facultad_ids: facultadIds
+            })
+          });
+
+          var data = await response.json().catch(function() {
+            return { ok: false, message: 'No fue posible procesar la respuesta del servidor.' };
+          });
+
+          if (!response.ok || !data.ok) {
+            throw new Error(data.message || 'No fue posible actualizar el coordinador.');
+          }
+
+          var selectedIdsValues = facultadIds.map(function(x) { return String(x); });
+          var label = computeFacultadesLabel(selectedIdsValues.concat(facultadIds));
+          updateFacultadesCell(documento, label);
+          updateEmailCell(documento, correo || data.correo || '');
+
+          if (currentEl) currentEl.value = correo || data.correo || '';
+
+          modal.hide();
+          showFeedback(pageFeedback, 'success', 'Coordinador actualizado correctamente.');
+          window.setTimeout(function() {
+            hideFeedback(pageFeedback);
+          }, 4000);
+        } catch (error) {
+          showFeedback(feedback, 'danger', error.message || 'No fue posible actualizar el coordinador.');
+        } finally {
+          if (saveBtn) saveBtn.disabled = false;
+        }
+      });
+    }
+
+    modalEl.addEventListener('hidden.bs.modal', function() {
+      clearModalState();
+    });
+  })();
+</script>

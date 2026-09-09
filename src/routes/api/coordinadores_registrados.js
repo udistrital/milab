@@ -54,15 +54,31 @@ async function resolveCoordinatorUserId(client, coordinador) {
   return result.rows[0]?.id || null;
 }
 
+async function resolveExistingColumn(tableName, candidateColumns) {
+  try {
+    const res = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = ANY($2::text[]) LIMIT 1`,
+      [tableName, candidateColumns]
+    );
+    return res.rows[0]?.column_name || candidateColumns[0];
+  } catch (e) {
+    return candidateColumns[0];
+  }
+}
+
 router.get('/', requireAdminCoordinadoresView, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
+  let client;
+
   try {
+    client = await pool.connect();
     const query = `
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
              STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
+             ARRAY_AGG(DISTINCT f.facultad_id ORDER BY f.facultad_id) FILTER (WHERE f.facultad_id IS NOT NULL) AS facultad_ids,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
@@ -85,10 +101,18 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       ) role_state ON true
       GROUP BY c.nombre, c.documento, c.correo, role_state.activo
     `;
-    const result = await pool.query(query);
+    const result = await client.query(query);
     const coordinadores = result.rows;
 
-    return res.render('home/coordinadores_registrados', { coordinadores });
+    const facultadesResult = await client.query(
+      'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC'
+    );
+    const facultadesDisponibles = facultadesResult.rows;
+
+    return res.render('home/coordinadores_registrados', {
+      coordinadores,
+      facultadesDisponibles,
+    });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
 
@@ -105,6 +129,177 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       message: 'No fue posible cargar los coordinadores registrados.',
       message2: 'Intenta nuevamente en unos minutos.',
       limit: null,
+    });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) => {
+  const documento = String(req.body.documento || '').trim();
+  const correo = normalizeInstitutionalEmail(req.body.correo);
+
+  const facultyIdsInput = req.body.facultad_ids;
+  const facultadIds = Array.isArray(facultyIdsInput)
+    ? facultyIdsInput.map((x) => parseInt(String(x || '0'), 10)).filter(Number.isFinite)
+    : typeof facultyIdsInput === 'string' && /^\d+$/.test(facultyIdsInput)
+      ? [parseInt(facultyIdsInput, 10)]
+      : [];
+
+  if (!documento) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar el documento del coordinador.',
+    });
+  }
+
+  if (!isInstitutionalEmail(correo)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Solo se permiten correos institucionales @udistrital.edu.co.',
+    });
+  }
+
+  if (!facultadIds.length) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes seleccionar al menos una sede / facultad.',
+    });
+  }
+
+  let client;
+
+  try {
+    client = await pool.connect();
+
+    const coordinatorResult = await client.query(
+      'SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1',
+      [documento]
+    );
+
+    if (coordinatorResult.rows.length === 0) {
+      client.release();
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos el coordinador seleccionado.',
+      });
+    }
+
+    const coordinador = coordinatorResult.rows[0];
+    const conflict = await findEmailConflict(
+      client,
+      correo,
+      coordinador.documento || coordinador.nombre_u
+    );
+
+    if (conflict) {
+      client.release();
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    const validFacultyColumn = await resolveExistingColumn('facultad', [
+      'facultad_id',
+      'id_facultad',
+    ]);
+    const validFacs = await client.query(
+      `SELECT ${validFacultyColumn} AS facultad_id FROM facultad WHERE ${validFacultyColumn} = ANY($1::int[])`,
+      [facultadIds]
+    );
+    if (validFacs.rows.length !== facultadIds.length) {
+      client.release();
+      return res.status(400).json({
+        ok: false,
+        message: 'Una o más facultades seleccionadas no existen.',
+      });
+    }
+
+    const coordinatorFacultyColumn = await resolveExistingColumn('coordinador_facultad', [
+      'facultad_id',
+      'id_facultad',
+    ]);
+
+    await client.query('BEGIN');
+    await client.query('UPDATE coordinador SET correo = $1 WHERE documento = $2', [
+      correo,
+      documento,
+    ]);
+    if (coordinador.usuario_id) {
+      await client.query(
+        `UPDATE usuario
+         SET correo = $1,
+            fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [correo, coordinador.usuario_id]
+      );
+    } else {
+      await client.query(
+        `UPDATE usuario
+         SET correo = $1,
+            fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE documento = $2`,
+        [correo, documento]
+      );
+    }
+
+    await client.query(`DELETE FROM coordinador_facultad WHERE coordinador_documento_id = $1`, [
+      documento,
+    ]);
+
+    for (const facId of facultadIds) {
+      await client.query(
+        `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyColumn})
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [documento, facId]
+      );
+    }
+
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session.user.tipo,
+        normalizeLogDocument(req.session.user.documento),
+        'Actualizar correo y facultades coordinador',
+        documento,
+      ]
+    );
+    await client.query('COMMIT');
+    client.release();
+
+    return res.json({
+      ok: true,
+      correo,
+      documento,
+      facultad_ids: facultadIds,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error(
+          'Error al revertir actualización de correo y facultades de coordinador:',
+          rollbackError
+        );
+      }
+      client.release();
+    }
+
+    console.error('Error al actualizar coordinador:', error);
+
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar el coordinador. Inténtalo nuevamente.',
     });
   }
 });

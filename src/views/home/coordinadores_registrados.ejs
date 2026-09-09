@@ -26,21 +26,21 @@
           </thead>
           <tbody>
             <% coordinadores.forEach(coordinador => { %>
-              <tr>
+              <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
                 <td><%= coordinador.con_documento %></td>
                 <td data-email-cell="true"><%= coordinador.con_correo %></td>
-                <td><%= coordinador.facultad_nombre %></td>
+                <td data-facultades-cell="true"><%= coordinador.facultad_nombre %></td>
                 <td>
                   <button
                     type="button"
                     class="btn btn-sm btn-outline-primary"
-                    data-email-editor-trigger="true"
-                    data-email-editor-endpoint="/milab/api/coordinadores_registrados/actualizar-correo"
-                    data-email-editor-document="<%= coordinador.con_documento %>"
-                    data-email-editor-name="<%= coordinador.con_nombre %>"
-                    data-email-editor-current-email="<%= coordinador.con_correo %>"
-                    data-email-editor-label="coordinador"
+                    data-coordinador-editor-trigger="true"
+                    data-coordinador-editor-endpoint="/milab/api/coordinadores_registrados/actualizar"
+                    data-coordinador-editor-document="<%= coordinador.con_documento %>"
+                    data-coordinador-editor-name="<%= coordinador.con_nombre %>"
+                    data-coordinador-editor-current-email="<%= coordinador.con_correo %>"
+                    data-coordinador-editor-facultad-ids='<%= JSON.stringify(Array.isArray(coordinador.facultad_ids) ? coordinador.facultad_ids : []) %>'
                   >
                     Editar
                   </button>
@@ -67,8 +67,9 @@
     </div>
   </section>
 
-  <%- include('../partials/email-editor-modal', {
-    actionUrl: '/milab/api/coordinadores_registrados/actualizar-correo'
+  <%- include('../partials/coordinador-editor-modal', {
+    actionUrl: '/milab/api/coordinadores_registrados/actualizar',
+    facultadesDisponibles: facultadesDisponibles || [],
   }) %>
 
 <div class="px-3">
