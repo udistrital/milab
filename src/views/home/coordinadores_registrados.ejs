@@ -19,6 +19,8 @@
               <th>Cédula</th>
               <th>Correo</th>
               <th>Facultad</th>
+              <th>Resoluci&oacute;n</th>
+              <th>Soporte Resoluci&oacute;n</th>
               <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
               <th>Estado actual</th>
               <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
@@ -31,6 +33,8 @@
                 <td><%= coordinador.con_documento %></td>
                 <td data-email-cell="true"><%= coordinador.con_correo %></td>
                 <td data-facultades-cell="true"><%= coordinador.facultad_nombre %></td>
+                <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
+                <td data-soporte-resolucion-cell="true"><%= coordinador.con_soporte_resolucion || '' %></td>
                 <td>
                   <button
                     type="button"
@@ -40,6 +44,8 @@
                     data-coordinador-editor-document="<%= coordinador.con_documento %>"
                     data-coordinador-editor-name="<%= coordinador.con_nombre %>"
                     data-coordinador-editor-current-email="<%= coordinador.con_correo %>"
+                    data-coordinador-editor-numero-resolucion="<%= coordinador.con_numero_resolucion_coordinador || '' %>"
+                    data-coordinador-editor-soporte-resolucion="<%= coordinador.con_soporte_resolucion || '' %>"
                     data-coordinador-editor-facultad-ids='<%= JSON.stringify(Array.isArray(coordinador.facultad_ids) ? coordinador.facultad_ids : []) %>'
                   >
                     Editar

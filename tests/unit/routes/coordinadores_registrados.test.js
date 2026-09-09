@@ -37,12 +37,53 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
         return connectQueryImpl(sql, params);
       }
 
-      if (sql.includes('SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador')) {
+      if (
+        sql.includes(
+          'SELECT documento, nombre, correo, nombre_u, usuario_id, numero_resolucion_coordinador, soporte_resolucion FROM coordinador WHERE documento = $1'
+        )
+      ) {
         return {
           rows: [
             {
               documento: '900',
               nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              nombre_u: 'coord-user',
+              usuario_id: 7,
+              numero_resolucion_coordinador: '001-2025',
+              soporte_resolucion: 'https://sgral.udistrital.edu.co/r/001-2025',
+            },
+          ],
+        };
+      }
+
+      if (
+        sql.includes(
+          'SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1'
+        )
+      ) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              nombre_u: 'coord-user',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+
+      if (
+        sql.includes(
+          'SELECT documento, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1'
+        )
+      ) {
+        return {
+          rows: [
+            {
+              documento: '900',
               correo: 'coord@udistrital.edu.co',
               nombre_u: 'coord-user',
               usuario_id: 7,
@@ -62,6 +103,8 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
               con_nombre: 'Coord Demo',
               con_documento: '900',
               con_correo: 'coord@udistrital.edu.co',
+              con_numero_resolucion_coordinador: '001-2025',
+              con_soporte_resolucion: 'https://sgral.udistrital.edu.co/r/001-2025',
               facultad_nombre: 'Facultad de Ingenieria',
               facultad_ids: [1],
               tipo: 'coordinador',
