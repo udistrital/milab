@@ -688,7 +688,7 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
     client = await pool.connect();
 
     const laboratoristaRes = await client.query(
-      'SELECT documento, n_usuario, correo, usuario_id FROM laboratorista WHERE documento = $1',
+      'SELECT documento, n_usuario, correo, usuario_id, activo FROM laboratorista WHERE documento = $1',
       [documento]
     );
 
@@ -743,42 +743,18 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
       });
     }
 
-    const roleStateRes = await client.query(
-      `SELECT ur.activo
-       FROM usuario_rol ur
-       JOIN rol r ON r.id = ur.rol_id
-       WHERE ur.usuario_id = $1
-         AND r.nombre = 'laboratorista'
-       LIMIT 1`,
-      [userId]
-    );
-
-    const hasExistingRole = roleStateRes.rows.length > 0;
-    const nuevoEstado = hasExistingRole ? !roleStateRes.rows[0].activo : true;
+    const nuevoEstado = !laboratorista.activo;
 
     await client.query('BEGIN');
 
-    if (hasExistingRole) {
-      await client.query(
-        `UPDATE usuario_rol ur
-         SET activo = $2,
-             fecha_modificacion = CURRENT_TIMESTAMP
-         FROM rol r
-         WHERE ur.usuario_id = $1
-           AND ur.rol_id = r.id
-           AND r.nombre = 'laboratorista'`,
-        [userId, nuevoEstado]
-      );
-    } else {
-      await client.query(
-        `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
-         SELECT $1, id, TRUE FROM rol WHERE nombre = 'laboratorista'
-         ON CONFLICT (usuario_id, rol_id) DO UPDATE
-         SET activo = TRUE,
-             fecha_modificacion = CURRENT_TIMESTAMP`,
-        [userId]
-      );
-    }
+    await client.query(
+      `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
+       SELECT $1, id, $2 FROM rol WHERE nombre = 'laboratorista'
+       ON CONFLICT (usuario_id, rol_id) DO UPDATE
+       SET activo = EXCLUDED.activo,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [userId, nuevoEstado]
+    );
 
     await client.query(
       `UPDATE laboratorista
