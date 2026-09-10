@@ -77,6 +77,8 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
+             c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
+             c.soporte_resolucion AS con_soporte_resolucion,
              STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
              ARRAY_AGG(DISTINCT f.facultad_id ORDER BY f.facultad_id) FILTER (WHERE f.facultad_id IS NOT NULL) AS facultad_ids,
              CASE WHEN COALESCE(role_state.activo, FALSE)
@@ -99,7 +101,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
           AND r.nombre = 'coordinador'
         LIMIT 1
       ) role_state ON true
-      GROUP BY c.nombre, c.documento, c.correo, role_state.activo
+      GROUP BY c.nombre, c.documento, c.correo, c.numero_resolucion_coordinador, c.soporte_resolucion, role_state.activo
     `;
     const result = await client.query(query);
     const coordinadores = result.rows;
@@ -137,7 +139,34 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
 
 router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) => {
   const documento = String(req.body.documento || '').trim();
-  const correo = normalizeInstitutionalEmail(req.body.correo);
+
+  const rawCorreo = req.body.correo;
+  const wantsUpdateEmail = typeof rawCorreo === 'string' && rawCorreo.trim() !== '';
+  const correo = wantsUpdateEmail ? normalizeInstitutionalEmail(rawCorreo) : '';
+
+  const rawNumeroResolucion =
+    typeof req.body.numero_resolucion_coordinador === 'string'
+      ? req.body.numero_resolucion_coordinador.trim()
+      : '';
+  const rawSoporteResolucion =
+    typeof req.body.soporte_resolucion === 'string' ? req.body.soporte_resolucion.trim() : '';
+  const wantsUpdateNumeroResolucion = rawNumeroResolucion !== '';
+  const wantsUpdateSoporteResolucion = rawSoporteResolucion !== '';
+
+  if (wantsUpdateSoporteResolucion) {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(rawSoporteResolucion);
+    } catch {
+      parsedUrl = null;
+    }
+    if (!parsedUrl || !/^https?:$/i.test(parsedUrl.protocol)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El soporte de resoluci\u00F3n debe ser una URL v\u00E1lida (http o https).',
+      });
+    }
+  }
 
   const facultyIdsInput = req.body.facultad_ids;
   const facultadIds = Array.isArray(facultyIdsInput)
@@ -153,7 +182,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     });
   }
 
-  if (!isInstitutionalEmail(correo)) {
+  if (wantsUpdateEmail && !isInstitutionalEmail(correo)) {
     return res.status(400).json({
       ok: false,
       message: 'Solo se permiten correos institucionales @udistrital.edu.co.',
@@ -173,7 +202,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     client = await pool.connect();
 
     const coordinatorResult = await client.query(
-      'SELECT documento, nombre, correo, nombre_u, usuario_id FROM coordinador WHERE documento = $1',
+      'SELECT documento, nombre, correo, nombre_u, usuario_id, numero_resolucion_coordinador, soporte_resolucion FROM coordinador WHERE documento = $1',
       [documento]
     );
 
@@ -186,18 +215,21 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     }
 
     const coordinador = coordinatorResult.rows[0];
-    const conflict = await findEmailConflict(
-      client,
-      correo,
-      coordinador.documento || coordinador.nombre_u
-    );
 
-    if (conflict) {
-      client.release();
-      return res.status(409).json({
-        ok: false,
-        message: 'Ese correo ya existe vinculado a otra cuenta.',
-      });
+    if (wantsUpdateEmail) {
+      const conflict = await findEmailConflict(
+        client,
+        correo,
+        coordinador.documento || coordinador.nombre_u
+      );
+
+      if (conflict) {
+        client.release();
+        return res.status(409).json({
+          ok: false,
+          message: 'Ese correo ya existe vinculado a otra cuenta.',
+        });
+      }
     }
 
     const validFacultyColumn = await resolveExistingColumn('facultad', [
@@ -222,26 +254,51 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     ]);
 
     await client.query('BEGIN');
-    await client.query('UPDATE coordinador SET correo = $1 WHERE documento = $2', [
-      correo,
-      documento,
-    ]);
-    if (coordinador.usuario_id) {
-      await client.query(
-        `UPDATE usuario
-         SET correo = $1,
-            fecha_modificacion = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [correo, coordinador.usuario_id]
-      );
-    } else {
-      await client.query(
-        `UPDATE usuario
-         SET correo = $1,
-            fecha_modificacion = CURRENT_TIMESTAMP
-         WHERE documento = $2`,
-        [correo, documento]
-      );
+
+    if (wantsUpdateEmail || wantsUpdateNumeroResolucion || wantsUpdateSoporteResolucion) {
+      const updates = [];
+      const params = [];
+      let paramIdx = 1;
+
+      if (wantsUpdateEmail) {
+        updates.push(`correo = $${paramIdx}`);
+        params.push(correo);
+        paramIdx += 1;
+      }
+      if (wantsUpdateNumeroResolucion) {
+        updates.push(`numero_resolucion_coordinador = $${paramIdx}`);
+        params.push(rawNumeroResolucion);
+        paramIdx += 1;
+      }
+      if (wantsUpdateSoporteResolucion) {
+        updates.push(`soporte_resolucion = $${paramIdx}`);
+        params.push(rawSoporteResolucion);
+        paramIdx += 1;
+      }
+
+      params.push(documento);
+      const updateCoordSql = `UPDATE coordinador SET ${updates.join(', ')} WHERE documento = $${paramIdx}`;
+      await client.query(updateCoordSql, params);
+    }
+
+    if (wantsUpdateEmail) {
+      if (coordinador.usuario_id) {
+        await client.query(
+          `UPDATE usuario
+           SET correo = $1,
+              fecha_modificacion = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [correo, coordinador.usuario_id]
+        );
+      } else {
+        await client.query(
+          `UPDATE usuario
+           SET correo = $1,
+              fecha_modificacion = CURRENT_TIMESTAMP
+           WHERE documento = $2`,
+          [correo, documento]
+        );
+      }
     }
 
     await client.query(`DELETE FROM coordinador_facultad WHERE coordinador_documento_id = $1`, [
@@ -257,12 +314,18 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       );
     }
 
+    const logParts = [];
+    if (wantsUpdateEmail) logParts.push('correo');
+    if (wantsUpdateNumeroResolucion || wantsUpdateSoporteResolucion)
+      logParts.push('resoluci\u00F3n');
+    logParts.push('facultades');
+
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         normalizeLogDocument(req.session.user.documento),
-        'Actualizar correo y facultades coordinador',
+        'Actualizar ' + logParts.join(' y ') + ' coordinador',
         documento,
       ]
     );
@@ -271,7 +334,13 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
 
     return res.json({
       ok: true,
-      correo,
+      correo: wantsUpdateEmail ? correo : coordinador.correo,
+      numero_resolucion_coordinador: wantsUpdateNumeroResolucion
+        ? rawNumeroResolucion
+        : coordinador.numero_resolucion_coordinador,
+      soporte_resolucion: wantsUpdateSoporteResolucion
+        ? rawSoporteResolucion
+        : coordinador.soporte_resolucion,
       documento,
       facultad_ids: facultadIds,
     });
@@ -281,7 +350,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
         await client.query('ROLLBACK');
       } catch (rollbackError) {
         console.error(
-          'Error al revertir actualización de correo y facultades de coordinador:',
+          'Error al revertir actualizaci\u00F3n de facultades de coordinador:',
           rollbackError
         );
       }
@@ -290,7 +359,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
 
     console.error('Error al actualizar coordinador:', error);
 
-    if (isUniqueViolation(error)) {
+    if (wantsUpdateEmail && isUniqueViolation(error)) {
       return res.status(409).json({
         ok: false,
         message: 'Ese correo ya existe vinculado a otra cuenta.',
@@ -299,7 +368,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
 
     return res.status(500).json({
       ok: false,
-      message: 'No fue posible actualizar el coordinador. Inténtalo nuevamente.',
+      message: 'No fue posible actualizar el coordinador. Int\u00E9ntalo nuevamente.',
     });
   }
 });

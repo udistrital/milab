@@ -56,6 +56,34 @@
               <div class="form-text">Solo se permiten correos institucionales con dominio @udistrital.edu.co.</div>
             </div>
 
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorNumeroResolucion">N&uacute;mero y a&ntilde;o de Resoluci&oacute;n</label>
+              <input
+                type="text"
+                class="form-control"
+                id="coordinadorEditorNumeroResolucion"
+                name="numero_resolucion_coordinador"
+                autocomplete="off"
+                data-coordinador-editor-numero-resolucion="true"
+              >
+              <div class="form-text">Ejemplo: 001-2025 / Resoluci&oacute;n 012 del 15 de enero de 2025.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label" for="coordinadorEditorSoporteResolucion">Soporte Resoluci&oacute;n (URL sgral)</label>
+              <input
+                type="url"
+                class="form-control"
+                id="coordinadorEditorSoporteResolucion"
+                name="soporte_resolucion"
+                autocomplete="off"
+                pattern="^https?://.+"
+                placeholder="https://..."
+                data-coordinador-editor-soporte-resolucion="true"
+              >
+              <div class="form-text">Enlace del sistema sgral o URL p&uacute;blica al documento de soporte.</div>
+            </div>
+
             <div class="col-12">
               <label class="form-label">- Seleccione Sedes / Facultades (una o varias) -</label>
               <div class="row" data-coordinador-editor-facultades-container="true">
@@ -111,6 +139,8 @@
     var documentEl = modalEl.querySelector('[data-coordinador-editor-document="true"]');
     var currentEl = modalEl.querySelector('[data-coordinador-editor-current="true"]');
     var inputEl = modalEl.querySelector('[data-coordinador-editor-input="true"]');
+    var numeroResolucionEl = modalEl.querySelector('[data-coordinador-editor-numero-resolucion="true"]');
+    var soporteResolucionEl = modalEl.querySelector('[data-coordinador-editor-soporte-resolucion="true"]');
     var facultadesContainer = modalEl.querySelector('[data-coordinador-editor-facultades-container="true"]');
     var saveBtn = modalEl.querySelector('[data-coordinador-editor-save="true"]');
 
@@ -159,6 +189,31 @@
       if (cell) cell.textContent = email || '';
     }
 
+    function updateNumeroResolucionCell(documento, texto) {
+      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
+      if (!row) return;
+      var cell = row.querySelector('[data-numero-resolucion-cell="true"]');
+      if (cell) cell.textContent = texto || '';
+    }
+
+    function updateSoporteResolucionCell(documento, texto) {
+      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
+      if (!row) return;
+      var cell = row.querySelector('[data-soporte-resolucion-cell="true"]');
+      if (!cell) return;
+      if (!texto) {
+        cell.textContent = '';
+        return;
+      }
+      var anchor = document.createElement('a');
+      anchor.href = texto;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+      anchor.textContent = texto;
+      cell.textContent = '';
+      cell.appendChild(anchor);
+    }
+
     function computeFacultadesLabel(selectedIds) {
       if (!facultadesContainer) return '';
       var checks = facultadesContainer.querySelectorAll('input[name="facultad_ids"][data-coordinador-editor-facultad]');
@@ -182,6 +237,8 @@
         var documento = button.getAttribute('data-coordinador-editor-document') || '';
         var nombre = button.getAttribute('data-coordinador-editor-name') || '';
         var correo = button.getAttribute('data-coordinador-editor-current-email') || '';
+        var numeroResolucion = button.getAttribute('data-coordinador-editor-numero-resolucion') || '';
+        var soporteResolucion = button.getAttribute('data-coordinador-editor-soporte-resolucion') || '';
         var rawFacIds = button.getAttribute('data-coordinador-editor-facultad-ids') || '[]';
         var selectedIds = [];
         try {
@@ -193,13 +250,15 @@
 
         if (hiddenDocument) hiddenDocument.value = documento;
         if (titleEl) titleEl.textContent = 'Editar coordinador';
-        if (subtitleEl) subtitleEl.textContent = 'Actualiza el correo institucional y las facultades asignadas a esta cuenta.';
+        if (subtitleEl) subtitleEl.textContent = 'Actualiza el correo institucional, datos de resoluci\u00F3n y la asignaci\u00F3n de sedes / facultades.';
         if (nameEl) nameEl.value = nombre;
         if (documentEl) documentEl.value = documento;
         if (currentEl) currentEl.value = correo;
         if (inputEl) {
           inputEl.value = correo;
         }
+        if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion;
+        if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion;
 
         if (facultadesContainer) {
           var checks = facultadesContainer.querySelectorAll('input[name="facultad_ids"][data-coordinador-editor-facultad]');
@@ -236,6 +295,8 @@
 
         var documento = hiddenDocument ? hiddenDocument.value : '';
         var correo = inputEl ? inputEl.value : '';
+        var numeroResolucion = numeroResolucionEl ? numeroResolucionEl.value : '';
+        var soporteResolucion = soporteResolucionEl ? soporteResolucionEl.value : '';
         var facultadIds = [];
         selectedChecks.forEach(function(check) {
           facultadIds.push(check.value);
@@ -252,6 +313,8 @@
             body: JSON.stringify({
               documento: documento,
               correo: correo,
+              numero_resolucion_coordinador: numeroResolucion,
+              soporte_resolucion: soporteResolucion,
               facultad_ids: facultadIds
             })
           });
@@ -268,8 +331,12 @@
           var label = computeFacultadesLabel(selectedIdsValues.concat(facultadIds));
           updateFacultadesCell(documento, label);
           updateEmailCell(documento, correo || data.correo || '');
+          updateNumeroResolucionCell(documento, numeroResolucion || data.numero_resolucion_coordinador || '');
+          updateSoporteResolucionCell(documento, soporteResolucion || data.soporte_resolucion || '');
 
           if (currentEl) currentEl.value = correo || data.correo || '';
+          if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion || data.numero_resolucion_coordinador || '';
+          if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion || data.soporte_resolucion || '';
 
           modal.hide();
           showFeedback(pageFeedback, 'success', 'Coordinador actualizado correctamente.');
