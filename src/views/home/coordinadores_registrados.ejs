@@ -12,7 +12,7 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false">
           <thead class="text-light">
             <tr>
               <th>Nombres y Apellidos</th>
@@ -28,13 +28,47 @@
           </thead>
           <tbody>
             <% coordinadores.forEach(coordinador => { %>
+              <% const facultadTexto = String(coordinador.facultad_nombre || ''); %>
+              <% const soporteResolucionTexto = String(coordinador.con_soporte_resolucion || ''); %>
+              <% const mostrarToggleFacultad = facultadTexto.length > 120; %>
+              <% const mostrarToggleSoporte = soporteResolucionTexto.length > 120; %>
               <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
                 <td><%= coordinador.con_documento %></td>
                 <td data-email-cell="true"><%= coordinador.con_correo %></td>
-                <td data-facultades-cell="true"><%= coordinador.facultad_nombre %></td>
+                <td data-facultades-cell="true">
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleFacultad ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= facultadTexto %></span>
+                  <% if (mostrarToggleFacultad) { %>
+                    <button
+                      type="button"
+                      class="app-labs-toggle"
+                      data-labs-toggle="true"
+                      aria-expanded="false"
+                    >
+                      Ver más
+                    </button>
+                  <% } %>
+                </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
-                <td data-soporte-resolucion-cell="true"><%= coordinador.con_soporte_resolucion || '' %></td>
+                <td data-soporte-resolucion-cell="true">
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleSoporte ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= soporteResolucionTexto %></span>
+                  <% if (mostrarToggleSoporte) { %>
+                    <button
+                      type="button"
+                      class="app-labs-toggle"
+                      data-labs-toggle="true"
+                      aria-expanded="false"
+                    >
+                      Ver más
+                    </button>
+                  <% } %>
+                </td>
                 <td>
                   <button
                     type="button"
