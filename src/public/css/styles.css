@@ -2323,6 +2323,56 @@ body.app-shell .table-laboratoristas .app-labs-toggle:focus {
   color: var(--app-accent-deep);
 }
 
+body.app-shell .table-coordinadores th:nth-child(4),
+body.app-shell .table-coordinadores td:nth-child(4),
+body.app-shell .table-coordinadores th:nth-child(6),
+body.app-shell .table-coordinadores td:nth-child(6) {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 340px;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+body.app-shell .table-coordinadores .app-labs-cell-text {
+  display: block;
+}
+
+body.app-shell .table-coordinadores .app-labs-cell-text.is-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body.app-shell .table-coordinadores .app-labs-toggle {
+  margin-top: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+body.app-shell .table-coordinadores .app-labs-toggle:hover,
+body.app-shell .table-coordinadores .app-labs-toggle:focus {
+  color: var(--app-accent-deep);
+}
+
+body.app-shell .table-coordinadores th:nth-child(7),
+body.app-shell .table-coordinadores td:nth-child(7),
+body.app-shell .table-coordinadores th:nth-child(8),
+body.app-shell .table-coordinadores td:nth-child(8),
+body.app-shell .table-coordinadores th:nth-child(9),
+body.app-shell .table-coordinadores td:nth-child(9) {
+  width: 1%;
+}
+
 body.app-shell .table-laboratoristas th:nth-child(6),
 body.app-shell .table-laboratoristas td:nth-child(6),
 body.app-shell .table-laboratoristas th:nth-child(7),
