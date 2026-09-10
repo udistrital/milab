@@ -780,6 +780,14 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
       );
     }
 
+    await client.query(
+      `UPDATE laboratorista
+       SET activo = $2,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE documento = $1`,
+      [documento, nuevoEstado]
+    );
+
     const actorDocument = await resolveActorDocumentForLogs(req, client);
 
     await client.query(
