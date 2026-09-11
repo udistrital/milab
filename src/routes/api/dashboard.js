@@ -370,19 +370,10 @@ function buildScopePresentation(role, scope) {
   };
 }
 
-async function fetchStudentCertificateRows(client) {
-  const result = await client.query(
-    `SELECT ce.fecha_creacion,
-            ce.certificado_id,
-            ce.correo,
-            ce.motivo_exp,
-            COALESCE(pe.nombre, u.nombre, 'Sin nombre') AS nombre_estudiante,
-            u.documento,
-            u.codigo,
-            u.carrera
+async function fetchStudentCertificateRows() {
+  const result = await pool.query(
+    `SELECT ce.*
      FROM certificado_estudiante ce
-     JOIN usuario u ON u.id = ce.usuario_id
-     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = ce.usuario_id
      WHERE ce.fecha_creacion IS NOT NULL
      ORDER BY ce.fecha_creacion DESC
      LIMIT 300`
@@ -390,18 +381,10 @@ async function fetchStudentCertificateRows(client) {
   return result.rows;
 }
 
-async function fetchTeacherCertificateRows(client) {
-  const result = await client.query(
-    `SELECT cd.fecha_creacion,
-            cd.certificado_id,
-            cd.correo,
-            cd.motivo_exp,
-            cd.origen_descarga,
-            COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_docente,
-            u.documento
+async function fetchTeacherCertificateRows() {
+  const result = await pool.query(
+    `SELECT cd.*
      FROM certificado_docente cd
-     LEFT JOIN usuario u ON u.id = cd.usuario_id
-     LEFT JOIN perfil_docente pd ON pd.usuario_id = cd.usuario_id
      WHERE cd.fecha_creacion IS NOT NULL
      ORDER BY cd.fecha_creacion DESC
      LIMIT 300`
@@ -409,32 +392,10 @@ async function fetchTeacherCertificateRows(client) {
   return result.rows;
 }
 
-async function fetchSanctionRows(client, columns) {
-  if (!columns?.ualIdColumn || !columns?.facultadIdColumn) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT m.id,
-            m.fecha_multa,
-            m.con_estado_multa,
-            COALESCE(m.cat_multa, '') AS cat_multa,
-            COALESCE(m.obs_multa, '') AS obs_multa,
-            COALESCE(m.tipo_sancion, '') AS tipo_sancion,
-            u.${columns.ualIdColumn} AS ual_id,
-            u.${columns.facultadIdColumn} AS facultad_id,
-            COALESCE(u.nombre, '') AS ual_nombre,
-            COALESCE(l.nombre, '') AS nombre_laboratorista,
-            COALESCE(pe.nombre, pd.nombre, us.nombre, 'Sin nombre') AS nombre_sancionado,
-            COALESCE(pe.documento, pd.documento, us.documento, '') AS documento_sancionado,
-            COALESCE(us.codigo, '') AS codigo_sancionado,
-            COALESCE(us.correo, '') AS correo_sancionado
+async function fetchSanctionRows() {
+  const result = await pool.query(
+    `SELECT m.*
      FROM multa m
-     JOIN ual u ON u.${columns.ualIdColumn} = m.ual_id
-     LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
-     LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
-     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
-     LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
      WHERE m.fecha_multa IS NOT NULL
      ORDER BY m.fecha_multa DESC
      LIMIT 500`
@@ -442,103 +403,31 @@ async function fetchSanctionRows(client, columns) {
   return result.rows;
 }
 
-async function fetchLaboratoristaRows(client, columns) {
-  if (
-    !columns?.ualIdColumn ||
-    !columns?.facultadIdColumn ||
-    !columns?.laboratoristaUalIdColumn ||
-    !columns?.laboratoristaUalDocumentColumn
-  ) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       l.documento,
-       l.fecha_creacion,
-       COALESCE(l.estado, '') AS estado,
-       COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_laboratorista,
-       COALESCE(u.correo, '') AS correo,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.ualIdColumn}), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.nombre, '')), NULL) AS ual_nombres,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.${columns.laboratoristaUalIdColumn}), NULL) AS ual_ids_raw,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(f.nombre, '')), NULL) AS faculty_nombres
+async function fetchLaboratoristaRows() {
+  const result = await pool.query(
+    `SELECT l.*
      FROM laboratorista l
-     LEFT JOIN usuario u ON u.id = l.usuario_id
-     LEFT JOIN perfil_docente pd ON pd.usuario_id = l.usuario_id
-     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
-     LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
-     LEFT JOIN facultad f ON f.${columns.facultadIdColumn} = ual.${columns.facultadIdColumn}
-     GROUP BY l.documento, l.fecha_creacion, COALESCE(l.estado, ''), COALESCE(pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.correo, '')
-     ORDER BY l.fecha_creacion DESC
+     ORDER BY l.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchCoordinatorRows(client, columns) {
-  if (!columns?.coordinadorFacultadIdColumn || !columns?.coordinadorFacultadDocumentColumn) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       c.documento,
-       c.fecha_creacion,
-       COALESCE(c.estado, '') AS estado,
-       COALESCE(c.numero_resolucion_coordinador, '') AS numero_resolucion_coordinador,
-       COALESCE(c.soporte_resolucion, '') AS soporte_resolucion,
-       COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_coordinador,
-       COALESCE(u.correo, '') AS correo,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(f.nombre, '')), NULL) AS faculty_nombres
+async function fetchCoordinatorRows() {
+  const result = await pool.query(
+    `SELECT c.*
      FROM coordinador c
-     LEFT JOIN usuario u ON u.id = c.usuario_id
-     LEFT JOIN perfil_docente pd ON pd.usuario_id = c.usuario_id
-     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
-     LEFT JOIN facultad f ON f.${columns.facultadIdColumn} = cf.${columns.coordinadorFacultadIdColumn}
-     GROUP BY c.documento, c.fecha_creacion, COALESCE(c.estado, ''), COALESCE(c.numero_resolucion_coordinador, ''), COALESCE(c.soporte_resolucion, ''), COALESCE(pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.correo, '')
-     ORDER BY c.fecha_creacion DESC
+     ORDER BY c.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchUsuarioRows(client, columns) {
-  if (
-    !columns?.ualIdColumn ||
-    !columns?.facultadIdColumn ||
-    !columns?.laboratoristaUalIdColumn ||
-    !columns?.laboratoristaUalDocumentColumn ||
-    !columns?.coordinadorFacultadIdColumn ||
-    !columns?.coordinadorFacultadDocumentColumn
-  ) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       u.id,
-       u.documento,
-       COALESCE(u.codigo, '') AS codigo,
-       u.fecha_creacion,
-       COALESCE(u.carrera, '') AS carrera,
-       COALESCE(u.correo, '') AS correo,
-       COALESCE(pe.nombre, pd.nombre, u.nombre, 'Sin nombre') AS nombre,
-       COALESCE(u.estado, '') AS estado_cuenta,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS coordinator_faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS laboratorista_faculty_ids
+async function fetchUsuarioRows() {
+  const result = await pool.query(
+    `SELECT u.*
      FROM usuario u
-     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = u.id
-     LEFT JOIN perfil_docente pd ON pd.usuario_id = u.id
-     LEFT JOIN coordinador c ON c.usuario_id = u.id
-     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
-     LEFT JOIN laboratorista l ON l.usuario_id = u.id
-     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
-     LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
-     GROUP BY u.id, u.documento, COALESCE(u.codigo, ''), u.fecha_creacion, COALESCE(u.carrera, ''), COALESCE(u.correo, ''), COALESCE(pe.nombre, pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.estado, '')
-     ORDER BY u.fecha_creacion DESC
+     ORDER BY u.fecha_creacion DESC NULLS LAST
      LIMIT 500`
   );
   return result.rows;
@@ -562,29 +451,26 @@ function filterSanctionRowsByScope(rows, role, scope) {
 
   if (role === 'coordinador') {
     const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) => facultyIds.has(Number(row.facultad_id)));
+    return rows.filter((row) => {
+      const fid = Number(row.facultad_id || row.faculty_id);
+      if (Number.isFinite(fid)) return facultyIds.has(fid);
+      return false;
+    });
   }
 
   const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) => ualIds.has(Number(row.ual_id)));
+  return rows.filter((row) => {
+    const uid = Number(row.ual_id || row.id_ual);
+    if (Number.isFinite(uid)) return ualIds.has(uid);
+    return false;
+  });
 }
 
 function filterLaboratoristaRowsByScope(rows, role, scope) {
   if (role === 'admin') {
     return rows;
   }
-
-  if (role === 'coordinador') {
-    const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) =>
-      normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
-    );
-  }
-
-  const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) =>
-    normalizeIntegerArray(row.ual_ids).some((ualId) => ualIds.has(ualId))
-  );
+  return rows;
 }
 
 function filterCoordinatorRowsByScope(rows, role, scope) {
@@ -597,9 +483,12 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
   }
 
   const facultyIds = new Set(scope.facultyIds || []);
-  return rows.filter((row) =>
-    normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
-  );
+  return rows.filter((row) => {
+    const currentDoc = String(row.documento || row.documento_coordinador || '').trim();
+    const scopeDoc = String(scope.coordinatorDocument || '').trim();
+    if (scopeDoc && currentDoc === scopeDoc) return true;
+    return facultyIds.size === 0;
+  });
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
@@ -607,27 +496,18 @@ function filterUsuarioRowsByScope(rows, role, scope) {
     return rows;
   }
 
-  if (role !== 'coordinador') {
-    return [];
+  if (role === 'coordinador') {
+    const facultyNamesSet = new Set(
+      (scope.facultyNames || []).map((name) => String(name || '').trim())
+    );
+    return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
   }
 
-  const facultyIds = new Set(scope.facultyIds || []);
-  const facultyNamesSet = new Set(
-    (scope.facultyNames || []).map((name) => String(name || '').trim())
-  );
+  if (role === 'laboratorista') {
+    return rows;
+  }
 
-  return rows.filter((row) => {
-    const studentFaculty = resolveAcademicFacultyName(row.carrera || '');
-    return (
-      facultyNamesSet.has(studentFaculty) ||
-      normalizeIntegerArray(row.coordinator_faculty_ids).some((facultyId) =>
-        facultyIds.has(facultyId)
-      ) ||
-      normalizeIntegerArray(row.laboratorista_faculty_ids).some((facultyId) =>
-        facultyIds.has(facultyId)
-      )
-    );
-  });
+  return [];
 }
 
 router.get('/', requireDashboardAccess, async (req, res) => {
@@ -704,18 +584,18 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       : availableChartIds[0];
 
     const studentRows = availableChartIds.includes('estudiantes')
-      ? await fetchStudentCertificateRows(client)
+      ? await fetchStudentCertificateRows()
       : [];
     const teacherRows = availableChartIds.includes('docentes')
-      ? await fetchTeacherCertificateRows(client)
+      ? await fetchTeacherCertificateRows()
       : [];
-    const sanctionRows = await fetchSanctionRows(client, columns);
-    const laboratoristaRows = await fetchLaboratoristaRows(client, columns);
+    const sanctionRows = await fetchSanctionRows();
+    const laboratoristaRows = await fetchLaboratoristaRows();
     const coordinatorRows = availableChartIds.includes('coordinadores')
-      ? await fetchCoordinatorRows(client, columns)
+      ? await fetchCoordinatorRows()
       : [];
     const usuarioRows = availableChartIds.includes('usuariosRegistrados')
-      ? await fetchUsuarioRows(client, columns)
+      ? await fetchUsuarioRows()
       : [];
 
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
