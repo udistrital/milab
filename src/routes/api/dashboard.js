@@ -736,6 +736,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
+  fetchSanctionRows,
+  fetchLaboratoristaRows,
+  fetchStudentCertificateRows,
+  fetchTeacherCertificateRows,
   resolveDashboardSchemaColumns,
 };
 
