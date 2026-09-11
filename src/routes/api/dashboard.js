@@ -251,12 +251,6 @@ function totalFromSeries(series) {
   return (series?.data || []).reduce((sum, value) => sum + Number(value || 0), 0);
 }
 
-function normalizeIntegerArray(values) {
-  return Array.isArray(values)
-    ? values.map((value) => Number(value)).filter((value) => Number.isInteger(value))
-    : [];
-}
-
 async function resolveLaboratoristaScope(client, authDocument) {
   const columns = await resolveDashboardSchemaColumns(client);
   if (
@@ -466,7 +460,7 @@ function filterSanctionRowsByScope(rows, role, scope) {
   });
 }
 
-function filterLaboratoristaRowsByScope(rows, role, scope) {
+function filterLaboratoristaRowsByScope(rows, role) {
   if (role === 'admin') {
     return rows;
   }
@@ -601,11 +595,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
     const filteredTeachers = teacherRows;
     const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
-    const filteredLaboratoristas = filterLaboratoristaRowsByScope(
-      laboratoristaRows,
-      dashboardRole,
-      scope
-    );
+    const filteredLaboratoristas = filterLaboratoristaRowsByScope(laboratoristaRows, dashboardRole);
     const filteredCoordinators = filterCoordinatorRowsByScope(
       coordinatorRows,
       dashboardRole,
