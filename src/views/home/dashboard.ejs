@@ -144,18 +144,22 @@
   const TABLE_COLUMN_DEFS = {
     estudiantes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Certificado #', format: (v) => String(v ?? '') },
+      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
       { key: 'nombre_estudiante', label: 'Estudiante' },
       { key: 'documento', label: 'Documento' },
       { key: 'codigo', label: 'Código' },
       { key: 'carrera', label: 'Carrera / Programa' },
+      { key: 'correo', label: 'Correo' },
+      { key: 'motivo_exp', label: 'Motivo' },
     ],
     docentes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Certificado #', format: (v) => String(v ?? '') },
+      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
       { key: 'nombre_docente', label: 'Docente' },
       { key: 'documento', label: 'Documento' },
-      { key: 'id_practica', label: 'Práctica #' },
+      { key: 'correo', label: 'Correo' },
+      { key: 'motivo_exp', label: 'Motivo' },
+      { key: 'origen_descarga', label: 'Origen' },
     ],
     sanciones: [
       { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
@@ -202,6 +206,7 @@
       { key: 'correo', label: 'Correo' },
       { key: 'estado', label: 'Estado', format: (v) => renderEstadoBadge(v) },
       { key: 'numero_resolucion_coordinador', label: 'Resolución' },
+      { key: 'soporte_resolucion', label: 'Soporte URL' },
       { key: 'faculty_nombres', label: 'Facultades', format: (v) => renderList(v) },
     ],
     usuariosRegistrados: [

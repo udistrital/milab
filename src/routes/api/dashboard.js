@@ -373,13 +373,16 @@ function buildScopePresentation(role, scope) {
 async function fetchStudentCertificateRows(client) {
   const result = await client.query(
     `SELECT ce.fecha_creacion,
-            ce.id,
-            COALESCE(u.nombre, 'Sin nombre') AS nombre_estudiante,
+            ce.certificado_id,
+            ce.correo,
+            ce.motivo_exp,
+            COALESCE(pe.nombre, u.nombre, 'Sin nombre') AS nombre_estudiante,
             u.documento,
             u.codigo,
             u.carrera
      FROM certificado_estudiante ce
      JOIN usuario u ON u.id = ce.usuario_id
+     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = ce.usuario_id
      WHERE ce.fecha_creacion IS NOT NULL
      ORDER BY ce.fecha_creacion DESC
      LIMIT 300`
@@ -390,12 +393,15 @@ async function fetchStudentCertificateRows(client) {
 async function fetchTeacherCertificateRows(client) {
   const result = await client.query(
     `SELECT cd.fecha_creacion,
-            cd.id,
-            COALESCE(u.nombre, 'Sin nombre') AS nombre_docente,
-            u.documento,
-            COALESCE(CAST(cd.id_practica AS text), '') AS id_practica
+            cd.certificado_id,
+            cd.correo,
+            cd.motivo_exp,
+            cd.origen_descarga,
+            COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_docente,
+            u.documento
      FROM certificado_docente cd
      LEFT JOIN usuario u ON u.id = cd.usuario_id
+     LEFT JOIN perfil_docente pd ON pd.usuario_id = cd.usuario_id
      WHERE cd.fecha_creacion IS NOT NULL
      ORDER BY cd.fecha_creacion DESC
      LIMIT 300`
@@ -413,13 +419,15 @@ async function fetchSanctionRows(client, columns) {
             m.valor_multa, m.concepto_multa,
             u.${columns.ualIdColumn} AS ual_id,
             u.${columns.facultadIdColumn} AS facultad_id,
-            u.nombre AS ual_nombre,
-            COALESCE(u_sancionado.nombre, u_sancionado.usuario_nombre, 'Sin nombre') AS nombre_sancionado,
-            u_sancionado.documento AS documento_sancionado,
-            u_sancionado.correo AS correo_sancionado
+            COALESCE(u.nombre, '') AS ual_nombre,
+            COALESCE(pe.nombre, pd.nombre, u_sancionado.nombre, 'Sin nombre') AS nombre_sancionado,
+            COALESCE(u_sancionado.documento, '') AS documento_sancionado,
+            COALESCE(u_sancionado.correo, '') AS correo_sancionado
      FROM multa m
      JOIN ual u ON u.${columns.ualIdColumn} = m.${columns.multaUalIdColumn}
      LEFT JOIN usuario u_sancionado ON u_sancionado.id = m.usuario_sancionado_id
+     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
+     LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
      WHERE m.fecha_multa IS NOT NULL
      ORDER BY m.fecha_multa DESC
      LIMIT 500`
@@ -441,20 +449,21 @@ async function fetchLaboratoristaRows(client, columns) {
     `SELECT
        l.documento,
        l.fecha_creacion,
-       l.estado,
-       COALESCE(u.nombre, 'Sin nombre') AS nombre_laboratorista,
-       u.correo,
+       COALESCE(l.estado, '') AS estado,
+       COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_laboratorista,
+       COALESCE(u.correo, '') AS correo,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.ualIdColumn}), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.nombre), NULL) AS ual_nombres,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(ual.nombre, '')), NULL) AS ual_nombres,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.${columns.laboratoristaUalIdColumn}), NULL) AS ual_ids_raw,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT f.nombre), NULL) AS faculty_nombres
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(f.nombre, '')), NULL) AS faculty_nombres
      FROM laboratorista l
      LEFT JOIN usuario u ON u.id = l.usuario_id
+     LEFT JOIN perfil_docente pd ON pd.usuario_id = l.usuario_id
      LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
      LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
      LEFT JOIN facultad f ON f.${columns.facultadIdColumn} = ual.${columns.facultadIdColumn}
-     GROUP BY l.documento, l.fecha_creacion, l.estado, u.nombre, u.correo
+     GROUP BY l.documento, l.fecha_creacion, COALESCE(l.estado, ''), COALESCE(pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.correo, '')
      ORDER BY l.fecha_creacion DESC
      LIMIT 300`
   );
@@ -470,18 +479,19 @@ async function fetchCoordinatorRows(client, columns) {
     `SELECT
        c.documento,
        c.fecha_creacion,
-       c.estado,
-       c.numero_resolucion_coordinador,
-       c.soporte_resolucion,
-       COALESCE(u.nombre, 'Sin nombre') AS nombre_coordinador,
-       u.correo,
+       COALESCE(c.estado, '') AS estado,
+       COALESCE(c.numero_resolucion_coordinador, '') AS numero_resolucion_coordinador,
+       COALESCE(c.soporte_resolucion, '') AS soporte_resolucion,
+       COALESCE(pd.nombre, u.nombre, 'Sin nombre') AS nombre_coordinador,
+       COALESCE(u.correo, '') AS correo,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT f.nombre), NULL) AS faculty_nombres
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(f.nombre, '')), NULL) AS faculty_nombres
      FROM coordinador c
      LEFT JOIN usuario u ON u.id = c.usuario_id
+     LEFT JOIN perfil_docente pd ON pd.usuario_id = c.usuario_id
      LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
      LEFT JOIN facultad f ON f.${columns.facultadIdColumn} = cf.${columns.coordinadorFacultadIdColumn}
-     GROUP BY c.documento, c.fecha_creacion, c.estado, c.numero_resolucion_coordinador, c.soporte_resolucion, u.nombre, u.correo
+     GROUP BY c.documento, c.fecha_creacion, COALESCE(c.estado, ''), COALESCE(c.numero_resolucion_coordinador, ''), COALESCE(c.soporte_resolucion, ''), COALESCE(pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.correo, '')
      ORDER BY c.fecha_creacion DESC
      LIMIT 300`
   );
@@ -504,21 +514,23 @@ async function fetchUsuarioRows(client, columns) {
     `SELECT
        u.id,
        u.documento,
-       u.codigo,
+       COALESCE(u.codigo, '') AS codigo,
        u.fecha_creacion,
-       u.carrera,
-       u.correo,
-       COALESCE(u.nombre, 'Sin nombre') AS nombre,
-       u.estado AS estado_cuenta,
+       COALESCE(u.carrera, '') AS carrera,
+       COALESCE(u.correo, '') AS correo,
+       COALESCE(pe.nombre, pd.nombre, u.nombre, 'Sin nombre') AS nombre,
+       COALESCE(u.estado, '') AS estado_cuenta,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS coordinator_faculty_ids,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS laboratorista_faculty_ids
      FROM usuario u
+     LEFT JOIN perfil_estudiante pe ON pe.usuario_id = u.id
+     LEFT JOIN perfil_docente pd ON pd.usuario_id = u.id
      LEFT JOIN coordinador c ON c.usuario_id = u.id
      LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
      LEFT JOIN laboratorista l ON l.usuario_id = u.id
      LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
      LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
-     GROUP BY u.id, u.documento, u.codigo, u.fecha_creacion, u.carrera, u.correo, u.nombre, u.estado
+     GROUP BY u.id, u.documento, COALESCE(u.codigo, ''), u.fecha_creacion, COALESCE(u.carrera, ''), COALESCE(u.correo, ''), COALESCE(pe.nombre, pd.nombre, u.nombre, 'Sin nombre'), COALESCE(u.estado, '')
      ORDER BY u.fecha_creacion DESC
      LIMIT 500`
   );
@@ -684,29 +696,20 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ? requestedChart
       : availableChartIds[0];
 
-    const [
-      studentRows,
-      teacherRows,
-      sanctionRows,
-      laboratoristaRows,
-      coordinatorRows,
-      usuarioRows,
-    ] = await Promise.all([
-      availableChartIds.includes('estudiantes')
-        ? fetchStudentCertificateRows(client)
-        : Promise.resolve([]),
-      availableChartIds.includes('docentes')
-        ? fetchTeacherCertificateRows(client)
-        : Promise.resolve([]),
-      fetchSanctionRows(client, columns),
-      fetchLaboratoristaRows(client, columns),
-      availableChartIds.includes('coordinadores')
-        ? fetchCoordinatorRows(client, columns)
-        : Promise.resolve([]),
-      availableChartIds.includes('usuariosRegistrados')
-        ? fetchUsuarioRows(client, columns)
-        : Promise.resolve([]),
-    ]);
+    const studentRows = availableChartIds.includes('estudiantes')
+      ? await fetchStudentCertificateRows(client)
+      : [];
+    const teacherRows = availableChartIds.includes('docentes')
+      ? await fetchTeacherCertificateRows(client)
+      : [];
+    const sanctionRows = await fetchSanctionRows(client, columns);
+    const laboratoristaRows = await fetchLaboratoristaRows(client, columns);
+    const coordinatorRows = availableChartIds.includes('coordinadores')
+      ? await fetchCoordinatorRows(client, columns)
+      : [];
+    const usuarioRows = availableChartIds.includes('usuariosRegistrados')
+      ? await fetchUsuarioRows(client, columns)
+      : [];
 
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
     const filteredTeachers = teacherRows;
