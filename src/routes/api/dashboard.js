@@ -410,22 +410,29 @@ async function fetchTeacherCertificateRows(client) {
 }
 
 async function fetchSanctionRows(client, columns) {
-  if (!columns?.ualIdColumn || !columns?.facultadIdColumn || !columns?.multaUalIdColumn) {
+  if (!columns?.ualIdColumn || !columns?.facultadIdColumn) {
     return [];
   }
 
   const result = await client.query(
-    `SELECT m.fecha_multa, m.con_estado_multa, m.cod_multado,
-            m.valor_multa, m.concepto_multa,
+    `SELECT m.id,
+            m.fecha_multa,
+            m.con_estado_multa,
+            COALESCE(m.cat_multa, '') AS cat_multa,
+            COALESCE(m.obs_multa, '') AS obs_multa,
+            COALESCE(m.tipo_sancion, '') AS tipo_sancion,
             u.${columns.ualIdColumn} AS ual_id,
             u.${columns.facultadIdColumn} AS facultad_id,
             COALESCE(u.nombre, '') AS ual_nombre,
-            COALESCE(pe.nombre, pd.nombre, u_sancionado.nombre, 'Sin nombre') AS nombre_sancionado,
-            COALESCE(u_sancionado.documento, '') AS documento_sancionado,
-            COALESCE(u_sancionado.correo, '') AS correo_sancionado
+            COALESCE(l.nombre, '') AS nombre_laboratorista,
+            COALESCE(pe.nombre, pd.nombre, us.nombre, 'Sin nombre') AS nombre_sancionado,
+            COALESCE(pe.documento, pd.documento, us.documento, '') AS documento_sancionado,
+            COALESCE(us.codigo, '') AS codigo_sancionado,
+            COALESCE(us.correo, '') AS correo_sancionado
      FROM multa m
-     JOIN ual u ON u.${columns.ualIdColumn} = m.${columns.multaUalIdColumn}
-     LEFT JOIN usuario u_sancionado ON u_sancionado.id = m.usuario_sancionado_id
+     JOIN ual u ON u.${columns.ualIdColumn} = m.ual_id
+     LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
+     LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
      LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
      LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
      WHERE m.fecha_multa IS NOT NULL
@@ -836,12 +843,19 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el dashboard.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el dashboard.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+        error,
+        adminErrorDetail: '',
+      },
+      req,
+      error
+    );
   } finally {
     if (client) {
       client.release();
