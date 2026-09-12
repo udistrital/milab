@@ -126,11 +126,13 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
   await router.__private.fetchTeacherCertificateRows();
 
   const coordinatorQ = queries.find(
-    (q) => q.includes('SELECT c.*') && q.includes('FROM coordinador c')
+    (q) => q.includes('FROM coordinador c') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
   );
   const usuarioQ = queries.find((q) => q.includes('WITH usuarios_base AS'));
   const multaQ = queries.find((q) => q.includes('SELECT m.*') && q.includes('FROM multa m'));
-  const labQ = queries.find((q) => q.includes('SELECT l.*') && q.includes('FROM laboratorista l'));
+  const labQ = queries.find(
+    (q) => q.includes('FROM laboratorista l') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
+  );
   const ceQ = queries.find(
     (q) => q.includes('SELECT ce.*') && q.includes('FROM certificado_estudiante ce')
   );
@@ -138,10 +140,10 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
     (q) => q.includes('SELECT cd.*') && q.includes('FROM certificado_docente cd')
   );
 
-  assert.equal(coordinatorQ.includes('SELECT c.*'), true);
+  assert.equal(coordinatorQ.includes('LEFT JOIN coordinador_facultad cf'), true);
   assert.equal(usuarioQ.includes('FROM usuario u'), true);
   assert.equal(multaQ.includes('SELECT m.*'), true);
-  assert.equal(labQ.includes('SELECT l.*'), true);
+  assert.equal(labQ.includes('LEFT JOIN laboratorista_ual lu'), true);
   assert.equal(ceQ.includes('SELECT ce.*'), true);
   assert.equal(cdQ.includes('SELECT cd.*'), true);
 

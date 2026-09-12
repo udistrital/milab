@@ -399,8 +399,18 @@ async function fetchSanctionRows() {
 
 async function fetchLaboratoristaRows() {
   const result = await pool.query(
-    `SELECT l.*
+    `SELECT
+       l.*,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids
      FROM laboratorista l
+     LEFT JOIN laboratorista_ual lu
+       ON lu.laboratorista_documento_id = l.documento
+      AND (lu.activo IS DISTINCT FROM FALSE)
+     LEFT JOIN ual u
+       ON u.ual_id = lu.ual_id
+      AND u.activo = TRUE
+     GROUP BY l.id
      ORDER BY l.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -409,8 +419,13 @@ async function fetchLaboratoristaRows() {
 
 async function fetchCoordinatorRows() {
   const result = await pool.query(
-    `SELECT c.*
+    `SELECT
+       c.*,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
+     LEFT JOIN coordinador_facultad cf
+       ON cf.coordinador_documento_id = c.documento
+     GROUP BY c.id
      ORDER BY c.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -452,6 +467,8 @@ async function fetchUsuarioRows() {
          NULL::text AS codigo,
          c.correo,
          NULL::text AS carrera,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids,
+         ARRAY[]::int[] AS ual_ids,
          CASE
            WHEN COALESCE(role_state.activo, FALSE) THEN 'ACTIVO'
            ELSE 'INACTIVO'
@@ -471,6 +488,7 @@ async function fetchUsuarioRows() {
            AND r.nombre = 'coordinador'
          LIMIT 1
        ) role_state ON true
+       GROUP BY c.id, role_state.activo
      ),
      laboratoristas_base AS (
        SELECT
@@ -485,14 +503,34 @@ async function fetchUsuarioRows() {
          NULL::text AS codigo,
          l.correo,
          NULL::text AS carrera,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
          CASE
            WHEN COALESCE(l.activo, FALSE) THEN 'ACTIVO'
            ELSE 'INACTIVO'
          END AS estado
        FROM laboratorista l
+       LEFT JOIN laboratorista_ual lu
+         ON lu.laboratorista_documento_id = l.documento
+        AND (lu.activo IS DISTINCT FROM FALSE)
+       LEFT JOIN ual u
+         ON u.ual_id = lu.ual_id
+        AND u.activo = TRUE
+       GROUP BY l.id
      ),
      usuarios_consolidados AS (
-       SELECT * FROM usuarios_base
+       SELECT
+         identity_key,
+         fecha_creacion,
+         nombre,
+         documento,
+         codigo,
+         correo,
+         carrera,
+         ARRAY[]::int[] AS faculty_ids,
+         ARRAY[]::int[] AS ual_ids,
+         estado
+       FROM usuarios_base
        UNION ALL
        SELECT * FROM coordinadores_base
        UNION ALL
@@ -506,6 +544,8 @@ async function fetchUsuarioRows() {
          codigo,
          correo,
          carrera,
+         faculty_ids,
+         ual_ids,
          estado,
          ROW_NUMBER() OVER (
            PARTITION BY identity_key
@@ -520,6 +560,8 @@ async function fetchUsuarioRows() {
        codigo,
        correo,
        carrera,
+       faculty_ids,
+       ual_ids,
        estado
      FROM usuarios_ranked
      WHERE identity_rank = 1
@@ -562,11 +604,32 @@ function filterSanctionRowsByScope(rows, role, scope) {
   });
 }
 
-function filterLaboratoristaRowsByScope(rows, role) {
+function toNumericSet(values) {
+  return new Set((values || []).map((value) => Number(value)).filter(Number.isInteger));
+}
+
+function hasIntersection(leftValues, rightSet) {
+  return (leftValues || [])
+    .map((value) => Number(value))
+    .some((value) => Number.isInteger(value) && rightSet.has(value));
+}
+
+function filterLaboratoristaRowsByScope(rows, role, scope) {
   if (role === 'admin') {
     return rows;
   }
-  return rows;
+
+  if (role === 'coordinador') {
+    const facultyIds = toNumericSet(scope.facultyIds);
+    return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  }
+
+  if (role === 'laboratorista') {
+    const scopeUalIds = toNumericSet(scope.ualIds);
+    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
+  }
+
+  return [];
 }
 
 function filterCoordinatorRowsByScope(rows, role, scope) {
@@ -578,13 +641,8 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
     return [];
   }
 
-  const facultyIds = new Set(scope.facultyIds || []);
-  return rows.filter((row) => {
-    const currentDoc = String(row.documento || row.documento_coordinador || '').trim();
-    const scopeDoc = String(scope.coordinatorDocument || '').trim();
-    if (scopeDoc && currentDoc === scopeDoc) return true;
-    return facultyIds.size === 0;
-  });
+  const facultyIds = toNumericSet(scope.facultyIds);
+  return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
@@ -596,11 +654,20 @@ function filterUsuarioRowsByScope(rows, role, scope) {
     const facultyNamesSet = new Set(
       (scope.facultyNames || []).map((name) => String(name || '').trim())
     );
-    return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
+    const facultyIds = toNumericSet(scope.facultyIds);
+    return rows.filter((row) => {
+      const resolvedFacultyName = resolveAcademicFacultyName(row.carrera || '');
+      if (resolvedFacultyName && facultyNamesSet.has(resolvedFacultyName)) {
+        return true;
+      }
+
+      return hasIntersection(row.faculty_ids, facultyIds);
+    });
   }
 
   if (role === 'laboratorista') {
-    return rows;
+    const scopeUalIds = toNumericSet(scope.ualIds);
+    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
   }
 
   return [];
@@ -634,6 +701,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
     if (dashboardRole === 'coordinador') {
       const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      scope.coordinatorDocument = coordinatorScope.coordinatorDocument || null;
       scope.facultyIds = coordinatorScope.facultyIds || [];
 
       if (!coordinatorScope.coordinatorDocument || scope.facultyIds.length === 0) {
@@ -697,7 +765,11 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
     const filteredTeachers = teacherRows;
     const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
-    const filteredLaboratoristas = filterLaboratoristaRowsByScope(laboratoristaRows, dashboardRole);
+    const filteredLaboratoristas = filterLaboratoristaRowsByScope(
+      laboratoristaRows,
+      dashboardRole,
+      scope
+    );
     const filteredCoordinators = filterCoordinatorRowsByScope(
       coordinatorRows,
       dashboardRole,
@@ -711,7 +783,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         filtro
       ),
       docentes: buildSeriesFromDates(
-        teacherRows.map((row) => row.fecha_creacion),
+        filteredTeachers.map((row) => row.fecha_creacion),
         filtro
       ),
       multas: buildSeriesFromDates(
