@@ -304,24 +304,55 @@
     return escapeHtml(value == null ? '' : value);
   }
 
+  function renderCollapsibleCell(value, maxLength) {
+    const rawValue = String(value ?? '').trim();
+    const normalizedMaxLength = Number.isInteger(maxLength) && maxLength > 0 ? maxLength : 120;
+
+    if (!rawValue) {
+      return '<span class="text-muted">—</span>';
+    }
+
+    if (rawValue.length <= normalizedMaxLength) {
+      return escapeHtml(rawValue);
+    }
+
+    return `
+      <span class="app-labs-cell-text is-collapsed" data-labs-text="true">${escapeHtml(rawValue)}</span>
+      <button
+        type="button"
+        class="app-labs-toggle"
+        data-labs-toggle="true"
+        aria-expanded="false"
+      >Ver más</button>
+    `;
+  }
+
   function renderDetailTable(tipo) {
     const headEl = document.getElementById('dashboardDetailTableHead');
     const bodyEl = document.getElementById('dashboardDetailTableBody');
     const titleEl = document.getElementById('dashboardDetailTitle');
     const hintEl = document.getElementById('dashboardDetailHint');
     const countEl = document.getElementById('dashboardDetailCount');
+    const tableEl = document.getElementById('dashboardDetailTable');
 
     const columns = TABLE_COLUMN_DEFS[tipo];
     const rows = Array.isArray(tablesData[tipo]) ? tablesData[tipo] : [];
     const config = chartDefinitions[tipo];
 
     if (!columns || !config) {
+      if (tableEl) {
+        tableEl.classList.remove('table-coordinadores');
+      }
       if (headEl) headEl.innerHTML = '<th>Selecciona una tarjeta superior para ver el detalle.</th>';
       if (bodyEl) {
         bodyEl.innerHTML =
           '<tr><td class="text-center py-4 text-muted">Selecciona una tarjeta superior para ver el detalle.</td></tr>';
       }
       return;
+    }
+
+    if (tableEl) {
+      tableEl.classList.toggle('table-coordinadores', tipo === 'coordinadores');
     }
 
     titleEl.textContent = `Detalle - ${config.cardLabel || config.optionLabel || tipo}`;
@@ -342,7 +373,13 @@
     bodyEl.innerHTML = rows
       .map((row) => {
         const cells = columns
-          .map((col) => `<td>${safeFormatCell(col, row[col.key])}</td>`)
+          .map((col) => {
+            if (tipo === 'coordinadores' && col.key === 'soporte_resolucion') {
+              return `<td>${renderCollapsibleCell(row[col.key], 100)}</td>`;
+            }
+
+            return `<td>${safeFormatCell(col, row[col.key])}</td>`;
+          })
           .join('');
         return `<tr>${cells}</tr>`;
       })
@@ -355,6 +392,11 @@
     const titleEl = document.getElementById('dashboardDetailTitle');
     const hintEl = document.getElementById('dashboardDetailHint');
     const countEl = document.getElementById('dashboardDetailCount');
+    const tableEl = document.getElementById('dashboardDetailTable');
+
+    if (tableEl) {
+      tableEl.classList.remove('table-coordinadores');
+    }
 
     if (titleEl) {
       titleEl.textContent = 'Detalle';
