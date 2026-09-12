@@ -27,15 +27,48 @@ function createDashboardClient(scopeRows = {}) {
   };
 }
 
-function loadDashboardApp({ user, scopeImpl, scopeRows }) {
+function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
   const sessionHarness = createSessionHarness({ user });
   const client = createDashboardClient(scopeRows);
+
+  const poolStub = {
+    async query(sql, params = []) {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: (params && params[1] && params[1][0]) || 'id' }] };
+      }
+      if (sql.includes('FROM facultad')) {
+        return { rows: scopeRows.faculties || [] };
+      }
+      if (sql.includes('FROM certificado_estudiante')) {
+        return { rows: poolRows.studentCertificates || [] };
+      }
+      if (sql.includes('FROM certificado_docente')) {
+        return { rows: poolRows.teacherCertificates || [] };
+      }
+      if (sql.includes('FROM multa')) {
+        return { rows: poolRows.sanctions || [] };
+      }
+      if (sql.includes('FROM laboratorista')) {
+        return { rows: poolRows.laboratoristas || [] };
+      }
+      if (sql.includes('FROM coordinador')) {
+        return { rows: poolRows.coordinators || [] };
+      }
+      if (sql.includes('FROM usuario')) {
+        return { rows: poolRows.usuarios || [] };
+      }
+      return { rows: [] };
+    },
+    async connect() {
+      return client;
+    },
+  };
 
   return buildApp({
     entryPath: routePath,
     sessionHarness,
     stubs: [
-      [dbPath, { connect: async () => client }],
+      [dbPath, poolStub],
       [authPath, { requireRoles: () => (req, res, next) => next() }],
       [
         facultyScopePath,

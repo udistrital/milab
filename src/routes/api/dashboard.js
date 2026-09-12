@@ -251,12 +251,6 @@ function totalFromSeries(series) {
   return (series?.data || []).reduce((sum, value) => sum + Number(value || 0), 0);
 }
 
-function normalizeIntegerArray(values) {
-  return Array.isArray(values)
-    ? values.map((value) => Number(value)).filter((value) => Number.isInteger(value))
-    : [];
-}
-
 async function resolveLaboratoristaScope(client, authDocument) {
   const columns = await resolveDashboardSchemaColumns(client);
   if (
@@ -370,108 +364,65 @@ function buildScopePresentation(role, scope) {
   };
 }
 
-async function fetchStudentCertificateRows(client) {
-  const result = await client.query(
-    `SELECT ce.fecha_creacion, u.carrera
+async function fetchStudentCertificateRows() {
+  const result = await pool.query(
+    `SELECT ce.*
      FROM certificado_estudiante ce
-     JOIN usuario u ON u.id = ce.usuario_id
-     WHERE ce.fecha_creacion IS NOT NULL`
+     WHERE ce.fecha_creacion IS NOT NULL
+     ORDER BY ce.fecha_creacion DESC
+     LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchTeacherCertificateRows(client) {
-  const result = await client.query(
-    `SELECT cd.fecha_creacion
+async function fetchTeacherCertificateRows() {
+  const result = await pool.query(
+    `SELECT cd.*
      FROM certificado_docente cd
-     WHERE cd.fecha_creacion IS NOT NULL`
+     WHERE cd.fecha_creacion IS NOT NULL
+     ORDER BY cd.fecha_creacion DESC
+     LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchSanctionRows(client, columns) {
-  if (!columns?.ualIdColumn || !columns?.facultadIdColumn || !columns?.multaUalIdColumn) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT m.fecha_multa, m.con_estado_multa,
-            u.${columns.ualIdColumn} AS ual_id,
-            u.${columns.facultadIdColumn} AS facultad_id
+async function fetchSanctionRows() {
+  const result = await pool.query(
+    `SELECT m.*
      FROM multa m
-     JOIN ual u ON u.${columns.ualIdColumn} = m.${columns.multaUalIdColumn}
-     WHERE m.fecha_multa IS NOT NULL`
+     WHERE m.fecha_multa IS NOT NULL
+     ORDER BY m.fecha_multa DESC
+     LIMIT 500`
   );
   return result.rows;
 }
 
-async function fetchLaboratoristaRows(client, columns) {
-  if (
-    !columns?.ualIdColumn ||
-    !columns?.facultadIdColumn ||
-    !columns?.laboratoristaUalIdColumn ||
-    !columns?.laboratoristaUalDocumentColumn
-  ) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       l.documento,
-       l.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT lu.${columns.laboratoristaUalIdColumn}), NULL) AS ual_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.${columns.facultadIdColumn}), NULL) AS faculty_ids
+async function fetchLaboratoristaRows() {
+  const result = await pool.query(
+    `SELECT l.*
      FROM laboratorista l
-     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
-     LEFT JOIN ual u ON u.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
-     GROUP BY l.documento, l.fecha_creacion`
+     ORDER BY l.fecha_creacion DESC NULLS LAST
+     LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchCoordinatorRows(client, columns) {
-  if (!columns?.coordinadorFacultadIdColumn || !columns?.coordinadorFacultadDocumentColumn) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       c.documento,
-       c.fecha_creacion,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS faculty_ids
+async function fetchCoordinatorRows() {
+  const result = await pool.query(
+    `SELECT c.*
      FROM coordinador c
-     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
-     GROUP BY c.documento, c.fecha_creacion`
+     ORDER BY c.fecha_creacion DESC NULLS LAST
+     LIMIT 300`
   );
   return result.rows;
 }
 
-async function fetchUsuarioRows(client, columns) {
-  if (
-    !columns?.ualIdColumn ||
-    !columns?.facultadIdColumn ||
-    !columns?.laboratoristaUalIdColumn ||
-    !columns?.laboratoristaUalDocumentColumn ||
-    !columns?.coordinadorFacultadIdColumn ||
-    !columns?.coordinadorFacultadDocumentColumn
-  ) {
-    return [];
-  }
-
-  const result = await client.query(
-    `SELECT
-       u.documento,
-       u.fecha_creacion,
-       u.carrera,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.${columns.coordinadorFacultadIdColumn}), NULL) AS coordinator_faculty_ids,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT ual.${columns.facultadIdColumn}), NULL) AS laboratorista_faculty_ids
+async function fetchUsuarioRows() {
+  const result = await pool.query(
+    `SELECT u.*
      FROM usuario u
-     LEFT JOIN coordinador c ON c.usuario_id = u.id
-     LEFT JOIN coordinador_facultad cf ON cf.${columns.coordinadorFacultadDocumentColumn} = c.documento
-     LEFT JOIN laboratorista l ON l.usuario_id = u.id
-     LEFT JOIN laboratorista_ual lu ON lu.${columns.laboratoristaUalDocumentColumn} = l.documento
-     LEFT JOIN ual ON ual.${columns.ualIdColumn} = lu.${columns.laboratoristaUalIdColumn}
-     GROUP BY u.documento, u.fecha_creacion, u.carrera`
+     ORDER BY u.fecha_creacion DESC NULLS LAST
+     LIMIT 500`
   );
   return result.rows;
 }
@@ -494,29 +445,26 @@ function filterSanctionRowsByScope(rows, role, scope) {
 
   if (role === 'coordinador') {
     const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) => facultyIds.has(Number(row.facultad_id)));
+    return rows.filter((row) => {
+      const fid = Number(row.facultad_id || row.faculty_id);
+      if (Number.isFinite(fid)) return facultyIds.has(fid);
+      return false;
+    });
   }
 
   const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) => ualIds.has(Number(row.ual_id)));
+  return rows.filter((row) => {
+    const uid = Number(row.ual_id || row.id_ual);
+    if (Number.isFinite(uid)) return ualIds.has(uid);
+    return false;
+  });
 }
 
-function filterLaboratoristaRowsByScope(rows, role, scope) {
+function filterLaboratoristaRowsByScope(rows, role) {
   if (role === 'admin') {
     return rows;
   }
-
-  if (role === 'coordinador') {
-    const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) =>
-      normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
-    );
-  }
-
-  const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) =>
-    normalizeIntegerArray(row.ual_ids).some((ualId) => ualIds.has(ualId))
-  );
+  return rows;
 }
 
 function filterCoordinatorRowsByScope(rows, role, scope) {
@@ -529,9 +477,12 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
   }
 
   const facultyIds = new Set(scope.facultyIds || []);
-  return rows.filter((row) =>
-    normalizeIntegerArray(row.faculty_ids).some((facultyId) => facultyIds.has(facultyId))
-  );
+  return rows.filter((row) => {
+    const currentDoc = String(row.documento || row.documento_coordinador || '').trim();
+    const scopeDoc = String(scope.coordinatorDocument || '').trim();
+    if (scopeDoc && currentDoc === scopeDoc) return true;
+    return facultyIds.size === 0;
+  });
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
@@ -539,27 +490,18 @@ function filterUsuarioRowsByScope(rows, role, scope) {
     return rows;
   }
 
-  if (role !== 'coordinador') {
-    return [];
+  if (role === 'coordinador') {
+    const facultyNamesSet = new Set(
+      (scope.facultyNames || []).map((name) => String(name || '').trim())
+    );
+    return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
   }
 
-  const facultyIds = new Set(scope.facultyIds || []);
-  const facultyNamesSet = new Set(
-    (scope.facultyNames || []).map((name) => String(name || '').trim())
-  );
+  if (role === 'laboratorista') {
+    return rows;
+  }
 
-  return rows.filter((row) => {
-    const studentFaculty = resolveAcademicFacultyName(row.carrera || '');
-    return (
-      facultyNamesSet.has(studentFaculty) ||
-      normalizeIntegerArray(row.coordinator_faculty_ids).some((facultyId) =>
-        facultyIds.has(facultyId)
-      ) ||
-      normalizeIntegerArray(row.laboratorista_faculty_ids).some((facultyId) =>
-        facultyIds.has(facultyId)
-      )
-    );
-  });
+  return [];
 }
 
 router.get('/', requireDashboardAccess, async (req, res) => {
@@ -635,37 +577,25 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ? requestedChart
       : availableChartIds[0];
 
-    const [
-      studentRows,
-      teacherRows,
-      sanctionRows,
-      laboratoristaRows,
-      coordinatorRows,
-      usuarioRows,
-    ] = await Promise.all([
-      availableChartIds.includes('estudiantes')
-        ? fetchStudentCertificateRows(client)
-        : Promise.resolve([]),
-      availableChartIds.includes('docentes')
-        ? fetchTeacherCertificateRows(client)
-        : Promise.resolve([]),
-      fetchSanctionRows(client, columns),
-      fetchLaboratoristaRows(client, columns),
-      availableChartIds.includes('coordinadores')
-        ? fetchCoordinatorRows(client, columns)
-        : Promise.resolve([]),
-      availableChartIds.includes('usuariosRegistrados')
-        ? fetchUsuarioRows(client, columns)
-        : Promise.resolve([]),
-    ]);
+    const studentRows = availableChartIds.includes('estudiantes')
+      ? await fetchStudentCertificateRows()
+      : [];
+    const teacherRows = availableChartIds.includes('docentes')
+      ? await fetchTeacherCertificateRows()
+      : [];
+    const sanctionRows = await fetchSanctionRows();
+    const laboratoristaRows = await fetchLaboratoristaRows();
+    const coordinatorRows = availableChartIds.includes('coordinadores')
+      ? await fetchCoordinatorRows()
+      : [];
+    const usuarioRows = availableChartIds.includes('usuariosRegistrados')
+      ? await fetchUsuarioRows()
+      : [];
 
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
+    const filteredTeachers = teacherRows;
     const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
-    const filteredLaboratoristas = filterLaboratoristaRowsByScope(
-      laboratoristaRows,
-      dashboardRole,
-      scope
-    );
+    const filteredLaboratoristas = filterLaboratoristaRowsByScope(laboratoristaRows, dashboardRole);
     const filteredCoordinators = filterCoordinatorRowsByScope(
       coordinatorRows,
       dashboardRole,
@@ -746,6 +676,21 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       { label: 'Sanciones visibles', value: String(totalFromSeries(chartsData.multas)) },
     ];
 
+    const tablesData = {
+      estudiantes: filteredStudents,
+      docentes: filteredTeachers,
+      sanciones: filteredSanctions,
+      sancionesActivas: filteredSanctions.filter(
+        (row) => String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA'
+      ),
+      sancionesSaldadas: filteredSanctions.filter((row) =>
+        ['SALDADA', 'SALDADO'].includes(String(row.con_estado_multa || '').toUpperCase())
+      ),
+      laboratoristas: filteredLaboratoristas,
+      coordinadores: filteredCoordinators,
+      usuariosRegistrados: filteredUsuarios,
+    };
+
     return res.render('home/dashboard', {
       filtro,
       labelFormat,
@@ -755,6 +700,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scopePresentation,
       scopeCounters,
       chartsData,
+      tablesData,
     });
   } catch (error) {
     console.error('Error en dashboard:', error);
@@ -767,12 +713,19 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el dashboard.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el dashboard.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+        error,
+        adminErrorDetail: '',
+      },
+      req,
+      error
+    );
   } finally {
     if (client) {
       client.release();
@@ -783,6 +736,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
+  fetchSanctionRows,
+  fetchLaboratoristaRows,
+  fetchStudentCertificateRows,
+  fetchTeacherCertificateRows,
   resolveDashboardSchemaColumns,
 };
 

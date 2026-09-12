@@ -22,7 +22,7 @@ function buildApp(route, sessionUser) {
   return app;
 }
 
-function loadDashboardRoute({ clientQueryImpl, scopeImpl } = {}) {
+function loadDashboardRoute({ clientQueryImpl, poolQueryImpl, scopeImpl } = {}) {
   const originals = new Map();
 
   const client = {
@@ -40,8 +40,20 @@ function loadDashboardRoute({ clientQueryImpl, scopeImpl } = {}) {
     release() {},
   };
 
+  const poolStub = {
+    async query(sql, params = []) {
+      if (typeof poolQueryImpl === 'function') {
+        return poolQueryImpl(sql, params);
+      }
+      return { rows: [] };
+    },
+    async connect() {
+      return client;
+    },
+  };
+
   const stubs = [
-    [dbPath, { connect: async () => client }],
+    [dbPath, poolStub],
     [
       facultyScopePath,
       {
@@ -89,34 +101,48 @@ test('dashboard exports an Express router with handlers', () => {
   assert.equal(router.stack.length > 0, true);
 });
 
-test('dashboard uses legacy coordinador_facultad document column when present', async () => {
+test('dashboard fetchers use plain 1:1 table selects without joins or cast to empty', async () => {
   delete require.cache[routePath];
-  const router = require(routePath);
 
   const queries = [];
-  const client = {
+  const dbStub = {
     async query(sql) {
       queries.push(sql);
       return { rows: [] };
     },
+    async connect() {
+      return { query: async () => ({ rows: [] }), release() {} };
+    },
   };
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: dbStub };
 
-  await router.__private.fetchCoordinatorRows(client, {
-    coordinadorFacultadIdColumn: 'id_facultad',
-    coordinadorFacultadDocumentColumn: 'documento',
-  });
+  const router = require(routePath);
 
-  await router.__private.fetchUsuarioRows(client, {
-    ualIdColumn: 'id_ual',
-    facultadIdColumn: 'id_facultad',
-    laboratoristaUalIdColumn: 'id_ual',
-    laboratoristaUalDocumentColumn: 'documento_laboratorista',
-    coordinadorFacultadIdColumn: 'id_facultad',
-    coordinadorFacultadDocumentColumn: 'documento',
-  });
+  await router.__private.fetchCoordinatorRows();
+  await router.__private.fetchUsuarioRows();
+  await router.__private.fetchSanctionRows();
+  await router.__private.fetchLaboratoristaRows();
+  await router.__private.fetchStudentCertificateRows();
+  await router.__private.fetchTeacherCertificateRows();
 
-  assert.equal(queries[0].includes('cf.documento = c.documento'), true);
-  assert.equal(queries[1].includes('cf.documento = c.documento'), true);
+  const coordinatorQ = queries.find((q) => q.includes('FROM coordinador'));
+  const usuarioQ = queries.find((q) => q.includes('FROM usuario'));
+  const multaQ = queries.find((q) => q.includes('FROM multa'));
+  const labQ = queries.find((q) => q.includes('FROM laboratorista'));
+  const ceQ = queries.find((q) => q.includes('FROM certificado_estudiante'));
+  const cdQ = queries.find((q) => q.includes('FROM certificado_docente'));
+
+  assert.equal(coordinatorQ.includes('SELECT c.*'), true);
+  assert.equal(usuarioQ.includes('SELECT u.*'), true);
+  assert.equal(multaQ.includes('SELECT m.*'), true);
+  assert.equal(labQ.includes('SELECT l.*'), true);
+  assert.equal(ceQ.includes('SELECT ce.*'), true);
+  assert.equal(cdQ.includes('SELECT cd.*'), true);
+
+  assert.equal(coordinatorQ.includes('JOIN'), false);
+  assert.equal(coordinatorQ.includes('cf.'), false);
+  assert.equal(usuarioQ.includes('JOIN'), false);
+  assert.equal(multaQ.includes('COALESCE'), false);
 });
 
 test('dashboard renders default admin chart set when there is no data', async () => {

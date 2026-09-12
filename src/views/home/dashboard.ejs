@@ -90,6 +90,44 @@
       </button>
     <% }) %>
   </section>
+
+  <section
+    id="dashboardDetailPanel"
+    class="app-form-panel dashboard-detail-panel mt-4"
+  >
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+      <div>
+        <h3 id="dashboardDetailTitle" class="mb-0" style="font-size: 1.1rem;">Detalle</h3>
+        <p id="dashboardDetailHint" class="mb-0 mt-1 text-muted" style="font-size: 0.88rem;">
+          Selecciona una tarjeta superior para ver el detalle de sus registros.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span id="dashboardDetailCount" class="badge text-bg-light border" style="font-size: 0.82rem;">
+          0 registros
+        </span>
+      </div>
+    </div>
+
+    <div class="table-responsive" style="max-height: 60vh; overflow: auto;">
+      <table
+        id="dashboardDetailTable"
+        class="table table-striped table-hover align-middle"
+        style="width: 100%;"
+      >
+        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+          <tr id="dashboardDetailTableHead"></tr>
+        </thead>
+        <tbody id="dashboardDetailTableBody">
+          <tr>
+            <td class="text-center py-4 text-muted">
+              Selecciona una tarjeta superior para cargar el detalle.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 </main>
 
 <script nonce="<%= cspNonce %>">
@@ -101,12 +139,216 @@
     sancionesSaldadas: rawData.multasSaldadas,
   };
 
+  const tablesData = <%- JSON.stringify(tablesData || {}) %>;
+
+  const TABLE_COLUMN_DEFS = {
+    estudiantes: [
+      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
+      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
+      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+      { key: 'correo', label: 'Correo' },
+      { key: 'motivo_exp', label: 'Motivo' },
+      { key: 'motivo_expedicion', label: 'Detalle motivo' },
+      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
+      { key: 'fecha_vencimiento', label: 'Vence', format: (v) => formatDate(v) },
+    ],
+    docentes: [
+      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
+      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
+      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+      { key: 'correo', label: 'Correo' },
+      { key: 'motivo_exp', label: 'Motivo' },
+      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
+      { key: 'origen_descarga', label: 'Origen' },
+    ],
+    sanciones: [
+      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
+      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
+      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
+      { key: 'cat_multa', label: 'Categoría' },
+      { key: 'tipo_sancion', label: 'Tipo' },
+      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
+      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
+      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
+      { key: 'obs_multa', label: 'Observaciones' },
+    ],
+    sancionesActivas: [
+      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
+      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
+      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
+      { key: 'cat_multa', label: 'Categoría' },
+      { key: 'tipo_sancion', label: 'Tipo' },
+      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
+      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
+      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
+      { key: 'obs_multa', label: 'Observaciones' },
+    ],
+    sancionesSaldadas: [
+      { key: 'fecha_multa', label: 'Fecha registro', format: (v) => formatDate(v) },
+      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
+      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
+      { key: 'cat_multa', label: 'Categoría' },
+      { key: 'tipo_sancion', label: 'Tipo' },
+      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
+      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
+      { key: 'obs_multa', label: 'Observaciones' },
+    ],
+    laboratoristas: [
+      { key: 'fecha_creacion', label: 'Fecha registro', format: (v) => formatDate(v) },
+      { key: 'nombre', label: 'Laboratorista' },
+      { key: 'documento', label: 'Documento' },
+      { key: 'n_usuario', label: 'Usuario red' },
+      { key: 'correo', label: 'Correo' },
+      { key: 'contrato', label: 'Contrato' },
+      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+    ],
+    coordinadores: [
+      { key: 'fecha_creacion', label: 'Fecha registro', format: (v) => formatDate(v) },
+      { key: 'nombre', label: 'Coordinador' },
+      { key: 'documento', label: 'Documento' },
+      { key: 'correo', label: 'Correo' },
+      { key: 'numero_resolucion_coordinador', label: 'Resolución' },
+      { key: 'soporte_resolucion', label: 'Soporte URL' },
+      { key: 'nombre_u', label: 'Universidad' },
+      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+    ],
+    usuariosRegistrados: [
+      { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'documento', label: 'Documento' },
+      { key: 'codigo', label: 'Código' },
+      { key: 'correo', label: 'Correo' },
+      { key: 'carrera', label: 'Carrera / Programa' },
+      { key: 'estado', label: 'Estado cuenta', format: (v) => renderEstadoBadge(v) },
+    ],
+  };
+
   const availableCharts = <%- JSON.stringify(availableCharts) %>;
   const chartDefinitions = Object.fromEntries(availableCharts.map((chart) => [chart.id, chart]));
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script nonce="<%= cspNonce %>">
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return escapeHtml(value);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  function formatNumber(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const num = Number(value);
+    if (Number.isNaN(num)) return escapeHtml(value);
+    return num.toLocaleString();
+  }
+
+  function renderList(value) {
+    if (!value) return '';
+    let arr = [];
+    if (Array.isArray(value)) arr = value;
+    else if (typeof value === 'string') arr = value.split(',').map((s) => s.trim()).filter(Boolean);
+    if (!arr.length) return '<span class="text-muted">—</span>';
+    return arr
+      .filter((x) => x !== null && x !== undefined && x !== '')
+      .map((x) => `<span class="badge text-bg-light border me-1 mb-1">${escapeHtml(x)}</span>`)
+      .join('');
+  }
+
+  function renderEstadoBadge(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '<span class="text-muted">—</span>';
+    const upper = raw.toUpperCase();
+    let cls = 'text-bg-light border';
+    if (
+      upper === 'ACTIVA' ||
+      upper === 'ACTIVO' ||
+      upper === 'EN MORA' ||
+      upper === 'PENDIENTE'
+    ) {
+      cls = 'text-bg-danger';
+    } else if (upper === 'SALDADA' || upper === 'SALDADO' || upper === 'NORMALIZADO') {
+      cls = 'text-bg-success';
+    } else if (upper === 'INACTIVO' || upper === 'INACTIVA') {
+      cls = 'text-bg-secondary';
+    } else if (upper.startsWith('BLOQUEAD')) {
+      cls = 'text-bg-dark';
+    }
+    return `<span class="badge ${cls}">${escapeHtml(raw)}</span>`;
+  }
+
+  function safeFormatCell(def, value) {
+    if (def && typeof def.format === 'function') {
+      try {
+        return def.format(value);
+      } catch (e) {
+        return escapeHtml(value == null ? '' : value);
+      }
+    }
+    return escapeHtml(value == null ? '' : value);
+  }
+
+  function renderDetailTable(tipo) {
+    const headEl = document.getElementById('dashboardDetailTableHead');
+    const bodyEl = document.getElementById('dashboardDetailTableBody');
+    const titleEl = document.getElementById('dashboardDetailTitle');
+    const hintEl = document.getElementById('dashboardDetailHint');
+    const countEl = document.getElementById('dashboardDetailCount');
+
+    const columns = TABLE_COLUMN_DEFS[tipo];
+    const rows = Array.isArray(tablesData[tipo]) ? tablesData[tipo] : [];
+    const config = chartDefinitions[tipo];
+
+    if (!columns || !config) {
+      if (headEl) headEl.innerHTML = '<th>Selecciona una tarjeta superior para ver el detalle.</th>';
+      if (bodyEl) {
+        bodyEl.innerHTML =
+          '<tr><td class="text-center py-4 text-muted">Selecciona una tarjeta superior para ver el detalle.</td></tr>';
+      }
+      return;
+    }
+
+    titleEl.textContent = `Detalle - ${config.cardLabel || config.optionLabel || tipo}`;
+    hintEl.textContent =
+      config.summary ||
+      'Registros que componen el total mostrado en la tarjeta. Se presenta el detalle paginado y buscable.';
+    countEl.textContent = `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
+
+    headEl.innerHTML = columns
+      .map((col) => `<th scope="col">${escapeHtml(col.label)}</th>`)
+      .join('');
+
+    if (!rows.length) {
+      bodyEl.innerHTML = `<tr><td colspan="${columns.length}" class="text-center py-4 text-muted">No hay registros para este indicador en el alcance actual.</td></tr>`;
+      return;
+    }
+
+    bodyEl.innerHTML = rows
+      .map((row) => {
+        const cells = columns
+          .map((col) => `<td>${safeFormatCell(col, row[col.key])}</td>`)
+          .join('');
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+  }
+
   let chartInstance = null;
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
 
@@ -173,6 +415,17 @@
     document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
       card.classList.toggle('is-active', card.dataset.chartTarget === tipo);
     });
+
+    try {
+      renderDetailTable(tipo);
+      const panel = document.getElementById('dashboardDetailPanel');
+      if (panel && typeof panel.scrollIntoView === 'function') {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    } catch (e) {
+      // table rendering failures must not break chart updates
+      console.warn('Dashboard detail table render failed:', e);
+    }
   }
 
   function syncChartSelection(tipo) {
