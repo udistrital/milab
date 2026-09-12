@@ -358,7 +358,10 @@ async function buildNavigation(user) {
 
     if (hasMenu) {
       const filteredMenu =
-        accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
+        accessInfo?.blocked &&
+        ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(
+          accessInfo.role
+        )
           ? removePrestamosNavigation(menu)
           : menu;
       return ensureCoordinatorSignatureAccountLink(
@@ -374,7 +377,8 @@ async function buildNavigation(user) {
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
     const filteredFallback =
-      accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
+      accessInfo?.blocked &&
+      ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
     return {
@@ -385,7 +389,8 @@ async function buildNavigation(user) {
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
   const filteredFallback =
-    accessInfo?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(accessInfo.role)
+    accessInfo?.blocked &&
+    ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
   return {

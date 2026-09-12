@@ -421,6 +421,12 @@ async function fetchUsuarioRows() {
   const result = await pool.query(
     `SELECT u.*
      FROM usuario u
+     WHERE EXISTS (
+       SELECT 1
+       FROM usuario_rol ur
+       WHERE ur.usuario_id = u.id
+         AND ur.activo = TRUE
+     )
      ORDER BY u.fecha_creacion DESC NULLS LAST
      LIMIT 500`
   );
