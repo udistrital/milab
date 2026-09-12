@@ -400,7 +400,14 @@ async function fetchSanctionRows() {
 async function fetchLaboratoristaRows() {
   const result = await pool.query(
     `SELECT
-       l.*,
+       l.fecha_creacion,
+       l.nombre,
+       l.documento,
+       l.n_usuario,
+       l.correo,
+       l.contrato,
+       l.usuario_id,
+       l.activo,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids
      FROM laboratorista l
@@ -410,7 +417,15 @@ async function fetchLaboratoristaRows() {
      LEFT JOIN ual u
        ON u.ual_id = lu.ual_id
       AND u.activo = TRUE
-     GROUP BY l.id
+     GROUP BY
+       l.fecha_creacion,
+       l.nombre,
+       l.documento,
+       l.n_usuario,
+       l.correo,
+       l.contrato,
+       l.usuario_id,
+       l.activo
      ORDER BY l.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -420,12 +435,27 @@ async function fetchLaboratoristaRows() {
 async function fetchCoordinatorRows() {
   const result = await pool.query(
     `SELECT
-       c.*,
+       c.fecha_creacion,
+       c.nombre,
+       c.documento,
+       c.correo,
+       c.numero_resolucion_coordinador,
+       c.soporte_resolucion,
+       c.nombre_u,
+       c.usuario_id,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf
        ON cf.coordinador_documento_id = c.documento
-     GROUP BY c.id
+     GROUP BY
+       c.fecha_creacion,
+       c.nombre,
+       c.documento,
+       c.correo,
+       c.numero_resolucion_coordinador,
+       c.soporte_resolucion,
+       c.nombre_u,
+       c.usuario_id
      ORDER BY c.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -488,14 +518,21 @@ async function fetchUsuarioRows() {
            AND r.nombre = 'coordinador'
          LIMIT 1
        ) role_state ON true
-       GROUP BY c.id, role_state.activo
+       GROUP BY
+         c.fecha_creacion,
+         c.nombre,
+         c.documento,
+         c.correo,
+         c.nombre_u,
+         role_state.activo
      ),
      laboratoristas_base AS (
        SELECT
          COALESCE(
            NULLIF(TRIM(l.documento), ''),
            NULLIF(TRIM(l.correo), ''),
-           CONCAT('laboratorista:', COALESCE(NULLIF(TRIM(l.n_usuario), ''), l.id::text))
+           NULLIF(TRIM(l.n_usuario), ''),
+           CONCAT('laboratorista:', NULLIF(TRIM(l.nombre), ''))
          ) AS identity_key,
          l.fecha_creacion,
          l.nombre,
@@ -516,7 +553,13 @@ async function fetchUsuarioRows() {
        LEFT JOIN ual u
          ON u.ual_id = lu.ual_id
         AND u.activo = TRUE
-       GROUP BY l.id
+       GROUP BY
+         l.fecha_creacion,
+         l.nombre,
+         l.documento,
+         l.correo,
+         l.n_usuario,
+         l.activo
      ),
      usuarios_consolidados AS (
        SELECT
