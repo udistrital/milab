@@ -349,8 +349,38 @@
       .join('');
   }
 
+  function resetDetailPanel() {
+    const headEl = document.getElementById('dashboardDetailTableHead');
+    const bodyEl = document.getElementById('dashboardDetailTableBody');
+    const titleEl = document.getElementById('dashboardDetailTitle');
+    const hintEl = document.getElementById('dashboardDetailHint');
+    const countEl = document.getElementById('dashboardDetailCount');
+
+    if (titleEl) {
+      titleEl.textContent = 'Detalle';
+    }
+
+    if (hintEl) {
+      hintEl.textContent = 'Selecciona una tarjeta superior para ver el detalle de sus registros.';
+    }
+
+    if (countEl) {
+      countEl.textContent = '0 registros';
+    }
+
+    if (headEl) {
+      headEl.innerHTML = '<th>Selecciona una tarjeta superior para ver el detalle.</th>';
+    }
+
+    if (bodyEl) {
+      bodyEl.innerHTML =
+        '<tr><td class="text-center py-4 text-muted">Selecciona una tarjeta superior para cargar el detalle.</td></tr>';
+    }
+  }
+
   let chartInstance = null;
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
+  let detailEnabled = false;
 
   const chartVisualConfig = {
     estudiantes: {
@@ -402,7 +432,8 @@
     return chartsData[tipo].data.reduce((sum, val) => sum + Number(val || 0), 0);
   }
 
-  function updateSummary(tipo) {
+  function updateSummary(tipo, options = {}) {
+    const shouldRenderDetail = options.renderDetail === true;
     const config = chartDefinitions[tipo];
     if (!config) {
       return;
@@ -417,10 +448,14 @@
     });
 
     try {
-      renderDetailTable(tipo);
-      const panel = document.getElementById('dashboardDetailPanel');
-      if (panel && typeof panel.scrollIntoView === 'function') {
-        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (shouldRenderDetail) {
+        renderDetailTable(tipo);
+        const panel = document.getElementById('dashboardDetailPanel');
+        if (panel && typeof panel.scrollIntoView === 'function') {
+          panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } else {
+        resetDetailPanel();
       }
     } catch (e) {
       // table rendering failures must not break chart updates
@@ -445,7 +480,7 @@
     window.history.replaceState({}, '', url);
   }
 
-  function renderChart(tipo) {
+  function renderChart(tipo, options = {}) {
     currentChartType = tipo;
     syncChartSelection(tipo);
     const ctx = document.getElementById('chartDinamico');
@@ -460,7 +495,7 @@
       chartInstance.destroy();
     }
 
-    updateSummary(tipo);
+    updateSummary(tipo, options);
 
     if (tipo === 'sanciones') {
       chartInstance = new Chart(ctx, {
@@ -587,22 +622,25 @@
   }
 
   function cambiarGrafico() {
-    renderChart(document.getElementById('tipoGrafico').value);
+    detailEnabled = false;
+    renderChart(document.getElementById('tipoGrafico').value, { renderDetail: false });
   }
 
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
       card.addEventListener('click', function() {
         const chartTarget = card.dataset.chartTarget;
+        detailEnabled = true;
         document.getElementById('tipoGrafico').value = chartTarget;
-        renderChart(chartTarget);
+        renderChart(chartTarget, { renderDetail: true });
       });
     });
 
-    renderChart(currentChartType);
+    resetDetailPanel();
+    renderChart(currentChartType, { renderDetail: false });
 
     const themeObserver = new MutationObserver(function() {
-      renderChart(currentChartType);
+      renderChart(currentChartType, { renderDetail: detailEnabled });
     });
 
     themeObserver.observe(document.documentElement, {

@@ -87,7 +87,10 @@ router.use(async function attachPrestamosModuleAccess(req, res, next) {
     const access = await getPrestamosModuleAccess(req.session?.user || null);
     req.prestamosModuleAccess = access;
 
-    if (access?.blocked && ['coordinador', 'laboratorista', 'monitor'].includes(access.role)) {
+    if (
+      access?.blocked &&
+      ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(access.role)
+    ) {
       return respondPrestamosModuleBlocked(req, res);
     }
 

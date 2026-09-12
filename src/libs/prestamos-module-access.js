@@ -124,6 +124,31 @@ async function resolveAllowedPrestamosFacultyIdsForRole(facultyIds, role, client
   }
 }
 
+async function hasAnyPrestamosFacultyEnabled(client = pool) {
+  try {
+    const result = await client.query(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM facultad_modulo_acceso fma
+         JOIN facultad f ON f.facultad_id = fma.facultad_id
+         WHERE fma.modulo = 'prestamos'
+           AND fma.activo = TRUE
+           AND fma.permitido = TRUE
+           AND fma.rol IN ('coordinador', 'laboratorista', 'monitor')
+           AND f.activo = TRUE
+       ) AS has_enabled`
+    );
+
+    return Boolean(result.rows[0]?.has_enabled);
+  } catch (error) {
+    if (isMissingAccessTableError(error)) {
+      return true;
+    }
+
+    throw error;
+  }
+}
+
 async function getPrestamosModuleAccess(user, client = pool) {
   const roles = normalizeRoles(user?.roles || user?.tipo);
   if (roles.includes('admin')) {
@@ -133,6 +158,19 @@ async function getPrestamosModuleAccess(user, client = pool) {
       allowedFacultyIds: [],
       blockedFacultyIds: [],
       blocked: false,
+    };
+  }
+
+  if (roles.includes('estudiante') || roles.includes('docente')) {
+    const hasEnabledFaculty = await hasAnyPrestamosFacultyEnabled(client);
+    const role = roles.includes('estudiante') ? 'estudiante' : 'docente';
+
+    return {
+      role,
+      facultyIds: [],
+      allowedFacultyIds: [],
+      blockedFacultyIds: [],
+      blocked: !hasEnabledFaculty,
     };
   }
 
