@@ -399,8 +399,33 @@ async function fetchSanctionRows() {
 
 async function fetchLaboratoristaRows() {
   const result = await pool.query(
-    `SELECT l.*
+    `SELECT
+       l.fecha_creacion,
+       l.nombre,
+       l.documento,
+       l.n_usuario,
+       l.correo,
+       l.contrato,
+       l.usuario_id,
+       l.activo,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids
      FROM laboratorista l
+     LEFT JOIN laboratorista_ual lu
+       ON lu.laboratorista_documento_id = l.documento
+      AND (lu.activo IS DISTINCT FROM FALSE)
+     LEFT JOIN ual u
+       ON u.ual_id = lu.ual_id
+      AND u.activo = TRUE
+     GROUP BY
+       l.fecha_creacion,
+       l.nombre,
+       l.documento,
+       l.n_usuario,
+       l.correo,
+       l.contrato,
+       l.usuario_id,
+       l.activo
      ORDER BY l.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -409,8 +434,28 @@ async function fetchLaboratoristaRows() {
 
 async function fetchCoordinatorRows() {
   const result = await pool.query(
-    `SELECT c.*
+    `SELECT
+       c.fecha_creacion,
+       c.nombre,
+       c.documento,
+       c.correo,
+       c.numero_resolucion_coordinador,
+       c.soporte_resolucion,
+       c.nombre_u,
+       c.usuario_id,
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
+     LEFT JOIN coordinador_facultad cf
+       ON cf.coordinador_documento_id = c.documento
+     GROUP BY
+       c.fecha_creacion,
+       c.nombre,
+       c.documento,
+       c.correo,
+       c.numero_resolucion_coordinador,
+       c.soporte_resolucion,
+       c.nombre_u,
+       c.usuario_id
      ORDER BY c.fecha_creacion DESC NULLS LAST
      LIMIT 300`
   );
@@ -419,15 +464,151 @@ async function fetchCoordinatorRows() {
 
 async function fetchUsuarioRows() {
   const result = await pool.query(
-    `SELECT u.*
-     FROM usuario u
-     WHERE EXISTS (
-       SELECT 1
-       FROM usuario_rol ur
-       WHERE ur.usuario_id = u.id
-         AND ur.activo = TRUE
+    `WITH usuarios_base AS (
+       SELECT
+         COALESCE(NULLIF(TRIM(u.documento), ''), CONCAT('usuario:', u.id::text)) AS identity_key,
+         u.fecha_creacion,
+         u.nombre,
+         u.documento,
+         u.codigo::text AS codigo,
+         u.correo,
+         u.carrera,
+         COALESCE(NULLIF(TRIM(u.estado), ''), 'ACTIVO') AS estado
+       FROM usuario u
+       WHERE EXISTS (
+         SELECT 1
+         FROM usuario_rol ur
+         JOIN rol r ON r.id = ur.rol_id
+         WHERE ur.usuario_id = u.id
+           AND ur.activo = TRUE
+           AND r.nombre IN ('admin', 'estudiante', 'docente')
+       )
+     ),
+     coordinadores_base AS (
+       SELECT
+         COALESCE(
+           NULLIF(TRIM(c.documento), ''),
+           NULLIF(TRIM(c.correo), ''),
+           CONCAT('coordinador:', COALESCE(NULLIF(TRIM(c.nombre_u), ''), c.documento))
+         ) AS identity_key,
+         c.fecha_creacion,
+         c.nombre,
+         c.documento,
+         NULL::text AS codigo,
+         c.correo,
+         NULL::text AS carrera,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids,
+         ARRAY[]::int[] AS ual_ids,
+         CASE
+           WHEN COALESCE(role_state.activo, FALSE) THEN 'ACTIVO'
+           ELSE 'INACTIVO'
+         END AS estado
+       FROM coordinador c
+       JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+       LEFT JOIN usuario u
+         ON u.id = c.usuario_id
+         OR u.documento = c.documento
+         OR (c.nombre_u IS NOT NULL AND u.documento = c.nombre_u)
+         OR (c.correo IS NOT NULL AND LOWER(u.correo) = LOWER(c.correo))
+       LEFT JOIN LATERAL (
+         SELECT ur.activo
+         FROM usuario_rol ur
+         JOIN rol r ON r.id = ur.rol_id
+         WHERE ur.usuario_id = u.id
+           AND r.nombre = 'coordinador'
+         LIMIT 1
+       ) role_state ON true
+       GROUP BY
+         c.fecha_creacion,
+         c.nombre,
+         c.documento,
+         c.correo,
+         c.nombre_u,
+         role_state.activo
+     ),
+     laboratoristas_base AS (
+       SELECT
+         COALESCE(
+           NULLIF(TRIM(l.documento), ''),
+           NULLIF(TRIM(l.correo), ''),
+           NULLIF(TRIM(l.n_usuario), ''),
+           CONCAT('laboratorista:', NULLIF(TRIM(l.nombre), ''))
+         ) AS identity_key,
+         l.fecha_creacion,
+         l.nombre,
+         l.documento,
+         NULL::text AS codigo,
+         l.correo,
+         NULL::text AS carrera,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS faculty_ids,
+         ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
+         CASE
+           WHEN COALESCE(l.activo, FALSE) THEN 'ACTIVO'
+           ELSE 'INACTIVO'
+         END AS estado
+       FROM laboratorista l
+       LEFT JOIN laboratorista_ual lu
+         ON lu.laboratorista_documento_id = l.documento
+        AND (lu.activo IS DISTINCT FROM FALSE)
+       LEFT JOIN ual u
+         ON u.ual_id = lu.ual_id
+        AND u.activo = TRUE
+       GROUP BY
+         l.fecha_creacion,
+         l.nombre,
+         l.documento,
+         l.correo,
+         l.n_usuario,
+         l.activo
+     ),
+     usuarios_consolidados AS (
+       SELECT
+         identity_key,
+         fecha_creacion,
+         nombre,
+         documento,
+         codigo,
+         correo,
+         carrera,
+         ARRAY[]::int[] AS faculty_ids,
+         ARRAY[]::int[] AS ual_ids,
+         estado
+       FROM usuarios_base
+       UNION ALL
+       SELECT * FROM coordinadores_base
+       UNION ALL
+       SELECT * FROM laboratoristas_base
+     ),
+     usuarios_ranked AS (
+       SELECT
+         fecha_creacion,
+         nombre,
+         documento,
+         codigo,
+         correo,
+         carrera,
+         faculty_ids,
+         ual_ids,
+         estado,
+         ROW_NUMBER() OVER (
+           PARTITION BY identity_key
+           ORDER BY fecha_creacion DESC NULLS LAST
+         ) AS identity_rank
+       FROM usuarios_consolidados
      )
-     ORDER BY u.fecha_creacion DESC NULLS LAST
+     SELECT
+       fecha_creacion,
+       nombre,
+       documento,
+       codigo,
+       correo,
+       carrera,
+       faculty_ids,
+       ual_ids,
+       estado
+     FROM usuarios_ranked
+     WHERE identity_rank = 1
+     ORDER BY fecha_creacion DESC NULLS LAST
      LIMIT 500`
   );
   return result.rows;
@@ -466,11 +647,32 @@ function filterSanctionRowsByScope(rows, role, scope) {
   });
 }
 
-function filterLaboratoristaRowsByScope(rows, role) {
+function toNumericSet(values) {
+  return new Set((values || []).map((value) => Number(value)).filter(Number.isInteger));
+}
+
+function hasIntersection(leftValues, rightSet) {
+  return (leftValues || [])
+    .map((value) => Number(value))
+    .some((value) => Number.isInteger(value) && rightSet.has(value));
+}
+
+function filterLaboratoristaRowsByScope(rows, role, scope) {
   if (role === 'admin') {
     return rows;
   }
-  return rows;
+
+  if (role === 'coordinador') {
+    const facultyIds = toNumericSet(scope.facultyIds);
+    return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  }
+
+  if (role === 'laboratorista') {
+    const scopeUalIds = toNumericSet(scope.ualIds);
+    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
+  }
+
+  return [];
 }
 
 function filterCoordinatorRowsByScope(rows, role, scope) {
@@ -482,13 +684,8 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
     return [];
   }
 
-  const facultyIds = new Set(scope.facultyIds || []);
-  return rows.filter((row) => {
-    const currentDoc = String(row.documento || row.documento_coordinador || '').trim();
-    const scopeDoc = String(scope.coordinatorDocument || '').trim();
-    if (scopeDoc && currentDoc === scopeDoc) return true;
-    return facultyIds.size === 0;
-  });
+  const facultyIds = toNumericSet(scope.facultyIds);
+  return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
@@ -500,11 +697,20 @@ function filterUsuarioRowsByScope(rows, role, scope) {
     const facultyNamesSet = new Set(
       (scope.facultyNames || []).map((name) => String(name || '').trim())
     );
-    return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
+    const facultyIds = toNumericSet(scope.facultyIds);
+    return rows.filter((row) => {
+      const resolvedFacultyName = resolveAcademicFacultyName(row.carrera || '');
+      if (resolvedFacultyName && facultyNamesSet.has(resolvedFacultyName)) {
+        return true;
+      }
+
+      return hasIntersection(row.faculty_ids, facultyIds);
+    });
   }
 
   if (role === 'laboratorista') {
-    return rows;
+    const scopeUalIds = toNumericSet(scope.ualIds);
+    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
   }
 
   return [];
@@ -538,6 +744,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
     if (dashboardRole === 'coordinador') {
       const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      scope.coordinatorDocument = coordinatorScope.coordinatorDocument || null;
       scope.facultyIds = coordinatorScope.facultyIds || [];
 
       if (!coordinatorScope.coordinatorDocument || scope.facultyIds.length === 0) {
@@ -601,7 +808,11 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
     const filteredTeachers = teacherRows;
     const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
-    const filteredLaboratoristas = filterLaboratoristaRowsByScope(laboratoristaRows, dashboardRole);
+    const filteredLaboratoristas = filterLaboratoristaRowsByScope(
+      laboratoristaRows,
+      dashboardRole,
+      scope
+    );
     const filteredCoordinators = filterCoordinatorRowsByScope(
       coordinatorRows,
       dashboardRole,
@@ -615,7 +826,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         filtro
       ),
       docentes: buildSeriesFromDates(
-        teacherRows.map((row) => row.fecha_creacion),
+        filteredTeachers.map((row) => row.fecha_creacion),
         filtro
       ),
       multas: buildSeriesFromDates(

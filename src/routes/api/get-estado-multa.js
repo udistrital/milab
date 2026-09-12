@@ -1,8 +1,28 @@
 const express = require('express');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const pool = require('../../libs/db');
 const { publicApiLimiter } = require('../middlewares/public-rate-limit');
 const router = express.Router();
+
+const MULTA_LOOKUP_WINDOW_MS = 5 * 60 * 1000;
+const MULTA_LOOKUP_BURST_THRESHOLD = 10;
+const MULTA_LOOKUP_TRACKING_LIMIT = 500;
+
+const ipLookupWindow = new Map();
+
+const getEstadoMultaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Demasiadas solicitudes. Intentalo nuevamente en un momento.',
+    });
+  },
+});
 
 let multaLookupColumnsPromise = null;
 
@@ -56,12 +76,80 @@ function buildDirectMultaLookupQuery(options = {}) {
   `;
 }
 
-router.get('/:identificador', publicApiLimiter, async (req, res) => {
+function hashIdentifier(value) {
+  return crypto
+    .createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function cleanupOldLookupRecords(nowMs) {
+  for (const [ip, state] of ipLookupWindow.entries()) {
+    if (!state || nowMs - state.firstSeenAt > MULTA_LOOKUP_WINDOW_MS) {
+      ipLookupWindow.delete(ip);
+    }
+  }
+
+  if (ipLookupWindow.size > MULTA_LOOKUP_TRACKING_LIMIT) {
+    const entries = Array.from(ipLookupWindow.entries()).sort(
+      (left, right) => left[1].firstSeenAt - right[1].firstSeenAt
+    );
+    const overflow = ipLookupWindow.size - MULTA_LOOKUP_TRACKING_LIMIT;
+    for (let index = 0; index < overflow; index += 1) {
+      ipLookupWindow.delete(entries[index][0]);
+    }
+  }
+}
+
+function trackLookupPattern(req, identificador) {
+  const nowMs = Date.now();
+  cleanupOldLookupRecords(nowMs);
+
+  const ip = String(req.ip || req.headers['x-forwarded-for'] || 'unknown').trim();
+  const current = ipLookupWindow.get(ip);
+
+  const state =
+    !current || nowMs - current.firstSeenAt > MULTA_LOOKUP_WINDOW_MS
+      ? {
+          firstSeenAt: nowMs,
+          identifiers: new Set(),
+          alerted: false,
+        }
+      : current;
+
+  state.identifiers.add(hashIdentifier(identificador));
+  ipLookupWindow.set(ip, state);
+
+  if (state.identifiers.size >= MULTA_LOOKUP_BURST_THRESHOLD && !state.alerted) {
+    state.alerted = true;
+    const log = req.log;
+    if (log && typeof log.warn === 'function') {
+      log.warn(
+        {
+          event: 'public_multa_lookup_suspected_enumeration',
+          endpoint: '/api/get-estado-multa/:identificador',
+          ip,
+          distinctIdentifiersInWindow: state.identifiers.size,
+          windowMs: MULTA_LOOKUP_WINDOW_MS,
+        },
+        'Potential enumeration pattern detected on public multa lookup'
+      );
+    }
+  }
+}
+
+router.get('/:identificador', publicApiLimiter, getEstadoMultaLimiter, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+
   const identificador = String(req.params.identificador || '').trim();
 
   if (!/^\d{1,20}$/.test(identificador)) {
     return res.status(400).json({ error: 'Documento inválido' });
   }
+
+  trackLookupPattern(req, identificador);
 
   try {
     const lookupColumns = await resolveMultaLookupColumns();
