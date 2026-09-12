@@ -126,7 +126,11 @@
 
 </head>
 
-<body class="app-shell" data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>">
+<body
+  class="app-shell"
+  data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
+  data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
+>
   <header class="app-header">
     <%- include('./environment-banner', { environmentBannerAttached: true }) %>
     <div class="app-header-shell">

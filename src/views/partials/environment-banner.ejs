@@ -5,17 +5,17 @@
 <% if (shouldShowEnvironmentBanner) { %>
   <style>
     .app-environment-banner {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr;
       align-items: center;
-      justify-content: center;
-      gap: 0.7rem;
+      gap: 0.5rem 0.9rem;
       margin: 0 1rem;
-      padding: 0.78rem 1rem;
-      border: 1px solid rgba(130, 63, 10, 0.22);
-      background: linear-gradient(90deg, #fff3d1, #ffd98a 54%, #ffe7ad);
-      color: #6b3d00;
-      box-shadow: 0 10px 24px rgba(163, 104, 18, 0.12);
-      text-align: center;
+      padding: 1rem 1.2rem;
+      border: 2px solid rgba(32, 32, 32, 0.45);
+      background: linear-gradient(90deg, #ececec, #d9d9d9 48%, #efefef);
+      color: #202020;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+      text-align: left;
       position: relative;
       z-index: 1100;
     }
@@ -24,37 +24,76 @@
       border-bottom: none;
     }
 
+    .app-environment-banner-icon {
+      grid-row: 1 / span 2;
+      font-size: 1.35rem;
+      color: #141414;
+      line-height: 1;
+    }
+
+    .app-environment-banner-top {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
     .app-environment-banner-label {
-      font-size: 0.78rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      font-size: 0.95rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
     }
 
     .app-environment-banner-separator {
-      opacity: 0.55;
+      opacity: 0.75;
+      font-weight: 700;
     }
 
     .app-environment-banner-text {
-      font-size: 0.92rem;
-      font-weight: 600;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .app-environment-banner-link {
+      display: inline-block;
+      margin-top: 0.28rem;
+      color: #111111;
+      font-size: 0.94rem;
+      font-weight: 800;
+      text-decoration: underline;
+      word-break: break-word;
     }
 
     @media (max-width: 767.98px) {
       .app-environment-banner {
-        flex-direction: column;
-        gap: 0.3rem;
-        padding: 0.7rem 0.85rem;
+        grid-template-columns: 1fr;
+        gap: 0.45rem;
+        padding: 0.85rem 0.9rem;
+        text-align: center;
       }
 
-      .app-environment-banner-separator {
-        display: none;
+      .app-environment-banner-icon {
+        grid-row: auto;
+        justify-self: center;
       }
     }
   </style>
   <div class="app-environment-banner <%= locals.environmentBannerAttached ? 'app-environment-banner--attached' : '' %>" role="status" aria-live="polite">
-    <span class="app-environment-banner-label">Ambiente no productivo</span>
-    <span class="app-environment-banner-separator" aria-hidden="true">•</span>
-    <span class="app-environment-banner-text">Estás navegando en <strong><%= bannerEnvironmentName %></strong>. La información y las acciones pueden ser de prueba.</span>
+    <span class="app-environment-banner-icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+    <div class="app-environment-banner-top">
+      <span class="app-environment-banner-label">Ambiente de pruebas</span>
+      <span class="app-environment-banner-separator" aria-hidden="true">•</span>
+      <span class="app-environment-banner-label"><%= bannerEnvironmentName.toUpperCase() %></span>
+    </div>
+    <span class="app-environment-banner-text">
+      Este ambiente está destinado exclusivamente a validaciones técnicas.
+      <br>
+      La información aquí puede no corresponder a datos finales de operación.
+      <br>
+      Si es docente, estudiante, coordinador o laboratorista, use el ambiente de Producción:
+      <a class="app-environment-banner-link" href="https://laboratorios.udistrital.edu.co/milab/" target="_blank" rel="noopener noreferrer">https://laboratorios.udistrital.edu.co/milab/</a>
+    </span>
   </div>
 <% } %>

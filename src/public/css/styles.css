@@ -356,6 +356,24 @@ body.app-shell h6 {
   color: var(--app-text-main);
 }
 
+body.app-shell[data-non-production='true'] {
+  --app-bg: #ececec;
+  --app-bg-deep: #d9d9d9;
+  --app-surface: rgba(246, 246, 246, 0.94);
+  --app-surface-strong: #f3f3f3;
+  --app-surface-muted: rgba(235, 235, 235, 0.95);
+  --app-border: rgba(35, 35, 35, 0.2);
+  --app-text-main: #1f1f1f;
+  --app-text-muted: #4f4f4f;
+  --app-accent: #555555;
+  --app-accent-deep: #2f2f2f;
+  --app-highlight: #888888;
+  --app-highlight-deep: #666666;
+  --app-highlight-soft: rgba(127, 127, 127, 0.2);
+  --app-shadow: 0 22px 52px rgba(0, 0, 0, 0.16);
+  --app-input-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+}
+
 body.app-shell .app-frame {
   position: relative;
   padding-bottom: 2rem;
