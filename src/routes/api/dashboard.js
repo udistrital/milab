@@ -419,15 +419,111 @@ async function fetchCoordinatorRows() {
 
 async function fetchUsuarioRows() {
   const result = await pool.query(
-    `SELECT u.*
-     FROM usuario u
-     WHERE EXISTS (
-       SELECT 1
-       FROM usuario_rol ur
-       WHERE ur.usuario_id = u.id
-         AND ur.activo = TRUE
+    `WITH usuarios_base AS (
+       SELECT
+         COALESCE(NULLIF(TRIM(u.documento), ''), CONCAT('usuario:', u.id::text)) AS identity_key,
+         u.fecha_creacion,
+         u.nombre,
+         u.documento,
+         u.codigo::text AS codigo,
+         u.correo,
+         u.carrera,
+         COALESCE(NULLIF(TRIM(u.estado), ''), 'ACTIVO') AS estado
+       FROM usuario u
+       WHERE EXISTS (
+         SELECT 1
+         FROM usuario_rol ur
+         JOIN rol r ON r.id = ur.rol_id
+         WHERE ur.usuario_id = u.id
+           AND ur.activo = TRUE
+           AND r.nombre IN ('admin', 'estudiante', 'docente')
+       )
+     ),
+     coordinadores_base AS (
+       SELECT
+         COALESCE(
+           NULLIF(TRIM(c.documento), ''),
+           NULLIF(TRIM(c.correo), ''),
+           CONCAT('coordinador:', COALESCE(NULLIF(TRIM(c.nombre_u), ''), c.documento))
+         ) AS identity_key,
+         c.fecha_creacion,
+         c.nombre,
+         c.documento,
+         NULL::text AS codigo,
+         c.correo,
+         NULL::text AS carrera,
+         CASE
+           WHEN COALESCE(role_state.activo, FALSE) THEN 'ACTIVO'
+           ELSE 'INACTIVO'
+         END AS estado
+       FROM coordinador c
+       JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+       LEFT JOIN usuario u
+         ON u.id = c.usuario_id
+         OR u.documento = c.documento
+         OR (c.nombre_u IS NOT NULL AND u.documento = c.nombre_u)
+         OR (c.correo IS NOT NULL AND LOWER(u.correo) = LOWER(c.correo))
+       LEFT JOIN LATERAL (
+         SELECT ur.activo
+         FROM usuario_rol ur
+         JOIN rol r ON r.id = ur.rol_id
+         WHERE ur.usuario_id = u.id
+           AND r.nombre = 'coordinador'
+         LIMIT 1
+       ) role_state ON true
+     ),
+     laboratoristas_base AS (
+       SELECT
+         COALESCE(
+           NULLIF(TRIM(l.documento), ''),
+           NULLIF(TRIM(l.correo), ''),
+           CONCAT('laboratorista:', COALESCE(NULLIF(TRIM(l.n_usuario), ''), l.id::text))
+         ) AS identity_key,
+         l.fecha_creacion,
+         l.nombre,
+         l.documento,
+         NULL::text AS codigo,
+         l.correo,
+         NULL::text AS carrera,
+         CASE
+           WHEN COALESCE(l.activo, FALSE) THEN 'ACTIVO'
+           ELSE 'INACTIVO'
+         END AS estado
+       FROM laboratorista l
+     ),
+     usuarios_consolidados AS (
+       SELECT * FROM usuarios_base
+       UNION ALL
+       SELECT * FROM coordinadores_base
+       UNION ALL
+       SELECT * FROM laboratoristas_base
+     ),
+     usuarios_ranked AS (
+       SELECT
+         fecha_creacion,
+         nombre,
+         documento,
+         codigo,
+         correo,
+         carrera,
+         estado,
+         ROW_NUMBER() OVER (
+           PARTITION BY identity_key
+           ORDER BY fecha_creacion DESC NULLS LAST
+         ) AS identity_rank
+       FROM usuarios_consolidados
      )
-     ORDER BY u.fecha_creacion DESC NULLS LAST
+     SELECT
+       fecha_creacion,
+       nombre,
+       documento,
+       codigo,
+       correo,
+       carrera,
+       estado
+     FROM usuarios_ranked
+     WHERE identity_rank = 1
+     ORDER BY fecha_creacion DESC NULLS LAST
      LIMIT 500`
   );
   return result.rows;

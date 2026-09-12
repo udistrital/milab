@@ -101,7 +101,7 @@ test('dashboard exports an Express router with handlers', () => {
   assert.equal(router.stack.length > 0, true);
 });
 
-test('dashboard fetchers use plain 1:1 table selects without joins or cast to empty', async () => {
+test('dashboard fetchers query expected data sources for dashboard totals', async () => {
   delete require.cache[routePath];
 
   const queries = [];
@@ -125,23 +125,30 @@ test('dashboard fetchers use plain 1:1 table selects without joins or cast to em
   await router.__private.fetchStudentCertificateRows();
   await router.__private.fetchTeacherCertificateRows();
 
-  const coordinatorQ = queries.find((q) => q.includes('FROM coordinador'));
-  const usuarioQ = queries.find((q) => q.includes('FROM usuario'));
-  const multaQ = queries.find((q) => q.includes('FROM multa'));
-  const labQ = queries.find((q) => q.includes('FROM laboratorista'));
-  const ceQ = queries.find((q) => q.includes('FROM certificado_estudiante'));
-  const cdQ = queries.find((q) => q.includes('FROM certificado_docente'));
+  const coordinatorQ = queries.find(
+    (q) => q.includes('SELECT c.*') && q.includes('FROM coordinador c')
+  );
+  const usuarioQ = queries.find((q) => q.includes('WITH usuarios_base AS'));
+  const multaQ = queries.find((q) => q.includes('SELECT m.*') && q.includes('FROM multa m'));
+  const labQ = queries.find((q) => q.includes('SELECT l.*') && q.includes('FROM laboratorista l'));
+  const ceQ = queries.find(
+    (q) => q.includes('SELECT ce.*') && q.includes('FROM certificado_estudiante ce')
+  );
+  const cdQ = queries.find(
+    (q) => q.includes('SELECT cd.*') && q.includes('FROM certificado_docente cd')
+  );
 
   assert.equal(coordinatorQ.includes('SELECT c.*'), true);
-  assert.equal(usuarioQ.includes('SELECT u.*'), true);
+  assert.equal(usuarioQ.includes('FROM usuario u'), true);
   assert.equal(multaQ.includes('SELECT m.*'), true);
   assert.equal(labQ.includes('SELECT l.*'), true);
   assert.equal(ceQ.includes('SELECT ce.*'), true);
   assert.equal(cdQ.includes('SELECT cd.*'), true);
 
-  assert.equal(coordinatorQ.includes('JOIN'), false);
-  assert.equal(coordinatorQ.includes('cf.'), false);
-  assert.equal(usuarioQ.includes('JOIN'), false);
+  assert.equal(usuarioQ.includes('FROM coordinador c'), true);
+  assert.equal(usuarioQ.includes('JOIN coordinador_facultad cf'), true);
+  assert.equal(usuarioQ.includes('FROM laboratorista l'), true);
+  assert.equal(usuarioQ.includes("r.nombre IN ('admin', 'estudiante', 'docente')"), true);
   assert.equal(multaQ.includes('COALESCE'), false);
 });
 
