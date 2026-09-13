@@ -188,3 +188,87 @@ test('menuPermissionMiddleware blocks protected route with denied role', async (
     loaded.restore();
   }
 });
+
+test('menuPermissionMiddleware blocks unregistered private API GET routes', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => ({ rows: [] }),
+  });
+
+  try {
+    const req = {
+      method: 'GET',
+      originalUrl: '/milab/api/check-services',
+      session: {
+        user: {
+          tipo: 'estudiante',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, false);
+    assert.equal(res.rendered.view, 'home/message_error');
+    assert.match(res.rendered.payload.message2, /No tienes permisos para esta ruta/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware allows unregistered private API non-GET routes', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => ({ rows: [] }),
+  });
+
+  try {
+    const req = {
+      method: 'POST',
+      originalUrl: '/milab/api/coordinadores_registrados/actualizar',
+      session: {
+        user: {
+          tipo: 'admin',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware allows unregistered public API routes', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => ({ rows: [] }),
+  });
+
+  try {
+    const req = {
+      method: 'GET',
+      originalUrl: '/milab/api/consulta-invit',
+      session: {},
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});

@@ -7,9 +7,32 @@ function sanitizePath(pathname) {
   return pathname.split('?')[0];
 }
 
+const publicApiAllowlist = [
+  { prefix: '/milab/api/login/login', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/milab/api/register', methods: ['POST'], allowSubpaths: true },
+  { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
+  { prefix: '/milab/api/get-data1', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/milab/api/get-data2', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/milab/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
+  { prefix: '/milab/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
+];
+
+function isPublicApiPath(requestPath, method) {
+  return publicApiAllowlist.some((rule) => {
+    if (!rule.methods.includes(method)) return false;
+
+    if (rule.allowSubpaths) {
+      return requestPath === rule.prefix || requestPath.startsWith(`${rule.prefix}/`);
+    }
+
+    return requestPath === rule.prefix;
+  });
+}
+
 async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
+    const method = String(req.method || 'GET').toUpperCase();
     const allowProfileFlow =
       req.session?.microsoftProfile &&
       (path === '/milab/api/profile' || path === '/milab/api/profile/identify');
@@ -37,6 +60,17 @@ async function menuPermissionMiddleware(req, res, next) {
     );
 
     if (!menuResult.rows.length) {
+      const isPrivateApiNavigationRequest =
+        path.startsWith('/milab/api/') && (method === 'GET' || method === 'HEAD');
+
+      if (isPrivateApiNavigationRequest && !isPublicApiPath(path, method)) {
+        return renderAuthError(res, {
+          message: 'Acceso denegado',
+          message2: 'No tienes permisos para esta ruta.',
+          limit: 'loginOnly',
+        });
+      }
+
       return next();
     }
 

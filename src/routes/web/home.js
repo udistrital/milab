@@ -7,7 +7,7 @@ function getAuthenticatedHomePath(user) {
 }
 
 function redirectToCanonicalPublicRoute(req, res, targetPath) {
-  const authenticatedHomePath = getAuthenticatedHomePath(req.session.user);
+  const authenticatedHomePath = getAuthenticatedHomePath(req.session?.user);
   if (authenticatedHomePath) {
     return res.redirect(authenticatedHomePath);
   }
@@ -16,7 +16,7 @@ function redirectToCanonicalPublicRoute(req, res, targetPath) {
 }
 
 router.get('/', function (req, res) {
-  const authenticatedHomePath = getAuthenticatedHomePath(req.session.user);
+  const authenticatedHomePath = getAuthenticatedHomePath(req.session?.user);
   if (authenticatedHomePath) {
     return res.redirect(authenticatedHomePath);
   }
@@ -84,7 +84,7 @@ router.get('/reg_multa_erase', function (req, res) {
 });
 //Login view
 router.get('/auth/login', function (req, res) {
-  const authenticatedHomePath = getAuthenticatedHomePath(req.session.user);
+  const authenticatedHomePath = getAuthenticatedHomePath(req.session?.user);
   if (authenticatedHomePath) {
     return res.redirect(authenticatedHomePath);
   }
