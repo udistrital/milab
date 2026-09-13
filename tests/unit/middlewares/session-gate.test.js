@@ -89,6 +89,26 @@ test('sessionGateMiddleware allows public milab API route without session', () =
   assert.equal(res.jsonBody, null);
 });
 
+test('sessionGateMiddleware allows public service status without session', () => {
+  const loaded = loadMiddleware();
+  const req = {
+    method: 'GET',
+    originalUrl: '/milab/api/check-services',
+    session: {},
+    get: () => 'application/json',
+  };
+  const res = createResponse();
+  let nextCalled = false;
+
+  loaded.sessionGateMiddleware(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, true);
+  assert.equal(res.redirectedTo, null);
+  assert.equal(res.jsonBody, null);
+});
+
 test('sessionGateMiddleware allows profile identify flow when microsoft profile is present', () => {
   const loaded = loadMiddleware();
   const req = {
