@@ -8,6 +8,7 @@ const publicMilabApiAllowlist = [
   { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
   { prefix: '/milab/api/get-data1', methods: ['POST'], allowSubpaths: false },
   { prefix: '/milab/api/get-data2', methods: ['POST'], allowSubpaths: false },
+  { prefix: '/milab/api/check-services', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
 ];

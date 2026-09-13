@@ -197,7 +197,7 @@ test('menuPermissionMiddleware blocks unregistered private API GET routes', asyn
   try {
     const req = {
       method: 'GET',
-      originalUrl: '/milab/api/check-services',
+      originalUrl: '/milab/api/internal-health-check',
       session: {
         user: {
           tipo: 'estudiante',
@@ -257,6 +257,31 @@ test('menuPermissionMiddleware allows unregistered public API routes', async () 
     const req = {
       method: 'GET',
       originalUrl: '/milab/api/consulta-invit',
+      session: {},
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware allows the public service status endpoint', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => ({ rows: [] }),
+  });
+
+  try {
+    const req = {
+      method: 'GET',
+      originalUrl: '/milab/api/check-services',
       session: {},
     };
     const res = createResponse();
