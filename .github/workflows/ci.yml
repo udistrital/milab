@@ -78,7 +78,7 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_automatizadas
-    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa' || github.ref == 'refs/heads/modulo_capacitacion_certificacion') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
     steps:
@@ -141,11 +141,27 @@ jobs:
             fi
           done
 
+          if [ "${GITHUB_REF_NAME}" = 'modulo_capacitacion_certificacion' ]; then
+            for required_file in \
+              "$base_dir/db_structure_certificacion.sql" \
+              "$base_dir/db_seed_certificacion.sql"
+            do
+              if [ ! -f "$required_file" ]; then
+                echo "No se encontró el script requerido: $required_file" >&2
+                exit 1
+              fi
+            done
+          fi
+
           echo "Secuencia de reset BD validada:"
           echo "1) $base_dir/db_structure.sql"
           echo "2) $db_seed_file"
           echo "3) $base_dir/db_structure_prestamos.sql"
           echo "4) $base_dir/db_seed_prestamos.sql"
+          if [ "${GITHUB_REF_NAME}" = 'modulo_capacitacion_certificacion' ]; then
+            echo "5) $base_dir/db_structure_certificacion.sql"
+            echo "6) $base_dir/db_seed_certificacion.sql"
+          fi
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
@@ -264,6 +280,8 @@ jobs:
           fi
           db_structure_prestamos_script="$sql_run_dir/db_structure_prestamos.sql"
           db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
+          db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
+          db_seed_certificacion_script="$sql_run_dir/db_seed_certificacion.sql"
 
           for required_file in \
             "$db_structure_script" \
@@ -276,6 +294,18 @@ jobs:
               exit 1
             fi
           done
+
+          if [ "$GITHUB_REF_NAME" = 'modulo_capacitacion_certificacion' ]; then
+            for required_file in \
+              "$db_structure_certificacion_script" \
+              "$db_seed_certificacion_script"
+            do
+              if [ ! -f "$required_file" ]; then
+                echo "No se encontró el script requerido para reset de BD: $required_file" >&2
+                exit 1
+              fi
+            done
+          fi
 
           cleanup() {
             sudo rm -rf "$sql_dir"
@@ -318,11 +348,19 @@ jobs:
           echo "2) $db_seed_script"
           echo "3) $db_structure_prestamos_script"
           echo "4) $db_seed_prestamos_script"
+          if [ "$GITHUB_REF_NAME" = 'modulo_capacitacion_certificacion' ]; then
+            echo "5) $db_structure_certificacion_script"
+            echo "6) $db_seed_certificacion_script"
+          fi
 
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_prestamos_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_prestamos_script"
+          if [ "$GITHUB_REF_NAME" = 'modulo_capacitacion_certificacion' ]; then
+            sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_certificacion_script"
+            sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_certificacion_script"
+          fi
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
