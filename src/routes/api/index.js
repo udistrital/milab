@@ -1,6 +1,7 @@
 const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { requireRoles } = require('../middlewares/auth');
 
 const router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
@@ -115,24 +116,32 @@ async function checkServiceStatus(log = serviceStatusLogger) {
   }
 }
 
-router.get('/check-services', async (req, res) => {
-  const log = (req.log || serviceStatusLogger).child({ route: '/api/check-services' });
-  try {
-    const serviceStatus = await checkServiceStatus(log);
-    res.json(serviceStatus);
-  } catch (error) {
-    log.error(
-      {
-        event: 'external_services_endpoint_error',
-        err: sanitizeValue(error),
-      },
-      'check-services endpoint failed'
-    );
-    res.status(500).json({
-      servicesAreUp: false,
-      timestamp: new Date().toISOString(),
-    });
+router.get(
+  '/check-services',
+  requireRoles('admin', {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para consultar el estado de servicios.',
+    limit: 'loginOnly',
+  }),
+  async (req, res) => {
+    const log = (req.log || serviceStatusLogger).child({ route: '/api/check-services' });
+    try {
+      const serviceStatus = await checkServiceStatus(log);
+      res.json(serviceStatus);
+    } catch (error) {
+      log.error(
+        {
+          event: 'external_services_endpoint_error',
+          err: sanitizeValue(error),
+        },
+        'check-services endpoint failed'
+      );
+      res.status(500).json({
+        servicesAreUp: false,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
-});
+);
 
 module.exports = router;

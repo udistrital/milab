@@ -71,6 +71,10 @@ const {
 } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 const { renderAuthError } = require('./routes/middlewares/auth');
+const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
+const {
+  startCoordinatorPendingNotificationsJob,
+} = require('./jobs/coordinator-pending-notifications.job');
 
 installConsoleBridge();
 installProcessHandlers();
@@ -369,8 +373,8 @@ app.use(legacyBasePath, (req, res, next) => {
   next();
 });
 
-app.use(canonicalBasePath, verifyCsrfToken, require('./milab_routes'));
-app.use(legacyBasePath, verifyCsrfToken, require('./milab_routes'));
+app.use(canonicalBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
+app.use(legacyBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
 
 // Redirección desde la raíz del dominio hacia la aplicación milab
 // Garantiza que https://laboratorios.udistrital.edu.co/ lleve a /milab/
@@ -403,6 +407,8 @@ app.use((req, res) => {
 app.use(createApplicationErrorHandler(logger));
 
 if (require.main === module) {
+  startCoordinatorPendingNotificationsJob();
+
   app.listen(app.get('port'), app.get('host'), function () {
     logger.info(
       {

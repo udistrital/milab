@@ -182,6 +182,8 @@ Notas operativas:
 - `LOG_BRIDGE_CONSOLE`: si está en `true`, los `console.log` existentes pasan por el logger central. `console.log` se trata como `debug`, `console.warn` como `warn` y `console.error` como `error`.
 - `SECURITY_LOG_TO_FILE`: permite conservar el archivo `security.log` además del logger central. Por defecto: `true`.
 - `SECURITY_LOG_FILE`: ruta del archivo de eventos de seguridad si se quiere persistencia separada.
+- `COORDINATOR_PENDING_NOTIFICATIONS_ENABLED`: habilita o deshabilita el envio periodico de correos a coordinadores con pendientes por atender. Por defecto: `true`.
+- `COORDINATOR_PENDING_NOTIFICATIONS_CRON`: expresion cron para la frecuencia del envio. Por defecto: `0 8 * * 3` (cada miercoles a las 08:00, hora local del servidor).
 
 ## Flujos del sistema
 
