@@ -71,6 +71,9 @@ const {
 } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 const { renderAuthError } = require('./routes/middlewares/auth');
+const {
+  startCoordinatorPendingNotificationsJob,
+} = require('./jobs/coordinator-pending-notifications.job');
 
 installConsoleBridge();
 installProcessHandlers();
@@ -403,6 +406,8 @@ app.use((req, res) => {
 app.use(createApplicationErrorHandler(logger));
 
 if (require.main === module) {
+  startCoordinatorPendingNotificationsJob();
+
   app.listen(app.get('port'), app.get('host'), function () {
     logger.info(
       {
