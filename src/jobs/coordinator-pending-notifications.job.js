@@ -80,7 +80,9 @@ async function fetchCoordinatorsWithPendingCounts() {
 }
 
 async function sendCoordinatorDigest(pendingInfo, now) {
-  const recipient = String(pendingInfo.coordinador_correo || '').trim().toLowerCase();
+  const recipient = String(pendingInfo.coordinador_correo || '')
+    .trim()
+    .toLowerCase();
   if (!recipient) {
     return;
   }
