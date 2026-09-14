@@ -488,6 +488,7 @@ async function fetchUsuarioRows() {
   const result = await pool.query(
     `WITH usuarios_base AS (
        SELECT
+         u.id,
          COALESCE(NULLIF(TRIM(u.documento), ''), CONCAT('usuario:', u.id::text)) AS identity_key,
          u.fecha_creacion,
          u.nombre,
@@ -508,6 +509,7 @@ async function fetchUsuarioRows() {
      ),
      coordinadores_base AS (
        SELECT
+         c.usuario_id AS id,
          COALESCE(
            NULLIF(TRIM(c.documento), ''),
            NULLIF(TRIM(c.correo), ''),
@@ -541,6 +543,7 @@ async function fetchUsuarioRows() {
          LIMIT 1
        ) role_state ON true
        GROUP BY
+         c.usuario_id,
          c.fecha_creacion,
          c.nombre,
          c.documento,
@@ -550,6 +553,7 @@ async function fetchUsuarioRows() {
      ),
      laboratoristas_base AS (
        SELECT
+         l.usuario_id AS id,
          COALESCE(
            NULLIF(TRIM(l.documento), ''),
            NULLIF(TRIM(l.correo), ''),
@@ -576,6 +580,7 @@ async function fetchUsuarioRows() {
          ON u.ual_id = lu.ual_id
         AND u.activo = TRUE
        GROUP BY
+         l.usuario_id,
          l.fecha_creacion,
          l.nombre,
          l.documento,
@@ -585,6 +590,7 @@ async function fetchUsuarioRows() {
      ),
      usuarios_consolidados AS (
        SELECT
+         id,
          identity_key,
          fecha_creacion,
          nombre,
@@ -603,6 +609,7 @@ async function fetchUsuarioRows() {
      ),
      usuarios_ranked AS (
        SELECT
+         id,
          fecha_creacion,
          nombre,
          documento,
@@ -619,6 +626,7 @@ async function fetchUsuarioRows() {
        FROM usuarios_consolidados
      )
      SELECT
+       id,
        fecha_creacion,
        nombre,
        documento,
