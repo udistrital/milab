@@ -966,6 +966,23 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
       });
     }
 
+    const impersonableRoles = targetRoles.filter(
+      (role) =>
+        role === 'estudiante' ||
+        role === 'docente' ||
+        role === 'coordinador' ||
+        role === 'laboratorista' ||
+        role === 'monitor'
+    );
+
+    if (!impersonableRoles.length) {
+      return res.status(409).json({
+        ok: false,
+        message:
+          'La cuenta seleccionada no tiene roles activos para ingresar. Asigna un rol (estudiante/docente) y vuelve a intentar.',
+      });
+    }
+
     req.session.impersonationAdminUser = { ...req.session.user };
     req.session.user = {
       ...buildSessionUser(target),
