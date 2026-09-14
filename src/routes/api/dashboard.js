@@ -1,9 +1,17 @@
 const express = require('express');
 
 const pool = require('../../libs/db');
+const {
+  findEmailConflict,
+  isInstitutionalEmail,
+  isUniqueViolation,
+  normalizeInstitutionalEmail,
+  normalizeLogDocument,
+} = require('../../libs/account-email');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { normalizeRoles } = require('../../libs/roles');
-const { requireRoles } = require('../middlewares/auth');
+const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
+const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -68,6 +76,10 @@ const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratori
   message: '¡Acceso denegado!',
   message2: 'No tienes permisos para ver el dashboard',
   limit: 'noSession',
+});
+
+const requireDashboardAdminJson = requireJsonRoles(['admin'], {
+  message: 'No tienes permisos para realizar esta acción.',
 });
 
 const CHART_DEFINITIONS = {
@@ -801,6 +813,201 @@ function filterUsuarioRowsByScope(rows, role, scope) {
 
   return [];
 }
+
+async function writeDashboardAuditLog(actor, accion, persona) {
+  const actorDocument = normalizeLogDocument(actor?.documento || actor?.documento_real || '');
+  await pool.query('INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)', [
+    actor?.tipo || 'admin',
+    actorDocument,
+    accion,
+    persona || null,
+  ]);
+}
+
+router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = Number(req.params.id);
+  const correo = normalizeInstitutionalEmail(req.body?.correo);
+
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un ID de usuario valido.',
+    });
+  }
+
+  if (!isInstitutionalEmail(correo)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Solo se permiten correos institucionales @udistrital.edu.co.',
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const userResult = await client.query(
+      'SELECT id, documento, correo, nombre FROM usuario WHERE id = $1 LIMIT 1',
+      [usuarioId]
+    );
+
+    if (!userResult.rows.length) {
+      client.release();
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos la cuenta seleccionada.',
+      });
+    }
+
+    const target = userResult.rows[0];
+    const conflict = await findEmailConflict(client, correo, target.documento);
+    if (conflict) {
+      client.release();
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    await client.query('BEGIN');
+    await client.query(
+      'UPDATE usuario SET correo = $1, fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $2',
+      [correo, usuarioId]
+    );
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session?.user?.tipo || 'admin',
+        normalizeLogDocument(
+          req.session?.user?.documento || req.session?.user?.documento_real || ''
+        ),
+        'Actualizar correo desde dashboard',
+        String(target.documento || usuarioId),
+      ]
+    );
+    await client.query('COMMIT');
+    client.release();
+
+    return res.json({
+      ok: true,
+      id: usuarioId,
+      documento: target.documento,
+      correo,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error al revertir actualización de correo:', rollbackError);
+      }
+      client.release();
+    }
+
+    console.error('Error actualizando correo de usuario desde dashboard:', error);
+
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar el correo. Inténtalo nuevamente.',
+    });
+  }
+});
+
+router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = Number(req.body?.usuarioId);
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un usuario válido para impersonar.',
+    });
+  }
+
+  if (req.session?.impersonationAdminUser) {
+    return res.status(409).json({
+      ok: false,
+      message: 'Ya tienes una sesión impersonada activa.',
+    });
+  }
+
+  try {
+    const target = await fetchUserById(usuarioId);
+    if (!target) {
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos el usuario seleccionado.',
+      });
+    }
+
+    const targetRoles = normalizeRoles(target.roles || target.tipo);
+    if (targetRoles.includes('admin')) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No se permite impersonar cuentas administrativas.',
+      });
+    }
+
+    req.session.impersonationAdminUser = { ...req.session.user };
+    req.session.user = {
+      ...buildSessionUser(target),
+      __impersonating: true,
+      __impersonatedBy: req.session.impersonationAdminUser?.documento || '',
+    };
+
+    await writeDashboardAuditLog(
+      req.session.impersonationAdminUser,
+      'Inicio impersonación desde dashboard',
+      target.documento || String(usuarioId)
+    );
+
+    return res.json({
+      ok: true,
+      redirect: '/milab/inicio',
+    });
+  } catch (error) {
+    console.error('Error iniciando impersonación:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible iniciar la impersonación.',
+    });
+  }
+});
+
+router.post(
+  '/impersonacion/detener',
+  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante'], {
+    message: '¡Acceso denegado!',
+    message2: 'No tienes permisos para realizar esta acción',
+    limit: 'noSession',
+  }),
+  async (req, res) => {
+    const adminUser = req.session?.impersonationAdminUser;
+    if (!adminUser) {
+      return res.redirect('/milab/inicio');
+    }
+
+    try {
+      const currentUser = req.session?.user;
+      req.session.user = adminUser;
+      delete req.session.impersonationAdminUser;
+
+      await writeDashboardAuditLog(
+        adminUser,
+        'Fin impersonación desde dashboard',
+        currentUser?.documento || currentUser?.id || null
+      );
+    } catch (error) {
+      console.error('Error cerrando impersonación:', error);
+    }
+
+    return res.redirect('/milab/api/dashboard');
+  }
+);
 
 router.get('/', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

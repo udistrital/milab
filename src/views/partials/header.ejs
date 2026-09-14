@@ -68,6 +68,8 @@
     url: helpManualsGeneralUrl,
     label: 'Abrir manuales',
   };
+  const isImpersonatingSession = Boolean(locals.user && locals.user.__impersonating && locals.user.__impersonatedBy);
+  const impersonatedByDocument = isImpersonatingSession ? String(locals.user.__impersonatedBy) : '';
   const helpManualsUrl = helpManualsConfig.url;
   const helpManualsLabel = helpManualsConfig.label;
   const navigationGuideMap = {
@@ -133,6 +135,20 @@
 >
   <header class="app-header">
     <%- include('./environment-banner', { environmentBannerAttached: true }) %>
+    <% if (isImpersonatingSession) { %>
+      <div class="alert alert-warning rounded-0 border-0 mb-0 py-2" role="status">
+        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span>
+            Estás navegando como <strong><%= sessionName || 'usuario impersonado' %></strong>.
+            Admin origen: <strong><%= impersonatedByDocument %></strong>.
+          </span>
+          <form method="POST" action="/milab/api/dashboard/impersonacion/detener" class="m-0">
+            <%- include('./csrf_field') %>
+            <button type="submit" class="btn btn-sm btn-dark">Volver a mi sesión admin</button>
+          </form>
+        </div>
+      </div>
+    <% } %>
     <div class="app-header-shell">
       <div class="app-header-brand-row">
         <a class="app-header-brand app-header-brand--ud" href="/milab/" aria-label="Universidad Distrital Francisco Jose de Caldas">

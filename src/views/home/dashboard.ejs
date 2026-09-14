@@ -252,6 +252,9 @@
 
   const availableCharts = <%- JSON.stringify(availableCharts) %>;
   const chartDefinitions = Object.fromEntries(availableCharts.map((chart) => [chart.id, chart]));
+  const dashboardRole = <%- JSON.stringify(dashboardRole) %>;
+  const csrfToken = <%- JSON.stringify(csrfToken || '') %>;
+  const canAdminManageUsuarios = dashboardRole === 'admin';
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -354,6 +357,83 @@
     `;
   }
 
+  function renderUsuariosAdminActions(row, rowIndex) {
+    const rowId = Number(row?.id);
+    if (!Number.isInteger(rowId) || rowId <= 0) {
+      return '<span class="text-muted">—</span>';
+    }
+
+    return `
+      <div class="d-flex flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-dashboard-action="editar-correo" data-row-index="${rowIndex}">Editar correo</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-dashboard-action="impersonar" data-row-index="${rowIndex}">Entrar como</button>
+      </div>
+    `;
+  }
+
+  async function actualizarCorreoUsuarioDesdeDashboard(rowIndex) {
+    const rows = Array.isArray(tablesData.usuariosRegistrados) ? tablesData.usuariosRegistrados : [];
+    const row = rows[rowIndex];
+    if (!row || !Number.isInteger(Number(row.id))) return;
+
+    const currentCorreo = String(row.correo || '').trim();
+    const correo = window.prompt('Ingresa el nuevo correo institucional:', currentCorreo);
+    if (correo === null) return;
+
+    const normalizedCorreo = String(correo || '').trim().toLowerCase();
+    if (!normalizedCorreo || !normalizedCorreo.endsWith('@udistrital.edu.co')) {
+      window.alert('Debes ingresar un correo institucional valido (@udistrital.edu.co).');
+      return;
+    }
+
+    const response = await fetch(`/milab/api/dashboard/usuarios/${row.id}/correo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ correo: normalizedCorreo }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      window.alert(payload.message || 'No fue posible actualizar el correo.');
+      return;
+    }
+
+    row.correo = payload.correo;
+    renderDetailTable('usuariosRegistrados');
+  }
+
+  async function impersonarUsuarioDesdeDashboard(rowIndex) {
+    const rows = Array.isArray(tablesData.usuariosRegistrados) ? tablesData.usuariosRegistrados : [];
+    const row = rows[rowIndex];
+    if (!row || !Number.isInteger(Number(row.id))) return;
+
+    const userLabel = String(row.nombre || row.documento || row.id);
+    const confirmed = window.confirm(`Vas a ingresar como ${userLabel}. ¿Deseas continuar?`);
+    if (!confirmed) return;
+
+    const response = await fetch('/milab/api/dashboard/impersonacion/iniciar', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ usuarioId: Number(row.id) }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      window.alert(payload.message || 'No fue posible iniciar la impersonación.');
+      return;
+    }
+
+    window.location.href = payload.redirect || '/milab/inicio';
+  }
+
   function renderDetailTable(tipo) {
     const headEl = document.getElementById('dashboardDetailTableHead');
     const bodyEl = document.getElementById('dashboardDetailTableBody');
@@ -388,19 +468,28 @@
       'Registros que componen el total mostrado en la tarjeta. Se presenta el detalle paginado y buscable.';
     countEl.textContent = `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
 
-    headEl.innerHTML = columns
+    const shouldRenderAdminActions = canAdminManageUsuarios && tipo === 'usuariosRegistrados';
+    const resolvedColumns = shouldRenderAdminActions
+      ? [...columns, { key: '__acciones_admin', label: 'Acciones' }]
+      : columns;
+
+    headEl.innerHTML = resolvedColumns
       .map((col) => `<th scope="col">${escapeHtml(col.label)}</th>`)
       .join('');
 
     if (!rows.length) {
-      bodyEl.innerHTML = `<tr><td colspan="${columns.length}" class="text-center py-4 text-muted">No hay registros para este indicador en el alcance actual.</td></tr>`;
+      bodyEl.innerHTML = `<tr><td colspan="${resolvedColumns.length}" class="text-center py-4 text-muted">No hay registros para este indicador en el alcance actual.</td></tr>`;
       return;
     }
 
     bodyEl.innerHTML = rows
-      .map((row) => {
-        const cells = columns
+      .map((row, rowIndex) => {
+        const cells = resolvedColumns
           .map((col) => {
+            if (col.key === '__acciones_admin') {
+              return `<td>${renderUsuariosAdminActions(row, rowIndex)}</td>`;
+            }
+
             if (tipo === 'coordinadores' && col.key === 'soporte_resolucion') {
               return `<td>${renderCollapsibleCell(row[col.key], 100)}</td>`;
             }
@@ -696,6 +785,27 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    const detailBody = document.getElementById('dashboardDetailTableBody');
+    if (detailBody) {
+      detailBody.addEventListener('click', async function(event) {
+        const button = event.target.closest('[data-dashboard-action]');
+        if (!button) return;
+
+        const action = button.getAttribute('data-dashboard-action');
+        const rowIndex = Number(button.getAttribute('data-row-index'));
+        if (!Number.isInteger(rowIndex)) return;
+
+        if (action === 'editar-correo') {
+          await actualizarCorreoUsuarioDesdeDashboard(rowIndex);
+          return;
+        }
+
+        if (action === 'impersonar') {
+          await impersonarUsuarioDesdeDashboard(rowIndex);
+        }
+      });
+    }
+
     document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
       card.addEventListener('click', function() {
         const chartTarget = card.dataset.chartTarget;
