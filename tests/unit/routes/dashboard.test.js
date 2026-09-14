@@ -120,6 +120,7 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
 
   await router.__private.fetchCoordinatorRows();
   await router.__private.fetchUsuarioRows();
+  await router.__private.fetchUsuariosRegistradosRows();
   await router.__private.fetchUsuarioRolesRows();
   await router.__private.fetchSanctionRows();
   await router.__private.fetchLaboratoristaRows();
@@ -130,6 +131,7 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
     (q) => q.includes('FROM coordinador c') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
   );
   const usuarioQ = queries.find((q) => q.includes('WITH usuarios_base AS'));
+  const usuariosRegistradosQ = queries.find((q) => q.includes('SELECT u.*') && q.includes('FROM usuario u'));
   const usuarioRolesQ = queries.find(
     (q) => q.includes('FROM usuario_rol ur') && q.includes('JOIN rol r ON r.id = ur.rol_id')
   );
@@ -146,6 +148,7 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
 
   assert.equal(coordinatorQ.includes('LEFT JOIN coordinador_facultad cf'), true);
   assert.equal(usuarioQ.includes('FROM usuario u'), true);
+  assert.equal(typeof usuariosRegistradosQ === 'string', true);
   assert.equal(typeof usuarioRolesQ === 'string', true);
   assert.equal(usuarioRolesQ.includes('ur.activo = TRUE'), true);
   assert.equal(multaQ.includes('SELECT m.*'), true);
