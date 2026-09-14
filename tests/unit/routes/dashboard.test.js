@@ -62,7 +62,13 @@ function loadDashboardRoute({ clientQueryImpl, poolQueryImpl, scopeImpl } = {}) 
           scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
       },
     ],
-    [authPath, { requireRoles: () => (req, res, next) => next() }],
+    [
+      authPath,
+      {
+        requireRoles: () => (req, res, next) => next(),
+        requireJsonRoles: () => (req, res, next) => next(),
+      },
+    ],
   ];
 
   delete require.cache[routePath];

@@ -72,7 +72,13 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
     sessionHarness,
     stubs: [
       [dbPath, poolStub],
-      [authPath, { requireRoles: () => (req, res, next) => next() }],
+      [
+        authPath,
+        {
+          requireRoles: () => (req, res, next) => next(),
+          requireJsonRoles: () => (req, res, next) => next(),
+        },
+      ],
       [
         facultyScopePath,
         {
