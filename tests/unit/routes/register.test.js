@@ -227,3 +227,57 @@ test('email_verification also promotes placeholder account for docente registrat
     loaded.restore();
   }
 });
+
+test('email_verification continues for pending no-email records even when pre-update affects zero rows', async () => {
+  const loaded = loadRegisterRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql === 'SELECT * FROM usuario WHERE documento=$1 OR correo=$2') {
+        return {
+          rows: [
+            {
+              documento: '1000586756',
+              correo: 'no-email+1000586756@placeholder.milab.local',
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+
+      if (sql.includes('UPDATE usuario') && sql.includes('SET correo = $1')) {
+        assert.equal(params[0], 'michael.gutierrez@udistrital.edu.co');
+        assert.equal(params[1], '1000586756');
+        return { rowCount: 0, rows: [] };
+      }
+
+      return { rows: [], rowCount: 0 };
+    },
+  });
+
+  const sessionState = {
+    studentData: {
+      con_documento_completo: '1000586756',
+      con_codigo_completo: '20251377015',
+      con_nombre_completo: 'GUTIERREZ ALVAREZ MICHAEL STIVEN',
+      con_estado_completo: 'ACTIVO',
+      con_carrera_completa: 'INGENIERIA DE PRODUCCION (CICLOS PROPEDEUTICOS)',
+    },
+  };
+
+  try {
+    const app = buildApp(loaded.route, sessionState);
+    const response = await request(app).post('/email_verification').type('form').send({
+      tipo_usuario: 'estudiante',
+      correo: 'michael.gutierrez@udistrital.edu.co',
+      password: 'Abcd1234!',
+      confirmar_password: 'Abcd1234!',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/email_verification');
+    assert.equal(response.body.locals.correo, 'michael.gutierrez@udistrital.edu.co');
+    assert.equal(sessionState.usuario_no_verificado.documento, '1000586756');
+    assert.equal(sessionState.usuario_no_verificado.correo, 'michael.gutierrez@udistrital.edu.co');
+  } finally {
+    loaded.restore();
+  }
+});
