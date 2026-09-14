@@ -8,6 +8,7 @@ const {
   buildEmailHeaderHtml,
   escapeHtml,
 } = require('../../libs/email-layout');
+const { isPlaceholderEmail, isSyntheticInstitutionalEmail } = require('../../libs/user-identity');
 require('dotenv').config();
 const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
@@ -118,6 +119,31 @@ function resolveRegistrationRecipient(correo) {
   return correo;
 }
 
+function normalizeEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function isPendingRegistrationUser(row, documento) {
+  if (!row) return false;
+
+  const correo = String(row.correo || '').trim();
+  if (!correo) return true;
+
+  return isPlaceholderEmail(correo) || isSyntheticInstitutionalEmail(correo, documento);
+}
+
+function hasEmailOwnedByAnotherDocument(rows, documento, correo) {
+  const normalizedDocumento = String(documento || '').trim();
+  const normalizedCorreo = normalizeEmail(correo);
+
+  return rows.some((row) => {
+    const rowCorreo = normalizeEmail(row.correo);
+    const rowDocumento = String(row.documento || '').trim();
+
+    return rowCorreo === normalizedCorreo && rowDocumento !== normalizedDocumento;
+  });
+}
+
 router.post(
   '/email_verification',
   limiter,
@@ -204,9 +230,38 @@ router.post(
       const query = 'SELECT * FROM usuario WHERE documento=$1 OR correo=$2';
       const values = [documento, correo];
       const result = await pool.query(query, values);
-      console.log('query: ' + result.rowCount);
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      console.log('query: ' + rows.length);
 
-      if (result.rowCount === 0) {
+      const existingUserByDocument = rows.find(
+        (row) => String(row.documento || '').trim() === String(documento || '').trim()
+      );
+      const shouldPromotePlaceholderAccount =
+        !!existingUserByDocument &&
+        isPendingRegistrationUser(existingUserByDocument, documento) &&
+        !hasEmailOwnedByAnotherDocument(rows, documento, correo);
+
+      let canContinueRegistration = rows.length === 0;
+
+      if (shouldPromotePlaceholderAccount) {
+        const updateResult = await pool.query(
+          `UPDATE usuario
+           SET correo = $1,
+               fecha_modificacion = CURRENT_TIMESTAMP
+           WHERE documento = $2
+             AND (
+               correo IS NULL
+               OR TRIM(correo) = ''
+               OR LOWER(correo) = LOWER($2::text || '@udistrital.edu.co')
+               OR LOWER(correo) LIKE 'no-email+%@placeholder.milab.local'
+             )`,
+          [correo, documento]
+        );
+
+        canContinueRegistration = (updateResult.rowCount || 0) > 0;
+      }
+
+      if (canContinueRegistration) {
         req.session.usuario_no_verificado = {
           documento,
           codigo,
