@@ -116,6 +116,8 @@
       </div>
     </div>
 
+    <div id="dashboardDetailFeedback" class="alert d-none py-2" role="alert"></div>
+
     <div class="table-responsive dashboard-detail-table-wrap">
       <table
         id="dashboardDetailTable"
@@ -136,6 +138,85 @@
     </div>
   </section>
 </main>
+
+<div class="modal fade" id="dashboardEmailEditorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="dashboardEmailEditorForm">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title">Editar correo y enrolar cuenta</h5>
+            <p class="text-muted mb-0 small">Define el tipo de enrolamiento y actualiza el correo institucional.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="dashboardEmailModalFeedback" class="alert alert-danger d-none py-2" role="alert"></div>
+
+          <div class="mb-3">
+            <label class="form-label" for="dashboardEmailEditorName">Nombre</label>
+            <input type="text" class="form-control" id="dashboardEmailEditorName" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="dashboardEmailEditorDocument">Documento</label>
+            <input type="text" class="form-control" id="dashboardEmailEditorDocument" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="dashboardEmailEditorCurrent">Correo actual</label>
+            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="dashboardEmailEditorInput">Nuevo correo institucional</label>
+            <input
+              type="email"
+              class="form-control"
+              id="dashboardEmailEditorInput"
+              required
+              autocomplete="off"
+              pattern="^[a-zA-Z0-9._%+-]+@udistrital\.edu\.co$"
+            >
+          </div>
+
+          <div>
+            <label class="form-label" for="dashboardEmailEditorRole">Enrolar como</label>
+            <select id="dashboardEmailEditorRole" class="form-select" required>
+              <option value="estudiante">Estudiante</option>
+              <option value="docente">Docente</option>
+            </select>
+            <div class="form-text">Este paso activa/crea el perfil del rol seleccionado para habilitar el ingreso.</div>
+          </div>
+
+          <div class="alert alert-light border mt-3 mb-0" role="status">
+            <strong class="d-block mb-2">Resumen antes de guardar</strong>
+            <div class="small">
+              Documento: <strong id="dashboardEmailConfirmDocument">-</strong>
+            </div>
+            <div class="small">
+              Nuevo correo: <strong id="dashboardEmailConfirmCorreo">-</strong>
+            </div>
+            <div class="small">
+              Enrolamiento: <strong id="dashboardEmailConfirmRole">-</strong>
+            </div>
+          </div>
+
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="dashboardEmailConfirmCheckbox">
+            <label class="form-check-label" for="dashboardEmailConfirmCheckbox">
+              Confirmo que quiero guardar este correo y enrolar la cuenta con el tipo seleccionado.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="dashboardEmailEditorSaveButton">Guardar y enrolar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <script nonce="<%= cspNonce %>">
   const rawData = <%- JSON.stringify(chartsData) %>;
@@ -263,6 +344,7 @@
   const csrfToken = <%- JSON.stringify(csrfToken || '') %>;
   const canAdminManageUsuarios = dashboardRole === 'admin';
   let usuariosDashboardFilter = 'registrados';
+  let dashboardEmailEditContext = null;
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -383,6 +465,107 @@
     return document.getElementById('dashboardUsuariosFilterWrap');
   }
 
+  function getDashboardFeedbackElement() {
+    return document.getElementById('dashboardDetailFeedback');
+  }
+
+  function hideDashboardFeedback() {
+    const feedback = getDashboardFeedbackElement();
+    if (!feedback) return;
+    feedback.className = 'alert d-none py-2';
+    feedback.textContent = '';
+  }
+
+  function showDashboardFeedback(message, type = 'success') {
+    const feedback = getDashboardFeedbackElement();
+    if (!feedback) return;
+    const tone = type === 'error' ? 'alert-danger' : type === 'warning' ? 'alert-warning' : 'alert-success';
+    feedback.className = `alert ${tone} py-2`;
+    feedback.textContent = message;
+    feedback.classList.remove('d-none');
+  }
+
+  function inferEnrollmentTypeFromRow(row) {
+    const hasCodigo = String(row?.codigo || '').trim() !== '';
+    const hasCarrera = String(row?.carrera || '').trim() !== '';
+    return hasCodigo || hasCarrera ? 'estudiante' : 'docente';
+  }
+
+  function openDashboardEmailEditorModal(rowIndex) {
+    const rows = getCurrentUsuariosRegistradosRows();
+    const row = rows[rowIndex];
+    if (!row || !Number.isInteger(Number(row.id)) || !window.bootstrap) return;
+
+    dashboardEmailEditContext = {
+      rowId: Number(row.id),
+      rowIndex,
+    };
+
+    const nameInput = document.getElementById('dashboardEmailEditorName');
+    const documentInput = document.getElementById('dashboardEmailEditorDocument');
+    const currentInput = document.getElementById('dashboardEmailEditorCurrent');
+    const emailInput = document.getElementById('dashboardEmailEditorInput');
+    const roleSelect = document.getElementById('dashboardEmailEditorRole');
+    const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+    const modalFeedback = document.getElementById('dashboardEmailModalFeedback');
+
+    if (modalFeedback) {
+      modalFeedback.classList.add('d-none');
+      modalFeedback.textContent = '';
+    }
+
+    if (nameInput) nameInput.value = String(row.nombre || '');
+    if (documentInput) documentInput.value = String(row.documento || '');
+    if (currentInput) currentInput.value = String(row.correo || '');
+    if (emailInput) emailInput.value = String(row.correo || '');
+    if (roleSelect) roleSelect.value = inferEnrollmentTypeFromRow(row);
+    if (confirmCheckbox) confirmCheckbox.checked = false;
+
+    updateDashboardEmailConfirmSummary();
+    syncDashboardEmailSaveState();
+
+    const modalElement = document.getElementById('dashboardEmailEditorModal');
+    const modal = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+    modal.show();
+  }
+
+  function updateDashboardEmailConfirmSummary() {
+    const documentInput = document.getElementById('dashboardEmailEditorDocument');
+    const emailInput = document.getElementById('dashboardEmailEditorInput');
+    const roleSelect = document.getElementById('dashboardEmailEditorRole');
+    const summaryDocument = document.getElementById('dashboardEmailConfirmDocument');
+    const summaryCorreo = document.getElementById('dashboardEmailConfirmCorreo');
+    const summaryRole = document.getElementById('dashboardEmailConfirmRole');
+
+    if (summaryDocument) {
+      summaryDocument.textContent = String(documentInput?.value || '-').trim() || '-';
+    }
+
+    if (summaryCorreo) {
+      summaryCorreo.textContent = String(emailInput?.value || '-').trim() || '-';
+    }
+
+    if (summaryRole) {
+      const roleValue = String(roleSelect?.value || '').trim().toLowerCase();
+      summaryRole.textContent = roleValue === 'docente' ? 'Docente' : 'Estudiante';
+    }
+  }
+
+  function syncDashboardEmailSaveState() {
+    const saveButton = document.getElementById('dashboardEmailEditorSaveButton');
+    const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+    if (!saveButton || !confirmCheckbox) return;
+
+    if (!confirmCheckbox.checked) {
+      saveButton.disabled = true;
+      saveButton.textContent = 'Confirma para guardar';
+      return;
+    }
+
+    saveButton.disabled = false;
+    saveButton.textContent = 'Guardar y enrolar';
+  }
+
   function isNoEmailPlaceholderCorreo(correo) {
     const normalized = String(correo || '').trim().toLowerCase();
     if (!normalized) return true;
@@ -440,39 +623,101 @@
     }
   }
 
-  async function actualizarCorreoUsuarioDesdeDashboard(rowIndex) {
-    const rows = getCurrentUsuariosRegistradosRows();
-    const row = rows[rowIndex];
-    if (!row || !Number.isInteger(Number(row.id))) return;
+  async function actualizarCorreoUsuarioDesdeDashboard() {
+    if (!dashboardEmailEditContext || !Number.isInteger(dashboardEmailEditContext.rowId)) {
+      showDashboardFeedback('No encontramos la cuenta seleccionada para editar.', 'error');
+      return;
+    }
 
-    const currentCorreo = String(row.correo || '').trim();
-    const correo = window.prompt('Ingresa el nuevo correo institucional:', currentCorreo);
-    if (correo === null) return;
+    const emailInput = document.getElementById('dashboardEmailEditorInput');
+    const roleSelect = document.getElementById('dashboardEmailEditorRole');
+    const saveButton = document.getElementById('dashboardEmailEditorSaveButton');
+    const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+    const modalFeedback = document.getElementById('dashboardEmailModalFeedback');
+    const normalizedCorreo = String(emailInput?.value || '').trim().toLowerCase();
+    const tipoUsuario = String(roleSelect?.value || '').trim().toLowerCase();
 
-    const normalizedCorreo = String(correo || '').trim().toLowerCase();
     if (!normalizedCorreo || !normalizedCorreo.endsWith('@udistrital.edu.co')) {
-      window.alert('Debes ingresar un correo institucional valido (@udistrital.edu.co).');
+      if (modalFeedback) {
+        modalFeedback.textContent = 'Debes ingresar un correo institucional valido (@udistrital.edu.co).';
+        modalFeedback.classList.remove('d-none');
+      }
       return;
     }
 
-    const response = await fetch(`/milab/api/dashboard/usuarios/${row.id}/correo`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ correo: normalizedCorreo }),
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) {
-      window.alert(payload.message || 'No fue posible actualizar el correo.');
+    if (!['estudiante', 'docente'].includes(tipoUsuario)) {
+      if (modalFeedback) {
+        modalFeedback.textContent = 'Debes seleccionar si el enrolamiento será como estudiante o docente.';
+        modalFeedback.classList.remove('d-none');
+      }
       return;
     }
 
-    syncUsuariosRowsAfterEmailUpdate(row.id, payload.correo);
-    renderDetailTable('usuariosRegistrados');
+    if (!confirmCheckbox?.checked) {
+      if (modalFeedback) {
+        modalFeedback.textContent =
+          'Debes confirmar el resumen para continuar con la edición y enrolamiento.';
+        modalFeedback.classList.remove('d-none');
+      }
+      syncDashboardEmailSaveState();
+      return;
+    }
+
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = 'Guardando...';
+    }
+
+    try {
+      const response = await fetch(
+        `/milab/api/dashboard/usuarios/${dashboardEmailEditContext.rowId}/correo`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ correo: normalizedCorreo, tipoUsuario }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) {
+        if (modalFeedback) {
+          modalFeedback.textContent = payload.message || 'No fue posible actualizar el correo.';
+          modalFeedback.classList.remove('d-none');
+        }
+        if (saveButton) {
+          saveButton.disabled = false;
+          saveButton.textContent = 'Guardar y enrolar';
+        }
+        return;
+      }
+
+      syncUsuariosRowsAfterEmailUpdate(dashboardEmailEditContext.rowId, payload.correo);
+      renderDetailTable('usuariosRegistrados');
+
+      const modalElement = document.getElementById('dashboardEmailEditorModal');
+      const modal = window.bootstrap?.Modal.getOrCreateInstance(modalElement);
+      modal?.hide();
+
+      showDashboardFeedback(
+        `Cuenta actualizada y enrolada como ${tipoUsuario}. Ya puede intentar ingresar con Microsoft.`,
+        'success'
+      );
+    } catch {
+      if (modalFeedback) {
+        modalFeedback.textContent =
+          'No fue posible actualizar el correo. Verifica la conexión e inténtalo nuevamente.';
+        modalFeedback.classList.remove('d-none');
+      }
+    }
+
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Guardar y enrolar';
+    }
   }
 
   async function impersonarUsuarioDesdeDashboard(rowIndex) {
@@ -480,9 +725,7 @@
     const row = rows[rowIndex];
     if (!row || !Number.isInteger(Number(row.id))) return;
 
-    const userLabel = String(row.nombre || row.documento || row.id);
-    const confirmed = window.confirm(`Vas a ingresar como ${userLabel}. ¿Deseas continuar?`);
-    if (!confirmed) return;
+    hideDashboardFeedback();
 
     const response = await fetch('/milab/api/dashboard/impersonacion/iniciar', {
       method: 'POST',
@@ -496,7 +739,7 @@
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) {
-      window.alert(payload.message || 'No fue posible iniciar la impersonación.');
+      showDashboardFeedback(payload.message || 'No fue posible iniciar la impersonación.', 'error');
       return;
     }
 
@@ -604,6 +847,8 @@
     if (countEl) {
       countEl.textContent = '0 registros';
     }
+
+    hideDashboardFeedback();
 
     const usuariosFilterWrap = getUsuariosFilterWrapElement();
     if (usuariosFilterWrap) {
@@ -869,6 +1114,59 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    const emailEditorForm = document.getElementById('dashboardEmailEditorForm');
+    const emailRoleSelect = document.getElementById('dashboardEmailEditorRole');
+    const emailInput = document.getElementById('dashboardEmailEditorInput');
+    const emailConfirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+
+    if (emailRoleSelect) {
+      emailRoleSelect.addEventListener('change', function() {
+        updateDashboardEmailConfirmSummary();
+      });
+    }
+
+    if (emailInput) {
+      emailInput.addEventListener('input', function() {
+        updateDashboardEmailConfirmSummary();
+      });
+    }
+
+    if (emailConfirmCheckbox) {
+      emailConfirmCheckbox.addEventListener('change', function() {
+        syncDashboardEmailSaveState();
+      });
+    }
+
+    if (emailEditorForm) {
+      emailEditorForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        await actualizarCorreoUsuarioDesdeDashboard();
+      });
+    }
+
+    const emailModalElement = document.getElementById('dashboardEmailEditorModal');
+    if (emailModalElement) {
+      emailModalElement.addEventListener('hidden.bs.modal', function() {
+        dashboardEmailEditContext = null;
+        const modalFeedback = document.getElementById('dashboardEmailModalFeedback');
+        if (modalFeedback) {
+          modalFeedback.classList.add('d-none');
+          modalFeedback.textContent = '';
+        }
+        const saveButton = document.getElementById('dashboardEmailEditorSaveButton');
+        if (saveButton) {
+          saveButton.disabled = false;
+          saveButton.textContent = 'Guardar y enrolar';
+        }
+        const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+        if (confirmCheckbox) {
+          confirmCheckbox.checked = false;
+        }
+        updateDashboardEmailConfirmSummary();
+        syncDashboardEmailSaveState();
+      });
+    }
+
     const usuariosFilter = document.getElementById('dashboardUsuariosFiltro');
     if (usuariosFilter) {
       usuariosFilter.addEventListener('change', function(event) {
@@ -891,7 +1189,7 @@
         if (!Number.isInteger(rowIndex)) return;
 
         if (action === 'editar-correo') {
-          await actualizarCorreoUsuarioDesdeDashboard(rowIndex);
+          openDashboardEmailEditorModal(rowIndex);
           return;
         }
 

@@ -44,6 +44,94 @@ function normalizeEmail(value) {
   return (value || '').toString().trim().toLowerCase();
 }
 
+function isNoEmailPlaceholder(correo, documento = '') {
+  const normalizedCorreo = normalizeEmail(correo);
+  const normalizedDocumento = String(documento || '').trim().toLowerCase();
+
+  if (!normalizedCorreo) {
+    return true;
+  }
+
+  if (normalizedCorreo.includes('no-email')) {
+    return true;
+  }
+
+  if (normalizedCorreo.endsWith('@placeholder.milab.local')) {
+    return true;
+  }
+
+  if (normalizedDocumento && normalizedCorreo === `${normalizedDocumento}@udistrital.edu.co`) {
+    return true;
+  }
+
+  return false;
+}
+
+async function findUsuarioByDocumento(documento) {
+  const normalizedDocumento = String(documento || '').trim();
+  if (!normalizedDocumento) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `SELECT id, documento, correo, nombre, codigo, estado, carrera
+     FROM usuario
+     WHERE documento = $1
+     LIMIT 1`,
+    [normalizedDocumento]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function promotePlaceholderIdentityAndEnroll({ correo, profileData, nombreFallback = '' }) {
+  const documento = String(profileData?.documento || '').trim();
+  const tipoUsuario = String(profileData?.tipo_usuario || '').trim().toLowerCase();
+
+  if (!documento || !['estudiante', 'docente'].includes(tipoUsuario)) {
+    return null;
+  }
+
+  const existingByDocument = await findUsuarioByDocumento(documento);
+  if (!existingByDocument || !isNoEmailPlaceholder(existingByDocument.correo, documento)) {
+    return null;
+  }
+
+  const finalNombre = profileData.nombre || nombreFallback || existingByDocument.nombre || 'Sin nombre';
+  const userId = await ensureUserIdentity({
+    correo,
+    documento,
+    nombre: finalNombre,
+  });
+
+  await ensureRoleAssignment(userId, tipoUsuario);
+
+  if (tipoUsuario === 'estudiante') {
+    await upsertStudentProfile(
+      userId,
+      documento,
+      profileData.codigo || '',
+      profileData.carrera || '',
+      profileData.estado || ''
+    );
+  }
+
+  if (tipoUsuario === 'docente') {
+    await upsertTeacherProfile(userId, documento, profileData.estado || '');
+  }
+
+  await upsertLegacyUsuario({
+    documento,
+    codigo: tipoUsuario === 'estudiante' ? profileData.codigo || null : null,
+    nombre: finalNombre,
+    correo,
+    estado: profileData.estado || '',
+    carrera: tipoUsuario === 'estudiante' ? profileData.carrera || null : null,
+  });
+
+  return userId;
+}
+
 function resolveOatiEmail(payload) {
   return normalizeEmail(
     payload?.correo ||
@@ -670,6 +758,30 @@ router.post('/identify', async (req, res) => {
     }
   }
 
+  const promotedUserId = await promotePlaceholderIdentityAndEnroll({
+    correo,
+    profileData: {
+      ...profileData,
+      documento: profileData.documento || documento,
+    },
+    nombreFallback: nombreEntra,
+  });
+
+  if (promotedUserId) {
+    const usuario = await fetchUserByEmail(correo);
+    if (!usuario) {
+      return denyAccess('No fue posible validar el acceso en MILab.');
+    }
+
+    await regenerateSession(req);
+    if (req.session) {
+      req.session.user = buildSessionUser(usuario);
+      req.session.microsoftProfile = null;
+    }
+
+    return res.redirect('/milab/inicio');
+  }
+
   return res.render('home/profile', {
     ...emptyProfileData(),
     modo: 'crear',
@@ -797,11 +909,27 @@ router.post('/', async (req, res) => {
     }
 
     const existe = await pool.query(
-      `SELECT id FROM usuario WHERE documento = $1 OR LOWER(correo) = LOWER($2)`,
+      `SELECT id, documento, correo
+       FROM usuario
+       WHERE documento = $1 OR LOWER(correo) = LOWER($2)`,
       [formData.documento, formData.correo]
     );
 
-    if (existe.rows.length > 0) {
+    const normalizedDocumento = String(formData.documento || '').trim();
+    const normalizedCorreo = normalizeEmail(formData.correo);
+    const matchedRows = Array.isArray(existe.rows) ? existe.rows : [];
+    const sameDocumentRow = matchedRows.find(
+      (row) => String(row.documento || '').trim() === normalizedDocumento
+    );
+    const hasEmailInAnotherDocument = matchedRows.some((row) => {
+      const rowCorreo = normalizeEmail(row.correo);
+      const rowDocumento = String(row.documento || '').trim();
+      return rowCorreo === normalizedCorreo && rowDocumento !== normalizedDocumento;
+    });
+    const canPromotePlaceholder =
+      !!sameDocumentRow && isNoEmailPlaceholder(sameDocumentRow.correo, normalizedDocumento);
+
+    if (hasEmailInAnotherDocument || (matchedRows.length > 0 && !canPromotePlaceholder)) {
       return res.render('home/profile', {
         ...formData,
         error: 'Ya existe un usuario registrado con ese documento o correo.',

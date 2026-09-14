@@ -9,6 +9,7 @@ const {
   normalizeLogDocument,
 } = require('../../libs/account-email');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
@@ -838,9 +839,178 @@ async function writeDashboardAuditLog(actor, accion, persona) {
   ]);
 }
 
+function normalizeEmail(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
+function resolveOatiEmail(payload) {
+  return normalizeEmail(
+    payload?.correo ||
+      payload?.email ||
+      payload?.correo_institucional ||
+      payload?.email_institucional ||
+      payload?.correoInstitucional ||
+      payload?.emailInstitucional ||
+      ''
+  );
+}
+
+async function lookupEnrollmentStudentData(documento) {
+  try {
+    const studentData = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+    );
+    const rawCollection = studentData?.datosEstudianteCollection?.datosBasicosEstudiante;
+    const collection = Array.isArray(rawCollection)
+      ? rawCollection
+      : rawCollection
+        ? [rawCollection]
+        : [];
+
+    if (!collection.length) return null;
+
+    const item = collection[collection.length - 1] || {};
+    const estadoCodigo = String(item.estado || '').trim();
+    const carreraCodigo = String(item.carrera || '').trim();
+
+    let estadoNombre = estadoCodigo;
+    let carreraNombre = '';
+
+    if (estadoCodigo) {
+      try {
+        const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${estadoCodigo}`));
+        estadoNombre = estadoData?.estado?.nombre || estadoCodigo;
+      } catch {
+        estadoNombre = estadoCodigo;
+      }
+    }
+
+    if (carreraCodigo) {
+      try {
+        const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
+        carreraNombre =
+          carreraData?.carrerasCollection?.carrera?.[0]?.nombre ||
+          carreraData?.carrerasCollection?.carrera?.nombre ||
+          '';
+      } catch {
+        carreraNombre = '';
+      }
+    }
+
+    return {
+      nombre: String(item.nombre || '').trim(),
+      correo: resolveOatiEmail(item),
+      codigo: item.codigo ? String(item.codigo).trim() : null,
+      estado: String(estadoNombre || '').trim() || 'ACTIVO',
+      carrera: String(carreraNombre || '').trim() || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function lookupEnrollmentTeacherData(documento) {
+  try {
+    const teacherData = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
+    const rawDocente = teacherData?.docentesCollection?.docente;
+    const docente = Array.isArray(rawDocente) ? rawDocente[0] : rawDocente;
+
+    if (!docente) return null;
+
+    return {
+      nombre: String(docente.nombre || '').trim(),
+      correo: resolveOatiEmail(docente),
+      codigo: null,
+      estado: String(docente.estado_docente || '').trim() || 'ACTIVO',
+      carrera: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function enrollUserFromDashboardEdit(client, target, tipoUsuario, correo) {
+  const normalizedType = String(tipoUsuario || '')
+    .trim()
+    .toLowerCase();
+  const documento = String(target?.documento || '').trim();
+
+  if (!documento) {
+    throw new Error('El usuario no tiene documento para completar el enrolamiento.');
+  }
+
+  const enrollmentData =
+    normalizedType === 'estudiante'
+      ? await lookupEnrollmentStudentData(documento)
+      : await lookupEnrollmentTeacherData(documento);
+
+  const resolvedNombre = String(enrollmentData?.nombre || target?.nombre || '').trim() || 'Sin nombre';
+  const resolvedEstado = String(enrollmentData?.estado || target?.estado || 'ACTIVO').trim() || 'ACTIVO';
+  const resolvedCodigo =
+    normalizedType === 'estudiante'
+      ? String(enrollmentData?.codigo || target?.codigo || '').trim() || null
+      : null;
+  const resolvedCarrera =
+    normalizedType === 'estudiante'
+      ? String(enrollmentData?.carrera || target?.carrera || '').trim() || null
+      : null;
+
+  await client.query(
+    `UPDATE usuario
+     SET nombre = $1,
+         correo = $2,
+         estado = $3,
+         codigo = $4,
+         carrera = $5,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE id = $6`,
+    [resolvedNombre, correo, resolvedEstado, resolvedCodigo, resolvedCarrera, Number(target.id)]
+  );
+
+  await client.query(
+    `INSERT INTO usuario_rol (usuario_id, rol_id)
+     SELECT $1, id
+     FROM rol
+     WHERE nombre = $2
+     ON CONFLICT (usuario_id, rol_id) DO UPDATE
+     SET activo = TRUE,
+         fecha_modificacion = CURRENT_TIMESTAMP`,
+    [Number(target.id), normalizedType]
+  );
+
+  if (normalizedType === 'estudiante') {
+    await client.query(
+      `INSERT INTO perfil_estudiante (usuario_id, documento, codigo, programa, estado)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (usuario_id) DO UPDATE
+       SET documento = EXCLUDED.documento,
+           codigo = EXCLUDED.codigo,
+           programa = EXCLUDED.programa,
+           estado = EXCLUDED.estado,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [Number(target.id), documento, resolvedCodigo, resolvedCarrera, resolvedEstado]
+    );
+  }
+
+  if (normalizedType === 'docente') {
+    await client.query(
+      `INSERT INTO perfil_docente (usuario_id, documento, estado)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id) DO UPDATE
+       SET documento = EXCLUDED.documento,
+           estado = EXCLUDED.estado,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [Number(target.id), documento, resolvedEstado]
+    );
+  }
+}
+
 router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) => {
   const usuarioId = Number(req.params.id);
   const correo = normalizeInstitutionalEmail(req.body?.correo);
+  const tipoUsuario = String(req.body?.tipoUsuario || '')
+    .trim()
+    .toLowerCase();
 
   if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
     return res.status(400).json({
@@ -856,11 +1026,18 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     });
   }
 
+  if (!['estudiante', 'docente'].includes(tipoUsuario)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes confirmar si la cuenta se debe enrolar como estudiante o docente.',
+    });
+  }
+
   let client;
   try {
     client = await pool.connect();
     const userResult = await client.query(
-      'SELECT id, documento, correo, nombre FROM usuario WHERE id = $1 LIMIT 1',
+      'SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario WHERE id = $1 LIMIT 1',
       [usuarioId]
     );
 
@@ -883,10 +1060,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     }
 
     await client.query('BEGIN');
-    await client.query(
-      'UPDATE usuario SET correo = $1, fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $2',
-      [correo, usuarioId]
-    );
+    await enrollUserFromDashboardEdit(client, target, tipoUsuario, correo);
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
@@ -894,7 +1068,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
         normalizeLogDocument(
           req.session?.user?.documento || req.session?.user?.documento_real || ''
         ),
-        'Actualizar correo desde dashboard',
+        `Actualizar correo y enrolar como ${tipoUsuario} desde dashboard`,
         String(target.documento || usuarioId),
       ]
     );
@@ -906,6 +1080,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
       id: usuarioId,
       documento: target.documento,
       correo,
+      tipoUsuario,
     });
   } catch (error) {
     if (client) {
