@@ -1,5 +1,7 @@
 # Analisis De Viabilidad Funcional Y Tecnica Del Perfil Monitor
 
+> **Estado: Implementado.** El rol `monitor` ya existe en producción desde Prestamos 2.0 (ver [release-notes-prestamos-2.0.md](release-notes-prestamos-2.0.md)). Se adoptó la Opción B (rol dedicado con permisos propios en [src/libs/permissions.js](../src/libs/permissions.js) y asignación operativa vía `usuario_ual_rol_operativo`/[src/libs/operational-role-assignments.js](../src/libs/operational-role-assignments.js), resuelta en tiempo de ejecución por [src/libs/monitor-registry.js](../src/libs/monitor-registry.js)). El monitor conserva permisos de entrega, recepción, incidencias y prácticas, sin aprobación ni configuración, tal como se recomendaba aquí. El resto de este documento se conserva como registro histórico de la decisión.
+
 ## Objetivo
 
 Evaluar la viabilidad de incorporar un nuevo perfil `monitor` en MiLab, enfocado en operacion de prestamos y recepcion de elementos, con capacidades acotadas frente a `laboratorista` y sin facultades de aprobacion o configuracion.

@@ -100,6 +100,26 @@ El seed canónico actual en `sql-scripts/db_seed_system.sql` deja esta estructur
 
 Nota: el menú estático de respaldo en `src/routes/middlewares/navigation.js` todavía conserva algunos labels legacy para laboratorista (`Consultas`, `Administración`). La seguridad de rutas no depende de esos labels sino de los middlewares de backend.
 
+## Rutas Del Módulo Préstamos
+
+Base: `/milab/prestamos/`. Todas montadas en `src/routes/api/prestamos.js` y protegidas con permisos de `src/libs/permissions.js` (ver detalle en `docs/architecture/security-rbac.md`). El acceso al módulo completo puede además deshabilitarse por facultad vía `facultad_modulo_acceso`.
+
+| Ruta                          | Guard                                                                 | Roles con acceso                                             |
+| ------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `/inventario`, `/equipos`      | `requirePermissions('prestamos.inventory.admin' / 'prestamos.equipment.admin')` | `admin`, `coordinador`, `laboratorista`                        |
+| `/solicitar`, `/mis-solicitudes` | `requireRoles(['estudiante', 'docente'])` (autoservicio)               | `estudiante`, `docente`                                        |
+| `/gestion-solicitudes`         | `requirePermissions('prestamos.view.management')`                       | `admin`, `coordinador`, `laboratorista`, `monitor`              |
+| `/entrega-equipos`             | `requirePermissions(['prestamos.deliver', 'prestamos.receive', 'prestamos.incident.create'])` | `admin`, `coordinador`, `laboratorista`, `monitor`              |
+| `/incidencias`                 | `requirePermissions('prestamos.incident.view')`                        | `admin`, `coordinador`, `laboratorista`, `monitor`              |
+| `/practicas/solicitar`, `/practicas/mis-reservas` | `requireRoles(['estudiante', 'docente'])` (autoservicio) | `estudiante`, `docente`                                        |
+| `/practicas/gestion`           | `requirePermissions('prestamos.practices.manage')`                     | `admin`, `coordinador`, `laboratorista`, `monitor`              |
+| `/salas`, `/salas/api/*`       | `requirePermissions('prestamos.rooms.manage')`                         | `admin`, `coordinador`, `laboratorista`                        |
+| `/reportes`, `/reportes/export/:dataset` | `requirePermissions('prestamos.reports.view')`               | `admin`, `coordinador`, `laboratorista`, `monitor`              |
+| `/auditoria`                   | `requirePermissions('prestamos.audit.view')`                            | `admin`, `coordinador`, `laboratorista`                        |
+| `/admin/parametrizaciones`     | `requirePermissions('prestamos.parameters.admin')`                      | `admin`                                                        |
+| `/coordinador/practicas/config` | `requirePermissions('prestamos.practices.config')`                    | `admin`, `coordinador`                                         |
+| `/coordinador/firma`           | `requirePermissions('prestamos.coordinator.signature')`                 | `admin`, `coordinador`                                         |
+
 ## Rutas Públicas O Sensibles
 
 | Ruta                                    | Observación                                                       |

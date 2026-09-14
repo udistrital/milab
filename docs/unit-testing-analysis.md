@@ -54,7 +54,7 @@ La ejecución actual validada localmente pasa con éxito sobre la suite unitaria
 
 Última corrida de referencia:
 
-1. Unit: 229 pruebas `pass`, 0 `fail`, 0 `cancelled`.
+1. Unit: 242 pruebas `pass`, 0 `fail`, 0 `cancelled`.
 2. Integración: 20 pruebas `pass`, 0 `fail`, 0 `cancelled`.
 
 ## Superficie Ya Cubierta
@@ -203,13 +203,13 @@ Recomendación:
 
 Siguen siendo prioritarias estas superficies:
 
-- [src/routes/api/send_email.js](src/routes/api/send_email.js)
 - [src/routes/api/register_labs.js](src/routes/api/register_labs.js)
 - [src/routes/api/aprobacion_multa.js](src/routes/api/aprobacion_multa.js)
 - [src/routes/api/submit.js](src/routes/api/submit.js)
 - [src/routes/api/submit_docente.js](src/routes/api/submit_docente.js)
 - [src/routes/api/get_list_multas.js](src/routes/api/get_list_multas.js)
 - [src/routes/api/dashboard.js](src/routes/api/dashboard.js)
+- [src/routes/api/prestamos.js](src/routes/api/prestamos.js) (solicitudes, entrega/devolucion, incidencias y practicas)
 
 Especialmente útiles serían pruebas para:
 
@@ -257,175 +257,4 @@ Adicional para operación CI:
 
 ## Conclusión
 
-MILab ya tiene una base real de pruebas unitarias útil y ejecutable en CI. La inversión correcta ahora es reforzar regresiones en rutas operativas y en el comportamiento por rol, no reconstruir desde cero la estrategia de testing.
-
-- [src/routes/api/estudiantes_registrados.js](src/routes/api/estudiantes_registrados.js)
-- [src/routes/api/coordinadores_registrados.js](src/routes/api/coordinadores_registrados.js)
-- [src/routes/api/laboratoristas_registrados.js](src/routes/api/laboratoristas_registrados.js)
-
-Casos sugeridos:
-
-1. Un admin puede actualizar correo cuando no hay conflicto.
-2. Un rol sin permisos recibe `403`.
-3. Un correo no institucional recibe `400`.
-4. Un conflicto de correo devuelve `409`.
-
-Valor:
-
-- Cubren reglas críticas de operación con bajo costo comparado con flujos de certificados.
-
-## Prioridad 4: integración selectiva de flujos completos
-
-No recomiendo empezar por aquí, pero sí planearlos.
-
-### Flujos a cubrir después de la primera base
-
-1. Login completo con sesión.
-2. Forgot password con generación de token.
-3. Registro de coordinador.
-4. Registro de laboratorista.
-5. Dashboard por rol.
-
-Eso debería entrar después de estabilizar helpers y middlewares.
-
-## Refactors Previos Recomendados
-
-La suite puede arrancar sin una gran reescritura, pero estos cambios reducen mucho el costo futuro.
-
-### 1. Separar creación de app y arranque del servidor
-
-Hoy [src/app.js](src/app.js) llama `app.listen` directamente.
-
-Recomendación:
-
-- Crear un `createApp()` exportable.
-- Dejar el `listen` en un archivo de arranque separado.
-
-Beneficio:
-
-- Permite usar `supertest` sin abrir puertos reales.
-
-### 2. Extraer verificación de reCAPTCHA
-
-Hoy la lógica está duplicada en varias rutas.
-
-Recomendación:
-
-- Crear un helper, por ejemplo en `src/libs/recaptcha.js`.
-
-Beneficio:
-
-- Reduce duplicación y vuelve testeable una funcionalidad que pediste explícitamente.
-
-### 3. Extraer servicios de autenticación y recuperación
-
-Recomendación:
-
-- Sacar lookup de login, lookup de recuperación y construcción de correos a módulos pequeños.
-
-Beneficio:
-
-- Disminuye mocks por ruta y hace los tests más estables.
-
-### 4. Encapsular acceso a base de datos en funciones de dominio
-
-Hoy muchas rutas invocan `pool.query` varias veces con SQL inline.
-
-Recomendación:
-
-- No reescribir todo de una vez.
-- Empezar por repositorios o servicios en los flujos prioritarios.
-
-Beneficio:
-
-- Permite pruebas unitarias sobre lógica y deja el SQL para pruebas de integración o contrato.
-
-## Orden Recomendado De Implementación
-
-### Fase 1. Fundaciones de testing
-
-1. Agregar `node:test` como estándar de proyecto.
-2. Agregar `supertest`.
-3. Crear script `test` y quizá `test:unit` en [package.json](package.json).
-4. Crear estructura `tests/`.
-
-### Fase 2. Cobertura rápida de helpers
-
-1. `account-email`
-2. `app-url`
-3. `registration-token`
-4. `certificate-email`
-5. `auth` middleware
-6. `faculty-scope`
-
-### Fase 3. Middlewares y seguridad
-
-1. `security-logger`
-2. `mail`
-3. partes puras de `logger`
-
-### Fase 4. Primeras rutas críticas
-
-1. login
-2. forgot password
-3. actualización de correos
-
-### Fase 5. Integración focalizada
-
-1. login con sesión
-2. forgot password con token
-3. registro coordinador/laboratorista
-
-## Qué No Recomiendo En La Primera Ola
-
-1. No empezar por rutas gigantes de certificados que mezclan consultas académicas externas, PDF, QR y correo.
-2. No perseguir cobertura global desde el primer sprint.
-3. No meter una base de datos real para todas las pruebas unitarias.
-4. No usar snapshots grandes de HTML como estrategia principal.
-
-## Propuesta De Primer Lote De Casos
-
-Si el objetivo es obtener valor rápido, el primer lote concreto debería incluir aproximadamente estos bloques:
-
-1. `account-email.test.js`
-2. `app-url.test.js`
-3. `certificate-email.test.js`
-4. `faculty-scope.test.js`
-5. `auth.middleware.test.js`
-6. `mail.test.js`
-7. `login.route.test.js`
-8. `forgot-password.route.test.js`
-
-Ese lote ya protege:
-
-- Validación de correos.
-- Generación de URLs.
-- Override de destinatarios.
-- Envío de certificados.
-- Reglas de acceso.
-- Login.
-- Recuperación de contraseña.
-
-## Relación Con La Deuda De Normalización
-
-Introducir esta base mínima de pruebas antes de normalizar la BD es la decisión correcta.
-
-Razones:
-
-1. La normalización va a tocar `usuario`/`usuario_rol`, flujos de correo, sanciones, asignaciones por facultad y auditoría.
-2. Hoy esos flujos dependen de convenciones implícitas y de joins frágiles.
-3. Sin pruebas, el riesgo de regresión es alto.
-
-## Recomendación Final
-
-La estrategia correcta no es intentar probar todo el sistema actual tal como está, sino construir una base de pruebas alrededor de los módulos con mejor relación valor-esfuerzo y usar esa base para habilitar refactors posteriores.
-
-El orden sugerido es:
-
-1. Fundaciones de testing.
-2. Helpers y middlewares puros.
-3. Login y recuperación de contraseña.
-4. Rutas operativas de actualización de correo y permisos.
-5. Flujos más pesados e integraciones.
-
-Ese enfoque te da resultados visibles rápido y deja el proyecto en condiciones de atacar la normalización del modelo de datos con menos riesgo.
+MILab ya tiene una base real de pruebas unitarias útil y ejecutable en CI. La inversión correcta ahora es reforzar regresiones en rutas operativas de Préstamos y en el comportamiento por rol, no reconstruir desde cero la estrategia de testing.

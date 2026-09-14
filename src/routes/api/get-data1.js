@@ -2,7 +2,11 @@ const express = require('express');
 
 const pool = require('../../libs/db');
 const { verifyRecaptchaToken } = require('../../libs/recaptcha');
-const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
+const {
+  ensurePerfilEstudiante,
+  isPlaceholderEmail,
+  resolveUsuarioIdForStudent,
+} = require('../../libs/user-identity');
 const limiter = require('../middlewares/limiter');
 const { requireRoles } = require('../middlewares/auth');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
@@ -37,6 +41,8 @@ async function resolveStudentEmailForSession(documento, codigo) {
       ) candidates
       WHERE correo IS NOT NULL
         AND correo <> ''
+        AND LOWER(correo) <> LOWER($1::text || '@udistrital.edu.co')
+        AND LOWER(correo) NOT LIKE 'no-email+%@placeholder.milab.local'
       ORDER BY priority
       LIMIT 1
     `,
@@ -61,6 +67,9 @@ router.get('/verificacion', requireStudentSelfServiceAccess, async function (req
     con_codigo = profileRow.codigo || 0;
   }
 
+  const placeholderStudentAccount =
+    req.session.user.tipo === 'estudiante' && isPlaceholderEmail(profileRow.correo || '');
+
   console.log('Resultado query: ' + con_codigo);
 
   let usuarioId = await resolveUsuarioIdForStudent({
@@ -77,12 +86,15 @@ router.get('/verificacion', requireStudentSelfServiceAccess, async function (req
       correo: profileRow.correo || '',
     });
   }
-  const query =
-    "SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa='ACTIVA'";
-  const values = [usuarioId];
+  let con_multado = false;
+  if (!placeholderStudentAccount && usuarioId) {
+    const query =
+      "SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa='ACTIVA'";
+    const values = [usuarioId];
 
-  const result = await pool.query(query, values);
-  const con_multado = result.rows[0].multado > 0;
+    const result = await pool.query(query, values);
+    con_multado = Number(result.rows[0]?.multado || 0) > 0;
+  }
 
   let multaInfo = null;
   if (con_multado && usuarioId) {

@@ -36,11 +36,21 @@ flowchart TB
 
 | Rol             | Capacidades principales                                                                                  |
 | --------------- | -------------------------------------------------------------------------------------------------------- |
-| `admin`         | Vista global, administración, configuración, consultas operativas, monitoreo completo                    |
-| `coordinador`   | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades |
-| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL                    |
-| `estudiante`    | Solicitud y descarga de su certificado                                                                   |
-| `docente`       | Solicitud y descarga de su certificado                                                                   |
+| `admin`         | Vista global, administración, configuración, consultas operativas, monitoreo completo, todos los permisos de Préstamos                                    |
+| `coordinador`   | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades, aprobación/gestión completa de Préstamos en su alcance |
+| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL, gestión operativa de Préstamos (inventario, equipos, solicitudes, incidencias, prácticas, salas) |
+| `monitor`       | Subrol operativo de Préstamos con alcance por UAL: entrega/recepción de equipos, registro de incidencias y gestión de prácticas; sin aprobación de solicitudes ni configuración |
+| `estudiante`    | Solicitud y descarga de su certificado; autoservicio de solicitudes y reservas de práctica en Préstamos                                                                   |
+| `docente`       | Solicitud y descarga de su certificado; autoservicio de solicitudes y reservas de práctica en Préstamos                                                                   |
+
+## Permisos Granulares De Préstamos
+
+Además de `requireRoles(...)`, el módulo de Préstamos ([src/routes/api/prestamos.js](../src/routes/api/prestamos.js)) usa un sistema de permisos por capacidad definido en [src/libs/permissions.js](../src/libs/permissions.js):
+
+- `APP_PERMISSIONS` enumera capacidades como `prestamos.inventory.admin`, `prestamos.equipment.admin`, `prestamos.request.approve`, `prestamos.deliver`, `prestamos.receive`, `prestamos.incident.*`, `prestamos.practices.manage`, `prestamos.rooms.manage`, `prestamos.reports.view`, `prestamos.audit.view`, `prestamos.parameters.admin` y `prestamos.coordinator.signature`.
+- `ROLE_PERMISSION_MAP` asigna esas capacidades por rol: `admin` recibe todos los permisos; `coordinador` recibe aprobación y gestión completa; `laboratorista` recibe gestión operativa sin aprobación de multas; `monitor` recibe solo entrega, recepción, incidencias (ver y crear) y prácticas.
+- Las rutas de Préstamos usan `requirePermissions(...)` con este mapa, y las rutas de autoservicio (`/solicitar`, `/mis-solicitudes`, `/practicas/solicitar`, `/practicas/mis-reservas`) usan `requireRoles(['estudiante', 'docente'], ...)` en paralelo al permiso, para permitir que cualquier usuario autenticado con esos roles opere sobre sus propias solicitudes.
+- El acceso al módulo completo también puede deshabilitarse por facultad mediante la tabla `facultad_modulo_acceso` ([src/libs/prestamos-module-access.js](../src/libs/prestamos-module-access.js)).
 
 ## Alcance De Monitoreo
 
@@ -78,8 +88,10 @@ Indicadores disponibles:
 | `/milab/api/register_labs`            | `requireRoles(['admin', 'coordinador'])` + validaciones de conflicto con coordinador | `src/routes/api/register_labs.js`                                    |
 | `/milab/api/download-pdf`             | `requireRoles(...)` + validación de ownership estudiante                             | `src/routes/api/download-pdf.js`                                     |
 | `/milab/api/get-estado-multa/:codigo` | `publicApiLimiter` + validación numérica                                             | `src/routes/api/get-estado-multa.js`                                 |
-| `/milab/api/consulta-invit`           | reCAPTCHA en POST                                                                    | `src/routes/api/consulta-invit.js`                                   |
-
+| `/milab/api/consulta-invit`           | reCAPTCHA en POST                                                                    | `src/routes/api/consulta-invit.js`                                   || `/milab/prestamos/equipos`            | `requirePermissions('prestamos.equipment.admin')`                                     | `src/routes/api/prestamos.js`                                        |
+| `/milab/prestamos/entrega-equipos`    | `requirePermissions(['prestamos.deliver', 'prestamos.receive'])`                       | `src/routes/api/prestamos.js`                                        |
+| `/milab/prestamos/incidencias`        | `requirePermissions('prestamos.incident.view')`                                        | `src/routes/api/prestamos.js`                                        |
+| `/milab/prestamos/solicitar`          | `requireRoles(['estudiante', 'docente'])` (autoservicio)                                | `src/routes/api/prestamos.js`                                        |
 ## Menú Persistido Y Menú De Respaldo
 
 El estado canónico del menú lo define `sql-scripts/db_seed_system.sql` mediante:

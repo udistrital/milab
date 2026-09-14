@@ -71,8 +71,8 @@ const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratori
 });
 
 const CHART_DEFINITIONS = {
-  estudiantes: {
-    id: 'estudiantes',
+  certificadosEstudiantes: {
+    id: 'certificadosEstudiantes',
     optionLabel: 'Certificados de estudiantes',
     cardLabel: 'Certificados estudiantes',
     tone: 'tone-students',
@@ -80,14 +80,32 @@ const CHART_DEFINITIONS = {
     summary:
       'Mide la emisión de certificados de estudiantes dentro del alcance disponible para tu rol.',
   },
-  docentes: {
-    id: 'docentes',
+  certificadosDocentes: {
+    id: 'certificadosDocentes',
     optionLabel: 'Certificados de docentes',
     cardLabel: 'Certificados docentes',
     tone: 'tone-teachers',
     title: 'Certificados de docentes',
     summary:
       'Visualiza el comportamiento de los certificados emitidos para docentes en el periodo elegido.',
+  },
+  estudiantes: {
+    id: 'estudiantes',
+    optionLabel: 'Estudiantes registrados',
+    cardLabel: 'Estudiantes',
+    tone: 'tone-students',
+    title: 'Estudiantes registrados',
+    summary:
+      'Perfiles académicos de estudiantes consolidados desde la tabla usuario con rol estudiante activo.',
+  },
+  docentes: {
+    id: 'docentes',
+    optionLabel: 'Docentes registrados',
+    cardLabel: 'Docentes',
+    tone: 'tone-teachers',
+    title: 'Docentes registrados',
+    summary:
+      'Perfiles académicos de docentes consolidados desde la tabla usuario con rol docente activo.',
   },
   sanciones: {
     id: 'sanciones',
@@ -151,6 +169,8 @@ function getDashboardRole(user) {
 function getAvailableChartIds(role) {
   if (role === 'admin') {
     return [
+      'certificadosEstudiantes',
+      'certificadosDocentes',
       'estudiantes',
       'docentes',
       'sanciones',
@@ -164,7 +184,9 @@ function getAvailableChartIds(role) {
 
   if (role === 'coordinador') {
     return [
+      'certificadosEstudiantes',
       'estudiantes',
+      'docentes',
       'sanciones',
       'sancionesActivas',
       'sancionesSaldadas',
@@ -466,6 +488,7 @@ async function fetchUsuarioRows() {
   const result = await pool.query(
     `WITH usuarios_base AS (
        SELECT
+         u.id,
          COALESCE(NULLIF(TRIM(u.documento), ''), CONCAT('usuario:', u.id::text)) AS identity_key,
          u.fecha_creacion,
          u.nombre,
@@ -486,6 +509,7 @@ async function fetchUsuarioRows() {
      ),
      coordinadores_base AS (
        SELECT
+         c.usuario_id AS id,
          COALESCE(
            NULLIF(TRIM(c.documento), ''),
            NULLIF(TRIM(c.correo), ''),
@@ -519,6 +543,7 @@ async function fetchUsuarioRows() {
          LIMIT 1
        ) role_state ON true
        GROUP BY
+         c.usuario_id,
          c.fecha_creacion,
          c.nombre,
          c.documento,
@@ -528,6 +553,7 @@ async function fetchUsuarioRows() {
      ),
      laboratoristas_base AS (
        SELECT
+         l.usuario_id AS id,
          COALESCE(
            NULLIF(TRIM(l.documento), ''),
            NULLIF(TRIM(l.correo), ''),
@@ -554,6 +580,7 @@ async function fetchUsuarioRows() {
          ON u.ual_id = lu.ual_id
         AND u.activo = TRUE
        GROUP BY
+         l.usuario_id,
          l.fecha_creacion,
          l.nombre,
          l.documento,
@@ -563,6 +590,7 @@ async function fetchUsuarioRows() {
      ),
      usuarios_consolidados AS (
        SELECT
+         id,
          identity_key,
          fecha_creacion,
          nombre,
@@ -581,6 +609,7 @@ async function fetchUsuarioRows() {
      ),
      usuarios_ranked AS (
        SELECT
+         id,
          fecha_creacion,
          nombre,
          documento,
@@ -597,6 +626,7 @@ async function fetchUsuarioRows() {
        FROM usuarios_consolidados
      )
      SELECT
+       id,
        fecha_creacion,
        nombre,
        documento,
@@ -612,6 +642,62 @@ async function fetchUsuarioRows() {
      LIMIT 500`
   );
   return result.rows;
+}
+
+async function fetchUsuariosRegistradosRows() {
+  const result = await pool.query(
+    `SELECT u.*
+     FROM usuario u
+     WHERE u.correo IS NOT NULL
+       AND TRIM(u.correo) <> ''
+       AND LOWER(u.correo) NOT LIKE '%no-email%'
+     ORDER BY u.fecha_creacion DESC NULLS LAST, u.id DESC`
+  );
+
+  return {
+    rows: result.rows || [],
+    columns: Array.isArray(result.fields) ? result.fields.map((field) => field.name) : [],
+  };
+}
+
+async function fetchUsuarioRolesRows() {
+  const result = await pool.query(
+    `SELECT ur.usuario_id, r.nombre AS rol_nombre
+     FROM usuario_rol ur
+     JOIN rol r ON r.id = ur.rol_id
+     WHERE ur.activo = TRUE`
+  );
+  return result.rows;
+}
+
+function buildUsuarioRoleIndex(roleRows) {
+  const index = new Map();
+  for (const row of roleRows) {
+    const key = Number(row.usuario_id);
+    if (!Number.isFinite(key)) continue;
+    const set = index.get(key) || new Set();
+    set.add(
+      String(row.rol_nombre || '')
+        .trim()
+        .toLowerCase()
+    );
+    index.set(key, set);
+  }
+  return index;
+}
+
+function isUsuarioEstudiante(usuarioRow, roleIndex) {
+  const usuarioId = Number(usuarioRow?.id);
+  if (!Number.isFinite(usuarioId)) return false;
+  const roles = roleIndex.get(usuarioId);
+  return !!(roles && roles.has('estudiante'));
+}
+
+function isUsuarioDocente(usuarioRow, roleIndex) {
+  const usuarioId = Number(usuarioRow?.id);
+  if (!Number.isFinite(usuarioId)) return false;
+  const roles = roleIndex.get(usuarioId);
+  return !!(roles && roles.has('docente'));
 }
 
 function filterStudentRowsByScope(rows, role, scope) {
@@ -790,10 +876,14 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ? requestedChart
       : availableChartIds[0];
 
-    const studentRows = availableChartIds.includes('estudiantes')
+    const needsUsuariosByRole =
+      availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
+    const needsUsuariosRegistrados = availableChartIds.includes('usuariosRegistrados');
+
+    const studentCertRows = availableChartIds.includes('certificadosEstudiantes')
       ? await fetchStudentCertificateRows()
       : [];
-    const teacherRows = availableChartIds.includes('docentes')
+    const teacherCertRows = availableChartIds.includes('certificadosDocentes')
       ? await fetchTeacherCertificateRows()
       : [];
     const sanctionRows = await fetchSanctionRows();
@@ -801,12 +891,16 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const coordinatorRows = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
       : [];
-    const usuarioRows = availableChartIds.includes('usuariosRegistrados')
-      ? await fetchUsuarioRows()
-      : [];
+    const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
+    const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
+    const usuariosRegistradosResult =
+      needsUsuariosRegistrados && dashboardRole === 'admin'
+        ? await fetchUsuariosRegistradosRows()
+        : { rows: [], columns: [] };
+    const roleIndex = buildUsuarioRoleIndex(usuarioRolesRows);
 
-    const filteredStudents = filterStudentRowsByScope(studentRows, dashboardRole, scope);
-    const filteredTeachers = teacherRows;
+    const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);
+    const filteredTeacherCerts = teacherCertRows;
     const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
     const filteredLaboratoristas = filterLaboratoristaRowsByScope(
       laboratoristaRows,
@@ -819,14 +913,32 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scope
     );
     const filteredUsuarios = filterUsuarioRowsByScope(usuarioRows, dashboardRole, scope);
+    const usuariosRegistradosRows =
+      dashboardRole === 'admin' ? usuariosRegistradosResult.rows : filteredUsuarios;
+    const usuariosRegistradosColumns =
+      dashboardRole === 'admin' ? usuariosRegistradosResult.columns : [];
+    const filteredEstudiantes = filteredUsuarios
+      .filter((row) => isUsuarioEstudiante(row, roleIndex))
+      .map((row) => ({ ...row, __tipo: 'estudiante' }));
+    const filteredDocentes = filteredUsuarios
+      .filter((row) => isUsuarioDocente(row, roleIndex))
+      .map((row) => ({ ...row, __tipo: 'docente' }));
 
     const chartsData = {
+      certificadosEstudiantes: buildSeriesFromDates(
+        filteredStudentCerts.map((row) => row.fecha_creacion),
+        filtro
+      ),
+      certificadosDocentes: buildSeriesFromDates(
+        filteredTeacherCerts.map((row) => row.fecha_creacion),
+        filtro
+      ),
       estudiantes: buildSeriesFromDates(
-        filteredStudents.map((row) => row.fecha_creacion),
+        filteredEstudiantes.map((row) => row.fecha_creacion),
         filtro
       ),
       docentes: buildSeriesFromDates(
-        filteredTeachers.map((row) => row.fecha_creacion),
+        filteredDocentes.map((row) => row.fecha_creacion),
         filtro
       ),
       multas: buildSeriesFromDates(
@@ -856,7 +968,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         filtro
       ),
       usuariosRegistrados: buildSeriesFromDates(
-        filteredUsuarios.map((row) => row.fecha_creacion),
+        usuariosRegistradosRows.map((row) => row.fecha_creacion),
         filtro
       ),
     };
@@ -870,6 +982,13 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         series = chartsData.multasActivas;
       } else if (chartId === 'sancionesSaldadas') {
         series = chartsData.multasSaldadas;
+      }
+
+      if (chartId === 'usuariosRegistrados') {
+        return {
+          ...CHART_DEFINITIONS[chartId],
+          total: usuariosRegistradosRows.length,
+        };
       }
 
       return {
@@ -894,8 +1013,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     ];
 
     const tablesData = {
-      estudiantes: filteredStudents,
-      docentes: filteredTeachers,
+      certificadosEstudiantes: filteredStudentCerts,
+      certificadosDocentes: filteredTeacherCerts,
+      estudiantes: filteredEstudiantes,
+      docentes: filteredDocentes,
       sanciones: filteredSanctions,
       sancionesActivas: filteredSanctions.filter(
         (row) => String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA'
@@ -905,7 +1026,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ),
       laboratoristas: filteredLaboratoristas,
       coordinadores: filteredCoordinators,
-      usuariosRegistrados: filteredUsuarios,
+      usuariosRegistrados: usuariosRegistradosRows,
     };
 
     return res.render('home/dashboard', {
@@ -918,6 +1039,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scopeCounters,
       chartsData,
       tablesData,
+      usuarioTableColumns: usuariosRegistradosColumns,
     });
   } catch (error) {
     console.error('Error en dashboard:', error);
@@ -953,6 +1075,8 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
+  fetchUsuariosRegistradosRows,
+  fetchUsuarioRolesRows,
   fetchSanctionRows,
   fetchLaboratoristaRows,
   fetchStudentCertificateRows,

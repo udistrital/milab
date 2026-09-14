@@ -54,6 +54,9 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
       if (sql.includes('FROM coordinador')) {
         return { rows: poolRows.coordinators || [] };
       }
+      if (sql.includes('FROM usuario_rol')) {
+        return { rows: poolRows.usuarioRoles || [] };
+      }
       if (sql.includes('FROM usuario')) {
         return { rows: poolRows.usuarios || [] };
       }
@@ -95,7 +98,7 @@ test('dashboard flow renders admin summary from mounted HTTP handler', async () 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard');
     assert.equal(response.body.locals.dashboardRole, 'admin');
-    assert.equal(response.body.locals.selectedChart, 'estudiantes');
+    assert.equal(response.body.locals.selectedChart, 'certificadosEstudiantes');
   } finally {
     loaded.restore();
   }

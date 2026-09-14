@@ -35,3 +35,7 @@ flowchart LR
   app -->|Validacion anti-bot| recaptcha
   app -->|Correo transaccional| smtp
 ```
+
+## Nota
+
+El contenedor `milabud` ejecuta tambien un proceso interno programado (`node-cron`) que envia recordatorios semanales a coordinadores con solicitudes pendientes ([src/jobs/coordinator-pending-notifications.job.js](../../src/jobs/coordinator-pending-notifications.job.js)). No es un contenedor separado; corre dentro del mismo proceso Node.js.
