@@ -45,7 +45,12 @@ function buildApp(route, sessionData) {
   return app;
 }
 
-function loadRoute({ poolQueryImpl, requestOatiImpl, fetchUserByEmailImpl, buildSessionUserImpl } = {}) {
+function loadRoute({
+  poolQueryImpl,
+  requestOatiImpl,
+  fetchUserByEmailImpl,
+  buildSessionUserImpl,
+} = {}) {
   const originals = new Map();
   const stubs = [
     [
@@ -167,7 +172,11 @@ test('profile identify promotes placeholder account and enrolls estudiante', asy
     poolQueryImpl: async (sql) => {
       executed.push(sql);
 
-      if (sql.includes('FROM usuario') && sql.includes('WHERE documento = $1') && sql.includes('LIMIT 1')) {
+      if (
+        sql.includes('FROM usuario') &&
+        sql.includes('WHERE documento = $1') &&
+        sql.includes('LIMIT 1')
+      ) {
         return {
           rows: [
             {
@@ -183,7 +192,11 @@ test('profile identify promotes placeholder account and enrolls estudiante', asy
         };
       }
 
-      if (sql.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1')) {
+      if (
+        sql.includes(
+          'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1'
+        )
+      ) {
         return { rows: [{ id: 25 }] };
       }
 
@@ -235,14 +248,23 @@ test('profile identify promotes placeholder account and enrolls estudiante', asy
     };
 
     const app = buildApp(loaded.route, session);
-    const response = await request(app).post('/identify').type('form').send({ documento: '1000586756' });
+    const response = await request(app)
+      .post('/identify')
+      .type('form')
+      .send({ documento: '1000586756' });
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/milab/inicio');
     assert.equal(session.user?.correo, 'michael.gutierrez@udistrital.edu.co');
     assert.equal(Array.isArray(session.user?.roles), true);
-    assert.equal(executed.some((sql) => sql.includes('INSERT INTO usuario_rol')), true);
-    assert.equal(executed.some((sql) => sql.includes('INSERT INTO perfil_estudiante')), true);
+    assert.equal(
+      executed.some((sql) => sql.includes('INSERT INTO usuario_rol')),
+      true
+    );
+    assert.equal(
+      executed.some((sql) => sql.includes('INSERT INTO perfil_estudiante')),
+      true
+    );
   } finally {
     loaded.restore();
   }

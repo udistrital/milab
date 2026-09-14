@@ -344,7 +344,9 @@ test('dashboard admin email edit enrolls user as estudiante', async () => {
     clientQueryImpl: async (sql, params = []) => {
       clientQueries.push(sql);
 
-      if (sql.includes('SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario')) {
+      if (
+        sql.includes('SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario')
+      ) {
         return {
           rows: [
             {

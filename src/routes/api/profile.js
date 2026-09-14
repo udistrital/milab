@@ -46,7 +46,9 @@ function normalizeEmail(value) {
 
 function isNoEmailPlaceholder(correo, documento = '') {
   const normalizedCorreo = normalizeEmail(correo);
-  const normalizedDocumento = String(documento || '').trim().toLowerCase();
+  const normalizedDocumento = String(documento || '')
+    .trim()
+    .toLowerCase();
 
   if (!normalizedCorreo) {
     return true;
@@ -86,7 +88,9 @@ async function findUsuarioByDocumento(documento) {
 
 async function promotePlaceholderIdentityAndEnroll({ correo, profileData, nombreFallback = '' }) {
   const documento = String(profileData?.documento || '').trim();
-  const tipoUsuario = String(profileData?.tipo_usuario || '').trim().toLowerCase();
+  const tipoUsuario = String(profileData?.tipo_usuario || '')
+    .trim()
+    .toLowerCase();
 
   if (!documento || !['estudiante', 'docente'].includes(tipoUsuario)) {
     return null;
@@ -97,7 +101,8 @@ async function promotePlaceholderIdentityAndEnroll({ correo, profileData, nombre
     return null;
   }
 
-  const finalNombre = profileData.nombre || nombreFallback || existingByDocument.nombre || 'Sin nombre';
+  const finalNombre =
+    profileData.nombre || nombreFallback || existingByDocument.nombre || 'Sin nombre';
   const userId = await ensureUserIdentity({
     correo,
     documento,

@@ -878,7 +878,9 @@ async function lookupEnrollmentStudentData(documento) {
 
     if (estadoCodigo) {
       try {
-        const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${estadoCodigo}`));
+        const estadoData = await requestOati(
+          getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
+        );
         estadoNombre = estadoData?.estado?.nombre || estadoCodigo;
       } catch {
         estadoNombre = estadoCodigo;
@@ -911,7 +913,9 @@ async function lookupEnrollmentStudentData(documento) {
 
 async function lookupEnrollmentTeacherData(documento) {
   try {
-    const teacherData = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
+    const teacherData = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
+    );
     const rawDocente = teacherData?.docentesCollection?.docente;
     const docente = Array.isArray(rawDocente) ? rawDocente[0] : rawDocente;
 
@@ -944,8 +948,10 @@ async function enrollUserFromDashboardEdit(client, target, tipoUsuario, correo) 
       ? await lookupEnrollmentStudentData(documento)
       : await lookupEnrollmentTeacherData(documento);
 
-  const resolvedNombre = String(enrollmentData?.nombre || target?.nombre || '').trim() || 'Sin nombre';
-  const resolvedEstado = String(enrollmentData?.estado || target?.estado || 'ACTIVO').trim() || 'ACTIVO';
+  const resolvedNombre =
+    String(enrollmentData?.nombre || target?.nombre || '').trim() || 'Sin nombre';
+  const resolvedEstado =
+    String(enrollmentData?.estado || target?.estado || 'ACTIVO').trim() || 'ACTIVO';
   const resolvedCodigo =
     normalizedType === 'estudiante'
       ? String(enrollmentData?.codigo || target?.codigo || '').trim() || null
