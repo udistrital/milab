@@ -38,12 +38,13 @@ function isProtectedMilabPath(requestPath) {
   );
 }
 
-function shouldReturnJson(req, requestPath) {
+function shouldReturnJson(req) {
   if (req.xhr) return true;
-  if (requestPath.startsWith('/milab/api/')) return true;
 
-  const accept = req.get?.('accept') || '';
-  return accept.includes('application/json');
+  const accept = String(req.get?.('accept') || '').toLowerCase();
+  // Navegacion directa del navegador incluye text/html en el Accept; los
+  // clientes fetch/AJAX del propio frontend solo piden application/json.
+  return accept.includes('application/json') && !accept.includes('text/html');
 }
 
 function sessionGateMiddleware(req, res, next) {
@@ -69,7 +70,7 @@ function sessionGateMiddleware(req, res, next) {
     return next();
   }
 
-  if (shouldReturnJson(req, requestPath)) {
+  if (shouldReturnJson(req)) {
     return res.status(401).json({
       ok: false,
       code: 'SESSION_EXPIRED',
