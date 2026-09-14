@@ -648,6 +648,9 @@ async function fetchUsuariosRegistradosRows() {
   const result = await pool.query(
     `SELECT u.*
      FROM usuario u
+     WHERE u.correo IS NOT NULL
+       AND TRIM(u.correo) <> ''
+       AND LOWER(u.correo) NOT LIKE '%no-email%'
      ORDER BY u.fecha_creacion DESC NULLS LAST, u.id DESC`
   );
 

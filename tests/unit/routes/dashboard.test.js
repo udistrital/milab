@@ -151,6 +151,9 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
   assert.equal(coordinatorQ.includes('LEFT JOIN coordinador_facultad cf'), true);
   assert.equal(usuarioQ.includes('FROM usuario u'), true);
   assert.equal(typeof usuariosRegistradosQ === 'string', true);
+  assert.equal(usuariosRegistradosQ.includes('u.correo IS NOT NULL'), true);
+  assert.equal(usuariosRegistradosQ.includes("TRIM(u.correo) <> ''"), true);
+  assert.equal(usuariosRegistradosQ.includes("LOWER(u.correo) NOT LIKE '%no-email%'"), true);
   assert.equal(typeof usuarioRolesQ === 'string', true);
   assert.equal(usuarioRolesQ.includes('ur.activo = TRUE'), true);
   assert.equal(multaQ.includes('SELECT m.*'), true);
