@@ -43,6 +43,12 @@ Esta matriz resume los permisos funcionales actuales por rol en MiLab, con base 
 | `docente`       | Solicitud de certificado        | `V`, `C`, `D` | `/milab/api/verifica_multa_docente/verificacion`, `/milab/api/verifica_multa_docente`, `/milab/api/download-pdf-docente`                                    | Propio                |
 | `invitado`      | Consulta publica                | `V`           | `/milab/api/consulta-invit`, `/milab/api/get-estado-multa/:codigo`                                                                                          | Publico con controles |
 | `invitado`      | Validacion de certificados      | `V`           | `/milab/api/validateqr/:codigo`, `/milab/api/validateqr-docente/:codigo`                                                                                    | Publico con controles |
+| `admin`         | Prestamos (todo el modulo)      | `V`, `C`, `A`, `G` | `/milab/prestamos/*`                                                                                                                                    | Global                |
+| `coordinador`   | Prestamos (gestion completa)    | `V`, `C`, `A` | `/milab/prestamos/gestion-solicitudes`, `/milab/prestamos/entrega-equipos`, `/milab/prestamos/incidencias`, `/milab/prestamos/practicas/gestion`, `/milab/prestamos/salas`, `/milab/prestamos/reportes`, `/milab/prestamos/auditoria`, `/milab/prestamos/coordinador/firma` | Facultades asignadas  |
+| `laboratorista` | Prestamos (operacion completa) | `V`, `C`      | `/milab/prestamos/inventario`, `/milab/prestamos/equipos`, `/milab/prestamos/gestion-solicitudes`, `/milab/prestamos/entrega-equipos`, `/milab/prestamos/incidencias`, `/milab/prestamos/practicas/gestion`, `/milab/prestamos/salas`, `/milab/prestamos/reportes`, `/milab/prestamos/auditoria` | UAL asignadas         |
+| `monitor`       | Prestamos (operacion acotada)   | `V`, `C`      | `/milab/prestamos/gestion-solicitudes`, `/milab/prestamos/entrega-equipos`, `/milab/prestamos/incidencias`, `/milab/prestamos/practicas/gestion`, `/milab/prestamos/reportes`                                                                       | UAL asignadas         |
+| `estudiante`    | Prestamos (autoservicio)        | `V`, `C`      | `/milab/prestamos/solicitar`, `/milab/prestamos/mis-solicitudes`, `/milab/prestamos/practicas/solicitar`, `/milab/prestamos/practicas/mis-reservas`         | Propio                |
+| `docente`       | Prestamos (autoservicio)        | `V`, `C`      | `/milab/prestamos/solicitar`, `/milab/prestamos/mis-solicitudes`, `/milab/prestamos/practicas/solicitar`, `/milab/prestamos/practicas/mis-reservas`         | Propio                |
 
 ## Controles Transversales
 
@@ -60,3 +66,4 @@ Esta matriz resume los permisos funcionales actuales por rol en MiLab, con base 
 - `docs/architecture/security-rbac.md`
 - `src/routes/middlewares/auth.js`
 - `src/routes/middlewares/menu-permissions.js`
+- `src/libs/permissions.js` (permisos granulares del modulo Prestamos)

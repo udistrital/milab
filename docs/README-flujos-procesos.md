@@ -11,6 +11,8 @@ Este documento resume los procesos funcionales principales que maneja MiLab y lo
 - Recuperacion de contrasena.
 - Consulta publica de estado y validacion de certificados.
 
+Este documento no cubre los flujos operativos del modulo de Prestamos (solicitudes, entrega/devolucion, incidencias, practicas, salas). Para esos flujos ver [docs/architecture/sequences.md](architecture/sequences.md) y [docs/release-notes-prestamos-2.0.md](release-notes-prestamos-2.0.md).
+
 ## Referencias Base
 
 - Arquitectura de secuencias: docs/architecture/sequences.md
