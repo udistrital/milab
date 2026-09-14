@@ -874,8 +874,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       : availableChartIds[0];
 
     const needsUsuariosByRole =
-      availableChartIds.includes('estudiantes') ||
-      availableChartIds.includes('docentes');
+      availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
     const needsUsuariosRegistrados = availableChartIds.includes('usuariosRegistrados');
 
     const studentCertRows = availableChartIds.includes('certificadosEstudiantes')
@@ -891,9 +890,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       : [];
     const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
     const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
-    const usuariosRegistradosResult = needsUsuariosRegistrados && dashboardRole === 'admin'
-      ? await fetchUsuariosRegistradosRows()
-      : { rows: [], columns: [] };
+    const usuariosRegistradosResult =
+      needsUsuariosRegistrados && dashboardRole === 'admin'
+        ? await fetchUsuariosRegistradosRows()
+        : { rows: [], columns: [] };
     const roleIndex = buildUsuarioRoleIndex(usuarioRolesRows);
 
     const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);

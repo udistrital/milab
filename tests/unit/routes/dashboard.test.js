@@ -131,7 +131,9 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
     (q) => q.includes('FROM coordinador c') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
   );
   const usuarioQ = queries.find((q) => q.includes('WITH usuarios_base AS'));
-  const usuariosRegistradosQ = queries.find((q) => q.includes('SELECT u.*') && q.includes('FROM usuario u'));
+  const usuariosRegistradosQ = queries.find(
+    (q) => q.includes('SELECT u.*') && q.includes('FROM usuario u')
+  );
   const usuarioRolesQ = queries.find(
     (q) => q.includes('FROM usuario_rol ur') && q.includes('JOIN rol r ON r.id = ur.rol_id')
   );
