@@ -245,3 +245,174 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
 - El esquema canónico ya no usa las tablas `estudiante` y `docente` como entidades principales del dominio.
 - Las sanciones (`multa`) ya están conectadas por claves foráneas reales a `laboratorista`, `usuario` y `ual`.
 - Las relaciones de alcance se modelan de forma autoritativa mediante `coordinador_facultad` y `laboratorista_ual`.
+
+## Modelo De Préstamos
+
+### Proposito
+
+Esquema del módulo de Préstamos (liberado en Préstamos 2.0), definido en `sql-scripts/db_structure_prestamos.sql`. Se documenta aparte del núcleo porque es un dominio independiente que solo referencia `usuario`, `ual` y `facultad` del esquema canónico.
+
+### Diagrama (Mermaid)
+
+```mermaid
+erDiagram
+  equipo ||--o{ horario_equipo : disponibilidad
+  equipo ||--o{ solicitud_prestamo : presta
+  equipo ||--o{ cola_solicitud : encola
+  equipo ||--o{ incidencia : reporta
+  usuario ||--o{ solicitud_prestamo : solicita
+  solicitud_prestamo ||--|| entrega_equipo : entrega
+  solicitud_prestamo ||--o{ incidencia : genera
+  entrega_equipo ||--o{ incidencia : genera
+  ual ||--o{ practica : define
+  ual ||--o{ esquema_practica_ual : configura
+  ual ||--o{ sala : contiene
+  practica ||--o{ asignatura_practica : asocia
+  asignatura ||--o{ asignatura_practica : asocia
+  practica ||--o{ reserva_practica : agenda
+  usuario ||--o{ reserva_practica : reserva
+  sala ||--o{ reserva_practica : ocupa
+  sala ||--o{ horario_sala : disponibilidad
+  reserva_practica ||--o{ incidencia : genera
+  facultad ||--o{ parametro_practica_facultad : configura
+  facultad ||--o{ facultad_modulo_acceso : habilita
+
+  equipo {
+    SERIAL id PK
+    VARCHAR codigo
+    VARCHAR nombre
+    VARCHAR categoria
+    VARCHAR laboratorio
+    VARCHAR facultad
+    VARCHAR estado
+    BOOLEAN activo
+  }
+
+  solicitud_prestamo {
+    SERIAL id PK
+    BIGINT usuario_id FK
+    INT equipo_id FK
+    TIMESTAMPTZ fecha_inicio
+    TIMESTAMPTZ fecha_fin
+    VARCHAR estado
+    VARCHAR tipo_aprobacion
+    BOOLEAN activo
+  }
+
+  cola_solicitud {
+    SERIAL id PK
+    VARCHAR tipo
+    VARCHAR estado
+    BIGINT usuario_id FK
+    INT equipo_id FK
+    INT referencia_id
+  }
+
+  entrega_equipo {
+    SERIAL id PK
+    INT solicitud_prestamo_id FK
+    TIMESTAMPTZ fecha_entrega
+    TIMESTAMPTZ fecha_devolucion_real
+    BOOLEAN activo
+  }
+
+  incidencia {
+    SERIAL id PK
+    INT equipo_id FK
+    INT solicitud_prestamo_id FK
+    INT entrega_equipo_id FK
+    INT reserva_practica_id FK
+    VARCHAR estado
+    VARCHAR paz_y_salvo_bloqueo_decision
+    BOOLEAN paz_y_salvo_bloquea
+  }
+
+  practica {
+    SERIAL id PK
+    INT ual_id FK
+    VARCHAR nombre
+    VARCHAR tipo_practica
+    VARCHAR estado
+  }
+
+  asignatura {
+    SERIAL id PK
+    VARCHAR codigo
+    VARCHAR nombre
+  }
+
+  asignatura_practica {
+    INT asignatura_id FK
+    INT practica_id FK
+  }
+
+  reserva_practica {
+    SERIAL id PK
+    BIGINT usuario_id FK
+    INT sala_id FK
+    INT practica_id FK
+    VARCHAR tipo_practica
+    VARCHAR estado
+    TIMESTAMPTZ fecha_inicio
+    TIMESTAMPTZ fecha_fin
+  }
+
+  sala {
+    SERIAL id PK
+    INT ual_id FK
+    VARCHAR nombre
+    VARCHAR tipo_espacio
+    INT capacidad
+  }
+
+  horario_sala {
+    SERIAL id PK
+    INT sala_id FK
+    INT dia_semana
+    DATE fecha
+  }
+
+  parametro_practica_facultad {
+    SERIAL id PK
+    INT facultad_id FK
+    INT min_cancel_hours
+    INT min_reserva_hours
+  }
+
+  facultad_modulo_acceso {
+    SERIAL id PK
+    INT facultad_id FK
+    VARCHAR modulo
+    VARCHAR rol
+    BOOLEAN permitido
+  }
+```
+
+### Referencias De Esquema (Préstamos)
+
+| Tabla | Rol en el dominio |
+| --- | --- |
+| `inventario` | Catálogo general de bienes, previo a habilitarse como `equipo` prestable. |
+| `equipo` | Equipo prestable; ancla de `horario_equipo`, `solicitud_prestamo`, `cola_solicitud` e `incidencia`. |
+| `horario_equipo` | Ventanas de disponibilidad de un equipo. |
+| `solicitud_prestamo` | Solicitud de préstamo de un `usuario` sobre un `equipo`, con estado y aprobación. |
+| `cola_solicitud` | Cola de solicitudes de préstamo o práctica pendientes de atención. |
+| `entrega_equipo` | Acta de entrega/devolución 1:1 con `solicitud_prestamo`. |
+| `incidencia` | Novedad sobre un equipo, solicitud, entrega o reserva de práctica; puede derivar en sanción o bloqueo de paz y salvo. |
+| `parametrizacion` | Límites operativos globales (horas mensuales de práctica libre y préstamos). |
+| `parametro_practica_facultad` | Parámetros de práctica por facultad (horas mínimas de reserva/cancelación, cupos). |
+| `asignatura` | Catálogo de asignaturas académicas. |
+| `esquema_practica_ual` | Esquema JSON de campos adicionales para prácticas por UAL. |
+| `practica` | Definición de una práctica (libre o docente) asociada a una UAL. |
+| `asignatura_practica` | Relación N:M entre `asignatura` y `practica`. |
+| `facultad_modulo_acceso` | Habilita/deshabilita el módulo de préstamos por facultad y rol (`coordinador`, `laboratorista`, `monitor`). |
+| `reserva_practica` | Reserva de una práctica en una `sala`, con estado y firma digital. |
+| `email_notification` | Bitácora de notificaciones transaccionales enviadas (incluye reintentos y estado). |
+| `sala` | Espacio físico reservable, asociado a una UAL. |
+| `horario_sala` | Disponibilidad recurrente o puntual de una `sala`. |
+
+### Notas De Modelado (Préstamos)
+
+- `equipo`, `inventario` y `reserva_practica.laboratorio/facultad` siguen usando texto libre para laboratorio/facultad en lugar de FK directa a `ual`/`facultad`; es deuda pendiente de normalización específica de este módulo.
+- `incidencia` es el punto de integración entre Préstamos y el dominio de paz y salvo: puede convertirse en bloqueo (`paz_y_salvo_bloqueo_decision`) y enlazar a `multa` mediante `paz_y_salvo_multa_id`.
+- El rol `monitor` no tiene tabla propia de asignación en este esquema; su alcance operativo se resuelve en aplicación (ver [security-rbac.md](security-rbac.md)).

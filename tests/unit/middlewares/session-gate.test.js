@@ -69,6 +69,29 @@ test('sessionGateMiddleware returns 401 JSON for expired API session', () => {
   assert.equal(res.jsonBody.code, 'SESSION_EXPIRED');
 });
 
+test('sessionGateMiddleware redirects to login when a protected API path is opened directly in the browser', () => {
+  const loaded = loadMiddleware();
+  const req = {
+    method: 'GET',
+    originalUrl: '/milab/api/estudiantes_registrados',
+    session: {},
+    get: (header) =>
+      header === 'accept'
+        ? 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        : undefined,
+  };
+  const res = createResponse();
+  let nextCalled = false;
+
+  loaded.sessionGateMiddleware(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.redirectedTo, '/milab/auth/login');
+  assert.equal(res.jsonBody, null);
+});
+
 test('sessionGateMiddleware allows public milab API route without session', () => {
   const loaded = loadMiddleware();
   const req = {

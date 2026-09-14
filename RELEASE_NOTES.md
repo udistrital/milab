@@ -1,5 +1,14 @@
 # Release Notes
 
+## 2.6.0 - 2026-09-14
+
+Resumen rápido:
+
+1. La sesión expirada abierta directamente en el navegador sobre rutas `/milab/api/...` ahora redirige a la pantalla de login con la plantilla de MiLab, en vez de mostrar el JSON en blanco. Las llamadas AJAX/fetch conservan la respuesta JSON `SESSION_EXPIRED`.
+2. `/api/check-services` vuelve a ser público para permitir monitoreo externo del estado de los servicios académicos (OATI).
+3. El dashboard de monitoreo separa "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados" (estado de cuenta, código y programa).
+4. Base de datos para el módulo de Capacitación y Certificación (`cursos`, `curso_laboratorio`, `equipo_especializado`) y pipeline de despliegue actualizado para aplicarla solo desde la rama `modulo_capacitacion_certificacion`.
+
 ## Prestamos 2.0.0 - 2026-08-09
 
 Notas completas del release:
