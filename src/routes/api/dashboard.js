@@ -672,6 +672,20 @@ async function fetchUsuariosRegistradosRows() {
   };
 }
 
+async function fetchUsuariosPlaceholderRows() {
+  const result = await pool.query(
+    `SELECT u.*
+     FROM usuario u
+     WHERE u.correo IS NULL
+        OR TRIM(COALESCE(u.correo, '')) = ''
+        OR LOWER(u.correo) LIKE '%no-email%'
+        OR LOWER(u.correo) LIKE '%@placeholder.milab.local'
+     ORDER BY u.fecha_creacion DESC NULLS LAST, u.id DESC`
+  );
+
+  return result.rows || [];
+}
+
 async function fetchUsuarioRolesRows() {
   const result = await pool.query(
     `SELECT ur.usuario_id, r.nombre AS rol_nombre
@@ -1104,6 +1118,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       needsUsuariosRegistrados && dashboardRole === 'admin'
         ? await fetchUsuariosRegistradosRows()
         : { rows: [], columns: [] };
+    const usuariosPlaceholderRows =
+      needsUsuariosRegistrados && dashboardRole === 'admin'
+        ? await fetchUsuariosPlaceholderRows()
+        : [];
     const roleIndex = buildUsuarioRoleIndex(usuarioRolesRows);
 
     const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);
@@ -1234,6 +1252,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       laboratoristas: filteredLaboratoristas,
       coordinadores: filteredCoordinators,
       usuariosRegistrados: usuariosRegistradosRows,
+      usuariosPlaceholder: usuariosPlaceholderRows,
     };
 
     return res.render('home/dashboard', {
@@ -1283,6 +1302,7 @@ router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
   fetchUsuariosRegistradosRows,
+  fetchUsuariosPlaceholderRows,
   fetchUsuarioRolesRows,
   fetchSanctionRows,
   fetchLaboratoristaRows,

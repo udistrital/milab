@@ -1899,6 +1899,38 @@ body.app-shell .dashboard-page--simplified .dashboard-stat-action {
   display: none;
 }
 
+body.app-shell .dashboard-detail-panel {
+  overflow: hidden;
+}
+
+body.app-shell .dashboard-detail-table-wrap {
+  max-width: 100%;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+body.app-shell .dashboard-detail-table-wrap .table {
+  width: 100%;
+}
+
+body.app-shell .dashboard-users-filter {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 240px;
+}
+
+body.app-shell .dashboard-users-filter .form-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .dashboard-users-filter .form-select {
+  min-height: 2.15rem;
+}
+
 body.app-shell .dashboard-page--simplified .tone-students {
   background: linear-gradient(180deg, rgba(36, 115, 235, 0.2), rgba(36, 115, 235, 0.12));
 }
@@ -1965,6 +1997,11 @@ body.app-shell .dashboard-page--simplified .tone-users {
 
   body.app-shell .dashboard-canvas-wrap--simple {
     min-height: 220px;
+  }
+
+  body.app-shell .dashboard-users-filter {
+    min-width: 0;
+    width: 100%;
   }
 }
 body.app-shell input[type='email'],
