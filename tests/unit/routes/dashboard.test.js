@@ -120,6 +120,7 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
 
   await router.__private.fetchCoordinatorRows();
   await router.__private.fetchUsuarioRows();
+  await router.__private.fetchUsuarioRolesRows();
   await router.__private.fetchSanctionRows();
   await router.__private.fetchLaboratoristaRows();
   await router.__private.fetchStudentCertificateRows();
@@ -129,6 +130,9 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
     (q) => q.includes('FROM coordinador c') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
   );
   const usuarioQ = queries.find((q) => q.includes('WITH usuarios_base AS'));
+  const usuarioRolesQ = queries.find(
+    (q) => q.includes('FROM usuario_rol ur') && q.includes('JOIN rol r ON r.id = ur.rol_id')
+  );
   const multaQ = queries.find((q) => q.includes('SELECT m.*') && q.includes('FROM multa m'));
   const labQ = queries.find(
     (q) => q.includes('FROM laboratorista l') && q.includes('ARRAY_REMOVE(ARRAY_AGG')
@@ -142,6 +146,8 @@ test('dashboard fetchers query expected data sources for dashboard totals', asyn
 
   assert.equal(coordinatorQ.includes('LEFT JOIN coordinador_facultad cf'), true);
   assert.equal(usuarioQ.includes('FROM usuario u'), true);
+  assert.equal(typeof usuarioRolesQ === 'string', true);
+  assert.equal(usuarioRolesQ.includes('ur.activo = TRUE'), true);
   assert.equal(multaQ.includes('SELECT m.*'), true);
   assert.equal(labQ.includes('LEFT JOIN laboratorista_ual lu'), true);
   assert.equal(ceQ.includes('SELECT ce.*'), true);
@@ -164,7 +170,7 @@ test('dashboard renders default admin chart set when there is no data', async ()
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard');
     assert.equal(response.body.locals.dashboardRole, 'admin');
-    assert.equal(response.body.locals.selectedChart, 'estudiantes');
+    assert.equal(response.body.locals.selectedChart, 'certificadosEstudiantes');
     assert.equal(response.body.locals.availableCharts.length >= 1, true);
   } finally {
     loaded.restore();

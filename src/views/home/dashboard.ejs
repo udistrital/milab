@@ -142,7 +142,7 @@
   const tablesData = <%- JSON.stringify(tablesData || {}) %>;
 
   const TABLE_COLUMN_DEFS = {
-    estudiantes: [
+    certificadosEstudiantes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
       { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
       { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
@@ -152,7 +152,7 @@
       { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
       { key: 'fecha_vencimiento', label: 'Vence', format: (v) => formatDate(v) },
     ],
-    docentes: [
+    certificadosDocentes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
       { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
       { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
@@ -160,6 +160,26 @@
       { key: 'motivo_exp', label: 'Motivo' },
       { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
       { key: 'origen_descarga', label: 'Origen' },
+    ],
+    estudiantes: [
+      { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
+      { key: 'nombre', label: 'Nombres y apellidos' },
+      { key: '__tipo', label: 'Tipo' },
+      { key: 'documento', label: 'Cédula' },
+      { key: 'codigo', label: 'Código', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
+      { key: 'correo', label: 'Correo' },
+      { key: 'carrera', label: 'Programa', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
+      { key: 'estado', label: 'Estado cuenta', format: (v) => renderEstadoBadge(v) },
+    ],
+    docentes: [
+      { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
+      { key: 'nombre', label: 'Nombres y apellidos' },
+      { key: '__tipo', label: 'Tipo' },
+      { key: 'documento', label: 'Cédula' },
+      { key: 'codigo', label: 'Código', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
+      { key: 'correo', label: 'Correo' },
+      { key: 'carrera', label: 'Programa', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
+      { key: 'estado', label: 'Estado cuenta', format: (v) => renderEstadoBadge(v) },
     ],
     sanciones: [
       { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
