@@ -644,6 +644,19 @@ async function fetchUsuarioRows() {
   return result.rows;
 }
 
+async function fetchUsuariosRegistradosRows() {
+  const result = await pool.query(
+    `SELECT u.*
+     FROM usuario u
+     ORDER BY u.fecha_creacion DESC NULLS LAST, u.id DESC`
+  );
+
+  return {
+    rows: result.rows || [],
+    columns: Array.isArray(result.fields) ? result.fields.map((field) => field.name) : [],
+  };
+}
+
 async function fetchUsuarioRolesRows() {
   const result = await pool.query(
     `SELECT ur.usuario_id, r.nombre AS rol_nombre
@@ -860,10 +873,9 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ? requestedChart
       : availableChartIds[0];
 
-    const needsUsuarios =
-      availableChartIds.includes('estudiantes') ||
-      availableChartIds.includes('docentes') ||
-      availableChartIds.includes('usuariosRegistrados');
+    const needsUsuariosByRole =
+      availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
+    const needsUsuariosRegistrados = availableChartIds.includes('usuariosRegistrados');
 
     const studentCertRows = availableChartIds.includes('certificadosEstudiantes')
       ? await fetchStudentCertificateRows()
@@ -876,8 +888,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const coordinatorRows = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
       : [];
-    const usuarioRows = needsUsuarios ? await fetchUsuarioRows() : [];
-    const usuarioRolesRows = needsUsuarios ? await fetchUsuarioRolesRows() : [];
+    const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
+    const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
+    const usuariosRegistradosResult =
+      needsUsuariosRegistrados && dashboardRole === 'admin'
+        ? await fetchUsuariosRegistradosRows()
+        : { rows: [], columns: [] };
     const roleIndex = buildUsuarioRoleIndex(usuarioRolesRows);
 
     const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);
@@ -894,6 +910,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scope
     );
     const filteredUsuarios = filterUsuarioRowsByScope(usuarioRows, dashboardRole, scope);
+    const usuariosRegistradosRows =
+      dashboardRole === 'admin' ? usuariosRegistradosResult.rows : filteredUsuarios;
+    const usuariosRegistradosColumns =
+      dashboardRole === 'admin' ? usuariosRegistradosResult.columns : [];
     const filteredEstudiantes = filteredUsuarios
       .filter((row) => isUsuarioEstudiante(row, roleIndex))
       .map((row) => ({ ...row, __tipo: 'estudiante' }));
@@ -945,7 +965,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         filtro
       ),
       usuariosRegistrados: buildSeriesFromDates(
-        filteredUsuarios.map((row) => row.fecha_creacion),
+        usuariosRegistradosRows.map((row) => row.fecha_creacion),
         filtro
       ),
     };
@@ -959,6 +979,13 @@ router.get('/', requireDashboardAccess, async (req, res) => {
         series = chartsData.multasActivas;
       } else if (chartId === 'sancionesSaldadas') {
         series = chartsData.multasSaldadas;
+      }
+
+      if (chartId === 'usuariosRegistrados') {
+        return {
+          ...CHART_DEFINITIONS[chartId],
+          total: usuariosRegistradosRows.length,
+        };
       }
 
       return {
@@ -996,7 +1023,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       ),
       laboratoristas: filteredLaboratoristas,
       coordinadores: filteredCoordinators,
-      usuariosRegistrados: filteredUsuarios,
+      usuariosRegistrados: usuariosRegistradosRows,
     };
 
     return res.render('home/dashboard', {
@@ -1009,6 +1036,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scopeCounters,
       chartsData,
       tablesData,
+      usuarioTableColumns: usuariosRegistradosColumns,
     });
   } catch (error) {
     console.error('Error en dashboard:', error);
@@ -1044,6 +1072,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
+  fetchUsuariosRegistradosRows,
   fetchUsuarioRolesRows,
   fetchSanctionRows,
   fetchLaboratoristaRows,
