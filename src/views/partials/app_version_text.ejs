@@ -1,1 +1,1 @@
-MILab v2.5.0<% if (locals.isNonProductionEnvironment) { %> · <%= (locals.environmentName || 'development').toString().trim().toUpperCase() %><% } %> · © 2026
+MILab v<%= (locals.appVersion || '2.6.0').toString().trim() %><% if (locals.isNonProductionEnvironment) { %> · <%= (locals.environmentName || 'development').toString().trim().toUpperCase() %><% } %> · © 2026
