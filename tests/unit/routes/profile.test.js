@@ -12,8 +12,31 @@ const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identit
 function buildApp(route, sessionData) {
   const app = express();
 
+  app.use(express.urlencoded({ extended: true }));
+
   app.use((req, res, next) => {
     req.session = sessionData;
+    if (typeof req.session.regenerate !== 'function') {
+      req.session.regenerate = (callback) => {
+        const preserved = {};
+        Object.keys(req.session).forEach((key) => {
+          if (key === 'regenerate' || key === 'destroy') return;
+          preserved[key] = req.session[key];
+          delete req.session[key];
+        });
+        Object.assign(req.session, preserved);
+        callback(null);
+      };
+    }
+    if (typeof req.session.destroy !== 'function') {
+      req.session.destroy = (callback) => {
+        Object.keys(req.session).forEach((key) => {
+          if (key === 'regenerate' || key === 'destroy') return;
+          delete req.session[key];
+        });
+        callback(null);
+      };
+    }
     res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
     next();
   });
@@ -22,27 +45,39 @@ function buildApp(route, sessionData) {
   return app;
 }
 
-function loadRoute() {
+function loadRoute({
+  poolQueryImpl,
+  requestOatiImpl,
+  fetchUserByEmailImpl,
+  buildSessionUserImpl,
+} = {}) {
   const originals = new Map();
   const stubs = [
     [
       dbPath,
       {
-        query: async () => ({ rows: [] }),
+        query: async (sql, params = []) => {
+          if (typeof poolQueryImpl === 'function') {
+            return poolQueryImpl(sql, params);
+          }
+          return { rows: [] };
+        },
       },
     ],
     [
       oatiClientPath,
       {
         getAcademicServicePath: (v) => v,
-        requestOati: async () => ({ datosEstudianteCollection: { datosBasicosEstudiante: [] } }),
+        requestOati:
+          requestOatiImpl ||
+          (async () => ({ datosEstudianteCollection: { datosBasicosEstudiante: [] } })),
       },
     ],
     [
       userIdentityPath,
       {
-        buildSessionUser: (u) => u,
-        fetchUserByEmail: async () => null,
+        buildSessionUser: buildSessionUserImpl || ((u) => u),
+        fetchUserByEmail: fetchUserByEmailImpl || (async () => null),
       },
     ],
   ];
@@ -125,6 +160,111 @@ test('profile post rejects non institutional email', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/profile');
     assert.match(response.body.locals.error, /Solo se permiten correos institucionales/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('profile identify promotes placeholder account and enrolls estudiante', async () => {
+  const executed = [];
+
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql) => {
+      executed.push(sql);
+
+      if (
+        sql.includes('FROM usuario') &&
+        sql.includes('WHERE documento = $1') &&
+        sql.includes('LIMIT 1')
+      ) {
+        return {
+          rows: [
+            {
+              id: 25,
+              documento: '1000586756',
+              correo: 'no-email+1000586756@placeholder.milab.local',
+              nombre: 'Placeholder Cuenta',
+              codigo: null,
+              estado: null,
+              carrera: null,
+            },
+          ],
+        };
+      }
+
+      if (
+        sql.includes(
+          'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1'
+        )
+      ) {
+        return { rows: [{ id: 25 }] };
+      }
+
+      return { rows: [] };
+    },
+    requestOatiImpl: async (servicePath) => {
+      if (String(servicePath).includes('datos_basicos_activos_cedula/1000586756')) {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                nombre: 'GUTIERREZ ALVAREZ MICHAEL STIVEN',
+                codigo: '20251377015',
+                estado: 'A',
+                carrera: '31',
+              },
+            ],
+          },
+        };
+      }
+
+      if (String(servicePath).includes('estados_codigo/A')) {
+        return { estado: { nombre: 'ACTIVO' } };
+      }
+
+      if (String(servicePath).includes('carrera/31')) {
+        return { carrerasCollection: { carrera: [{ nombre: 'INGENIERIA DE PRODUCCION' }] } };
+      }
+
+      return {};
+    },
+    fetchUserByEmailImpl: async (correo) => ({
+      id: 25,
+      correo,
+      documento: '1000586756',
+      nombre: 'GUTIERREZ ALVAREZ MICHAEL STIVEN',
+      roles: ['estudiante'],
+      tipo: 'estudiante',
+    }),
+    buildSessionUserImpl: (u) => u,
+  });
+
+  try {
+    const session = {
+      microsoftProfile: {
+        correo: 'michael.gutierrez@udistrital.edu.co',
+        nombre: 'GUTIERREZ ALVAREZ MICHAEL STIVEN',
+      },
+    };
+
+    const app = buildApp(loaded.route, session);
+    const response = await request(app)
+      .post('/identify')
+      .type('form')
+      .send({ documento: '1000586756' });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/inicio');
+    assert.equal(session.user?.correo, 'michael.gutierrez@udistrital.edu.co');
+    assert.equal(Array.isArray(session.user?.roles), true);
+    assert.equal(
+      executed.some((sql) => sql.includes('INSERT INTO usuario_rol')),
+      true
+    );
+    assert.equal(
+      executed.some((sql) => sql.includes('INSERT INTO perfil_estudiante')),
+      true
+    );
   } finally {
     loaded.restore();
   }
