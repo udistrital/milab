@@ -1,9 +1,17 @@
 const express = require('express');
 
 const pool = require('../../libs/db');
+const {
+  isInstitutionalEmail,
+  isUniqueViolation,
+  normalizeInstitutionalEmail,
+  normalizeLogDocument,
+} = require('../../libs/account-email');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
-const { requireRoles } = require('../middlewares/auth');
+const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
+const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -68,6 +76,10 @@ const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratori
   message: '¡Acceso denegado!',
   message2: 'No tienes permisos para ver el dashboard',
   limit: 'noSession',
+});
+
+const requireDashboardAdminJson = requireJsonRoles(['admin'], {
+  message: 'No tienes permisos para realizar esta acción.',
 });
 
 const CHART_DEFINITIONS = {
@@ -660,6 +672,20 @@ async function fetchUsuariosRegistradosRows() {
   };
 }
 
+async function fetchUsuariosPlaceholderRows() {
+  const result = await pool.query(
+    `SELECT u.*
+     FROM usuario u
+     WHERE u.correo IS NULL
+        OR TRIM(COALESCE(u.correo, '')) = ''
+        OR LOWER(u.correo) LIKE '%no-email%'
+        OR LOWER(u.correo) LIKE '%@placeholder.milab.local'
+     ORDER BY u.fecha_creacion DESC NULLS LAST, u.id DESC`
+  );
+
+  return result.rows || [];
+}
+
 async function fetchUsuarioRolesRows() {
   const result = await pool.query(
     `SELECT ur.usuario_id, r.nombre AS rol_nombre
@@ -802,6 +828,535 @@ function filterUsuarioRowsByScope(rows, role, scope) {
   return [];
 }
 
+async function writeDashboardAuditLog(actor, accion, persona) {
+  const actorDocument = normalizeLogDocument(actor?.documento || actor?.documento_real || '');
+  await pool.query('INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)', [
+    actor?.tipo || 'admin',
+    actorDocument,
+    accion,
+    persona || null,
+  ]);
+}
+
+async function regenerateSession(req) {
+  if (!req?.session || typeof req.session.regenerate !== 'function') {
+    return;
+  }
+
+  const previousCsrfToken = req.session.csrfToken || '';
+
+  await new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      if (previousCsrfToken) {
+        req.session.csrfToken = previousCsrfToken;
+      }
+
+      resolve();
+    });
+  });
+}
+
+async function saveSession(req) {
+  if (!req?.session || typeof req.session.save !== 'function') {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    req.session.save((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function normalizeEmail(value) {
+  return (value || '').toString().trim().toLowerCase();
+}
+
+function resolveOatiEmail(payload) {
+  return normalizeEmail(
+    payload?.correo ||
+      payload?.email ||
+      payload?.correo_institucional ||
+      payload?.email_institucional ||
+      payload?.correoInstitucional ||
+      payload?.emailInstitucional ||
+      ''
+  );
+}
+
+async function lookupEnrollmentStudentData(documento) {
+  try {
+    const studentData = await requestOati(
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+    );
+    const rawCollection = studentData?.datosEstudianteCollection?.datosBasicosEstudiante;
+    const collection = Array.isArray(rawCollection)
+      ? rawCollection
+      : rawCollection
+        ? [rawCollection]
+        : [];
+
+    if (!collection.length) return null;
+
+    const item = collection[collection.length - 1] || {};
+    const estadoCodigo = String(item.estado || '').trim();
+    const carreraCodigo = String(item.carrera || '').trim();
+
+    let estadoNombre = estadoCodigo;
+    let carreraNombre = '';
+
+    if (estadoCodigo) {
+      try {
+        const estadoData = await requestOati(
+          getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
+        );
+        estadoNombre = estadoData?.estado?.nombre || estadoCodigo;
+      } catch {
+        estadoNombre = estadoCodigo;
+      }
+    }
+
+    if (carreraCodigo) {
+      try {
+        const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
+        carreraNombre =
+          carreraData?.carrerasCollection?.carrera?.[0]?.nombre ||
+          carreraData?.carrerasCollection?.carrera?.nombre ||
+          '';
+      } catch {
+        carreraNombre = '';
+      }
+    }
+
+    return {
+      nombre: String(item.nombre || '').trim(),
+      correo: resolveOatiEmail(item),
+      codigo: item.codigo ? String(item.codigo).trim() : null,
+      estado: String(estadoNombre || '').trim() || 'ACTIVO',
+      carrera: String(carreraNombre || '').trim() || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function lookupEnrollmentTeacherData(documento) {
+  try {
+    const teacherData = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`)
+    );
+    const rawDocente = teacherData?.docentesCollection?.docente;
+    const docente = Array.isArray(rawDocente) ? rawDocente[0] : rawDocente;
+
+    if (!docente) return null;
+
+    return {
+      nombre: String(docente.nombre || '').trim(),
+      correo: resolveOatiEmail(docente),
+      codigo: null,
+      estado: String(docente.estado_docente || '').trim() || 'ACTIVO',
+      carrera: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function findDashboardEmailConflict(client, correo, target) {
+  const normalizedCorreo = normalizeInstitutionalEmail(correo);
+  const targetDocumento = String(target?.documento || '').trim();
+  const targetId = Number(target?.id || 0);
+
+  if (!normalizedCorreo || !targetDocumento || !targetId) {
+    return null;
+  }
+
+  const conflictResult = await client.query(
+    `SELECT source, auth_document, documento_ref, usuario_id
+     FROM (
+       SELECT
+         'usuario' AS source,
+         u.documento AS auth_document,
+         u.documento AS documento_ref,
+         u.id AS usuario_id,
+         LOWER(TRIM(u.correo)) AS correo
+       FROM usuario u
+       WHERE u.correo IS NOT NULL AND TRIM(u.correo) <> ''
+
+       UNION ALL
+
+       SELECT
+         'laboratorista' AS source,
+         COALESCE(NULLIF(TRIM(l.n_usuario), ''), l.documento) AS auth_document,
+         l.documento AS documento_ref,
+         l.usuario_id AS usuario_id,
+         LOWER(TRIM(l.correo)) AS correo
+       FROM laboratorista l
+       WHERE l.correo IS NOT NULL AND TRIM(l.correo) <> ''
+
+       UNION ALL
+
+       SELECT
+         'coordinador' AS source,
+         COALESCE(NULLIF(TRIM(c.nombre_u), ''), c.documento) AS auth_document,
+         c.documento AS documento_ref,
+         c.usuario_id AS usuario_id,
+         LOWER(TRIM(c.correo)) AS correo
+       FROM coordinador c
+       WHERE c.correo IS NOT NULL AND TRIM(c.correo) <> ''
+     ) existing_accounts
+     WHERE correo = $1
+       AND NOT (
+         documento_ref = $2
+         OR auth_document = $2
+         OR COALESCE(usuario_id, 0) = $3
+       )
+     LIMIT 1`,
+    [normalizedCorreo, targetDocumento, targetId]
+  );
+
+  return conflictResult.rows[0] || null;
+}
+
+async function enrollUserFromDashboardEdit(client, target, tipoUsuario, correo) {
+  const normalizedType = String(tipoUsuario || '')
+    .trim()
+    .toLowerCase();
+  const documento = String(target?.documento || '').trim();
+
+  if (!documento) {
+    throw new Error('El usuario no tiene documento para completar el enrolamiento.');
+  }
+
+  const enrollmentData =
+    normalizedType === 'estudiante'
+      ? await lookupEnrollmentStudentData(documento)
+      : await lookupEnrollmentTeacherData(documento);
+
+  const resolvedNombre =
+    String(enrollmentData?.nombre || target?.nombre || '').trim() || 'Sin nombre';
+  const resolvedEstado =
+    String(enrollmentData?.estado || target?.estado || 'ACTIVO').trim() || 'ACTIVO';
+  const resolvedCodigo =
+    normalizedType === 'estudiante'
+      ? String(enrollmentData?.codigo || target?.codigo || '').trim() || null
+      : null;
+  const resolvedCarrera =
+    normalizedType === 'estudiante'
+      ? String(enrollmentData?.carrera || target?.carrera || '').trim() || null
+      : null;
+
+  await client.query(
+    `UPDATE usuario
+     SET nombre = $1,
+         correo = $2,
+         estado = $3,
+         codigo = $4,
+         carrera = $5,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE id = $6`,
+    [resolvedNombre, correo, resolvedEstado, resolvedCodigo, resolvedCarrera, Number(target.id)]
+  );
+
+  await client.query(
+    `INSERT INTO usuario_rol (usuario_id, rol_id)
+     SELECT $1, id
+     FROM rol
+     WHERE nombre = $2
+     ON CONFLICT (usuario_id, rol_id) DO UPDATE
+     SET activo = TRUE,
+         fecha_modificacion = CURRENT_TIMESTAMP`,
+    [Number(target.id), normalizedType]
+  );
+
+  if (normalizedType === 'estudiante') {
+    await client.query(
+      `INSERT INTO perfil_estudiante (usuario_id, documento, codigo, programa, estado)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (usuario_id) DO UPDATE
+       SET documento = EXCLUDED.documento,
+           codigo = EXCLUDED.codigo,
+           programa = EXCLUDED.programa,
+           estado = EXCLUDED.estado,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [Number(target.id), documento, resolvedCodigo, resolvedCarrera, resolvedEstado]
+    );
+  }
+
+  if (normalizedType === 'docente') {
+    await client.query(
+      `INSERT INTO perfil_docente (usuario_id, documento, estado)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id) DO UPDATE
+       SET documento = EXCLUDED.documento,
+           estado = EXCLUDED.estado,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [Number(target.id), documento, resolvedEstado]
+    );
+  }
+
+  await client.query(
+    `UPDATE coordinador
+     SET correo = $1,
+         usuario_id = COALESCE(usuario_id, $2),
+         nombre_u = CASE
+           WHEN nombre_u IS NULL OR TRIM(nombre_u) = '' THEN $3
+           ELSE nombre_u
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3 OR nombre_u = $3 OR usuario_id = $2`,
+    [correo, Number(target.id), documento]
+  );
+
+  await client.query(
+    `UPDATE laboratorista
+     SET correo = $1,
+         usuario_id = COALESCE(usuario_id, $2),
+         n_usuario = CASE
+           WHEN n_usuario IS NULL OR TRIM(n_usuario) = '' THEN $3
+           ELSE n_usuario
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3 OR n_usuario = $3 OR usuario_id = $2`,
+    [correo, Number(target.id), documento]
+  );
+}
+
+router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = Number(req.params.id);
+  const correo = normalizeInstitutionalEmail(req.body?.correo);
+  const tipoUsuario = String(req.body?.tipoUsuario || '')
+    .trim()
+    .toLowerCase();
+
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un ID de usuario valido.',
+    });
+  }
+
+  if (!isInstitutionalEmail(correo)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Solo se permiten correos institucionales @udistrital.edu.co.',
+    });
+  }
+
+  if (!['estudiante', 'docente'].includes(tipoUsuario)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes confirmar si la cuenta se debe enrolar como estudiante o docente.',
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const userResult = await client.query(
+      'SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario WHERE id = $1 LIMIT 1',
+      [usuarioId]
+    );
+
+    if (!userResult.rows.length) {
+      client.release();
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos la cuenta seleccionada.',
+      });
+    }
+
+    const target = userResult.rows[0];
+    const conflict = await findDashboardEmailConflict(client, correo, target);
+    if (conflict) {
+      client.release();
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    await client.query('BEGIN');
+    await enrollUserFromDashboardEdit(client, target, tipoUsuario, correo);
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session?.user?.tipo || 'admin',
+        normalizeLogDocument(
+          req.session?.user?.documento || req.session?.user?.documento_real || ''
+        ),
+        `Actualizar correo y enrolar como ${tipoUsuario} desde dashboard`,
+        String(target.documento || usuarioId),
+      ]
+    );
+    await client.query('COMMIT');
+    client.release();
+
+    return res.json({
+      ok: true,
+      id: usuarioId,
+      documento: target.documento,
+      correo,
+      tipoUsuario,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error al revertir actualización de correo:', rollbackError);
+      }
+      client.release();
+    }
+
+    console.error('Error actualizando correo de usuario desde dashboard:', error);
+
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({
+        ok: false,
+        message: 'Ese correo ya existe vinculado a otra cuenta.',
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar el correo. Inténtalo nuevamente.',
+    });
+  }
+});
+
+router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = Number(req.body?.usuarioId);
+  const adminUserSnapshot = { ...(req.session?.user || {}) };
+
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un usuario válido para impersonar.',
+    });
+  }
+
+  if (req.session?.impersonationAdminUser) {
+    return res.status(409).json({
+      ok: false,
+      message: 'Ya tienes una sesión de impersonación activa.',
+    });
+  }
+
+  try {
+    const target = await fetchUserById(usuarioId);
+    if (!target) {
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos el usuario seleccionado.',
+      });
+    }
+
+    const targetRoles = normalizeRoles(target.roles || target.tipo);
+    if (targetRoles.includes('admin')) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No se permite impersonar cuentas administrativas.',
+      });
+    }
+
+    const impersonableRoles = targetRoles.filter(
+      (role) =>
+        role === 'estudiante' ||
+        role === 'docente' ||
+        role === 'coordinador' ||
+        role === 'laboratorista' ||
+        role === 'monitor'
+    );
+
+    if (!impersonableRoles.length) {
+      return res.status(409).json({
+        ok: false,
+        message:
+          'La cuenta seleccionada no tiene roles activos para ingresar. Asigna un rol (estudiante/docente) y vuelve a intentar.',
+      });
+    }
+
+    await writeDashboardAuditLog(
+      adminUserSnapshot,
+      'Inicio de impersonación desde dashboard',
+      target.documento || String(usuarioId)
+    );
+
+    await regenerateSession(req);
+
+    req.session.impersonationAdminUser = adminUserSnapshot;
+    req.session.user = {
+      ...buildSessionUser(target),
+      __impersonating: true,
+      __impersonatedBy: adminUserSnapshot?.documento || '',
+    };
+    await saveSession(req);
+
+    return res.json({
+      ok: true,
+      redirect: '/milab/inicio',
+    });
+  } catch (error) {
+    if (req?.session && !req.session.user && adminUserSnapshot?.id) {
+      req.session.user = adminUserSnapshot;
+      try {
+        await saveSession(req);
+      } catch {
+        // Ignored intentionally: preserving original error path.
+      }
+    }
+
+    console.error('Error iniciando impersonación:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible impersonar la cuenta seleccionada.',
+    });
+  }
+});
+
+router.post(
+  '/impersonacion/detener',
+  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante', 'monitor'], {
+    message: '¡Acceso denegado!',
+    message2: 'No tienes permisos para realizar esta acción',
+    limit: 'noSession',
+  }),
+  async (req, res) => {
+    const adminUser = req.session?.impersonationAdminUser;
+    if (!adminUser) {
+      return res.redirect('/milab/inicio');
+    }
+
+    try {
+      const currentUser = req.session?.user;
+      await writeDashboardAuditLog(
+        adminUser,
+        'Fin de impersonación desde dashboard',
+        currentUser?.documento || currentUser?.id || null
+      );
+
+      await regenerateSession(req);
+      req.session.user = adminUser;
+      await saveSession(req);
+    } catch (error) {
+      console.error('Error cerrando impersonación:', error);
+    }
+
+    return res.redirect('/milab/api/dashboard');
+  }
+);
+
 router.get('/', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -897,6 +1452,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       needsUsuariosRegistrados && dashboardRole === 'admin'
         ? await fetchUsuariosRegistradosRows()
         : { rows: [], columns: [] };
+    const usuariosPlaceholderRows =
+      needsUsuariosRegistrados && dashboardRole === 'admin'
+        ? await fetchUsuariosPlaceholderRows()
+        : [];
     const roleIndex = buildUsuarioRoleIndex(usuarioRolesRows);
 
     const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);
@@ -1027,6 +1586,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       laboratoristas: filteredLaboratoristas,
       coordinadores: filteredCoordinators,
       usuariosRegistrados: usuariosRegistradosRows,
+      usuariosPlaceholder: usuariosPlaceholderRows,
     };
 
     return res.render('home/dashboard', {
@@ -1076,6 +1636,7 @@ router.__private = {
   fetchCoordinatorRows,
   fetchUsuarioRows,
   fetchUsuariosRegistradosRows,
+  fetchUsuariosPlaceholderRows,
   fetchUsuarioRolesRows,
   fetchSanctionRows,
   fetchLaboratoristaRows,

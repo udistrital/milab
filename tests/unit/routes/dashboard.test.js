@@ -8,9 +8,12 @@ const routePath = path.resolve(__dirname, '../../../src/routes/api/dashboard.js'
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
+const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 
 function buildApp(route, sessionUser) {
   const app = express();
+  app.use(express.json());
 
   app.use((req, res, next) => {
     req.session = { user: sessionUser };
@@ -22,7 +25,14 @@ function buildApp(route, sessionUser) {
   return app;
 }
 
-function loadDashboardRoute({ clientQueryImpl, poolQueryImpl, scopeImpl } = {}) {
+function loadDashboardRoute({
+  clientQueryImpl,
+  poolQueryImpl,
+  scopeImpl,
+  fetchUserByIdImpl,
+  buildSessionUserImpl,
+  requestOatiImpl,
+} = {}) {
   const originals = new Map();
 
   const client = {
@@ -62,7 +72,41 @@ function loadDashboardRoute({ clientQueryImpl, poolQueryImpl, scopeImpl } = {}) 
           scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
       },
     ],
-    [authPath, { requireRoles: () => (req, res, next) => next() }],
+    [
+      authPath,
+      {
+        requireRoles: () => (req, res, next) => next(),
+        requireJsonRoles: () => (req, res, next) => next(),
+      },
+    ],
+    [
+      userIdentityPath,
+      {
+        fetchUserById: fetchUserByIdImpl || (async () => null),
+        buildSessionUser:
+          buildSessionUserImpl ||
+          ((row) => {
+            if (!row) return null;
+            const roles = Array.isArray(row.roles) ? row.roles : row.roles ? [row.roles] : [];
+            return {
+              id: row.id,
+              correo: row.correo,
+              documento: row.documento,
+              documento_real: row.documento,
+              nombre: row.nombre,
+              roles,
+              tipo: roles[0] || '',
+            };
+          }),
+      },
+    ],
+    [
+      oatiClientPath,
+      {
+        getAcademicServicePath: (pathValue) => pathValue,
+        requestOati: requestOatiImpl || (async () => ({})),
+      },
+    ],
   ];
 
   delete require.cache[routePath];
@@ -197,6 +241,203 @@ test('dashboard blocks coordinador without faculty scope', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_error');
     assert.match(response.body.locals.message2, /no tiene facultades asociadas/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard impersonation start rejects users without active impersonable roles', async () => {
+  const loaded = loadDashboardRoute({
+    fetchUserByIdImpl: async (id) => ({
+      id,
+      correo: 'sinrol@udistrital.edu.co',
+      documento: '555',
+      nombre: 'Sin Rol',
+      roles: [],
+    }),
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+    const response = await request(app)
+      .post('/impersonacion/iniciar')
+      .set('Accept', 'application/json')
+      .send({ usuarioId: 77 });
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.ok, false);
+    assert.match(response.body.message, /no tiene roles activos/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard impersonation start allows estudiante role and returns redirect', async () => {
+  const loaded = loadDashboardRoute({
+    fetchUserByIdImpl: async (id) => ({
+      id,
+      correo: 'estudiante@udistrital.edu.co',
+      documento: '777',
+      nombre: 'Estudiante Test',
+      roles: ['estudiante'],
+    }),
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('INSERT INTO log')) {
+        return { rows: [] };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+    const response = await request(app)
+      .post('/impersonacion/iniciar')
+      .set('Accept', 'application/json')
+      .send({ usuarioId: 88 });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.redirect, '/milab/inicio');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin email edit requires enrollment type selection', async () => {
+  const loaded = loadDashboardRoute();
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+    const response = await request(app)
+      .post('/usuarios/25/correo')
+      .set('Accept', 'application/json')
+      .send({ correo: 'estudiante@udistrital.edu.co' });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.match(response.body.message, /enrolar como estudiante o docente/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin email edit enrolls user as estudiante', async () => {
+  const clientQueries = [];
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      clientQueries.push(sql);
+
+      if (
+        sql.includes('SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario')
+      ) {
+        return {
+          rows: [
+            {
+              id: params[0],
+              documento: '1010',
+              correo: 'no-email+1010@placeholder.milab.local',
+              nombre: 'Cuenta Placeholder',
+              codigo: null,
+              carrera: null,
+              estado: null,
+            },
+          ],
+        };
+      }
+
+      if (sql.includes('SELECT source, auth_document')) {
+        return { rows: [] };
+      }
+
+      return { rows: [] };
+    },
+    requestOatiImpl: async (servicePath) => {
+      if (String(servicePath).includes('datos_basicos_activos_cedula/1010')) {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                nombre: 'Estudiante Prueba',
+                codigo: '20251234',
+                estado: 'A',
+                carrera: '31',
+              },
+            ],
+          },
+        };
+      }
+
+      if (String(servicePath).includes('estados_codigo/A')) {
+        return { estado: { nombre: 'ACTIVO' } };
+      }
+
+      if (String(servicePath).includes('carrera/31')) {
+        return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria de Sistemas' }] } };
+      }
+
+      return {};
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+    const response = await request(app)
+      .post('/usuarios/25/correo')
+      .set('Accept', 'application/json')
+      .send({
+        correo: 'estudiante@udistrital.edu.co',
+        tipoUsuario: 'estudiante',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.tipoUsuario, 'estudiante');
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('INSERT INTO usuario_rol (usuario_id, rol_id)')),
+      true
+    );
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('INSERT INTO perfil_estudiante')),
+      true
+    );
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('UPDATE coordinador')),
+      true
+    );
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('UPDATE laboratorista')),
+      true
+    );
+    assert.equal(
+      clientQueries.some(
+        (sql) =>
+          sql.includes('SELECT source, auth_document, documento_ref, usuario_id') &&
+          sql.includes('COALESCE(usuario_id, 0) = $3')
+      ),
+      true
+    );
   } finally {
     loaded.restore();
   }
