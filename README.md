@@ -202,16 +202,16 @@ Resumen operativo de procesos y responsabilidades por rol:
 
 ## SQL de base
 
-La inicialización de base para recreación completa del entorno de pruebas usa cuatro scripts en secuencia:
+La inicialización de base para recreación completa del entorno de pruebas usa estos scripts en secuencia:
 
 1. [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql)
-2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql) (o `db_seed.sql` si existe en el ambiente)
+2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
 
-La recreación en CI y en reset manual de pruebas aplica los cuatro scripts de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
+La recreación en CI y en reset manual de pruebas aplica los cuatro scripts base de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
 
-Los scripts del módulo de Capacitación y Certificación disponibles en el repositorio son (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
+Adicionalmente, cuando la rama es `modulo_capacitacion_certificacion`, se aplican estos dos scripts opcionales (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
 
 5. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
 6. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
