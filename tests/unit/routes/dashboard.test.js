@@ -422,6 +422,22 @@ test('dashboard admin email edit enrolls user as estudiante', async () => {
       clientQueries.some((sql) => sql.includes('INSERT INTO perfil_estudiante')),
       true
     );
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('UPDATE coordinador')),
+      true
+    );
+    assert.equal(
+      clientQueries.some((sql) => sql.includes('UPDATE laboratorista')),
+      true
+    );
+    assert.equal(
+      clientQueries.some(
+        (sql) =>
+          sql.includes('SELECT source, auth_document, documento_ref, usuario_id') &&
+          sql.includes('COALESCE(usuario_id, 0) = $3')
+      ),
+      true
+    );
   } finally {
     loaded.restore();
   }

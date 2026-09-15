@@ -2,7 +2,6 @@ const express = require('express');
 
 const pool = require('../../libs/db');
 const {
-  findEmailConflict,
   isInstitutionalEmail,
   isUniqueViolation,
   normalizeInstitutionalEmail,
@@ -933,6 +932,62 @@ async function lookupEnrollmentTeacherData(documento) {
   }
 }
 
+async function findDashboardEmailConflict(client, correo, target) {
+  const normalizedCorreo = normalizeInstitutionalEmail(correo);
+  const targetDocumento = String(target?.documento || '').trim();
+  const targetId = Number(target?.id || 0);
+
+  if (!normalizedCorreo || !targetDocumento || !targetId) {
+    return null;
+  }
+
+  const conflictResult = await client.query(
+    `SELECT source, auth_document, documento_ref, usuario_id
+     FROM (
+       SELECT
+         'usuario' AS source,
+         u.documento AS auth_document,
+         u.documento AS documento_ref,
+         u.id AS usuario_id,
+         LOWER(TRIM(u.correo)) AS correo
+       FROM usuario u
+       WHERE u.correo IS NOT NULL AND TRIM(u.correo) <> ''
+
+       UNION ALL
+
+       SELECT
+         'laboratorista' AS source,
+         COALESCE(NULLIF(TRIM(l.n_usuario), ''), l.documento) AS auth_document,
+         l.documento AS documento_ref,
+         l.usuario_id AS usuario_id,
+         LOWER(TRIM(l.correo)) AS correo
+       FROM laboratorista l
+       WHERE l.correo IS NOT NULL AND TRIM(l.correo) <> ''
+
+       UNION ALL
+
+       SELECT
+         'coordinador' AS source,
+         COALESCE(NULLIF(TRIM(c.nombre_u), ''), c.documento) AS auth_document,
+         c.documento AS documento_ref,
+         c.usuario_id AS usuario_id,
+         LOWER(TRIM(c.correo)) AS correo
+       FROM coordinador c
+       WHERE c.correo IS NOT NULL AND TRIM(c.correo) <> ''
+     ) existing_accounts
+     WHERE correo = $1
+       AND NOT (
+         documento_ref = $2
+         OR auth_document = $2
+         OR COALESCE(usuario_id, 0) = $3
+       )
+     LIMIT 1`,
+    [normalizedCorreo, targetDocumento, targetId]
+  );
+
+  return conflictResult.rows[0] || null;
+}
+
 async function enrollUserFromDashboardEdit(client, target, tipoUsuario, correo) {
   const normalizedType = String(tipoUsuario || '')
     .trim()
@@ -1009,6 +1064,32 @@ async function enrollUserFromDashboardEdit(client, target, tipoUsuario, correo) 
       [Number(target.id), documento, resolvedEstado]
     );
   }
+
+  await client.query(
+    `UPDATE coordinador
+     SET correo = $1,
+         usuario_id = COALESCE(usuario_id, $2),
+         nombre_u = CASE
+           WHEN nombre_u IS NULL OR TRIM(nombre_u) = '' THEN $3
+           ELSE nombre_u
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3 OR nombre_u = $3 OR usuario_id = $2`,
+    [correo, Number(target.id), documento]
+  );
+
+  await client.query(
+    `UPDATE laboratorista
+     SET correo = $1,
+         usuario_id = COALESCE(usuario_id, $2),
+         n_usuario = CASE
+           WHEN n_usuario IS NULL OR TRIM(n_usuario) = '' THEN $3
+           ELSE n_usuario
+         END,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE documento = $3 OR n_usuario = $3 OR usuario_id = $2`,
+    [correo, Number(target.id), documento]
+  );
 }
 
 router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) => {
@@ -1056,7 +1137,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     }
 
     const target = userResult.rows[0];
-    const conflict = await findEmailConflict(client, correo, target.documento);
+    const conflict = await findDashboardEmailConflict(client, correo, target);
     if (conflict) {
       client.release();
       return res.status(409).json({
