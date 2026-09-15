@@ -34,6 +34,10 @@ function getUserRoles(user) {
   return [];
 }
 
+function isAdminOnlyRoleSet(roles) {
+  return Array.isArray(roles) && roles.length === 1 && roles[0] === 'admin';
+}
+
 function requireRoles(roles, overrides = {}) {
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
@@ -41,6 +45,14 @@ function requireRoles(roles, overrides = {}) {
     const user = req.session?.user;
 
     const userRoles = getUserRoles(user);
+
+    if (user?.__impersonating && isAdminOnlyRoleSet(allowedRoles)) {
+      return renderAuthError(res, {
+        message: 'Acceso denegado',
+        message2: 'No se permiten acciones administrativas durante una impersonación activa.',
+        limit: overrides.limit || 'loginOnly',
+      });
+    }
 
     if (!user || !allowedRoles.some((role) => userRoles.includes(role))) {
       return renderAuthError(res, overrides);
@@ -65,6 +77,13 @@ function requireJsonRoles(roles, overrides = {}) {
     }
 
     const userRoles = getUserRoles(user);
+
+    if (user?.__impersonating && isAdminOnlyRoleSet(allowedRoles)) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No se permiten acciones administrativas durante una impersonación activa.',
+      });
+    }
 
     if (!allowedRoles.some((role) => userRoles.includes(role))) {
       return res.status(403).json({

@@ -138,10 +138,10 @@
     <% if (isImpersonatingSession) { %>
       <div class="alert alert-warning rounded-0 border-0 mb-0 py-2" role="status">
         <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <span>
-            Estás navegando como <strong><%= sessionName || 'usuario impersonado' %></strong>.
-            Admin origen: <strong><%= impersonatedByDocument %></strong>.
-          </span>
+            <span>
+              Estás impersonando a <strong><%= sessionName || 'este usuario' %></strong>.
+              Admin origen: <strong><%= impersonatedByDocument %></strong>.
+            </span>
           <form method="POST" action="/milab/api/dashboard/impersonacion/detener" class="m-0">
             <%- include('./csrf_field') %>
             <button type="submit" class="btn btn-sm btn-dark">Volver a mi sesión admin</button>

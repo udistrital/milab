@@ -838,6 +838,46 @@ async function writeDashboardAuditLog(actor, accion, persona) {
   ]);
 }
 
+async function regenerateSession(req) {
+  if (!req?.session || typeof req.session.regenerate !== 'function') {
+    return;
+  }
+
+  const previousCsrfToken = req.session.csrfToken || '';
+
+  await new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      if (previousCsrfToken) {
+        req.session.csrfToken = previousCsrfToken;
+      }
+
+      resolve();
+    });
+  });
+}
+
+async function saveSession(req) {
+  if (!req?.session || typeof req.session.save !== 'function') {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    req.session.save((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 function normalizeEmail(value) {
   return (value || '').toString().trim().toLowerCase();
 }
@@ -1197,6 +1237,8 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
 
 router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res) => {
   const usuarioId = Number(req.body?.usuarioId);
+  const adminUserSnapshot = { ...(req.session?.user || {}) };
+
   if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
     return res.status(400).json({
       ok: false,
@@ -1207,7 +1249,7 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
   if (req.session?.impersonationAdminUser) {
     return res.status(409).json({
       ok: false,
-      message: 'Ya tienes una sesión impersonada activa.',
+      message: 'Ya tienes una sesión de impersonación activa.',
     });
   }
 
@@ -1245,35 +1287,47 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
       });
     }
 
-    req.session.impersonationAdminUser = { ...req.session.user };
+    await writeDashboardAuditLog(
+      adminUserSnapshot,
+      'Inicio de impersonación desde dashboard',
+      target.documento || String(usuarioId)
+    );
+
+    await regenerateSession(req);
+
+    req.session.impersonationAdminUser = adminUserSnapshot;
     req.session.user = {
       ...buildSessionUser(target),
       __impersonating: true,
-      __impersonatedBy: req.session.impersonationAdminUser?.documento || '',
+      __impersonatedBy: adminUserSnapshot?.documento || '',
     };
-
-    await writeDashboardAuditLog(
-      req.session.impersonationAdminUser,
-      'Inicio impersonación desde dashboard',
-      target.documento || String(usuarioId)
-    );
+    await saveSession(req);
 
     return res.json({
       ok: true,
       redirect: '/milab/inicio',
     });
   } catch (error) {
+    if (req?.session && !req.session.user && adminUserSnapshot?.id) {
+      req.session.user = adminUserSnapshot;
+      try {
+        await saveSession(req);
+      } catch {
+        // Ignored intentionally: preserving original error path.
+      }
+    }
+
     console.error('Error iniciando impersonación:', error);
     return res.status(500).json({
       ok: false,
-      message: 'No fue posible iniciar la impersonación.',
+      message: 'No fue posible impersonar la cuenta seleccionada.',
     });
   }
 });
 
 router.post(
   '/impersonacion/detener',
-  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante'], {
+  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante', 'monitor'], {
     message: '¡Acceso denegado!',
     message2: 'No tienes permisos para realizar esta acción',
     limit: 'noSession',
@@ -1286,14 +1340,15 @@ router.post(
 
     try {
       const currentUser = req.session?.user;
-      req.session.user = adminUser;
-      delete req.session.impersonationAdminUser;
-
       await writeDashboardAuditLog(
         adminUser,
-        'Fin impersonación desde dashboard',
+        'Fin de impersonación desde dashboard',
         currentUser?.documento || currentUser?.id || null
       );
+
+      await regenerateSession(req);
+      req.session.user = adminUser;
+      await saveSession(req);
     } catch (error) {
       console.error('Error cerrando impersonación:', error);
     }

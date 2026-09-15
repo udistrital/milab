@@ -456,7 +456,14 @@
     return `
       <div class="d-flex flex-wrap gap-1">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-dashboard-action="editar-correo" data-row-index="${rowIndex}">Editar correo</button>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-dashboard-action="impersonar" data-row-index="${rowIndex}">Entrar como</button>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary"
+            data-dashboard-action="impersonar"
+            data-row-index="${rowIndex}"
+            title="Impersonar usuario"
+            aria-label="Impersonar usuario"
+          ><i class="bi bi-incognito me-1" aria-hidden="true"></i>Impersonar</button>
       </div>
     `;
   }
@@ -738,8 +745,8 @@
     });
 
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) {
-      showDashboardFeedback(payload.message || 'No fue posible iniciar la impersonación.', 'error');
+      if (!response.ok || !payload.ok) {
+        showDashboardFeedback(payload.message || 'No fue posible impersonar la cuenta seleccionada.', 'error');
       return;
     }
 
