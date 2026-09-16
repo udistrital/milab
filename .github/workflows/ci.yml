@@ -78,7 +78,7 @@ jobs:
   despliegue_pruebas:
     name: Despliegue a pruebas
     needs: pruebas_automatizadas
-    if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/preprod' || github.ref == 'refs/heads/vsa' || github.ref == 'refs/heads/modulo_capacitacion_certificacion') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/preprod' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on:
       - self-hosted
     steps:
@@ -120,18 +120,9 @@ jobs:
           set -eu
           base_dir=/opt/milab/sql-scripts
 
-          if [ -f "$base_dir/db_seed.sql" ]; then
-            db_seed_file="$base_dir/db_seed.sql"
-          elif [ -f "$base_dir/db_seed_system.sql" ]; then
-            db_seed_file="$base_dir/db_seed_system.sql"
-          else
-            echo 'No se encontró db_seed.sql ni db_seed_system.sql en sql-scripts.' >&2
-            exit 1
-          fi
-
           for required_file in \
             "$base_dir/db_structure.sql" \
-            "$db_seed_file" \
+            "$base_dir/db_seed_system.sql" \
             "$base_dir/db_structure_prestamos.sql" \
             "$base_dir/db_seed_prestamos.sql"
           do
@@ -155,7 +146,7 @@ jobs:
 
           echo "Secuencia de reset BD validada:"
           echo "1) $base_dir/db_structure.sql"
-          echo "2) $db_seed_file"
+          echo "2) $base_dir/db_seed_system.sql"
           echo "3) $base_dir/db_structure_prestamos.sql"
           echo "4) $base_dir/db_seed_prestamos.sql"
           if [ "${GITHUB_REF_NAME}" = 'modulo_capacitacion_certificacion' ]; then
@@ -273,11 +264,7 @@ jobs:
           sudo mkdir -p "$sql_dir"
 
           db_structure_script="$sql_run_dir/db_structure.sql"
-          if [ -f "$sql_run_dir/db_seed.sql" ]; then
-            db_seed_script="$sql_run_dir/db_seed.sql"
-          else
             db_seed_script="$sql_run_dir/db_seed_system.sql"
-          fi
           db_structure_prestamos_script="$sql_run_dir/db_structure_prestamos.sql"
           db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
           db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
