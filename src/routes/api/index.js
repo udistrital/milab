@@ -1,6 +1,7 @@
 const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { healthCheck: edxHealthCheck, BASE_URL: edxBaseUrl, USE_MOCK: edxUseMock } = require('../../libs/edx-cert-client');
 
 const router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });
@@ -47,6 +48,7 @@ router.use('/generate_cert_docente_lab', require('./generate_cert_docente_lab'))
 router.use('/generate_cert_estudiante_lab', require('./generate_cert_estudiante_lab'));
 router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
+router.use('/certificacion-edx', require('./certificacion-edx'));
 
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [
@@ -58,11 +60,25 @@ async function checkServiceStatus(log = serviceStatusLogger) {
       name: 'consultar_estado_docente',
       path: getAcademicServicePath('consultar_estado_docente/1023968369'),
     },
+    {
+      name: `edx_certificacion_${edxUseMock ? 'MOCK' : 'REAL'}`,
+      _edxCheck: true,
+      path: `${edxBaseUrl}/health`,
+    },
   ];
 
   try {
     const promises = services.map(async (service) => {
       try {
+        if (service._edxCheck) {
+          const ok = await edxHealthCheck();
+          return {
+            service: service.name,
+            status: ok ? 200 : 'UNREACHABLE',
+            available: ok,
+            endpoint: service.path,
+          };
+        }
         await requestOati(service.path);
         return { service: service.name, status: 200, available: true };
       } catch (error) {

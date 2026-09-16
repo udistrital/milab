@@ -36,6 +36,9 @@ const config = {
   oatiPublicBaseUrl:
     process.env.OATI_PUBLIC_BASE_URL || 'https://autenticacion.portaloas.udistrital.edu.co',
   oatiUsePublic: envName === 'dev',
+  edxCertApiUrl: process.env.EDX_CERT_API_URL || 'http://localhost:4000',
+  edxCertTimeoutMs: Number(process.env.EDX_CERT_TIMEOUT_MS || 5000),
+  edxCertUseMock: process.env.EDX_CERT_USE_MOCK !== 'false',
 };
 
 module.exports = { config };

@@ -1,0 +1,16 @@
+services:
+  edx-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: edx-mock
+    env_file:
+      - .env
+    ports:
+      - '4000:4000'
+    healthcheck:
+      test: ['CMD', 'node', 'src/healthcheck.js']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
