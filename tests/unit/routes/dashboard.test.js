@@ -442,3 +442,82 @@ test('dashboard admin email edit enrolls user as estudiante', async () => {
     loaded.restore();
   }
 });
+
+test('dashboard admin active toggle rejects invalid boolean payload', async () => {
+  const loaded = loadDashboardRoute();
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+
+    const response = await request(app)
+      .post('/usuarios/25/activo')
+      .set('Accept', 'application/json')
+      .send({ activo: 'talvez' });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.match(response.body.message, /estado activo valido/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin active toggle updates usuario.activo and returns new status', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('SELECT id, documento, nombre, activo FROM usuario WHERE id = $1')) {
+        return {
+          rows: [
+            {
+              id: params[0],
+              documento: '1010',
+              nombre: 'Usuario Demo',
+              activo: true,
+            },
+          ],
+        };
+      }
+
+      if (sql.includes('UPDATE usuario') && sql.includes('RETURNING id, documento, nombre, activo')) {
+        return {
+          rows: [
+            {
+              id: params[1],
+              documento: '1010',
+              nombre: 'Usuario Demo',
+              activo: params[0],
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+
+    const response = await request(app)
+      .post('/usuarios/25/activo')
+      .set('Accept', 'application/json')
+      .send({ activo: false });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.id, 25);
+    assert.equal(response.body.activo, false);
+  } finally {
+    loaded.restore();
+  }
+});

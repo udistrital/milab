@@ -4,14 +4,14 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-**Versión en curso:** `2.6.0`
+**Versión en curso:** `2.7.0`
 
 ## Release Notes
 
 - Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
 
-## Cambios recientes (2.6.0)
+## Cambios recientes (2.7.0)
 
 - **Sesión expirada más presentable:** al abrir directamente en el navegador una ruta protegida bajo `/milab/api/...` con la sesión vencida, la aplicación ahora redirige a la pantalla de inicio de sesión con la plantilla de MiLab en vez de mostrar el JSON crudo en blanco. Las llamadas AJAX/fetch internas (que piden `Accept: application/json`) siguen recibiendo la respuesta JSON `SESSION_EXPIRED` sin cambios ([src/routes/middlewares/session-gate.js](src/routes/middlewares/session-gate.js)).
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
@@ -178,7 +178,7 @@ Notas operativas:
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.6.0`.
+- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.7.0`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.

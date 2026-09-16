@@ -53,6 +53,7 @@ async function fetchUserByEmail(correo) {
       LEFT JOIN rol r
         ON r.id = ur.rol_id
       WHERE LOWER(u.correo) = LOWER($1)
+        AND COALESCE(u.activo, TRUE) = TRUE
       GROUP BY u.id
       LIMIT 1
     `,

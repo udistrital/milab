@@ -882,6 +882,26 @@ function normalizeEmail(value) {
   return (value || '').toString().trim().toLowerCase();
 }
 
+function parseBooleanFlag(value) {
+  if (value === true || value === false) {
+    return value;
+  }
+
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+
+  if (['1', 'true', 'yes', 'on', 'si', 'sí', 'activo', 'activa'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off', 'inactivo', 'inactiva'].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
 function resolveOatiEmail(payload) {
   return normalizeEmail(
     payload?.correo ||
@@ -1231,6 +1251,92 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     return res.status(500).json({
       ok: false,
       message: 'No fue posible actualizar el correo. Inténtalo nuevamente.',
+    });
+  }
+});
+
+router.post('/usuarios/:id/activo', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = Number(req.params.id);
+  const activo = parseBooleanFlag(req.body?.activo);
+
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un ID de usuario valido.',
+    });
+  }
+
+  if (typeof activo !== 'boolean') {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes indicar un estado activo valido (true o false).',
+    });
+  }
+
+  const actorUserId = Number(req.session?.user?.id || 0);
+  if (actorUserId === usuarioId && activo === false) {
+    return res.status(409).json({
+      ok: false,
+      message: 'No puedes inactivar tu propia cuenta mientras administras el dashboard.',
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    const targetRes = await client.query(
+      'SELECT id, documento, nombre, activo FROM usuario WHERE id = $1 LIMIT 1',
+      [usuarioId]
+    );
+
+    if (!targetRes.rows.length) {
+      client.release();
+      return res.status(404).json({
+        ok: false,
+        message: 'No encontramos la cuenta seleccionada.',
+      });
+    }
+
+    const target = targetRes.rows[0];
+    const updateRes = await client.query(
+      `UPDATE usuario
+       SET activo = $1,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, documento, nombre, activo`,
+      [activo, usuarioId]
+    );
+
+    const updated = updateRes.rows[0] || target;
+
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session?.user?.tipo || 'admin',
+        normalizeLogDocument(
+          req.session?.user?.documento || req.session?.user?.documento_real || ''
+        ),
+        activo ? 'Activar usuario desde dashboard' : 'Inactivar usuario desde dashboard',
+        String(updated.documento || updated.nombre || usuarioId),
+      ]
+    );
+
+    client.release();
+    return res.json({
+      ok: true,
+      id: Number(updated.id || usuarioId),
+      activo: Boolean(updated.activo),
+    });
+  } catch (error) {
+    if (client) {
+      client.release();
+    }
+
+    console.error('Error actualizando estado activo de usuario desde dashboard:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible actualizar el estado activo del usuario. Inténtalo nuevamente.',
     });
   }
 });
