@@ -2,11 +2,11 @@
 <main class="container app-page-shell">
     <section class="card message-card col-xl-6 col-lg-7 col-md-9 mx-auto p-4" role="alert">
         <div class="text-center">
-            <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill"></i></h1>
+            <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span class="visually-hidden">Error</span></h1>
             <h3><%- message -%></h3>
             <h4 class="app-page-subtitle"><%- message2 -%></h4>
         </div>
-        <% if (adminErrorDetail) { %>
+        <% if (typeof adminErrorDetail !== 'undefined' && adminErrorDetail) { %>
         <section class="app-error-detail mt-3" aria-label="Detalle técnico de error para administrador">
             <h5 class="app-error-detail-title">Detalle técnico (solo administrador)</h5>
             <pre class="app-error-detail-body"><%= adminErrorDetail %></pre>

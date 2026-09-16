@@ -44,6 +44,53 @@ function isValidUalShortCode(value) {
   return /^[A-Z0-9_-]+$/.test(value);
 }
 
+const OPTIONAL_UAL_COLUMNS = [
+  'codigo_abreviacion',
+  'descripcion',
+  'sal_id_espacio',
+  'sal_ocupantes',
+  'activo',
+];
+
+const OPTIONAL_UAL_FALLBACKS = {
+  codigo_abreviacion: 'NULL::text AS codigo_abreviacion',
+  descripcion: 'NULL::text AS descripcion',
+  sal_id_espacio: 'NULL::text AS sal_id_espacio',
+  sal_ocupantes: 'NULL::text AS sal_ocupantes',
+  activo: 'TRUE AS activo',
+};
+
+async function resolveExistingUalColumns() {
+  const result = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = ANY (current_schemas(true))
+       AND table_name = 'ual'
+       AND column_name = ANY($1::text[])`,
+    [OPTIONAL_UAL_COLUMNS]
+  );
+
+  return new Set(result.rows.map((row) => row.column_name));
+}
+
+async function fetchUalsByFacultyId(facultadId) {
+  const existingColumns = await resolveExistingUalColumns();
+  const missingColumns = OPTIONAL_UAL_COLUMNS.filter((column) => !existingColumns.has(column));
+
+  if (missingColumns.length > 0) {
+    console.warn(
+      `Columnas opcionales ausentes en ual: ${missingColumns.join(', ')}. Aplicando fallback.`
+    );
+  }
+
+  const selectOptionalColumns = OPTIONAL_UAL_COLUMNS.map((column) =>
+    existingColumns.has(column) ? column : OPTIONAL_UAL_FALLBACKS[column]
+  ).join(', ');
+
+  const query = `SELECT ual_id, nombre, ${selectOptionalColumns} FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
+  return pool.query(query, [facultadId]);
+}
+
 router.use(requireAdminFacultyAccess);
 
 // Endpoint JSON: UALs de una facultad (usado por la SPA sin recarga)
@@ -60,10 +107,7 @@ router.get('/ual/json', async (req, res) => {
     if (facRes.rows.length === 0) return res.status(404).json({ error: 'Facultad no encontrada' });
     const facultad = facRes.rows[0];
 
-    const ualRes = await pool.query(
-      'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, activo FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
-      [facultadId]
-    );
+    const ualRes = await fetchUalsByFacultyId(facultadId);
     return res.json({ facultad, uals: ualRes.rows });
   } catch (error) {
     console.error('Error en /ual/json:', error);
@@ -87,10 +131,7 @@ router.get('/', async (req, res) => {
     if (facultadId) {
       const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
       selectedFacultad = facSel || null;
-      const ualRes = await pool.query(
-        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, activo FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC',
-        [facultadId]
-      );
+      const ualRes = await fetchUalsByFacultyId(facultadId);
       uals = ualRes.rows;
     }
 
