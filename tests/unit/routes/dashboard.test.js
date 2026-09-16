@@ -483,7 +483,10 @@ test('dashboard admin active toggle updates usuario.activo and returns new statu
         };
       }
 
-      if (sql.includes('UPDATE usuario') && sql.includes('RETURNING id, documento, nombre, activo')) {
+      if (
+        sql.includes('UPDATE usuario') &&
+        sql.includes('RETURNING id, documento, nombre, activo')
+      ) {
         return {
           rows: [
             {
