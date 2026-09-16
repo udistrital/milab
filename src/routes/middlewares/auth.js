@@ -5,6 +5,7 @@ function renderAuthError(res, overrides = {}) {
     message: '¡Algo ha salido mal!',
     message2: 'Inténtalo nuevamente',
     limit: 'noSession',
+    adminErrorDetail: null,
     ...overrides,
   };
 

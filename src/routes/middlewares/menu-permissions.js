@@ -30,6 +30,26 @@ function isPublicApiPath(requestPath, method) {
   });
 }
 
+function buildRouteCandidates(pathname) {
+  const candidates = [pathname];
+
+  if (!pathname.endsWith('/load_info')) {
+    candidates.push(`${pathname}/load_info`);
+  }
+
+  candidates.push(pathname.replace(/\/(verify_token|token)$/i, '/load_info'));
+
+  if (pathname.startsWith('/milab/api/')) {
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 3) {
+      const apiModuleRoute = `/${parts.slice(0, 3).join('/')}`;
+      candidates.push(apiModuleRoute, `${apiModuleRoute}/load_info`);
+    }
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
@@ -41,13 +61,7 @@ async function menuPermissionMiddleware(req, res, next) {
     if (allowProfileFlow) {
       return next();
     }
-    const candidates = [path];
-
-    if (!path.endsWith('/load_info')) {
-      candidates.push(`${path}/load_info`);
-    }
-
-    candidates.push(path.replace(/\/(verify_token|token)$/i, '/load_info'));
+    const candidates = buildRouteCandidates(path);
 
     const menuResult = await pool.query(
       `
