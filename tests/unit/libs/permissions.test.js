@@ -14,6 +14,10 @@ test('getPermissionsForRoles grants all permissions to admin', () => {
   assert.deepEqual(getPermissionsForRoles(['admin']), ALL_PERMISSIONS.slice().sort());
 });
 
+test('getPermissionsForRoles grants all permissions to coordinador_general', () => {
+  assert.deepEqual(getPermissionsForRoles(['coordinador_general']), ALL_PERMISSIONS.slice().sort());
+});
+
 test('getPermissionsForRoles merges roles without duplicates and keeps monitor restrictions', () => {
   const permissions = getPermissionsForRoles(['monitor', 'laboratorista', 'monitor']);
 

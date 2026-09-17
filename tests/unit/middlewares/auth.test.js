@@ -83,6 +83,43 @@ test('requireRoles allows authorized roles and blocks unauthorized ones', () => 
   assert.equal(deniedRes.rendered.view, 'home/message_error');
 });
 
+test('requireRoles grants read-only access to coordinador_general on GET and blocks write methods', () => {
+  const middleware = requireRoles(['admin']);
+
+  const readRes = createRenderResponse();
+  let readNextCalled = false;
+  middleware(
+    {
+      method: 'GET',
+      session: { user: { tipo: 'coordinador_general', roles: ['coordinador_general'] } },
+    },
+    readRes,
+    () => {
+      readNextCalled = true;
+    }
+  );
+
+  assert.equal(readNextCalled, true);
+  assert.equal(readRes.rendered, null);
+
+  const writeRes = createRenderResponse();
+  let writeNextCalled = false;
+  middleware(
+    {
+      method: 'POST',
+      session: { user: { tipo: 'coordinador_general', roles: ['coordinador_general'] } },
+    },
+    writeRes,
+    () => {
+      writeNextCalled = true;
+    }
+  );
+
+  assert.equal(writeNextCalled, false);
+  assert.equal(writeRes.rendered.view, 'home/message_error');
+  assert.match(writeRes.rendered.payload.message2, /solo lectura/i);
+});
+
 test('requireJsonRoles returns 401 for missing user and 403 for invalid role', () => {
   const middleware = requireJsonRoles('admin', { message: 'No autorizado' });
 
