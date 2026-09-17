@@ -211,7 +211,9 @@ test('registro_coordinador does not require facultad_ids for coordinador_general
       return { rows: [] };
     }
 
-    if (statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')) {
+    if (
+      statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+    ) {
       return { rows: [] };
     }
 
@@ -263,7 +265,9 @@ test('registro_coordinador creates coordinador_general successfully without facu
       return { rows: [] };
     }
 
-    if (statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')) {
+    if (
+      statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+    ) {
       return { rows: [] };
     }
 
