@@ -1,0 +1,134 @@
+<%- include('../partials/header'); -%>
+
+<%
+  const userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const userName = locals.nombre || 'Usuario';
+  const userDoc = locals.documento || '';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Creación de cursos</h1>
+        <p class="app-page-subtitle">Administra el catálogo de cursos de capacitación (EDX) asociados a la Universidad Distrital.</p>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <% if (isAdmin) { %>
+          <button type="button" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
+            <i class="bi bi-plus-lg"></i>
+            <span>Nuevo curso</span>
+          </button>
+        <% } %>
+        <span class="badge text-bg-light border border-warning-subtle">
+          <i class="bi bi-person-badge me-1" style="color:#b45309;"></i>
+          Rol actual: <%= isAdmin ? 'Administrador' : (locals.sessionRoleLabel || userRole) %>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <% if (!isAdmin) { %>
+    <section class="mb-4">
+      <div class="alert alert-warning" role="alert" style="border-color:#f0aa00;background:#fff7e1;">
+        <div class="d-flex align-items-start gap-3">
+          <i class="bi bi-shield-lock fs-3" style="color:#b45309;"></i>
+          <div>
+            <h5 class="alert-heading mb-1" style="color:#7c3b04;">Permisos insuficientes</h5>
+            <p class="mb-0">Usted no tiene permisos para crear, editar o eliminar cursos.
+            Si necesita modificar el catálogo, contacte al administrador del sistema.
+            Puede gestionar la asociación entre cursos y equipos en el módulo
+            <a href="/milab/capacitacion/asociacion-equipos/load_info">Asociación curso-equipo</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  <% } %>
+
+  <section class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+      <h5 class="mb-0" style="color:#7c3b04;">
+        <i class="bi bi-book me-2" style="color:#b45309;"></i>
+        Listado de cursos
+      </h5>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary disabled">
+          <i class="bi bi-arrow-repeat"></i> Actualizar
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0" id="tbl-cursos">
+          <thead style="background:#fffdf6;">
+            <tr>
+              <th scope="col" style="color:#b45309;">Código curso</th>
+              <th scope="col" style="color:#b45309;">Nombre</th>
+              <th scope="col" style="color:#b45309;">Facultad</th>
+              <th scope="col" style="color:#b45309;">URL EDX</th>
+              <th scope="col" style="color:#b45309;">Estado</th>
+              <th scope="col" style="width: 180px;color:#b45309;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="6" class="text-center py-5 text-muted">
+                <i class="bi bi-inbox fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                Contenido placeholder - Conexión con la tabla <code>cursos</code> se habilitará en la próxima etapa.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <% if (isAdmin) { %>
+    <section class="card">
+      <div class="card-header" style="background:#faf6ed;border-color:#f0e2c1;">
+        <h5 class="mb-0" style="color:#7c3b04;">
+          <i class="bi bi-pencil-square me-2" style="color:#b45309;"></i>
+          Formulario (placeholder)
+        </h5>
+      </div>
+      <div class="card-body">
+        <form class="row g-3" onsubmit="event.preventDefault(); alert('CRUD real se implementará en la próxima historia de usuario.');">
+          <%- include('../partials/csrf_field'); -%>
+          <div class="col-md-4">
+            <label for="codigo_curso" class="form-label">Código curso *</label>
+            <input type="text" class="form-control" id="codigo_curso" maxlength="100" placeholder="MOCK-COURSE-005" />
+          </div>
+          <div class="col-md-8">
+            <label for="nombre_curso" class="form-label">Nombre del curso *</label>
+            <input type="text" class="form-control" id="nombre_curso" maxlength="255" placeholder="Curso de capacitación en ..." />
+          </div>
+          <div class="col-md-4">
+            <label for="id_facultad" class="form-label">Facultad *</label>
+            <select id="id_facultad" class="form-select" disabled>
+              <option value="">(Placeholder - Facultades)</option>
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label for="url_edx" class="form-label">URL EDX *</label>
+            <input type="url" class="form-control" id="url_edx" placeholder="https://courses.edx.org/courses/course-v1:..." />
+          </div>
+          <div class="col-md-4 d-flex align-items-end gap-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="activo_curso" checked />
+              <label class="form-check-label" for="activo_curso">Curso activo</label>
+            </div>
+          </div>
+          <div class="col-12 d-flex justify-content-end gap-2 pt-2 border-top mt-2">
+            <button type="reset" class="btn btn-outline-secondary">Limpiar</button>
+            <button type="submit" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
+              <i class="bi bi-save"></i> Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } %>
+</main>
+
+<%- include('../partials/footer'); -%>

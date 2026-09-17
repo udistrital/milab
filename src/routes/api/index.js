@@ -49,6 +49,8 @@ router.use('/generate_cert_estudiante_lab', require('./generate_cert_estudiante_
 router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
 router.use('/certificacion-edx', require('./certificacion-edx'));
+router.use('/capacitacion-cursos', require('./capacitacion-cursos'));
+router.use('/capacitacion-equipos', require('./capacitacion-equipos'));
 
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [

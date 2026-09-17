@@ -1,0 +1,154 @@
+<%- include('../partials/header'); -%>
+
+<%
+  const userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const canEdit = isAdmin || userRole === 'laboratorista';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Asociación curso - equipos</h1>
+        <p class="app-page-subtitle">Vincula cada curso de capacitación con los equipos especializados que requiere para certificar a los usuarios.</p>
+      </div>
+      <span class="badge text-bg-light border border-warning-subtle">
+        <i class="bi bi-person-badge me-1" style="color:#b45309;"></i>
+        Rol actual: <%= isAdmin ? 'Administrador' : (locals.sessionRoleLabel || userRole) %>
+      </span>
+    </div>
+  </section>
+
+  <section class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+      <h5 class="mb-0" style="color:#7c3b04;">
+        <i class="bi bi-diagram-3 me-2" style="color:#b45309;"></i>
+        Paso 1 - Seleccionar curso
+      </h5>
+    </div>
+    <div class="card-body">
+      <form class="row g-3 align-items-end" onsubmit="event.preventDefault(); alert('Conectar con tabla cursos en próxima etapa.');">
+        <%- include('../partials/csrf_field'); -%>
+        <div class="col-md-4">
+          <label for="curso_filter_facultad" class="form-label">Filtrar por facultad</label>
+          <select id="curso_filter_facultad" class="form-select" disabled>
+            <option value="">Todas las facultades</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="curso_lookup" class="form-label">Curso *</label>
+          <select id="curso_lookup" class="form-select" disabled>
+            <option value="">Seleccione un curso para administrar sus equipos</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-outline-warning w-100" style="border-color:#f0aa00;color:#b45309;" disabled>
+            <i class="bi bi-search"></i> Cargar
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="row g-4 mb-4">
+    <article class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+          <h5 class="mb-0" style="color:#7c3b04;">
+            <i class="bi bi-box-seam me-2" style="color:#b45309;"></i>
+            Equipos disponibles
+          </h5>
+          <span class="badge rounded-pill text-bg-light border">0</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+              <thead style="background:#fffdf6;">
+                <tr>
+                  <th scope="col" style="width:42px;color:#b45309;"><input type="checkbox" class="form-check-input" disabled></th>
+                  <th scope="col" style="color:#b45309;">ID</th>
+                  <th scope="col" style="color:#b45309;">Equipo</th>
+                  <th scope="col" style="color:#b45309;">Facultad / Laboratorio</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <i class="bi bi-collection fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                    Placeholder - Mostrar equipos de la tabla <code>equipo</code> asociados a una facultad.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+          <h5 class="mb-0" style="color:#7c3b04;">
+            <i class="bi bi-check2-square me-2" style="color:#b45309;"></i>
+            Equipos asociados al curso
+          </h5>
+          <span class="badge rounded-pill text-bg-warning" style="background:#ffbf00;color:#7c3b04;">0</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+              <thead style="background:#fffdf6;">
+                <tr>
+                  <th scope="col" style="width:42px;color:#b45309;"><input type="checkbox" class="form-check-input" disabled></th>
+                  <th scope="col" style="color:#b45309;">ID</th>
+                  <th scope="col" style="color:#b45309;">Equipo</th>
+                  <th scope="col" style="width:100px;color:#b45309;">Retirar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <i class="bi bi-layout-text-sidebar fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                    Placeholder - Mostrar filas de la tabla <code>equipo_especializado</code> del curso seleccionado.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+        <div class="me-auto">
+          <small class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Puede seleccionar varios equipos a la vez y guardar la asociación en bloque.
+          </small>
+        </div>
+        <button type="button" class="btn btn-outline-secondary" <%= canEdit ? '' : 'disabled' %>>
+          <i class="bi bi-arrow-bar-left"></i> Desasociar selección
+        </button>
+        <button type="button" class="btn btn-outline-secondary" <%= canEdit ? '' : 'disabled' %>>
+          Limpiar
+        </button>
+        <button
+          type="button"
+          class="btn btn-warning"
+          style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;"
+          <%= canEdit ? '' : 'disabled' %>
+          onclick="alert('Guardar placeholder: insertar en tabla equipo_especializado con DELETE previo en transacción.');"
+        >
+          <i class="bi bi-save2"></i>
+          Guardar asociación
+        </button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

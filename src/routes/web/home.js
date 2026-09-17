@@ -1,6 +1,19 @@
 const express = require('express');
+const { requireRoles } = require('../middlewares/auth');
 
 const router = express.Router();
+
+const requireCapacitacionCursosView = requireRoles(['admin'], {
+  message: 'Acceso denegado',
+  message2: 'Solo los administradores pueden gestionar los cursos de capacitación.',
+  limit: 'loginOnly',
+});
+
+const requireCapacitacionEquiposView = requireRoles(['admin', 'laboratorista'], {
+  message: 'Acceso denegado',
+  message2: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
+  limit: 'loginOnly',
+});
 
 function getAuthenticatedHomePath(user) {
   return user?.tipo ? '/milab/inicio' : null;
@@ -135,6 +148,20 @@ router.get('/get-info-docente', function (req, res) {
 });
 router.get('/consulta-invit', function (req, res) {
   return redirectToCanonicalPublicRoute(req, res, '/milab/api/consulta-invit');
+});
+
+router.get('/capacitacion/cursos', requireCapacitacionCursosView, function (req, res) {
+  return res.redirect('/milab/capacitacion/cursos/load_info');
+});
+router.get('/capacitacion/cursos/load_info', requireCapacitacionCursosView, function (req, res) {
+  return res.render('home/capacitacion/cursos');
+});
+
+router.get('/capacitacion/asociacion-equipos', requireCapacitacionEquiposView, function (req, res) {
+  return res.redirect('/milab/capacitacion/asociacion-equipos/load_info');
+});
+router.get('/capacitacion/asociacion-equipos/load_info', requireCapacitacionEquiposView, function (req, res) {
+  return res.render('home/capacitacion/asociacion-equipos');
 });
 
 module.exports = router;
