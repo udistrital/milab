@@ -35,6 +35,12 @@ test('getPrimaryRole returns highest-priority role', () => {
 test('formatRoleLabel returns Invitado for empty roles and formatted labels for known roles', () => {
   assert.equal(formatRoleLabel([]), 'Invitado');
   assert.equal(formatRoleLabel(['coordinador', 'docente']), 'Coordinador · Docente');
+  assert.equal(formatRoleLabel(['coordinador_general']), 'Coordinador General');
+});
+
+test('coordinador_general has higher priority than coordinador', () => {
+  const normalized = normalizeRoles(['coordinador', 'coordinador_general', 'docente']);
+  assert.deepEqual(normalized, ['coordinador_general', 'coordinador', 'docente']);
 });
 
 test('hasAnyRole detects intersections between user and required roles', () => {
