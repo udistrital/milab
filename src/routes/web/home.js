@@ -160,8 +160,12 @@ router.get('/capacitacion/cursos/load_info', requireCapacitacionCursosView, func
 router.get('/capacitacion/asociacion-equipos', requireCapacitacionEquiposView, function (req, res) {
   return res.redirect('/milab/capacitacion/asociacion-equipos/load_info');
 });
-router.get('/capacitacion/asociacion-equipos/load_info', requireCapacitacionEquiposView, function (req, res) {
-  return res.render('home/capacitacion/asociacion-equipos');
-});
+router.get(
+  '/capacitacion/asociacion-equipos/load_info',
+  requireCapacitacionEquiposView,
+  function (req, res) {
+    return res.render('home/capacitacion/asociacion-equipos');
+  }
+);
 
 module.exports = router;

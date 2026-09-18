@@ -1,7 +1,11 @@
 const express = require('express');
 const { logger, sanitizeValue } = require('../../libs/logger');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
-const { healthCheck: edxHealthCheck, BASE_URL: edxBaseUrl, USE_MOCK: edxUseMock } = require('../../libs/edx-cert-client');
+const {
+  healthCheck: edxHealthCheck,
+  BASE_URL: edxBaseUrl,
+  USE_MOCK: edxUseMock,
+} = require('../../libs/edx-cert-client');
 
 const router = express.Router();
 const serviceStatusLogger = logger.child({ component: 'service-status' });

@@ -77,7 +77,7 @@ router.post(
         detalle: err.message,
       });
     }
-  },
+  }
 );
 
 /**
@@ -115,7 +115,7 @@ router.post(
         detalle: err.message,
       });
     }
-  },
+  }
 );
 
 /**
@@ -130,12 +130,7 @@ router.post('/prueba-completa', async (_req, res) => {
     { codigo: '300001', descripcion: 'PARCIAL (prefijo 3)' },
     { codigo: '900001', descripcion: 'USUARIO VACÍO (prefijo 9)' },
   ];
-  const cursos = [
-    'MOCK-COURSE-001',
-    'MOCK-COURSE-002',
-    'MOCK-COURSE-003',
-    'MOCK-COURSE-004',
-  ];
+  const cursos = ['MOCK-COURSE-001', 'MOCK-COURSE-002', 'MOCK-COURSE-003', 'MOCK-COURSE-004'];
 
   try {
     const matriz = [];

@@ -1,29 +1,28 @@
 <%- include('../partials/header'); -%>
-
 <%
   const userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
   const isAdmin = userRole === 'admin';
-  const userName = locals.nombre || 'Usuario';
-  const userDoc = locals.documento || '';
 %>
 
-<main class="container app-page-shell">
+<main class="container app-page-shell" id="capacitacion-cursos-shell">
   <section class="app-page-header">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
       <div>
         <h1 class="app-page-title">Creación de cursos</h1>
-        <p class="app-page-subtitle">Administra el catálogo de cursos de capacitación (EDX) asociados a la Universidad Distrital.</p>
+        <p class="app-page-subtitle">Administra el catálogo de cursos de capacitación (EDX) con su facultad y laboratorios asociados.</p>
       </div>
-      <div class="d-flex gap-2 align-items-center">
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button type="button" id="btn-recargar-listado" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-repeat"></i> Actualizar
+        </button>
         <% if (isAdmin) { %>
-          <button type="button" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
-            <i class="bi bi-plus-lg"></i>
-            <span>Nuevo curso</span>
+          <button type="button" id="btn-nuevo-curso" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
+            <i class="bi bi-plus-lg"></i> Nuevo curso
           </button>
         <% } %>
         <span class="badge text-bg-light border border-warning-subtle">
           <i class="bi bi-person-badge me-1" style="color:#b45309;"></i>
-          Rol actual: <%= isAdmin ? 'Administrador' : (locals.sessionRoleLabel || userRole) %>
+          Rol: <%= isAdmin ? 'Administrador' : (locals.sessionRoleLabel || userRole) %>
         </span>
       </div>
     </div>
@@ -35,13 +34,82 @@
         <div class="d-flex align-items-start gap-3">
           <i class="bi bi-shield-lock fs-3" style="color:#b45309;"></i>
           <div>
-            <h5 class="alert-heading mb-1" style="color:#7c3b04;">Permisos insuficientes</h5>
-            <p class="mb-0">Usted no tiene permisos para crear, editar o eliminar cursos.
-            Si necesita modificar el catálogo, contacte al administrador del sistema.
-            Puede gestionar la asociación entre cursos y equipos en el módulo
+            <h5 class="alert-heading mb-1" style="color:#7c3b04;">Solo lectura</h5>
+            <p class="mb-0">Usted puede consultar el catálogo de cursos. Para crear, editar o inactivar cursos contacte al administrador.
+            La gestión de asociaciones curso-equipo la encuentra en
             <a href="/milab/capacitacion/asociacion-equipos/load_info">Asociación curso-equipo</a>.</p>
           </div>
         </div>
+      </div>
+    </section>
+  <% } %>
+
+  <div id="mensajes-globales"></div>
+
+  <% if (isAdmin) { %>
+    <section class="card mb-4" id="card-formulario-curso" style="display:none;">
+      <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+        <h5 class="mb-0" style="color:#7c3b04;">
+          <i class="bi bi-pencil-square me-2" style="color:#b45309;"></i>
+          <span id="formulario-titulo">Nuevo curso</span>
+        </h5>
+        <button type="button" id="btn-cancelar-formulario" class="btn-close" aria-label="Cancelar"></button>
+      </div>
+      <div class="card-body">
+        <form id="form-curso" class="row g-3" novalidate>
+          <%- include('../partials/csrf_field'); -%>
+          <input type="hidden" id="codigo_curso_original" value="" />
+
+          <div class="col-md-4">
+            <label for="codigo_curso" class="form-label">Código del curso *</label>
+            <input type="text" class="form-control" id="codigo_curso" maxlength="100" placeholder="MOCK-COURSE-005" required />
+            <div class="form-text">Ej: MICROBIO-001, REDES-CCNA-2, etc. Debe ser único.</div>
+          </div>
+
+          <div class="col-md-8">
+            <label for="nombre_curso" class="form-label">Nombre del curso *</label>
+            <input type="text" class="form-control" id="nombre_curso" maxlength="255" placeholder="Curso de capacitación en ..." required />
+          </div>
+
+          <div class="col-md-4">
+            <label for="id_facultad" class="form-label">Facultad *</label>
+            <select id="id_facultad" class="form-select" required>
+              <option value="">Cargando facultades…</option>
+            </select>
+          </div>
+
+          <div class="col-md-8">
+            <label for="url_edx" class="form-label">URL EDX *</label>
+            <input type="url" class="form-control" id="url_edx" placeholder="https://courses.edx.org/courses/course-v1:..." required />
+          </div>
+
+          <div class="col-12">
+            <fieldset class="border rounded p-3" style="border-color:#f0e2c1;background:#fffdf6;">
+              <legend class="float-none w-auto px-2 fs-6" style="color:#7c3b04;">
+                <i class="bi bi-diagram-3 me-1" style="color:#b45309;"></i>
+                Laboratorios asociados *
+              </legend>
+              <div id="selector-laboratorios" class="row g-2">
+                <p class="mb-0 text-muted small">Seleccione primero una facultad para ver los laboratorios disponibles.</p>
+              </div>
+              <div id="errores-laboratorios" class="mt-2"></div>
+            </fieldset>
+          </div>
+
+          <div class="col-md-6 d-flex align-items-center gap-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="activo_curso" checked />
+              <label class="form-check-label" for="activo_curso">Curso activo</label>
+            </div>
+          </div>
+          <div class="col-md-6 d-flex justify-content-end gap-2 align-items-center">
+            <span id="formulario-leyenda" class="text-muted small"></span>
+            <button type="button" id="btn-reset-form" class="btn btn-outline-secondary">Limpiar</button>
+            <button type="submit" id="btn-guardar" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
+              <i class="bi bi-save"></i> <span id="btn-guardar-label">Guardar curso</span>
+            </button>
+          </div>
+        </form>
       </div>
     </section>
   <% } %>
@@ -52,10 +120,12 @@
         <i class="bi bi-book me-2" style="color:#b45309;"></i>
         Listado de cursos
       </h5>
-      <div class="d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-outline-secondary disabled">
-          <i class="bi bi-arrow-repeat"></i> Actualizar
-        </button>
+      <div class="d-flex gap-2 align-items-center">
+        <div class="input-group input-group-sm" style="max-width:260px;">
+          <span class="input-group-text" id="search-basic-addon1"><i class="bi bi-search"></i></span>
+          <input type="search" id="buscador-cursos" class="form-control form-control-sm" placeholder="Buscar curso / facultad…" aria-label="Buscar curso">
+        </div>
+        <span id="contador-cursos" class="badge text-bg-warning rounded-pill" style="background:#ffbf00;color:#7c3b04;">0</span>
       </div>
     </div>
     <div class="card-body p-0">
@@ -63,19 +133,20 @@
         <table class="table table-striped align-middle mb-0" id="tbl-cursos">
           <thead style="background:#fffdf6;">
             <tr>
-              <th scope="col" style="color:#b45309;">Código curso</th>
+              <th scope="col" style="color:#b45309;">Código</th>
               <th scope="col" style="color:#b45309;">Nombre</th>
               <th scope="col" style="color:#b45309;">Facultad</th>
               <th scope="col" style="color:#b45309;">URL EDX</th>
+              <th scope="col" style="color:#b45309;">Labs</th>
               <th scope="col" style="color:#b45309;">Estado</th>
-              <th scope="col" style="width: 180px;color:#b45309;">Acciones</th>
+              <th scope="col" style="width:220px;color:#b45309;">Acciones</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="tbl-cursos-body">
             <tr>
-              <td colspan="6" class="text-center py-5 text-muted">
-                <i class="bi bi-inbox fs-2 d-block mb-2" style="color:#f0aa00;"></i>
-                Contenido placeholder - Conexión con la tabla <code>cursos</code> se habilitará en la próxima etapa.
+              <td colspan="7" class="text-center py-5 text-muted">
+                <div class="spinner-border spinner-border-sm me-2" role="status" style="color:#b45309;"><span class="visually-hidden">Cargando…</span></div>
+                Cargando listado de cursos…
               </td>
             </tr>
           </tbody>
@@ -83,52 +154,476 @@
       </div>
     </div>
   </section>
-
-  <% if (isAdmin) { %>
-    <section class="card">
-      <div class="card-header" style="background:#faf6ed;border-color:#f0e2c1;">
-        <h5 class="mb-0" style="color:#7c3b04;">
-          <i class="bi bi-pencil-square me-2" style="color:#b45309;"></i>
-          Formulario (placeholder)
-        </h5>
-      </div>
-      <div class="card-body">
-        <form class="row g-3" onsubmit="event.preventDefault(); alert('CRUD real se implementará en la próxima historia de usuario.');">
-          <%- include('../partials/csrf_field'); -%>
-          <div class="col-md-4">
-            <label for="codigo_curso" class="form-label">Código curso *</label>
-            <input type="text" class="form-control" id="codigo_curso" maxlength="100" placeholder="MOCK-COURSE-005" />
-          </div>
-          <div class="col-md-8">
-            <label for="nombre_curso" class="form-label">Nombre del curso *</label>
-            <input type="text" class="form-control" id="nombre_curso" maxlength="255" placeholder="Curso de capacitación en ..." />
-          </div>
-          <div class="col-md-4">
-            <label for="id_facultad" class="form-label">Facultad *</label>
-            <select id="id_facultad" class="form-select" disabled>
-              <option value="">(Placeholder - Facultades)</option>
-            </select>
-          </div>
-          <div class="col-md-8">
-            <label for="url_edx" class="form-label">URL EDX *</label>
-            <input type="url" class="form-control" id="url_edx" placeholder="https://courses.edx.org/courses/course-v1:..." />
-          </div>
-          <div class="col-md-4 d-flex align-items-end gap-3">
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" id="activo_curso" checked />
-              <label class="form-check-label" for="activo_curso">Curso activo</label>
-            </div>
-          </div>
-          <div class="col-12 d-flex justify-content-end gap-2 pt-2 border-top mt-2">
-            <button type="reset" class="btn btn-outline-secondary">Limpiar</button>
-            <button type="submit" class="btn btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
-              <i class="bi bi-save"></i> Guardar
-            </button>
-          </div>
-        </form>
-      </div>
-    </section>
-  <% } %>
 </main>
+
+<script>
+(function () {
+  'use strict';
+
+  const BASE_URL = '/milab/api/capacitacion-cursos';
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const csrfToken = (csrfMeta && csrfMeta.content)
+    ? csrfMeta.content
+    : (function () {
+        const hidden = document.querySelector('input[name="_csrf"]');
+        return hidden ? hidden.value : '';
+      })();
+  const headersJson = {
+    'Content-Type': 'application/json',
+    ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+  };
+
+  const $ = (sel, parent) => (parent || document).querySelector(sel);
+  const $$ = (sel, parent) => Array.from((parent || document).querySelectorAll(sel));
+
+  const isAdmin = <%= isAdmin ? 'true' : 'false' %>;
+
+  const state = {
+    cursos: [],
+    facultades: [],
+    laboratoriosPorFacultad: new Map(),
+    modo: 'crear',
+    filtroBusqueda: '',
+  };
+
+  function mostrarMensaje(type, title, message, errors) {
+    const root = $('#mensajes-globales');
+    if (!root) return;
+    const id = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
+    const mapping = {
+      success: { klass: 'alert-success border-success-subtle', icon: 'bi-check2-circle' },
+      info:    { klass: 'alert-info    border-info-subtle',    icon: 'bi-info-circle' },
+      warning: { klass: 'alert-warning border-warning-subtle', icon: 'bi-exclamation-triangle-fill' },
+      danger:  { klass: 'alert-danger  border-danger-subtle',  icon: 'bi-x-circle-fill' },
+    };
+    const m = mapping[type] || mapping.info;
+    const htmlErrors = (errors && errors.length)
+      ? '<ul class="mb-0 mt-2 small">' + errors.map((e) => `<li>${escapeHtml(e)}</li>`).join('') + '</ul>'
+      : '';
+    const el = document.createElement('div');
+    el.id = id;
+    el.className = `alert alert-dismissible fade show ${m.klass}`;
+    el.setAttribute('role', 'alert');
+    el.innerHTML =
+      '<div class="d-flex align-items-start gap-3">' +
+        `<i class="bi ${m.icon} fs-4"></i>` +
+        '<div class="flex-grow-1">' +
+          (title ? `<h5 class="alert-heading mb-1">${escapeHtml(title)}</h5>` : '') +
+          `<p class="mb-0">${escapeHtml(message)}</p>` +
+          htmlErrors +
+        '</div>' +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>' +
+      '</div>';
+    root.prepend(el);
+    setTimeout(() => {
+      if ($('#' + id)) {
+        const bs = (typeof bootstrap !== 'undefined') ? bootstrap : null;
+        if (bs && bs.Alert) { try { bs.Alert.getOrCreateInstance('#' + id).close(); } catch (_) {} }
+        $('#' + id)?.remove();
+      }
+    }, 6500);
+  }
+
+  function escapeHtml(value) {
+    if (value == null) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function apiFetch(relativeUrl, options) {
+    const res = await fetch(BASE_URL + relativeUrl, {
+      credentials: 'same-origin',
+      ...(options || {}),
+      headers: {
+        ...((options || {}).headers || {}),
+        ...csrfToken ? { 'x-csrf-token': csrfToken } : {},
+      },
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = null; }
+    if (!res.ok) {
+      const message = (data && data.message) || `Error HTTP ${res.status}`;
+      const error = new Error(message);
+      error.status = res.status;
+      error.payload = data;
+      throw error;
+    }
+    return data || {};
+  }
+
+  async function cargarFacultades() {
+    const data = await apiFetch('/facultades', { method: 'GET' });
+    state.facultades = data.facultades || [];
+    const select = $('#id_facultad');
+    if (!select) return;
+    select.innerHTML = '';
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = state.facultades.length ? 'Seleccione una facultad' : 'No hay facultades activas';
+    empty.disabled = true;
+    empty.selected = true;
+    select.appendChild(empty);
+    for (const f of state.facultades) {
+      const opt = document.createElement('option');
+      opt.value = String(f.facultad_id);
+      opt.textContent = `${escapeHtml(f.nombre)} (${f.facultad_id})`;
+      select.appendChild(opt);
+    }
+  }
+
+  async function cargarLaboratoriosPorFacultad(idFacultad) {
+    if (!idFacultad) {
+      renderSelectorLaboratorios([]);
+      return;
+    }
+    if (state.laboratoriosPorFacultad.has(idFacultad)) {
+      renderSelectorLaboratorios(state.laboratoriosPorFacultad.get(idFacultad));
+      return;
+    }
+    try {
+      const data = await apiFetch(`/facultades/${encodeURIComponent(idFacultad)}/laboratorios`);
+      state.laboratoriosPorFacultad.set(idFacultad, data.laboratorios || []);
+      renderSelectorLaboratorios(data.laboratorios || []);
+    } catch (err) {
+      mostrarMensaje('danger', 'Error al cargar laboratorios', err.message);
+      renderSelectorLaboratorios([], err.message);
+    }
+  }
+
+  function renderSelectorLaboratorios(labs, errorMsg) {
+    const root = $('#selector-laboratorios');
+    if (!root) return;
+    const erroresRoot = $('#errores-laboratorios');
+    if (erroresRoot) erroresRoot.innerHTML = '';
+    if (errorMsg) {
+      root.innerHTML = '';
+      const p = document.createElement('p');
+      p.className = 'mb-0 text-danger small';
+      p.textContent = errorMsg;
+      root.appendChild(p);
+      return;
+    }
+    if (!labs || labs.length === 0) {
+      root.innerHTML = '<p class="mb-0 text-muted small">Esta facultad no tiene laboratorios (UALes) activos. Seleccione otra facultad o registre UALs primero.</p>';
+      return;
+    }
+    root.innerHTML = '';
+    for (const lab of labs) {
+      const col = document.createElement('div');
+      col.className = 'col-12 col-sm-6 col-md-4 col-lg-3';
+      const id = `lab-${lab.id_laboratorio}`;
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.className = 'form-check-input me-2';
+      check.id = id;
+      check.value = String(lab.id_laboratorio);
+      check.dataset.nombre = lab.nombre || '';
+      const label = document.createElement('label');
+      label.setAttribute('for', id);
+      label.className = 'form-check-label';
+      const title = escapeHtml(lab.nombre || 'Laboratorio sin nombre');
+      const sub = (lab.codigo_abreviacion) ? `<span class="badge rounded-pill text-bg-light border mx-1">${escapeHtml(lab.codigo_abreviacion)}</span>` : '';
+      label.innerHTML = `${title} ${sub}`;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-check p-2 h-100 rounded border d-flex align-items-start';
+      wrapper.style.borderColor = '#f0e2c1';
+      wrapper.style.background = '#fffdf6';
+      wrapper.appendChild(check);
+      wrapper.appendChild(label);
+      col.appendChild(wrapper);
+      root.appendChild(col);
+    }
+  }
+
+  function obtenerLaboratoriosSeleccionados() {
+    const root = $('#selector-laboratorios');
+    if (!root) return [];
+    return $$('input[type=checkbox]:checked', root)
+      .map((x) => Number(x.value))
+      .filter((x) => Number.isInteger(x) && x > 0);
+  }
+
+  function marcarLaboratoriosSeleccionados(ids) {
+    const set = new Set((ids || []).map((x) => Number(x)));
+    $$('#selector-laboratorios input[type=checkbox]').forEach((c) => {
+      c.checked = set.has(Number(c.value));
+    });
+  }
+
+  function resetFormulario() {
+    const f = $('#form-curso');
+    if (f) f.reset();
+    $('#codigo_curso_original').value = '';
+    state.modo = 'crear';
+    if ($('#formulario-titulo')) $('#formulario-titulo').textContent = 'Nuevo curso';
+    if ($('#btn-guardar-label')) $('#btn-guardar-label').textContent = 'Guardar curso';
+    if ($('#formulario-leyenda')) $('#formulario-leyenda').textContent = '';
+    if ($('#activo_curso')) $('#activo_curso').checked = true;
+    marcarLaboratoriosSeleccionados([]);
+    if ($('#id_facultad') && $('#id_facultad').options.length) {
+      $('#id_facultad').selectedIndex = 0;
+      renderSelectorLaboratorios([]);
+    }
+  }
+
+  function abrirModoCrear() {
+    if (!isAdmin) return;
+    state.modo = 'crear';
+    resetFormulario();
+    $('#card-formulario-curso').style.display = '';
+    setTimeout(() => { $('#card-formulario-curso').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+  }
+
+  async function abrirModoEditar(codigoCurso) {
+    if (!isAdmin) return;
+    if (!codigoCurso) return;
+    try {
+      const data = await apiFetch(`/detalle/${encodeURIComponent(codigoCurso)}`);
+      const curso = data.curso || {};
+      state.modo = 'editar';
+      resetFormulario();
+      $('#codigo_curso_original').value = String(curso.codigo_curso || '');
+      $('#codigo_curso').value = String(curso.codigo_curso || '');
+      $('#nombre_curso').value = String(curso.nombre_curso || '');
+      $('#url_edx').value = String(curso.url_edx || '');
+      $('#activo_curso').checked = Boolean(curso.activo);
+
+      const select = $('#id_facultad');
+      if (select) {
+        const idFacultad = String(curso.id_facultad || '');
+        const opt = Array.from(select.options).find((o) => o.value === idFacultad);
+        if (opt) {
+          opt.selected = true;
+        }
+        await cargarLaboratoriosPorFacultad(idFacultad);
+        const idsAsociados = (data.laboratorios_asociados || []).map((x) => x.id_laboratorio);
+        marcarLaboratoriosSeleccionados(idsAsociados);
+      }
+
+      $('#formulario-titulo').textContent = 'Editar curso';
+      $('#btn-guardar-label').textContent = 'Guardar cambios';
+      $('#formulario-leyenda').textContent = `Código original: ${String(curso.codigo_curso || '')}`;
+      $('#card-formulario-curso').style.display = '';
+      setTimeout(() => { $('#card-formulario-curso').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+    } catch (err) {
+      mostrarMensaje('danger', 'Error al cargar curso', err.message);
+    }
+  }
+
+  function ocultarFormulario() {
+    resetFormulario();
+    if ($('#card-formulario-curso')) $('#card-formulario-curso').style.display = 'none';
+  }
+
+  async function guardarFormulario(evt) {
+    evt.preventDefault();
+    if (!isAdmin) return;
+
+    const codigoCurso = String($('#codigo_curso').value || '').trim();
+    const idFacultad = $('#id_facultad').value;
+    const nombreCurso = String($('#nombre_curso').value || '').trim();
+    const urlEdx = String($('#url_edx').value || '').trim();
+    const activo = Boolean($('#activo_curso').checked);
+    const idLaboratorios = obtenerLaboratoriosSeleccionados();
+
+    const codigoOriginal = String($('#codigo_curso_original').value || '').trim();
+    const endpoint = (state.modo === 'editar') ? '/editar' : '/nuevo';
+    const payload = {
+      codigo_curso: codigoCurso,
+      id_facultad: idFacultad,
+      nombre_curso: nombreCurso,
+      url_edx: urlEdx,
+      activo: activo,
+      id_laboratorios: idLaboratorios,
+      ...(state.modo === 'editar' ? { codigo_curso_original: codigoOriginal } : {}),
+    };
+
+    try {
+      const btn = $('#btn-guardar');
+      if (btn) btn.disabled = true;
+      const data = await apiFetch(endpoint, {
+        method: 'POST',
+        headers: headersJson,
+        body: JSON.stringify(payload),
+      });
+      mostrarMensaje('success', 'Curso guardado', data.message || 'Operación exitosa.');
+      ocultarFormulario();
+      await cargarCursos();
+    } catch (err) {
+      const errors = (err.payload && err.payload.errors) ? err.payload.errors : [];
+      mostrarMensaje('danger', 'Error al guardar', err.message || 'No se pudo guardar el curso.', errors);
+    } finally {
+      const btn = $('#btn-guardar');
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function cargarCursos() {
+    try {
+      const data = await apiFetch('/list');
+      state.cursos = data.cursos || [];
+      renderTablaCursos();
+    } catch (err) {
+      state.cursos = [];
+      renderTablaCursos(err.message);
+    }
+  }
+
+  function renderTablaCursos(errorMsg) {
+    const body = $('#tbl-cursos-body');
+    const contador = $('#contador-cursos');
+    if (!body) return;
+    body.innerHTML = '';
+    if (errorMsg) {
+      body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-2 d-block mb-2"></i>${escapeHtml(errorMsg)}</td></tr>`;
+      if (contador) contador.textContent = '0';
+      return;
+    }
+    const q = state.filtroBusqueda.trim().toLowerCase();
+    const cursosFiltrados = q
+      ? state.cursos.filter((c) => {
+          const needle = `${c.codigo_curso} ${c.nombre_curso} ${c.nombre_facultad || ''}`.toLowerCase();
+          return needle.includes(q);
+        })
+      : state.cursos;
+    if (cursosFiltrados.length === 0) {
+      const mensaje = state.cursos.length === 0
+        ? 'Aún no hay cursos registrados. Haga clic en "Nuevo curso" para empezar.'
+        : 'No hay cursos que coincidan con el filtro de búsqueda.';
+      body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-muted"><i class="bi bi-inbox fs-2 d-block mb-2" style="color:#f0aa00;"></i>${escapeHtml(mensaje)}</td></tr>`;
+      if (contador) contador.textContent = String(state.cursos.length);
+      return;
+    }
+    for (const c of cursosFiltrados) {
+      const tr = document.createElement('tr');
+      const labsNombres = (Array.isArray(c.laboratorios_nombres) ? c.laboratorios_nombres : [])
+        .map((x) => escapeHtml((x && x.nombre) || ''))
+        .filter((s) => s.length)
+        .join(', ');
+      const estadoBadge = c.activo
+        ? '<span class="badge text-bg-success border border-success-subtle">Activo</span>'
+        : '<span class="badge text-bg-secondary border border-secondary-subtle">Inactivo</span>';
+      const edxLink = c.url_edx
+        ? `<a href="${escapeHtml(c.url_edx)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" title="${escapeHtml(c.url_edx)}">Abrir EDX <i class="bi bi-box-arrow-up-right"></i></a>`
+        : '<span class="text-muted small">—</span>';
+      const acciones = !isAdmin
+        ? `<span class="text-muted small">Solo lectura</span>`
+        : `<div class="d-flex gap-2 flex-wrap">
+             <button class="btn btn-sm btn-outline-secondary btn-editar" data-codigo="${escapeHtml(c.codigo_curso)}" title="Editar curso"><i class="bi bi-pencil-square"></i> Editar</button>
+             ${c.activo
+                ? `<button class="btn btn-sm btn-outline-warning btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso)}" data-activo="false" title="Inactivar curso" style="color:#b45309;border-color:#f0aa00;"><i class="bi bi-toggle-on"></i> Inactivar</button>`
+                : `<button class="btn btn-sm btn-outline-success btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso)}" data-activo="true" title="Activar curso"><i class="bi bi-toggle-off"></i> Activar</button>`}
+           </div>`;
+      tr.innerHTML =
+        `<td><code style="font-size:0.85rem;color:#b45309;">${escapeHtml(c.codigo_curso)}</code></td>` +
+        `<td><strong>${escapeHtml(c.nombre_curso)}</strong></td>` +
+        `<td>${escapeHtml(c.nombre_facultad || '')}</td>` +
+        `<td>${edxLink}</td>` +
+        `<td>
+           <span class="badge rounded-pill text-bg-light border mb-1">${Number(c.cantidad_laboratorios || 0)} lab(s)</span>
+           ${labsNombres ? `<div class="small text-muted">${labsNombres}</div>` : '<div class="small text-muted">Sin asociaciones</div>'}
+         </td>` +
+        `<td>${estadoBadge}</td>` +
+        `<td>${acciones}</td>`;
+      body.appendChild(tr);
+    }
+    if (contador) contador.textContent = String(cursosFiltrados.length) + (state.cursos.length !== cursosFiltrados.length ? ` / ${state.cursos.length}` : '');
+  }
+
+  async function cambiarEstadoCurso(codigoCurso, activo) {
+    if (!isAdmin) return;
+    try {
+      const data = await apiFetch('/cambiar-estado', {
+        method: 'POST',
+        headers: headersJson,
+        body: JSON.stringify({ codigo_curso: codigoCurso, activo: !!activo }),
+      });
+      mostrarMensaje('success', 'Estado actualizado', data.message || 'Operación exitosa.');
+      await cargarCursos();
+    } catch (err) {
+      mostrarMensaje('danger', 'Error al actualizar estado', err.message);
+    }
+  }
+
+  function wireInteracciones() {
+    if ($('#btn-nuevo-curso')) {
+      $('#btn-nuevo-curso').addEventListener('click', abrirModoCrear);
+    }
+    if ($('#btn-recargar-listado')) {
+      $('#btn-recargar-listado').addEventListener('click', cargarCursos);
+    }
+    if ($('#btn-cancelar-formulario')) {
+      $('#btn-cancelar-formulario').addEventListener('click', ocultarFormulario);
+    }
+    if ($('#btn-reset-form')) {
+      $('#btn-reset-form').addEventListener('click', (e) => {
+        e.preventDefault();
+        if (state.modo === 'editar') {
+          const original = $('#codigo_curso_original').value;
+          abrirModoEditar(original);
+        } else {
+          resetFormulario();
+        }
+      });
+    }
+    if ($('#form-curso')) {
+      $('#form-curso').addEventListener('submit', guardarFormulario);
+    }
+    if ($('#id_facultad')) {
+      $('#id_facultad').addEventListener('change', (e) => {
+        const value = e.target.value;
+        cargarLaboratoriosPorFacultad(value);
+      });
+    }
+    if ($('#buscador-cursos')) {
+      $('#buscador-cursos').addEventListener('input', (e) => {
+        state.filtroBusqueda = e.target.value || '';
+        renderTablaCursos();
+      });
+    }
+    $('#tbl-cursos-body')?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr');
+      if (!tr) return;
+      const btnEdit = e.target.closest('.btn-editar');
+      if (btnEdit) {
+        abrirModoEditar(btnEdit.getAttribute('data-codigo'));
+        return;
+      }
+      const btnEstado = e.target.closest('.btn-cambiar-estado');
+      if (btnEstado) {
+        const codigo = btnEstado.getAttribute('data-codigo');
+        const activo = btnEstado.getAttribute('data-activo') === 'true';
+        cambiarEstadoCurso(codigo, activo);
+      }
+    });
+  }
+
+  async function init() {
+    wireInteracciones();
+    if (isAdmin) {
+      try {
+        await cargarFacultades();
+      } catch (err) {
+        mostrarMensaje('warning', 'No se pudo cargar el catálogo de facultades', err.message);
+      }
+    }
+    try {
+      await cargarCursos();
+    } catch (err) {
+      mostrarMensaje('warning', 'Error cargando cursos', err.message);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
 
 <%- include('../partials/footer'); -%>

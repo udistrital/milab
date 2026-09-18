@@ -25,7 +25,6 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'edx-mock', timestamp: new Date().toISOString() });
 });
 
-
 app.post('/api/certificacion/curso', (req, res) => {
   const { codigo_usuario, codigo_curso } = req.body || {};
 
@@ -42,14 +41,13 @@ app.post('/api/certificacion/curso', (req, res) => {
   if (VERBOSE) {
     console.log(
       `[EDX-MOCK] Endpoint1 → usuario=${codigo_usuario} (escenario=${clasificarUsuario(
-        codigo_usuario,
-      )}) curso=${codigo_curso} → completado=${completado}`,
+        codigo_usuario
+      )}) curso=${codigo_curso} → completado=${completado}`
     );
   }
 
   return res.status(200).json({ completado });
 });
-
 
 app.post('/api/certificacion/usuario', (req, res) => {
   const { codigo_usuario } = req.body || {};
@@ -67,8 +65,8 @@ app.post('/api/certificacion/usuario', (req, res) => {
   if (VERBOSE) {
     console.log(
       `[EDX-MOCK] Endpoint2 → usuario=${codigo_usuario} (escenario=${clasificarUsuario(
-        codigo_usuario,
-      )}) → ${cursos.length} cursos retornados`,
+        codigo_usuario
+      )}) → ${cursos.length} cursos retornados`
     );
   }
 
@@ -99,8 +97,7 @@ app.get('/api/contrato', (_req, res) => {
           codigo_usuario: 'string (código identificador del usuario)',
         },
         body_salida: {
-          cursos:
-            'Array<{ codigo_curso: string, nombre_curso: string, completado: boolean }>',
+          cursos: 'Array<{ codigo_curso: string, nombre_curso: string, completado: boolean }>',
         },
       },
     ],
