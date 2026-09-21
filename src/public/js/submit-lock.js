@@ -1,4 +1,4 @@
-/* global window, document, setTimeout, clearTimeout, console */
+/* global window, document */
 
 (function (window, document) {
   'use strict';
