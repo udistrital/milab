@@ -150,7 +150,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-danger" id="convertirBloqueoSubmitBtn">Confirmar conversión</button>
+          <button type="submit" class="btn btn-danger" id="convertirBloqueoSubmitBtn" data-submit-lock="true">Confirmar conversión</button>
         </div>
       </form>
     </div>
@@ -214,12 +214,13 @@
       event.preventDefault();
       if (!String(justificacionInput.value || '').trim()) {
         justificacionInput.classList.add('is-invalid');
+        MiLabSubmitLock.release(submitBtn);
         return;
       }
       justificacionInput.classList.remove('is-invalid');
-      submitBtn.disabled = true;
 
       try {
+        MiLabSubmitLock.lock(submitBtn, 'Convirtiendo sanción en bloqueo de usuario...');
         var result = await postJson(
           '/milab/prestamos/incidencias/' + encodeURIComponent(idInput.value) + '/convertir-bloqueo',
           { paz_y_salvo_bloqueo_conversion_justificacion: justificacionInput.value }
@@ -232,7 +233,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible convertir la sanción.');
-        submitBtn.disabled = false;
+      } finally {
+        MiLabSubmitLock.release(submitBtn);
       }
     });
 
