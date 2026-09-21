@@ -1,6 +1,6 @@
 # Release Notes
 
-## 2.6.0 - 2026-09-14
+## 2.7.0 - 2026-09-16
 
 Resumen rápido:
 

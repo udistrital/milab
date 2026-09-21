@@ -4,19 +4,19 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-**Versión en curso:** `2.6.0`
+**Versión en curso:** `2.7.0`
 
 ## Release Notes
 
 - Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
 
-## Cambios recientes (2.6.0)
+## Cambios recientes (2.7.0)
 
 - **Sesión expirada más presentable:** al abrir directamente en el navegador una ruta protegida bajo `/milab/api/...` con la sesión vencida, la aplicación ahora redirige a la pantalla de inicio de sesión con la plantilla de MiLab en vez de mostrar el JSON crudo en blanco. Las llamadas AJAX/fetch internas (que piden `Accept: application/json`) siguen recibiendo la respuesta JSON `SESSION_EXPIRED` sin cambios ([src/routes/middlewares/session-gate.js](src/routes/middlewares/session-gate.js)).
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
-- **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`), y el pipeline de despliegue en pruebas ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora aplica esos scripts únicamente cuando el despliegue proviene de dicha rama; `preprod` continúa desplegando solo con la estructura base y de préstamos.
+- **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
 
 ## Arquitectura y Estructura del Proyecto
 
@@ -178,7 +178,7 @@ Notas operativas:
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.6.0`.
+- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.7.0`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.
@@ -202,21 +202,21 @@ Resumen operativo de procesos y responsabilidades por rol:
 
 ## SQL de base
 
-La inicialización de base para recreación completa del entorno de pruebas usa cuatro scripts en secuencia:
+La inicialización de base para recreación completa del entorno de pruebas usa estos scripts en secuencia:
 
 1. [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql)
-2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql) (o `db_seed.sql` si existe en el ambiente)
+2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
 
-La recreación en CI y en reset manual de pruebas aplica los cuatro scripts de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
+La recreación en CI y en reset manual de pruebas aplica los cuatro scripts base de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
 
-Cuando el despliegue se origina en la rama `modulo_capacitacion_certificacion`, el pipeline aplica además, en este orden, los scripts del módulo de Capacitación y Certificación (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
+Adicionalmente, cuando la rama es `modulo_capacitacion_certificacion`, se aplican estos dos scripts opcionales (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
 
 5. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
 6. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
 
-En `preprod` y en las demás ramas de despliegue estos dos scripts no se validan ni se ejecutan.
+El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 ## Reset completo en EC2 (pruebas)
 

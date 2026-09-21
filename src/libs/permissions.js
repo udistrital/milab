@@ -29,6 +29,7 @@ const ALL_PERMISSIONS = Object.freeze(Object.values(APP_PERMISSIONS));
 
 const ROLE_PERMISSION_MAP = Object.freeze({
   admin: ALL_PERMISSIONS,
+  coordinador_general: ALL_PERMISSIONS,
   coordinador: [
     APP_PERMISSIONS.PRESTAMOS_VIEW_MANAGEMENT,
     APP_PERMISSIONS.PRESTAMOS_REQUEST_APPROVE,
@@ -88,7 +89,7 @@ function getPermissionsForRoles(roles) {
     (ROLE_PERMISSION_MAP[role] || []).forEach((permission) => permissions.add(permission));
   });
 
-  return Array.from(permissions).sort();
+  return Array.from(permissions).sort((left, right) => left.localeCompare(right));
 }
 
 function hasPermission(roles, permission) {

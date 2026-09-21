@@ -38,6 +38,25 @@ function isAdminOnlyRoleSet(roles) {
   return Array.isArray(roles) && roles.length === 1 && roles[0] === 'admin';
 }
 
+function hasCoordinadorGeneralRole(userRoles) {
+  return Array.isArray(userRoles) && userRoles.includes('coordinador_general');
+}
+
+function isReadOnlyRequestMethod(method) {
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  return (
+    normalizedMethod === 'GET' || normalizedMethod === 'HEAD' || normalizedMethod === 'OPTIONS'
+  );
+}
+
+function buildReadOnlyRoleErrorPayload(overrides = {}) {
+  return {
+    message: 'Acceso denegado',
+    message2: 'El rol coordinador general tiene acceso de solo lectura.',
+    limit: overrides.limit || 'loginOnly',
+  };
+}
+
 function requireRoles(roles, overrides = {}) {
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
@@ -46,12 +65,20 @@ function requireRoles(roles, overrides = {}) {
 
     const userRoles = getUserRoles(user);
 
+    if (hasCoordinadorGeneralRole(userRoles) && !isReadOnlyRequestMethod(req.method)) {
+      return renderAuthError(res, buildReadOnlyRoleErrorPayload(overrides));
+    }
+
     if (user?.__impersonating && isAdminOnlyRoleSet(allowedRoles)) {
       return renderAuthError(res, {
         message: 'Acceso denegado',
         message2: 'No se permiten acciones administrativas durante una impersonación activa.',
         limit: overrides.limit || 'loginOnly',
       });
+    }
+
+    if (hasCoordinadorGeneralRole(userRoles) && isReadOnlyRequestMethod(req.method)) {
+      return next();
     }
 
     if (!user || !allowedRoles.some((role) => userRoles.includes(role))) {
@@ -78,11 +105,22 @@ function requireJsonRoles(roles, overrides = {}) {
 
     const userRoles = getUserRoles(user);
 
+    if (hasCoordinadorGeneralRole(userRoles) && !isReadOnlyRequestMethod(req.method)) {
+      return res.status(403).json({
+        ok: false,
+        message: 'El rol coordinador general tiene acceso de solo lectura.',
+      });
+    }
+
     if (user?.__impersonating && isAdminOnlyRoleSet(allowedRoles)) {
       return res.status(403).json({
         ok: false,
         message: 'No se permiten acciones administrativas durante una impersonación activa.',
       });
+    }
+
+    if (hasCoordinadorGeneralRole(userRoles) && isReadOnlyRequestMethod(req.method)) {
+      return next();
     }
 
     if (!allowedRoles.some((role) => userRoles.includes(role))) {
@@ -110,6 +148,10 @@ function requirePermissions(permissions, overrides = {}) {
         message2: overrides.message2 || 'Debe iniciar sesion para continuar.',
         limit: overrides.limit || 'loginOnly',
       });
+    }
+
+    if (hasCoordinadorGeneralRole(userRoles) && !isReadOnlyRequestMethod(req.method)) {
+      return renderAuthError(res, buildReadOnlyRoleErrorPayload(overrides));
     }
 
     const allowed =
