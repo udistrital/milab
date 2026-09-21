@@ -4,7 +4,9 @@
   cursor: not-allowed !important;
   opacity: 0.6 !important;
   pointer-events: none !important;
-  transition: opacity 0.2s ease, filter 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
   user-select: none;
 }
 

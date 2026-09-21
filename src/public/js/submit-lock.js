@@ -14,13 +14,12 @@
     if (!el || el.nodeType !== 1) return false;
     var type = (el.getAttribute('type') || '').toLowerCase();
     return (
-      el.tagName === 'BUTTON' &&
-      (type === 'submit' || type === '' || el.hasAttribute(DATA_SUBMIT_LOCK))
-    ) || (
-      el.tagName === 'INPUT' && (type === 'submit' || type === 'image')
-    ) || (
-      el.tagName === 'A' && el.hasAttribute(DATA_SUBMIT_LOCK)
-    ) || el.hasAttribute(DATA_SUBMIT_LOCK);
+      (el.tagName === 'BUTTON' &&
+        (type === 'submit' || type === '' || el.hasAttribute(DATA_SUBMIT_LOCK))) ||
+      (el.tagName === 'INPUT' && (type === 'submit' || type === 'image')) ||
+      (el.tagName === 'A' && el.hasAttribute(DATA_SUBMIT_LOCK)) ||
+      el.hasAttribute(DATA_SUBMIT_LOCK)
+    );
   }
 
   function closestSubmit(el) {
@@ -156,10 +155,7 @@
       if (form && form.dataset.submitting === '1') {
         setTimeout(function () {
           if (form.dataset.submitting !== '1') return;
-          if (
-            form.dataset.serverValidated !== '1' &&
-            form.dataset.clientSubmission !== '1'
-          ) {
+          if (form.dataset.serverValidated !== '1' && form.dataset.clientSubmission !== '1') {
             form.dataset.submitting = '0';
           }
         }, SAFETY_TIMEOUT_MS);
