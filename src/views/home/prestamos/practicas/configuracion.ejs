@@ -157,7 +157,7 @@
 
             <div class="col-12 d-flex justify-content-end gap-2">
               <a class="btn btn-outline-secondary" href="/milab/prestamos/reportes">Volver</a>
-              <button class="btn btn-perso" type="submit" <%= selectedFacultyId ? '' : 'disabled' %>>Guardar reglas</button>
+              <button class="btn btn-perso" type="submit" data-submit-lock="true" <%= selectedFacultyId ? '' : 'disabled' %>>Guardar reglas</button>
             </div>
           </form>
         </div>
@@ -173,7 +173,7 @@
             <h5 class="mb-0">Esquema Dinamico Del Laboratorio</h5>
             <div class="small text-light-emphasis">Aqui defines la informacion adicional que se pedira en cada practica de este laboratorio.</div>
           </div>
-          <button type="button" class="btn btn-primary btn-sm" id="saveDynamicSchemaBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar esquema</button>
+          <button type="button" class="btn btn-primary btn-sm" id="saveDynamicSchemaBtn" data-submit-lock="true" <%= selectedUalId ? '' : 'disabled' %>>Guardar esquema</button>
         </div>
         <div class="card-body">
           <div class="row g-3 mb-4">
@@ -346,7 +346,7 @@
             </div>
 
             <div class="col-12 d-flex justify-content-end">
-              <button type="submit" class="btn btn-perso" id="savePracticeBtn" <%= selectedUalId ? '' : 'disabled' %>>Guardar practica academica</button>
+              <button type="submit" class="btn btn-perso" id="savePracticeBtn" data-submit-lock="true" <%= selectedUalId ? '' : 'disabled' %>>Guardar practica academica</button>
             </div>
           </form>
         </div>
@@ -725,14 +725,15 @@
     }
 
     if (saveDynamicSchemaBtn) {
-      saveDynamicSchemaBtn.addEventListener('click', async function() {
+      saveDynamicSchemaBtn.addEventListener('click', async function(event) {
         if (!selectedUalId) {
           showAlert('warning', 'Selecciona un laboratorio antes de guardar el esquema.');
           return;
         }
+        var btn = event.currentTarget;
 
-        saveDynamicSchemaBtn.disabled = true;
         try {
+          window.MiLabSubmitLock.lock(btn, 'Guardando configuracion de esquema dinamico...');
           var result = await postJson('/milab/prestamos/coordinador/practicas/config/schema', {
             ual_id: selectedUalId,
             schema_json: schemaState
@@ -741,7 +742,7 @@
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible guardar el esquema dinamico.');
         } finally {
-          saveDynamicSchemaBtn.disabled = false;
+          window.MiLabSubmitLock.release(btn);
         }
       });
     }
@@ -814,8 +815,9 @@
           configuracion_dinamica: collectDynamicFieldValues()
         };
 
-        savePracticeBtn.disabled = true;
+        var btn = savePracticeBtn;
         try {
+          window.MiLabSubmitLock.lock(btn, 'Guardando practica academica...');
           var result = await postJson('/milab/prestamos/coordinador/practicas/catalogo', payload);
           showAlert('success', result.message || 'Practica academica guardada correctamente.');
           if (Array.isArray(result.warnings) && result.warnings.length) {
@@ -827,7 +829,7 @@
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible guardar la practica academica.');
         } finally {
-          savePracticeBtn.disabled = false;
+          window.MiLabSubmitLock.release(btn);
         }
       });
     }

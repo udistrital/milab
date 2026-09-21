@@ -252,7 +252,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-perso" id="solicitudSubmitBtn" disabled>Enviar solicitud</button>
+        <button type="button" class="btn btn-perso" id="solicitudSubmitBtn" disabled data-submit-lock="true">Enviar solicitud</button>
       </div>
     </div>
   </div>
@@ -572,10 +572,9 @@
       }
 
       hideSignatureError();
-      submitButton.disabled = true;
-      submitButton.textContent = 'Enviando...';
 
       try {
+        window.MiLabSubmitLock.lock(submitButton, 'Enviando solicitud de prestamo...');
         var response = await fetch('/milab/prestamos/solicitudes/crear', {
           method: 'POST',
           headers: {
@@ -602,8 +601,8 @@
       } catch (error) {
         statusElement.className = 'alert alert-danger';
         statusElement.textContent = error.message || 'No fue posible registrar la solicitud.';
-        submitButton.disabled = false;
-        submitButton.textContent = 'Enviar solicitud';
+      } finally {
+        window.MiLabSubmitLock.release(submitButton);
       }
     });
 

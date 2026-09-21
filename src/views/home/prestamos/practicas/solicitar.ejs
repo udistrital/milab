@@ -274,7 +274,7 @@
 
         <div class="col-12 d-flex justify-content-end gap-2">
           <a class="btn btn-outline-secondary" href="/milab/inicio">Cancelar</a>
-          <button class="btn btn-perso" id="practicaSubmitBtn" type="submit">Registrar practica</button>
+          <button class="btn btn-perso" id="practicaSubmitBtn" type="submit" data-submit-lock="true">Registrar practica</button>
         </div>
       </form>
     </div>
@@ -344,7 +344,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-        <button type="button" class="btn btn-primary" id="btnDescargarPdfDiligenciado">
+        <button type="button" class="btn btn-primary" id="btnDescargarPdfDiligenciado" data-submit-lock="true">
           Descargar PDF diligenciado
         </button>
       </div>
@@ -1382,14 +1382,16 @@
       });
     }
     if (btnDescargarPdfDiligenciado) {
-      btnDescargarPdfDiligenciado.addEventListener('click', async function() {
+      btnDescargarPdfDiligenciado.addEventListener('click', async function(event) {
         var payload = buildInstitutionalFormatPayload();
         if (!payload) {
           showAlert('warning', 'Selecciona un formato PDF antes de descargarlo.');
           return;
         }
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Generando PDF diligenciado...');
           var response = await fetch('/milab/prestamos/formatos/audiovisuales/fill', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
@@ -1406,6 +1408,8 @@
           }, 60000);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible generar el PDF diligenciado.');
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     }
@@ -1460,9 +1464,10 @@
 
       hideSignatureError();
       hideScheduleError();
-      submitButton.disabled = true;
+      var btn = submitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, editingId ? 'Reenviando solicitud de practica...' : 'Enviando solicitud de practica...');
         var endpoint = editingId
           ? '/milab/prestamos/practicas/' + encodeURIComponent(editingId) + '/reenviar'
           : '/milab/prestamos/practicas/reservar';
@@ -1527,7 +1532,7 @@
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar la practica.');
       } finally {
-        submitButton.disabled = false;
+        window.MiLabSubmitLock.release(btn);
       }
     });
 

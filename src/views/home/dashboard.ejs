@@ -228,7 +228,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="dashboardEmailEditorSaveButton">Guardar y enrolar</button>
+          <button type="submit" class="btn btn-primary" id="dashboardEmailEditorSaveButton" data-submit-lock="true">Guardar y enrolar</button>
         </div>
       </form>
     </div>
@@ -811,12 +811,8 @@
       return;
     }
 
-    if (saveButton) {
-      saveButton.disabled = true;
-      saveButton.textContent = 'Guardando...';
-    }
-
     try {
+      window.MiLabSubmitLock.lock(saveButton, 'Realizando acción en dashboard...');
       const response = await fetch(
         `/milab/api/dashboard/usuarios/${dashboardEmailEditContext.rowId}/correo`,
         {
@@ -835,10 +831,6 @@
         if (modalFeedback) {
           modalFeedback.textContent = payload.message || 'No fue posible actualizar el correo.';
           modalFeedback.classList.remove('d-none');
-        }
-        if (saveButton) {
-          saveButton.disabled = false;
-          saveButton.textContent = 'Guardar y enrolar';
         }
         return;
       }
@@ -860,11 +852,8 @@
           'No fue posible actualizar el correo. Verifica la conexión e inténtalo nuevamente.';
         modalFeedback.classList.remove('d-none');
       }
-    }
-
-    if (saveButton) {
-      saveButton.disabled = false;
-      saveButton.textContent = 'Guardar y enrolar';
+    } finally {
+      window.MiLabSubmitLock.release(saveButton);
     }
   }
 
@@ -910,23 +899,28 @@
 
     hideDashboardFeedback();
 
-    const response = await fetch('/milab/api/dashboard/impersonacion/iniciar', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken,
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ usuarioId: Number(row.id) }),
-    });
+    try {
+      window.MiLabSubmitLock.lock(btnElement, 'Realizando acción en dashboard...');
+      const response = await fetch('/milab/api/dashboard/impersonacion/iniciar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ usuarioId: Number(row.id) }),
+      });
 
-    const payload = await response.json().catch(() => ({}));
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) {
         showDashboardFeedback(payload.message || 'No fue posible impersonar la cuenta seleccionada.', 'error');
-      return;
-    }
+        return;
+      }
 
-    window.location.href = payload.redirect || '/milab/inicio';
+      window.location.href = payload.redirect || '/milab/inicio';
+    } finally {
+      window.MiLabSubmitLock.release(btnElement);
+    }
   }
 
   function renderDetailTable(tipo) {
