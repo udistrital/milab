@@ -68,7 +68,7 @@
                         <span>Editar</span>
                       </a>
                       <form action="/milab/prestamos/inventario/<%= item.id %>/eliminar" method="post" onsubmit="return confirm('¿Deseas eliminar este elemento del inventario?');">
-                        <button class="btn btn-outline-danger btn-sm" type="submit">
+                        <button class="btn btn-outline-danger btn-sm" type="submit" data-submit-lock="true">
                           <i class="bi bi-trash"></i>
                           <span>Eliminar</span>
                         </button>

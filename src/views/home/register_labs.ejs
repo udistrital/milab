@@ -39,7 +39,7 @@
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
-            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar">
+            <button class="btn btn-perso" type="submit" title="Consultar" aria-label="Consultar" data-read-only-lock="true">
               <i class="bi bi-search" aria-hidden="true"></i>
             </button>
           </div>
@@ -167,7 +167,7 @@
         <% } %>
 
         <div class="col-md-12 d-flex flex-wrap justify-content-center gap-3 pt-2">
-          <button class="btn btn-perso col-md-6" type="submit" id="abrirModal">Registrar</button>
+          <button class="btn btn-perso col-md-6" type="submit" id="abrirModal" data-submit-lock="true">Registrar</button>
           <% if (tipo === 'admin' || tipo === 'coordinador') { %>
             <a href="/milab/api/register_labs/token" class="btn btn-outline-secondary col-md-5">Generar enlace con token</a>
           <% } %>
