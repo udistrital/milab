@@ -10,7 +10,6 @@
  */
 
 const axios = require('axios');
-const { config } = require('../config/config');
 
 const BASE_URL = process.env.EDX_CERT_API_URL || 'http://localhost:4000';
 const TIMEOUT_MS = Number(process.env.EDX_CERT_TIMEOUT_MS || 5000);
@@ -48,7 +47,7 @@ async function consultarCurso(codigoUsuario, codigoCurso) {
   } catch (err) {
     const msg = `[EDX-CERT] Error consultando curso ${codigoCurso} para usuario ${codigoUsuario}: ${err.message}`;
     console.error(msg);
-    throw new Error(msg);
+    throw new Error(msg, { cause: err });
   }
 }
 
@@ -68,7 +67,7 @@ async function consultarCursosUsuario(codigoUsuario) {
   } catch (err) {
     const msg = `[EDX-CERT] Error consultando cursos del usuario ${codigoUsuario}: ${err.message}`;
     console.error(msg);
-    throw new Error(msg);
+    throw new Error(msg, { cause: err });
   }
 }
 

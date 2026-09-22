@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { normalizeLogDocument } = require('../../libs/account-email');
 const { requireJsonRoles } = require('../middlewares/auth');
+const { resolveLaboratoristaScope } = require('../../libs/capacitacion-scope');
 
 const router = express.Router();
 
@@ -128,12 +129,35 @@ function mapDbErrorToMessage(error, defaultMsg) {
   return defaultMsg;
 }
 
+router.get('/contexto', requireCursosRead, async function (req, res) {
+  try {
+    const scope = await resolveLaboratoristaScope(req);
+    return res.status(200).json({ ok: true, scope });
+  } catch (error) {
+    console.error('[capacitacion-cursos:/contexto]', error);
+    return res.status(500).json({ ok: false, message: 'Error al cargar el contexto del usuario.' });
+  }
+});
+
 router.get('/facultades', requireCursosRead, async function (req, res) {
   try {
-    const result = await pool.query(
-      'SELECT facultad_id, nombre FROM facultad WHERE activo = TRUE ORDER BY nombre ASC'
-    );
-    return res.status(200).json({ ok: true, facultades: result.rows });
+    const scope = await resolveLaboratoristaScope(req);
+    let result;
+    if (scope.isAdmin || scope.facultyIds.length === 0) {
+      result = await pool.query(
+        'SELECT facultad_id, nombre FROM facultad WHERE activo = TRUE ORDER BY nombre ASC'
+      );
+    } else {
+      result = await pool.query(
+        `SELECT facultad_id, nombre
+         FROM facultad
+         WHERE activo = TRUE
+           AND facultad_id = ANY($1::int[])
+         ORDER BY nombre ASC`,
+        [scope.facultyIds]
+      );
+    }
+    return res.status(200).json({ ok: true, facultades: result.rows, scope });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades]', error);
     return res.status(500).json({ ok: false, message: 'Error al cargar facultades.' });
@@ -147,6 +171,15 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     return res.status(400).json({ ok: false, message: 'id_facultad inválido.' });
   }
   try {
+    const scope = await resolveLaboratoristaScope(req);
+
+    if (scope.cursoFilterRequired && scope.facultyIds.indexOf(idFacultad) === -1) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No está autorizado para consultar laboratorios de esta facultad.',
+      });
+    }
+
     const facRes = await pool.query(
       'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1 AND activo = TRUE',
       [idFacultad]
@@ -154,21 +187,39 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     if (facRes.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Facultad no existe o está inactiva.' });
     }
-    const labs = await pool.query(
-      `SELECT u.ual_id AS id_laboratorio,
-              u.nombre,
-              u.codigo_abreviacion,
-              u.activo
-       FROM ual u
-       WHERE u.facultad_id = $1
-         AND u.activo = TRUE
-       ORDER BY u.nombre ASC`,
-      [idFacultad]
-    );
+
+    let labs;
+    if (scope.isAdmin || scope.ualIds.length === 0) {
+      labs = await pool.query(
+        `SELECT u.ual_id AS id_laboratorio,
+                u.nombre,
+                u.codigo_abreviacion,
+                u.activo
+         FROM ual u
+         WHERE u.facultad_id = $1
+           AND u.activo = TRUE
+         ORDER BY u.nombre ASC`,
+        [idFacultad]
+      );
+    } else {
+      labs = await pool.query(
+        `SELECT u.ual_id AS id_laboratorio,
+                u.nombre,
+                u.codigo_abreviacion,
+                u.activo
+         FROM ual u
+         WHERE u.facultad_id = $1
+           AND u.activo = TRUE
+           AND u.ual_id = ANY($2::int[])
+         ORDER BY u.nombre ASC`,
+        [idFacultad, scope.ualIds]
+      );
+    }
     return res.status(200).json({
       ok: true,
       facultad: facRes.rows[0],
       laboratorios: labs.rows,
+      scope,
     });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades/:id/laboratorios]', error);
@@ -178,34 +229,79 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
 
 router.get('/list', requireCursosRead, async function (req, res) {
   try {
-    const result = await pool.query(
-      `SELECT c.codigo_curso,
-              c.id_facultad,
-              f.nombre AS nombre_facultad,
-              c.nombre_curso,
-              c.url_edx,
-              c.activo,
-              c.fecha_creacion,
-              c.fecha_modificacion,
-              COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
-              COALESCE(lab.nombres, '[]') AS laboratorios_nombres
-       FROM cursos c
-       JOIN facultad f ON f.facultad_id = c.id_facultad
-       LEFT JOIN (
-           SELECT cl.codigo_curso,
-                  COUNT(*) AS count_labs,
-                  json_agg(json_build_object(
-                    'id_laboratorio', u.ual_id,
-                    'nombre', u.nombre
-                  ) ORDER BY u.nombre) AS nombres
-           FROM curso_laboratorio cl
-           JOIN ual u ON u.ual_id = cl.id_laboratorio
-           WHERE cl.activo = TRUE
-           GROUP BY cl.codigo_curso
-       ) lab ON lab.codigo_curso = c.codigo_curso
-       ORDER BY c.activo DESC, c.fecha_creacion DESC`
-    );
-    return res.status(200).json({ ok: true, cursos: result.rows });
+    const scope = await resolveLaboratoristaScope(req);
+    let rows;
+    if (scope.isAdmin) {
+      rows = await pool.query(
+        `SELECT c.codigo_curso,
+                c.id_facultad,
+                f.nombre AS nombre_facultad,
+                c.nombre_curso,
+                c.url_edx,
+                c.activo,
+                c.fecha_creacion,
+                c.fecha_modificacion,
+                COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
+                COALESCE(lab.nombres, '[]') AS laboratorios_nombres
+         FROM cursos c
+         JOIN facultad f ON f.facultad_id = c.id_facultad
+         LEFT JOIN (
+             SELECT cl.codigo_curso,
+                    COUNT(*) AS count_labs,
+                    json_agg(json_build_object(
+                      'id_laboratorio', u.ual_id,
+                      'nombre', u.nombre
+                    ) ORDER BY u.nombre) AS nombres
+             FROM curso_laboratorio cl
+             JOIN ual u ON u.ual_id = cl.id_laboratorio
+             WHERE cl.activo = TRUE
+             GROUP BY cl.codigo_curso
+         ) lab ON lab.codigo_curso = c.codigo_curso
+         ORDER BY c.activo DESC, c.fecha_creacion DESC`
+      );
+    } else {
+      if (scope.facultyIds.length === 0 || scope.ualIds.length === 0) {
+        return res.status(200).json({ ok: true, cursos: [], scope });
+      }
+      rows = await pool.query(
+        `SELECT c.codigo_curso,
+                c.id_facultad,
+                f.nombre AS nombre_facultad,
+                c.nombre_curso,
+                c.url_edx,
+                c.activo,
+                c.fecha_creacion,
+                c.fecha_modificacion,
+                COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
+                COALESCE(lab.nombres, '[]') AS laboratorios_nombres
+         FROM cursos c
+         JOIN facultad f ON f.facultad_id = c.id_facultad
+         LEFT JOIN (
+             SELECT cl.codigo_curso,
+                    COUNT(*) AS count_labs,
+                    json_agg(json_build_object(
+                      'id_laboratorio', u.ual_id,
+                      'nombre', u.nombre
+                    ) ORDER BY u.nombre) AS nombres
+             FROM curso_laboratorio cl
+             JOIN ual u ON u.ual_id = cl.id_laboratorio
+             WHERE cl.activo = TRUE
+             GROUP BY cl.codigo_curso
+         ) lab ON lab.codigo_curso = c.codigo_curso
+         WHERE c.activo = TRUE
+           AND c.id_facultad = ANY($1::int[])
+           AND EXISTS (
+             SELECT 1
+             FROM curso_laboratorio cl2
+             WHERE cl2.codigo_curso = c.codigo_curso
+               AND cl2.activo = TRUE
+               AND cl2.id_laboratorio = ANY($2::int[])
+           )
+         ORDER BY c.fecha_creacion DESC`,
+        [scope.facultyIds, scope.ualIds]
+      );
+    }
+    return res.status(200).json({ ok: true, cursos: rows.rows, scope });
   } catch (error) {
     console.error('[capacitacion-cursos:/list]', error);
     return res.status(500).json({ ok: false, message: 'Error al cargar listado de cursos.' });
@@ -218,6 +314,8 @@ router.get('/detalle/:codigo_curso', requireCursosRead, async function (req, res
     return res.status(400).json({ ok: false, message: 'codigo_curso inválido.' });
   }
   try {
+    const scope = await resolveLaboratoristaScope(req);
+
     const cursoRes = await pool.query(
       `SELECT c.codigo_curso,
               c.id_facultad,
@@ -233,20 +331,59 @@ router.get('/detalle/:codigo_curso', requireCursosRead, async function (req, res
     if (cursoRes.rows.length === 0) {
       return res.status(404).json({ ok: false, message: 'Curso no encontrado.' });
     }
-    const labsRes = await pool.query(
-      `SELECT cl.id_laboratorio AS id_laboratorio,
-              u.nombre AS nombre,
-              cl.activo
-       FROM curso_laboratorio cl
-       JOIN ual u ON u.ual_id = cl.id_laboratorio
-       WHERE cl.codigo_curso = $1
-       ORDER BY u.nombre ASC`,
-      [codigoCurso]
-    );
+
+    if (scope.cursoFilterRequired) {
+      const curso = cursoRes.rows[0];
+      const okFac = scope.facultyIds.indexOf(Number(curso.id_facultad)) !== -1;
+      const permisoLab = await pool.query(
+        `SELECT 1 AS ok
+         FROM curso_laboratorio cl
+         WHERE cl.codigo_curso = $1
+           AND cl.activo = TRUE
+           AND cl.id_laboratorio = ANY($2::int[])
+         LIMIT 1`,
+        [codigoCurso, scope.ualIds.length ? scope.ualIds : [0]]
+      );
+      if (!okFac || permisoLab.rows.length === 0) {
+        return res.status(403).json({
+          ok: false,
+          message: 'No está autorizado para consultar este curso.',
+        });
+      }
+    }
+
+    const labsQueryArgs =
+      scope.cursoFilterRequired && scope.ualIds.length
+        ? [codigoCurso, scope.ualIds]
+        : [codigoCurso];
+    const labsRes =
+      scope.cursoFilterRequired && scope.ualIds.length
+        ? await pool.query(
+            `SELECT cl.id_laboratorio AS id_laboratorio,
+                  u.nombre AS nombre,
+                  cl.activo
+           FROM curso_laboratorio cl
+           JOIN ual u ON u.ual_id = cl.id_laboratorio
+           WHERE cl.codigo_curso = $1
+             AND cl.id_laboratorio = ANY($2::int[])
+           ORDER BY u.nombre ASC`,
+            labsQueryArgs
+          )
+        : await pool.query(
+            `SELECT cl.id_laboratorio AS id_laboratorio,
+                  u.nombre AS nombre,
+                  cl.activo
+           FROM curso_laboratorio cl
+           JOIN ual u ON u.ual_id = cl.id_laboratorio
+           WHERE cl.codigo_curso = $1
+           ORDER BY u.nombre ASC`,
+            labsQueryArgs
+          );
     return res.status(200).json({
       ok: true,
       curso: cursoRes.rows[0],
       laboratorios_asociados: labsRes.rows,
+      scope,
     });
   } catch (error) {
     console.error('[capacitacion-cursos:/detalle/:codigo_curso]', error);

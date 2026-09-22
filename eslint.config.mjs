@@ -8,7 +8,7 @@ import { defineConfig } from 'eslint/config';
 export default defineConfig([
   {
     ignores: [
-      'package-lock.json',
+      '**/package-lock.json',
       'node_modules/**',
       '.venv/**',
       'coverage/**',
