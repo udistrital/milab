@@ -131,24 +131,12 @@
       if (!trigger) return;
 
       var form = getClosestForm(trigger);
-      if (form) {
-        if (form.dataset.submitting === '1') {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          return;
-        }
-        form.dataset.submitting = '1';
-      }
+      if (!form) return;
 
-      lock(trigger);
-
-      if (form) {
-        setTimeout(function () {
-          if (form.dataset.submitting === '1' && form.dataset.clientSubmission !== '1') {
-            form.dataset.submitting = '0';
-          }
-        }, SAFETY_TIMEOUT_MS + 500);
+      if (form.dataset.submitting === '1') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
       }
     } catch {
       /* no-op */
