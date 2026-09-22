@@ -929,6 +929,7 @@ END $$;
 INSERT INTO rol (nombre)
 VALUES
     ('admin'),
+    ('coordinador_general'),
     ('coordinador'),
     ('laboratorista'),
     ('monitor'),
@@ -1262,6 +1263,12 @@ FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Configuración' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Roles', '/milab/api/admin/roles', 'bi-people', 2
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Configuración' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
 DELETE FROM rol_permiso rp
 USING rol r, menu_item mi
 WHERE rp.rol_id = r.id
@@ -1278,6 +1285,8 @@ SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'primary'
 WHERE (
+    role_map.nombre = 'coordinador_general'
+) OR (
     role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente')
     AND menu_map.label = 'Inicio'
 ) OR (
@@ -1297,7 +1306,15 @@ INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'account'
-WHERE role_map.nombre IN ('admin', 'coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente')
+WHERE role_map.nombre IN (
+    'admin',
+    'coordinador_general',
+    'coordinador',
+    'laboratorista',
+    'monitor',
+    'estudiante',
+    'docente'
+)
 ON CONFLICT DO NOTHING;
 
 WITH role_map AS (SELECT id, nombre FROM rol),
@@ -1307,6 +1324,8 @@ SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'secondary'
 WHERE (
+    role_map.nombre = 'coordinador_general'
+) OR (
     role_map.nombre = 'admin' AND menu_map.label IN (
         'Registro',
         'Registro de coordinadores',
@@ -1360,7 +1379,8 @@ WHERE (
 OR (
     role_map.nombre = 'admin' AND menu_map.label IN (
         'Configuración',
-        'Permisos y menus'
+        'Permisos y menus',
+        'Roles'
     )
 )
 ON CONFLICT DO NOTHING;
