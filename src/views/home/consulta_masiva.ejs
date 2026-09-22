@@ -32,7 +32,7 @@
             <%- include('../partials/csrf_field') %>
             <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
             <input type="text" class="col-md-12 mt-1" id="consulta_masiva" name="consulta_masiva"  required>
-            <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1">Consultar</button>
+            <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1" data-read-only-lock="true">Consultar</button>
         </form>
         <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
         <% if (error) {%>

@@ -7,18 +7,73 @@
   var DATA_ORIGINAL_TEXT = 'data-original-text';
   var DATA_ORIGINAL_HTML = 'data-original-html';
   var DATA_SUBMIT_LOCK = 'data-submit-lock';
+  var DATA_READ_ONLY_LOCK = 'data-read-only-lock';
   var DATA_LOCK_TIMEOUT = 'data-lock-timeout-id';
   var SAFETY_TIMEOUT_MS = 15000;
+
+  var READ_ONLY_KEYWORDS = [
+    'buscar',
+    'consultar',
+    'verificar',
+    'filtrar',
+    'limpiar',
+    'recargar',
+    'refrescar',
+    'mostrar',
+    'ocultar',
+    'ver',
+    'detalle',
+    'reporte',
+    'imprimir',
+    'exportar',
+    'descargar',
+    'abrir',
+    'cerrar',
+    'toggle',
+    'refresh',
+    'search',
+    'filter',
+  ];
+
+  function _keywordHit(el) {
+    var src = (
+      (el.textContent || '') +
+      ' ' +
+      (el.getAttribute('aria-label') || '') +
+      ' ' +
+      (el.getAttribute('title') || '') +
+      ' ' +
+      (el.value || '')
+    )
+      .toLowerCase()
+      .trim();
+    if (!src) return false;
+    for (var i = 0; i < READ_ONLY_KEYWORDS.length; i += 1) {
+      if (src.indexOf(READ_ONLY_KEYWORDS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function _isReadOnly(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.hasAttribute(DATA_READ_ONLY_LOCK)) return true;
+    return _keywordHit(el);
+  }
+
+  function hasExplicitWriteLock(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var attr = (el.getAttribute(DATA_SUBMIT_LOCK) || '').toLowerCase();
+    return attr === 'true' || attr === '';
+  }
 
   function isSubmitTrigger(el) {
     if (!el || el.nodeType !== 1) return false;
     var type = (el.getAttribute('type') || '').toLowerCase();
     return (
-      (el.tagName === 'BUTTON' &&
-        (type === 'submit' || type === '' || el.hasAttribute(DATA_SUBMIT_LOCK))) ||
+      (el.tagName === 'BUTTON' && (type === 'submit' || type === '' || hasExplicitWriteLock(el))) ||
       (el.tagName === 'INPUT' && (type === 'submit' || type === 'image')) ||
-      (el.tagName === 'A' && el.hasAttribute(DATA_SUBMIT_LOCK)) ||
-      el.hasAttribute(DATA_SUBMIT_LOCK)
+      (el.tagName === 'A' && hasExplicitWriteLock(el)) ||
+      hasExplicitWriteLock(el)
     );
   }
 
@@ -72,20 +127,11 @@
       setLockedText(el, labelMsg);
 
       var timeoutId = setTimeout(function () {
-        if (window.console && typeof window.console.warn === 'function') {
-          window.console.warn(
-            '[MiLabSubmitLock] Safety timeout reached after ' +
-              SAFETY_TIMEOUT_MS +
-              'ms — releasing button to avoid permanent lock.'
-          );
-        }
         release(el);
       }, SAFETY_TIMEOUT_MS);
       el.setAttribute(DATA_LOCK_TIMEOUT, String(timeoutId));
-    } catch (e) {
-      if (window.console && typeof window.console.error === 'function') {
-        window.console.error('[MiLabSubmitLock] lock failed:', e);
-      }
+    } catch {
+      /* no-op */
     }
   }
 
@@ -104,11 +150,46 @@
       }
 
       restoreText(el);
-    } catch (e) {
-      if (window.console && typeof window.console.error === 'function') {
-        window.console.error('[MiLabSubmitLock] release failed:', e);
-      }
+    } catch {
+      /* no-op */
     }
+  }
+
+  function getClosestForm(trigger) {
+    if (!trigger) return null;
+    if (trigger.form) return trigger.form;
+    if (trigger.tagName === 'FORM') return trigger;
+    var node = trigger;
+    while (node && node.nodeType === 1) {
+      if (node.tagName === 'FORM') return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function _shouldLockTrigger(trigger) {
+    if (!trigger) return false;
+    if (_isReadOnly(trigger)) return false;
+
+    var explicitWrite = hasExplicitWriteLock(trigger);
+    if (explicitWrite) return true;
+
+    var isImplicitSubmit =
+      (trigger.tagName === 'BUTTON' &&
+        (trigger.getAttribute('type') || '').toLowerCase() === 'submit') ||
+      (trigger.tagName === 'INPUT' &&
+        ((trigger.getAttribute('type') || '').toLowerCase() === 'submit' ||
+          (trigger.getAttribute('type') || '').toLowerCase() === 'image'));
+
+    if (!isImplicitSubmit) return false;
+
+    var form = getClosestForm(trigger);
+    if (!form) return false;
+
+    var method = (form.getAttribute('method') || 'GET').toUpperCase();
+    if (method !== 'POST') return false;
+
+    return true;
   }
 
   function documentClickHandler(e) {
@@ -116,31 +197,10 @@
       var target = e.target;
       var trigger = closestSubmit(target);
       if (!trigger) return;
+      if (!_shouldLockTrigger(trigger)) return;
 
-      var explicitLock = trigger.hasAttribute(DATA_SUBMIT_LOCK);
-      var isSubmitButton =
-        (trigger.tagName === 'BUTTON' &&
-          (trigger.getAttribute('type') || '').toLowerCase() === 'submit') ||
-        (trigger.tagName === 'INPUT' &&
-          ((trigger.getAttribute('type') || '').toLowerCase() === 'submit' ||
-            (trigger.getAttribute('type') || '').toLowerCase() === 'image'));
-
-      if (!(explicitLock || isSubmitButton)) return;
-
-      var form =
-        trigger.form ||
-        (trigger.tagName === 'FORM'
-          ? trigger
-          : (function () {
-              var n = trigger;
-              while (n && n.nodeType === 1) {
-                if (n.tagName === 'FORM') return n;
-                n = n.parentNode;
-              }
-              return null;
-            })());
-
-      if (form && isSubmitButton) {
+      var form = getClosestForm(trigger);
+      if (form) {
         if (form.dataset.submitting === '1') {
           e.preventDefault();
           e.stopPropagation();
@@ -152,18 +212,15 @@
 
       lock(trigger);
 
-      if (form && form.dataset.submitting === '1') {
+      if (form) {
         setTimeout(function () {
-          if (form.dataset.submitting !== '1') return;
-          if (form.dataset.serverValidated !== '1' && form.dataset.clientSubmission !== '1') {
+          if (form.dataset.submitting === '1' && form.dataset.clientSubmission !== '1') {
             form.dataset.submitting = '0';
           }
-        }, SAFETY_TIMEOUT_MS);
+        }, SAFETY_TIMEOUT_MS + 500);
       }
-    } catch (err) {
-      if (window.console && typeof window.console.error === 'function') {
-        window.console.error('[MiLabSubmitLock] click handler failed:', err);
-      }
+    } catch {
+      /* no-op */
     }
   }
 
@@ -179,18 +236,37 @@
       form.dataset.submitting = '1';
 
       var submits = form.querySelectorAll(
-        'button[type="submit"], input[type="submit"], input[type="image"], [' +
+        'button[' +
+          DATA_SUBMIT_LOCK +
+          '="true"], input[type="submit"][' +
+          DATA_SUBMIT_LOCK +
+          '="true"], input[type="image"][' +
+          DATA_SUBMIT_LOCK +
+          '="true"], a[' +
           DATA_SUBMIT_LOCK +
           '="true"]'
       );
       for (var i = 0; i < submits.length; i++) {
-        lock(submits[i]);
+        if (!_isReadOnly(submits[i])) {
+          lock(submits[i]);
+        }
       }
-    } catch (err) {
-      if (window.console && typeof window.console.error === 'function') {
-        window.console.error('[MiLabSubmitLock] submit handler failed:', err);
-      }
+    } catch {
+      /* no-op */
     }
+  }
+
+  function runQuickCheck() {
+    var lockable = document.querySelectorAll('[' + DATA_SUBMIT_LOCK + '="true"]');
+    var allBtns = document.querySelectorAll('button, a, input[type="submit"], input[type="image"]');
+    var roCount = 0;
+    for (var i = 0; i < allBtns.length; i += 1) {
+      if (_isReadOnly(allBtns[i])) roCount += 1;
+    }
+    return {
+      explicitDataSubmitLock: lockable.length,
+      readOnlyMatched: roCount,
+    };
   }
 
   var MiLabSubmitLock = {
@@ -198,22 +274,29 @@
     SAFETY_TIMEOUT_MS: SAFETY_TIMEOUT_MS,
     lock: lock,
     release: release,
+    isReadOnly: _isReadOnly,
+    runQuickCheck: runQuickCheck,
   };
 
-  Object.defineProperty(window, 'MiLabSubmitLock', {
-    configurable: false,
-    enumerable: true,
-    writable: false,
-    value: MiLabSubmitLock,
-  });
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function attachHandlers() {
-      document.addEventListener('click', documentClickHandler, true);
-      document.addEventListener('submit', documentSubmitHandler, true);
+  try {
+    Object.defineProperty(window, 'MiLabSubmitLock', {
+      configurable: false,
+      enumerable: true,
+      writable: false,
+      value: MiLabSubmitLock,
     });
-  } else {
+  } catch {
+    window.MiLabSubmitLock = MiLabSubmitLock;
+  }
+
+  function attachHandlers() {
     document.addEventListener('click', documentClickHandler, true);
     document.addEventListener('submit', documentSubmitHandler, true);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachHandlers);
+  } else {
+    attachHandlers();
   }
 })(window, document);
