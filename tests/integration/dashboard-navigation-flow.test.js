@@ -127,3 +127,48 @@ test('dashboard flow rejects coordinators without associated faculties', async (
     loaded.restore();
   }
 });
+
+test('dashboard flow counts only sanctions visible to coordinador faculties', async () => {
+  const loaded = loadDashboardApp({
+    user: createUser({ tipo: 'coordinador', roles: ['coordinador'], documento: 'coord-1' }),
+    scopeImpl: async () => ({ coordinatorDocument: 'coord-1', facultyIds: [10] }),
+    scopeRows: {
+      faculties: [{ nombre: 'Tecnologica' }],
+    },
+    poolRows: {
+      sanctions: [
+        {
+          id: 101,
+          fecha_multa: '2026-09-01T10:00:00.000Z',
+          con_estado_multa: 'ACTIVA',
+          faculty_id: 10,
+          ual_id: 1001,
+        },
+        {
+          id: 102,
+          fecha_multa: '2026-09-02T10:00:00.000Z',
+          con_estado_multa: 'ACTIVA',
+          faculty_id: 99,
+          ual_id: 9901,
+        },
+      ],
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.dashboardRole, 'coordinador');
+
+    const sanctionsCounter = (response.body.locals.scopeCounters || []).find(
+      (counter) => counter.label === 'Sanciones visibles'
+    );
+    assert.equal(Boolean(sanctionsCounter), true);
+    assert.equal(sanctionsCounter.value, '1');
+    assert.equal((response.body.locals.tablesData?.sanciones || []).length, 1);
+  } finally {
+    loaded.restore();
+  }
+});
