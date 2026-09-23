@@ -124,12 +124,37 @@ test('fine removal updates the sanction status and renders success feedback', as
         dbPath,
         {
           query: async (sql) => {
-            if (sql.includes('SELECT usuario_sancionado_id, con_estado_multa FROM multa')) {
-              return { rows: [{ usuario_sancionado_id: 44, con_estado_multa: 'ACTIVA' }] };
+            if (
+              sql.includes(
+                'SELECT m.usuario_sancionado_id, m.con_estado_multa, m.ual_id, u.facultad_id'
+              )
+            ) {
+              return {
+                rows: [
+                  {
+                    usuario_sancionado_id: 44,
+                    con_estado_multa: 'ACTIVA',
+                    ual_id: 12,
+                    facultad_id: 7,
+                  },
+                ],
+              };
             }
 
             if (sql.includes('SELECT documento FROM laboratorista')) {
               return { rows: [{ documento: '9001' }] };
+            }
+
+            if (sql.includes('FROM laboratorista_ual')) {
+              return { rows: [{ '?column?': 1 }] };
+            }
+
+            if (sql.includes('UPDATE multa SET con_estado_multa')) {
+              return { rowCount: 1, rows: [] };
+            }
+
+            if (sql.includes('INSERT INTO log')) {
+              return { rowCount: 1, rows: [] };
             }
 
             return { rows: [] };

@@ -1,12 +1,34 @@
 const { hasAllPermissions, hasAnyPermission } = require('../../libs/permissions');
 
+const SUPPORT_EMAIL = 'milab@udistrital.edu.co';
+
+function normalizeGenericAuthErrorPayload(payload) {
+  const normalized = { ...payload };
+
+  if (
+    normalized.message === '¡Algo ha salido mal!' ||
+    normalized.message === 'Algo ha salido mal'
+  ) {
+    normalized.message = 'No pudimos completar tu solicitud';
+  }
+
+  if (
+    normalized.message2 === 'Inténtalo nuevamente' ||
+    normalized.message2 === 'Intentalo nuevamente'
+  ) {
+    normalized.message2 = `Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en ${SUPPORT_EMAIL}.`;
+  }
+
+  return normalized;
+}
+
 function renderAuthError(res, overrides = {}) {
-  const payload = {
+  const payload = normalizeGenericAuthErrorPayload({
     message: '¡Algo ha salido mal!',
     message2: 'Inténtalo nuevamente',
     limit: 'noSession',
     ...overrides,
-  };
+  });
 
   return res.render('home/message_error', payload);
 }

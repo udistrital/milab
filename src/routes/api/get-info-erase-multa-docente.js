@@ -13,7 +13,7 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
-const requireLaboratoristaTeacherEraseAccess = requireRoles('laboratorista', {
+const requireLaboratoristaTeacherEraseAccess = requireRoles(['laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',

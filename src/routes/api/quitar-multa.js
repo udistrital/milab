@@ -2,6 +2,7 @@
 const express = require('express');
 const pool = require('../../libs/db');
 const { fetchUserById } = require('../../libs/user-identity');
+const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
@@ -16,19 +17,45 @@ const requireFineRemovalAccess = requireRoles(['admin', 'laboratorista', 'coordi
   limit: 'noSession',
 });
 
+async function resolveLaboratoristaDocument(userDocument) {
+  const result = await pool.query(
+    'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    [String(userDocument || '').trim()]
+  );
+  return result.rows[0]?.documento || null;
+}
+
+function getSessionDocument(req) {
+  return req.session?.user?.documento_real || req.session?.user?.documento || null;
+}
+
 router.post('/', requireFineRemovalAccess, async (req, res) => {
-  const { con_id } = req.body;
-  console.log('ID antes de la consulta', con_id);
+  const conId = Number(req.body?.con_id);
+
+  if (!Number.isInteger(conId) || conId <= 0) {
+    return res.render('home/message_error', {
+      message: 'Sanción inválida',
+      message2: 'No se pudo identificar la sanción a retirar.',
+      limit: null,
+    });
+  }
+
   let con_estado_saldado = 'POR SALDAR';
   let accionLog = 'Cambiar estado de multa a SALDADO';
   let mensajeSuccess = 'Multa actualizada correctamente';
   let mensajeSuccess2 = '';
 
   try {
-    // Primero obtenemos el usuario sancionado de la multa
+    // Primero obtenemos la información base y alcance de la multa
     const multaResult = await pool.query(
-      'SELECT usuario_sancionado_id, con_estado_multa FROM multa WHERE id = $1',
-      [con_id]
+      `
+        SELECT m.usuario_sancionado_id, m.con_estado_multa, m.ual_id, u.facultad_id
+        FROM multa m
+        INNER JOIN ual u ON u.ual_id = m.ual_id
+        WHERE m.id = $1
+        LIMIT 1
+      `,
+      [conId]
     );
 
     if (multaResult.rows.length === 0) {
@@ -40,6 +67,58 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
     }
 
     const multaActual = multaResult.rows[0];
+    const userType = String(req.session?.user?.tipo || '').toLowerCase();
+
+    if (userType === 'coordinador') {
+      const coordinatorScope = await resolveCoordinatorScope(pool, getSessionDocument(req));
+      if (!coordinatorScope.coordinatorDocument || coordinatorScope.facultyIds.length === 0) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'La cuenta de coordinador no tiene facultades asociadas.',
+          limit: null,
+        });
+      }
+
+      const facultadId = Number(multaActual.facultad_id);
+      if (!Number.isFinite(facultadId) || !coordinatorScope.facultyIds.includes(facultadId)) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'No puedes retirar sanciones de una facultad fuera de tu alcance.',
+          limit: null,
+        });
+      }
+    }
+
+    if (userType === 'laboratorista') {
+      const laboratoristaDocument = await resolveLaboratoristaDocument(getSessionDocument(req));
+      if (!laboratoristaDocument) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'No se encontró un laboratorista asociado a la sesión activa.',
+          limit: null,
+        });
+      }
+
+      const asignacionResult = await pool.query(
+        `
+          SELECT 1
+          FROM laboratorista_ual
+          WHERE laboratorista_documento_id = $1
+            AND ual_id = $2
+          LIMIT 1
+        `,
+        [laboratoristaDocument, multaActual.ual_id]
+      );
+
+      if (!asignacionResult.rows.length) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'La sanción no pertenece a una UAL asignada al laboratorista.',
+          limit: null,
+        });
+      }
+    }
+
     if (
       multaActual.con_estado_multa === 'SALDADA' ||
       multaActual.con_estado_multa === 'POR SALDAR'
@@ -51,7 +130,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       });
     }
 
-    const cfg = await resolveMultaConfigForMultaId(con_id);
+    const cfg = await resolveMultaConfigForMultaId(conId);
     const permiteSaldarDirecto = Boolean(cfg && cfg.permite_saldar_multas_directas);
     if (permiteSaldarDirecto) {
       con_estado_saldado = 'SALDADA';
@@ -68,19 +147,16 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
     // Actualizamos el estado de la multa
     await pool.query('UPDATE multa SET con_estado_multa = $1 WHERE id = $2', [
       con_estado_saldado,
-      con_id,
+      conId,
     ]);
-    console.log('1 record updated');
 
-    let documentoReal = req.session.user.documento;
-    if (req.session.user.tipo === 'laboratorista') {
-      const result = await pool.query(
-        'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
-        [req.session.user.documento]
-      );
-      if (result.rows.length > 0) {
-        documentoReal = result.rows[0].documento;
-      }
+    let documentoReal = getSessionDocument(req);
+    if (userType === 'laboratorista') {
+      documentoReal = (await resolveLaboratoristaDocument(documentoReal)) || documentoReal;
+    }
+    if (userType === 'coordinador') {
+      const coordinatorScope = await resolveCoordinatorScope(pool, documentoReal);
+      documentoReal = coordinatorScope.coordinatorDocument || documentoReal;
     }
 
     await pool.query(
