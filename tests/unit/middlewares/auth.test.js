@@ -41,7 +41,7 @@ test('renderAuthError renders default payload merged with overrides', () => {
   assert.deepEqual(res.rendered, {
     view: 'home/message_error',
     payload: {
-      message: '¡Algo ha salido mal!',
+      message: 'No pudimos completar tu solicitud',
       message2: 'Sin sesión activa',
       limit: 'noSession',
     },

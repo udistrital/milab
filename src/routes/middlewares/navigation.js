@@ -329,6 +329,61 @@ async function getPendingSanctionsCount(user, role) {
   return result.rows[0]?.total || 0;
 }
 
+async function getActiveSanctionsSummary(user, role) {
+  if (!user || !['estudiante', 'docente'].includes(role)) {
+    return {
+      enabled: false,
+      count: 0,
+      items: [],
+    };
+  }
+
+  const userId = Number(user.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return {
+      enabled: true,
+      count: 0,
+      items: [],
+    };
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        m.id,
+        m.cat_multa,
+        m.tipo_sancion,
+        m.fecha_multa,
+        m.con_estado_multa,
+        u.nombre AS ual,
+        COUNT(*) OVER()::int AS total_activas
+      FROM multa m
+      LEFT JOIN ual u ON u.ual_id = m.ual_id
+      WHERE m.usuario_sancionado_id = $1
+        AND m.con_estado_multa = 'ACTIVA'
+      ORDER BY m.fecha_multa DESC NULLS LAST, m.id DESC
+      LIMIT 6
+    `,
+    [userId]
+  );
+
+  const rows = result.rows || [];
+  const totalActivas = rows[0]?.total_activas || 0;
+
+  return {
+    enabled: true,
+    count: totalActivas,
+    items: rows.map((row) => ({
+      id: row.id,
+      categoria: row.cat_multa || 'Sin categoría',
+      tipo: row.tipo_sancion || 'Por definir',
+      estado: row.con_estado_multa || 'ACTIVA',
+      fecha: row.fecha_multa || null,
+      ual: row.ual || 'UAL no disponible',
+    })),
+  };
+}
+
 async function buildNavigation(user) {
   const roles = normalizeRoles(user?.roles || user?.tipo);
   const isAuthenticated = roles.length > 0;
@@ -407,6 +462,7 @@ async function navigationMiddleware(req, res, next) {
     const primaryRole = getPrimaryRole(roles);
     const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
+    const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
 
     if (sessionUser) {
       Object.assign(res.locals, sessionUser);
@@ -421,6 +477,7 @@ async function navigationMiddleware(req, res, next) {
     res.locals.sessionRoleLabel = navigation.roleLabel;
     res.locals.pendingSanctionsCount = pendingSanctionsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
+    res.locals.activeSanctionsSummary = activeSanctionsSummary;
 
     return next();
   } catch (error) {
