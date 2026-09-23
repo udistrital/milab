@@ -133,6 +133,53 @@ async function getScopedCursos(scope) {
   return rows.rows;
 }
 
+router.get('/equipos/search', requireEquiposAccess, async function (req, res) {
+  try {
+    const q = String(req.query?.q || req.query?.nombre || '').trim();
+    const scope = await resolveLaboratoristaScope(req);
+    let rows;
+    if (!q) {
+      rows = await pool.query(
+        `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
+         FROM equipo
+         WHERE activo = TRUE
+         ORDER BY nombre ASC, codigo ASC
+         LIMIT 200`
+      );
+    } else {
+      const pattern = '%' + q + '%';
+      rows = await pool.query(
+        `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
+         FROM equipo
+         WHERE activo = TRUE
+           AND (
+             UPPER(nombre) LIKE UPPER($1)
+             OR UPPER(codigo) LIKE UPPER($1)
+             OR UPPER(COALESCE(categoria,'')) LIKE UPPER($1)
+             OR UPPER(COALESCE(laboratorio,'')) LIKE UPPER($1)
+             OR UPPER(COALESCE(facultad,'')) LIKE UPPER($1)
+           )
+         ORDER BY
+           CASE WHEN UPPER(nombre) LIKE UPPER($2) THEN 0 ELSE 1 END,
+           nombre ASC,
+           codigo ASC
+         LIMIT 500`,
+        [pattern, q + '%']
+      );
+    }
+    return res.status(200).json({
+      ok: true,
+      q: q,
+      scope,
+      resultados: rows.rows,
+      total: rows.rows.length,
+    });
+  } catch (error) {
+    console.error('[capacitacion-equipos:/equipos/search]', error);
+    return res.status(500).json({ ok: false, message: 'Error al buscar equipos.' });
+  }
+});
+
 router.get('/list', requireEquiposAccess, async function (req, res) {
   try {
     const scope = await resolveLaboratoristaScope(req);
@@ -205,6 +252,11 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
         .filter((x) => !Number.isNaN(x))
     )
   );
+  const modoRaw = String(req.body?.modo || req.body?.mode || 'reemplazar')
+    .trim()
+    .toLowerCase();
+  const modo =
+    modoRaw === 'agregar' || modoRaw === 'add' || modoRaw === 'append' ? 'agregar' : 'reemplazar';
 
   const client = await pool.connect();
   try {
@@ -222,23 +274,38 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
       return res.status(404).json({ ok: false, message: 'Curso no encontrado.' });
     }
 
+    let insertados = 0;
+    let reactivados = 0;
+
     await client.query('BEGIN');
 
-    await client.query(
-      'DELETE FROM equipo_especializado WHERE codigo_curso = $1 AND id_equipo != ALL($2::int[])',
-      [codigoCurso, idsSet.length ? idsSet : [0]]
-    );
+    if (modo === 'reemplazar') {
+      await client.query(
+        'DELETE FROM equipo_especializado WHERE codigo_curso = $1 AND id_equipo != ALL($2::int[])',
+        [codigoCurso, idsSet.length ? idsSet : [0]]
+      );
+    }
 
     for (const idEquipo of idsSet) {
-      await client.query(
+      const rs = await client.query(
         `INSERT INTO equipo_especializado (codigo_curso, id_equipo, activo)
          VALUES ($1, $2, TRUE)
          ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
            SET activo = TRUE,
-               fecha_modificacion = CURRENT_TIMESTAMP`,
+               fecha_modificacion = CURRENT_TIMESTAMP
+         RETURNING (xmax = 0) AS is_new`,
         [codigoCurso, idEquipo]
       );
+      if (rs.rows.length) {
+        if (rs.rows[0].is_new) insertados += 1;
+        else reactivados += 1;
+      }
     }
+
+    const accionLog =
+      modo === 'agregar'
+        ? 'asociar-agregar curso-equipo capacitacion'
+        : 'asociar curso-equipo capacitacion';
 
     await client.query(
       `INSERT INTO log (nombre, documento, accion, persona)
@@ -246,17 +313,23 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
       [
         getLogActorName(req),
         getLogActorDocument(req),
-        'asociar curso-equipo capacitacion',
-        `${codigoCurso} | ${existCurso.rows[0].nombre_curso} | equipos=${idsSet.length}`,
+        accionLog,
+        `${codigoCurso} | ${existCurso.rows[0].nombre_curso} | modo=${modo} | nuevos=${insertados} | reactivados=${reactivados} | total_enviados=${idsSet.length}`,
       ]
     );
 
     await client.query('COMMIT');
     return res.status(200).json({
       ok: true,
-      message: 'Asociación guardada exitosamente.',
+      message:
+        modo === 'agregar'
+          ? `Equipos asociados exitosamente (${insertados} nuevos, ${reactivados} reactivados).`
+          : 'Asociación guardada exitosamente.',
       codigo_curso: codigoCurso,
       id_equipos: idsSet,
+      modo: modo,
+      insertados: insertados,
+      reactivados: reactivados,
     });
   } catch (error) {
     try {

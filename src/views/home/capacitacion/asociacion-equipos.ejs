@@ -67,6 +67,105 @@
     </div>
   </section>
 
+  <section class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+      <h5 class="mb-0" style="color:#7c3b04;">
+        <i class="bi bi-plus-circle me-2" style="color:#b45309;"></i>
+        Paso 2 - Búsqueda y asociación masiva (Operación Agregar)
+      </h5>
+      <span id="coincidenciasCount" class="badge rounded-pill text-bg-light border">0 coincidencias</span>
+    </div>
+    <div class="card-body">
+      <form id="busquedaForm" class="row g-3 align-items-end mb-4">
+        <%- include('../partials/csrf_field'); -%>
+        <div class="col-md-3">
+          <label class="form-label">Operación</label>
+          <select id="operacionSelect" class="form-select" aria-label="Operación">
+            <option value="agregar" selected>Agregar</option>
+            <option value="retirar" disabled>Retirar (usar panel derecho)</option>
+          </select>
+        </div>
+        <div class="col-md-7">
+          <label for="busquedaInput" class="form-label">Nombre del equipo (búsqueda LIKE)</label>
+          <div class="input-group">
+            <span class="input-group-text" style="background:#fffdf6;border-color:#f0e2c1;">
+              <i class="bi bi-search" style="color:#b45309;"></i>
+            </span>
+            <input
+              type="search"
+              class="form-control"
+              id="busquedaInput"
+              name="q"
+              placeholder="Ej: micro, olympus, multimetro, microscopio"
+              aria-label="Ingresar nombre del equipo para buscar"
+            >
+          </div>
+          <small class="form-text text-muted">
+            Coincidencia parcial: escribir "micro" devuelve Microscopio Olympus, Microscopio Leica, Microscopio Electrónico.
+          </small>
+        </div>
+        <div class="col-md-2 d-grid gap-2">
+          <button
+            id="buscarBtn"
+            type="submit"
+            class="btn btn-outline-warning w-100"
+            style="border-color:#f0aa00;color:#b45309;"
+            data-read-only-lock="true"
+          >
+            <i class="bi bi-binoculars"></i> Buscar
+          </button>
+        </div>
+      </form>
+
+      <div id="busquedaAlert" class="alert alert-info d-none mb-3" role="alert">
+        <i class="bi bi-info-circle me-1"></i>
+        <span id="busquedaAlertText"></span>
+      </div>
+
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-hover mb-0">
+          <thead style="background:#fffdf6;">
+            <tr>
+              <th scope="col" style="width:42px;color:#b45309;">
+                <input type="checkbox" id="checkTodosCoincidencias" class="form-check-input" aria-label="Seleccionar todas las coincidencias">
+              </th>
+              <th scope="col" style="width:110px;color:#b45309;">Código / ID</th>
+              <th scope="col" style="color:#b45309;">Equipo</th>
+              <th scope="col" style="color:#b45309;">Facultad / Laboratorio</th>
+              <th scope="col" style="width:140px;color:#b45309;">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="coincidenciasBody">
+            <tr>
+              <td colspan="5" class="text-center py-5 text-muted">
+                <i class="bi bi-search fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                Ingrese un término y presione Buscar para mostrar coincidencias.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center pt-2 border-top">
+        <small class="text-muted">
+          Seleccione una o varias filas. Al confirmar se crearán registros en <code>equipo_especializado</code> con
+          <code>activo=TRUE</code>; las relaciones existentes no se duplican y conservan su fecha de creación.
+        </small>
+        <button
+          id="asignarCursosBtn"
+          type="button"
+          class="btn btn-warning"
+          style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;"
+          <%= canEdit ? '' : 'disabled' %>
+          data-submit-lock="true"
+        >
+          <i class="bi bi-diagram-2-fill"></i>
+          Asignar cursos de capacitación
+        </button>
+      </div>
+    </div>
+  </section>
+
   <section class="row g-4 mb-4">
     <article class="col-lg-6">
       <div class="card h-100">
@@ -189,6 +288,7 @@
   var BASE_PATH = '/milab/api';
   var api = {
     list: BASE_PATH + '/capacitacion-equipos/list',
+    search: BASE_PATH + '/capacitacion-equipos/equipos/search',
     asociar: BASE_PATH + '/capacitacion-equipos/asociar',
     retirar: BASE_PATH + '/capacitacion-equipos/retirar',
     contexto: BASE_PATH + '/capacitacion-cursos/contexto',
@@ -201,6 +301,10 @@
     asociados: [],
     asociadoIndex: new Map(),
     cursoSeleccionado: null,
+    busqueda: {
+      q: '',
+      resultados: [],
+    },
   };
 
   function setAlert(message, type) {
@@ -359,6 +463,174 @@
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  function setBusquedaAlert(message, type) {
+    var el = document.getElementById('busquedaAlert');
+    if (!el) return;
+    var text = document.getElementById('busquedaAlertText');
+    if (text) text.textContent = message || '';
+    el.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+    if (message) el.classList.add('alert-' + (type || 'info'));
+    else el.classList.add('d-none');
+  }
+
+  function renderCoincidencias() {
+    var tbody = document.getElementById('coincidenciasBody');
+    var countLbl = document.getElementById('coincidenciasCount');
+    if (!tbody) return;
+    var rows = state.busqueda.resultados || [];
+    var asociadoIds = new Set();
+    if (state.cursoSeleccionado && state.asociadoIndex.has(state.cursoSeleccionado)) {
+      (state.asociadoIndex.get(state.cursoSeleccionado) || []).forEach(function (a) {
+        asociadoIds.add(Number(a.id_equipo));
+      });
+    }
+    if (rows.length === 0) {
+      var hint = state.busqueda.q
+        ? ('Sin coincidencias para &quot;' + escapeHtml(state.busqueda.q) + '&quot;.')
+        : 'Ingrese un término y presione Buscar para mostrar coincidencias.';
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="text-center py-5 text-muted"><i class="bi bi-search fs-2 d-block mb-2" style="color:#f0aa00;"></i>' + hint + '</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(function (e) {
+        var id = Number(e.id);
+        var isAsociado = state.cursoSeleccionado ? asociadoIds.has(id) : false;
+        var facLab = [e.facultad, e.laboratorio].filter(Boolean).join(' / ') || '—';
+        return (
+          '<tr data-id-equipo="' + id + '">' +
+          '<td><input type="checkbox" class="form-check-input chk-coincidencia" data-id-equipo="' + id + '"></td>' +
+          '<td><code>' + escapeHtml(e.codigo || id) + '</code></td>' +
+          '<td>' + escapeHtml(e.nombre) +
+            (isAsociado ? ' <span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffecb5;">ya asociado</span>' : '') +
+            (e.estado && e.estado !== 'disponible' ? ' <span class="badge text-bg-secondary ms-1">' + escapeHtml(e.estado) + '</span>' : '') +
+          '</td>' +
+          '<td class="text-muted small">' + escapeHtml(facLab) + '</td>' +
+          '<td>' +
+            (e.categoria ? '<span class="badge text-bg-light border d-inline-block mb-1">' + escapeHtml(e.categoria) + '</span> ' : '') +
+            (e.ubicacion ? '<small class="text-muted d-block">' + escapeHtml(e.ubicacion) + '</small>' : '') +
+          '</td>' +
+          '</tr>'
+        );
+      }).join('');
+    }
+    if (countLbl) countLbl.textContent = String(rows.length) + ' coincidencia' + (rows.length === 1 ? '' : 's');
+  }
+
+  function selectedCoincidenciasIds() {
+    var boxes = document.querySelectorAll('.chk-coincidencia:checked');
+    var ids = [];
+    boxes.forEach(function (b) { ids.push(Number(b.getAttribute('data-id-equipo'))); });
+    return ids.filter(function (n) { return Number.isFinite(n) && n > 0; });
+  }
+
+  function buscarClick(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var input = document.getElementById('busquedaInput');
+    var q = (input ? String(input.value || '') : '').trim();
+    state.busqueda.q = q;
+    state.busqueda.resultados = [];
+    if (!q) {
+      setBusquedaAlert('Ingrese un nombre o parte del nombre para buscar.', 'warning');
+      renderCoincidencias();
+      return;
+    }
+    setBusquedaAlert('Buscando equipos…', 'info');
+    var url = api.search + '?q=' + encodeURIComponent(q);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      try {
+        var data = JSON.parse(xhr.responseText || '{}');
+        if (!data.ok) {
+          state.busqueda.resultados = [];
+          setBusquedaAlert('Error: ' + (data.message || 'No se pudo buscar.'), 'danger');
+          renderCoincidencias();
+          return;
+        }
+        state.busqueda.resultados = data.resultados || [];
+        if (data.total === 0) {
+          setBusquedaAlert('No se encontraron equipos que coincidan con "' + escapeHtml(data.q || q) + '".', 'warning');
+        } else {
+          setBusquedaAlert(
+            'Se encontraron ' + data.total + ' equipo' + (data.total === 1 ? '' : 's') + ' para "' + escapeHtml(data.q || q) + '". Seleccione los que desea asociar y presione "Asignar cursos de capacitación".',
+            'success'
+          );
+        }
+        renderCoincidencias();
+      } catch (err) {
+        state.busqueda.resultados = [];
+        setBusquedaAlert('Ocurrió un error al procesar los resultados.', 'danger');
+        renderCoincidencias();
+      }
+    };
+    xhr.onerror = function () {
+      state.busqueda.resultados = [];
+      setBusquedaAlert('Error de conexión al buscar equipos.', 'danger');
+      renderCoincidencias();
+    };
+    xhr.send();
+  }
+
+  function asignarCursosClick(ev) {
+    var btn = ev.currentTarget;
+    if (!state.cursoSeleccionado) {
+      setAlert('Debe seleccionar un curso (Paso 1) antes de asignar equipos.', 'warning');
+      return;
+    }
+    var operacion = document.getElementById('operacionSelect');
+    var modo = operacion ? String(operacion.value || 'agregar').trim() : 'agregar';
+    if (modo !== 'agregar') {
+      setAlert('La operación "Retirar" se realiza desde el panel derecho "Equipos asociados al curso".', 'warning');
+      return;
+    }
+    var ids = selectedCoincidenciasIds();
+    if (ids.length === 0) {
+      setBusquedaAlert('Seleccione al menos un equipo de las coincidencias para asociarlo al curso.', 'warning');
+      return;
+    }
+    try {
+      window.MiLabSubmitLock.lock(btn, 'Asignando cursos…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.asociar, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          if (data.ok) {
+            setBusquedaAlert(data.message || 'Asignación realizada.', 'success');
+            setAlert(data.message || 'Asignación realizada exitosamente.', 'success');
+            loadAll();
+            var allBoxes = document.querySelectorAll('.chk-coincidencia');
+            allBoxes.forEach(function (b) { b.checked = false; });
+            var tAll = document.getElementById('checkTodosCoincidencias');
+            if (tAll) tAll.checked = false;
+          } else {
+            setAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+            setBusquedaAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+          }
+        } finally {
+          window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.onerror = function () {
+        try {
+          setAlert('Error de conexión.', 'danger');
+          setBusquedaAlert('Error de conexión.', 'danger');
+        } finally {
+          window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.send(JSON.stringify({
+        codigo_curso: state.cursoSeleccionado,
+        id_equipos: ids,
+        modo: 'agregar',
+      }));
+    } catch (err) {
+      window.MiLabSubmitLock.release(btn);
+    }
+  }
+
   function loadAll() {
     setAlert('Cargando listado de cursos y equipos…', 'info');
     var xhr = new XMLHttpRequest();
@@ -386,6 +658,9 @@
         populateFacultadSelect(state.scope);
         populateCursoSelect();
         renderEquipos();
+        setBusquedaAlert(null);
+        state.busqueda = state.busqueda || { q: '', resultados: [] };
+        renderCoincidencias();
         if (!state.cursos.length && state.scope && !state.scope.isAdmin) {
           setAlert('No hay cursos activos asociados a sus facultades o laboratorios autorizados.', 'warning');
         } else {
@@ -410,6 +685,7 @@
     if (!sel) return;
     state.cursoSeleccionado = sel.value || null;
     renderEquipos();
+    renderCoincidencias();
   }
 
   function selectedDisponiblesIds() {
@@ -581,6 +857,23 @@
       e.preventDefault();
       onCursoSelect();
     });
+
+    var busForm = document.getElementById('busquedaForm');
+    if (busForm) {
+      busForm.addEventListener('submit', buscarClick);
+      var buscarBtn = document.getElementById('buscarBtn');
+      if (buscarBtn) buscarBtn.addEventListener('click', buscarClick);
+      var busInput = document.getElementById('busquedaInput');
+      if (busInput) {
+        busInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); buscarClick(); }
+        });
+      }
+    }
+    var td3 = document.getElementById('checkTodosCoincidencias');
+    if (td3) td3.addEventListener('change', function (e) { toggleAll('.chk-coincidencia', e.target.checked); });
+    var asignarBtn = document.getElementById('asignarCursosBtn');
+    if (asignarBtn) asignarBtn.addEventListener('click', asignarCursosClick);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
