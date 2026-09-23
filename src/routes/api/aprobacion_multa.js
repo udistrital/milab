@@ -38,6 +38,10 @@ const requireApprovalAction = requireRoles(['coordinador', 'laboratorista'], {
   limit: 'noSession',
 });
 
+function getSessionDocument(req) {
+  return req.session?.user?.documento_real || req.session?.user?.documento || null;
+}
+
 async function resolveLaboratoristaDocument(userDocument) {
   const result = await pool.query(
     'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
@@ -50,7 +54,7 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
-    const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
     if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
       return {
         allowed: false,
@@ -72,7 +76,7 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
     };
   }
 
-  const sessionDocument = req.session?.user?.documento_real || req.session?.user?.documento;
+  const sessionDocument = getSessionDocument(req);
   const laboratoristaDocument = await resolveLaboratoristaDocument(sessionDocument);
   if (!laboratoristaDocument) {
     return {
@@ -152,7 +156,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
 
     if (!scope.coordinatorDocument) {
       return res.render('home/message_error', {
@@ -415,7 +419,7 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
 function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, descripcionBase) {
   return async function (req, res) {
     try {
-      const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+      const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
       if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
         const msg = {
           message: 'No autorizado',
