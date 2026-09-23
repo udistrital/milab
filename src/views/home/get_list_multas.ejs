@@ -20,6 +20,55 @@
                 <h1 class="app-page-title">Listado de sanciones</h1>
                 <p class="app-page-subtitle">Consulta el registro histórico de sanciones con foco en categoría, estado y responsables operativos.</p>
             </section>
+        <section class="card app-table-panel mb-3">
+            <div class="card-body">
+                <form action="/milab/api/get_list_multas" method="GET" class="row g-3 align-items-end">
+                    <% const filtros = locals.filtros || {}; %>
+                    <div class="col-12 col-md-4">
+                        <label for="fecha_desde" class="form-label">Desde</label>
+                        <input
+                            type="date"
+                            id="fecha_desde"
+                            name="fecha_desde"
+                            class="form-control"
+                            value="<%= filtros.fecha_desde || '' %>"
+                        >
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label for="fecha_hasta" class="form-label">Hasta</label>
+                        <input
+                            type="date"
+                            id="fecha_hasta"
+                            name="fecha_hasta"
+                            class="form-control"
+                            value="<%= filtros.fecha_hasta || '' %>"
+                        >
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label for="estado_multa" class="form-label">Estado</label>
+                        <select id="estado_multa" name="estado_multa" class="form-select">
+                            <option value="" <%= !filtros.estado_multa ? 'selected' : '' %>>Todos los estados</option>
+                            <option value="ACTIVA" <%= filtros.estado_multa === 'ACTIVA' ? 'selected' : '' %>>ACTIVA</option>
+                            <option value="Pendiente" <%= filtros.estado_multa === 'Pendiente' ? 'selected' : '' %>>Pendiente</option>
+                            <option value="POR SALDAR" <%= filtros.estado_multa === 'POR SALDAR' ? 'selected' : '' %>>POR SALDAR</option>
+                            <option value="SALDADA" <%= filtros.estado_multa === 'SALDADA' ? 'selected' : '' %>>SALDADA</option>
+                        </select>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-perso">Filtrar</button>
+                        <button
+                            type="submit"
+                            class="btn btn-outline-success"
+                            formaction="/milab/api/get_list_multas/export/excel"
+                            formmethod="GET"
+                        >
+                            Exportar Excel
+                        </button>
+                        <a href="/milab/api/get_list_multas" class="btn btn-outline-secondary">Limpiar</a>
+                    </div>
+                </form>
+            </div>
+        </section>
         <section class="card app-table-panel text-light">
         <div class="card-header">
             <div class="row">

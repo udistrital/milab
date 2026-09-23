@@ -27,7 +27,7 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-const requireLaboratoristaEraseAccess = requireRoles('laboratorista', {
+const requireLaboratoristaEraseAccess = requireRoles(['laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
