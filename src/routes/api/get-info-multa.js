@@ -28,18 +28,24 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-const requireLaboratoristaFineInfoView = requireRoles('laboratorista', {
+const requireFineInfoPageAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
 });
 
-router.get('/get', requireLaboratoristaFineInfoView, async function (req, res) {
+const requireLaboratoristaFineInfoAction = requireRoles('laboratorista', {
+  message: '¡Algo ha salido mal!',
+  message2: 'Inténtalo nuevamente',
+  limit: 'noSession',
+});
+
+router.get('/get', requireFineInfoPageAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   res.render('home/get-info-multa');
 });
 
-router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
+router.post('/', requireLaboratoristaFineInfoAction, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};

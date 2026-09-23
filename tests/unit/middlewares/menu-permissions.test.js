@@ -85,7 +85,7 @@ test('menuPermissionMiddleware blocks protected route when user is missing', asy
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       return { rows: [] };
@@ -116,7 +116,7 @@ test('menuPermissionMiddleware allows protected route with permitted role', asyn
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       if (sql.includes('FROM rol_permiso')) {
@@ -154,7 +154,7 @@ test('menuPermissionMiddleware blocks protected route with denied role', async (
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       if (sql.includes('FROM rol_permiso')) {
