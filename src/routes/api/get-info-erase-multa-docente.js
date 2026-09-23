@@ -13,11 +13,14 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
-const requireLaboratoristaTeacherEraseAccess = requireRoles(['laboratorista', 'coordinador'], {
+const requireLaboratoristaTeacherEraseAccess = requireRoles(
+  ['admin', 'laboratorista', 'coordinador'],
+  {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
-});
+  }
+);
 
 router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
