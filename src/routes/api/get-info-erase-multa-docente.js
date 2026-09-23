@@ -16,9 +16,9 @@ router.use(express.urlencoded({ extended: false }));
 const requireLaboratoristaTeacherEraseAccess = requireRoles(
   ['admin', 'laboratorista', 'coordinador'],
   {
-  message: '¡Algo ha salido mal!',
-  message2: 'Inténtalo nuevamente',
-  limit: 'noSession',
+    message: '¡Algo ha salido mal!',
+    message2: 'Inténtalo nuevamente',
+    limit: 'noSession',
   }
 );
 
