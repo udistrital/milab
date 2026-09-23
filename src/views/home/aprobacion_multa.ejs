@@ -74,7 +74,7 @@
       <% if (!Array.isArray(facultadesParaAutorizar) || facultadesParaAutorizar.length === 0) { %>
         <div class="alert alert-info text-center mb-0">No se encontraron facultades asociadas a tu coordinación para gestionar autorizaciones.</div>
       <% } else { %>
-        <div class="row g-3">
+        <div class="row g-3 justify-content-center">
           <% facultadesParaAutorizar.forEach(function (facultad) { %>
             <div class="col-12 col-lg-6" data-facultad-card="<%= facultad.facultad_id %>">
               <div class="card border-0 bg-body-secondary">

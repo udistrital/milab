@@ -4,7 +4,15 @@ const { renderAuthError } = require('./auth');
 
 function sanitizePath(pathname) {
   if (!pathname) return '';
-  return pathname.split('?')[0];
+  const cleanPath = pathname.split('?')[0];
+  if (cleanPath.length > 1 && cleanPath.endsWith('/')) {
+    let end = cleanPath.length;
+    while (end > 1 && cleanPath[end - 1] === '/') {
+      end -= 1;
+    }
+    return cleanPath.slice(0, end);
+  }
+  return cleanPath;
 }
 
 const publicApiAllowlist = [

@@ -200,7 +200,7 @@ test('aprobacion_multa activar redirects on successful update', async () => {
     });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, './');
+    assert.equal(response.headers.location, '/milab/api/aprobacion_multa');
   } finally {
     loaded.restore();
   }
