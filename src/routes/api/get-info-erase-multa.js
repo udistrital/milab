@@ -27,6 +27,24 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
+async function resolveStudentDocumentByCode(code) {
+  const normalizedCode = String(code || '').trim();
+  if (!normalizedCode) return null;
+
+  const result = await pool.query(
+    `SELECT documento
+     FROM perfil_estudiante
+     WHERE codigo::text = $1
+       AND documento IS NOT NULL
+       AND TRIM(documento) <> ''
+     ORDER BY usuario_id DESC
+     LIMIT 1`,
+    [normalizedCode]
+  );
+
+  return result.rows[0]?.documento || null;
+}
+
 const requireLaboratoristaEraseAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
@@ -63,6 +81,12 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
     con_estado = studentRecord.estado;
     con_documento =
       studentRecord.documento || studentRecord.numero_documento_identificacion || null;
+    if (
+      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
+      tipo_busqueda === 'codigo'
+    ) {
+      con_documento = await resolveStudentDocumentByCode(con_codigo || valor_busqueda);
+    }
     if (
       (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
       tipo_busqueda === 'documento'
