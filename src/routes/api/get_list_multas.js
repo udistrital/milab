@@ -117,7 +117,10 @@ async function buildMultasQueryContext(req, client) {
 
     conditions.push(`u.facultad_id = ANY(${nextParam(scope.facultyIds)}::int[])`);
   } else if (userType === 'laboratorista') {
-    const laboratoristaDocument = await resolveLaboratoristaDocument(client, getSessionDocument(req));
+    const laboratoristaDocument = await resolveLaboratoristaDocument(
+      client,
+      getSessionDocument(req)
+    );
 
     if (!laboratoristaDocument) {
       return {

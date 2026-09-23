@@ -222,7 +222,10 @@ test('quitar-multa coordinator succeeds with valid faculty scope', async () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_success');
-    assert.match(response.body.locals.message, /Multa actualizada correctamente|Multa saldada directamente/i);
+    assert.match(
+      response.body.locals.message,
+      /Multa actualizada correctamente|Multa saldada directamente/i
+    );
   } finally {
     loaded.restore();
   }
