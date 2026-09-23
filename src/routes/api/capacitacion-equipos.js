@@ -281,7 +281,12 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
 
     if (modo === 'reemplazar') {
       await client.query(
-        'DELETE FROM equipo_especializado WHERE codigo_curso = $1 AND id_equipo != ALL($2::int[])',
+        `UPDATE equipo_especializado
+         SET activo = FALSE,
+             fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE codigo_curso = $1
+           AND id_equipo != ALL($2::int[])
+           AND activo = TRUE`,
         [codigoCurso, idsSet.length ? idsSet : [0]]
       );
     }
@@ -358,15 +363,32 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
 
 router.post('/retirar', requireEquiposAccess, async function (req, res) {
   const codigoCurso = String(req.body?.codigo_curso || '').trim();
-  const idEquipoRaw = req.body?.id_equipo;
-  const idEquipo = Number.isFinite(Number(idEquipoRaw)) ? Number(idEquipoRaw) : NaN;
+  const rawSingular = req.body?.id_equipo;
+  const rawArray = req.body?.id_equipos || req.body?.equipos || [];
+  const idsRaw =
+    rawSingular != null && (Array.isArray(rawArray) ? rawArray.length === 0 : true)
+      ? [rawSingular]
+      : parseEquiposIds(rawArray);
+  const idsSet = Array.from(
+    new Set(
+      idsRaw
+        .map((x) => {
+          const n = Number(x);
+          return Number.isInteger(n) && n > 0 ? n : NaN;
+        })
+        .filter((x) => !Number.isNaN(x))
+    )
+  );
   if (!codigoCurso) {
     return res.status(400).json({ ok: false, message: 'codigo_curso es obligatorio.' });
   }
-  if (!Number.isInteger(idEquipo) || idEquipo <= 0) {
-    return res.status(400).json({ ok: false, message: 'id_equipo inválido.' });
+  if (idsSet.length === 0) {
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Debe enviar al menos un id_equipo válido.' });
   }
 
+  const client = await pool.connect();
   try {
     const scope = await resolveLaboratoristaScope(req);
     const permiso = await assertCursoInScope(codigoCurso, scope);
@@ -374,37 +396,62 @@ router.post('/retirar', requireEquiposAccess, async function (req, res) {
       return res.status(403).json({ ok: false, message: permiso.reason });
     }
 
-    const curso = await pool.query(
+    const curso = await client.query(
       'SELECT codigo_curso, nombre_curso FROM cursos WHERE codigo_curso = $1',
       [codigoCurso]
     );
-    const equipo = await pool.query('SELECT id, nombre FROM equipo WHERE id = $1', [idEquipo]);
-
-    const deleted = await pool.query(
-      'DELETE FROM equipo_especializado WHERE codigo_curso = $1 AND id_equipo = $2 RETURNING codigo_curso, id_equipo',
-      [codigoCurso, idEquipo]
-    );
-    if (deleted.rows.length === 0) {
-      return res.status(404).json({ ok: false, message: 'Asociación no encontrada.' });
+    if (curso.rows.length === 0) {
+      return res.status(404).json({ ok: false, message: 'Curso no encontrado.' });
     }
 
-    await pool.query(
+    await client.query('BEGIN');
+
+    const retiradosQ = await client.query(
+      `UPDATE equipo_especializado
+       SET activo = FALSE,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE codigo_curso = $1
+         AND id_equipo = ANY($2::int[])
+         AND activo = TRUE
+       RETURNING codigo_curso, id_equipo`,
+      [codigoCurso, idsSet]
+    );
+    const retirados = retiradosQ.rows.length;
+
+    await client.query(
       `INSERT INTO log (nombre, documento, accion, persona)
        VALUES ($1, $2, $3, $4)`,
       [
         getLogActorName(req),
         getLogActorDocument(req),
-        'retirar curso-equipo capacitacion',
-        `${codigoCurso} | ${curso.rows[0]?.nombre_curso || ''} | equipo=${idEquipo} ${equipo.rows[0]?.nombre || ''}`,
+        'retirar curso-equipo capacitacion (soft)',
+        `${codigoCurso} | ${curso.rows[0].nombre_curso} | ids_enviados=${idsSet.length} | retirados=${retirados}`,
       ]
     );
 
-    return res.status(200).json({ ok: true, message: 'Equipo retirado del curso.' });
+    await client.query('COMMIT');
+    return res.status(200).json({
+      ok: true,
+      message:
+        retirados === 0
+          ? 'Los equipos seleccionados no están asociados activamente a este curso.'
+          : `Equipo(s) retirado(s) del curso (${retirados} desactivado(s)).`,
+      codigo_curso: codigoCurso,
+      id_equipos: idsSet,
+      retirados: retirados,
+    });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* no-op */
+    }
     console.error('[capacitacion-equipos:/retirar]', error);
     return res
       .status(500)
       .json({ ok: false, message: 'No se pudo retirar el equipo. Inténtelo nuevamente.' });
+  } finally {
+    client.release();
   }
 });
 

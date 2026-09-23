@@ -208,7 +208,7 @@
         <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
           <h5 class="mb-0" style="color:#7c3b04;">
             <i class="bi bi-check2-square me-2" style="color:#b45309;"></i>
-            Equipos asociados al curso
+            Equipos asociados al curso (solo asociaciones activas)
           </h5>
           <span id="asociadosCount" class="badge rounded-pill text-bg-warning" style="background:#ffbf00;color:#7c3b04;">0</span>
         </div>
@@ -246,16 +246,17 @@
         <div class="me-auto">
           <small class="text-muted">
             <i class="bi bi-info-circle me-1"></i>
-            Puede seleccionar varios equipos a la vez y guardar la asociación en bloque.
+            Puede seleccionar varios equipos a la vez y guardar la asociación en bloque. "Retirar" desactiva la relación (<code>activo=FALSE</code>), no elimina el registro; al volver a asociar se reutiliza y reactiva.
           </small>
         </div>
         <button
           type="button"
           id="desasociarSeleccionBtn"
-          class="btn btn-outline-secondary"
+          class="btn btn-outline-danger"
           <%= canEdit ? '' : 'disabled' %>
+          data-submit-lock="true"
         >
-          <i class="bi bi-arrow-bar-left"></i> Desasociar selección
+          <i class="bi bi-x-lg"></i> Retirar selección
         </button>
         <button
           type="button"
@@ -443,7 +444,7 @@
             '<td><input type="checkbox" class="form-check-input chk-asociado" data-id-equipo="' + e.id + '"></td>' +
             '<td><code>' + escapeHtml(e.codigo || e.id) + '</code></td>' +
             '<td>' + escapeHtml(e.nombre) + '</td>' +
-            '<td><button type="button" class="btn btn-sm btn-outline-danger retirar-btn" data-id-equipo="' + e.id + '" data-codigo-curso="' + escapeAttr(state.cursoSeleccionado) + '"><i class="bi bi-x-lg me-1"></i>Retirar</button></td>' +
+            '<td><button type="button" class="btn btn-sm btn-outline-danger retirar-btn" title="Retira la asociación (no elimina el registro, solo desactiva activo=false)" data-id-equipo="' + e.id + '" data-codigo-curso="' + escapeAttr(state.cursoSeleccionado) + '"><i class="bi bi-x-lg me-1"></i>Retirar</button></td>' +
             '</tr>'
           );
         })
@@ -743,36 +744,33 @@
     }
   }
 
-  function desasociarSeleccionClick() {
+  function desasociarSeleccionClick(ev) {
+    var btn = ev.currentTarget;
     if (!state.cursoSeleccionado) {
       setAlert('Debe seleccionar un curso.', 'warning');
       return;
     }
     var idsQuitar = selectedAsociadosIds();
     if (idsQuitar.length === 0) {
-      setAlert('Seleccione al menos un equipo asociado para desasociar.', 'warning');
+      setAlert('Seleccione al menos un equipo asociado para retirar.', 'warning');
       return;
     }
-    var asociadosActuales = state.asociadoIndex.has(state.cursoSeleccionado)
-      ? state.asociadoIndex.get(state.cursoSeleccionado).map(function (a) { return Number(a.id_equipo); })
-      : [];
-    var quitar = new Set(idsQuitar);
-    var finales = asociadosActuales.filter(function (id) { return !quitar.has(id); });
-    var btn = document.getElementById('desasociarSeleccionBtn');
     try {
-      if (btn && window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Aplicando desasociación…');
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Retirando selección…');
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', api.asociar, true);
+      xhr.open('POST', api.retirar, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.setRequestHeader('Accept', 'application/json');
       xhr.onload = function () {
         try {
           var data = JSON.parse(xhr.responseText || '{}');
           if (data.ok) {
-            setAlert(data.message || 'Asociación actualizada.', 'success');
+            setAlert(data.message || 'Equipo(s) retirado(s).', 'success');
             loadAll();
+            var tAll = document.getElementById('checkTodosAsociados');
+            if (tAll) tAll.checked = false;
           } else {
-            setAlert('Error: ' + (data.message || 'No se pudo actualizar.'), 'danger');
+            setAlert('Error: ' + (data.message || 'No se pudo retirar.'), 'danger');
           }
         } finally {
           if (btn) window.MiLabSubmitLock.release(btn);
@@ -781,7 +779,10 @@
       xhr.onerror = function () {
         try { setAlert('Error de conexión.', 'danger'); } finally { if (btn) window.MiLabSubmitLock.release(btn); }
       };
-      xhr.send(JSON.stringify({ codigo_curso: state.cursoSeleccionado, id_equipos: finales }));
+      xhr.send(JSON.stringify({
+        codigo_curso: state.cursoSeleccionado,
+        id_equipos: idsQuitar,
+      }));
     } catch (e) {
       if (btn) window.MiLabSubmitLock.release(btn);
     }
