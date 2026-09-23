@@ -422,8 +422,9 @@ async function fetchTeacherCertificateRows() {
 
 async function fetchSanctionRows() {
   const result = await pool.query(
-    `SELECT m.*
+    `SELECT m.*, u.facultad_id AS faculty_id
      FROM multa m
+     LEFT JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.fecha_multa IS NOT NULL
      ORDER BY m.fecha_multa DESC
      LIMIT 500`

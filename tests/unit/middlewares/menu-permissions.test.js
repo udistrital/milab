@@ -189,6 +189,50 @@ test('menuPermissionMiddleware blocks protected route with denied role', async (
   }
 });
 
+test('menuPermissionMiddleware prioritizes exact route over parent module fallback', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async (sql, params) => {
+      if (sql.includes('FROM menu_item')) {
+        return {
+          rows: [
+            { id: 10, route: '/milab/api/get_list_estudiantes/get_consulta' },
+            { id: 11, route: '/milab/api/get_list_estudiantes' },
+          ],
+        };
+      }
+
+      if (sql.includes('FROM rol_permiso')) {
+        assert.deepEqual(params[0], [10]);
+        return { rows: [{ '?column?': 1 }] };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const req = {
+      originalUrl: '/milab/api/get_list_estudiantes/get_consulta',
+      session: {
+        user: {
+          tipo: 'laboratorista',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('menuPermissionMiddleware blocks unregistered private API GET routes', async () => {
   const loaded = loadMiddleware({
     poolQueryImpl: async () => ({ rows: [] }),
