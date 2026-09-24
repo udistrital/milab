@@ -1,8 +1,9 @@
-
 const { consultarCurso, consultarCursosUsuario, USE_MOCK } = require('./edx-cert-client');
 
-
- * @param {import('pg').Pool | import('pg').PoolClient} pool - conexión o cliente transaccional.
+/**
+ * Consulta cursos ACTIVOS de capacitación asociados a un equipo.
+ *
+ * @param {object} pool - conexión o cliente transaccional.
  * @param {number|string} idEquipo - PK equipo.id.
  * @returns {Promise<Array<{codigo_curso:string, nombre_curso:string, url_edx:string}>>}
  */
@@ -24,7 +25,6 @@ async function getCursosActivosDeEquipo(pool, idEquipo) {
   return rs.rows || [];
 }
 
-
 function buildCodigoUsuarioEdx(usuario) {
   if (!usuario) return '';
   const raw = usuario.documento || usuario.codigo_usuario || usuario.codigo || '';
@@ -32,15 +32,15 @@ function buildCodigoUsuarioEdx(usuario) {
 }
 
 /**
+ * Valida que el usuario haya completado TODOS los cursos activos del equipo.
  *
  * @param {object} opts
- * @param {import('pg').Pool | import('pg').PoolClient} opts.pool
+ * @param {object} opts.pool
  * @param {{id:number, documento?:string, nombre?:string}} opts.usuario - usuario en sesión.
  * @param {number|string} opts.idEquipo
  * @param {object} opts.ctxLogger
- * @param {(msg:string, extra?:object) => Promise<void>} opts.onErrorTecnico - hook para loguear en tabla `log`.
+ * @param {function(string=): Promise<void>} opts.onErrorTecnico - hook para loguear en tabla `log`.
  * @returns {Promise<{permitir:true, cursos:Array}>}
- * @throws {Error & {bloqueoCert: object}} Cuando se debe bloquear la reserva.
  */
 async function validarCertificacionesParaReserva({ pool, usuario, idEquipo, onErrorTecnico }) {
   const cursos = await getCursosActivosDeEquipo(pool, idEquipo);
