@@ -75,8 +75,8 @@
           <tbody>
             <% if(multaInfo.length > 0) { %>
               <% multaInfo.forEach(function(data){ %>
-                <% const documentoSession = locals.documento_real || locals.documento; %>
-                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (data.laboratorista_documento_id === documentoSession || locals.tipo === 'admin' || locals.tipo === 'coordinador'); %>
+                <% const laboratoristaUalIds = Array.isArray(locals.laboratoristaUalIds) ? locals.laboratoristaUalIds : []; %>
+                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (locals.tipo === 'admin' || locals.tipo === 'coordinador' || (locals.tipo === 'laboratorista' && laboratoristaUalIds.includes(Number(data.ual_id)))); %>
                 <% const referenciaSancionado = data.documento_sancionado || data.usuario_sancionado_id; %>
                 <tr class="text-light">
                   <td><%= data.id %></td>

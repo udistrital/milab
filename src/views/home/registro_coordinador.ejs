@@ -39,7 +39,9 @@
         </div>
       <% } %>
 
-      <form method="post" action="/milab/api/registro_coordinador" 
+      <form method="post" action="/milab/api/registro_coordinador"
+        data-oati-loading="true"
+        data-oati-loading-message="Consultando datos en la OATI..." 
         class="row g-3 mx-auto d-flex justify-content-center app-form-grid" 
         onsubmit="return validarCorreo() && validarCampos()">
         <%- include('../partials/csrf_field') %>

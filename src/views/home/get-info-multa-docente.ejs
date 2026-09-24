@@ -21,7 +21,7 @@
         <h2 class="app-panel-title mb-2">Ingresar sanción</h2>
         <p class="app-page-subtitle mb-4">Localiza al docente y abre el formulario para registrar una nueva sanción.</p>
 
-        <form method="POST" action="/milab/api/get-info-multa-docente" class="row g-3 app-form-grid">
+        <form method="POST" action="/milab/api/get-info-multa-docente" class="row g-3 app-form-grid" data-oati-loading="true" data-oati-loading-message="Consultando el docente en la OATI...">
           <%- include('../partials/csrf_field') %>
           <div class="col-12">
             <label for="numero_documento_identificacion" class="form-label">Documento del docente</label>
@@ -50,7 +50,7 @@
         <h2 class="app-panel-title mb-2">Quitar sanción</h2>
         <p class="app-page-subtitle mb-4">Busca sanciones activas del docente y avanza al paso de revisión antes de retirarlas.</p>
 
-        <form method="POST" action="/milab/api/get-info-erase-multa-docente" class="row g-3 app-form-grid">
+        <form method="POST" action="/milab/api/get-info-erase-multa-docente" class="row g-3 app-form-grid" data-oati-loading="true" data-oati-loading-message="Consultando el docente en la OATI...">
           <%- include('../partials/csrf_field') %>
           <div class="col-12">
             <label for="numero_documento_identificacion_retiro" class="form-label">Documento del docente</label>
