@@ -147,7 +147,7 @@ const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
 const isDevLoginRuntime = normalizedNodeEnv === 'dev';
-const codeDefinedAppVersion = '2.8.1';
+const codeDefinedAppVersion = '2.8.2';
 
 // Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
 if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
@@ -156,7 +156,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.1').toString().trim();
+const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.2').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
