@@ -901,12 +901,65 @@
     startGuide();
   }
 
+  function initializeOatiLoadingIndicator() {
+    const DEFAULT_MESSAGE = 'Consultando información en la OATI...';
+    const DEFAULT_HINT =
+      'El tiempo de espera depende de la respuesta del servicio externo, no de MILab.';
+    let overlay = null;
+
+    function buildOverlay() {
+      const element = document.createElement('div');
+      element.className =
+        'position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50';
+      element.style.zIndex = '4000';
+      element.setAttribute('role', 'status');
+      element.setAttribute('aria-live', 'polite');
+      element.innerHTML =
+        '<div class="bg-white rounded-3 shadow p-4 text-center" style="max-width: 22rem;">' +
+        '<div class="spinner-border text-primary mb-3" aria-hidden="true"></div>' +
+        '<p class="fw-semibold mb-1 text-dark" data-oati-loading-message></p>' +
+        '<p class="text-muted small mb-0">' +
+        DEFAULT_HINT +
+        '</p>' +
+        '</div>';
+      document.body.appendChild(element);
+      return element;
+    }
+
+    function showOverlay(message) {
+      if (!overlay) {
+        overlay = buildOverlay();
+      }
+
+      const messageElement = overlay.querySelector('[data-oati-loading-message]');
+      if (messageElement) {
+        messageElement.textContent = message || DEFAULT_MESSAGE;
+      }
+
+      overlay.classList.remove('d-none');
+    }
+
+    document.addEventListener('submit', function (event) {
+      const form = event.target;
+
+      if (!form || form.getAttribute('data-oati-loading') !== 'true' || event.defaultPrevented) {
+        return;
+      }
+
+      showOverlay(form.getAttribute('data-oati-loading-message'));
+      form.querySelectorAll('button[type="submit"]').forEach(function (button) {
+        button.disabled = true;
+      });
+    });
+  }
+
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
     $('.ocultar-columna').hide();
     initializeLaboratorioCellToggle();
     initializeEmailEditor();
     initializeFirstVisitGuide();
+    initializeOatiLoadingIndicator();
   });
 
   document.addEventListener('shown.bs.tab', adjustTablesInTab);

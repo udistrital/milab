@@ -9,12 +9,12 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 
-function buildApp(route) {
+function buildApp(route, sessionUser) {
   const app = express();
 
   app.use((req, res, next) => {
     req.session = {
-      user: {
+      user: sessionUser || {
         tipo: 'laboratorista',
         documento: '1024467835',
       },
@@ -212,6 +212,129 @@ test('submit inserts fine and log when request is valid', async () => {
       true,
       'debe insertar en log'
     );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('submit rejects coordinador without selecting a delegate laboratorista', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-1' });
+    const response = await request(app).post('/').type('form').send({
+      cat_multa: 'Uso indebido',
+      identificador: '2024100001',
+      tipo_busqueda: 'codigo',
+      ual_id: '21',
+      fecha_multa: '2026-01-01',
+      con_estado_multa: 'Pendiente',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /Selecciona un laboratorista/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('submit allows coordinador to register on behalf of an assigned laboratorista', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes('FROM laboratorista WHERE documento = $1')) {
+        return { rows: [{ documento: 'lab-99' }] };
+      }
+
+      if (
+        sql.includes(
+          'SELECT 1 FROM laboratorista_ual WHERE laboratorista_documento_id = $1 AND ual_id = $2'
+        )
+      ) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+
+      if (sql.includes('SELECT facultad_id FROM coordinador WHERE documento = $1')) {
+        return { rows: [{ facultad_id: 5 }] };
+      }
+
+      if (sql.includes('SELECT facultad_id FROM ual WHERE ual_id = $1')) {
+        return { rows: [{ facultad_id: 5 }] };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-1' });
+    const response = await request(app).post('/').type('form').send({
+      cat_multa: 'Uso indebido',
+      identificador: '2024100001',
+      tipo_busqueda: 'codigo',
+      ual_id: '21',
+      fecha_multa: '2026-01-01',
+      con_estado_multa: 'Pendiente',
+      actuar_como_laboratorista: 'lab-99',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+
+    const queries = loaded.getExecutedQueries();
+    const multaInsert = queries.find((item) => item.sql.includes('INSERT INTO multa'));
+    assert.equal(multaInsert.params[1], 'lab-99');
+
+    const logInsert = queries.find((item) => item.sql.includes('INSERT INTO log'));
+    assert.equal(logInsert.params[1], 'coord-1');
+    assert.match(logInsert.params[2], /en nombre de laboratorista lab-99/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('submit blocks coordinador delegating outside their faculty scope', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes('FROM laboratorista WHERE documento = $1')) {
+        return { rows: [{ documento: 'lab-99' }] };
+      }
+
+      if (
+        sql.includes(
+          'SELECT 1 FROM laboratorista_ual WHERE laboratorista_documento_id = $1 AND ual_id = $2'
+        )
+      ) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+
+      if (sql.includes('SELECT facultad_id FROM coordinador WHERE documento = $1')) {
+        return { rows: [{ facultad_id: 5 }] };
+      }
+
+      if (sql.includes('SELECT facultad_id FROM ual WHERE ual_id = $1')) {
+        return { rows: [{ facultad_id: 99 }] };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-1' });
+    const response = await request(app).post('/').type('form').send({
+      cat_multa: 'Uso indebido',
+      identificador: '2024100001',
+      tipo_busqueda: 'codigo',
+      ual_id: '21',
+      fecha_multa: '2026-01-01',
+      con_estado_multa: 'Pendiente',
+      actuar_como_laboratorista: 'lab-99',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message2, /fuera de tu facultad/i);
   } finally {
     loaded.restore();
   }

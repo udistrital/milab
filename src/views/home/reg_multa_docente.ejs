@@ -39,6 +39,7 @@
       </select>
     
     </div>
+    <% if (locals.tipo === 'laboratorista') { %>
     <div class="col-md-6">
       <label for="nombre_laboratorista" class="form-label">Nombre de laboratorista:</label>
       <input type="text" value="<%= nombre_lab %>" class="form-control" id="nombre_laboratorista" name="nombre_laboratorista" readonly>
@@ -47,14 +48,23 @@
       <label for="cc_laboratorista" class="form-label">CC de laboratorista:</label>
       <input type="number" value="<%= cc_lab %>" class="form-control" id="cc_laboratorista" name="cc_laboratorista" readonly>
     </div>
+    <% } else { %>
+    <div class="col-md-6">
+      <label for="actuar_como_laboratorista" class="form-label">Registrar en nombre del laboratorista</label>
+      <select class="form-select" id="actuar_como_laboratorista" name="actuar_como_laboratorista" required disabled>
+        <option value="" selected disabled>Selecciona primero una UAL</option>
+      </select>
+      <div class="form-text text-muted">La sanción quedará asociada al laboratorista seleccionado, asignado a la UAL elegida.</div>
+    </div>
+    <% } %>
 
     <div class="col-md-6">
       <label for="ual_id" class="form-label">UAL</label>
       <% if (uals && uals.length > 0) { %>
         <select class="form-select" id="ual_id" name="ual_id" required>
-          <option value="" selected disabled>Selecciona una UAL</option>
-          <% uals.forEach(ual => { %>
-            <option value="<%= ual.ual_id %>" data-permite-crear-activa-directa="<%= ual._permiteCrearActivaDirecta ? '1' : '0' %>"><%= ual.nombre %></option>
+          <option value="" disabled>Selecciona una UAL</option>
+          <% uals.forEach((ual, index) => { %>
+            <option value="<%= ual.ual_id %>" <%= index === 0 ? 'selected' : '' %> data-permite-crear-activa-directa="<%= ual._permiteCrearActivaDirecta ? '1' : '0' %>" data-laboratoristas="<%= JSON.stringify(ual._laboratoristas || []) %>"><%= ual.nombre %></option>
           <% }) %>
         </select>
       <% } else { %>
@@ -110,11 +120,61 @@
       .slice(0, 10);
 
     fechaInput.max = localToday;
+    if (!fechaInput.value) {
+      fechaInput.value = localToday;
+    }
 
     const ualSelect = document.getElementById('ual_id');
     const tipoWrap = document.getElementById('tipo_sancion_wrap');
     const tipoSelect = document.getElementById('tipo_sancion');
     const estadoInput = document.getElementById('con_estado_multa');
+    const laboratoristaSelect = document.getElementById('actuar_como_laboratorista');
+
+    function syncLaboratoristaOptions() {
+      if (!laboratoristaSelect || !ualSelect) return;
+      const selected = ualSelect.options[ualSelect.selectedIndex];
+      let laboratoristas = [];
+
+      if (selected && selected.value) {
+        try {
+          laboratoristas = JSON.parse(selected.getAttribute('data-laboratoristas') || '[]');
+        } catch {
+          laboratoristas = [];
+        }
+      }
+
+      laboratoristaSelect.innerHTML = '';
+
+      if (!laboratoristas.length) {
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        placeholder.textContent =
+          selected && selected.value
+            ? 'Sin laboratoristas asignados a esta UAL'
+            : 'Selecciona primero una UAL';
+        laboratoristaSelect.appendChild(placeholder);
+        laboratoristaSelect.disabled = true;
+        return;
+      }
+
+      laboratoristaSelect.disabled = false;
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      placeholder.textContent = 'Selecciona un laboratorista';
+      laboratoristaSelect.appendChild(placeholder);
+
+      laboratoristas.forEach(function (lab) {
+        const opt = document.createElement('option');
+        opt.value = lab.documento;
+        opt.textContent = `${lab.nombre} (${lab.documento})`;
+        laboratoristaSelect.appendChild(opt);
+      });
+    }
+
     function syncUalSeleccionada() {
       if (!ualSelect || !tipoWrap || !estadoInput) return;
       const selected = ualSelect.options[ualSelect.selectedIndex];
@@ -137,7 +197,9 @@
     }
     if (ualSelect) {
       ualSelect.addEventListener('change', syncUalSeleccionada);
+      ualSelect.addEventListener('change', syncLaboratoristaOptions);
       syncUalSeleccionada();
+      syncLaboratoristaOptions();
     }
   })();
 </script>
