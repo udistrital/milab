@@ -45,6 +45,25 @@ async function resolveStudentDocumentByCode(code) {
   return result.rows[0]?.documento || null;
 }
 
+// UALs asignadas al laboratorista en sesión, para permitirle retirar cualquier sanción de sus labs.
+async function resolveLaboratoristaUalIds(sessionDocument) {
+  const normalizedDocument = String(sessionDocument || '').trim();
+  if (!normalizedDocument) return [];
+
+  const laboratoristaResult = await pool.query(
+    'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    [normalizedDocument]
+  );
+  const laboratoristaDocument = laboratoristaResult.rows[0]?.documento;
+  if (!laboratoristaDocument) return [];
+
+  const ualResult = await pool.query(
+    'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1',
+    [laboratoristaDocument]
+  );
+  return ualResult.rows.map((row) => Number(row.ual_id)).filter((id) => Number.isFinite(id));
+}
+
 const requireLaboratoristaEraseAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
@@ -165,6 +184,14 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
     }
 
     // Renderizar vista con datos
+    const actorRole = String(req.session?.user?.tipo || '').toLowerCase();
+    const laboratoristaUalIds =
+      actorRole === 'laboratorista'
+        ? await resolveLaboratoristaUalIds(
+            req.session?.user?.documento_real || req.session?.user?.documento
+          )
+        : [];
+
     return res.render('home/reg_multa_erase', {
       con_codigo,
       con_estado,
@@ -172,6 +199,7 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
       con_carrera,
       con_nombre,
       multaInfo,
+      laboratoristaUalIds,
     });
   } catch (error) {
     console.error('Error durante la consulta:', error);

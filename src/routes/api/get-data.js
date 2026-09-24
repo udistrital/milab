@@ -47,9 +47,9 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
   let con_fecha = new Date();
   con_fecha = format(con_fecha, 'yyyy/MM/dd HH:mm:ss'); // Ajuste de horario al local
 
-  // Obtener la fecha de vencimiento en 2 meses
+  // Obtener la fecha de vencimiento en 1 mes
   let fechaVencimiento = new Date();
-  fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 2);
+  fechaVencimiento.setMonth(fechaVencimiento.getMonth() + 1);
   fechaVencimiento = format(fechaVencimiento, 'yyyy/MM/dd HH:mm:ss');
 
   function determinarFacultad(codigoCarrera) {
@@ -530,7 +530,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
             con_documento +
             ', de la Facultad  ' +
             con_facultad +
-            '. Proyecto curricular ' +
+            '. Programa Académico ' +
             con_carrera +
             ', se encuentra a Paz y Salvo con los laboratorios.',
           40,

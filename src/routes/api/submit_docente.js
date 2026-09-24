@@ -20,7 +20,7 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
-const requireTeacherFineSubmissionAccess = requireRoles('laboratorista', {
+const requireTeacherFineSubmissionAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
@@ -59,21 +59,52 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       });
     }
 
+    const actorRole = String(req.session.user.tipo || '').toLowerCase();
     const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
-    const laboratoristaResult = await pool.query(
-      'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
-      [sessionDocumento]
-    );
 
-    if (laboratoristaResult.rows.length === 0) {
-      return res.render('home/message_error', {
-        message: 'No se encontró laboratorista asociado a la sesión.',
-        message2: 'Verifica tu cuenta e intenta nuevamente.',
-        limit: null,
-      });
+    let laboratorista;
+    if (actorRole === 'laboratorista') {
+      const laboratoristaResult = await pool.query(
+        'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
+        [sessionDocumento]
+      );
+
+      if (laboratoristaResult.rows.length === 0) {
+        return res.render('home/message_error', {
+          message: 'No se encontró laboratorista asociado a la sesión.',
+          message2: 'Verifica tu cuenta e intenta nuevamente.',
+          limit: null,
+        });
+      }
+
+      laboratorista = laboratoristaResult.rows[0];
+    } else {
+      const delegateDocumento = String(requestBody.actuar_como_laboratorista || '').trim();
+
+      if (!delegateDocumento) {
+        return res.render('home/message_error', {
+          message: 'Selecciona un laboratorista.',
+          message2: 'Elige el laboratorista en cuyo nombre se registrará la sanción.',
+          limit: null,
+        });
+      }
+
+      const delegateResult = await pool.query(
+        'SELECT documento FROM laboratorista WHERE documento = $1',
+        [delegateDocumento]
+      );
+
+      if (delegateResult.rows.length === 0) {
+        return res.render('home/message_error', {
+          message: 'Laboratorista inválido.',
+          message2: 'El laboratorista seleccionado no existe o no está activo.',
+          limit: null,
+        });
+      }
+
+      laboratorista = delegateResult.rows[0];
     }
 
-    const laboratorista = laboratoristaResult.rows[0];
     const idUal = Number(ual_id);
 
     if (!Number.isInteger(idUal)) {
@@ -95,6 +126,30 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
         message2: 'Selecciona una UAL de tu facultad.',
         limit: null,
       });
+    }
+
+    if (actorRole === 'coordinador') {
+      const coordinadorResult = await pool.query(
+        'SELECT facultad_id FROM coordinador WHERE documento = $1',
+        [sessionDocumento]
+      );
+      const ualFacultadResult = await pool.query('SELECT facultad_id FROM ual WHERE ual_id = $1', [
+        idUal,
+      ]);
+      const facultadCoordinador = coordinadorResult.rows[0]?.facultad_id;
+      const facultadUal = ualFacultadResult.rows[0]?.facultad_id;
+
+      if (
+        !facultadCoordinador ||
+        !facultadUal ||
+        Number(facultadCoordinador) !== Number(facultadUal)
+      ) {
+        return res.render('home/message_error', {
+          message: 'No autorizado',
+          message2: 'No puedes registrar sanciones en una UAL fuera de tu facultad.',
+          limit: null,
+        });
+      }
     }
 
     const cfg = await resolveMultaConfigForUalId(idUal);
@@ -169,9 +224,16 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       }
     }
 
+    const logActorDocumento =
+      actorRole === 'laboratorista' ? laboratorista.documento : sessionDocumento;
+    const accionLogFinal =
+      actorRole === 'laboratorista'
+        ? accionLog
+        : `${accionLog} (registrada por ${actorRole} en nombre de laboratorista ${laboratorista.documento})`;
+
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
-      [req.session.user.tipo, laboratorista.documento, accionLog, con_documento]
+      [req.session.user.tipo, logActorDocumento, accionLogFinal, con_documento]
     );
 
     return res.render('home/message_success', {
