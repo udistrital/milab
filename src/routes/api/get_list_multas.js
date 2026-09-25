@@ -5,6 +5,7 @@ const pool = require('../../libs/db');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveOatiName } = require('../../libs/oati-name');
+const { SANCTION_TYPES } = require('../../libs/multa-config');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
 
@@ -18,6 +19,12 @@ const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'Pendiente', 'POR SALDAR', 'SALDA
 const requireMultasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
+  limit: 'noSession',
+});
+
+const requireMultasEditAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
+  message: 'Acceso denegado',
+  message2: 'No tienes permisos para editar esta sanción.',
   limit: 'noSession',
 });
 
@@ -44,6 +51,50 @@ async function resolveLaboratoristaDocument(client, userDocument) {
   );
 
   return result.rows[0]?.documento || null;
+}
+
+async function validateFineEditScope(req, client, multaId) {
+  const result = await client.query(
+    `SELECT m.con_estado_multa, m.ual_id, u.facultad_id
+     FROM multa m
+     INNER JOIN ual u ON u.ual_id = m.ual_id
+     WHERE m.id = $1
+     LIMIT 1`,
+    [multaId]
+  );
+  const multa = result.rows[0];
+
+  if (!multa) return { ok: false, message: 'La sanción no existe.' };
+  if (String(multa.con_estado_multa || '').toUpperCase() !== 'ACTIVA') {
+    return { ok: false, message: 'Solo se pueden editar sanciones ACTIVAS.' };
+  }
+
+  const userType = String(req.session?.user?.tipo || '').toLowerCase();
+  if (userType === 'admin') return { ok: true };
+
+  if (userType === 'coordinador') {
+    const scope = await resolveCoordinatorScope(client, getSessionDocument(req));
+    if (scope.facultyIds.includes(Number(multa.facultad_id))) return { ok: true };
+    return { ok: false, message: 'La sanción está fuera del alcance de tu facultad.' };
+  }
+
+  const laboratoristaDocument = await resolveLaboratoristaDocument(client, getSessionDocument(req));
+  if (!laboratoristaDocument) {
+    return { ok: false, message: 'No se encontró un laboratorista asociado a la sesión.' };
+  }
+
+  const assignment = await client.query(
+    `SELECT 1
+     FROM laboratorista_ual
+     WHERE laboratorista_documento_id = $1
+       AND ual_id = $2
+     LIMIT 1`,
+    [laboratoristaDocument, multa.ual_id]
+  );
+
+  return assignment.rows.length
+    ? { ok: true }
+    : { ok: false, message: 'La sanción no pertenece a una UAL asignada al laboratorista.' };
 }
 
 function renderFilterError(req, res, message, message2) {
@@ -177,6 +228,8 @@ async function queryMultasRows(client, conditions, params) {
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
+        m.ual_id,
+        u.facultad_id,
         TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
         m.con_estado_multa,
         m.obs_multa,
@@ -196,6 +249,44 @@ async function queryMultasRows(client, conditions, params) {
   return result.rows;
 }
 
+async function addLaboratoristaActions(client, rows, req) {
+  const userType = String(req.session?.user?.tipo || '').toLowerCase();
+  if (userType !== 'laboratorista') {
+    return rows.map((row) => ({
+      ...row,
+      canEdit: String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA',
+    }));
+  }
+
+  const facultyIds = [
+    ...new Set(rows.map((row) => Number(row.facultad_id)).filter((id) => Number.isFinite(id))),
+  ];
+  if (facultyIds.length === 0) {
+    return rows;
+  }
+
+  const configResult = await client.query(
+    'SELECT * FROM config_facultad_multas WHERE facultad_id = ANY($1::int[])',
+    [facultyIds]
+  );
+  const configMap = new Map(
+    configResult.rows.map((config) => [Number(config.facultad_id), config])
+  );
+
+  return rows.map((row) => {
+    const state = String(row.con_estado_multa || '').toUpperCase();
+    const config = configMap.get(Number(row.facultad_id));
+
+    return {
+      ...row,
+      canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
+      canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
+      canEdit: state === 'ACTIVA',
+    };
+  });
+}
+
 router.get('/resolve_name', requireMultasAccess, async (req, res) => {
   const documento = String(req.query.documento || '').trim();
 
@@ -209,6 +300,75 @@ router.get('/resolve_name', requireMultasAccess, async (req, res) => {
   } catch (error) {
     console.error('Error resolviendo nombre OATI:', error);
     return res.status(500).json({ ok: false, nombre: '' });
+  }
+});
+
+router.post('/editar', requireMultasEditAccess, async (req, res) => {
+  const multaId = Number(req.body?.multa_id);
+  const categoria = String(req.body?.cat_multa || '').trim();
+  const tipoSancion = String(req.body?.tipo_sancion || '').trim();
+
+  if (!Number.isInteger(multaId) || multaId <= 0 || !categoria || categoria.length > 100) {
+    return res.render('home/message_error', {
+      message: 'Datos de sanción inválidos.',
+      message2: 'Selecciona una categoría válida.',
+      limit: null,
+    });
+  }
+
+  if (!SANCTION_TYPES.includes(tipoSancion)) {
+    return res.render('home/message_error', {
+      message: 'Tipo de sanción inválido.',
+      message2: 'Selecciona un tipo de sanción válido.',
+      limit: null,
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const scope = await validateFineEditScope(req, client, multaId);
+    if (!scope.ok) {
+      client.release();
+      return res.render('home/message_error', {
+        message: 'No autorizado',
+        message2: scope.message,
+        limit: null,
+      });
+    }
+
+    await client.query(
+      `UPDATE multa
+       SET cat_multa = $1,
+           tipo_sancion = $2,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE id = $3
+         AND con_estado_multa = 'ACTIVA'`,
+      [categoria, tipoSancion, multaId]
+    );
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session.user.tipo,
+        getSessionDocument(req),
+        'Editar categoría y tipo de sanción activa',
+        String(multaId),
+      ]
+    );
+    client.release();
+
+    return res.render('home/message_success', {
+      message: 'Sanción actualizada correctamente.',
+      message2: `Se actualizaron la categoría y el tipo de sanción #${multaId}.`,
+    });
+  } catch (error) {
+    if (client) client.release();
+    console.error('Error editando sanción:', error);
+    return res.render('home/message_error', {
+      message: 'No fue posible editar la sanción.',
+      message2: 'Inténtalo nuevamente.',
+      limit: null,
+    });
   }
 });
 
@@ -226,15 +386,17 @@ router.get('/', requireMultasAccess, async (req, res) => {
     }
 
     const rows = await queryMultasRows(client, queryContext.conditions, queryContext.params);
+    const rowsWithActions = await addLaboratoristaActions(client, rows, req);
 
     client.release();
-    const sancionesEstudiantes = rows.filter((row) => row.tipo_sancionado !== 'docente');
-    const sancionesDocentes = rows.filter((row) => row.tipo_sancionado === 'docente');
+    const sancionesEstudiantes = rowsWithActions.filter((row) => row.tipo_sancionado !== 'docente');
+    const sancionesDocentes = rowsWithActions.filter((row) => row.tipo_sancionado === 'docente');
 
     res.render('home/get_list_multas', {
-      sampleData: rows,
+      sampleData: rowsWithActions,
       sancionesEstudiantes,
       sancionesDocentes,
+      SANCTION_TYPES,
       filtros: queryContext.filters,
     });
   } catch (error) {
