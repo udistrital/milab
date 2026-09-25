@@ -15,7 +15,7 @@
             <div class="alert alert-danger" role="alert"><%= error %></div>
           <% } %>
 
-          <form method="POST" action="/milab/api/profile/identify" class="row g-3">
+          <form method="POST" action="/milab/api/profile/identify" class="row g-3" data-oati-loading="true" data-oati-loading-message="Consultando tus datos en la OATI...">
             <%- include('../partials/csrf_field') %>
             <div class="col-12">
               <label for="correo" class="form-label">Correo institucional</label>
@@ -28,7 +28,7 @@
             </div>
 
             <div class="col-12 d-flex justify-content-center pt-2">
-              <button class="btn btn-primary px-4" type="submit">Continuar</button>
+              <button class="btn btn-primary px-4" type="submit" data-submit-lock="true">Continuar</button>
             </div>
           </form>
         </div>

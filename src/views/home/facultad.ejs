@@ -120,7 +120,7 @@
                         <form action="/milab/api/facultad/eliminar" method="POST" onsubmit="return confirmDelete('facultad')">
                           <%- include('../partials/csrf_field') %>
                           <input type="hidden" name="facultad_id" value="<%= f.facultad_id %>">
-                          <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                          <button type="submit" class="btn btn-sm btn-danger" data-submit-lock="true">Eliminar</button>
                         </form>
                       <% } else { %>
                         <span class="text-muted small">–</span>
@@ -139,7 +139,7 @@
               <%- include('../partials/csrf_field') %>
               <div class="input-group">
                 <input type="text" name="nombre" class="form-control" placeholder="Nombre de la facultad" required>
-                <button type="submit" class="btn btn-success">Agregar</button>
+                <button type="submit" class="btn btn-success" data-submit-lock="true">Agregar</button>
               </div>
             </form>
           <% } %>
@@ -212,7 +212,7 @@
                       <input class="form-check-input" type="checkbox" name="activo" id="new_ual_activo" checked>
                       <label class="form-check-label" for="new_ual_activo">UAL activa</label>
                     </div>
-                    <button type="submit" class="btn btn-success">Agregar</button>
+                    <button type="submit" class="btn btn-success" data-submit-lock="true">Agregar</button>
                   </div>
                 </div>
               </form>
@@ -245,7 +245,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar</button>
+          <button type="submit" class="btn btn-primary" data-submit-lock="true">Guardar</button>
         </div>
       </form>
     </div>
@@ -605,7 +605,7 @@
             csrfHtml() +
             '<input type="hidden" name="ual_id" value="' + esc(u.ual_id) + '">' +
             '<input type="hidden" name="facultad_id" value="' + esc(facId) + '">' +
-            '<button type="submit" class="btn btn-sm btn-danger">Eliminar</button></form>'
+            '<button type="submit" class="btn btn-sm btn-danger" data-submit-lock="true">Eliminar</button></form>'
         : '<span class="text-muted small">–</span>';
 
       return '<tr>' +

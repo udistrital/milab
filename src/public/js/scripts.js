@@ -131,34 +131,39 @@
   }
 
   function attachColumnFilters(dataTable, $table) {
-    const $filterCells = $table.find('thead tr.data-grid-filters th');
+    const $wrapper = $table.closest('.dataTables_wrapper');
+    const filterSelector = 'thead tr.data-grid-filters input';
 
-    dataTable.columns().every(function (index) {
-      const column = this;
-      const $input = $filterCells.eq(index).find('input');
+    if ($wrapper.length === 0) {
+      return;
+    }
 
-      if ($input.length === 0) {
-        return;
-      }
-
-      $input.on('click', function (event) {
+    $wrapper
+      .off('.appColumnFilters', filterSelector)
+      .on('click.appColumnFilters', filterSelector, function (event) {
         event.stopPropagation();
-      });
+      })
+      .on(
+        'keyup.appColumnFilters change.appColumnFilters input.appColumnFilters',
+        filterSelector,
+        function (event) {
+          event.stopPropagation();
 
-      $input.on('keyup change clear', function (event) {
-        event.stopPropagation();
+          const columnIndex = $(this).closest('th').index();
+          const column = dataTable.column(columnIndex);
 
-        if (column.search() !== this.value) {
-          column.search(this.value).draw();
+          if (column.search() !== this.value) {
+            column.search(this.value).draw();
+          }
         }
-      });
-    });
+      );
   }
 
   function attachResetButton(dataTable, $table) {
     const tableId = $table.attr('id');
     const wrapperSelector = `#${tableId}_wrapper .dataTables_filter`;
     const $filterContainer = $(wrapperSelector);
+    const $wrapper = $table.closest('.dataTables_wrapper');
 
     if (
       $filterContainer.length === 0 ||
@@ -173,7 +178,7 @@
 
     $button.on('click', function () {
       const $globalInput = $filterContainer.find('input[type="search"]');
-      const $columnInputs = $table.find('thead tr.data-grid-filters input');
+      const $columnInputs = $wrapper.find('thead tr.data-grid-filters input');
 
       $globalInput.val('');
       $columnInputs.val('');
@@ -901,12 +906,65 @@
     startGuide();
   }
 
+  function initializeOatiLoadingIndicator() {
+    const DEFAULT_MESSAGE = 'Consultando información en la OATI...';
+    const DEFAULT_HINT =
+      'El tiempo de espera depende de la respuesta del servicio externo, no de MILab.';
+    let overlay = null;
+
+    function buildOverlay() {
+      const element = document.createElement('div');
+      element.className =
+        'position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50';
+      element.style.zIndex = '4000';
+      element.setAttribute('role', 'status');
+      element.setAttribute('aria-live', 'polite');
+      element.innerHTML =
+        '<div class="bg-white rounded-3 shadow p-4 text-center" style="max-width: 22rem;">' +
+        '<div class="spinner-border text-primary mb-3" aria-hidden="true"></div>' +
+        '<p class="fw-semibold mb-1 text-dark" data-oati-loading-message></p>' +
+        '<p class="text-muted small mb-0">' +
+        DEFAULT_HINT +
+        '</p>' +
+        '</div>';
+      document.body.appendChild(element);
+      return element;
+    }
+
+    function showOverlay(message) {
+      if (!overlay) {
+        overlay = buildOverlay();
+      }
+
+      const messageElement = overlay.querySelector('[data-oati-loading-message]');
+      if (messageElement) {
+        messageElement.textContent = message || DEFAULT_MESSAGE;
+      }
+
+      overlay.classList.remove('d-none');
+    }
+
+    document.addEventListener('submit', function (event) {
+      const form = event.target;
+
+      if (!form || form.getAttribute('data-oati-loading') !== 'true' || event.defaultPrevented) {
+        return;
+      }
+
+      showOverlay(form.getAttribute('data-oati-loading-message'));
+      form.querySelectorAll('button[type="submit"]').forEach(function (button) {
+        button.disabled = true;
+      });
+    });
+  }
+
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
     $('.ocultar-columna').hide();
     initializeLaboratorioCellToggle();
     initializeEmailEditor();
     initializeFirstVisitGuide();
+    initializeOatiLoadingIndicator();
   });
 
   document.addEventListener('shown.bs.tab', adjustTablesInTab);

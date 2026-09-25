@@ -1,0 +1,28 @@
+/* Submit Lock Global Styles */
+
+.is-submitting {
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
+}
+
+button[disabled],
+input[type='submit'][disabled],
+input[type='image'][disabled],
+a.is-submitting {
+  cursor: not-allowed !important;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+button[aria-busy='true']::after,
+input[type='submit'][aria-busy='true']::after,
+input[type='image'][aria-busy='true']::after {
+  content: '';
+  display: inline-block;
+  margin-left: 8px;
+  vertical-align: -2px;
+}

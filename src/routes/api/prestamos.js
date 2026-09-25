@@ -1376,7 +1376,6 @@ function createMenuPermissionMiddleware(route) {
           FROM menu_item
           WHERE route = $1
             AND activo = TRUE
-          LIMIT 1
         `,
         [route]
       );
@@ -1385,17 +1384,19 @@ function createMenuPermissionMiddleware(route) {
         return next();
       }
 
+      const menuIds = menuResult.rows.map((row) => row.id);
+
       const permissionResult = await pool.query(
         `
           SELECT 1
           FROM rol_permiso rp
           JOIN rol r ON r.id = rp.rol_id
-          WHERE rp.menu_item_id = $1
+          WHERE rp.menu_item_id = ANY($1)
             AND rp.can_view = TRUE
             AND r.nombre = ANY($2::text[])
           LIMIT 1
         `,
-        [menuResult.rows[0].id, roles]
+        [menuIds, roles]
       );
 
       if (!permissionResult.rows.length) {

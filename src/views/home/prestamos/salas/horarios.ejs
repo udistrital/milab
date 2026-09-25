@@ -68,7 +68,7 @@
           </select>
         </div>
         <div class="col-md-4 d-flex align-items-end">
-          <button type="submit" class="btn btn-perso w-100" id="crearHorarioSalaSubmitBtn">Agregar horario</button>
+          <button type="submit" class="btn btn-perso w-100" id="crearHorarioSalaSubmitBtn" data-submit-lock="true">Agregar horario</button>
         </div>
       </form>
       <div class="form-text mt-3">
@@ -133,6 +133,7 @@
                       type="button"
                       class="btn btn-outline-danger btn-sm js-delete-horario-sala"
                       data-horario-id="<%= item.id %>"
+                      data-submit-lock="true"
                     >
                       Eliminar
                     </button>
@@ -218,9 +219,10 @@
         return;
       }
 
-      submitButton.disabled = true;
+      var btn = submitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Agregando horario...');
         var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios', {
           dia_semana: diaSemanaInput.value,
           fecha: fechaEspecificaInput.value,
@@ -237,7 +239,7 @@
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible guardar el horario.');
       } finally {
-        submitButton.disabled = false;
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -246,9 +248,10 @@
         var horarioId = button.getAttribute('data-horario-id');
         if (!horarioId || !window.confirm('¿Deseas eliminar este horario?')) return;
 
-        button.disabled = true;
+        var btn = button;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Eliminando horario...');
           var result = await postJson('/milab/prestamos/salas/horarios/' + encodeURIComponent(horarioId) + '/eliminar');
           showAlert('success', result.message || 'Horario eliminado correctamente.');
           window.setTimeout(function() {
@@ -272,7 +275,8 @@
           } else {
             showAlert('danger', error.message || 'No fue posible eliminar el horario.');
           }
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });

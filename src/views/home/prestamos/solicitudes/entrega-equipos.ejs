@@ -265,7 +265,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success" id="entregaSubmitBtn">Confirmar entrega</button>
+          <button type="submit" class="btn btn-success" id="entregaSubmitBtn" data-submit-lock="true">Confirmar entrega</button>
         </div>
       </form>
     </div>
@@ -316,7 +316,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-danger" id="incidenciaSubmitBtn">Registrar incidencia</button>
+          <button type="submit" class="btn btn-danger" id="incidenciaSubmitBtn" data-submit-lock="true">Registrar incidencia</button>
         </div>
       </form>
     </div>
@@ -350,7 +350,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-secondary" id="ultimaHoraSubmitBtn">Enviar a ultima hora</button>
+          <button type="submit" class="btn btn-secondary" id="ultimaHoraSubmitBtn" data-submit-lock="true">Enviar a ultima hora</button>
         </div>
       </form>
     </div>
@@ -390,7 +390,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-warning" id="devolucionSubmitBtn">Confirmar devolucion</button>
+          <button type="submit" class="btn btn-warning" id="devolucionSubmitBtn" data-submit-lock="true">Confirmar devolucion</button>
         </div>
       </form>
     </div>
@@ -537,9 +537,9 @@
       }
 
       entregaCondicion.classList.remove('is-invalid');
-      entregaSubmitBtn.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(entregaSubmitBtn, 'Confirmando entrega de equipos...');
         var result = await postJson(
           '/milab/prestamos/entrega-equipos/' + encodeURIComponent(entregaSolicitudId.value) + '/marcar-prestado',
           {
@@ -554,7 +554,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar la entrega.');
-        entregaSubmitBtn.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(entregaSubmitBtn);
       }
     });
 
@@ -567,9 +568,9 @@
       }
 
       ultimaHoraDocumento.classList.remove('is-invalid');
-      ultimaHoraSubmitBtn.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(ultimaHoraSubmitBtn, 'Registrando prestamo de ultima hora...');
         var result = await postJson(
           '/milab/prestamos/entrega-equipos/' + encodeURIComponent(ultimaHoraSolicitudId.value) + '/ultima-hora',
           {
@@ -584,7 +585,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar el prestamo de ultima hora.');
-        ultimaHoraSubmitBtn.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(ultimaHoraSubmitBtn);
       }
     });
 
@@ -597,9 +599,9 @@
       }
 
       devolucionCondicion.classList.remove('is-invalid');
-      devolucionSubmitBtn.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(devolucionSubmitBtn, 'Confirmando devolucion...');
         var result = await postJson(
           '/milab/prestamos/entrega-equipos/' + encodeURIComponent(devolucionSolicitudId.value) + '/recibir',
           {
@@ -615,7 +617,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar la devolucion.');
-        devolucionSubmitBtn.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(devolucionSubmitBtn);
       }
     });
 
@@ -630,9 +633,9 @@
 
       incidenciaTipo.classList.remove('is-invalid');
       incidenciaDescripcion.classList.remove('is-invalid');
-      incidenciaSubmitBtn.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(incidenciaSubmitBtn, 'Registrando incidencia...');
         var formData = new FormData();
         formData.append('tipo_incidencia', incidenciaTipo.value);
         formData.append('descripcion', incidenciaDescripcion.value);
@@ -652,7 +655,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar la incidencia.');
-        incidenciaSubmitBtn.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(incidenciaSubmitBtn);
       }
     });
 

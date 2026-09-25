@@ -13,11 +13,33 @@ const router = express.Router();
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
-const requireLaboratoristaTeacherEraseAccess = requireRoles('laboratorista', {
-  message: '¡Algo ha salido mal!',
-  message2: 'Inténtalo nuevamente',
-  limit: 'noSession',
-});
+// UALs asignadas al laboratorista en sesión, para permitirle retirar cualquier sanción de sus labs.
+async function resolveLaboratoristaUalIds(sessionDocument) {
+  const normalizedDocument = String(sessionDocument || '').trim();
+  if (!normalizedDocument) return [];
+
+  const laboratoristaResult = await pool.query(
+    'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1 LIMIT 1',
+    [normalizedDocument]
+  );
+  const laboratoristaDocument = laboratoristaResult.rows[0]?.documento;
+  if (!laboratoristaDocument) return [];
+
+  const ualResult = await pool.query(
+    'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1',
+    [laboratoristaDocument]
+  );
+  return ualResult.rows.map((row) => Number(row.ual_id)).filter((id) => Number.isFinite(id));
+}
+
+const requireLaboratoristaTeacherEraseAccess = requireRoles(
+  ['admin', 'laboratorista', 'coordinador'],
+  {
+    message: '¡Algo ha salido mal!',
+    message2: 'Inténtalo nuevamente',
+    limit: 'noSession',
+  }
+);
 
 router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
@@ -104,6 +126,12 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
       con_estado,
       con_nombre,
       multaInfo,
+      laboratoristaUalIds:
+        String(req.session?.user?.tipo || '').toLowerCase() === 'laboratorista'
+          ? await resolveLaboratoristaUalIds(
+              req.session?.user?.documento_real || req.session?.user?.documento
+            )
+          : [],
     });
   } catch (error) {
     console.error(error);

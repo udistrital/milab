@@ -52,9 +52,7 @@ router.use('/generate_cert_docente_lab', require('./generate_cert_docente_lab'))
 router.use('/generate_cert_estudiante_lab', require('./generate_cert_estudiante_lab'));
 router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
-router.use('/certificacion-edx', require('./certificacion-edx'));
-router.use('/capacitacion-cursos', require('./capacitacion-cursos'));
-router.use('/capacitacion-equipos', require('./capacitacion-equipos'));
+router.use('/admin/roles', require('./admin/roles'));
 
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [

@@ -20,6 +20,10 @@ require('dotenv').config();
 
 const router = express.Router();
 
+const ROLE_COORDINADOR = 'coordinador';
+const ROLE_COORDINADOR_GENERAL = 'coordinador_general';
+const ALLOWED_COORDINATOR_REGISTRATION_ROLES = [ROLE_COORDINADOR, ROLE_COORDINADOR_GENERAL];
+
 router.use(express.json());
 router.use(express.urlencoded({ extended: false }));
 
@@ -49,6 +53,81 @@ function normalizeEmail(value) {
 
 function normalizeDocument(value) {
   return (value || '').toString().trim();
+}
+
+function resolveCoordinatorRegistrationRole(value) {
+  const normalizedRole = (value || '').toString().trim().toLowerCase();
+  if (ALLOWED_COORDINATOR_REGISTRATION_ROLES.includes(normalizedRole)) {
+    return normalizedRole;
+  }
+  return ROLE_COORDINADOR;
+}
+
+function roleDisplayName(roleName) {
+  return roleName === ROLE_COORDINADOR_GENERAL ? 'Coordinador General' : 'Coordinador';
+}
+
+function roleHasFacultyAssignments(roleName) {
+  return roleName !== ROLE_COORDINADOR_GENERAL;
+}
+
+function parseFacultyIds(facultyIdsInput) {
+  return Array.isArray(facultyIdsInput)
+    ? facultyIdsInput.map((value) => Number.parseInt(value, 10)).filter(Number.isFinite)
+    : [Number.parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
+}
+
+function hasRequiredCoordinatorFields({
+  needsFacultyAssignment,
+  facultyIds,
+  numeroResolucion,
+  soporteResolucion,
+}) {
+  if (!numeroResolucion || !soporteResolucion) {
+    return false;
+  }
+
+  if (needsFacultyAssignment && !facultyIds.length) {
+    return false;
+  }
+
+  return true;
+}
+
+async function resolveSelectedFaculties({ needsFacultyAssignment, facultyIds }) {
+  if (!needsFacultyAssignment) {
+    return { faculties: [], errorPayload: null };
+  }
+
+  const facultyIdColumn = await resolveExistingColumn('facultad', ['facultad_id', 'id_facultad']);
+  if (!facultyIdColumn) {
+    return {
+      faculties: [],
+      errorPayload: {
+        message: '¡Algo ha salido mal!',
+        message2: 'No fue posible validar las facultades seleccionadas.',
+      },
+    };
+  }
+
+  const facs = await pool.query(
+    `SELECT ${facultyIdColumn} AS facultad_id, nombre
+     FROM facultad
+     WHERE ${facultyIdColumn} = ANY($1::int[])`,
+    [facultyIds]
+  );
+
+  if (facs.rows.length !== facultyIds.length) {
+    return {
+      faculties: [],
+      errorPayload: {
+        message: 'Una o más facultades seleccionadas no existen.',
+        message2: 'Verifica la selección',
+      },
+    };
+  }
+
+  return { faculties: facs.rows, errorPayload: null };
 }
 
 function resolveOatiEmail(payload) {
@@ -257,6 +336,7 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
       error: null,
       confirmacion: null,
       facultades: result.rows,
+      selectedRole: resolveCoordinatorRegistrationRole(req.query.role_name),
       lookupData,
       lookupMessage,
       lookupStatus,
@@ -299,9 +379,19 @@ router.post(
       .trim()
       .escape(),
     body('nombre').notEmpty().withMessage('El nombre es obligatorio').trim().escape(),
+    body('role_name')
+      .optional({ checkFalsy: true })
+      .isIn(ALLOWED_COORDINATOR_REGISTRATION_ROLES)
+      .withMessage('El rol de coordinador seleccionado no es valido'),
     // Soporte de múltiples facultades: acepta array o string único
     body('facultad_ids')
-      .custom((val) => {
+      .custom((val, { req }) => {
+        const selectedRole = resolveCoordinatorRegistrationRole(req.body.role_name);
+
+        if (!roleHasFacultyAssignments(selectedRole)) {
+          return true;
+        }
+
         if (Array.isArray(val)) {
           if (!val.length || !val.every((v) => /^\d+$/.test(String(v)))) {
             throw new Error('Debe seleccionar al menos una facultad válida');
@@ -348,15 +438,22 @@ router.post(
 
     const { documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion } =
       req.body;
+    const roleName = resolveCoordinatorRegistrationRole(req.body.role_name);
+    const needsFacultyAssignment = roleHasFacultyAssignments(roleName);
     const normalizedEmail = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
 
     // Normalizar facultades seleccionadas (array de enteros)
     const facultyIdsInput = req.body.facultad_ids;
-    const facultyIds = Array.isArray(facultyIdsInput)
-      ? facultyIdsInput.map((x) => parseInt(x, 10))
-      : [parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
+    const facultyIds = parseFacultyIds(facultyIdsInput);
 
-    if (!facultyIds.length || !numero_resolucion_coordinador || !soporte_resolucion) {
+    if (
+      !hasRequiredCoordinatorFields({
+        needsFacultyAssignment,
+        facultyIds,
+        numeroResolucion: numero_resolucion_coordinador,
+        soporteResolucion: soporte_resolucion,
+      })
+    ) {
       return res.render('home/message_error', {
         message: '¡Todos los campos son obligatorios!',
         message2: 'Inténtalo nuevamente',
@@ -378,29 +475,14 @@ router.post(
         });
       }
 
-      // Validar que las facultades existan
-      const facultyIdColumn = await resolveExistingColumn('facultad', [
-        'facultad_id',
-        'id_facultad',
-      ]);
-      if (!facultyIdColumn) {
+      const selectedFaculties = await resolveSelectedFaculties({
+        needsFacultyAssignment,
+        facultyIds,
+      });
+      if (selectedFaculties.errorPayload) {
         return res.render('home/message_error', {
-          message: '¡Algo ha salido mal!',
-          message2: 'No fue posible validar las facultades seleccionadas.',
-          limit: null,
-        });
-      }
-
-      const facs = await pool.query(
-        `SELECT ${facultyIdColumn} AS facultad_id, nombre
-         FROM facultad
-         WHERE ${facultyIdColumn} = ANY($1::int[])`,
-        [facultyIds]
-      );
-      if (facs.rows.length !== facultyIds.length) {
-        return res.render('home/message_error', {
-          message: 'Una o más facultades seleccionadas no existen.',
-          message2: 'Verifica la selección',
+          message: selectedFaculties.errorPayload.message,
+          message2: selectedFaculties.errorPayload.message2,
           limit: null,
         });
       }
@@ -409,7 +491,7 @@ router.post(
         correo: normalizedEmail,
         documento,
         nombre,
-        roleName: 'coordinador',
+        roleName,
       });
 
       await pool.query(
@@ -431,26 +513,28 @@ router.post(
         documento,
       ]);
 
-      // Insertar todas las asociaciones en la tabla de unión
-      const coordinatorFacultyIdColumn = await resolveExistingColumn('coordinador_facultad', [
-        'facultad_id',
-        'id_facultad',
-      ]);
-      if (!coordinatorFacultyIdColumn) {
-        return res.render('home/message_error', {
-          message: '¡Algo ha salido mal!',
-          message2: 'No fue posible asociar las facultades al coordinador.',
-          limit: null,
-        });
-      }
+      // Insertar asociaciones de facultad solo para coordinador de facultad.
+      if (needsFacultyAssignment) {
+        const coordinatorFacultyIdColumn = await resolveExistingColumn('coordinador_facultad', [
+          'facultad_id',
+          'id_facultad',
+        ]);
+        if (!coordinatorFacultyIdColumn) {
+          return res.render('home/message_error', {
+            message: '¡Algo ha salido mal!',
+            message2: 'No fue posible asociar las facultades al coordinador.',
+            limit: null,
+          });
+        }
 
-      for (const facId of facultyIds) {
-        await pool.query(
-          `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
-           VALUES ($1, $2)
-           ON CONFLICT DO NOTHING`,
-          [documento, facId]
-        );
+        for (const facId of facultyIds) {
+          await pool.query(
+            `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
+             VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`,
+            [documento, facId]
+          );
+        }
       }
 
       await pool.query(
@@ -458,23 +542,28 @@ router.post(
         [
           req.session.user.tipo,
           normalizeLogDocument(req.session.user.documento),
-          'Registrar nuevo coordinador',
+          `Registrar nuevo ${roleDisplayName(roleName)}`,
           documento,
         ]
       );
 
       // Obtener información de las facultades para el correo
-      const facultadInfo = facs.rows.map((r) => r.nombre);
+      const facultadInfo = selectedFaculties.faculties.map((faculty) => faculty.nombre);
 
       // Enviar correo de bienvenida al coordinador
       const datosCoordinador = {
         documento,
         nombre,
         correo: normalizedEmail,
+        role_name: roleName,
+        role_label: roleDisplayName(roleName),
         faculty_ids: facultyIds,
         numero_resolucion_coordinador,
         soporte_resolucion,
-        facultades_nombres: facultadInfo.join(', '),
+        facultades_nombres:
+          facultadInfo.length > 0
+            ? facultadInfo.join(', ')
+            : 'Sin facultades asignadas (acceso general de lectura)',
         creado_por: req.session.user.tipo,
         documento_creador: req.session.user.documento,
       };
@@ -483,7 +572,9 @@ router.post(
 
       return res.render('home/message_success', {
         message: 'Cuenta creada',
-        message2: 'Se ha completado con éxito el proceso de creación de la cuenta del Coordinador',
+        message2: `Se ha completado con éxito el proceso de creación de la cuenta del ${roleDisplayName(
+          roleName
+        )}`,
       });
     } catch (err) {
       console.error('Error en registro de coordinador:', err);
@@ -498,6 +589,14 @@ router.post(
 
 // NUEVA FUNCIÓN: Enviar correo de bienvenida al coordinador
 async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
+  const roleLabel = datosCoordinador.role_label || 'Coordinador';
+  const facultiesLabel =
+    datosCoordinador.facultades_nombres || 'Sin facultades asignadas (acceso general de lectura)';
+  const roleCapabilitiesMessage =
+    datosCoordinador.role_name === ROLE_COORDINADOR_GENERAL
+      ? 'usted tendrá acceso global de solo lectura sobre todos los módulos habilitados en MILab.'
+      : 'usted tendrá acceso a funcionalidades administrativas específicas para la gestión de laboratoristas y procesos de paz y salvos en su facultad.';
+
   const fechaActual = new Date().toLocaleDateString('es-CO', {
     year: 'numeric',
     month: 'long',
@@ -510,24 +609,24 @@ async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: datosCoordinador.correo,
-      subject: `Bienvenido como Coordinador - MILab Laboratorios UD`,
+      subject: `Bienvenido como ${roleLabel} - MILab Laboratorios UD`,
       text: `Estimad@ ${datosCoordinador.nombre},
 
 ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital!
 
-Su cuenta como Coordinador de Laboratorio ha sido creada exitosamente con los siguientes datos:
+    Su cuenta como ${roleLabel} ha sido creada exitosamente con los siguientes datos:
 
 - Nombre: ${datosCoordinador.nombre}
 - Documento: ${datosCoordinador.documento}
 - Correo: ${datosCoordinador.correo}
-- Facultades: ${datosCoordinador.facultades_nombres}
+    - Facultades: ${facultiesLabel}
 - Número de Resolución: ${datosCoordinador.numero_resolucion_coordinador}
 - Fecha de registro: ${fechaActual}
 
 Sus credenciales de acceso son:
 IMPORTANTE: Su acceso al sistema se realizará mediante correo institucional (Entra).
 
-Como Coordinador de Laboratorio, usted tendrá acceso a funcionalidades administrativas específicas para la gestión de laboratoristas y procesos de paz y salvos en su facultad.
+Como ${roleLabel}, ${roleCapabilitiesMessage}
 
 Puede acceder al sistema en: ${appBaseUrl}
 
@@ -544,7 +643,7 @@ MILab - Coordinación General de Laboratorios`,
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
               <meta name="color-scheme" content="light only">
               <meta name="supported-color-schemes" content="light only">
-                <title>Bienvenido como Coordinador</title>
+                <title>Bienvenido como ${escapeHtml(roleLabel)}</title>
                 <!--[if mso]>
                 <style>
                     .fallback-font { font-family: Arial, sans-serif; }
@@ -561,7 +660,7 @@ MILab - Coordinación General de Laboratorios`,
                                 <!-- Encabezado -->
                                 <tr>
                                     <td align="center" style="padding: 30px 30px 20px 30px; background-color: #6f42c1; border-radius: 12px 12px 0 0;">
-                                        <h1 class="fallback-font" style="font-size: 26px; font-weight: 700; color: #ffffff; margin: 0;">¡Bienvenido/a Coordinador!</h1>
+                                        <h1 class="fallback-font" style="font-size: 26px; font-weight: 700; color: #ffffff; margin: 0;">¡Bienvenido/a ${escapeHtml(roleLabel)}!</h1>
                                         <p class="fallback-font" style="font-size: 16px; color: #e2d9f3; margin: 10px 0 0 0;">MILab - Laboratorios UD</p>
                                     </td>
                                 </tr>
@@ -573,7 +672,7 @@ MILab - Coordinación General de Laboratorios`,
                                             Estimad@ <strong>${escapeHtml(datosCoordinador.nombre)}</strong>,
                                         </p>
                                         <p class="fallback-font" style="font-size: 16px; line-height: 1.6; color: #5f6368; margin-top: 16px;">
-                                            ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital! Su cuenta como <strong>Coordinador de Laboratorio</strong> ha sido creada exitosamente.
+                                            ¡Bienvenido/a a MILab de Laboratorios de la Universidad Distrital! Su cuenta como <strong>${escapeHtml(roleLabel)}</strong> ha sido creada exitosamente.
                                         </p>
                                     </td>
                                 </tr>
@@ -598,7 +697,7 @@ MILab - Coordinación General de Laboratorios`,
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Facultades:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.facultades_nombres)}</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(facultiesLabel)}</td>
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Resolución:</strong></td>
@@ -606,7 +705,7 @@ MILab - Coordinación General de Laboratorios`,
                                                 </tr>
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Rol:</strong></td>
-                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #6f42c1; font-weight: bold;">Coordinador de Laboratorio</td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #6f42c1; font-weight: bold;">${escapeHtml(roleLabel)}</td>
                                                 </tr>
                                             </table>
                                         </div>
@@ -633,7 +732,7 @@ MILab - Coordinación General de Laboratorios`,
                                     <td style="padding: 0 30px 20px 30px;">
                                         <div style="background-color: #f3e5f5; border-radius: 8px; padding: 15px; border-left: 4px solid #6f42c1;">
                                             <p class="fallback-font" style="font-size: 14px; color: #4a148c; margin: 0;">
-                                                <strong>🎯 Como Coordinador de Laboratorio,</strong> usted tendrá acceso a funcionalidades administrativas específicas para la gestión de laboratoristas y procesos de paz y salvos en su facultad.
+                                                <strong>🎯 Como ${escapeHtml(roleLabel)},</strong> ${escapeHtml(roleCapabilitiesMessage)}
                                             </p>
                                         </div>
                                     </td>
@@ -772,6 +871,7 @@ router.get('/new', async function (req, res) {
     error: null,
     confirmacion: null,
     facultades: result.rows,
+    selectedRole: ROLE_COORDINADOR,
     lookupData: null,
     lookupMessage: null,
     lookupStatus: null,

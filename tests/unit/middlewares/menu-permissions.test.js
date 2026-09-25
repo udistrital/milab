@@ -85,7 +85,7 @@ test('menuPermissionMiddleware blocks protected route when user is missing', asy
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       return { rows: [] };
@@ -116,7 +116,7 @@ test('menuPermissionMiddleware allows protected route with permitted role', asyn
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       if (sql.includes('FROM rol_permiso')) {
@@ -154,7 +154,7 @@ test('menuPermissionMiddleware blocks protected route with denied role', async (
   const loaded = loadMiddleware({
     poolQueryImpl: async (sql) => {
       if (sql.includes('FROM menu_item')) {
-        return { rows: [{ id: 15 }] };
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
       }
 
       if (sql.includes('FROM rol_permiso')) {
@@ -184,6 +184,50 @@ test('menuPermissionMiddleware blocks protected route with denied role', async (
     assert.equal(nextCalled, false);
     assert.equal(res.rendered.view, 'home/message_error');
     assert.match(res.rendered.payload.message2, /No tienes permisos/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware prioritizes exact route over parent module fallback', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async (sql, params) => {
+      if (sql.includes('FROM menu_item')) {
+        return {
+          rows: [
+            { id: 10, route: '/milab/api/get_list_estudiantes/get_consulta' },
+            { id: 11, route: '/milab/api/get_list_estudiantes' },
+          ],
+        };
+      }
+
+      if (sql.includes('FROM rol_permiso')) {
+        assert.deepEqual(params[0], [10]);
+        return { rows: [{ '?column?': 1 }] };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const req = {
+      originalUrl: '/milab/api/get_list_estudiantes/get_consulta',
+      session: {
+        user: {
+          tipo: 'laboratorista',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
   } finally {
     loaded.restore();
   }

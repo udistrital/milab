@@ -28,18 +28,42 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
-const requireLaboratoristaFineInfoView = requireRoles('laboratorista', {
+// Laboratoristas asignados por UAL, usados para que admin/coordinador elijan en cuyo nombre registrar.
+async function fetchLaboratoristasByUalIds(ualIds) {
+  const normalizedIds = (ualIds || []).filter((id) => Number.isFinite(id));
+  if (!normalizedIds.length) return new Map();
+
+  const result = await pool.query(
+    `SELECT lu.ual_id, l.documento, l.nombre
+     FROM laboratorista_ual lu
+     INNER JOIN laboratorista l ON l.documento = lu.laboratorista_documento_id
+     WHERE lu.ual_id = ANY($1::int[])
+       AND (l.activo IS DISTINCT FROM FALSE)
+     ORDER BY l.nombre ASC`,
+    [normalizedIds]
+  );
+
+  const map = new Map();
+  result.rows.forEach((row) => {
+    const key = Number(row.ual_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push({ documento: row.documento, nombre: row.nombre });
+  });
+  return map;
+}
+
+const requireFineInfoPageAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
 });
 
-router.get('/get', requireLaboratoristaFineInfoView, async function (req, res) {
+router.get('/get', requireFineInfoPageAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   res.render('home/get-info-multa');
 });
 
-router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
+router.post('/', requireFineInfoPageAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};
@@ -192,6 +216,11 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
         ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
       ];
       const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
+      const needsDelegateOptions =
+        req.session.user.tipo === 'admin' || req.session.user.tipo === 'coordinador';
+      const laboratoristasPorUal = needsDelegateOptions
+        ? await fetchLaboratoristasByUalIds(uals.map((u) => Number(u.ual_id)))
+        : new Map();
       uals = uals.map((u) => {
         const cfg = Number.isFinite(Number(u.facultad_id))
           ? configMap.get(Number(u.facultad_id))
@@ -199,6 +228,9 @@ router.post('/', requireLaboratoristaFineInfoView, async function (req, res) {
         return {
           ...u,
           _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
+          _laboratoristas: needsDelegateOptions
+            ? laboratoristasPorUal.get(Number(u.ual_id)) || []
+            : [],
         };
       });
     } else if (uals === null) {

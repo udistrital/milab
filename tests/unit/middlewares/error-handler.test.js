@@ -47,8 +47,9 @@ test('renderApplicationError renders the shared error page with default payload'
   assert.deepEqual(res.rendered, {
     view: 'home/message_error',
     payload: {
-      message: '¡Algo ha salido mal!',
-      message2: 'No fue posible procesar la solicitud. Inténtalo nuevamente en unos minutos.',
+      message: 'No pudimos completar tu solicitud',
+      message2:
+        'Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en milab@udistrital.edu.co.',
       limit: null,
     },
   });
@@ -101,7 +102,8 @@ test('application error handler returns json for api requests expecting json', (
   assert.equal(res.statusCode, 503);
   assert.deepEqual(res.payload, {
     ok: false,
-    message: '¡Algo ha salido mal!',
-    message2: 'No fue posible procesar la solicitud. Inténtalo nuevamente en unos minutos.',
+    message: 'No pudimos completar tu solicitud',
+    message2:
+      'Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en milab@udistrital.edu.co.',
   });
 });

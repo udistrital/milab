@@ -285,7 +285,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-warning" id="ultimaHoraFirmaSubmitBtn" disabled>Enviar solicitud</button>
+        <button type="button" class="btn btn-warning" id="ultimaHoraFirmaSubmitBtn" disabled data-submit-lock="true">Enviar solicitud</button>
       </div>
     </div>
   </div>
@@ -398,9 +398,9 @@
       }
 
       hideSignatureError();
-      submitButton.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(submitButton, 'Enviando solicitud de ultima hora...');
         var response = await fetch(
           '/milab/prestamos/mis-solicitudes/ultima-hora/' + encodeURIComponent(colaId) + '/aceptar',
           {
@@ -423,7 +423,8 @@
       } catch (error) {
         statusElement.className = 'alert alert-danger';
         statusElement.textContent = error.message || 'No fue posible enviar la solicitud.';
-        submitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(submitButton);
       }
     });
   })();

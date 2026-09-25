@@ -21,7 +21,7 @@
         <div class="card-body">
           <p class="text-center mb-4 app-page-subtitle">Seleccione el tipo de búsqueda e ingrese el valor para verificar el estado del estudiante.</p>
 
-          <form method="POST" action="/milab/api/verificar_estudiante" class="row g-3 justify-content-center">
+            <form method="POST" action="/milab/api/verificar_estudiante" class="row g-3 justify-content-center" data-oati-loading="true" data-oati-loading-message="Consultando el estudiante en la OATI...">
             <%- include('../partials/csrf_field') %>
             <div class="col-md-10">
               <div class="app-choice-group d-flex gap-3 justify-content-center flex-wrap">
@@ -42,7 +42,7 @@
             </div>
 
             <div class="col-md-10 d-grid gap-2">
-              <button class="btn btn-perso" type="submit">Verificar</button>
+              <button class="btn btn-perso" type="submit" data-read-only-lock="true">Verificar</button>
             </div>
           </form>
         </div>

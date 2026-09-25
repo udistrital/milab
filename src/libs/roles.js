@@ -1,7 +1,16 @@
-const ROLE_PRIORITY = ['admin', 'coordinador', 'laboratorista', 'monitor', 'docente', 'estudiante'];
+const ROLE_PRIORITY = [
+  'admin',
+  'coordinador_general',
+  'coordinador',
+  'laboratorista',
+  'monitor',
+  'docente',
+  'estudiante',
+];
 
 const ROLE_LABELS = {
   admin: 'Admin',
+  coordinador_general: 'Coordinador General',
   coordinador: 'Coordinador',
   laboratorista: 'Laboratorista',
   monitor: 'Monitor',
