@@ -8,6 +8,15 @@ function normalizeErrorStatus(error) {
   return 500;
 }
 
+const SUPPORT_EMAIL = 'milab@udistrital.edu.co';
+
+function buildDefaultUserError() {
+  return {
+    message: 'No pudimos completar tu solicitud',
+    message2: `Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en ${SUPPORT_EMAIL}.`,
+  };
+}
+
 function getUserRoles(user) {
   if (!user) {
     return [];
@@ -34,9 +43,10 @@ function buildAdminErrorDetail(error, req, status) {
     return null;
   }
 
-  const lines = [];
-  lines.push(`Tipo: ${error.name || 'Error'}`);
-  lines.push(`Mensaje: ${error.message || 'Sin detalle disponible.'}`);
+  const lines = [
+    `Tipo: ${error.name || 'Error'}`,
+    `Mensaje: ${error.message || 'Sin detalle disponible.'}`,
+  ];
 
   if (error.code) {
     lines.push(`Codigo: ${error.code}`);
@@ -53,8 +63,7 @@ function buildAdminErrorDetail(error, req, status) {
   const stack = typeof error.stack === 'string' ? error.stack.split('\n').slice(0, 8) : [];
 
   if (stack.length > 0) {
-    lines.push('Stack (resumen):');
-    lines.push(stack.join('\n'));
+    lines.splice(lines.length, 0, 'Stack (resumen):', stack.join('\n'));
   }
 
   return lines.join('\n');
@@ -70,9 +79,10 @@ function wantsJson(req) {
 }
 
 function renderApplicationError(res, overrides = {}, req = null, error = null) {
+  const defaultUserError = buildDefaultUserError();
   const payload = {
-    message: '¡Algo ha salido mal!',
-    message2: 'No fue posible procesar la solicitud. Inténtalo nuevamente en unos minutos.',
+    message: defaultUserError.message,
+    message2: defaultUserError.message2,
     limit: null,
     ...overrides,
   };
@@ -109,10 +119,11 @@ function createApplicationErrorHandler(logger = console) {
     }
 
     if (wantsJson(req)) {
+      const defaultUserError = buildDefaultUserError();
       return res.status(status).json({
         ok: false,
-        message: '¡Algo ha salido mal!',
-        message2: 'No fue posible procesar la solicitud. Inténtalo nuevamente en unos minutos.',
+        message: defaultUserError.message,
+        message2: defaultUserError.message2,
       });
     }
 

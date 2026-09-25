@@ -74,7 +74,7 @@
       <% if (!Array.isArray(facultadesParaAutorizar) || facultadesParaAutorizar.length === 0) { %>
         <div class="alert alert-info text-center mb-0">No se encontraron facultades asociadas a tu coordinación para gestionar autorizaciones.</div>
       <% } else { %>
-        <div class="row g-3">
+        <div class="row g-3 justify-content-center">
           <% facultadesParaAutorizar.forEach(function (facultad) { %>
             <div class="col-12 col-lg-6" data-facultad-card="<%= facultad.facultad_id %>">
               <div class="card border-0 bg-body-secondary">
@@ -288,7 +288,7 @@
             </div>
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-              <button type="submit" class="btn btn-success">Activar sanción</button>
+              <button type="submit" class="btn btn-success" data-submit-lock="true">Activar sanción</button>
             </div>
           </form>
         </div>
@@ -300,7 +300,7 @@
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-              <button type="submit" class="btn btn-primary">Marcar como saldada</button>
+              <button type="submit" class="btn btn-primary" data-submit-lock="true">Marcar como saldada</button>
             </div>
           </form>
         </div>
@@ -382,65 +382,63 @@
         return;
       }
 
-      toggleInput.addEventListener('change', function (ev) {
+      toggleInput.addEventListener('change', async function (ev) {
         ev.preventDefault();
         const newValue = toggleInput.checked;
         const previousValue = !newValue;
         const url = form.getAttribute('action') || '';
         const csrf = readCsrfToken(form);
 
-        toggleInput.disabled = true;
-        toggleInput.style.cursor = 'progress';
+        try {
+          window.MiLabSubmitLock.lock(toggleInput, 'Actualizando configuración de facultad...');
 
-        fetch(url, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-Token': csrf,
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          },
-          body: '_csrf=' + encodeURIComponent(csrf),
-          credentials: 'same-origin',
-        })
-          .then(function (res) {
-            if (res.status >= 400) {
-              return res.json().then(
-                function (payload) {
-                  throw new Error((payload && payload.message) || ('HTTP ' + res.status));
-                },
-                function () {
-                  throw new Error('HTTP ' + res.status);
-                }
-              );
-            }
-            return res.json();
-          })
-          .then(function (payload) {
-            if (!payload || !payload.ok) {
-              throw new Error((payload && payload.message) || 'Respuesta inválida del servidor');
-            }
-            const current = getCurrentFlags(facultadId);
-            const siguiente = {
-              permiteCrear: current.permiteCrear,
-              permiteSaldar: current.permiteSaldar,
-            };
-            if (flag === 'permite_crear_multas_activas_directas') {
-              siguiente.permiteCrear = !!payload.nextValue;
-            } else if (flag === 'permite_saldar_multas_directas') {
-              siguiente.permiteSaldar = !!payload.nextValue;
-            }
-            rebuildBadges(facultadId, siguiente.permiteCrear, siguiente.permiteSaldar);
-            updateLastMod(facultadId, payload.fecha_modificacion, payload.documento_autorizador, payload.accion_ultima);
-          })
-          .catch(function (err) {
-            console.error('Error actualizando configuración de facultad:', err);
-            toggleInput.checked = previousValue;
-          })
-          .finally(function () {
-            toggleInput.disabled = false;
-            toggleInput.style.cursor = '';
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-CSRF-Token': csrf,
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            },
+            body: '_csrf=' + encodeURIComponent(csrf),
+            credentials: 'same-origin',
           });
+
+          let payload;
+          if (res.status >= 400) {
+            try {
+              payload = await res.json();
+              throw new Error((payload && payload.message) || ('HTTP ' + res.status));
+            } catch (_jsonParseErr) {
+              if (_jsonParseErr instanceof Error && _jsonParseErr.message && /^HTTP /.test(_jsonParseErr.message)) {
+                throw _jsonParseErr;
+              }
+              throw new Error('HTTP ' + res.status);
+            }
+          }
+          payload = await res.json();
+
+          if (!payload || !payload.ok) {
+            throw new Error((payload && payload.message) || 'Respuesta inválida del servidor');
+          }
+          const current = getCurrentFlags(facultadId);
+          const siguiente = {
+            permiteCrear: current.permiteCrear,
+            permiteSaldar: current.permiteSaldar,
+          };
+          if (flag === 'permite_crear_multas_activas_directas') {
+            siguiente.permiteCrear = !!payload.nextValue;
+          } else if (flag === 'permite_saldar_multas_directas') {
+            siguiente.permiteSaldar = !!payload.nextValue;
+          }
+          rebuildBadges(facultadId, siguiente.permiteCrear, siguiente.permiteSaldar);
+          updateLastMod(facultadId, payload.fecha_modificacion, payload.documento_autorizador, payload.accion_ultima);
+        } catch (err) {
+          console.error('Error actualizando configuración de facultad:', err);
+          toggleInput.checked = previousValue;
+        } finally {
+          window.MiLabSubmitLock.release(toggleInput);
+        }
       });
     });
   })();

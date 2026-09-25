@@ -119,6 +119,7 @@
                       <input
                         type="checkbox"
                         class="form-check-input prestamos-access-toggle"
+                        data-submit-lock="true"
                         data-facultad-id="<%= item.facultad_id %>"
                         data-role="monitor"
                         <%= item.monitor_permitido ? 'checked' : '' %>
@@ -239,6 +240,7 @@
                                 <input
                                   type="checkbox"
                                   class="form-check-input permission-toggle"
+                                  data-submit-lock="true"
                                   data-role-id="<%= role.id %>"
                                   data-menu-id="<%= parent.id %>"
                                   <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
@@ -265,6 +267,7 @@
                                   <input
                                     type="checkbox"
                                     class="form-check-input permission-toggle"
+                                    data-submit-lock="true"
                                     data-role-id="<%= role.id %>"
                                     data-menu-id="<%= item.id %>"
                                     <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
@@ -320,6 +323,7 @@
                         <input
                           type="checkbox"
                           class="form-check-input permission-toggle"
+                          data-submit-lock="true"
                           data-role-id="<%= role.id %>"
                           data-menu-id="<%= item.id %>"
                           <%= permissionMap.has(permissionKey) ? 'checked' : '' %>
@@ -343,8 +347,10 @@
       const roleId = event.target.getAttribute('data-role-id');
       const menuId = event.target.getAttribute('data-menu-id');
       const enabled = event.target.checked;
+      const btnElement = event.target;
 
       try {
+        window.MiLabSubmitLock.lock(btnElement, 'Guardando permisos de menú...');
         const response = await fetch('/milab/api/admin/menus/permissions', {
           method: 'POST',
           headers: {
@@ -365,6 +371,8 @@
       } catch (error) {
         alert(error.message || 'Error al actualizar permisos.');
         event.target.checked = !enabled;
+      } finally {
+        window.MiLabSubmitLock.release(btnElement);
       }
     });
   });
@@ -374,8 +382,10 @@
       const facultadId = event.target.getAttribute('data-facultad-id');
       const role = event.target.getAttribute('data-role');
       const enabled = event.target.checked;
+      const btnElement = event.target;
 
       try {
+        window.MiLabSubmitLock.lock(btnElement, 'Guardando acceso a préstamos...');
         const response = await fetch('/milab/api/admin/menus/prestamos-access', {
           method: 'POST',
           headers: {
@@ -396,6 +406,8 @@
       } catch (error) {
         alert(error.message || 'Error al actualizar acceso a prestamos.');
         event.target.checked = !enabled;
+      } finally {
+        window.MiLabSubmitLock.release(btnElement);
       }
     });
   });

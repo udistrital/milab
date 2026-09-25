@@ -39,7 +39,9 @@
         </div>
       <% } %>
 
-      <form method="post" action="/milab/api/registro_coordinador" 
+      <form method="post" action="/milab/api/registro_coordinador"
+        data-oati-loading="true"
+        data-oati-loading-message="Consultando datos en la OATI..." 
         class="row g-3 mx-auto d-flex justify-content-center app-form-grid" 
         onsubmit="return validarCorreo() && validarCampos()">
         <%- include('../partials/csrf_field') %>
@@ -70,7 +72,16 @@
     </div>
 
     <div class="col-md-12">
-      <label class="form-label">- Seleccione Sedes / Facultades (una o varias) -</label>
+      <label for="role_name" class="form-label">Rol de acceso</label>
+      <select id="role_name" name="role_name" class="form-select">
+        <option value="coordinador" <%= (selectedRole || 'coordinador') === 'coordinador' ? 'selected' : '' %>>Coordinador (con facultades a cargo)</option>
+        <option value="coordinador_general" <%= selectedRole === 'coordinador_general' ? 'selected' : '' %>>Coordinador General (lectura global, sin facultad a cargo)</option>
+      </select>
+      <small class="form-text text-muted">El Coordinador General podrá ver todos los módulos habilitados en modo solo lectura.</small>
+    </div>
+
+    <fieldset class="col-md-12" id="facultadesSection">
+      <legend class="form-label fs-6">Seleccione Sedes / Facultades (una o varias)</legend>
       <div class="row">
         <% for (var i = 0; i < facultades.length; i++) { %>
           <div class="col-md-6 mb-2">
@@ -81,8 +92,8 @@
           </div>
         <% } %>
       </div>
-      <small class="form-text text-muted">Elija al menos una facultad. La primera seleccionada será la principal para compatibilidad.</small>
-    </div>
+      <small class="form-text text-muted">Elija al menos una facultad para el rol Coordinador.</small>
+    </fieldset>
 
     <!-- NUEVOS CAMPOS -->
     <div class="col-md-6">
@@ -104,7 +115,7 @@
     <% } %>
 
     <div class="col-md-12 mb-2 justify-content-center d-flex">
-      <button class="btn btn-perso col-md-11" type="submit" id="abrirModal">Registrar</button>
+      <button class="btn btn-perso col-md-11" type="submit" id="abrirModal" data-submit-lock="true">Registrar</button>
     </div>
 
     <% if (confirmacion) { include('./confirm_create_account.ejs') } %>
@@ -135,6 +146,7 @@
   function validarCampos() {
     var nombre = document.getElementById("nombre").value;
     var documento = document.getElementById("documento").value;
+    var roleName = document.getElementById('role_name').value;
     var mensajeError = document.getElementById("mensajeError");
     mensajeError.classList.add("d-none");
     mensajeError.innerHTML = "";
@@ -151,14 +163,41 @@
       return false;
     }
 
-    // Validar selección de al menos una facultad
-    var checks = document.querySelectorAll('input[name="facultad_ids"]:checked');
-    if (checks.length === 0) {
-      mensajeError.classList.remove("d-none");
-      mensajeError.innerHTML += "<p>Debe seleccionar al menos una sede/facultad.</p>";
-      return false;
+    if (roleName === 'coordinador') {
+      var checks = document.querySelectorAll('input[name="facultad_ids"]:checked');
+      if (checks.length === 0) {
+        mensajeError.classList.remove("d-none");
+        mensajeError.innerHTML += "<p>Debe seleccionar al menos una sede/facultad.</p>";
+        return false;
+      }
     }
 
     return true;
   }
+
+  function syncFacultySection() {
+    var roleSelect = document.getElementById('role_name');
+    var facultiesSection = document.getElementById('facultadesSection');
+    if (!roleSelect || !facultiesSection) {
+      return;
+    }
+
+    var isGeneralRole = roleSelect.value === 'coordinador_general';
+    facultiesSection.classList.toggle('d-none', isGeneralRole);
+
+    if (isGeneralRole) {
+      var checks = document.querySelectorAll('input[name="facultad_ids"]');
+      checks.forEach(function (check) {
+        check.checked = false;
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var roleSelect = document.getElementById('role_name');
+    if (roleSelect) {
+      roleSelect.addEventListener('change', syncFacultySection);
+    }
+    syncFacultySection();
+  });
 </script>

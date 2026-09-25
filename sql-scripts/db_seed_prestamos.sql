@@ -206,6 +206,25 @@ SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'secondary'
 WHERE (
+    role_map.nombre = 'coordinador_general' AND menu_map.label IN (
+        'Prestamos',
+        'Inventario',
+        'Equipos',
+        'Solicitar equipo',
+        'Mis solicitudes',
+        'Gestion de solicitudes',
+        'Entrega y devolucion',
+        'Incidencias',
+        'Solicitar practica',
+        'Mis practicas',
+        'Gestion de practicas',
+        'Salas',
+        'Reportes',
+        'Auditoria',
+        'Parametrizaciones',
+        'Configuracion de practicas'
+    )
+) OR (
     role_map.nombre = 'admin' AND menu_map.label IN (
         'Prestamos',
         'Inventario',

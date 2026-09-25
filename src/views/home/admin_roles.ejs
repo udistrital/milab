@@ -1,0 +1,125 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Roles</h1>
+    <p class="app-page-subtitle">Crea, edita y elimina roles del sistema.</p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-xl-10">
+      <% if (error) { %>
+        <div class="alert alert-danger"><%= error %></div>
+      <% } %>
+
+      <% if (success) { %>
+        <div class="alert alert-success"><%= success %></div>
+      <% } %>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5">Crear rol</h2>
+          <p class="text-muted mb-3">Usa nombres en minúsculas y guion bajo. Ejemplo: analista_datos.</p>
+          <form method="POST" action="/milab/api/admin/roles/crear" class="row g-3">
+            <%- include('../partials/csrf_field') %>
+            <div class="col-md-8">
+              <label class="form-label" for="roleNameInput">Nombre del rol</label>
+              <input
+                id="roleNameInput"
+                class="form-control"
+                name="nombre"
+                maxlength="40"
+                pattern="[a-z][a-z0-9_]{1,39}"
+                required
+              />
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <button class="btn btn-primary w-100" type="submit">Crear rol</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Roles registrados</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead>
+                <tr>
+                  <th>Rol</th>
+                  <th class="text-center">Usuarios asociados</th>
+                  <th class="text-center">Permisos en menús</th>
+                  <th class="text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!roles || !roles.length) { %>
+                  <tr>
+                    <td colspan="4" class="text-muted">No hay roles registrados.</td>
+                  </tr>
+                <% } %>
+
+                <% (roles || []).forEach(function(role) { %>
+                  <% const isProtected = (protectedRoles || []).includes(role.nombre); %>
+                  <tr>
+                    <td>
+                      <strong><%= role.nombre %></strong>
+                      <% if (isProtected) { %>
+                        <span class="badge text-bg-secondary ms-2">Base</span>
+                      <% } %>
+                    </td>
+                    <td class="text-center"><%= role.usuarios_asociados %></td>
+                    <td class="text-center"><%= role.permisos_asociados %></td>
+                    <td>
+                      <div class="d-flex flex-wrap justify-content-center gap-2">
+                        <form method="POST" action="/milab/api/admin/roles/<%= role.id %>/editar" class="d-flex gap-2">
+                          <%- include('../partials/csrf_field') %>
+                          <label class="visually-hidden" for="roleEditName<%= role.id %>">Nombre del rol</label>
+                          <input
+                            id="roleEditName<%= role.id %>"
+                            class="form-control form-control-sm"
+                            name="nombre"
+                            maxlength="40"
+                            pattern="[a-z][a-z0-9_]{1,39}"
+                            value="<%= role.nombre %>"
+                            <%= isProtected ? 'readonly' : '' %>
+                            required
+                          />
+                          <button
+                            class="btn btn-sm btn-outline-primary"
+                            type="submit"
+                            <%= isProtected ? 'disabled' : '' %>
+                          >
+                            Guardar
+                          </button>
+                        </form>
+
+                        <form method="POST" action="/milab/api/admin/roles/<%= role.id %>/eliminar">
+                          <%- include('../partials/csrf_field') %>
+                          <button
+                            class="btn btn-sm btn-outline-danger"
+                            type="submit"
+                            <%= isProtected ? 'disabled' : '' %>
+                            onclick="return confirm('¿Seguro que deseas eliminar el rol <%= role.nombre %>?');"
+                          >
+                            Eliminar
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+          <div class="text-muted small mt-2">
+            Si creas un rol nuevo, aparecerá como columna en la matriz de permisos del módulo "Permisos y menús".
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

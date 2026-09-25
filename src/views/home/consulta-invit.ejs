@@ -191,7 +191,7 @@
               </div>
 
               <div class="guest-check-actions">
-                <button type="submit" class="btn btn-perso btn-lg">Consultar</button>
+                <button type="submit" class="btn btn-perso btn-lg" data-read-only-lock="true">Consultar</button>
               </div>
             </form>
           </div>
@@ -215,11 +215,11 @@
                 <p>El usuario no tiene sanciones registradas.</p>
               <% } %>
 
-              <p class="app-page-subtitle mb-0">Si tiene dudas o inconvenientes, envíe un ticket a la coordinación de laboratorios.</p>
+              <p class="app-page-subtitle mb-0">Si tiene dudas o inconvenientes, escríbanos a milab@udistrital.edu.co.</p>
 
               <div class="guest-check-support">
-                <button class="btn btn-outline-secondary btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
-                  <i class="bi bi-headset"></i> Soporte al usuario
+                <button class="btn btn-outline-secondary btn-lg px-4" type="button" onclick="window.location.href='mailto:milab@udistrital.edu.co?subject=Soporte%20MILab';">
+                  <i class="bi bi-envelope"></i> Contactar soporte por correo
                 </button>
               </div>
             </div>

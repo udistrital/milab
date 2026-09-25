@@ -4,7 +4,15 @@ const { renderAuthError } = require('./auth');
 
 function sanitizePath(pathname) {
   if (!pathname) return '';
-  return pathname.split('?')[0];
+  const cleanPath = pathname.split('?')[0];
+  if (cleanPath.length > 1 && cleanPath.endsWith('/')) {
+    let end = cleanPath.length;
+    while (end > 1 && cleanPath[end - 1] === '/') {
+      end -= 1;
+    }
+    return cleanPath.slice(0, end);
+  }
+  return cleanPath;
 }
 
 const publicApiAllowlist = [
@@ -30,6 +38,47 @@ function isPublicApiPath(requestPath, method) {
   });
 }
 
+function buildRouteCandidates(pathname) {
+  const candidates = [pathname];
+
+  if (!pathname.endsWith('/load_info')) {
+    candidates.push(`${pathname}/load_info`);
+  }
+
+  candidates.push(pathname.replace(/\/(verify_token|token)$/i, '/load_info'));
+
+  if (pathname.startsWith('/milab/api/')) {
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 3) {
+      const apiModuleRoute = `/${parts.slice(0, 3).join('/')}`;
+      candidates.push(apiModuleRoute, `${apiModuleRoute}/load_info`);
+    }
+  }
+
+  return Array.from(new Set(candidates));
+}
+
+function selectPrioritizedMenuIds(candidates, menuRows) {
+  const menuIdsByRoute = new Map();
+
+  menuRows.forEach((row) => {
+    const route = row.route;
+    if (!menuIdsByRoute.has(route)) {
+      menuIdsByRoute.set(route, []);
+    }
+    menuIdsByRoute.get(route).push(row.id);
+  });
+
+  for (const candidate of candidates) {
+    const routeIds = menuIdsByRoute.get(candidate);
+    if (Array.isArray(routeIds) && routeIds.length > 0) {
+      return routeIds;
+    }
+  }
+
+  return [];
+}
+
 async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
@@ -41,21 +90,14 @@ async function menuPermissionMiddleware(req, res, next) {
     if (allowProfileFlow) {
       return next();
     }
-    const candidates = [path];
-
-    if (!path.endsWith('/load_info')) {
-      candidates.push(`${path}/load_info`);
-    }
-
-    candidates.push(path.replace(/\/(verify_token|token)$/i, '/load_info'));
+    const candidates = buildRouteCandidates(path);
 
     const menuResult = await pool.query(
       `
-        SELECT id
+        SELECT id, route
         FROM menu_item
         WHERE route = ANY($1)
           AND activo = TRUE
-        LIMIT 1
       `,
       [candidates]
     );
@@ -93,18 +135,23 @@ async function menuPermissionMiddleware(req, res, next) {
       });
     }
 
-    const menuId = menuResult.rows[0].id;
+    const prioritizedMenuIds = selectPrioritizedMenuIds(candidates, menuResult.rows);
+
+    if (!prioritizedMenuIds.length) {
+      return next();
+    }
+
     const permissionResult = await pool.query(
       `
         SELECT 1
         FROM rol_permiso rp
         JOIN rol r ON r.id = rp.rol_id
-        WHERE rp.menu_item_id = $1
+        WHERE rp.menu_item_id = ANY($1)
           AND rp.can_view = TRUE
           AND r.nombre = ANY($2)
         LIMIT 1
       `,
-      [menuId, roles]
+      [prioritizedMenuIds, roles]
     );
 
     if (!permissionResult.rows.length) {

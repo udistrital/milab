@@ -1,12 +1,24 @@
 <%- include('../partials/header'); -%>
+<%
+    const normalizedMessage = typeof message === 'string' ? message.trim() : '';
+    const normalizedMessage2 = typeof message2 === 'string' ? message2.trim() : '';
+    const displayMessage =
+        normalizedMessage === '¡Algo ha salido mal!' || normalizedMessage === 'Algo ha salido mal'
+            ? 'No pudimos completar tu solicitud'
+            : message;
+    const displayMessage2 =
+        normalizedMessage2 === 'Inténtalo nuevamente' || normalizedMessage2 === 'Intentalo nuevamente'
+            ? 'Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en milab@udistrital.edu.co.'
+            : message2;
+%>
 <main class="container app-page-shell">
     <section class="card message-card col-xl-6 col-lg-7 col-md-9 mx-auto p-4" role="alert">
         <div class="text-center">
-            <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill"></i></h1>
-            <h3><%- message -%></h3>
-            <h4 class="app-page-subtitle"><%- message2 -%></h4>
+            <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span class="visually-hidden">Error</span></h1>
+            <h3><%- displayMessage -%></h3>
+            <h4 class="app-page-subtitle"><%- displayMessage2 -%></h4>
         </div>
-        <% if (adminErrorDetail) { %>
+        <% if (typeof adminErrorDetail !== 'undefined' && adminErrorDetail) { %>
         <section class="app-error-detail mt-3" aria-label="Detalle técnico de error para administrador">
             <h5 class="app-error-detail-title">Detalle técnico (solo administrador)</h5>
             <pre class="app-error-detail-body"><%= adminErrorDetail %></pre>
@@ -23,15 +35,15 @@
             </div>
         <% } %>
         <div class="app-inline-note mt-4 text-center">
-            Si tiene problemas, envíe un ticket a la coordinación de laboratorios.
+            Si el inconveniente persiste, escríbenos a milab@udistrital.edu.co.
         </div>
         <% if (limit !== 'loginOnly') { %>
         <div class="d-grid gap-2 d-sm-flex justify-content-center mt-4">
             <button class="btn btn-outline-secondary btn-lg px-4 gap-3" type="button" onclick="goBack()">
                 <i class="bi bi-arrow-left-circle"></i> Volver atrás
             </button>
-            <button class="btn btn-perso btn-lg px-4" type="button" onclick="window.open('https://iris.portaloas.udistrital.edu.co/', '_blank');">
-                <i class="bi bi-headset"></i> Soporte al usuario
+            <button class="btn btn-perso btn-lg px-4" type="button" onclick="window.location.href='mailto:milab@udistrital.edu.co?subject=Soporte%20MILab';">
+                <i class="bi bi-envelope"></i> Contactar soporte por correo
             </button>
         </div>
         <% } %>

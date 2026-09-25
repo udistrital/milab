@@ -64,6 +64,8 @@
       <form
         method="post"
         action="/milab/api/register_monitor"
+        data-oati-loading="true"
+        data-oati-loading-message="Consultando datos en la OATI..."
         class="row g-3 mx-auto d-flex justify-content-center app-form-grid"
         onsubmit="return validarCorreo() && validarCampos() && validarContrato() && validarUales()"
       >
@@ -234,7 +236,7 @@
         <% } %>
 
         <div class="col-md-12 d-flex flex-wrap justify-content-center gap-3 pt-2">
-          <button class="btn btn-perso col-md-6" type="submit">Registrar o actualizar monitor</button>
+          <button class="btn btn-perso col-md-6" type="submit" data-submit-lock="true">Registrar o actualizar monitor</button>
           <a href="/milab/api/monitores_registrados" class="btn btn-outline-secondary col-md-5">Ver monitores registrados</a>
         </div>
       </form>
