@@ -173,6 +173,56 @@ test('get_list_multas applies laboratorista UAL assignment scope in query', asyn
   }
 });
 
+test('get_list_multas exposes state-specific actions for authorized laboratoristas', async () => {
+  const loaded = loadRoute({
+    clientQueryImpl: async (sql, params) => {
+      if (sql.includes('SELECT documento FROM laboratorista')) {
+        return { rows: [{ documento: '12345' }] };
+      }
+
+      if (sql.includes('config_facultad_multas')) {
+        assert.deepEqual(params[0], [5]);
+        return {
+          rows: [
+            {
+              facultad_id: 5,
+              permite_crear_multas_activas_directas: true,
+              permite_saldar_multas_directas: true,
+            },
+          ],
+        };
+      }
+
+      return {
+        rows: [
+          { id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'Pendiente', facultad_id: 5 },
+          { id: 2, tipo_sancionado: 'estudiante', con_estado_multa: 'POR SALDAR', facultad_id: 5 },
+          { id: 3, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA', facultad_id: 5 },
+          { id: 4, tipo_sancionado: 'estudiante', con_estado_multa: 'SALDADA', facultad_id: 5 },
+        ],
+      };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: 'lab-user' });
+    const response = await request(app).get('/');
+    const rows = response.body.locals.sancionesEstudiantes;
+
+    assert.equal(response.status, 200);
+    assert.equal(rows[0].canActivate, true);
+    assert.equal(rows[0].canSaldar, false);
+    assert.equal(rows[1].canActivate, false);
+    assert.equal(rows[1].canSaldar, true);
+    assert.equal(rows[2].canRemove, true);
+    assert.equal(rows[3].canActivate, false);
+    assert.equal(rows[3].canSaldar, false);
+    assert.equal(rows[3].canRemove, false);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('get_list_multas denies coordinador without faculty scope', async () => {
   const loaded = loadRoute({
     resolveScopeImpl: async () => ({ coordinatorDocument: '900', facultyIds: [] }),
