@@ -154,7 +154,7 @@ router.get('/capacitacion/cursos', requireCapacitacionCursosView, function (req,
   return res.redirect('/milab/capacitacion/cursos/load_info');
 });
 router.get('/capacitacion/cursos/load_info', requireCapacitacionCursosView, function (req, res) {
-  return res.render('home/capacitacion/cursos');
+  return res.render('home/capacitacion-cursos');
 });
 
 router.get('/capacitacion/asociacion-equipos', requireCapacitacionEquiposView, function (req, res) {
@@ -164,7 +164,7 @@ router.get(
   '/capacitacion/asociacion-equipos/load_info',
   requireCapacitacionEquiposView,
   function (req, res) {
-    return res.render('home/capacitacion/asociacion-equipos');
+    return res.render('home/capacitacion-asociacion-equipos');
   }
 );
 
