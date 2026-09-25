@@ -344,6 +344,15 @@ jobs:
           cd /home/ubuntu/prod
           sudo docker compose --env-file /opt/.env up -d dockerproxy traefik
 
+      - name: Recrear edx-mock
+        run: |
+          set -eu
+          cd /opt/milab/edx-mock
+          sudo docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.traefik.yml \
+            up -d --build --wait --wait-timeout 60 edx-mock
+
       - name: Guardar ultima rama desplegada
         if: success()
         run: |

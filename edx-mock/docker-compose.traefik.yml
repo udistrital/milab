@@ -1,0 +1,18 @@
+services:
+  edx-mock:
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.edx-mock.rule=Host(`labs.udistrital.edu.co`) && (Path(`/edx-mock`) || PathPrefix(`/edx-mock/`))"
+      - "traefik.http.routers.edx-mock.entrypoints=websecure"
+      - "traefik.http.routers.edx-mock.tls=true"
+      - "traefik.http.routers.edx-mock.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.edx-mock.middlewares=edx-mock-strip"
+      - "traefik.http.middlewares.edx-mock-strip.stripprefix.prefixes=/edx-mock"
+      - "traefik.http.services.edx-mock.loadbalancer.server.port=4000"
+
+networks:
+  proxy:
+    external: true
