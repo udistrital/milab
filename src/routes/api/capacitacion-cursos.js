@@ -4,6 +4,7 @@ const pool = require('../../libs/db');
 const { normalizeLogDocument } = require('../../libs/account-email');
 const { requireJsonRoles } = require('../middlewares/auth');
 const { resolveLaboratoristaScope } = require('../../libs/capacitacion-scope');
+const { consultarCursosUsuario } = require('../../libs/edx-cert-client');
 
 const router = express.Router();
 
@@ -15,6 +16,9 @@ const requireCursosRead = requireJsonRoles(['admin', 'laboratorista'], {
 });
 const requireCursosWrite = requireJsonRoles(['admin'], {
   message: 'Solo los administradores pueden crear, editar o eliminar cursos.',
+});
+const requireMisCursosRole = requireJsonRoles(['estudiante', 'docente'], {
+  message: '"Mis cursos" está disponible solo para estudiantes y docentes.',
 });
 
 function getLogActorDocument(req) {
@@ -128,6 +132,67 @@ function mapDbErrorToMessage(error, defaultMsg) {
   }
   return defaultMsg;
 }
+
+router.get('/mis-cursos', requireMisCursosRole, async function (req, res) {
+  try {
+    const user = req.session?.user;
+    const documentoRaw = user?.documento || user?.codigo_usuario || user?.codigo || '';
+    const documento = String(documentoRaw || '').trim();
+    if (!documento) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'No fue posible identificar el documento del usuario autenticado para consultar sus cursos.',
+      });
+    }
+
+    const respuesta = await consultarCursosUsuario(documento);
+    const cursos = Array.isArray(respuesta?.cursos) ? respuesta.cursos : [];
+    const completados = cursos
+      .filter(function (c) {
+        return Boolean(c && c.completado);
+      })
+      .map(function (c) {
+        return {
+          codigo_curso: String(c.codigo_curso || '').trim(),
+          nombre_curso: String(c.nombre_curso || '').trim(),
+          completado: true,
+        };
+      })
+      .filter(function (c) {
+        return c.codigo_curso.length > 0 || c.nombre_curso.length > 0;
+      });
+
+    return res.status(200).json({
+      ok: true,
+      total: completados.length,
+      cursos: completados,
+    });
+  } catch (error) {
+    try {
+      await pool.query(
+        `INSERT INTO log (nombre, documento, accion, persona)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          getLogActorName(req),
+          getLogActorDocument(req),
+          'consultar mis-cursos error servicio certificacion',
+          error && typeof error.message === 'string'
+            ? error.message.slice(0, 500)
+            : 'error_desconocido',
+        ]
+      );
+    } catch {
+      /* no-op */
+    }
+    console.error('[capacitacion-cursos:/mis-cursos]', error);
+    return res.status(503).json({
+      ok: false,
+      message:
+        'No se pudo consultar el servicio de certificación en este momento. Inténtalo nuevamente más tarde o contacta al administrador si el problema persiste.',
+    });
+  }
+});
 
 router.get('/contexto', requireCursosRead, async function (req, res) {
   try {
