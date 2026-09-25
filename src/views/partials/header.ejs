@@ -113,6 +113,9 @@
     'Auditoria': 'nav-prestamos-auditoria',
     'Parametrizaciones': 'nav-prestamos-parametrizaciones',
     'Configuracion de practicas': 'nav-prestamos-configuracion-practicas',
+    'Capacitación': 'nav-capacitacion',
+    'Creación de cursos': 'nav-capacitacion-cursos',
+    'Asociación curso-equipo': 'nav-capacitacion-asociacion-equipos',
   };
   function getNavigationGuideAttribute(label) {
     const key = navigationGuideMap[label];
@@ -342,6 +345,23 @@
                       </li>
                     <% } %>
                     <li><hr class="dropdown-divider"></li>
+
+                    <% if (activeRole === 'estudiante' || activeRole === 'docente') { %>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item app-user-menu-action"
+                          data-guide="mis-cursos"
+                          data-bs-toggle="modal"
+                          data-bs-target="#misCursosModal"
+                          aria-label="Mis cursos certificados"
+                        >
+                          <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                          <span>Mis cursos</span>
+                        </button>
+                      </li>
+                      <li><hr class="dropdown-divider"></li>
+                    <% } %>
 
                     <% if (accountLinks.length) { %>
                       <% accountLinks.forEach(function(item) { %>

@@ -97,6 +97,20 @@
           <input type="hidden" id="solicitudFechaInicio" name="fechaInicio">
           <input type="hidden" id="solicitudFechaFin" name="fechaFin">
 
+          <div id="solicitudCapacitacionBlock" class="mb-3 d-none">
+            <div id="solicitudCapacitacionCard" class="card border-danger">
+              <div class="card-header bg-danger text-white py-2">
+                <i class="bi bi-shield-exclamation me-2"></i>
+                <strong id="solicitudCapacitacionTitle">Capacitación requerida</strong>
+              </div>
+              <div class="card-body py-3">
+                <div id="solicitudCapacitacionMessage" class="mb-2"></div>
+                <ul id="solicitudCapacitacionList" class="mb-3"></ul>
+                <div class="d-flex gap-2 flex-wrap" id="solicitudCapacitacionActions"></div>
+              </div>
+            </div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Horario *</label>
             <div id="solicitudHorariosContainer" class="vstack gap-2"></div>
@@ -285,6 +299,136 @@
     var resizeSignaturePadSolicitud = null;
     var hasBoundSignaturePadResize = false;
     var selectedScheduleKey = '';
+    var capacitacionOk = true;
+    var capacitacionPendiente = null;
+    var capacitacionErrorTecnico = false;
+    var capBlock = document.getElementById('solicitudCapacitacionBlock');
+    var capCard = document.getElementById('solicitudCapacitacionCard');
+    var capTitle = document.getElementById('solicitudCapacitacionTitle');
+    var capMessage = document.getElementById('solicitudCapacitacionMessage');
+    var capList = document.getElementById('solicitudCapacitacionList');
+    var capActions = document.getElementById('solicitudCapacitacionActions');
+
+    function resetCapacitacionBlock() {
+      capacitacionOk = true;
+      capacitacionPendiente = null;
+      capacitacionErrorTecnico = false;
+      if (capBlock) capBlock.classList.add('d-none');
+      if (capCard) {
+        capCard.className = 'card border-danger';
+      }
+      if (capTitle) capTitle.textContent = 'Capacitación requerida';
+      if (capMessage) capMessage.textContent = '';
+      if (capList) capList.innerHTML = '';
+      if (capActions) capActions.innerHTML = '';
+    }
+
+    function renderCapacitacionBloqueo(tipo, message, cursos, errorTecnicoDetails) {
+      if (!capBlock) return;
+      capacitacionOk = false;
+      if (tipo === 'error_tecnico') {
+        capacitacionErrorTecnico = true;
+        capacitacionPendiente = null;
+      } else {
+        capacitacionErrorTecnico = false;
+        capacitacionPendiente = cursos || [];
+      }
+      capBlock.classList.remove('d-none');
+      if (capCard) {
+        capCard.className = tipo === 'error_tecnico' ? 'card border-warning' : 'card border-danger';
+        if (capCard.classList.contains('border-warning')) {
+          capCard.querySelector('.card-header').className = 'card-header bg-warning text-dark py-2';
+        } else {
+          capCard.querySelector('.card-header').className = 'card-header bg-danger text-white py-2';
+        }
+      }
+      if (capTitle) {
+        capTitle.textContent = tipo === 'error_tecnico'
+          ? 'No se pudo verificar la capacitación'
+          : 'Capacitación requerida para reservar';
+      }
+      if (capMessage) capMessage.textContent = message || '';
+      if (capList) {
+        capList.innerHTML = '';
+        (cursos || []).forEach(function(curso) {
+          var li = document.createElement('li');
+          var url = curso.url_edx ? String(curso.url_edx).trim() : '';
+          var badgeClass = tipo === 'error_tecnico' ? 'bg-warning text-dark' : 'bg-danger';
+          var estadoHtml = '<span class="badge ' + badgeClass + ' ms-2">' +
+            (tipo === 'error_tecnico' ? 'sin verificar' : 'pendiente') + '</span>';
+          if (url) {
+            li.innerHTML =
+              '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' +
+                '<i class="bi bi-box-arrow-up-right me-1"></i>' +
+                escapeHtml(curso.nombre_curso || curso.codigo_curso || 'Curso') +
+              '</a>' +
+              ' <span class="text-muted small">(' + escapeHtml(curso.codigo_curso || '') + ')</span>' +
+              estadoHtml;
+          } else {
+            li.textContent = (curso.nombre_curso || curso.codigo_curso || 'Curso') +
+              ' (' + (curso.codigo_curso || '') + ')';
+            li.innerHTML = li.textContent + estadoHtml;
+          }
+          capList.appendChild(li);
+        });
+      }
+      if (capActions) {
+        capActions.innerHTML = '';
+        if (tipo === 'error_tecnico') {
+          var retryBtn = document.createElement('button');
+          retryBtn.type = 'button';
+          retryBtn.className = 'btn btn-sm btn-outline-warning';
+          retryBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Reintentar verificación';
+          retryBtn.addEventListener('click', function() {
+            if (equipoIdInput && equipoIdInput.value) {
+              validarCapacitacion(equipoIdInput.value);
+            }
+          });
+          capActions.appendChild(retryBtn);
+        } else {
+          (cursos || []).forEach(function(curso, idx) {
+            var url = curso.url_edx ? String(curso.url_edx).trim() : '';
+            if (!url) return;
+            var btn = document.createElement('a');
+            btn.href = url;
+            btn.target = '_blank';
+            btn.rel = 'noopener noreferrer';
+            btn.className = 'btn btn-sm ' + (idx === 0 ? 'btn-perso' : 'btn-outline-secondary');
+            btn.innerHTML =
+              '<i class="bi bi-mortarboard me-1"></i>' +
+              'Ir al curso: ' + escapeHtml(curso.nombre_curso || curso.codigo_curso || 'EDX');
+            capActions.appendChild(btn);
+          });
+        }
+      }
+    }
+
+    async function validarCapacitacion(equipmentId) {
+      resetCapacitacionBlock();
+      if (!statusElement) return;
+      try {
+        var res = await fetch('/milab/prestamos/api/equipos/' + encodeURIComponent(equipmentId) + '/validacion-capacitacion');
+        var data = await res.json();
+        if (res.status === 403 && !data.permitir) {
+          renderCapacitacionBloqueo('pendientes', data.message, data.cursos_pendientes);
+          statusElement.className = 'alert alert-danger';
+          statusElement.textContent = data.message || 'Faltan cursos de capacitación.';
+        } else if (res.status === 503 && data.error_tecnico) {
+          renderCapacitacionBloqueo('error_tecnico', data.message, data.cursos_requeridos, data.bloqueo_cert);
+          statusElement.className = 'alert alert-warning';
+          statusElement.textContent = data.message || 'No se pudo validar la capacitación.';
+        } else if (!data.success) {
+          throw new Error(data.message || 'No se pudo validar la capacitación.');
+        }
+      } catch (err) {
+        resetCapacitacionBlock();
+        capacitacionOk = true;
+        statusElement.className = 'alert alert-danger';
+        statusElement.textContent = err.message || 'Error validando capacitación.';
+      } finally {
+        updateSubmitAvailability();
+      }
+    }
 
     if (!modalElement || !statusElement || !horariosContainer || !submitButton || !form) return;
 
@@ -422,7 +566,17 @@
       var hasJustificacion = Boolean(justificacionInput && justificacionInput.value.trim().length >= 10);
       var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
       var hasFirma = Boolean(getSignatureDataUrl());
-      submitButton.disabled = !(hasSchedule && hasCategoria && hasJustificacion && hasReglamento && hasFirma);
+      var canSubmit = capacitacionOk && hasSchedule && hasCategoria && hasJustificacion && hasReglamento && hasFirma;
+      submitButton.disabled = !canSubmit;
+      if (submitButton) {
+        if (!capacitacionOk) {
+          submitButton.title = capacitacionErrorTecnico
+            ? 'No se pudo verificar la capacitación. Reintenta o contacta al administrador.'
+            : 'Debes completar los cursos de capacitación antes de reservar.';
+        } else {
+          submitButton.title = '';
+        }
+      }
     }
 
     function clearScheduleSelection() {
@@ -479,6 +633,7 @@
 
     async function openRequestModal(equipmentId, equipmentName, equipmentCode) {
       clearScheduleSelection();
+      resetCapacitacionBlock();
       form.classList.remove('was-validated');
       categoriaInput.value = '';
       justificacionInput.value = '';
@@ -488,9 +643,11 @@
       equipoInfoElement.textContent = (equipmentCode ? equipmentCode + ' - ' : '') + equipmentName;
       submitButton.disabled = true;
       statusElement.className = 'alert alert-info';
-      statusElement.textContent = 'Cargando horarios del equipo...';
+      statusElement.textContent = 'Validando capacitación y cargando horarios del equipo...';
       horariosContainer.innerHTML = '';
       modal.show();
+
+      validarCapacitacion(equipmentId);
 
       try {
         var response = await fetch('/milab/prestamos/api/equipos/' + encodeURIComponent(equipmentId) + '/disponibilidad');
@@ -500,15 +657,19 @@
           throw new Error(data.message || 'No fue posible consultar la disponibilidad.');
         }
 
-        statusElement.className = 'alert alert-secondary';
-        statusElement.textContent = data.disponibilidad && data.disponibilidad.mensaje
-          ? data.disponibilidad.mensaje
-          : 'Selecciona uno de los horarios disponibles.';
+        statusElement.className = capacitacionOk ? 'alert alert-secondary' : statusElement.className;
+        if (capacitacionOk) {
+          statusElement.textContent = data.disponibilidad && data.disponibilidad.mensaje
+            ? data.disponibilidad.mensaje
+            : 'Selecciona uno de los horarios disponibles.';
+        }
         renderScheduleOptions(data.disponibilidad && data.disponibilidad.horariosDisponibles ? data.disponibilidad.horariosDisponibles : []);
       } catch (error) {
         statusElement.className = 'alert alert-danger';
         statusElement.textContent = error.message || 'No fue posible cargar la disponibilidad del equipo.';
         horariosContainer.innerHTML = '';
+      } finally {
+        updateSubmitAvailability();
       }
     }
 

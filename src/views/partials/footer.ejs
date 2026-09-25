@@ -1,5 +1,175 @@
 </div>
 <br><br>
+
+<%
+  const activeRoleMisCursos = (locals.tipo || (locals.appNavigation && locals.appNavigation.role) || '').toString().trim().toLowerCase();
+  const mostrarMisCursosModal = activeRoleMisCursos === 'estudiante' || activeRoleMisCursos === 'docente';
+  if (mostrarMisCursosModal) {
+%>
+<div class="modal fade" id="misCursosModal" tabindex="-1" aria-labelledby="misCursosModalLabel" aria-hidden="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title text-brand" id="misCursosModalLabel">
+          <i class="bi bi-mortarboard me-2"></i>Mis cursos certificados
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div id="misCursosBody" class="modal-body pt-3">
+        <div id="misCursosLoading" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-brand mb-2" role="status">
+            <span class="visually-hidden">Cargando...</span>
+          </div>
+          <div class="text-muted small">Consultando tus cursos en el servicio de certificaci&oacute;n...</div>
+        </div>
+        <div id="misCursosError" class="d-none alert alert-warning py-3" role="alert">
+          <div class="d-flex gap-2 align-items-start">
+            <i class="bi bi-exclamation-triangle fs-5 text-warning"></i>
+            <div>
+              <strong class="d-block mb-1">No se pudo consultar tu informaci&oacute;n de cursos.</strong>
+              <div id="misCursosErrorMessage" class="small"></div>
+              <button type="button" id="misCursosRetryBtn" class="btn btn-sm btn-outline-warning mt-2">
+                <i class="bi bi-arrow-repeat me-1"></i>Reintentar
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="misCursosEmpty" class="d-none alert alert-secondary py-3" role="alert">
+          <div class="d-flex gap-2 align-items-start">
+            <i class="bi bi-info-circle fs-5"></i>
+            <div>
+              <strong class="d-block mb-1">No tienes cursos certificados a&uacute;n.</strong>
+              <div class="small">
+                Cuando completes un curso de capacitaci&oacute;n en EDX aparecer&aacute; aqu&iacute; y te permitir&aacute; reservar los equipos que lo requieran.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="misCursosSuccess" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <small class="text-muted">
+              <i class="bi bi-check-circle text-success me-1"></i>
+              Cursos completados: <strong id="misCursosCount">0</strong>
+            </small>
+          </div>
+          <div class="table-responsive border rounded">
+            <table class="table table-sm table-striped align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" style="width: 30%;">C&oacute;digo</th>
+                  <th scope="col">Curso</th>
+                </tr>
+              </thead>
+              <tbody id="misCursosTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-top-0 pt-0">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var modalEl = document.getElementById('misCursosModal');
+    if (!modalEl) return;
+    var loadingEl = document.getElementById('misCursosLoading');
+    var errorEl = document.getElementById('misCursosError');
+    var errorMsgEl = document.getElementById('misCursosErrorMessage');
+    var retryBtn = document.getElementById('misCursosRetryBtn');
+    var emptyEl = document.getElementById('misCursosEmpty');
+    var successEl = document.getElementById('misCursosSuccess');
+    var countEl = document.getElementById('misCursosCount');
+    var tableBodyEl = document.getElementById('misCursosTableBody');
+    var ENDPOINT = '/milab/api/capacitacion-cursos/mis-cursos';
+
+    function showOnly(elId) {
+      if (loadingEl) loadingEl.classList.add('d-none');
+      if (errorEl) errorEl.classList.add('d-none');
+      if (emptyEl) emptyEl.classList.add('d-none');
+      if (successEl) successEl.classList.add('d-none');
+      if (elId && document.getElementById(elId)) document.getElementById(elId).classList.remove('d-none');
+    }
+
+    function renderError(message) {
+      if (errorMsgEl) errorMsgEl.textContent = message || 'Error desconocido.';
+      showOnly('misCursosError');
+    }
+
+    function escapeHtml(str) {
+      var s = str == null ? '' : String(str);
+      return s.replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function renderCursos(cursos) {
+      if (!Array.isArray(cursos) || cursos.length === 0) {
+        showOnly('misCursosEmpty');
+        return;
+      }
+      if (countEl) countEl.textContent = String(cursos.length);
+      if (tableBodyEl) {
+        tableBodyEl.innerHTML = '';
+        cursos.forEach(function (c) {
+          var tr = document.createElement('tr');
+          var tdCodigo = document.createElement('td');
+          tdCodigo.textContent = c.codigo_curso || '';
+          tdCodigo.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+          tdCodigo.style.color = '#69410b';
+          var tdNombre = document.createElement('td');
+          tdNombre.textContent = c.nombre_curso || '';
+          tr.appendChild(tdCodigo);
+          tr.appendChild(tdNombre);
+          tableBodyEl.appendChild(tr);
+        });
+      }
+      showOnly('misCursosSuccess');
+    }
+
+    function cargarMisCursos() {
+      showOnly('misCursosLoading');
+      if (tableBodyEl) tableBodyEl.innerHTML = '';
+      fetch(ENDPOINT, { method: 'GET', credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok && data && data.ok === true, status: res.status, data: data };
+          }).catch(function () {
+            return { ok: false, status: res.status, data: null };
+          });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            renderCursos(result.data && result.data.cursos ? result.data.cursos : []);
+            return;
+          }
+          var msg = result.data && result.data.message
+            ? result.data.message
+            : 'HTTP ' + (result.status || 'desconocido');
+          renderError(msg);
+        })
+        .catch(function () {
+          renderError('No se pudo conectar con el servidor. Verifica tu conexi\u00F3n e intenta nuevamente.');
+        });
+    }
+
+    modalEl.addEventListener('show.bs.modal', function () {
+      cargarMisCursos();
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      showOnly(null);
+      if (tableBodyEl) tableBodyEl.innerHTML = '';
+    });
+
+    if (retryBtn) retryBtn.addEventListener('click', function () { cargarMisCursos(); });
+  })();
+</script>
+<% } %>
+
   <!-- Shared scripts -->
   <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.js"></script>
