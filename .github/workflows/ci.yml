@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Validar dependencia del runner (libatomic)
         run: |
           if ! ldconfig -p | grep -q 'libatomic.so.1'; then
@@ -55,6 +58,9 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Validar dependencia del runner (libatomic)
         run: |
           if ! ldconfig -p | grep -q 'libatomic.so.1'; then
@@ -84,6 +90,9 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Crear directorio de despliegue
         run: |

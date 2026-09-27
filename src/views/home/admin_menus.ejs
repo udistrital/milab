@@ -221,6 +221,7 @@
                           <tr>
                             <th>Item</th>
                             <th>Ruta</th>
+                            <th>Gestión</th>
                             <% roles.forEach(function(role) { %>
                               <th class="text-center"><%= role.name %></th>
                             <% }) %>
@@ -233,6 +234,37 @@
                               <div class="text-muted small">Modulo principal</div>
                             </td>
                             <td class="text-muted"><%= parent.route || '-' %></td>
+                            <td>
+                              <form method="POST" action="/milab/api/admin/menus/update" class="row g-2 align-items-end">
+                                <%- include('../partials/csrf_field') %>
+                                <input type="hidden" name="menu_item_id" value="<%= parent.id %>">
+                                <input type="hidden" name="section" value="secondary">
+                                <input type="hidden" name="parent_id" value="">
+                                <div class="col-12">
+                                  <label class="form-label small mb-1">Nombre</label>
+                                  <input class="form-control form-control-sm" name="label" value="<%= parent.label %>" required>
+                                </div>
+                                <div class="col-12">
+                                  <label class="form-label small mb-1">Ruta</label>
+                                  <input class="form-control form-control-sm" name="route" value="<%= parent.route || '' %>">
+                                </div>
+                                <div class="col-6">
+                                  <label class="form-label small mb-1">Icono</label>
+                                  <input class="form-control form-control-sm" name="icon" value="<%= parent.icon || '' %>">
+                                </div>
+                                <div class="col-6">
+                                  <label class="form-label small mb-1">Orden</label>
+                                  <input class="form-control form-control-sm" type="number" name="order_index" value="<%= parent.order_index || 0 %>">
+                                </div>
+                                <div class="col-12 d-flex justify-content-between align-items-center">
+                                  <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="is_active" id="menu-active-parent-<%= parent.id %>" <%= parent.is_active ? 'checked' : '' %>>
+                                    <label class="form-check-label small" for="menu-active-parent-<%= parent.id %>">Activo</label>
+                                  </div>
+                                  <button type="submit" class="btn btn-sm btn-outline-primary">Guardar</button>
+                                </div>
+                              </form>
+                            </td>
                             <% roles.forEach(function(role) { %>
                               <% const permissionKey = `${role.id}:${parent.id}`; %>
                               <td class="text-center">
@@ -248,7 +280,7 @@
                           </tr>
                           <% if (!children.length) { %>
                             <tr>
-                              <td colspan="<%= roles.length + 2 %>" class="text-muted">
+                              <td colspan="<%= roles.length + 3 %>" class="text-muted">
                                 Sin submenus asociados.
                               </td>
                             </tr>
@@ -259,6 +291,46 @@
                                 <strong><%= item.label %></strong>
                               </td>
                               <td class="text-muted"><%= item.route || '-' %></td>
+                              <td>
+                                <form method="POST" action="/milab/api/admin/menus/update" class="row g-2 align-items-end">
+                                  <%- include('../partials/csrf_field') %>
+                                  <input type="hidden" name="menu_item_id" value="<%= item.id %>">
+                                  <input type="hidden" name="section" value="secondary">
+                                  <div class="col-12">
+                                    <label class="form-label small mb-1">Nombre</label>
+                                    <input class="form-control form-control-sm" name="label" value="<%= item.label %>" required>
+                                  </div>
+                                  <div class="col-12">
+                                    <label class="form-label small mb-1">Ruta</label>
+                                    <input class="form-control form-control-sm" name="route" value="<%= item.route || '' %>">
+                                  </div>
+                                  <div class="col-12">
+                                    <label class="form-label small mb-1">Módulo primario</label>
+                                    <select class="form-select form-select-sm" name="parent_id">
+                                      <% secondaryParents.forEach(function(candidateParent) { %>
+                                        <option value="<%= candidateParent.id %>" <%= Number(item.parent_id) === Number(candidateParent.id) ? 'selected' : '' %>>
+                                          <%= candidateParent.label %>
+                                        </option>
+                                      <% }) %>
+                                    </select>
+                                  </div>
+                                  <div class="col-6">
+                                    <label class="form-label small mb-1">Icono</label>
+                                    <input class="form-control form-control-sm" name="icon" value="<%= item.icon || '' %>">
+                                  </div>
+                                  <div class="col-6">
+                                    <label class="form-label small mb-1">Orden</label>
+                                    <input class="form-control form-control-sm" type="number" name="order_index" value="<%= item.order_index || 0 %>">
+                                  </div>
+                                  <div class="col-12 d-flex justify-content-between align-items-center">
+                                    <div class="form-check">
+                                      <input class="form-check-input" type="checkbox" name="is_active" id="menu-active-child-<%= item.id %>" <%= item.is_active ? 'checked' : '' %>>
+                                      <label class="form-check-label small" for="menu-active-child-<%= item.id %>">Activo</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Guardar</button>
+                                  </div>
+                                </form>
+                              </td>
                               <% roles.forEach(function(role) { %>
                                 <% const permissionKey = `${role.id}:${item.id}`; %>
                                 <td class="text-center">
@@ -294,6 +366,7 @@
                 <tr>
                   <th>Menu</th>
                   <th>Ruta</th>
+                  <th>Gestión</th>
                   <% roles.forEach(function(role) { %>
                     <th class="text-center"><%= role.name %></th>
                   <% }) %>
@@ -302,7 +375,7 @@
               <tbody>
                 <% if (!primaryItems.length && !accountItems.length) { %>
                   <tr>
-                    <td colspan="<%= roles.length + 2 %>" class="text-muted">
+                    <td colspan="<%= roles.length + 3 %>" class="text-muted">
                       No hay menus principales registrados.
                     </td>
                   </tr>
@@ -314,6 +387,43 @@
                       <strong><%= item.label %></strong>
                     </td>
                     <td class="text-muted"><%= item.route || '-' %></td>
+                    <td>
+                      <form method="POST" action="/milab/api/admin/menus/update" class="row g-2 align-items-end">
+                        <%- include('../partials/csrf_field') %>
+                        <input type="hidden" name="menu_item_id" value="<%= item.id %>">
+                        <div class="col-12">
+                          <label class="form-label small mb-1">Sección</label>
+                          <select class="form-select form-select-sm" name="section" required>
+                            <option value="primary" <%= item.section === 'primary' ? 'selected' : '' %>>primary</option>
+                            <option value="account" <%= item.section === 'account' ? 'selected' : '' %>>account</option>
+                          </select>
+                        </div>
+                        <input type="hidden" name="parent_id" value="">
+                        <div class="col-12">
+                          <label class="form-label small mb-1">Nombre</label>
+                          <input class="form-control form-control-sm" name="label" value="<%= item.label %>" required>
+                        </div>
+                        <div class="col-12">
+                          <label class="form-label small mb-1">Ruta</label>
+                          <input class="form-control form-control-sm" name="route" value="<%= item.route || '' %>">
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Icono</label>
+                          <input class="form-control form-control-sm" name="icon" value="<%= item.icon || '' %>">
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small mb-1">Orden</label>
+                          <input class="form-control form-control-sm" type="number" name="order_index" value="<%= item.order_index || 0 %>">
+                        </div>
+                        <div class="col-12 d-flex justify-content-between align-items-center">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="menu-active-main-<%= item.id %>" <%= item.is_active ? 'checked' : '' %>>
+                            <label class="form-check-label small" for="menu-active-main-<%= item.id %>">Activo</label>
+                          </div>
+                          <button type="submit" class="btn btn-sm btn-outline-primary">Guardar</button>
+                        </div>
+                      </form>
+                    </td>
                     <% roles.forEach(function(role) { %>
                       <% const permissionKey = `${role.id}:${item.id}`; %>
                       <td class="text-center">

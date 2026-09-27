@@ -1021,8 +1021,12 @@ VALUES
     ('primary', 'Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check', 3),
     ('primary', 'Solicitar certificado estudiante', '/milab/api/get-data1/verificacion', 'bi-patch-check', 4),
     ('primary', 'Solicitar certificado docente', '/milab/api/verifica_multa_docente/verificacion', 'bi-patch-check', 5),
-    ('account', 'Perfil', '/milab/api/profile', 'bi-person-circle', 1)
+    ('account', 'Perfil', '/milab/api/profile', 'bi-person-circle', 6)
 ON CONFLICT DO NOTHING;
+
+UPDATE menu_item
+SET order_index = 6
+WHERE section = 'account' AND label = 'Perfil' AND parent_id IS NULL;
 
 INSERT INTO menu_item (section, label, icon, order_index)
 SELECT 'secondary', 'Registro', 'bi-person-plus', 1
@@ -1060,6 +1064,18 @@ WHERE NOT EXISTS (
     SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Configuración' AND parent_id IS NULL
 );
 
+INSERT INTO menu_item (section, label, icon, order_index)
+SELECT 'secondary', 'Prestamos', 'bi-box-seam', 7
+WHERE NOT EXISTS (
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Prestamos' AND parent_id IS NULL
+);
+
+INSERT INTO menu_item (section, label, icon, order_index)
+SELECT 'secondary', 'Capacitación', 'bi-mortarboard', 10
+WHERE NOT EXISTS (
+    SELECT 1 FROM menu_item WHERE section = 'secondary' AND label = 'Capacitación' AND parent_id IS NULL
+);
+
 UPDATE menu_item
 SET order_index = 5
 WHERE section = 'secondary' AND label = 'Administración' AND parent_id IS NULL;
@@ -1071,6 +1087,14 @@ WHERE section = 'secondary' AND label = 'Sanciones' AND parent_id IS NULL;
 UPDATE menu_item
 SET order_index = 6
 WHERE section = 'secondary' AND label = 'Configuración' AND parent_id IS NULL;
+
+UPDATE menu_item
+SET order_index = 7
+WHERE section = 'secondary' AND label = 'Prestamos' AND parent_id IS NULL;
+
+UPDATE menu_item
+SET order_index = 10
+WHERE section = 'secondary' AND label = 'Capacitación' AND parent_id IS NULL;
 
 DELETE FROM menu_item child
 USING menu_item parent
@@ -1183,6 +1207,67 @@ WHERE parent.id = child.parent_id
     AND child.route = '/milab/api/get_list_multas'
     AND child.label = 'Sanciones';
 
+UPDATE menu_item child
+SET parent_id = parent.id,
+        order_index = 3,
+        label = 'Listado de sanciones',
+        icon = COALESCE(child.icon, 'bi-shield-exclamation')
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.route = '/milab/api/get_list_multas';
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Listado de sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation', 3
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item existing
+            WHERE existing.section = 'secondary'
+                AND existing.parent_id = parent.id
+                AND existing.route = '/milab/api/get_list_multas'
+    );
+
+UPDATE menu_item child
+SET parent_id = parent.id,
+        label = 'Registro de Admin',
+        order_index = 4,
+        icon = COALESCE(child.icon, 'bi-person-gear')
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Registro'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.route = '/milab/api/admins/load_info';
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Registro de Admin', '/milab/api/admins/load_info', 'bi-person-gear', 4
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Registro'
+    AND parent.parent_id IS NULL
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item existing
+            WHERE existing.section = 'secondary'
+                AND existing.parent_id = parent.id
+                AND existing.route = '/milab/api/admins/load_info'
+    );
+
+DELETE FROM menu_item child
+USING menu_item parent
+WHERE parent.id = child.parent_id
+    AND parent.section = 'secondary'
+    AND parent.label = 'Consulta y control'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.route = '/milab/api/admins/load_info';
+
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Verificar estudiante', '/milab/api/verificar_estudiante', 'bi-person-check', 1
 FROM menu_item parent
@@ -1194,6 +1279,30 @@ SELECT 'secondary', parent.id, 'Verificar docente', '/milab/api/verificar_docent
 FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Paz y Salvos' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
+
+UPDATE menu_item
+SET label = 'Generar PYS Estudiante',
+        order_index = 1
+WHERE section = 'secondary'
+    AND route = '/milab/api/verificar_estudiante';
+
+UPDATE menu_item
+SET label = 'Generar PYS Docente',
+        order_index = 2
+WHERE section = 'secondary'
+    AND route = '/milab/api/verificar_docente';
+
+UPDATE menu_item child
+SET parent_id = parent.id,
+        label = 'Generar Paz y Salvos Masivo',
+        order_index = 3,
+        icon = COALESCE(child.icon, 'bi-collection')
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Paz y Salvos'
+    AND parent.parent_id IS NULL
+    AND child.section = 'secondary'
+    AND child.route = '/milab/api/get_list_estudiantes/get_consulta';
 
 UPDATE menu_item child
 SET parent_id = parent.id,
@@ -1256,6 +1365,18 @@ WHERE parent.section = 'secondary'
                 AND existing.label = 'Sanciones de docentes'
                 AND existing.route = '/milab/api/get-info-multa-docente/get'
     );
+
+        UPDATE menu_item
+        SET label = 'Registro de sanciones a estudiantes',
+            order_index = 1
+        WHERE section = 'secondary'
+            AND route = '/milab/api/get-info-multa/get';
+
+        UPDATE menu_item
+        SET label = 'Registro de sanciones a docentes',
+            order_index = 2
+        WHERE section = 'secondary'
+            AND route = '/milab/api/get-info-multa-docente/get';
 
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Permisos y menus', '/milab/api/admin/menus', 'bi-sliders', 1
@@ -1331,9 +1452,9 @@ WHERE (
         'Registro de coordinadores',
         'Registro de laboratoristas',
         'Registro de monitores',
+        'Registro de Admin',
         'Consulta y control',
         'Certificados',
-        'Consulta masiva',
         'Listado de sanciones',
         'Coordinadores registrados',
         'Estudiantes y docentes registrados',
@@ -1341,11 +1462,11 @@ WHERE (
         'Logs',
         'Laboratoristas registrados',
         'Monitores registrados',
-        'Agregar admin',
         'Sanciones',
         'Paz y Salvos',
-        'Verificar estudiante',
-        'Verificar docente'
+        'Generar PYS Estudiante',
+        'Generar PYS Docente',
+        'Generar Paz y Salvos Masivo'
     )
 ) OR (
     role_map.nombre = 'coordinador' AND menu_map.label IN (
@@ -1353,27 +1474,27 @@ WHERE (
         'Registro de laboratoristas',
         'Registro de monitores',
         'Consulta y control',
-        'Consulta masiva',
         'Listado de sanciones',
         'Estudiantes y docentes registrados',
         'Laboratoristas registrados',
         'Monitores registrados',
         'Sanciones',
         'Paz y Salvos',
-        'Verificar estudiante',
-        'Verificar docente'
+        'Generar PYS Estudiante',
+        'Generar PYS Docente',
+        'Generar Paz y Salvos Masivo'
     )
 ) OR (
     role_map.nombre = 'laboratorista' AND menu_map.label IN (
         'Consulta y control',
-        'Consulta masiva',
         'Listado de sanciones',
         'Sanciones',
-        'Sanciones de estudiantes',
-        'Sanciones de docentes',
+        'Registro de sanciones a estudiantes',
+        'Registro de sanciones a docentes',
         'Paz y Salvos',
-        'Verificar estudiante',
-        'Verificar docente'
+        'Generar PYS Estudiante',
+        'Generar PYS Docente',
+        'Generar Paz y Salvos Masivo'
     )
 )
 OR (
