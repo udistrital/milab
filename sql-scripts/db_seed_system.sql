@@ -1208,14 +1208,30 @@ WHERE parent.id = child.parent_id
     AND child.label = 'Sanciones';
 
 UPDATE menu_item child
-SET order_index = 4
+SET parent_id = parent.id,
+        order_index = 3,
+        label = 'Listado de sanciones',
+        icon = COALESCE(child.icon, 'bi-shield-exclamation')
 FROM menu_item parent
-WHERE parent.id = child.parent_id
-    AND parent.section = 'secondary'
-    AND parent.label = 'Consulta y control'
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
     AND parent.parent_id IS NULL
     AND child.section = 'secondary'
     AND child.route = '/milab/api/get_list_multas';
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Listado de sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation', 3
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+    AND parent.label = 'Sanciones'
+    AND parent.parent_id IS NULL
+    AND NOT EXISTS (
+            SELECT 1
+            FROM menu_item existing
+            WHERE existing.section = 'secondary'
+                AND existing.parent_id = parent.id
+                AND existing.route = '/milab/api/get_list_multas'
+    );
 
 UPDATE menu_item child
 SET parent_id = parent.id,
