@@ -108,7 +108,7 @@
           <label class="form-check-label" for="crearActivo">Activa</label>
         </div>
         <div class="col-12 d-flex justify-content-end">
-          <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn">Crear sala</button>
+          <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn" data-submit-lock="true">Crear sala</button>
         </div>
       </form>
     </div>
@@ -192,6 +192,7 @@
                         class="btn btn-outline-danger btn-sm js-delete-sala"
                         data-sala-id="<%= item.id %>"
                         data-sala-nombre="<%= item.nombre || '' %>"
+                        data-submit-lock="true"
                       >
                         Eliminar
                       </button>
@@ -283,7 +284,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-warning" id="editarSalaSubmitBtn">Guardar cambios</button>
+          <button type="submit" class="btn btn-warning" id="editarSalaSubmitBtn" data-submit-lock="true">Guardar cambios</button>
         </div>
       </form>
     </div>
@@ -448,9 +449,10 @@
         return;
       }
 
-      crearSalaSubmitBtn.disabled = true;
+      var btn = crearSalaSubmitBtn;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Creando sala...');
         var result = await postJson('/milab/prestamos/salas', buildSalaPayload('crear'));
         showAlert('success', result.message || 'Sala creada correctamente.');
         crearSalaForm.reset();
@@ -463,7 +465,7 @@
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible crear la sala.');
       } finally {
-        crearSalaSubmitBtn.disabled = false;
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -514,9 +516,10 @@
         var salaId = document.getElementById('editarSalaId').value;
         if (!salaId) return;
 
-        editarSalaSubmitBtn.disabled = true;
+        var btn = editarSalaSubmitBtn;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Guardando cambios de sala...');
           var result = await postJson(
             '/milab/prestamos/salas/' + encodeURIComponent(salaId),
             buildSalaPayload('editar')
@@ -529,7 +532,7 @@
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible actualizar la sala.');
         } finally {
-          editarSalaSubmitBtn.disabled = false;
+          window.MiLabSubmitLock.release(btn);
         }
       });
     }
@@ -540,9 +543,10 @@
         var salaNombre = button.getAttribute('data-sala-nombre') || 'esta sala';
         if (!salaId || !window.confirm('¿Deseas eliminar ' + salaNombre + '?')) return;
 
-        button.disabled = true;
+        var btn = button;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Eliminando sala...');
           var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/eliminar');
           showAlert('success', result.message || 'Sala eliminada correctamente.');
           window.setTimeout(function() {
@@ -550,7 +554,8 @@
           }, 700);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible eliminar la sala.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });

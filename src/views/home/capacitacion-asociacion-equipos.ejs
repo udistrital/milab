@@ -1,0 +1,887 @@
+<%- include('../partials/header'); -%>
+
+<%
+  const userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  const isAdmin = userRole === 'admin';
+  const canEdit = isAdmin || userRole === 'laboratorista';
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Asociación curso - equipos</h1>
+        <p class="app-page-subtitle">Vincula cada curso de capacitación con los equipos especializados que requiere para certificar a los usuarios.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span id="scopeLabel" class="badge text-bg-light border border-warning-subtle" style="display:none;">
+          <i class="bi bi-geo-alt me-1" style="color:#b45309;"></i>
+          <span id="scopeLabelText">Contexto</span>
+        </span>
+        <span class="badge text-bg-light border border-warning-subtle">
+          <i class="bi bi-person-badge me-1" style="color:#b45309;"></i>
+          Rol actual: <%= isAdmin ? 'Administrador' : (locals.sessionRoleLabel || userRole) %>
+        </span>
+      </div>
+    </div>
+    <div id="asociacionAlert" class="alert alert-info d-none mt-3 mb-0" role="alert">
+      <i class="bi bi-info-circle me-1"></i>
+      <span id="asociacionAlertText">Cargando información…</span>
+    </div>
+  </section>
+
+  <section class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+      <h5 class="mb-0" style="color:#7c3b04;">
+        <i class="bi bi-diagram-3 me-2" style="color:#b45309;"></i>
+        Paso 1 - Seleccionar curso
+      </h5>
+    </div>
+    <div class="card-body">
+      <form id="cursoSelectForm" class="row g-3 align-items-end">
+        <%- include('../partials/csrf_field'); -%>
+        <div class="col-md-4">
+          <label for="curso_filter_facultad" class="form-label">Filtrar por facultad</label>
+          <select id="curso_filter_facultad" class="form-select">
+            <option value="">Todas las facultades</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="curso_lookup" class="form-label">Curso *</label>
+          <select id="curso_lookup" class="form-select" required>
+            <option value="">Seleccione un curso para administrar sus equipos</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-grid gap-2">
+          <button
+            id="cargarCursoBtn"
+            type="submit"
+            class="btn btn-outline-warning w-100"
+            style="border-color:#f0aa00;color:#b45309;"
+            data-read-only-lock="true"
+          >
+            <i class="bi bi-search"></i> Cargar
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+      <h5 class="mb-0" style="color:#7c3b04;">
+        <i class="bi bi-plus-circle me-2" style="color:#b45309;"></i>
+        Paso 2 - Búsqueda y asociación masiva (Operación Agregar)
+      </h5>
+      <span id="coincidenciasCount" class="badge rounded-pill text-bg-light border">0 coincidencias</span>
+    </div>
+    <div class="card-body">
+      <form id="busquedaForm" class="row g-3 align-items-end mb-4">
+        <%- include('../partials/csrf_field'); -%>
+        <div class="col-md-3">
+          <label class="form-label">Operación</label>
+          <select id="operacionSelect" class="form-select" aria-label="Operación">
+            <option value="agregar" selected>Agregar</option>
+            <option value="retirar" disabled>Retirar (usar panel derecho)</option>
+          </select>
+        </div>
+        <div class="col-md-7">
+          <label for="busquedaInput" class="form-label">Nombre del equipo (búsqueda LIKE)</label>
+          <div class="input-group">
+            <span class="input-group-text" style="background:#fffdf6;border-color:#f0e2c1;">
+              <i class="bi bi-search" style="color:#b45309;"></i>
+            </span>
+            <input
+              type="search"
+              class="form-control"
+              id="busquedaInput"
+              name="q"
+              placeholder="Ej: micro, olympus, multimetro, microscopio"
+              aria-label="Ingresar nombre del equipo para buscar"
+            >
+          </div>
+          <small class="form-text text-muted">
+            Coincidencia parcial: escribir "micro" devuelve Microscopio Olympus, Microscopio Leica, Microscopio Electrónico.
+          </small>
+        </div>
+        <div class="col-md-2 d-grid gap-2">
+          <button
+            id="buscarBtn"
+            type="submit"
+            class="btn btn-outline-warning w-100"
+            style="border-color:#f0aa00;color:#b45309;"
+            data-read-only-lock="true"
+          >
+            <i class="bi bi-binoculars"></i> Buscar
+          </button>
+        </div>
+      </form>
+
+      <div id="busquedaAlert" class="alert alert-info d-none mb-3" role="alert">
+        <i class="bi bi-info-circle me-1"></i>
+        <span id="busquedaAlertText"></span>
+      </div>
+
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-hover mb-0">
+          <thead style="background:#fffdf6;">
+            <tr>
+              <th scope="col" style="width:42px;color:#b45309;">
+                <input type="checkbox" id="checkTodosCoincidencias" class="form-check-input" aria-label="Seleccionar todas las coincidencias">
+              </th>
+              <th scope="col" style="width:110px;color:#b45309;">Código / ID</th>
+              <th scope="col" style="color:#b45309;">Equipo</th>
+              <th scope="col" style="color:#b45309;">Facultad / Laboratorio</th>
+              <th scope="col" style="width:140px;color:#b45309;">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="coincidenciasBody">
+            <tr>
+              <td colspan="5" class="text-center py-5 text-muted">
+                <i class="bi bi-search fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                Ingrese un término y presione Buscar para mostrar coincidencias.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center pt-2 border-top">
+        <small class="text-muted">
+          Seleccione una o varias filas. Al confirmar se crearán registros en <code>equipo_especializado</code> con
+          <code>activo=TRUE</code>; las relaciones existentes no se duplican y conservan su fecha de creación.
+        </small>
+        <button
+          id="asignarCursosBtn"
+          type="button"
+          class="btn btn-warning"
+          style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;"
+          <%= canEdit ? '' : 'disabled' %>
+          data-submit-lock="true"
+        >
+          <i class="bi bi-diagram-2-fill"></i>
+          Asignar cursos de capacitación
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="row g-4 mb-4">
+    <article class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+          <h5 class="mb-0" style="color:#7c3b04;">
+            <i class="bi bi-box-seam me-2" style="color:#b45309;"></i>
+            Equipos disponibles
+          </h5>
+          <span id="disponiblesCount" class="badge rounded-pill text-bg-light border">0</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+              <thead style="background:#fffdf6;">
+                <tr>
+                  <th scope="col" style="width:42px;color:#b45309;">
+                    <input type="checkbox" id="checkTodosDisponibles" class="form-check-input">
+                  </th>
+                  <th scope="col" style="color:#b45309;">ID</th>
+                  <th scope="col" style="color:#b45309;">Equipo</th>
+                  <th scope="col" style="color:#b45309;">Facultad / Laboratorio</th>
+                </tr>
+              </thead>
+              <tbody id="equiposDisponiblesBody">
+                <tr>
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <i class="bi bi-hourglass-split fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                    Seleccione un curso para cargar los equipos.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+          <h5 class="mb-0" style="color:#7c3b04;">
+            <i class="bi bi-check2-square me-2" style="color:#b45309;"></i>
+            Equipos asociados al curso (solo asociaciones activas)
+          </h5>
+          <span id="asociadosCount" class="badge rounded-pill text-bg-warning" style="background:#ffbf00;color:#7c3b04;">0</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+              <thead style="background:#fffdf6;">
+                <tr>
+                  <th scope="col" style="width:42px;color:#b45309;">
+                    <input type="checkbox" id="checkTodosAsociados" class="form-check-input">
+                  </th>
+                  <th scope="col" style="color:#b45309;">ID</th>
+                  <th scope="col" style="color:#b45309;">Equipo</th>
+                  <th scope="col" style="width:120px;color:#b45309;">Retirar</th>
+                </tr>
+              </thead>
+              <tbody id="equiposAsociadosBody">
+                <tr>
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <i class="bi bi-hourglass-split fs-2 d-block mb-2" style="color:#f0aa00;"></i>
+                    Seleccione un curso para ver sus equipos asociados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+        <div class="me-auto">
+          <small class="text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Puede seleccionar varios equipos a la vez y guardar la asociación en bloque. "Retirar" desactiva la relación (<code>activo=FALSE</code>), no elimina el registro; al volver a asociar se reutiliza y reactiva.
+          </small>
+        </div>
+        <button
+          type="button"
+          id="desasociarSeleccionBtn"
+          class="btn btn-outline-danger"
+          <%= canEdit ? '' : 'disabled' %>
+          data-submit-lock="true"
+        >
+          <i class="bi bi-x-lg"></i> Retirar selección
+        </button>
+        <button
+          type="button"
+          id="limpiarSeleccionBtn"
+          class="btn btn-outline-secondary"
+          <%= canEdit ? '' : 'disabled' %>
+        >
+          Limpiar
+        </button>
+        <button
+          id="guardarAsociacionBtn"
+          type="button"
+          class="btn btn-warning"
+          style="background:#ffbf00;border-color:#f0aa00;color:#7c3b09;"
+          <%= canEdit ? '' : 'disabled' %>
+          data-submit-lock="true"
+        >
+          <i class="bi bi-save2"></i>
+          Guardar asociación
+        </button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+
+  var BASE_PATH = '/milab/api';
+  var api = {
+    list: BASE_PATH + '/capacitacion-equipos/list',
+    search: BASE_PATH + '/capacitacion-equipos/equipos/search',
+    asociar: BASE_PATH + '/capacitacion-equipos/asociar',
+    retirar: BASE_PATH + '/capacitacion-equipos/retirar',
+    contexto: BASE_PATH + '/capacitacion-cursos/contexto',
+  };
+
+  var state = {
+    scope: null,
+    cursos: [],
+    equipos: [],
+    asociados: [],
+    asociadoIndex: new Map(),
+    cursoSeleccionado: null,
+    busqueda: {
+      q: '',
+      resultados: [],
+    },
+  };
+
+  function setAlert(message, type) {
+    var el = document.getElementById('asociacionAlert');
+    if (!el) return;
+    var text = document.getElementById('asociacionAlertText');
+    if (text) text.textContent = message || '';
+    el.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+    el.classList.add('alert-' + (type || 'info'));
+  }
+
+  function clearAlert() {
+    var el = document.getElementById('asociacionAlert');
+    if (!el) return;
+    el.classList.add('d-none');
+  }
+
+  function updateScopeLabels(scope) {
+    var lbl = document.getElementById('scopeLabel');
+    var lblText = document.getElementById('scopeLabelText');
+    if (!lbl || !lblText || !scope || scope.isAdmin) {
+      if (lbl) lbl.style.display = 'none';
+      return;
+    }
+    var facultades = (scope.facultades || []).map(function (f) { return f.nombre; }).join(', ');
+    var labs = (scope.laboratorios || []).map(function (l) { return l.nombre; }).join(', ');
+    lbl.style.display = 'inline-flex';
+    if (facultades || labs) {
+      lblText.textContent = 'Facultad: ' + (facultades || 'Sin asignar') + (labs ? ' | Laboratorios: ' + labs : '');
+    } else {
+      lblText.textContent = 'Sin laboratorios autorizados asociados.';
+    }
+  }
+
+  function populateFacultadSelect(scope) {
+    var sel = document.getElementById('curso_filter_facultad');
+    if (!sel) return;
+    sel.innerHTML = '';
+    var opts = [];
+    if (scope && !scope.isAdmin && scope.facultades && scope.facultades.length) {
+      scope.facultades.forEach(function (f) {
+        opts.push('<option value="' + f.facultad_id + '" selected>' + escapeHtml(f.nombre) + '</option>');
+      });
+      sel.disabled = true;
+    } else {
+      opts.push('<option value="">Todas las facultades</option>');
+      var facIds = new Set();
+      state.cursos.forEach(function (c) {
+        if (!Number.isFinite(Number(c.id_facultad))) return;
+        if (facIds.has(Number(c.id_facultad))) return;
+        facIds.add(Number(c.id_facultad));
+        opts.push('<option value="' + c.id_facultad + '">' + escapeHtml(c.nombre_facultad || 'Facultad ' + c.id_facultad) + '</option>');
+      });
+      sel.disabled = false;
+    }
+    sel.innerHTML = opts.join('');
+  }
+
+  function populateCursoSelect() {
+    var sel = document.getElementById('curso_lookup');
+    if (!sel) return;
+    var selFac = document.getElementById('curso_filter_facultad');
+    var filtroFac = selFac ? String(selFac.value || '').trim() : '';
+    sel.innerHTML = '<option value="">Seleccione un curso para administrar sus equipos</option>';
+    var cursos = state.cursos.filter(function (c) {
+      if (!filtroFac) return true;
+      return String(c.id_facultad) === filtroFac;
+    });
+    cursos.forEach(function (c) {
+      var fac = c.nombre_facultad ? ' — ' + c.nombre_facultad : '';
+      sel.insertAdjacentHTML(
+        'beforeend',
+        '<option value="' + escapeAttr(c.codigo_curso) + '">' + escapeHtml(c.codigo_curso + ' | ' + c.nombre_curso + fac) + '</option>'
+      );
+    });
+  }
+
+  function renderEquipos() {
+    var disponiblesBody = document.getElementById('equiposDisponiblesBody');
+    var asociadosBody = document.getElementById('equiposAsociadosBody');
+    var disponiblesCount = document.getElementById('disponiblesCount');
+    var asociadosCount = document.getElementById('asociadosCount');
+    if (!disponiblesBody || !asociadosBody) return;
+    var asociadoIds = new Set();
+    if (state.cursoSeleccionado && state.asociadoIndex.has(state.cursoSeleccionado)) {
+      (state.asociadoIndex.get(state.cursoSeleccionado) || []).forEach(function (a) {
+        asociadoIds.add(Number(a.id_equipo));
+      });
+    }
+
+    if (!state.cursoSeleccionado) {
+      disponiblesBody.innerHTML =
+        '<tr><td colspan="4" class="text-center py-5 text-muted"><i class="bi bi-collection fs-2 d-block mb-2" style="color:#f0aa00;"></i>Seleccione un curso para cargar los equipos.</td></tr>';
+      asociadosBody.innerHTML =
+        '<tr><td colspan="4" class="text-center py-5 text-muted"><i class="bi bi-layout-text-sidebar fs-2 d-block mb-2" style="color:#f0aa00;"></i>Seleccione un curso para ver sus equipos asociados.</td></tr>';
+      if (disponiblesCount) disponiblesCount.textContent = '0';
+      if (asociadosCount) asociadosCount.textContent = '0';
+      return;
+    }
+
+    var disponibles = state.equipos.filter(function (e) {
+      return !asociadoIds.has(Number(e.id));
+    });
+    if (disponibles.length === 0) {
+      disponiblesBody.innerHTML =
+        '<tr><td colspan="4" class="text-center py-5 text-muted">No hay equipos disponibles para agregar.</td></tr>';
+    } else {
+      disponiblesBody.innerHTML = disponibles
+        .map(function (e) {
+          var facLab = [e.facultad, e.laboratorio].filter(Boolean).join(' / ') || '—';
+          return (
+            '<tr data-id-equipo="' + e.id + '">' +
+            '<td><input type="checkbox" class="form-check-input chk-disponible" data-id-equipo="' + e.id + '"></td>' +
+            '<td><code>' + escapeHtml(e.codigo || e.id) + '</code></td>' +
+            '<td>' + escapeHtml(e.nombre) +
+              (e.estado && e.estado !== 'disponible' ? ' <span class="badge text-bg-secondary ms-1">' + escapeHtml(e.estado) + '</span>' : '') +
+            '</td>' +
+            '<td class="text-muted small">' + escapeHtml(facLab) + '</td>' +
+            '</tr>'
+          );
+        })
+        .join('');
+    }
+
+    var asociados = asociadoIds.size ? state.equipos.filter(function (e) {
+      return asociadoIds.has(Number(e.id));
+    }) : [];
+    if (asociados.length === 0) {
+      asociadosBody.innerHTML =
+        '<tr><td colspan="4" class="text-center py-5 text-muted">El curso no tiene equipos asociados todavía.</td></tr>';
+    } else {
+      asociadosBody.innerHTML = asociados
+        .map(function (e) {
+          return (
+            '<tr data-id-equipo="' + e.id + '">' +
+            '<td><input type="checkbox" class="form-check-input chk-asociado" data-id-equipo="' + e.id + '"></td>' +
+            '<td><code>' + escapeHtml(e.codigo || e.id) + '</code></td>' +
+            '<td>' + escapeHtml(e.nombre) + '</td>' +
+            '<td><button type="button" class="btn btn-sm btn-outline-danger retirar-btn" title="Retira la asociación (no elimina el registro, solo desactiva activo=false)" data-id-equipo="' + e.id + '" data-codigo-curso="' + escapeAttr(state.cursoSeleccionado) + '"><i class="bi bi-x-lg me-1"></i>Retirar</button></td>' +
+            '</tr>'
+          );
+        })
+        .join('');
+    }
+    if (disponiblesCount) disponiblesCount.textContent = String(disponibles.length);
+    if (asociadosCount) asociadosCount.textContent = String(asociados.length);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  function setBusquedaAlert(message, type) {
+    var el = document.getElementById('busquedaAlert');
+    if (!el) return;
+    var text = document.getElementById('busquedaAlertText');
+    if (text) text.textContent = message || '';
+    el.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+    if (message) el.classList.add('alert-' + (type || 'info'));
+    else el.classList.add('d-none');
+  }
+
+  function renderCoincidencias() {
+    var tbody = document.getElementById('coincidenciasBody');
+    var countLbl = document.getElementById('coincidenciasCount');
+    if (!tbody) return;
+    var rows = state.busqueda.resultados || [];
+    var asociadoIds = new Set();
+    if (state.cursoSeleccionado && state.asociadoIndex.has(state.cursoSeleccionado)) {
+      (state.asociadoIndex.get(state.cursoSeleccionado) || []).forEach(function (a) {
+        asociadoIds.add(Number(a.id_equipo));
+      });
+    }
+    if (rows.length === 0) {
+      var hint = state.busqueda.q
+        ? ('Sin coincidencias para &quot;' + escapeHtml(state.busqueda.q) + '&quot;.')
+        : 'Ingrese un término y presione Buscar para mostrar coincidencias.';
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="text-center py-5 text-muted"><i class="bi bi-search fs-2 d-block mb-2" style="color:#f0aa00;"></i>' + hint + '</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(function (e) {
+        var id = Number(e.id);
+        var isAsociado = state.cursoSeleccionado ? asociadoIds.has(id) : false;
+        var facLab = [e.facultad, e.laboratorio].filter(Boolean).join(' / ') || '—';
+        return (
+          '<tr data-id-equipo="' + id + '">' +
+          '<td><input type="checkbox" class="form-check-input chk-coincidencia" data-id-equipo="' + id + '"></td>' +
+          '<td><code>' + escapeHtml(e.codigo || id) + '</code></td>' +
+          '<td>' + escapeHtml(e.nombre) +
+            (isAsociado ? ' <span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffecb5;">ya asociado</span>' : '') +
+            (e.estado && e.estado !== 'disponible' ? ' <span class="badge text-bg-secondary ms-1">' + escapeHtml(e.estado) + '</span>' : '') +
+          '</td>' +
+          '<td class="text-muted small">' + escapeHtml(facLab) + '</td>' +
+          '<td>' +
+            (e.categoria ? '<span class="badge text-bg-light border d-inline-block mb-1">' + escapeHtml(e.categoria) + '</span> ' : '') +
+            (e.ubicacion ? '<small class="text-muted d-block">' + escapeHtml(e.ubicacion) + '</small>' : '') +
+          '</td>' +
+          '</tr>'
+        );
+      }).join('');
+    }
+    if (countLbl) countLbl.textContent = String(rows.length) + ' coincidencia' + (rows.length === 1 ? '' : 's');
+  }
+
+  function selectedCoincidenciasIds() {
+    var boxes = document.querySelectorAll('.chk-coincidencia:checked');
+    var ids = [];
+    boxes.forEach(function (b) { ids.push(Number(b.getAttribute('data-id-equipo'))); });
+    return ids.filter(function (n) { return Number.isFinite(n) && n > 0; });
+  }
+
+  function buscarClick(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var input = document.getElementById('busquedaInput');
+    var q = (input ? String(input.value || '') : '').trim();
+    state.busqueda.q = q;
+    state.busqueda.resultados = [];
+    if (!q) {
+      setBusquedaAlert('Ingrese un nombre o parte del nombre para buscar.', 'warning');
+      renderCoincidencias();
+      return;
+    }
+    setBusquedaAlert('Buscando equipos…', 'info');
+    var url = api.search + '?q=' + encodeURIComponent(q);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      try {
+        var data = JSON.parse(xhr.responseText || '{}');
+        if (!data.ok) {
+          state.busqueda.resultados = [];
+          setBusquedaAlert('Error: ' + (data.message || 'No se pudo buscar.'), 'danger');
+          renderCoincidencias();
+          return;
+        }
+        state.busqueda.resultados = data.resultados || [];
+        if (data.total === 0) {
+          setBusquedaAlert('No se encontraron equipos que coincidan con "' + escapeHtml(data.q || q) + '".', 'warning');
+        } else {
+          setBusquedaAlert(
+            'Se encontraron ' + data.total + ' equipo' + (data.total === 1 ? '' : 's') + ' para "' + escapeHtml(data.q || q) + '". Seleccione los que desea asociar y presione "Asignar cursos de capacitación".',
+            'success'
+          );
+        }
+        renderCoincidencias();
+      } catch (err) {
+        state.busqueda.resultados = [];
+        setBusquedaAlert('Ocurrió un error al procesar los resultados.', 'danger');
+        renderCoincidencias();
+      }
+    };
+    xhr.onerror = function () {
+      state.busqueda.resultados = [];
+      setBusquedaAlert('Error de conexión al buscar equipos.', 'danger');
+      renderCoincidencias();
+    };
+    xhr.send();
+  }
+
+  function asignarCursosClick(ev) {
+    var btn = ev.currentTarget;
+    if (!state.cursoSeleccionado) {
+      setAlert('Debe seleccionar un curso (Paso 1) antes de asignar equipos.', 'warning');
+      return;
+    }
+    var operacion = document.getElementById('operacionSelect');
+    var modo = operacion ? String(operacion.value || 'agregar').trim() : 'agregar';
+    if (modo !== 'agregar') {
+      setAlert('La operación "Retirar" se realiza desde el panel derecho "Equipos asociados al curso".', 'warning');
+      return;
+    }
+    var ids = selectedCoincidenciasIds();
+    if (ids.length === 0) {
+      setBusquedaAlert('Seleccione al menos un equipo de las coincidencias para asociarlo al curso.', 'warning');
+      return;
+    }
+    try {
+      window.MiLabSubmitLock.lock(btn, 'Asignando cursos…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.asociar, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          if (data.ok) {
+            setBusquedaAlert(data.message || 'Asignación realizada.', 'success');
+            setAlert(data.message || 'Asignación realizada exitosamente.', 'success');
+            loadAll();
+            var allBoxes = document.querySelectorAll('.chk-coincidencia');
+            allBoxes.forEach(function (b) { b.checked = false; });
+            var tAll = document.getElementById('checkTodosCoincidencias');
+            if (tAll) tAll.checked = false;
+          } else {
+            setAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+            setBusquedaAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+          }
+        } finally {
+          window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.onerror = function () {
+        try {
+          setAlert('Error de conexión.', 'danger');
+          setBusquedaAlert('Error de conexión.', 'danger');
+        } finally {
+          window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.send(JSON.stringify({
+        codigo_curso: state.cursoSeleccionado,
+        id_equipos: ids,
+        modo: 'agregar',
+      }));
+    } catch (err) {
+      window.MiLabSubmitLock.release(btn);
+    }
+  }
+
+  function loadAll() {
+    setAlert('Cargando listado de cursos y equipos…', 'info');
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.list, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      try {
+        var data = JSON.parse(xhr.responseText || '{}');
+        if (!data.ok) {
+          setAlert('Error: ' + (data.message || 'No se pudo cargar la información.'), 'danger');
+          return;
+        }
+        state.scope = data.scope || null;
+        state.cursos = data.cursos || [];
+        state.equipos = data.equipos || [];
+        state.asociados = data.asociados || [];
+        state.asociadoIndex = new Map();
+        (state.asociados || []).forEach(function (a) {
+          var cod = String(a.codigo_curso || '');
+          if (!cod) return;
+          if (!state.asociadoIndex.has(cod)) state.asociadoIndex.set(cod, []);
+          state.asociadoIndex.get(cod).push(a);
+        });
+        updateScopeLabels(state.scope);
+        populateFacultadSelect(state.scope);
+        populateCursoSelect();
+        renderEquipos();
+        setBusquedaAlert(null);
+        state.busqueda = state.busqueda || { q: '', resultados: [] };
+        renderCoincidencias();
+        if (!state.cursos.length && state.scope && !state.scope.isAdmin) {
+          setAlert('No hay cursos activos asociados a sus facultades o laboratorios autorizados.', 'warning');
+        } else {
+          clearAlert();
+        }
+      } catch (err) {
+        setAlert('Ocurrió un error al procesar los datos.', 'danger');
+      }
+    };
+    xhr.onerror = function () {
+      setAlert('Error de conexión al cargar el listado.', 'danger');
+    };
+    xhr.send();
+  }
+
+  function onFacultadChange() {
+    populateCursoSelect();
+  }
+
+  function onCursoSelect() {
+    var sel = document.getElementById('curso_lookup');
+    if (!sel) return;
+    state.cursoSeleccionado = sel.value || null;
+    renderEquipos();
+    renderCoincidencias();
+  }
+
+  function selectedDisponiblesIds() {
+    var boxes = document.querySelectorAll('.chk-disponible:checked');
+    var ids = [];
+    boxes.forEach(function (b) { ids.push(Number(b.getAttribute('data-id-equipo'))); });
+    return ids.filter(function (n) { return Number.isFinite(n) && n > 0; });
+  }
+
+  function selectedAsociadosIds() {
+    var boxes = document.querySelectorAll('.chk-asociado:checked');
+    var ids = [];
+    boxes.forEach(function (b) { ids.push(Number(b.getAttribute('data-id-equipo'))); });
+    return ids.filter(function (n) { return Number.isFinite(n) && n > 0; });
+  }
+
+  function guardarAsociacionClick(ev) {
+    var btn = ev.currentTarget;
+    if (!btn || !btn.getAttribute('disabled') === false);
+    if (!state.cursoSeleccionado) {
+      setAlert('Debe seleccionar un curso antes de guardar.', 'warning');
+      return;
+    }
+    var asociadosActuales = state.asociadoIndex.has(state.cursoSeleccionado)
+      ? state.asociadoIndex.get(state.cursoSeleccionado).map(function (a) { return Number(a.id_equipo); })
+      : [];
+    var disponiblesSeleccionados = selectedDisponiblesIds();
+    var idsFinales = new Set(asociadosActuales.concat(disponiblesSeleccionados));
+    var lista = Array.from(idsFinales);
+    try {
+      window.MiLabSubmitLock.lock(btn, 'Guardando asociación…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.asociar, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          if (data.ok) {
+            setAlert(data.message || 'Asociación guardada.', 'success');
+            loadAll();
+          } else {
+            setAlert('Error: ' + (data.message || 'No se pudo guardar.'), 'danger');
+          }
+        } finally {
+          window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.onerror = function () {
+        try { setAlert('Error de conexión.', 'danger'); } finally { window.MiLabSubmitLock.release(btn); }
+      };
+      xhr.send(JSON.stringify({ codigo_curso: state.cursoSeleccionado, id_equipos: lista }));
+    } catch (e) {
+      window.MiLabSubmitLock.release(btn);
+    }
+  }
+
+  function desasociarSeleccionClick(ev) {
+    var btn = ev.currentTarget;
+    if (!state.cursoSeleccionado) {
+      setAlert('Debe seleccionar un curso.', 'warning');
+      return;
+    }
+    var idsQuitar = selectedAsociadosIds();
+    if (idsQuitar.length === 0) {
+      setAlert('Seleccione al menos un equipo asociado para retirar.', 'warning');
+      return;
+    }
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Retirando selección…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.retirar, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          if (data.ok) {
+            setAlert(data.message || 'Equipo(s) retirado(s).', 'success');
+            loadAll();
+            var tAll = document.getElementById('checkTodosAsociados');
+            if (tAll) tAll.checked = false;
+          } else {
+            setAlert('Error: ' + (data.message || 'No se pudo retirar.'), 'danger');
+          }
+        } finally {
+          if (btn) window.MiLabSubmitLock.release(btn);
+        }
+      };
+      xhr.onerror = function () {
+        try { setAlert('Error de conexión.', 'danger'); } finally { if (btn) window.MiLabSubmitLock.release(btn); }
+      };
+      xhr.send(JSON.stringify({
+        codigo_curso: state.cursoSeleccionado,
+        id_equipos: idsQuitar,
+      }));
+    } catch (e) {
+      if (btn) window.MiLabSubmitLock.release(btn);
+    }
+  }
+
+  function limpiarSeleccionClick() {
+    document.querySelectorAll('.chk-disponible, .chk-asociado').forEach(function (c) { c.checked = false; });
+    var t1 = document.getElementById('checkTodosDisponibles');
+    var t2 = document.getElementById('checkTodosAsociados');
+    if (t1) t1.checked = false;
+    if (t2) t2.checked = false;
+  }
+
+  function retirarClick(ev) {
+    var target = ev.target.closest('.retirar-btn');
+    if (!target) return;
+    ev.preventDefault();
+    var idEquipo = Number(target.getAttribute('data-id-equipo'));
+    var codigoCurso = String(target.getAttribute('data-codigo-curso') || '');
+    if (!codigoCurso || !Number.isFinite(idEquipo) || idEquipo <= 0) return;
+    try {
+      window.MiLabSubmitLock.lock(target, 'Retirando…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.retirar, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          if (data.ok) {
+            setAlert(data.message || 'Equipo retirado.', 'success');
+            loadAll();
+          } else {
+            setAlert('Error: ' + (data.message || 'No se pudo retirar.'), 'danger');
+          }
+        } finally {
+          window.MiLabSubmitLock.release(target);
+        }
+      };
+      xhr.onerror = function () {
+        try { setAlert('Error de conexión.', 'danger'); } finally { window.MiLabSubmitLock.release(target); }
+      };
+      xhr.send(JSON.stringify({ codigo_curso: codigoCurso, id_equipo: idEquipo }));
+    } catch (e) {
+      window.MiLabSubmitLock.release(target);
+    }
+  }
+
+  function toggleAll(selector, checked) {
+    document.querySelectorAll(selector).forEach(function (c) { c.checked = !!checked; });
+  }
+
+  function bindEvents() {
+    var facSel = document.getElementById('curso_filter_facultad');
+    if (facSel) facSel.addEventListener('change', onFacultadChange);
+    var cursoSel = document.getElementById('curso_lookup');
+    if (cursoSel) cursoSel.addEventListener('change', onCursoSelect);
+    var guardarBtn = document.getElementById('guardarAsociacionBtn');
+    if (guardarBtn) guardarBtn.addEventListener('click', guardarAsociacionClick);
+    var desBtn = document.getElementById('desasociarSeleccionBtn');
+    if (desBtn) desBtn.addEventListener('click', desasociarSeleccionClick);
+    var limpBtn = document.getElementById('limpiarSeleccionBtn');
+    if (limpBtn) limpBtn.addEventListener('click', limpiarSeleccionClick);
+    var tabla = document.getElementById('equiposAsociadosBody');
+    if (tabla) tabla.addEventListener('click', retirarClick);
+    var td1 = document.getElementById('checkTodosDisponibles');
+    if (td1) td1.addEventListener('change', function (e) { toggleAll('.chk-disponible', e.target.checked); });
+    var td2 = document.getElementById('checkTodosAsociados');
+    if (td2) td2.addEventListener('change', function (e) { toggleAll('.chk-asociado', e.target.checked); });
+
+    var form = document.getElementById('cursoSelectForm');
+    if (form) form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      onCursoSelect();
+    });
+
+    var busForm = document.getElementById('busquedaForm');
+    if (busForm) {
+      busForm.addEventListener('submit', buscarClick);
+      var buscarBtn = document.getElementById('buscarBtn');
+      if (buscarBtn) buscarBtn.addEventListener('click', buscarClick);
+      var busInput = document.getElementById('busquedaInput');
+      if (busInput) {
+        busInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); buscarClick(); }
+        });
+      }
+    }
+    var td3 = document.getElementById('checkTodosCoincidencias');
+    if (td3) td3.addEventListener('change', function (e) { toggleAll('.chk-coincidencia', e.target.checked); });
+    var asignarBtn = document.getElementById('asignarCursosBtn');
+    if (asignarBtn) asignarBtn.addEventListener('click', asignarCursosClick);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    bindEvents();
+    loadAll();
+  });
+})();
+</script>
+
+<%- include('../partials/footer'); -%>
