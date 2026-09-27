@@ -12,7 +12,7 @@
 
   <section class="card app-form-panel col-xl-8 col-lg-10 mx-auto d-flex justify-content-center">
     <div class="card-body">
-      <form method="post" action="/milab/api/submit_docente" class="row g-3 mx-auto d-flex justify-content-center app-form-grid">
+      <form method="post" action="/milab/api/submit_docente" class="row g-3 mx-auto d-flex justify-content-center app-form-grid" data-submit-once="true">
         <%- include('../partials/csrf_field') %>
         <p class="app-page-subtitle mb-2"><em>- Verifique sus datos - </em></p>
     <div class="col-md-6">
@@ -97,7 +97,7 @@
     </div>
         <div id="mensajeError" class="col-md-10 mt-3 mb-2 alert alert-danger d-none" role="alert"></div>
         <div class="col-md-11 justify-content-center d-flex">
-          <button type="submit" class="btn btn-perso col-md-11 mb-2">Enviar</button>
+          <button type="submit" class="btn btn-perso col-md-11 mb-2" data-submit-loading-label="Registrando sanción...">Enviar</button>
         </div>
       </form>
     </div>

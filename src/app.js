@@ -61,6 +61,7 @@ const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const {
   createApplicationErrorHandler,
+  enrichErrorPayloadForAdmin,
   renderApplicationError,
   wantsJson,
 } = require('./routes/middlewares/error-handler');
@@ -147,7 +148,7 @@ const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
 const isDevLoginRuntime = normalizedNodeEnv === 'dev';
-const codeDefinedAppVersion = '2.8.4';
+const codeDefinedAppVersion = '2.8.5';
 
 // Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
 if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
@@ -156,7 +157,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.4').toString().trim();
+const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.5').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
@@ -352,6 +353,34 @@ app.use((req, res, next) => {
   next();
 });
 app.use(requestLogger);
+
+app.use((req, res, next) => {
+  const originalRender = res.render.bind(res);
+
+  res.render = function patchedRender(view, locals, callback) {
+    const viewName = String(view || '');
+
+    if (viewName !== 'home/message_error') {
+      return originalRender(view, locals, callback);
+    }
+
+    let effectiveLocals = locals;
+    let effectiveCallback = callback;
+
+    if (typeof locals === 'function') {
+      effectiveCallback = locals;
+      effectiveLocals = undefined;
+    }
+
+    const normalizedLocals =
+      effectiveLocals && typeof effectiveLocals === 'object' ? effectiveLocals : {};
+    const enrichedLocals = enrichErrorPayloadForAdmin(req, normalizedLocals);
+
+    return originalRender(view, enrichedLocals, effectiveCallback);
+  };
+
+  return next();
+});
 
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));

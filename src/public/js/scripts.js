@@ -958,6 +958,46 @@
     });
   }
 
+  function initializeSingleSubmitGuard() {
+    document.addEventListener('submit', function (event) {
+      const form = event.target;
+
+      if (!form || form.getAttribute('data-submit-once') !== 'true' || event.defaultPrevented) {
+        return;
+      }
+
+      if (form.dataset.isSubmitting === 'true') {
+        event.preventDefault();
+        return;
+      }
+
+      form.dataset.isSubmitting = 'true';
+      form.setAttribute('aria-busy', 'true');
+
+      const submitButtons = Array.from(
+        form.querySelectorAll('button[type="submit"], input[type="submit"]')
+      );
+      const submitter =
+        event.submitter && submitButtons.includes(event.submitter) ? event.submitter : null;
+
+      submitButtons.forEach(function (button) {
+        button.disabled = true;
+      });
+
+      if (submitter && submitter.tagName === 'BUTTON') {
+        const loadingLabel = submitter.getAttribute('data-submit-loading-label') || 'Procesando...';
+        submitter.dataset.originalLabel = submitter.innerHTML;
+        submitter.innerHTML = loadingLabel;
+      }
+
+      if (submitter && submitter.tagName === 'INPUT') {
+        const loadingLabel = submitter.getAttribute('data-submit-loading-label') || 'Procesando...';
+        submitter.dataset.originalLabel = submitter.value;
+        submitter.value = loadingLabel;
+      }
+    });
+  }
+
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
     $('.ocultar-columna').hide();
@@ -965,6 +1005,7 @@
     initializeEmailEditor();
     initializeFirstVisitGuide();
     initializeOatiLoadingIndicator();
+    initializeSingleSubmitGuard();
   });
 
   document.addEventListener('shown.bs.tab', adjustTablesInTab);
