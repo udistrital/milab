@@ -383,6 +383,8 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     return res.render('home/message_success', {
       message: 'Sanción actualizada correctamente.',
       message2: `Se actualizaron la categoría y el tipo de sanción #${multaId}.`,
+      returnUrl: '/milab/api/get_list_multas',
+      returnLabel: 'Volver al listado de sanciones',
     });
   } catch (error) {
     if (client) client.release();

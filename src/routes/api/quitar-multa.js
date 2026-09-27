@@ -44,6 +44,16 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   let accionLog = 'Cambiar estado de multa a SALDADO';
   let mensajeSuccess = 'Multa actualizada correctamente';
   let mensajeSuccess2 = '';
+  const source = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
+  const returnToTeacherFlow = source === 'docente';
+  const successReturnUrl = returnToTeacherFlow
+    ? '/milab/api/get-info-multa-docente/get'
+    : '/milab/api/get-info-multa/get';
+  const successReturnLabel = returnToTeacherFlow
+    ? 'Volver a gestión de sanciones docentes'
+    : 'Volver a gestión de sanciones estudiantiles';
 
   try {
     // Primero obtenemos la información base y alcance de la multa
@@ -167,6 +177,8 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
     return res.render('home/message_success', {
       message: mensajeSuccess,
       message2: mensajeSuccess2 || `Sancionado registrado: ${referenciaSancionado}`,
+      returnUrl: successReturnUrl,
+      returnLabel: successReturnLabel,
     });
   } catch (error) {
     console.error('Error:', error);
