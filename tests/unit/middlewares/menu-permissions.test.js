@@ -341,3 +341,65 @@ test('menuPermissionMiddleware allows the public service status endpoint', async
     loaded.restore();
   }
 });
+
+test('menuPermissionMiddleware allows delegated approval action POST routes', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => {
+      throw new Error('Database should not be queried for delegated action routes');
+    },
+  });
+
+  try {
+    const req = {
+      method: 'POST',
+      originalUrl: '/milab/api/aprobacion_multa/activar',
+      session: {
+        user: {
+          tipo: 'laboratorista',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware allows delegated approval action POST routes without api prefix', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => {
+      throw new Error('Database should not be queried for delegated action routes');
+    },
+  });
+
+  try {
+    const req = {
+      method: 'POST',
+      originalUrl: '/milab/aprobacion_multa/aplazar',
+      session: {
+        user: {
+          tipo: 'laboratorista',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+  } finally {
+    loaded.restore();
+  }
+});

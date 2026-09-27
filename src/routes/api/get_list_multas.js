@@ -14,6 +14,7 @@ router.use(bp.json());
 router.use(bp.urlencoded({ extended: true }));
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_FINE_CATEGORY_LENGTH = 500;
 const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'APLAZADA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
 const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada']);
 
@@ -233,6 +234,7 @@ async function queryMultasRows(client, conditions, params) {
         l.nombre AS nombre_laboratorista,
         l.documento AS cc_laboratorista,
         COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado,
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
@@ -324,7 +326,12 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
   const categoria = String(req.body?.cat_multa || '').trim();
   const tipoSancion = String(req.body?.tipo_sancion || '').trim();
 
-  if (!Number.isInteger(multaId) || multaId <= 0 || !categoria || categoria.length > 100) {
+  if (
+    !Number.isInteger(multaId) ||
+    multaId <= 0 ||
+    !categoria ||
+    categoria.length > MAX_FINE_CATEGORY_LENGTH
+  ) {
     return res.render('home/message_error', {
       message: 'Datos de sanción inválidos.',
       message2: 'Selecciona una categoría válida.',

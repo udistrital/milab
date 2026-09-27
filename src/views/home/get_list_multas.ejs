@@ -156,6 +156,7 @@
                                                                 data-bs-toggle="modal"
                                                                 data-bs-target="#detalleSancionModal"
                                                                 data-sancion-id="<%= data.id %>"
+                                                                data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
                                                                 data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
@@ -251,6 +252,7 @@
                                                                 data-bs-toggle="modal"
                                                                 data-bs-target="#detalleSancionModal"
                                                                 data-sancion-id="<%= data.id %>"
+                                                                data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
                                                                 data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
@@ -575,6 +577,7 @@
 
             const fields = {
                 id: source.getAttribute('data-sancion-id'),
+                nombre: source.getAttribute('data-sancion-nombre'),
                 documento: source.getAttribute('data-sancion-documento'),
                 codigo: source.getAttribute('data-sancion-codigo'),
                 fecha: source.getAttribute('data-sancion-fecha'),
@@ -594,9 +597,16 @@
             });
 
             const documento = fields.documento || '';
+            const nombreLocal = String(fields.nombre || '').trim();
             stopActiveNameLookup();
 
-            if (documento) {
+            if (nombreLocal) {
+                const nombreTarget = document.querySelector('[data-detail-field="nombre"]');
+                if (nombreTarget) {
+                    nombreTarget.textContent = nombreLocal;
+                }
+                updateOatiStatus('');
+            } else if (documento) {
                 const currentRequestId = activeNameRequestId;
                 fetchNameWithRetry(currentRequestId, documento, 1);
             } else {
