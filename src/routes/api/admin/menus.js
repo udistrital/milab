@@ -46,6 +46,22 @@ async function loadMenuData() {
   return { roles, menuItems, permissions };
 }
 
+async function renderAdminMenusPage(res, { error = null, success = null } = {}) {
+  const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
+    loadMenuData(),
+    listPrestamosFacultyAccess(),
+  ]);
+
+  return res.render('home/admin_menus', {
+    roles,
+    menuItems,
+    permissions,
+    prestamosFacultyAccess,
+    error,
+    success,
+  });
+}
+
 function sanitizeText(value) {
   return value === undefined || value === null ? '' : String(value).trim();
 }
@@ -82,19 +98,7 @@ async function registerPrestamosAccessAudit(req, facultyName, role, permitido) {
 
 router.get('/', requireAdmin, async (req, res) => {
   try {
-    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
-      loadMenuData(),
-      listPrestamosFacultyAccess(),
-    ]);
-
-    return res.render('home/admin_menus', {
-      roles,
-      menuItems,
-      permissions,
-      prestamosFacultyAccess,
-      error: null,
-      success: null,
-    });
+    return await renderAdminMenusPage(res);
   } catch (error) {
     console.error('Error cargando menus:', error);
     return renderApplicationError(
@@ -122,17 +126,8 @@ router.post('/', requireAdmin, async (req, res) => {
   } = req.body;
 
   if (!section || !label) {
-    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
-      loadMenuData(),
-      listPrestamosFacultyAccess(),
-    ]);
-    return res.render('home/admin_menus', {
-      roles,
-      menuItems,
-      permissions,
-      prestamosFacultyAccess,
+    return renderAdminMenusPage(res, {
       error: 'Seccion y etiqueta son obligatorias.',
-      success: null,
     });
   }
 
@@ -150,31 +145,111 @@ router.post('/', requireAdmin, async (req, res) => {
       [section, parentId, label, route || null, icon || null, orderIndex, isActive]
     );
 
-    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
-      loadMenuData(),
-      listPrestamosFacultyAccess(),
-    ]);
-    return res.render('home/admin_menus', {
-      roles,
-      menuItems,
-      permissions,
-      prestamosFacultyAccess,
-      error: null,
+    return renderAdminMenusPage(res, {
       success: 'Menu creado o actualizado.',
     });
   } catch (error) {
     console.error('Error creando menu:', error);
-    const [{ roles, menuItems, permissions }, prestamosFacultyAccess] = await Promise.all([
-      loadMenuData(),
-      listPrestamosFacultyAccess(),
-    ]);
-    return res.render('home/admin_menus', {
-      roles,
-      menuItems,
-      permissions,
-      prestamosFacultyAccess,
+    return renderAdminMenusPage(res, {
       error: 'No fue posible crear el menu.',
-      success: null,
+    });
+  }
+});
+
+router.post('/update', requireAdmin, async (req, res) => {
+  const menuItemId = Number(req.body?.menu_item_id);
+  const section = sanitizeText(req.body?.section).toLowerCase();
+  const label = sanitizeText(req.body?.label);
+  const route = sanitizeText(req.body?.route) || null;
+  const icon = sanitizeText(req.body?.icon) || null;
+  const orderIndex = Number.isFinite(Number(req.body?.order_index))
+    ? Number(req.body.order_index)
+    : 0;
+  const isActive = req.body?.is_active === 'on' || req.body?.is_active === true;
+  const parentRaw = sanitizeText(req.body?.parent_id);
+
+  if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
+    return renderAdminMenusPage(res, {
+      error: 'No se pudo identificar el item de menú a actualizar.',
+    });
+  }
+
+  if (!['primary', 'secondary', 'account'].includes(section)) {
+    return renderAdminMenusPage(res, {
+      error: 'La sección seleccionada no es válida.',
+    });
+  }
+
+  if (!label) {
+    return renderAdminMenusPage(res, {
+      error: 'La etiqueta del menú es obligatoria.',
+    });
+  }
+
+  let parentId = null;
+  if (section === 'secondary' && parentRaw) {
+    parentId = Number(parentRaw);
+    if (!Number.isInteger(parentId) || parentId <= 0) {
+      return renderAdminMenusPage(res, {
+        error: 'El módulo primario seleccionado no es válido.',
+      });
+    }
+  }
+
+  if (parentId === menuItemId) {
+    return renderAdminMenusPage(res, {
+      error: 'Un submódulo no puede ser padre de sí mismo.',
+    });
+  }
+
+  try {
+    if (section === 'secondary' && parentId !== null) {
+      const parentResult = await pool.query(
+        `
+          SELECT id, section, parent_id
+          FROM menu_item
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [parentId]
+      );
+
+      const parent = parentResult.rows[0];
+      const validParent =
+        parent &&
+        parent.section === 'secondary' &&
+        (parent.parent_id === null || !parent.parent_id);
+
+      if (!validParent) {
+        return renderAdminMenusPage(res, {
+          error: 'Solo puedes mover submódulos hacia módulos primarios válidos.',
+        });
+      }
+    }
+
+    await pool.query(
+      `
+        UPDATE menu_item
+        SET section = $1,
+            parent_id = $2,
+            label = $3,
+            route = $4,
+            icon = $5,
+            order_index = $6,
+            activo = $7,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $8
+      `,
+      [section, parentId, label, route, icon, orderIndex, isActive, menuItemId]
+    );
+
+    return renderAdminMenusPage(res, {
+      success: 'Ítem de menú actualizado correctamente.',
+    });
+  } catch (error) {
+    console.error('Error actualizando menu_item:', error);
+    return renderAdminMenusPage(res, {
+      error: 'No fue posible actualizar el ítem de menú.',
     });
   }
 });
