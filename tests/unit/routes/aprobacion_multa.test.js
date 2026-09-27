@@ -244,7 +244,7 @@ test('aprobacion_multa activar from listado redirects to sanctions list', async 
 test('aprobacion_multa saldar from listado redirects to sanctions list', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
-      if (sql.includes('SET con_estado_multa = \'SALDADA\'')) {
+      if (sql.includes("SET con_estado_multa = 'SALDADA'")) {
         return { rowCount: 1, rows: [] };
       }
 
@@ -273,7 +273,7 @@ test('aprobacion_multa saldar from listado redirects to sanctions list', async (
 test('aprobacion_multa aplazar from listado redirects to sanctions list', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
-      if (sql.includes('SET con_estado_multa = \'APLAZADA\'')) {
+      if (sql.includes("SET con_estado_multa = 'APLAZADA'")) {
         return { rowCount: 1, rows: [] };
       }
 
@@ -302,7 +302,7 @@ test('aprobacion_multa aplazar from listado redirects to sanctions list', async 
 test('aprobacion_multa reactivar from listado redirects to sanctions list', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
-      if (sql.includes('SET con_estado_multa = \'ACTIVA\'')) {
+      if (sql.includes("SET con_estado_multa = 'ACTIVA'")) {
         return { rowCount: 1, rows: [] };
       }
 

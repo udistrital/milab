@@ -115,7 +115,9 @@ function renderFilterError(req, res, message, message2) {
 }
 
 function normalizeListSuccessFeedback(rawValue) {
-  const value = String(rawValue || '').trim().toLowerCase();
+  const value = String(rawValue || '')
+    .trim()
+    .toLowerCase();
   return LIST_SUCCESS_VALUES.has(value) ? value : null;
 }
 

@@ -53,7 +53,9 @@ function resolvePostActionRedirectPath(req) {
     return '/milab/api/get_list_multas';
   }
 
-  const source = String(req.body?.source || '').trim().toLowerCase();
+  const source = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
   if (source === 'listado') {
     return '/milab/api/get_list_multas';
   }

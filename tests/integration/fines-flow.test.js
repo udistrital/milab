@@ -210,7 +210,12 @@ test('laboratorista fine activation redirects back to sanctions list', async () 
             if (sql.includes('SELECT m.usuario_sancionado_id')) {
               return {
                 rows: [
-                  { usuario_sancionado_id: 77, fecha_multa: '2026-01-01', ual: 'Lab', obs_multa: '' },
+                  {
+                    usuario_sancionado_id: 77,
+                    fecha_multa: '2026-01-01',
+                    ual: 'Lab',
+                    obs_multa: '',
+                  },
                 ],
               };
             }
