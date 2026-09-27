@@ -230,3 +230,41 @@ test('quitar-multa coordinator succeeds with valid faculty scope', async () => {
     loaded.restore();
   }
 });
+
+test('quitar-multa from listado redirects back to sanctions list', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
+        return {
+          rows: [
+            {
+              usuario_sancionado_id: 88,
+              con_estado_multa: 'ACTIVA',
+              ual_id: 10,
+              facultad_id: 7,
+            },
+          ],
+        };
+      }
+
+      if (sql.includes('UPDATE multa SET con_estado_multa')) {
+        return { rows: [], rowCount: 1 };
+      }
+
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-user' });
+    const response = await request(app)
+      .post('/')
+      .type('form')
+      .send({ con_id: '9', source: 'listado' });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get_list_multas');
+  } finally {
+    loaded.restore();
+  }
+});
