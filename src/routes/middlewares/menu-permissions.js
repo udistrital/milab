@@ -26,6 +26,21 @@ const publicApiAllowlist = [
   { prefix: '/milab/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
 ];
 
+const delegatedActionSuffixAllowlist = [
+  '/aprobacion_multa/activar',
+  '/aprobacion_multa/saldar',
+  '/aprobacion_multa/aplazar',
+  '/aprobacion_multa/reactivar',
+];
+
+function isDelegatedActionPath(requestPath, method) {
+  if (method !== 'POST') {
+    return false;
+  }
+
+  return delegatedActionSuffixAllowlist.some((suffix) => requestPath.endsWith(suffix));
+}
+
 function isPublicApiPath(requestPath, method) {
   return publicApiAllowlist.some((rule) => {
     if (!rule.methods.includes(method)) return false;
@@ -90,6 +105,11 @@ async function menuPermissionMiddleware(req, res, next) {
     if (allowProfileFlow) {
       return next();
     }
+
+    if (isDelegatedActionPath(path, method)) {
+      return next();
+    }
+
     const candidates = buildRouteCandidates(path);
 
     const menuResult = await pool.query(

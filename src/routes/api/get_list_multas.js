@@ -14,7 +14,9 @@ router.use(bp.json());
 router.use(bp.urlencoded({ extended: true }));
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const MAX_FINE_CATEGORY_LENGTH = 500;
+const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'APLAZADA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada', 'editada']);
 
 const requireMultasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
@@ -111,6 +113,13 @@ function renderFilterError(req, res, message, message2) {
     message2,
     limit: null,
   });
+}
+
+function normalizeListSuccessFeedback(rawValue) {
+  const value = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  return LIST_SUCCESS_VALUES.has(value) ? value : null;
 }
 
 async function buildMultasQueryContext(req, client) {
@@ -225,6 +234,7 @@ async function queryMultasRows(client, conditions, params) {
         l.nombre AS nombre_laboratorista,
         l.documento AS cc_laboratorista,
         COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado,
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
@@ -281,6 +291,14 @@ async function addLaboratoristaActions(client, rows, req) {
       ...row,
       canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
       canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      canAplazar:
+        state === 'ACTIVA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
+      canReactivar:
+        state === 'APLAZADA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
       canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
       canEdit: state === 'ACTIVA',
     };
@@ -308,7 +326,12 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
   const categoria = String(req.body?.cat_multa || '').trim();
   const tipoSancion = String(req.body?.tipo_sancion || '').trim();
 
-  if (!Number.isInteger(multaId) || multaId <= 0 || !categoria || categoria.length > 100) {
+  if (
+    !Number.isInteger(multaId) ||
+    multaId <= 0 ||
+    !categoria ||
+    categoria.length > MAX_FINE_CATEGORY_LENGTH
+  ) {
     return res.render('home/message_error', {
       message: 'Datos de sanción inválidos.',
       message2: 'Selecciona una categoría válida.',
@@ -357,10 +380,7 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     );
     client.release();
 
-    return res.render('home/message_success', {
-      message: 'Sanción actualizada correctamente.',
-      message2: `Se actualizaron la categoría y el tipo de sanción #${multaId}.`,
-    });
+    return res.redirect('/milab/api/get_list_multas?success=editada');
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
@@ -398,6 +418,7 @@ router.get('/', requireMultasAccess, async (req, res) => {
       sancionesDocentes,
       SANCTION_TYPES,
       filtros: queryContext.filters,
+      successFeedback: normalizeListSuccessFeedback(req.query?.success),
     });
   } catch (error) {
     if (client) {

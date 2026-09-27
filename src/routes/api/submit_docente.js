@@ -239,6 +239,8 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',
       message2: mensajeSuccessExtra || `Documento sancionado: ${con_documento}`,
+      returnUrl: '/milab/api/get-info-multa-docente/get',
+      returnLabel: 'Volver a gestión de sanciones docentes',
     });
   } catch (error) {
     console.error('Error al insertar en la base de datos:', error);

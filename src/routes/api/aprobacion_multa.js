@@ -10,6 +10,7 @@ const {
   upsertConfigForFacultyId,
   logConfigChangeToAuditoria,
 } = require('../../libs/multa-config');
+const { wantsJson } = require('../middlewares/error-handler');
 const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
@@ -40,6 +41,85 @@ const requireApprovalAction = requireRoles(['coordinador', 'laboratorista'], {
 
 function getSessionDocument(req) {
   return req.session?.user?.documento_real || req.session?.user?.documento || null;
+}
+
+function getSessionRole(req) {
+  return String(req.session?.user?.tipo || '').toLowerCase();
+}
+
+function resolvePostActionRedirectPath(req) {
+  const source = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    source === 'estudiante' ||
+    source === 'gestion_estudiante' ||
+    source === 'gestion-estudiante' ||
+    source === 'get-info-multa'
+  ) {
+    return '/milab/api/get-info-multa/get';
+  }
+
+  if (
+    source === 'docente' ||
+    source === 'gestion_docente' ||
+    source === 'gestion-docente' ||
+    source === 'get-info-multa-docente'
+  ) {
+    return '/milab/api/get-info-multa-docente/get';
+  }
+
+  const role = getSessionRole(req);
+  if (role === 'laboratorista') {
+    return '/milab/api/get_list_multas';
+  }
+
+  if (source === 'listado') {
+    return '/milab/api/get_list_multas';
+  }
+
+  return '/milab/api/aprobacion_multa';
+}
+
+function resolvePostActionFeedbackValue(payload = {}) {
+  if (typeof payload.feedback === 'string' && payload.feedback.trim()) {
+    return payload.feedback.trim().toLowerCase();
+  }
+
+  const state = String(payload.nuevo_estado || '').toUpperCase();
+  if (state === 'ACTIVA') {
+    return 'activada';
+  }
+  if (state === 'SALDADA') {
+    return 'saldada';
+  }
+  if (state === 'APLAZADA') {
+    return 'aplazada';
+  }
+  return null;
+}
+
+function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
+  if (redirectTo !== '/milab/api/get_list_multas') {
+    return redirectTo;
+  }
+
+  const feedback = resolvePostActionFeedbackValue(payload);
+  if (!feedback) {
+    return redirectTo;
+  }
+
+  return `${redirectTo}?success=${encodeURIComponent(feedback)}`;
+}
+
+function respondWithActionSuccess(req, res, payload = {}) {
+  const redirectTo = resolvePostActionRedirectPath(req);
+  const redirectUrl = buildSuccessRedirectPath(req, redirectTo, payload);
+  if (wantsJson(req)) {
+    return res.json({ ok: true, redirectTo: redirectUrl, ...payload });
+  }
+  return res.redirect(redirectUrl);
 }
 
 async function resolveLaboratoristaDocument(userDocument) {
@@ -140,6 +220,108 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
     return {
       allowed: false,
       message2: detailMessage,
+    };
+  }
+
+  return {
+    allowed: true,
+    actorDocument: laboratoristaDocument,
+    facultyIds: [facultadId],
+    role,
+  };
+}
+
+async function resolveAplazamientoActionScope(req, multaId) {
+  const role = String(req.session?.user?.tipo || '').toLowerCase();
+
+  if (role === 'coordinador') {
+    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
+    if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+      return {
+        allowed: false,
+        message2: 'La cuenta de coordinador no tiene facultades asociadas.',
+      };
+    }
+    return {
+      allowed: true,
+      actorDocument: scope.coordinatorDocument,
+      facultyIds: scope.facultyIds,
+      role,
+    };
+  }
+
+  if (role !== 'laboratorista') {
+    return {
+      allowed: false,
+      message2: 'Tu sesión no tiene permisos suficientes para esta acción.',
+    };
+  }
+
+  const sessionDocument = getSessionDocument(req);
+  const laboratoristaDocument = await resolveLaboratoristaDocument(sessionDocument);
+  if (!laboratoristaDocument) {
+    return {
+      allowed: false,
+      message2: 'No se encontró un laboratorista asociado a la sesión activa.',
+    };
+  }
+
+  const multaScopeResult = await pool.query(
+    `
+      SELECT m.id, u.ual_id, u.facultad_id
+      FROM multa m
+      INNER JOIN ual u ON u.ual_id = m.ual_id
+      WHERE m.id = $1
+      LIMIT 1
+    `,
+    [multaId]
+  );
+
+  const multaScope = multaScopeResult.rows[0];
+  if (!multaScope) {
+    return {
+      allowed: false,
+      message2: 'La sanción seleccionada no existe o ya no está disponible.',
+    };
+  }
+
+  const asignacionResult = await pool.query(
+    `
+      SELECT 1
+      FROM laboratorista_ual
+      WHERE laboratorista_documento_id = $1
+        AND ual_id = $2
+      LIMIT 1
+    `,
+    [laboratoristaDocument, multaScope.ual_id]
+  );
+
+  if (!asignacionResult.rows.length) {
+    return {
+      allowed: false,
+      message2: 'La sanción no pertenece a una UAL asignada al laboratorista.',
+    };
+  }
+
+  const facultadId = Number(multaScope.facultad_id);
+  if (!Number.isFinite(facultadId)) {
+    return {
+      allowed: false,
+      message2: 'No fue posible identificar la facultad de la sanción.',
+    };
+  }
+
+  const configMap = await fetchMultaConfigsForFacultyIds([facultadId]);
+  const config = configMap.get(facultadId);
+  const canDirectAction =
+    config?.permite_crear_multas_activas_directas === true ||
+    config?.permite_saldar_multas_directas === true;
+
+  if (!canDirectAction) {
+    return {
+      allowed: false,
+      message2:
+        'La facultad no tiene habilitada por el coordinador la funcionalidad para aplazar o reactivar sanciones directamente.',
     };
   }
 
@@ -330,10 +512,13 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
       }
     }
 
-    res.redirect('/milab/api/aprobacion_multa');
+    return respondWithActionSuccess(req, res, {
+      multa_id,
+      nuevo_estado: 'ACTIVA',
+    });
   } catch (error) {
     console.error('Error al activar sanción:', error);
-    res.render('home/message_error', {
+    return res.render('home/message_error', {
       message: 'Error al activar la sanción.',
       message2: 'Por favor, intenta nuevamente.',
       limit: null,
@@ -405,11 +590,172 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
       ]
     );
 
-    res.redirect('/milab/api/aprobacion_multa');
+    return respondWithActionSuccess(req, res, {
+      multa_id,
+      nuevo_estado: 'SALDADA',
+    });
   } catch (error) {
     console.error('Error al marcar sanción como saldada:', error);
-    res.render('home/message_error', {
+    return res.render('home/message_error', {
       message: 'Error al marcar como saldada.',
+      message2: 'Por favor, intenta nuevamente.',
+      limit: null,
+    });
+  }
+});
+
+// POST: Marcar sanción como APLAZADA (de ACTIVA a APLAZADA)
+router.post('/aplazar', requireApprovalAction, async function (req, res) {
+  const body = req.body || {};
+  const multa_id = Number(body.multa_id);
+
+  if (!Number.isInteger(multa_id) || multa_id <= 0) {
+    return res.render('home/message_error', {
+      message: 'Sanción inválida',
+      message2: 'No se pudo identificar la sanción a aplazar.',
+      limit: null,
+    });
+  }
+
+  try {
+    const scope = await resolveAplazamientoActionScope(req, multa_id);
+
+    if (!scope?.allowed) {
+      return res.render('home/message_error', {
+        message: 'No autorizado',
+        message2: scope?.message2 || 'No tienes autorización para aplazar esta sanción.',
+        limit: null,
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE multa AS m
+      SET con_estado_multa = 'APLAZADA'
+      FROM ual u
+      WHERE m.id = $1
+        AND m.con_estado_multa = 'ACTIVA'
+        AND u.ual_id = m.ual_id
+        AND u.facultad_id = ANY($2::int[])
+    `,
+      [multa_id, scope.facultyIds]
+    );
+
+    if (result.rowCount === 0) {
+      return res.render('home/message_error', {
+        message: 'No se pudo aplazar la sanción.',
+        message2: "Verifica que esté en estado 'ACTIVA'.",
+        limit: null,
+      });
+    }
+
+    const sancionadoResult = await pool.query(
+      'SELECT u.documento FROM multa m LEFT JOIN usuario u ON u.id = m.usuario_sancionado_id WHERE m.id = $1',
+      [multa_id]
+    );
+    const documentoSancionado = sancionadoResult.rows[0]?.documento || String(multa_id);
+
+    await pool.query(
+      `
+      INSERT INTO log (nombre, documento, accion, persona)
+      VALUES ($1, $2, $3, $4)
+    `,
+      [
+        req.session.user.tipo,
+        scope.actorDocument,
+        'Cambiar estado de multa a APLAZADA',
+        documentoSancionado,
+      ]
+    );
+
+    return respondWithActionSuccess(req, res, {
+      multa_id,
+      nuevo_estado: 'APLAZADA',
+      feedback: 'aplazada',
+    });
+  } catch (error) {
+    console.error('Error al aplazar sanción:', error);
+    return res.render('home/message_error', {
+      message: 'Error al aplazar la sanción.',
+      message2: 'Por favor, intenta nuevamente.',
+      limit: null,
+    });
+  }
+});
+
+// POST: Reactivar sanción (de APLAZADA a ACTIVA)
+router.post('/reactivar', requireApprovalAction, async function (req, res) {
+  const body = req.body || {};
+  const multa_id = Number(body.multa_id);
+
+  if (!Number.isInteger(multa_id) || multa_id <= 0) {
+    return res.render('home/message_error', {
+      message: 'Sanción inválida',
+      message2: 'No se pudo identificar la sanción a reactivar.',
+      limit: null,
+    });
+  }
+
+  try {
+    const scope = await resolveAplazamientoActionScope(req, multa_id);
+
+    if (!scope?.allowed) {
+      return res.render('home/message_error', {
+        message: 'No autorizado',
+        message2: scope?.message2 || 'No tienes autorización para reactivar esta sanción.',
+        limit: null,
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE multa AS m
+      SET con_estado_multa = 'ACTIVA'
+      FROM ual u
+      WHERE m.id = $1
+        AND m.con_estado_multa = 'APLAZADA'
+        AND u.ual_id = m.ual_id
+        AND u.facultad_id = ANY($2::int[])
+    `,
+      [multa_id, scope.facultyIds]
+    );
+
+    if (result.rowCount === 0) {
+      return res.render('home/message_error', {
+        message: 'No se pudo reactivar la sanción.',
+        message2: "Verifica que esté en estado 'APLAZADA'.",
+        limit: null,
+      });
+    }
+
+    const sancionadoResult = await pool.query(
+      'SELECT u.documento FROM multa m LEFT JOIN usuario u ON u.id = m.usuario_sancionado_id WHERE m.id = $1',
+      [multa_id]
+    );
+    const documentoSancionado = sancionadoResult.rows[0]?.documento || String(multa_id);
+
+    await pool.query(
+      `
+      INSERT INTO log (nombre, documento, accion, persona)
+      VALUES ($1, $2, $3, $4)
+    `,
+      [
+        req.session.user.tipo,
+        scope.actorDocument,
+        'Cambiar estado de multa a ACTIVA (desde APLAZADA)',
+        documentoSancionado,
+      ]
+    );
+
+    return respondWithActionSuccess(req, res, {
+      multa_id,
+      nuevo_estado: 'ACTIVA',
+      feedback: 'reactivada',
+    });
+  } catch (error) {
+    console.error('Error al reactivar sanción:', error);
+    return res.render('home/message_error', {
+      message: 'Error al reactivar la sanción.',
       message2: 'Por favor, intenta nuevamente.',
       limit: null,
     });
