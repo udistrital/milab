@@ -328,6 +328,64 @@ test('aprobacion_multa reactivar from listado redirects to sanctions list', asyn
   }
 });
 
+test('aprobacion_multa aplazar from docente source redirects to teacher management page', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes("SET con_estado_multa = 'APLAZADA'")) {
+        return { rowCount: 1, rows: [] };
+      }
+
+      if (sql.includes('SELECT u.documento FROM multa')) {
+        return { rows: [{ documento: '20241001' }] };
+      }
+
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/aplazar').type('form').send({
+      multa_id: '33',
+      source: 'docente',
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get-info-multa-docente/get');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('aprobacion_multa reactivar from estudiante source redirects to student management page', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes("SET con_estado_multa = 'ACTIVA'")) {
+        return { rowCount: 1, rows: [] };
+      }
+
+      if (sql.includes('SELECT u.documento FROM multa')) {
+        return { rows: [{ documento: '20241001' }] };
+      }
+
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/reactivar').type('form').send({
+      multa_id: '33',
+      source: 'estudiante',
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get-info-multa/get');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('aprobacion_multa activar fails when sanction email cannot be sent', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {

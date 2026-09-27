@@ -48,14 +48,33 @@ function getSessionRole(req) {
 }
 
 function resolvePostActionRedirectPath(req) {
+  const source = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
+
+  if (
+    source === 'estudiante' ||
+    source === 'gestion_estudiante' ||
+    source === 'gestion-estudiante' ||
+    source === 'get-info-multa'
+  ) {
+    return '/milab/api/get-info-multa/get';
+  }
+
+  if (
+    source === 'docente' ||
+    source === 'gestion_docente' ||
+    source === 'gestion-docente' ||
+    source === 'get-info-multa-docente'
+  ) {
+    return '/milab/api/get-info-multa-docente/get';
+  }
+
   const role = getSessionRole(req);
   if (role === 'laboratorista') {
     return '/milab/api/get_list_multas';
   }
 
-  const source = String(req.body?.source || '')
-    .trim()
-    .toLowerCase();
   if (source === 'listado') {
     return '/milab/api/get_list_multas';
   }

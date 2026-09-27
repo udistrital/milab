@@ -269,6 +269,8 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',
       message2: mensajeSuccessExtra || `Sancionado registrado: ${referenciaSancionado}`,
+      returnUrl: '/milab/api/get-info-multa/get',
+      returnLabel: 'Volver a gestión de sanciones estudiantiles',
     });
   } catch (error) {
     console.error('Error registrando multa:', error);
