@@ -274,7 +274,7 @@
 
         <div class="border-top pt-3 mt-3" data-detail-action="activate">
           <h6 class="mb-3">Aplicar sanción</h6>
-          <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3">
+          <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3" data-submit-once="true">
             <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <input type="hidden" name="source" value="aprobacion">
@@ -289,20 +289,20 @@
             </div>
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-              <button type="submit" class="btn btn-success" data-submit-lock="true">Activar sanción</button>
+              <button type="submit" class="btn btn-success" data-submit-lock="true" data-submit-loading-label="Activando...">Activar sanción</button>
             </div>
           </form>
         </div>
 
         <div class="border-top pt-3 mt-3 d-none" data-detail-action="saldar">
           <h6 class="mb-3">Marcar sanción como saldada</h6>
-          <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3">
+          <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3" data-submit-once="true">
             <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
             <input type="hidden" name="source" value="aprobacion">
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-              <button type="submit" class="btn btn-primary" data-submit-lock="true">Marcar como saldada</button>
+              <button type="submit" class="btn btn-primary" data-submit-lock="true" data-submit-loading-label="Saldando...">Marcar como saldada</button>
             </div>
           </form>
         </div>

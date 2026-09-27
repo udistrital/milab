@@ -99,6 +99,7 @@ router.get('/', requireAdminOrCoordinatorMonitorAccess, async function (req, res
       message: 'Error al obtener monitores',
       message2: 'Por favor intenta nuevamente',
       limit: null,
+      error,
     });
   }
 });

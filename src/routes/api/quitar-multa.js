@@ -5,6 +5,7 @@ const { fetchUserById } = require('../../libs/user-identity');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
+const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -192,11 +193,16 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
     });
   } catch (error) {
     console.error('Error:', error);
-    res.render('home/message_error', {
-      message: '¡Error en la operación!',
-      message2: 'Inténtalo nuevamente',
-      limit: 'noSession',
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: '¡Error en la operación!',
+        message2: 'Inténtalo nuevamente',
+        limit: 'noSession',
+      },
+      error
+    );
   }
 });
 

@@ -6,7 +6,11 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  renderApplicationError,
+  renderModuleError,
+  wantsJson,
+} = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
 
 const bp = require('body-parser');
@@ -384,11 +388,15 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
-    return res.render('home/message_error', {
-      message: 'No fue posible editar la sanción.',
-      message2: 'Inténtalo nuevamente.',
-      limit: null,
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: 'No fue posible editar la sanción.',
+        message2: 'Inténtalo nuevamente.',
+      },
+      error
+    );
   }
 });
 
@@ -435,12 +443,17 @@ router.get('/', requireMultasAccess, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el listado de multas.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el listado de multas.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   }
 });
 
