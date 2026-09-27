@@ -14,7 +14,8 @@ router.use(bp.json());
 router.use(bp.urlencoded({ extended: true }));
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'APLAZADA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada']);
 
 const requireMultasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
@@ -111,6 +112,13 @@ function renderFilterError(req, res, message, message2) {
     message2,
     limit: null,
   });
+}
+
+function normalizeListSuccessFeedback(rawValue) {
+  const value = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  return LIST_SUCCESS_VALUES.has(value) ? value : null;
 }
 
 async function buildMultasQueryContext(req, client) {
@@ -281,6 +289,14 @@ async function addLaboratoristaActions(client, rows, req) {
       ...row,
       canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
       canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      canAplazar:
+        state === 'ACTIVA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
+      canReactivar:
+        state === 'APLAZADA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
       canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
       canEdit: state === 'ACTIVA',
     };
@@ -398,6 +414,7 @@ router.get('/', requireMultasAccess, async (req, res) => {
       sancionesDocentes,
       SANCTION_TYPES,
       filtros: queryContext.filters,
+      successFeedback: normalizeListSuccessFeedback(req.query?.success),
     });
   } catch (error) {
     if (client) {

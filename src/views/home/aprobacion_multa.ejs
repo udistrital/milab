@@ -277,6 +277,7 @@
           <form action="/milab/api/aprobacion_multa/activar" method="POST" class="row g-3">
             <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
+            <input type="hidden" name="source" value="aprobacion">
             <div class="col-12">
               <label class="form-label" for="tipo_sancion_detalle">Tipo de sanción</label>
               <select id="tipo_sancion_detalle" name="tipo_sancion" class="form-select" required>
@@ -298,6 +299,7 @@
           <form action="/milab/api/aprobacion_multa/saldar" method="POST" class="row g-3">
             <%- include('../partials/csrf_field') %>
             <input type="hidden" name="multa_id" data-detail-input="multa_id">
+            <input type="hidden" name="source" value="aprobacion">
             <div class="col-12 d-flex justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
               <button type="submit" class="btn btn-primary" data-submit-lock="true">Marcar como saldada</button>

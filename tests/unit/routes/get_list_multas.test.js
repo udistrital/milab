@@ -198,7 +198,8 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
           { id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'Pendiente', facultad_id: 5 },
           { id: 2, tipo_sancionado: 'estudiante', con_estado_multa: 'POR SALDAR', facultad_id: 5 },
           { id: 3, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA', facultad_id: 5 },
-          { id: 4, tipo_sancionado: 'estudiante', con_estado_multa: 'SALDADA', facultad_id: 5 },
+          { id: 4, tipo_sancionado: 'estudiante', con_estado_multa: 'APLAZADA', facultad_id: 5 },
+          { id: 5, tipo_sancionado: 'estudiante', con_estado_multa: 'SALDADA', facultad_id: 5 },
         ],
       };
     },
@@ -214,10 +215,15 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
     assert.equal(rows[0].canSaldar, false);
     assert.equal(rows[1].canActivate, false);
     assert.equal(rows[1].canSaldar, true);
+    assert.equal(rows[2].canAplazar, true);
     assert.equal(rows[2].canRemove, true);
+    assert.equal(rows[3].canReactivar, true);
     assert.equal(rows[3].canActivate, false);
     assert.equal(rows[3].canSaldar, false);
     assert.equal(rows[3].canRemove, false);
+    assert.equal(rows[4].canActivate, false);
+    assert.equal(rows[4].canSaldar, false);
+    assert.equal(rows[4].canRemove, false);
   } finally {
     loaded.restore();
   }

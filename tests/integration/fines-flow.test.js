@@ -176,3 +176,112 @@ test('fine removal updates the sanction status and renders success feedback', as
     loaded.restore();
   }
 });
+
+test('laboratorista fine activation redirects back to sanctions list', async () => {
+  const sessionHarness = createSessionHarness({
+    user: createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-user' }),
+  });
+  const loaded = buildApp({
+    entryPath: approvalPath,
+    sessionHarness,
+    stubs: [
+      ...authStubs(),
+      [mailPath, { sendMail: async () => {} }],
+      [
+        dbPath,
+        {
+          query: async (sql) => {
+            if (sql.includes('SELECT documento FROM laboratorista')) {
+              return { rows: [{ documento: '9001' }] };
+            }
+
+            if (sql.includes('SELECT m.id, u.ual_id, u.facultad_id')) {
+              return { rows: [{ id: 81, ual_id: 12, facultad_id: 7 }] };
+            }
+
+            if (sql.includes('FROM laboratorista_ual')) {
+              return { rows: [{ '?column?': 1 }] };
+            }
+
+            if (sql.includes('UPDATE multa AS m')) {
+              return { rowCount: 1, rows: [] };
+            }
+
+            if (sql.includes('SELECT m.usuario_sancionado_id')) {
+              return {
+                rows: [
+                  {
+                    usuario_sancionado_id: 77,
+                    fecha_multa: '2026-01-01',
+                    ual: 'Lab',
+                    obs_multa: '',
+                  },
+                ],
+              };
+            }
+
+            if (sql.includes('INSERT INTO log')) {
+              return { rowCount: 1, rows: [] };
+            }
+
+            return { rows: [] };
+          },
+        },
+      ],
+      [
+        multaConfigPath,
+        {
+          SANCTION_TYPES: ['Firma de compromiso de buen uso'],
+          normalizeSanctionType: (value) => (value || '').toString().trim(),
+          isValidSanctionType: (value) =>
+            ['Firma de compromiso de buen uso'].includes((value || '').toString().trim()),
+          fetchMultaConfigsForFacultyIds: async () =>
+            new Map([[7, { permite_crear_multas_activas_directas: true }]]),
+          upsertConfigForFacultyId: async () => ({}),
+          logConfigChangeToAuditoria: async () => {},
+        },
+      ],
+      [
+        sanctionEmailPath,
+        {
+          resolveStudentContactByUsuarioId: async () => ({
+            nombre: 'Estudiante',
+            documento: '123',
+            codigo: '2024',
+            correo: '',
+          }),
+          sendSanctionActivationEmail: async () => ({ ok: true }),
+        },
+      ],
+      [
+        emailLayoutPath,
+        {
+          buildBrandedEmailAttachments: () => [],
+          buildEmailFooterHtml: () => '',
+          buildEmailHeaderHtml: () => '',
+          escapeHtml: (value) => String(value || ''),
+        },
+      ],
+      [
+        facultyScopePath,
+        {
+          resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [7] }),
+        },
+      ],
+    ],
+    purgePaths: [approvalPath, multaConfigPath, sanctionEmailPath],
+  });
+
+  try {
+    const response = await request(loaded.app).post('/activar').type('form').send({
+      multa_id: '81',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+      source: 'listado',
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=activada');
+  } finally {
+    loaded.restore();
+  }
+});

@@ -20,6 +20,21 @@
                 <h1 class="app-page-title">Listado de sanciones</h1>
                 <p class="app-page-subtitle">Consulta el registro histórico de sanciones con foco en categoría, estado y responsables operativos.</p>
             </section>
+        <% const successFeedback = locals.successFeedback || null; %>
+        <% if (successFeedback) { %>
+            <section class="mb-3" aria-live="polite">
+                <div class="alert alert-success mb-0" role="status">
+                    <strong>Operación completada.</strong>
+                    <%= successFeedback === 'saldada'
+                        ? ' La sanción se marcó como saldada correctamente.'
+                        : successFeedback === 'aplazada'
+                            ? ' La sanción se aplazó correctamente.'
+                            : successFeedback === 'reactivada'
+                                ? ' La sanción se reactivó correctamente.'
+                                : ' La sanción se activó correctamente.' %>
+                </div>
+            </section>
+        <% } %>
         <section class="card app-table-panel mb-3">
             <div class="card-body">
                 <form action="/milab/api/get_list_multas" method="GET" class="row g-3 align-items-end">
@@ -49,6 +64,7 @@
                         <select id="estado_multa" name="estado_multa" class="form-select">
                             <option value="" <%= !filtros.estado_multa ? 'selected' : '' %>>Todos los estados</option>
                             <option value="ACTIVA" <%= filtros.estado_multa === 'ACTIVA' ? 'selected' : '' %>>ACTIVA</option>
+                            <option value="APLAZADA" <%= filtros.estado_multa === 'APLAZADA' ? 'selected' : '' %>>APLAZADA</option>
                             <option value="Pendiente" <%= filtros.estado_multa === 'Pendiente' ? 'selected' : '' %>>Pendiente</option>
                             <option value="POR SALDAR" <%= filtros.estado_multa === 'POR SALDAR' ? 'selected' : '' %>>POR SALDAR</option>
                             <option value="SALDADA" <%= filtros.estado_multa === 'SALDADA' ? 'selected' : '' %>>SALDADA</option>
@@ -149,22 +165,35 @@
                                                                 data-sancion-categoria="<%= data.cat_multa %>"
                                                                 data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                                                                 data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
-                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canRemove ? 'remove' : '' %>"
+                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : data.canAplazar ? 'defer' : data.canRemove ? 'remove' : '' %>"
                                                             >
                                                                 <i class="bi bi-eye"></i>
                                                                 Ver detalle
                                                             </button>
-                                                            <% if (data.canActivate || data.canSaldar || data.canRemove) { %>
+                                                            <% if (data.canActivate || data.canSaldar || data.canRemove || data.canReactivar) { %>
                                                                 <button
                                                                     type="button"
                                                                     class="btn btn-success btn-sm app-sanction-action-button"
                                                                     data-bs-toggle="modal"
                                                                     data-bs-target="#detalleSancionModal"
                                                                     data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : 'remove' %>"
+                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : 'remove' %>"
                                                                 >
                                                                     <i class="bi bi-arrow-repeat"></i>
-                                                                    <%= data.canActivate ? 'Activar' : 'Saldar' %>
+                                                                    <%= data.canActivate ? 'Activar' : data.canSaldar ? 'Saldar' : data.canReactivar ? 'Reactivar' : 'Saldar' %>
+                                                                </button>
+                                                            <% } %>
+                                                            <% if (data.canAplazar) { %>
+                                                                <button
+                                                                    type="button"
+                                                                    class="btn btn-outline-secondary btn-sm app-sanction-action-button"
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#detalleSancionModal"
+                                                                    data-sancion-id="<%= data.id %>"
+                                                                    data-sancion-action="defer"
+                                                                >
+                                                                    <i class="bi bi-pause-circle"></i>
+                                                                    Aplazar
                                                                 </button>
                                                             <% } %>
                                                             <% if (data.canEdit) { %>
@@ -231,22 +260,35 @@
                                                                 data-sancion-categoria="<%= data.cat_multa %>"
                                                                 data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                                                                 data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
-                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canRemove ? 'remove' : '' %>"
+                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : data.canAplazar ? 'defer' : data.canRemove ? 'remove' : '' %>"
                                                             >
                                                                 <i class="bi bi-eye"></i>
                                                                 Ver detalle
                                                             </button>
-                                                            <% if (data.canActivate || data.canSaldar || data.canRemove) { %>
+                                                            <% if (data.canActivate || data.canSaldar || data.canRemove || data.canReactivar) { %>
                                                                 <button
                                                                     type="button"
                                                                     class="btn btn-success btn-sm app-sanction-action-button"
                                                                     data-bs-toggle="modal"
                                                                     data-bs-target="#detalleSancionModal"
                                                                     data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : 'remove' %>"
+                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : 'remove' %>"
                                                                 >
                                                                     <i class="bi bi-arrow-repeat"></i>
-                                                                    <%= data.canActivate ? 'Activar' : 'Saldar' %>
+                                                                    <%= data.canActivate ? 'Activar' : data.canSaldar ? 'Saldar' : data.canReactivar ? 'Reactivar' : 'Saldar' %>
+                                                                </button>
+                                                            <% } %>
+                                                            <% if (data.canAplazar) { %>
+                                                                <button
+                                                                    type="button"
+                                                                    class="btn btn-outline-secondary btn-sm app-sanction-action-button"
+                                                                    data-bs-toggle="modal"
+                                                                    data-bs-target="#detalleSancionModal"
+                                                                    data-sancion-id="<%= data.id %>"
+                                                                    data-sancion-action="defer"
+                                                                >
+                                                                    <i class="bi bi-pause-circle"></i>
+                                                                    Aplazar
                                                                 </button>
                                                             <% } %>
                                                             <% if (data.canEdit) { %>
@@ -299,6 +341,7 @@
                         <div class="col-md-6">
                             <div class="text-muted small">Nombre sancionado</div>
                             <div class="fw-semibold" data-detail-field="nombre"></div>
+                            <div class="small text-warning mt-1 d-none" data-oati-status aria-live="polite"></div>
                         </div>
                         <div class="col-md-6">
                             <div class="text-muted small">Documento</div>
@@ -338,6 +381,7 @@
                         <form action="/milab/api/aprobacion_multa/activar" method="POST" data-sanction-action-form="activate" class="d-none row g-3">
                             <%- include('../partials/csrf_field'); %>
                             <input type="hidden" name="multa_id" data-sanction-action-id>
+                            <input type="hidden" name="source" value="listado">
                             <div class="col-12">
                                 <label class="form-label" for="tipo_sancion_listado">Tipo de sanción</label>
                                 <select id="tipo_sancion_listado" name="tipo_sancion" class="form-select" required>
@@ -355,8 +399,23 @@
                         <form action="/milab/api/aprobacion_multa/saldar" method="POST" data-sanction-action-form="saldar" class="d-none d-flex justify-content-end gap-2">
                             <%- include('../partials/csrf_field'); %>
                             <input type="hidden" name="multa_id" data-sanction-action-id>
+                            <input type="hidden" name="source" value="listado">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Saldar sanción</button>
+                        </form>
+                        <form action="/milab/api/aprobacion_multa/aplazar" method="POST" data-sanction-action-form="defer" class="d-none d-flex justify-content-end gap-2">
+                            <%- include('../partials/csrf_field'); %>
+                            <input type="hidden" name="multa_id" data-sanction-action-id>
+                            <input type="hidden" name="source" value="listado">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-warning">Aplazar sanción</button>
+                        </form>
+                        <form action="/milab/api/aprobacion_multa/reactivar" method="POST" data-sanction-action-form="reactivate" class="d-none d-flex justify-content-end gap-2">
+                            <%- include('../partials/csrf_field'); %>
+                            <input type="hidden" name="multa_id" data-sanction-action-id>
+                            <input type="hidden" name="source" value="listado">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-success">Reactivar sanción</button>
                         </form>
                         <form action="/milab/api/quitar-multa" method="POST" data-sanction-action-form="remove" class="d-none d-flex justify-content-end gap-2">
                             <%- include('../partials/csrf_field'); %>
@@ -397,6 +456,109 @@
     </div>
 
     <script nonce="<%= cspNonce %>">
+        let activeNameRequestController = null;
+        let activeNameRequestId = 0;
+        let activeNameRetryTimer = null;
+
+        function updateOatiStatus(message) {
+            const statusTarget = document.querySelector('[data-oati-status]');
+            if (!statusTarget) {
+                return;
+            }
+
+            if (message) {
+                statusTarget.textContent = message;
+                statusTarget.classList.remove('d-none');
+                return;
+            }
+
+            statusTarget.textContent = '';
+            statusTarget.classList.add('d-none');
+        }
+
+        function stopActiveNameLookup() {
+            activeNameRequestId += 1;
+            if (activeNameRequestController) {
+                activeNameRequestController.abort();
+                activeNameRequestController = null;
+            }
+            if (activeNameRetryTimer) {
+                clearTimeout(activeNameRetryTimer);
+                activeNameRetryTimer = null;
+            }
+            updateOatiStatus('');
+        }
+
+        function fetchNameWithRetry(requestId, documento, attempt) {
+            const nombreTarget = document.querySelector('[data-detail-field="nombre"]');
+            if (!nombreTarget || requestId !== activeNameRequestId) {
+                return;
+            }
+
+            if (attempt <= 1) {
+                nombreTarget.textContent = 'Cargando...';
+                updateOatiStatus('Consultando OATI...');
+            } else {
+                nombreTarget.textContent = `Cargando... Reintentando (${attempt - 1})`;
+                updateOatiStatus(`Consultando OATI... intento ${attempt}`);
+            }
+
+            activeNameRequestController = new AbortController();
+            const requestController = activeNameRequestController;
+            const timeoutId = setTimeout(function () {
+                requestController.abort();
+            }, 6000);
+
+            fetch(`/milab/api/get_list_multas/resolve_name?documento=${encodeURIComponent(documento)}`, {
+                signal: requestController.signal,
+            })
+                .then((response) => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    if (requestId !== activeNameRequestId) {
+                        return;
+                    }
+
+                    const nombre = data && typeof data.nombre === 'string' ? data.nombre.trim() : '';
+                    if (nombre) {
+                        nombreTarget.textContent = nombre;
+                        updateOatiStatus('');
+                        return;
+                    }
+
+                    throw new Error('Nombre vacio');
+                })
+                .catch(() => {
+                    if (requestId !== activeNameRequestId) {
+                        return;
+                    }
+
+                    activeNameRetryTimer = setTimeout(function () {
+                        if (requestId !== activeNameRequestId) {
+                            return;
+                        }
+                        fetchNameWithRetry(requestId, documento, attempt + 1);
+                    }, Math.min(5000, 1000 * attempt));
+                })
+                .finally(() => {
+                    clearTimeout(timeoutId);
+                    if (activeNameRequestController === requestController) {
+                        activeNameRequestController = null;
+                    }
+                });
+        }
+
+        const detailModal = document.getElementById('detalleSancionModal');
+        if (detailModal) {
+            detailModal.addEventListener('hidden.bs.modal', function () {
+                stopActiveNameLookup();
+            });
+        }
+
         document.addEventListener('click', function (event) {
             const trigger = event.target.closest('.app-detail-button, .app-sanction-action-button');
 
@@ -404,47 +566,41 @@
                 return;
             }
 
+            // Edit/Saldar/Activar buttons can miss detail attributes; reuse row detail button data.
+            const detailSource = trigger.getAttribute('data-sancion-documento')
+                ? trigger
+                : trigger.closest('tr')?.querySelector('.app-detail-button[data-sancion-documento]');
+
+            const source = detailSource || trigger;
+
             const fields = {
-                id: trigger.getAttribute('data-sancion-id'),
-                documento: trigger.getAttribute('data-sancion-documento'),
-                codigo: trigger.getAttribute('data-sancion-codigo'),
-                fecha: trigger.getAttribute('data-sancion-fecha'),
-                estado: trigger.getAttribute('data-sancion-estado'),
-                laboratorista: trigger.getAttribute('data-sancion-laboratorista'),
-                ual: trigger.getAttribute('data-sancion-ual'),
-                categoria: trigger.getAttribute('data-sancion-categoria'),
-                tipo: trigger.getAttribute('data-sancion-tipo'),
-                observaciones: trigger.getAttribute('data-sancion-observaciones'),
+                id: source.getAttribute('data-sancion-id'),
+                documento: source.getAttribute('data-sancion-documento'),
+                codigo: source.getAttribute('data-sancion-codigo'),
+                fecha: source.getAttribute('data-sancion-fecha'),
+                estado: source.getAttribute('data-sancion-estado'),
+                laboratorista: source.getAttribute('data-sancion-laboratorista'),
+                ual: source.getAttribute('data-sancion-ual'),
+                categoria: source.getAttribute('data-sancion-categoria'),
+                tipo: source.getAttribute('data-sancion-tipo'),
+                observaciones: source.getAttribute('data-sancion-observaciones'),
             };
 
-            if (fields.documento !== null) {
-                Object.keys(fields).forEach(function (key) {
-                    const target = document.querySelector(`[data-detail-field="${key}"]`);
-                    if (target) {
-                        target.textContent = fields[key] || '-';
-                    }
-                });
-            }
-
-            const nombreTarget = document.querySelector('[data-detail-field="nombre"]');
-            if (nombreTarget) {
-                nombreTarget.textContent = 'Cargando...';
-            }
+            Object.keys(fields).forEach(function (key) {
+                const target = document.querySelector(`[data-detail-field="${key}"]`);
+                if (target) {
+                    target.textContent = fields[key] || '-';
+                }
+            });
 
             const documento = fields.documento || '';
+            stopActiveNameLookup();
+
             if (documento) {
-                fetch(`/milab/api/get_list_multas/resolve_name?documento=${encodeURIComponent(documento)}`)
-                    .then((response) => response.json())
-                    .then((data) => {
-                        if (nombreTarget) {
-                            nombreTarget.textContent = data && data.nombre ? data.nombre : 'Sin nombre';
-                        }
-                    })
-                    .catch(() => {
-                        if (nombreTarget) {
-                            nombreTarget.textContent = 'Sin nombre';
-                        }
-                    });
+                const currentRequestId = activeNameRequestId;
+                fetchNameWithRetry(currentRequestId, documento, 1);
+            } else {
+                updateOatiStatus('No se pudo consultar OATI: documento no disponible.');
             }
 
             const action = trigger.getAttribute('data-sancion-action') || '';
@@ -462,9 +618,13 @@
                         ? 'Activar sanción'
                         : action === 'saldar'
                           ? 'Saldar sanción pendiente'
-                                                    : action === 'remove'
-                                                        ? 'Saldar sanción directamente'
-                                                        : 'Editar sanción activa';
+                                                    : action === 'defer'
+                                                        ? 'Aplazar sanción activa'
+                                                        : action === 'reactivate'
+                                                            ? 'Reactivar sanción aplazada'
+                                                            : action === 'remove'
+                                                                ? 'Saldar sanción directamente'
+                                                                : 'Editar sanción activa';
             }
 
             actionForms.forEach(function (form) {
