@@ -31,7 +31,9 @@
                             ? ' La sanción se aplazó correctamente.'
                             : successFeedback === 'reactivada'
                                 ? ' La sanción se reactivó correctamente.'
-                                : ' La sanción se activó correctamente.' %>
+                                : successFeedback === 'editada'
+                                    ? ' La sanción se editó correctamente.'
+                                    : ' La sanción se activó correctamente.' %>
                 </div>
             </section>
         <% } %>
@@ -422,6 +424,7 @@
                         <form action="/milab/api/quitar-multa" method="POST" data-sanction-action-form="remove" class="d-none d-flex justify-content-end gap-2">
                             <%- include('../partials/csrf_field'); %>
                             <input type="hidden" name="con_id" data-sanction-action-id>
+                            <input type="hidden" name="source" value="listado">
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Saldar sanción</button>
                         </form>

@@ -47,13 +47,18 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
+  const returnToListFlow = source === 'listado';
   const returnToTeacherFlow = source === 'docente';
-  const successReturnUrl = returnToTeacherFlow
-    ? '/milab/api/get-info-multa-docente/get'
-    : '/milab/api/get-info-multa/get';
-  const successReturnLabel = returnToTeacherFlow
-    ? 'Volver a gestión de sanciones docentes'
-    : 'Volver a gestión de sanciones estudiantiles';
+  const successReturnUrl = returnToListFlow
+    ? '/milab/api/get_list_multas'
+    : returnToTeacherFlow
+      ? '/milab/api/get-info-multa-docente/get'
+      : '/milab/api/get-info-multa/get';
+  const successReturnLabel = returnToListFlow
+    ? 'Volver al listado de sanciones'
+    : returnToTeacherFlow
+      ? 'Volver a gestión de sanciones docentes'
+      : 'Volver a gestión de sanciones estudiantiles';
 
   try {
     // Primero obtenemos la información base y alcance de la multa
@@ -173,6 +178,11 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, documentoReal, accionLog, referenciaSancionado]
     );
+
+    if (returnToListFlow) {
+      const successParam = con_estado_saldado === 'SALDADA' ? '?success=saldada' : '';
+      return res.redirect(`${successReturnUrl}${successParam}`);
+    }
 
     return res.render('home/message_success', {
       message: mensajeSuccess,

@@ -16,7 +16,7 @@ router.use(bp.urlencoded({ extended: true }));
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_FINE_CATEGORY_LENGTH = 500;
 const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'APLAZADA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
-const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada']);
+const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada', 'editada']);
 
 const requireMultasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
@@ -380,12 +380,7 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     );
     client.release();
 
-    return res.render('home/message_success', {
-      message: 'Sanción actualizada correctamente.',
-      message2: `Se actualizaron la categoría y el tipo de sanción #${multaId}.`,
-      returnUrl: '/milab/api/get_list_multas',
-      returnLabel: 'Volver al listado de sanciones',
-    });
+    return res.redirect('/milab/api/get_list_multas?success=editada');
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
