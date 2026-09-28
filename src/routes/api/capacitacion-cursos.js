@@ -289,7 +289,74 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
     console.error('[capacitacion-cursos:/facultades]', error);
     const handled = handleCapacitacionSchemaError(res, error);
     if (handled) return handled;
-    return res.status(500).json({ ok: false, message: 'Error al cargar facultades.' });
+    const errorDetails = {
+      name: error && error.name ? String(error.name) : null,
+      message: error && error.message ? String(error.message) : null,
+      code: error && error.code ? String(error.code) : null,
+      stack:
+        process.env.NODE_ENV === 'production'
+          ? undefined
+          : error && error.stack
+            ? String(error.stack).slice(0, 1500)
+            : undefined,
+    };
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al cargar facultades.',
+      details: process.env.NODE_ENV === 'production' ? undefined : errorDetails,
+      scope_debug: (() => {
+        try {
+          const user = (req && req.session && req.session.user) || null;
+          const roles =
+            (user && user.roles) ||
+            (user && user.rol) ||
+            (user && user.tipo) ||
+            (user && user.role) ||
+            null;
+          return {
+            user_tiene_sesion: !!user,
+            user_documento: user ? user.documento : null,
+            user_roles_raw: Array.isArray(roles)
+              ? roles.slice(0, 10)
+              : roles
+                ? String(roles)
+                : null,
+            scope_is_admin_calc: (function isAdminInline() {
+              try {
+                if (!user) return false;
+                const list = Array.isArray(user.roles)
+                  ? user.roles
+                  : (Array.isArray(user.rol)
+                      ? user.rol
+                      : [user.tipo || user.rol || user.role || '']
+                    ).filter(Boolean);
+                const norm = new Set(
+                  list.map((r) =>
+                    String(r || '')
+                      .trim()
+                      .toLowerCase()
+                      .normalize('NFD')
+                      .replace(/[\u0300-\u036f]/g, '')
+                      .replace(/\s+/g, '_')
+                  )
+                );
+                return [
+                  'admin',
+                  'administrador',
+                  'administradora',
+                  'coordinador_general',
+                  'coordinador_general_laboratorios',
+                ].some((x) => norm.has(x) || Array.from(norm).some((y) => y.indexOf(x) !== -1));
+              } catch {
+                return null;
+              }
+            })(),
+          };
+        } catch {
+          return null;
+        }
+      })(),
+    });
   }
 });
 

@@ -1,59 +1,4 @@
 const pool = require('./db');
-const auth = require('../routes/middlewares/auth');
-const getUserRoles =
-  (auth && typeof auth.getUserRoles === 'function' && auth.getUserRoles) ||
-  function _fallbackGetUserRoles(user) {
-    try {
-      if (!user) return [];
-      if (Array.isArray(user.roles) && user.roles.length > 0) return [...user.roles];
-      if (Array.isArray(user.rol) && user.rol.length > 0) return [...user.rol];
-      if (typeof user.tipo === 'string' && user.tipo.trim()) return [String(user.tipo).trim()];
-      if (typeof user.rol === 'string' && user.rol.trim()) return [String(user.rol).trim()];
-      if (typeof user.role === 'string' && user.role.trim()) return [String(user.role).trim()];
-      return [];
-    } catch {
-      return [];
-    }
-  };
-
-const normalizeRoleListForMatch =
-  (auth &&
-    typeof auth.normalizeRoleListForMatch === 'function' &&
-    auth.normalizeRoleListForMatch) ||
-  function _fallbackNormalize(roles) {
-    const result = new Set();
-    const list = Array.isArray(roles) ? roles : [];
-    for (const raw of list) {
-      const r = String(raw || '')
-        .trim()
-        .toLowerCase();
-      if (!r) continue;
-      result.add(r);
-      const norm = r
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, '_');
-      result.add(norm);
-      if (norm === 'administrador' || norm === 'administradora') result.add('admin');
-      if (norm === 'admin') {
-        result.add('administrador');
-        result.add('administradora');
-      }
-      if (
-        norm.indexOf('coordinador_general') !== -1 ||
-        norm.indexOf('coordinacion_general') !== -1
-      ) {
-        result.add('coordinador_general');
-        result.add('admin');
-      }
-      if (norm === 'laboratorista_ud' || norm === 'laboratorista_ual' || norm === 'laboratorista') {
-        result.add('laboratorista');
-        result.add('laboratorista_ud');
-        result.add('laboratorista_ual');
-      }
-    }
-    return result;
-  };
 
 const ADMIN_ALIASES = [
   'admin',
@@ -68,6 +13,8 @@ const ADMIN_ALIASES = [
   'coordinación',
   'coordinador',
   'coordinadora',
+  'coordinador_facultad',
+  'coordinador de facultad',
 ];
 
 const LAB_TECH_ALIASES = [
@@ -76,26 +23,116 @@ const LAB_TECH_ALIASES = [
   'laboratorista_ual',
   'laboratorista ud',
   'laboratorista ual',
+  'laboratoristaud',
   'técnico laboratorista',
   'tecnico laboratorista',
 ];
 
-function isAdminRole(user) {
-  const userNorm = normalizeRoleListForMatch(getUserRoles(user));
-  if (userNorm.size === 0) return false;
-  for (const alias of ADMIN_ALIASES) {
-    if (userNorm.has(String(alias).toLowerCase())) return true;
+function _normalizeToArray(roles) {
+  try {
+    let list = [];
+    if (Array.isArray(roles)) list = roles;
+    else if (typeof roles === 'string')
+      list = roles
+        .split(',')
+        .map((r) => String(r || '').trim())
+        .filter(Boolean);
+    else if (roles != null) list = [String(roles)];
+    const normalized = [];
+    const seen = new Set();
+    for (const raw of list) {
+      const r = String(raw || '').trim();
+      if (!r) continue;
+      const lower = r.toLowerCase();
+      const ascii = lower
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_');
+      const variants = new Set([lower, ascii]);
+      if (lower === 'coordinador_general') variants.add('coordinador general');
+      if (lower === 'coordinador general') variants.add('coordinador_general');
+      if (
+        lower.indexOf('coordinador_general') !== -1 ||
+        ascii.indexOf('coordinador_general') !== -1 ||
+        lower.indexOf('coordinacion_general') !== -1 ||
+        ascii.indexOf('coordinacion_general') !== -1
+      ) {
+        variants.add('coordinador_general');
+        variants.add('admin');
+      }
+      if (lower === 'coordinador') {
+        variants.add('coordinador_facultad');
+        variants.add('coordinador de facultad');
+      }
+      if (lower === 'coordinador_facultad' || lower === 'coordinador de facultad')
+        variants.add('coordinador');
+      if (lower === 'administrador' || lower === 'administradora') variants.add('admin');
+      if (lower === 'admin') {
+        variants.add('administrador');
+        variants.add('administradora');
+      }
+      if (
+        lower === 'laboratorista_ud' ||
+        lower === 'laboratorista ud' ||
+        lower === 'laboratoristaud' ||
+        lower === 'laboratorista_ual' ||
+        lower === 'laboratorista ual'
+      ) {
+        variants.add('laboratorista');
+      }
+      if (lower === 'laboratorista') variants.add('laboratorista_ud');
+      if (lower === 'estudiante') variants.add('alumno');
+      if (lower === 'alumno') variants.add('estudiante');
+      if (lower === 'docente') variants.add('profesor');
+      if (lower === 'profesor') variants.add('docente');
+      for (const v of variants) {
+        if (!seen.has(v)) {
+          seen.add(v);
+          normalized.push(v);
+        }
+      }
+    }
+    return normalized;
+  } catch (err) {
+    console.warn('[capacitacion-scope:_normalizeToArray] error:', err && err.message);
+    return [];
   }
-  return false;
+}
+
+function _getUserRolesSafe(user) {
+  try {
+    if (!user) return [];
+    if (Array.isArray(user.roles) && user.roles.length > 0) return [...user.roles];
+    if (Array.isArray(user.rol) && user.rol.length > 0) return [...user.rol];
+    if (typeof user.tipo === 'string' && user.tipo.trim()) return [String(user.tipo).trim()];
+    if (typeof user.rol === 'string' && user.rol.trim()) return [String(user.rol).trim()];
+    if (typeof user.role === 'string' && user.role.trim()) return [String(user.role).trim()];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function isAdminRole(user) {
+  try {
+    const userNorm = _normalizeToArray(_getUserRolesSafe(user));
+    const adminNorm = _normalizeToArray(ADMIN_ALIASES);
+    return adminNorm.some((role) => userNorm.includes(role));
+  } catch (err) {
+    console.warn('[capacitacion-scope:isAdminRole] error:', err && err.message);
+    return false;
+  }
 }
 
 function isLaboratoristaRole(user) {
-  const userNorm = normalizeRoleListForMatch(getUserRoles(user));
-  if (userNorm.size === 0) return false;
-  for (const alias of LAB_TECH_ALIASES) {
-    if (userNorm.has(String(alias).toLowerCase())) return true;
+  try {
+    const userNorm = _normalizeToArray(_getUserRolesSafe(user));
+    const labNorm = _normalizeToArray(LAB_TECH_ALIASES);
+    return labNorm.some((role) => userNorm.includes(role));
+  } catch (err) {
+    console.warn('[capacitacion-scope:isLaboratoristaRole] error:', err && err.message);
+    return false;
   }
-  return false;
 }
 
 function getUserDocumento(user) {
