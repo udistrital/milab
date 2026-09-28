@@ -353,12 +353,21 @@
     } else {
       opts.push('<option value="">Todas las facultades</option>');
       var facIds = new Set();
-      state.cursos.forEach(function (c) {
-        if (!Number.isFinite(Number(c.id_facultad))) return;
-        if (facIds.has(Number(c.id_facultad))) return;
-        facIds.add(Number(c.id_facultad));
-        opts.push('<option value="' + c.id_facultad + '">' + escapeHtml(c.nombre_facultad || 'Facultad ' + c.id_facultad) + '</option>');
-      });
+      if (Array.isArray(state.facultades) && state.facultades.length) {
+        state.facultades.forEach(function (f) {
+          if (!Number.isFinite(Number(f.facultad_id))) return;
+          if (facIds.has(Number(f.facultad_id))) return;
+          facIds.add(Number(f.facultad_id));
+          opts.push('<option value="' + f.facultad_id + '">' + escapeHtml(f.nombre || 'Facultad ' + f.facultad_id) + '</option>');
+        });
+      } else {
+        state.cursos.forEach(function (c) {
+          if (!Number.isFinite(Number(c.id_facultad))) return;
+          if (facIds.has(Number(c.id_facultad))) return;
+          facIds.add(Number(c.id_facultad));
+          opts.push('<option value="' + c.id_facultad + '">' + escapeHtml(c.nombre_facultad || 'Facultad ' + c.id_facultad) + '</option>');
+        });
+      }
       sel.disabled = false;
     }
     sel.innerHTML = opts.join('');
@@ -691,6 +700,7 @@
           return;
         }
         state.scope = data.scope || null;
+        state.facultades = Array.isArray(data.facultades) ? data.facultades : [];
         state.cursos = data.cursos || [];
         state.equipos = data.equipos || [];
         state.asociados = data.asociados || [];

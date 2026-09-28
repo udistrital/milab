@@ -100,6 +100,21 @@ async function assertCursoInScope(codigoCurso, scope) {
   return { allowed: true };
 }
 
+async function getScopedFacultades(scope) {
+  if (scope.isAdmin || scope.facultyIds.length === 0) {
+    const result = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
+    return result.rows;
+  }
+  const result = await pool.query(
+    `SELECT facultad_id, nombre
+     FROM facultad
+     WHERE facultad_id = ANY($1::int[])
+     ORDER BY nombre ASC`,
+    [scope.facultyIds]
+  );
+  return result.rows;
+}
+
 async function getScopedCursos(scope) {
   if (scope.isAdmin) {
     const rows = await pool.query(
@@ -218,6 +233,7 @@ router.get('/list', requireEquiposAccess, async function (req, res) {
   try {
     const scope = await resolveLaboratoristaScope(req);
     const cursos = await getScopedCursos(scope);
+    const facultades = await getScopedFacultades(scope);
 
     const codigosPermitidos = cursos.map((c) => c.codigo_curso);
 
@@ -258,6 +274,7 @@ router.get('/list', requireEquiposAccess, async function (req, res) {
     return res.status(200).json({
       ok: true,
       scope,
+      facultades,
       cursos,
       equipos,
       asociados: asociadosQ.rows,

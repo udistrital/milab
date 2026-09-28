@@ -243,15 +243,12 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
     const scope = await resolveLaboratoristaScope(req);
     let result;
     if (scope.isAdmin || scope.facultyIds.length === 0) {
-      result = await pool.query(
-        'SELECT facultad_id, nombre FROM facultad WHERE activo = TRUE ORDER BY nombre ASC'
-      );
+      result = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
     } else {
       result = await pool.query(
         `SELECT facultad_id, nombre
          FROM facultad
-         WHERE activo = TRUE
-           AND facultad_id = ANY($1::int[])
+         WHERE facultad_id = ANY($1::int[])
          ORDER BY nombre ASC`,
         [scope.facultyIds]
       );
@@ -282,11 +279,11 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     }
 
     const facRes = await pool.query(
-      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1 AND activo = TRUE',
+      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1',
       [idFacultad]
     );
     if (facRes.rows.length === 0) {
-      return res.status(404).json({ ok: false, message: 'Facultad no existe o está inactiva.' });
+      return res.status(404).json({ ok: false, message: 'Facultad no existe.' });
     }
 
     let labs;
@@ -298,7 +295,6 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
                 u.activo
          FROM ual u
          WHERE u.facultad_id = $1
-           AND u.activo = TRUE
          ORDER BY u.nombre ASC`,
         [idFacultad]
       );
@@ -310,7 +306,6 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
                 u.activo
          FROM ual u
          WHERE u.facultad_id = $1
-           AND u.activo = TRUE
            AND u.ual_id = ANY($2::int[])
          ORDER BY u.nombre ASC`,
         [idFacultad, scope.ualIds]
