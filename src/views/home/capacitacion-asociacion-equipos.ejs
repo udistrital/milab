@@ -345,10 +345,26 @@
     if (!sel) return;
     sel.innerHTML = '';
     var opts = [];
-    if (scope && !scope.isAdmin && scope.facultades && scope.facultades.length) {
-      scope.facultades.forEach(function (f) {
-        opts.push('<option value="' + f.facultad_id + '" selected>' + escapeHtml(f.nombre) + '</option>');
+    var isAdmin = !!(scope && scope.isAdmin);
+    var scopeFacIds = new Set();
+    if (scope && Array.isArray(scope.facultyIds)) scope.facultyIds.forEach(function (n) { if (Number.isFinite(Number(n))) scopeFacIds.add(Number(n)); });
+    var scopeFacObjects = [];
+    if (scope && Array.isArray(scope.facultades) && scope.facultades.length) {
+      scopeFacObjects = scope.facultades.slice();
+    } else if (scopeFacIds.size && Array.isArray(state.facultades) && state.facultades.length) {
+      scopeFacObjects = state.facultades.filter(function (f) { return Number.isFinite(Number(f.facultad_id)) && scopeFacIds.has(Number(f.facultad_id)); });
+    }
+    if (!isAdmin && scopeFacObjects.length) {
+      scopeFacObjects.forEach(function (f) {
+        opts.push('<option value="' + f.facultad_id + '" selected>' + escapeHtml(f.nombre || ('Facultad ' + f.facultad_id)) + '</option>');
       });
+      if (scopeFacObjects.length === 1) {
+        sel.disabled = true;
+      } else {
+        sel.disabled = false;
+      }
+    } else if (!isAdmin && scopeFacIds.size === 0 && Array.isArray(state.facultades) && state.facultades.length === 0) {
+      opts.push('<option value="" disabled selected>(No tienes UALes asignadas. Contacta administración.)</option>');
       sel.disabled = true;
     } else {
       opts.push('<option value="">Todas las facultades</option>');
@@ -361,7 +377,7 @@
           opts.push('<option value="' + f.facultad_id + '">' + escapeHtml(f.nombre || 'Facultad ' + f.facultad_id) + '</option>');
         });
       } else {
-        state.cursos.forEach(function (c) {
+        (state.cursos || []).forEach(function (c) {
           if (!Number.isFinite(Number(c.id_facultad))) return;
           if (facIds.has(Number(c.id_facultad))) return;
           facIds.add(Number(c.id_facultad));
@@ -690,7 +706,18 @@
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onload = function () {
       var rawText = xhr.responseText || '';
+      var contentType = xhr.getResponseHeader && xhr.getResponseHeader('Content-Type') ? String(xhr.getResponseHeader('Content-Type')) : '';
       try {
+        if (!xhr.status || xhr.status === 0) {
+          throw new Error('Sin respuesta del servidor (error de red).');
+        }
+        if (contentType && contentType.indexOf('application/json') === -1 && (contentType.indexOf('text/html') !== -1 || (rawText || '').trim().indexOf('<') === 0)) {
+          throw new Error(
+            'El servidor respondió con una página HTML (status ' + (xhr.status || 0) + ') en vez de JSON. ' +
+            'Probablemente se está actualizando el despliegue (pods versiones mixtas). ' +
+            'Espere 30 segundos y recargue la página con Ctrl+Shift+R (hard refresh).'
+          );
+        }
         var data = JSON.parse(rawText || '{}');
         if (!data.ok) {
           var matched = renderCapacitacionError(xhr, data, { forSearch: false });
@@ -729,7 +756,7 @@
       } catch (err) {
         var errMsg = err && err.message ? err.message : String(err || 'Error desconocido');
         var preview = rawText && rawText.length > 200 ? rawText.slice(0, 200) + '…' : rawText;
-        console.error('[capacitacion-asociacion] loadAll().onload ERROR:', err, ' | RESPONSE_TEXT_PREVIEW:', preview);
+        console.error('[capacitacion-asociacion] loadAll().onload ERROR:', err, ' | RESPONSE_TEXT_PREVIEW:', preview, ' | Content-Type:', contentType);
         var matched2 = renderCapacitacionError(xhr, null, { forSearch: false });
         if (!matched2) {
           setAlert(
