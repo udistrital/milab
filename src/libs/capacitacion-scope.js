@@ -3,12 +3,12 @@ const { getUserRoles } = require('../routes/middlewares/auth');
 
 function isAdminRole(user) {
   const roles = getUserRoles(user).map((r) => String(r).toLowerCase());
-  return roles.includes('admin');
+  return roles.some((r) => ['admin', 'administrador'].includes(r));
 }
 
 function isLaboratoristaRole(user) {
   const roles = getUserRoles(user).map((r) => String(r).toLowerCase());
-  return roles.includes('laboratorista');
+  return roles.some((r) => ['laboratorista', 'laboratorista_ud'].includes(r));
 }
 
 function getUserDocumento(user) {

@@ -56,12 +56,37 @@ function getUserRoles(user) {
   return [];
 }
 
+function normalizeRoleListForMatch(roles) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const normalized = new Set();
+  for (const raw of list) {
+    const r = String(raw || '').trim();
+    if (!r) continue;
+    const lower = r.toLowerCase();
+    normalized.add(lower);
+    if (lower === 'administrador') normalized.add('admin');
+    if (lower === 'admin') normalized.add('administrador');
+    if (lower === 'laboratorista_ud' || lower === 'laboratorista ud')
+      normalized.add('laboratorista');
+    if (lower === 'laboratorista') normalized.add('laboratorista_ud');
+  }
+  return Array.from(normalized);
+}
+
 function isAdminOnlyRoleSet(roles) {
-  return Array.isArray(roles) && roles.length === 1 && roles[0] === 'admin';
+  const normalized = normalizeRoleListForMatch(roles);
+  return Array.isArray(roles) && roles.length === 1 && normalized.includes('admin');
 }
 
 function hasCoordinadorGeneralRole(userRoles) {
-  return Array.isArray(userRoles) && userRoles.includes('coordinador_general');
+  const normalized = normalizeRoleListForMatch(userRoles);
+  return normalized.includes('coordinador_general');
+}
+
+function hasAllowedRole(userRoles, allowedRoles) {
+  const userNorm = normalizeRoleListForMatch(userRoles);
+  const allowedNorm = normalizeRoleListForMatch(allowedRoles);
+  return allowedNorm.some((role) => userNorm.includes(role));
 }
 
 function isReadOnlyRequestMethod(method) {
@@ -103,7 +128,7 @@ function requireRoles(roles, overrides = {}) {
       return next();
     }
 
-    if (!user || !allowedRoles.some((role) => userRoles.includes(role))) {
+    if (!user || !hasAllowedRole(userRoles, allowedRoles)) {
       return renderAuthError(res, overrides);
     }
 
@@ -145,7 +170,7 @@ function requireJsonRoles(roles, overrides = {}) {
       return next();
     }
 
-    if (!allowedRoles.some((role) => userRoles.includes(role))) {
+    if (!hasAllowedRole(userRoles, allowedRoles)) {
       return res.status(403).json({
         ok: false,
         message,

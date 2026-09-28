@@ -42,9 +42,12 @@ function handleCapacitacionSchemaError(res, error) {
   return null;
 }
 
-const requireEquiposAccess = requireJsonRoles(['admin', 'laboratorista'], {
-  message: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
-});
+const requireEquiposAccess = requireJsonRoles(
+  ['admin', 'administrador', 'laboratorista', 'laboratorista_ud'],
+  {
+    message: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
+  }
+);
 
 function getLogActorDocument(req) {
   return normalizeLogDocument(req.session?.user?.documento);
