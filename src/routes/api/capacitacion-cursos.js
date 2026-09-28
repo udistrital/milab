@@ -43,10 +43,13 @@ function handleCapacitacionSchemaError(res, error) {
   return null;
 }
 
-const requireCursosRead = requireJsonRoles(['admin', 'laboratorista'], {
-  message: 'No tiene permisos para consultar el catálogo de cursos.',
-});
-const requireCursosWrite = requireJsonRoles(['admin'], {
+const requireCursosRead = requireJsonRoles(
+  ['admin', 'administrador', 'laboratorista', 'laboratorista_ud'],
+  {
+    message: 'No tiene permisos para consultar el catálogo de cursos.',
+  }
+);
+const requireCursosWrite = requireJsonRoles(['admin', 'administrador'], {
   message: 'Solo los administradores pueden crear, editar o eliminar cursos.',
 });
 const requireMisCursosRole = requireJsonRoles(['estudiante', 'docente'], {
@@ -242,9 +245,12 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
   try {
     const scope = await resolveLaboratoristaScope(req);
     let result;
+    let sqlWhereDescription = '';
     if (scope.isAdmin || scope.facultyIds.length === 0) {
+      sqlWhereDescription = 'SCOPE_IS_ADMIN_OR_NO_FACULTIES → sin filtro WHERE';
       result = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
     } else {
+      sqlWhereDescription = 'SCOPE_LABORATORISTA → WHERE facultad_id = ANY($1::int[])';
       result = await pool.query(
         `SELECT facultad_id, nombre
          FROM facultad
@@ -253,7 +259,18 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
         [scope.facultyIds]
       );
     }
-    return res.status(200).json({ ok: true, facultades: result.rows, scope });
+    return res.status(200).json({
+      ok: true,
+      facultades: result.rows,
+      scope,
+      meta: {
+        row_count: result.rows.length,
+        scope_is_admin: scope.isAdmin,
+        scope_faculty_ids: scope.facultyIds,
+        scope_resolved_from: scope.resolvedFrom,
+        sql_where: sqlWhereDescription,
+      },
+    });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades]', error);
     const handled = handleCapacitacionSchemaError(res, error);
@@ -287,7 +304,9 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     }
 
     let labs;
+    let sqlWhereLab = '';
     if (scope.isAdmin || scope.ualIds.length === 0) {
+      sqlWhereLab = 'SCOPE_IS_ADMIN_OR_NO_LABS → WHERE u.facultad_id = $1 sin scope filter';
       labs = await pool.query(
         `SELECT u.ual_id AS id_laboratorio,
                 u.nombre,
@@ -299,6 +318,7 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
         [idFacultad]
       );
     } else {
+      sqlWhereLab = 'SCOPE_LABORATORISTA → WHERE u.facultad_id=$1 AND ual_id=ANY($2)';
       labs = await pool.query(
         `SELECT u.ual_id AS id_laboratorio,
                 u.nombre,
@@ -316,6 +336,13 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
       facultad: facRes.rows[0],
       laboratorios: labs.rows,
       scope,
+      meta: {
+        row_count: labs.rows.length,
+        scope_is_admin: scope.isAdmin,
+        scope_ual_ids: scope.ualIds,
+        scope_resolved_from: scope.resolvedFrom,
+        sql_where_labs: sqlWhereLab,
+      },
     });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades/:id/laboratorios]', error);

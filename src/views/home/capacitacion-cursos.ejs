@@ -259,12 +259,38 @@
     try {
       const data = await apiFetch('/facultades', { method: 'GET' });
       state.facultades = Array.isArray(data.facultades) ? data.facultades : [];
+      const meta = data && data.meta && typeof data.meta === 'object' ? data.meta : null;
+      if (meta) {
+        console.debug('[capacitacion-cursos] cargarFacultades META TRAZABILIDAD:', {
+          row_count: meta.row_count,
+          scope_is_admin: meta.scope_is_admin,
+          scope_faculty_ids: meta.scope_faculty_ids,
+          scope_resolved_from: meta.scope_resolved_from,
+          sql_where: meta.sql_where,
+        });
+      }
       const select = $('#id_facultad');
       if (!select) return;
       select.innerHTML = '';
       const empty = document.createElement('option');
       empty.value = '';
-      empty.textContent = state.facultades.length ? 'Seleccione una facultad' : 'No hay facultades activas';
+      if (state.facultades.length) {
+        empty.textContent = 'Seleccione una facultad';
+      } else {
+        const hint = [];
+        if (meta) {
+          hint.push(
+            'scope=' + (meta.scope_is_admin ? 'ADMIN' : 'NO-ADMIN'),
+            'from=' + (meta.scope_resolved_from || '?'),
+            'rows=' + (typeof meta.row_count === 'number' ? String(meta.row_count) : '?'),
+            'where=' + (meta.sql_where || '?')
+          );
+        }
+        empty.textContent =
+          'No hay facultades activas (' +
+          (hint.length ? hint.join(' | ') : 'sin datos de trazabilidad, revisa consola') +
+          ')';
+      }
       empty.disabled = true;
       empty.selected = true;
       select.appendChild(empty);
