@@ -3,17 +3,34 @@ const { requireRoles } = require('../middlewares/auth');
 
 const router = express.Router();
 
-const requireCapacitacionCursosView = requireRoles(['admin'], {
-  message: 'Acceso denegado',
-  message2: 'Solo los administradores pueden gestionar los cursos de capacitación.',
-  limit: 'loginOnly',
-});
+const requireCapacitacionCursosView = requireRoles(
+  ['admin', 'administrador', 'administradora', 'coordinador_general', 'coordinador general'],
+  {
+    message: 'Acceso denegado',
+    message2:
+      'Solo los administradores o coordinación general pueden gestionar los cursos de capacitación.',
+    limit: 'loginOnly',
+  }
+);
 
-const requireCapacitacionEquiposView = requireRoles(['admin', 'laboratorista'], {
-  message: 'Acceso denegado',
-  message2: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
-  limit: 'loginOnly',
-});
+const requireCapacitacionEquiposView = requireRoles(
+  [
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador_general',
+    'coordinador general',
+    'coordinador',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+  ],
+  {
+    message: 'Acceso denegado',
+    message2: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
+    limit: 'loginOnly',
+  }
+);
 
 function getAuthenticatedHomePath(user) {
   return user?.tipo ? '/milab/inicio' : null;

@@ -43,9 +43,20 @@ function handleCapacitacionSchemaError(res, error) {
 }
 
 const requireEquiposAccess = requireJsonRoles(
-  ['admin', 'administrador', 'laboratorista', 'laboratorista_ud'],
+  [
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador_general',
+    'coordinador general',
+    'coordinador',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+  ],
   {
-    message: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
+    message:
+      'No tiene permisos para gestionar la asociación de cursos de capacitación con equipos especializados.',
   }
 );
 

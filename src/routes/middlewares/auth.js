@@ -88,6 +88,14 @@ function normalizeRoleListForMatch(roles) {
       if (!r) continue;
       const lower = r.toLowerCase();
       normalized.add(lower);
+      if (lower === 'coordinador_general') normalized.add('coordinador general');
+      if (lower === 'coordinador general') normalized.add('coordinador_general');
+      if (lower === 'coordinador') {
+        normalized.add('coordinador_facultad');
+        normalized.add('coordinador de facultad');
+      }
+      if (lower === 'coordinador_facultad' || lower === 'coordinador de facultad')
+        normalized.add('coordinador');
       if (lower === 'administrador' || lower === 'administradora') normalized.add('admin');
       if (lower === 'admin') {
         normalized.add('administrador');
@@ -106,8 +114,6 @@ function normalizeRoleListForMatch(roles) {
       if (lower === 'alumno') normalized.add('estudiante');
       if (lower === 'docente') normalized.add('profesor');
       if (lower === 'profesor') normalized.add('docente');
-      if (lower === 'coordinador_general') normalized.add('coordinador general');
-      if (lower === 'coordinador general') normalized.add('coordinador_general');
     }
     return Array.from(normalized);
   } catch (err) {
