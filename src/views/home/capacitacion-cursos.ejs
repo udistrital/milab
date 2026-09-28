@@ -256,22 +256,33 @@
   }
 
   async function cargarFacultades() {
-    const data = await apiFetch('/facultades', { method: 'GET' });
-    state.facultades = data.facultades || [];
-    const select = $('#id_facultad');
-    if (!select) return;
-    select.innerHTML = '';
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = state.facultades.length ? 'Seleccione una facultad' : 'No hay facultades activas';
-    empty.disabled = true;
-    empty.selected = true;
-    select.appendChild(empty);
-    for (const f of state.facultades) {
-      const opt = document.createElement('option');
-      opt.value = String(f.facultad_id);
-      opt.textContent = `${escapeHtml(f.nombre)} (${f.facultad_id})`;
-      select.appendChild(opt);
+    try {
+      const data = await apiFetch('/facultades', { method: 'GET' });
+      state.facultades = Array.isArray(data.facultades) ? data.facultades : [];
+      const select = $('#id_facultad');
+      if (!select) return;
+      select.innerHTML = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = state.facultades.length ? 'Seleccione una facultad' : 'No hay facultades activas';
+      empty.disabled = true;
+      empty.selected = true;
+      select.appendChild(empty);
+      for (const f of state.facultades) {
+        if (!f || typeof f !== 'object') continue;
+        const opt = document.createElement('option');
+        opt.value = String(f.facultad_id ?? '');
+        opt.textContent = `${escapeHtml(f.nombre || '')} (${f.facultad_id ?? ''})`;
+        select.appendChild(opt);
+      }
+    } catch (err) {
+      console.error('[capacitacion-cursos] cargarFacultades ERROR:', err);
+      state.facultades = [];
+      mostrarMensaje(
+        'warning',
+        'No se pudo cargar el catálogo de facultades',
+        (err && err.message ? err.message : String(err || 'Error desconocido')) + ' (revisa la consola)'
+      );
     }
   }
 
@@ -281,16 +292,18 @@
       return;
     }
     if (state.laboratoriosPorFacultad.has(idFacultad)) {
-      renderSelectorLaboratorios(state.laboratoriosPorFacultad.get(idFacultad));
+      renderSelectorLaboratorios(state.laboratoriosPorFacultad.get(idFacultad) || []);
       return;
     }
     try {
       const data = await apiFetch(`/facultades/${encodeURIComponent(idFacultad)}/laboratorios`);
-      state.laboratoriosPorFacultad.set(idFacultad, data.laboratorios || []);
-      renderSelectorLaboratorios(data.laboratorios || []);
+      state.laboratoriosPorFacultad.set(idFacultad, Array.isArray(data.laboratorios) ? data.laboratorios : []);
+      renderSelectorLaboratorios(Array.isArray(data.laboratorios) ? data.laboratorios : []);
     } catch (err) {
-      mostrarMensaje('danger', 'Error al cargar laboratorios', err.message);
-      renderSelectorLaboratorios([], err.message);
+      console.error('[capacitacion-cursos] cargarLaboratoriosPorFacultad ERROR:', err);
+      const message = err && err.message ? err.message : String(err || 'Error desconocido');
+      mostrarMensaje('danger', 'Error al cargar laboratorios', message);
+      renderSelectorLaboratorios([], 'Error al cargar laboratorios: ' + message);
     }
   }
 
@@ -465,73 +478,114 @@
   async function cargarCursos() {
     try {
       const data = await apiFetch('/list');
-      state.cursos = data.cursos || [];
-      renderTablaCursos();
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        state.cursos = Array.isArray(data.cursos) ? data.cursos : [];
+      } else {
+        state.cursos = [];
+      }
+      try {
+        renderTablaCursos();
+      } catch (renderErr) {
+        console.error('[capacitacion-cursos] cargarCursos.renderTablaCursos INNER ERROR:', renderErr);
+        state.cursos = [];
+        renderTablaCursos(
+          'Error al renderizar la tabla: ' +
+          (renderErr && renderErr.message ? renderErr.message : String(renderErr || 'Error desconocido'))
+        );
+      }
     } catch (err) {
+      console.error('[capacitacion-cursos] cargarCursos FETCH ERROR:', err);
       state.cursos = [];
-      renderTablaCursos(err.message);
+      try {
+        renderTablaCursos(err && err.message ? err.message : String(err || 'Error desconocido'));
+      } catch (_) {
+        mostrarMensaje(
+          'danger',
+          'Error al cargar cursos',
+          (err && err.message ? err.message : String(err || 'Error desconocido')) + ' (revisa la consola)'
+        );
+      }
     }
   }
 
   function renderTablaCursos(errorMsg) {
     const body = $('#tbl-cursos-body');
     const contador = $('#contador-cursos');
-    if (!body) return;
+    if (!body) {
+      const err = '⚠️ No se encontró el elemento HTML #tbl-cursos-body en el DOM. Revise si el template está renderizando completo.';
+      console.error('[capacitacion-cursos] renderTablaCursos FATAL:', err);
+      mostrarMensaje('danger', 'Error render tabla', err);
+      return;
+    }
     body.innerHTML = '';
-    if (errorMsg) {
-      body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-2 d-block mb-2"></i>${escapeHtml(errorMsg)}</td></tr>`;
-      if (contador) contador.textContent = '0';
-      return;
+    try {
+      if (errorMsg) {
+        body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-2 d-block mb-2"></i>${escapeHtml(errorMsg)}</td></tr>`;
+        if (contador) contador.textContent = '0';
+        return;
+      }
+      const q = state.filtroBusqueda.trim().toLowerCase();
+      const cursosFiltrados = q
+        ? state.cursos.filter((c) => {
+            const needle = `${(c && c.codigo_curso) || ''} ${(c && c.nombre_curso) || ''} ${(c && c.nombre_facultad) || ''}`.toLowerCase();
+            return needle.includes(q);
+          })
+        : state.cursos;
+      if (cursosFiltrados.length === 0) {
+        const mensaje = state.cursos.length === 0
+          ? 'Aún no hay cursos registrados. Haga clic en "Nuevo curso" para empezar.'
+          : 'No hay cursos que coincidan con el filtro de búsqueda.';
+        body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-muted"><i class="bi bi-inbox fs-2 d-block mb-2" style="color:#f0aa00;"></i>${escapeHtml(mensaje)}</td></tr>`;
+        if (contador) contador.textContent = String(state.cursos.length);
+        return;
+      }
+      for (const c of cursosFiltrados) {
+        if (!c || typeof c !== 'object') continue;
+        const tr = document.createElement('tr');
+        let labsRaw = [];
+        try {
+          if (Array.isArray(c.laboratorios_nombres)) labsRaw = c.laboratorios_nombres;
+          else if (typeof c.laboratorios_nombres === 'string' && c.laboratorios_nombres.trim().length > 0) {
+            try { labsRaw = JSON.parse(c.laboratorios_nombres); } catch (_e) { labsRaw = []; }
+            if (!Array.isArray(labsRaw)) labsRaw = [];
+          } else labsRaw = [];
+        } catch (_e) { labsRaw = []; }
+        const labsNombres = labsRaw
+          .map((x) => escapeHtml((x && x.nombre) || ''))
+          .filter((s) => s.length)
+          .join(', ');
+        const estadoBadge = c.activo
+          ? '<span class="badge text-bg-success border border-success-subtle">Activo</span>'
+          : '<span class="badge text-bg-secondary border border-secondary-subtle">Inactivo</span>';
+        const edxLink = c.url_edx
+          ? `<a href="${escapeHtml(c.url_edx)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" title="${escapeHtml(c.url_edx)}">Abrir EDX <i class="bi bi-box-arrow-up-right"></i></a>`
+          : '<span class="text-muted small">—</span>';
+        const acciones = !isAdmin
+          ? `<span class="text-muted small">Solo lectura</span>`
+          : `<div class="d-flex gap-2 flex-wrap">
+               <button class="btn btn-sm btn-outline-secondary btn-editar" data-codigo="${escapeHtml(c.codigo_curso || '')}" title="Editar curso"><i class="bi bi-pencil-square"></i> Editar</button>
+               ${c.activo
+                  ? `<button class="btn btn-sm btn-outline-warning btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso || '')}" data-activo="false" title="Inactivar curso" style="color:#b45309;border-color:#f0aa00;"><i class="bi bi-toggle-on"></i> Inactivar</button>`
+                  : `<button class="btn btn-sm btn-outline-success btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso || '')}" data-activo="true" title="Activar curso"><i class="bi bi-toggle-off"></i> Activar</button>`}
+             </div>`;
+        tr.innerHTML =
+          `<td><code style="font-size:0.85rem;color:#b45309;">${escapeHtml(c.codigo_curso || '')}</code></td>` +
+          `<td><strong>${escapeHtml(c.nombre_curso || '')}</strong></td>` +
+          `<td>${escapeHtml(c.nombre_facultad || '')}</td>` +
+          `<td>${edxLink}</td>` +
+          `<td>
+             <span class="badge rounded-pill text-bg-light border mb-1">${Number(c.cantidad_laboratorios || 0)} lab(s)</span>
+             ${labsNombres ? `<div class="small text-muted">${labsNombres}</div>` : '<div class="small text-muted">Sin asociaciones</div>'}
+           </td>` +
+          `<td>${estadoBadge}</td>` +
+          `<td>${acciones}</td>`;
+        body.appendChild(tr);
+      }
+      if (contador) contador.textContent = String(cursosFiltrados.length) + (state.cursos.length !== cursosFiltrados.length ? ` / ${state.cursos.length}` : '');
+    } catch (innerErr) {
+      console.error('[capacitacion-cursos] renderTablaCursos INNER EXCEPTION:', innerErr);
+      body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-2 d-block mb-2"></i>Error interno al renderizar: ${escapeHtml(innerErr && innerErr.message ? innerErr.message : String(innerErr || 'Error desconocido'))}</td></tr>`;
     }
-    const q = state.filtroBusqueda.trim().toLowerCase();
-    const cursosFiltrados = q
-      ? state.cursos.filter((c) => {
-          const needle = `${c.codigo_curso} ${c.nombre_curso} ${c.nombre_facultad || ''}`.toLowerCase();
-          return needle.includes(q);
-        })
-      : state.cursos;
-    if (cursosFiltrados.length === 0) {
-      const mensaje = state.cursos.length === 0
-        ? 'Aún no hay cursos registrados. Haga clic en "Nuevo curso" para empezar.'
-        : 'No hay cursos que coincidan con el filtro de búsqueda.';
-      body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-muted"><i class="bi bi-inbox fs-2 d-block mb-2" style="color:#f0aa00;"></i>${escapeHtml(mensaje)}</td></tr>`;
-      if (contador) contador.textContent = String(state.cursos.length);
-      return;
-    }
-    for (const c of cursosFiltrados) {
-      const tr = document.createElement('tr');
-      const labsNombres = (Array.isArray(c.laboratorios_nombres) ? c.laboratorios_nombres : [])
-        .map((x) => escapeHtml((x && x.nombre) || ''))
-        .filter((s) => s.length)
-        .join(', ');
-      const estadoBadge = c.activo
-        ? '<span class="badge text-bg-success border border-success-subtle">Activo</span>'
-        : '<span class="badge text-bg-secondary border border-secondary-subtle">Inactivo</span>';
-      const edxLink = c.url_edx
-        ? `<a href="${escapeHtml(c.url_edx)}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none" title="${escapeHtml(c.url_edx)}">Abrir EDX <i class="bi bi-box-arrow-up-right"></i></a>`
-        : '<span class="text-muted small">—</span>';
-      const acciones = !isAdmin
-        ? `<span class="text-muted small">Solo lectura</span>`
-        : `<div class="d-flex gap-2 flex-wrap">
-             <button class="btn btn-sm btn-outline-secondary btn-editar" data-codigo="${escapeHtml(c.codigo_curso)}" title="Editar curso"><i class="bi bi-pencil-square"></i> Editar</button>
-             ${c.activo
-                ? `<button class="btn btn-sm btn-outline-warning btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso)}" data-activo="false" title="Inactivar curso" style="color:#b45309;border-color:#f0aa00;"><i class="bi bi-toggle-on"></i> Inactivar</button>`
-                : `<button class="btn btn-sm btn-outline-success btn-cambiar-estado" data-codigo="${escapeHtml(c.codigo_curso)}" data-activo="true" title="Activar curso"><i class="bi bi-toggle-off"></i> Activar</button>`}
-           </div>`;
-      tr.innerHTML =
-        `<td><code style="font-size:0.85rem;color:#b45309;">${escapeHtml(c.codigo_curso)}</code></td>` +
-        `<td><strong>${escapeHtml(c.nombre_curso)}</strong></td>` +
-        `<td>${escapeHtml(c.nombre_facultad || '')}</td>` +
-        `<td>${edxLink}</td>` +
-        `<td>
-           <span class="badge rounded-pill text-bg-light border mb-1">${Number(c.cantidad_laboratorios || 0)} lab(s)</span>
-           ${labsNombres ? `<div class="small text-muted">${labsNombres}</div>` : '<div class="small text-muted">Sin asociaciones</div>'}
-         </td>` +
-        `<td>${estadoBadge}</td>` +
-        `<td>${acciones}</td>`;
-      body.appendChild(tr);
-    }
-    if (contador) contador.textContent = String(cursosFiltrados.length) + (state.cursos.length !== cursosFiltrados.length ? ` / ${state.cursos.length}` : '');
   }
 
   async function cambiarEstadoCurso(codigoCurso, activo) {
@@ -603,18 +657,46 @@
   }
 
   async function init() {
-    wireInteracciones();
-    if (isAdmin) {
-      try {
-        await cargarFacultades();
-      } catch (err) {
-        mostrarMensaje('warning', 'No se pudo cargar el catálogo de facultades', err.message);
-      }
-    }
     try {
-      await cargarCursos();
-    } catch (err) {
-      mostrarMensaje('warning', 'Error cargando cursos', err.message);
+      wireInteracciones();
+      if (isAdmin) {
+        try {
+          await cargarFacultades();
+        } catch (err) {
+          console.error('[capacitacion-cursos] init.cargarFacultades ERROR (swallow):', err);
+          mostrarMensaje(
+            'warning',
+            'No se pudo cargar el catálogo de facultades',
+            (err && err.message ? err.message : String(err || 'Error desconocido'))
+          );
+        }
+      }
+      try {
+        await cargarCursos();
+      } catch (err) {
+        console.error('[capacitacion-cursos] init.cargarCursos ERROR (swallow):', err);
+        mostrarMensaje(
+          'warning',
+          'Error cargando cursos',
+          (err && err.message ? err.message : String(err || 'Error desconocido'))
+        );
+      }
+    } catch (globalErr) {
+      console.error('[capacitacion-cursos] init FATAL GLOBAL ERROR:', globalErr);
+      try {
+        mostrarMensaje(
+          'danger',
+          'Error al inicializar la pantalla',
+          (globalErr && globalErr.message ? globalErr.message : String(globalErr || 'Error desconocido')) + ' (revisa la consola para ver el stack completo)'
+        );
+      } catch (_) {
+        try {
+          const body = $('#tbl-cursos-body');
+          if (body) {
+            body.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger"><i class="bi bi-x-circle fs-2 d-block mb-2"></i>Error fatal al inicializar: ${escapeHtml(globalErr && globalErr.message ? globalErr.message : String(globalErr || 'Error desconocido'))}</td></tr>`;
+          }
+        } catch (__) {}
+      }
     }
   }
 
