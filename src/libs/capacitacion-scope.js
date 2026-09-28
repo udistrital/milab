@@ -1,14 +1,47 @@
 const pool = require('./db');
-const { getUserRoles } = require('../routes/middlewares/auth');
+const { getUserRoles, normalizeRoleListForMatch } = require('../routes/middlewares/auth');
+
+const ADMIN_ALIASES = [
+  'admin',
+  'administrador',
+  'administradora',
+  'coordinador_general',
+  'coordinador general',
+  'coordinador_general_laboratorios',
+  'coordinacion general',
+  'coordinación general',
+  'coordinacion',
+  'coordinación',
+  'coordinador',
+  'coordinadora',
+];
+
+const LAB_TECH_ALIASES = [
+  'laboratorista',
+  'laboratorista_ud',
+  'laboratorista_ual',
+  'laboratorista ud',
+  'laboratorista ual',
+  'técnico laboratorista',
+  'tecnico laboratorista',
+];
 
 function isAdminRole(user) {
-  const roles = getUserRoles(user).map((r) => String(r).toLowerCase());
-  return roles.some((r) => ['admin', 'administrador'].includes(r));
+  const userNorm = normalizeRoleListForMatch(getUserRoles(user));
+  if (userNorm.size === 0) return false;
+  for (const alias of ADMIN_ALIASES) {
+    if (userNorm.has(String(alias).toLowerCase())) return true;
+  }
+  return false;
 }
 
 function isLaboratoristaRole(user) {
-  const roles = getUserRoles(user).map((r) => String(r).toLowerCase());
-  return roles.some((r) => ['laboratorista', 'laboratorista_ud'].includes(r));
+  const userNorm = normalizeRoleListForMatch(getUserRoles(user));
+  if (userNorm.size === 0) return false;
+  for (const alias of LAB_TECH_ALIASES) {
+    if (userNorm.has(String(alias).toLowerCase())) return true;
+  }
+  return false;
 }
 
 function getUserDocumento(user) {
