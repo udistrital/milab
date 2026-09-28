@@ -10,6 +10,38 @@ const router = express.Router();
 router.use(express.json({ limit: '256kb' }));
 router.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
+const CAPACITACION_SCHEMA_MISSING_MESSAGE =
+  'Falta aplicar la migración del módulo de Capacitación en la base de datos. ' +
+  'Ejecutar el script sql-scripts/db_structure_certificacion.sql para crear ' +
+  'las tablas cursos, curso_laboratorio y equipo_especializado.';
+
+function isCapacitacionSchemaMissingError(error) {
+  if (!error) return false;
+  if (error.code === '42P01') {
+    const msg = String(error.message || '').toLowerCase();
+    return (
+      msg.includes('equipo_especializado') ||
+      msg.includes('curso_laboratorio') ||
+      msg.includes('cursos') ||
+      msg.includes('laboratorista_ual')
+    );
+  }
+  return false;
+}
+
+function handleCapacitacionSchemaError(res, error) {
+  if (isCapacitacionSchemaMissingError(error)) {
+    return res.status(503).json({
+      ok: false,
+      error_servicio: true,
+      migration_faltante: true,
+      message: CAPACITACION_SCHEMA_MISSING_MESSAGE,
+      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+    });
+  }
+  return null;
+}
+
 const requireEquiposAccess = requireJsonRoles(['admin', 'laboratorista'], {
   message: 'No tiene permisos para gestionar la asociación de cursos con equipos.',
 });
@@ -176,6 +208,8 @@ router.get('/equipos/search', requireEquiposAccess, async function (req, res) {
     });
   } catch (error) {
     console.error('[capacitacion-equipos:/equipos/search]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al buscar equipos.' });
   }
 });
@@ -230,6 +264,8 @@ router.get('/list', requireEquiposAccess, async function (req, res) {
     });
   } catch (error) {
     console.error('[capacitacion-equipos:/list]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res
       .status(500)
       .json({ ok: false, message: 'Error al cargar la asociación de cursos con equipos.' });
@@ -343,6 +379,8 @@ router.post('/asociar', requireEquiposAccess, async function (req, res) {
       /* no-op */
     }
     console.error('[capacitacion-equipos:/asociar]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     const code = String(error.code || '');
     const constraint = String(error.constraint || '');
     if (code === '23503') {
@@ -447,6 +485,8 @@ router.post('/retirar', requireEquiposAccess, async function (req, res) {
       /* no-op */
     }
     console.error('[capacitacion-equipos:/retirar]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res
       .status(500)
       .json({ ok: false, message: 'No se pudo retirar el equipo. Inténtelo nuevamente.' });

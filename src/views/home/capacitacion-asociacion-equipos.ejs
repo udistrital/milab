@@ -544,7 +544,10 @@
         var data = JSON.parse(xhr.responseText || '{}');
         if (!data.ok) {
           state.busqueda.resultados = [];
-          setBusquedaAlert('Error: ' + (data.message || 'No se pudo buscar.'), 'danger');
+          var matched = renderCapacitacionError(xhr, data, { forSearch: true });
+          if (!matched) {
+            setBusquedaAlert('Error: ' + (data.message || 'No se pudo buscar.'), 'danger');
+          }
           renderCoincidencias();
           return;
         }
@@ -559,8 +562,13 @@
         }
         renderCoincidencias();
       } catch (err) {
+        var errMsg = err && err.message ? err.message : String(err || 'Error desconocido');
+        console.error('[capacitacion-asociacion] buscarClick().onload ERROR parseando resultados:', err);
         state.busqueda.resultados = [];
-        setBusquedaAlert('Ocurrió un error al procesar los resultados.', 'danger');
+        var matched2 = renderCapacitacionError(xhr, null, { forSearch: true });
+        if (!matched2) {
+          setBusquedaAlert('Ocurrió un error al procesar los resultados. Detalle: ' + escapeHtml(errMsg), 'danger');
+        }
         renderCoincidencias();
       }
     };
@@ -607,8 +615,12 @@
             var tAll = document.getElementById('checkTodosCoincidencias');
             if (tAll) tAll.checked = false;
           } else {
-            setAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
-            setBusquedaAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+            var matched = renderCapacitacionError(xhr, data, { forSearch: false });
+            renderCapacitacionError(xhr, data, { forSearch: true });
+            if (!matched) {
+              setAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+              setBusquedaAlert('Error: ' + (data.message || 'No se pudo asignar.'), 'danger');
+            }
           }
         } finally {
           window.MiLabSubmitLock.release(btn);
@@ -632,16 +644,50 @@
     }
   }
 
+  function renderCapacitacionError(xhr, dataOrNull, { forSearch = false } = {}) {
+    var status = xhr && xhr.status ? xhr.status : 0;
+    var data = dataOrNull || {};
+    var target = forSearch ? setBusquedaAlert : setAlert;
+
+    if (data.migration_faltante || status === 503) {
+      var scriptName = data.script_requerido || 'sql-scripts/db_structure_certificacion.sql';
+      var msg =
+        '⚠️ Falta aplicar la migración de Base de Datos del módulo Capacitación. ' +
+        'Ejecutar en TEST el script ' + scriptName + ' para crear las tablas ' +
+        'cursos, curso_laboratorio y equipo_especializado. ' +
+        (data.message ? ' Detalle: ' + data.message : '');
+      target(msg, 'warning');
+      return true;
+    }
+    if (status === 403) {
+      target(
+        '⛔ No autorizado: ' +
+          (data.message || 'No tiene permisos o el curso no pertenece a sus facultades/laboratorios autorizados.'),
+        'danger'
+      );
+      return true;
+    }
+    if (status === 401) {
+      target('🔐 Sesión expirada. Cierre sesión e ingrese nuevamente.', 'danger');
+      return true;
+    }
+    return false;
+  }
+
   function loadAll() {
     setAlert('Cargando listado de cursos y equipos…', 'info');
     var xhr = new XMLHttpRequest();
     xhr.open('GET', api.list, true);
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onload = function () {
+      var rawText = xhr.responseText || '';
       try {
-        var data = JSON.parse(xhr.responseText || '{}');
+        var data = JSON.parse(rawText || '{}');
         if (!data.ok) {
-          setAlert('Error: ' + (data.message || 'No se pudo cargar la información.'), 'danger');
+          var matched = renderCapacitacionError(xhr, data, { forSearch: false });
+          if (!matched) {
+            setAlert('Error: ' + (data.message || 'No se pudo cargar la información.'), 'danger');
+          }
           return;
         }
         state.scope = data.scope || null;
@@ -663,16 +709,29 @@
         state.busqueda = state.busqueda || { q: '', resultados: [] };
         renderCoincidencias();
         if (!state.cursos.length && state.scope && !state.scope.isAdmin) {
-          setAlert('No hay cursos activos asociados a sus facultades o laboratorios autorizados.', 'warning');
+          setAlert(
+            'No hay cursos activos asociados a sus facultades o laboratorios autorizados.',
+            'warning'
+          );
         } else {
           clearAlert();
         }
       } catch (err) {
-        setAlert('Ocurrió un error al procesar los datos.', 'danger');
+        var errMsg = err && err.message ? err.message : String(err || 'Error desconocido');
+        var preview = rawText && rawText.length > 200 ? rawText.slice(0, 200) + '…' : rawText;
+        console.error('[capacitacion-asociacion] loadAll().onload ERROR:', err, ' | RESPONSE_TEXT_PREVIEW:', preview);
+        var matched2 = renderCapacitacionError(xhr, null, { forSearch: false });
+        if (!matched2) {
+          setAlert(
+            'Ocurrió un error al procesar los datos (detalle técnico: ' + escapeHtml(errMsg) + '). Revise Consola del navegador para más información.',
+            'danger'
+          );
+        }
       }
     };
     xhr.onerror = function () {
-      setAlert('Error de conexión al cargar el listado.', 'danger');
+      console.error('[capacitacion-asociacion] loadAll().onerror XHR falló');
+      setAlert('Error de conexión al cargar el listado (revise red o logs del servicio).', 'danger');
     };
     xhr.send();
   }

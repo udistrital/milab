@@ -11,6 +11,38 @@ const router = express.Router();
 router.use(express.json({ limit: '256kb' }));
 router.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
+const CAPACITACION_SCHEMA_MISSING_MESSAGE =
+  'Falta aplicar la migración del módulo de Capacitación en la base de datos. ' +
+  'Ejecutar el script sql-scripts/db_structure_certificacion.sql para crear ' +
+  'las tablas cursos, curso_laboratorio y equipo_especializado.';
+
+function isCapacitacionSchemaMissingError(error) {
+  if (!error) return false;
+  if (error.code === '42P01') {
+    const msg = String(error.message || '').toLowerCase();
+    return (
+      msg.includes('equipo_especializado') ||
+      msg.includes('curso_laboratorio') ||
+      msg.includes('cursos') ||
+      msg.includes('laboratorista_ual')
+    );
+  }
+  return false;
+}
+
+function handleCapacitacionSchemaError(res, error) {
+  if (isCapacitacionSchemaMissingError(error)) {
+    return res.status(503).json({
+      ok: false,
+      error_servicio: true,
+      migration_faltante: true,
+      message: CAPACITACION_SCHEMA_MISSING_MESSAGE,
+      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+    });
+  }
+  return null;
+}
+
 const requireCursosRead = requireJsonRoles(['admin', 'laboratorista'], {
   message: 'No tiene permisos para consultar el catálogo de cursos.',
 });
@@ -200,6 +232,8 @@ router.get('/contexto', requireCursosRead, async function (req, res) {
     return res.status(200).json({ ok: true, scope });
   } catch (error) {
     console.error('[capacitacion-cursos:/contexto]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al cargar el contexto del usuario.' });
   }
 });
@@ -225,6 +259,8 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
     return res.status(200).json({ ok: true, facultades: result.rows, scope });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al cargar facultades.' });
   }
 });
@@ -288,6 +324,8 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     });
   } catch (error) {
     console.error('[capacitacion-cursos:/facultades/:id/laboratorios]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al cargar laboratorios.' });
   }
 });
@@ -369,6 +407,8 @@ router.get('/list', requireCursosRead, async function (req, res) {
     return res.status(200).json({ ok: true, cursos: rows.rows, scope });
   } catch (error) {
     console.error('[capacitacion-cursos:/list]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al cargar listado de cursos.' });
   }
 });
@@ -452,6 +492,8 @@ router.get('/detalle/:codigo_curso', requireCursosRead, async function (req, res
     });
   } catch (error) {
     console.error('[capacitacion-cursos:/detalle/:codigo_curso]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res.status(500).json({ ok: false, message: 'Error al cargar detalle del curso.' });
   }
 });
@@ -517,6 +559,8 @@ router.post('/nuevo', requireCursosWrite, async function (req, res) {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[capacitacion-cursos:/nuevo]', error);
+    const handledSchema = handleCapacitacionSchemaError(res, error);
+    if (handledSchema) return handledSchema;
     const msg = mapDbErrorToMessage(error, 'No se pudo crear el curso. Inténtelo nuevamente.');
     if (msg.includes('código') || msg.includes('duplicado')) {
       return res.status(409).json({ ok: false, message: msg });
@@ -626,6 +670,8 @@ router.post('/editar', requireCursosWrite, async function (req, res) {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[capacitacion-cursos:/editar]', error);
+    const handledSchema = handleCapacitacionSchemaError(res, error);
+    if (handledSchema) return handledSchema;
     const msg = mapDbErrorToMessage(error, 'No se pudo editar el curso. Inténtelo nuevamente.');
     if (msg.includes('código') || msg.includes('duplicado')) {
       return res.status(409).json({ ok: false, message: msg });
@@ -670,6 +716,8 @@ router.post('/cambiar-estado', requireCursosWrite, async function (req, res) {
       .json({ ok: true, message: `Curso ${activo ? 'activado' : 'inactivado'}.`, activo });
   } catch (error) {
     console.error('[capacitacion-cursos:/cambiar-estado]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
     return res
       .status(500)
       .json({ ok: false, message: 'No se pudo actualizar el estado del curso.' });
