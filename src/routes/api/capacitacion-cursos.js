@@ -44,14 +44,28 @@ function handleCapacitacionSchemaError(res, error) {
 }
 
 const requireCursosRead = requireJsonRoles(
-  ['admin', 'administrador', 'laboratorista', 'laboratorista_ud'],
+  [
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador_general',
+    'coordinador general',
+    'coordinador',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+  ],
   {
     message: 'No tiene permisos para consultar el catálogo de cursos.',
   }
 );
-const requireCursosWrite = requireJsonRoles(['admin', 'administrador'], {
-  message: 'Solo los administradores pueden crear, editar o eliminar cursos.',
-});
+const requireCursosWrite = requireJsonRoles(
+  ['admin', 'administrador', 'administradora', 'coordinador_general', 'coordinador general'],
+  {
+    message:
+      'Solo los administradores o coordinación general pueden crear, editar o eliminar cursos de capacitación.',
+  }
+);
 const requireMisCursosRole = requireJsonRoles(['estudiante', 'docente'], {
   message: '"Mis cursos" está disponible solo para estudiantes y docentes.',
 });
