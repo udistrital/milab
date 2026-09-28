@@ -54,6 +54,11 @@ router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
 router.use('/admin/roles', require('./admin/roles'));
 
+// Módulo Capacitación y Certificación EDX
+router.use('/certificacion-edx', require('./certificacion-edx'));
+router.use('/capacitacion-cursos', require('./capacitacion-cursos'));
+router.use('/capacitacion-equipos', require('./capacitacion-equipos'));
+
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [
     {
