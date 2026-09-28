@@ -1,5 +1,59 @@
 const pool = require('./db');
-const { getUserRoles, normalizeRoleListForMatch } = require('../routes/middlewares/auth');
+const auth = require('../routes/middlewares/auth');
+const getUserRoles =
+  (auth && typeof auth.getUserRoles === 'function' && auth.getUserRoles) ||
+  function _fallbackGetUserRoles(user) {
+    try {
+      if (!user) return [];
+      if (Array.isArray(user.roles) && user.roles.length > 0) return [...user.roles];
+      if (Array.isArray(user.rol) && user.rol.length > 0) return [...user.rol];
+      if (typeof user.tipo === 'string' && user.tipo.trim()) return [String(user.tipo).trim()];
+      if (typeof user.rol === 'string' && user.rol.trim()) return [String(user.rol).trim()];
+      if (typeof user.role === 'string' && user.role.trim()) return [String(user.role).trim()];
+      return [];
+    } catch {
+      return [];
+    }
+  };
+
+const normalizeRoleListForMatch =
+  (auth &&
+    typeof auth.normalizeRoleListForMatch === 'function' &&
+    auth.normalizeRoleListForMatch) ||
+  function _fallbackNormalize(roles) {
+    const result = new Set();
+    const list = Array.isArray(roles) ? roles : [];
+    for (const raw of list) {
+      const r = String(raw || '')
+        .trim()
+        .toLowerCase();
+      if (!r) continue;
+      result.add(r);
+      const norm = r
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_');
+      result.add(norm);
+      if (norm === 'administrador' || norm === 'administradora') result.add('admin');
+      if (norm === 'admin') {
+        result.add('administrador');
+        result.add('administradora');
+      }
+      if (
+        norm.indexOf('coordinador_general') !== -1 ||
+        norm.indexOf('coordinacion_general') !== -1
+      ) {
+        result.add('coordinador_general');
+        result.add('admin');
+      }
+      if (norm === 'laboratorista_ud' || norm === 'laboratorista_ual' || norm === 'laboratorista') {
+        result.add('laboratorista');
+        result.add('laboratorista_ud');
+        result.add('laboratorista_ual');
+      }
+    }
+    return result;
+  };
 
 const ADMIN_ALIASES = [
   'admin',

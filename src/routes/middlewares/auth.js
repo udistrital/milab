@@ -309,4 +309,5 @@ module.exports = {
   requireUser,
   requireRoles,
   getUserRoles,
+  normalizeRoleListForMatch,
 };
