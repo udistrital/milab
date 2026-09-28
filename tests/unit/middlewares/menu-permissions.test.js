@@ -233,6 +233,36 @@ test('menuPermissionMiddleware prioritizes exact route over parent module fallba
   }
 });
 
+test('menuPermissionMiddleware delegates course API authorization to its routes', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => ({ rows: [] }),
+  });
+
+  try {
+    const req = {
+      method: 'GET',
+      originalUrl: '/milab/api/capacitacion-cursos/facultades',
+      session: {
+        user: {
+          tipo: 'admin',
+        },
+      },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+    assert.equal(loaded.getCalls().length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('menuPermissionMiddleware blocks unregistered private API GET routes', async () => {
   const loaded = loadMiddleware({
     poolQueryImpl: async () => ({ rows: [] }),
