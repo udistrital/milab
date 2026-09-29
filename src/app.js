@@ -363,6 +363,7 @@ app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
 app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
+app.use('/milab/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';
