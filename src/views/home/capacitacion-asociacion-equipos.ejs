@@ -295,6 +295,18 @@
     contexto: BASE_PATH + '/capacitacion-cursos/contexto',
   };
 
+  function getCsrfToken() {
+    var el = document.querySelector('input[name="_csrf"]');
+    return el ? String(el.value || '') : '';
+  }
+  function setJsonPostHeaders(xhr) {
+    if (!xhr) return;
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'application/json');
+    var t = getCsrfToken();
+    if (t) xhr.setRequestHeader('X-CSRF-Token', t);
+  }
+
   var state = {
     scope: null,
     cursos: [],
@@ -626,8 +638,7 @@
       window.MiLabSubmitLock.lock(btn, 'Asignando cursos…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.asociar, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'application/json');
+      setJsonPostHeaders(xhr);
       xhr.onload = function () {
         try {
           var data = JSON.parse(xhr.responseText || '{}');
@@ -816,8 +827,7 @@
       window.MiLabSubmitLock.lock(btn, 'Guardando asociación…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.asociar, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'application/json');
+      setJsonPostHeaders(xhr);
       xhr.onload = function () {
         try {
           var data = JSON.parse(xhr.responseText || '{}');
@@ -855,8 +865,7 @@
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Retirando selección…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.retirar, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'application/json');
+      setJsonPostHeaders(xhr);
       xhr.onload = function () {
         try {
           var data = JSON.parse(xhr.responseText || '{}');
@@ -903,8 +912,7 @@
       window.MiLabSubmitLock.lock(target, 'Retirando…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.retirar, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'application/json');
+      setJsonPostHeaders(xhr);
       xhr.onload = function () {
         try {
           var data = JSON.parse(xhr.responseText || '{}');
