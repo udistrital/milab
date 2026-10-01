@@ -24,22 +24,39 @@
         <tr>
           <td style="padding:8px 30px 24px;">
             <h2 style="font-size:17px;margin:0 0 12px;">Sanciones vigentes registradas</h2>
+            <p style="font-size:14px;line-height:1.6;margin:0 0 12px;">
+              Revisa el detalle de las sanciones vigentes asociadas a tu cuenta:
+            </p>
             <ul style="padding-left:20px;margin:0;">
               <% sanciones.forEach((sancion) => { %>
                 <li style="font-size:14px;line-height:1.6;margin-bottom:10px;">
-                  <strong><%= sancion.tipo_sancion || sancion.cat_multa || 'Sanción' %></strong>
-                  <% if (sancion.fecha_multa) { %>
-                    | Fecha: <%= sancion.fecha_multa instanceof Date ? sancion.fecha_multa.toISOString().slice(0, 10) : String(sancion.fecha_multa).slice(0, 10) %>
-                  <% } %>
-                  <% if (sancion.obs_multa) { %>
-                    <br><%= sancion.obs_multa %>
-                  <% } %>
+                  <% const tipoSancion = String(sancion.tipo_sancion || ''); %>
+                  <% const esSuspension = tipoSancion.toLowerCase().includes('suspens'); %>
+                  <strong><%= esSuspension ? 'Tienes una suspensión vigente' : 'Tienes una sanción vigente' %></strong>
+                  en el laboratorio <strong><%= sancion.laboratorio || 'No especificado' %></strong>.
+                  <br><strong>Fecha:</strong>
+                  <%= sancion.fecha_multa ? (sancion.fecha_multa instanceof Date ? sancion.fecha_multa.toISOString().slice(0, 10) : String(sancion.fecha_multa).slice(0, 10)) : 'No especificada' %>
+                  <br><strong>Sanción:</strong> <%= sancion.cat_multa || 'No especificada' %>
+                  <br><strong>Tipo de sanción:</strong> <%= tipoSancion || 'No especificado' %>
+                  <br><strong>Detalle:</strong> <%= sancion.obs_multa || 'Sin detalles adicionales' %>
                 </li>
               <% }); %>
             </ul>
           </td>
         </tr>
       <% } %>
+      <tr>
+        <td style="padding:0 30px 28px;">
+          <p style="font-size:15px;line-height:1.6;margin:0 0 16px;">
+            Ingresa a MILab para consultar más detalles de tu cuenta y tus sanciones.
+          </p>
+          <p style="font-size:14px;line-height:1.8;margin:0;">
+            <a href="<%= loginUrl %>" style="color:#1769aa;font-weight:700;">Ingresar a MILab</a>
+            &nbsp;|&nbsp;
+            <a href="<%= registrationUrl %>" style="color:#1769aa;font-weight:700;">Registrarme en MILab</a>
+          </p>
+        </td>
+      </tr>
       <%- buildEmailFooterHtml('<p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">Coordinación General de Laboratorios - MILab</p>') %>
     </table>
   </body>

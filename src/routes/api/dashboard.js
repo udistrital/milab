@@ -8,6 +8,7 @@ const {
   normalizeLogDocument,
 } = require('../../libs/account-email');
 const { sendEmailNotification } = require('../../libs/email-notifications');
+const { buildAppUrl } = require('../../libs/app-url');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
@@ -1214,12 +1215,20 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     await enrollUserFromDashboardEdit(client, target, tipoUsuario, correo);
     if (notificarUsuario) {
       const sanctionsResult = await client.query(
-        `SELECT id, cat_multa, tipo_sancion, obs_multa, fecha_multa, con_estado_multa
-         FROM multa
-         WHERE usuario_sancionado_id = $1
-           AND (activo IS DISTINCT FROM FALSE)
-           AND UPPER(TRIM(COALESCE(con_estado_multa, ''))) IN ('ACTIVA', 'PENDIENTE', 'POR SALDAR')
-         ORDER BY fecha_multa DESC NULLS LAST, id DESC`,
+        `SELECT
+           m.id,
+           m.cat_multa,
+           m.tipo_sancion,
+           m.obs_multa,
+           m.fecha_multa,
+           m.con_estado_multa,
+           u.nombre AS laboratorio
+         FROM multa m
+         LEFT JOIN ual u ON u.ual_id = m.ual_id
+         WHERE m.usuario_sancionado_id = $1
+           AND (m.activo IS DISTINCT FROM FALSE)
+           AND UPPER(TRIM(COALESCE(m.con_estado_multa, ''))) IN ('ACTIVA', 'PENDIENTE', 'POR SALDAR')
+         ORDER BY m.fecha_multa DESC NULLS LAST, m.id DESC`,
         [usuarioId]
       );
       sanciones = sanctionsResult.rows;
@@ -1251,6 +1260,8 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
             correo,
             tipoUsuario,
             sanciones,
+            loginUrl: buildAppUrl('/login'),
+            registrationUrl: buildAppUrl('/register'),
           },
         });
       } catch (notificationError) {
