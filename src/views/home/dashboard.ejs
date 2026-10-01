@@ -206,6 +206,13 @@
             <div class="form-text">Este paso activa/crea el perfil del rol seleccionado para habilitar el ingreso.</div>
           </div>
 
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="dashboardEmailNotifyUser">
+            <label class="form-check-label" for="dashboardEmailNotifyUser">
+              Notificar al usuario sobre su cuenta y sus sanciones vigentes, si tiene.
+            </label>
+          </div>
+
           <div class="alert alert-light border mt-3 mb-0" role="status">
             <strong class="d-block mb-2">Resumen antes de guardar</strong>
             <div class="small">
@@ -572,6 +579,7 @@
     const emailInput = document.getElementById('dashboardEmailEditorInput');
     const roleSelect = document.getElementById('dashboardEmailEditorRole');
     const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+    const notifyCheckbox = document.getElementById('dashboardEmailNotifyUser');
     const modalFeedback = document.getElementById('dashboardEmailModalFeedback');
 
     if (modalFeedback) {
@@ -585,6 +593,7 @@
     if (emailInput) emailInput.value = String(row.correo || '');
     if (roleSelect) roleSelect.value = inferEnrollmentTypeFromRow(row);
     if (confirmCheckbox) confirmCheckbox.checked = false;
+    if (notifyCheckbox) notifyCheckbox.checked = false;
 
     updateDashboardEmailConfirmSummary();
     syncDashboardEmailSaveState();
@@ -781,6 +790,7 @@
     const roleSelect = document.getElementById('dashboardEmailEditorRole');
     const saveButton = document.getElementById('dashboardEmailEditorSaveButton');
     const confirmCheckbox = document.getElementById('dashboardEmailConfirmCheckbox');
+    const notifyCheckbox = document.getElementById('dashboardEmailNotifyUser');
     const modalFeedback = document.getElementById('dashboardEmailModalFeedback');
     const normalizedCorreo = String(emailInput?.value || '').trim().toLowerCase();
     const tipoUsuario = String(roleSelect?.value || '').trim().toLowerCase();
@@ -822,7 +832,11 @@
             'X-CSRF-Token': csrfToken,
             Accept: 'application/json',
           },
-          body: JSON.stringify({ correo: normalizedCorreo, tipoUsuario }),
+          body: JSON.stringify({
+            correo: normalizedCorreo,
+            tipoUsuario,
+            notificarUsuario: Boolean(notifyCheckbox?.checked),
+          }),
         }
       );
 
@@ -842,9 +856,16 @@
       const modal = window.bootstrap?.Modal.getOrCreateInstance(modalElement);
       modal?.hide();
 
+      const notificationStatus = payload.notificacion?.status;
+      const feedbackMessage =
+        notificationStatus === 'SENT'
+          ? `Cuenta actualizada y enrolada como ${tipoUsuario}. Se envió la notificación al nuevo correo.`
+          : notificationStatus === 'FAILED'
+            ? `Cuenta actualizada y enrolada como ${tipoUsuario}, pero no se pudo enviar la notificación.`
+            : `Cuenta actualizada y enrolada como ${tipoUsuario}. Ya puede intentar ingresar con Microsoft.`;
       showDashboardFeedback(
-        `Cuenta actualizada y enrolada como ${tipoUsuario}. Ya puede intentar ingresar con Microsoft.`,
-        'success'
+        feedbackMessage,
+        notificationStatus === 'FAILED' ? 'warning' : 'success'
       );
     } catch {
       if (modalFeedback) {
