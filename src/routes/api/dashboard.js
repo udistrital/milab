@@ -7,6 +7,7 @@ const {
   normalizeInstitutionalEmail,
   normalizeLogDocument,
 } = require('../../libs/account-email');
+const { sendEmailNotification } = require('../../libs/email-notifications');
 const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
@@ -1159,6 +1160,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
   const tipoUsuario = String(req.body?.tipoUsuario || '')
     .trim()
     .toLowerCase();
+  const notificarUsuario = req.body?.notificarUsuario === true;
 
   if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
     return res.status(400).json({
@@ -1182,6 +1184,7 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
   }
 
   let client;
+  let sanciones = [];
   try {
     client = await pool.connect();
     const userResult = await client.query(
@@ -1209,6 +1212,18 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
 
     await client.query('BEGIN');
     await enrollUserFromDashboardEdit(client, target, tipoUsuario, correo);
+    if (notificarUsuario) {
+      const sanctionsResult = await client.query(
+        `SELECT id, cat_multa, tipo_sancion, obs_multa, fecha_multa, con_estado_multa
+         FROM multa
+         WHERE usuario_sancionado_id = $1
+           AND (activo IS DISTINCT FROM FALSE)
+           AND UPPER(TRIM(COALESCE(con_estado_multa, ''))) IN ('ACTIVA', 'PENDIENTE', 'POR SALDAR')
+         ORDER BY fecha_multa DESC NULLS LAST, id DESC`,
+        [usuarioId]
+      );
+      sanciones = sanctionsResult.rows;
+    }
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
@@ -1223,12 +1238,34 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
     await client.query('COMMIT');
     client.release();
 
+    let notificacion;
+    if (notificarUsuario) {
+      try {
+        notificacion = await sendEmailNotification({
+          sourceSystem: 'dashboard',
+          templateName: 'dashboard/user-account-notification',
+          recipient: correo,
+          subject: 'Tu cuenta MILab está habilitada',
+          variables: {
+            nombre: target.nombre || 'usuario',
+            correo,
+            tipoUsuario,
+            sanciones,
+          },
+        });
+      } catch (notificationError) {
+        console.error('Error enviando notificación de cuenta desde dashboard:', notificationError);
+        notificacion = { status: 'FAILED' };
+      }
+    }
+
     return res.json({
       ok: true,
       id: usuarioId,
       documento: target.documento,
       correo,
       tipoUsuario,
+      ...(notificarUsuario ? { notificacion: { status: notificacion?.status || 'FAILED' } } : {}),
     });
   } catch (error) {
     if (client) {
