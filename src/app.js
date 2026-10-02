@@ -71,7 +71,7 @@ const {
   createCsrfVerifier,
 } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
-const { renderAuthError } = require('./routes/middlewares/auth');
+const { requireApiSessionUnlessPublic } = require('./routes/middlewares/api-session-gate');
 const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
 const {
   startCoordinatorPendingNotificationsJob,
@@ -85,62 +85,6 @@ const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const apiCsrfExemptPaths = [];
 const verifyApiCsrfToken = createCsrfVerifier({ skipPaths: apiCsrfExemptPaths });
-const publicApiAllowlist = [
-  { prefix: '/api/login/login', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/register', methods: ['POST'], allowSubpaths: true },
-  { prefix: '/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
-  { prefix: '/api/get-data1', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/get-data2', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
-  { prefix: '/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
-];
-
-function normalizeRequestPath(originalUrl) {
-  return (originalUrl || '').split('?')[0];
-}
-
-function isPublicApiRequest(req) {
-  const requestPath = normalizeRequestPath(req.originalUrl);
-  const method = String(req.method || '').toUpperCase();
-
-  return publicApiAllowlist.some((rule) => {
-    if (!rule.methods.includes(method)) return false;
-
-    if (rule.allowSubpaths) {
-      return requestPath === rule.prefix || requestPath.startsWith(`${rule.prefix}/`);
-    }
-
-    return requestPath === rule.prefix;
-  });
-}
-
-function expectsJsonResponse(req) {
-  if (req.xhr) return true;
-  if (typeof req.get === 'function') {
-    const accept = req.get('accept') || '';
-    return accept.includes('application/json');
-  }
-  return false;
-}
-
-function requireApiSessionUnlessPublic(req, res, next) {
-  if (isPublicApiRequest(req) || req.session?.user) {
-    return next();
-  }
-
-  if (expectsJsonResponse(req)) {
-    return res.status(401).json({
-      ok: false,
-      message: 'Debe iniciar sesión para continuar.',
-    });
-  }
-
-  return renderAuthError(res, {
-    message: 'Acceso denegado',
-    message2: 'Debe iniciar sesion para continuar.',
-    limit: 'loginOnly',
-  });
-}
 const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
 const isProduction = normalizedNodeEnv === 'production';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
@@ -148,7 +92,7 @@ const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
 const isDevLoginRuntime = normalizedNodeEnv === 'dev';
-const codeDefinedAppVersion = '2.8.5';
+const codeDefinedAppVersion = '2.9.0';
 
 // Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
 if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
@@ -157,7 +101,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.5').toString().trim();
+const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.9.0').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
