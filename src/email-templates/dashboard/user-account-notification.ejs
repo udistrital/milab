@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light only">
+    <meta name="supported-color-schemes" content="light only">
+    <title>Cuenta MILab habilitada</title>
+  </head>
+  <body style="margin:0;padding:20px 10px;background-color:#f5f6f7;font-family:Arial,sans-serif;color:#202124;">
+    <table width="600" align="center" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;">
+      <%- buildEmailHeaderHtml() %>
+      <tr>
+        <td style="padding:28px 30px 12px;">
+          <h1 style="margin:0;font-size:22px;">Tu cuenta MILab está habilitada</h1>
+          <p style="font-size:15px;line-height:1.6;margin:18px 0 0;">Hola <%= nombre %>,</p>
+          <p style="font-size:15px;line-height:1.6;margin:12px 0 0;">
+            Tu cuenta fue actualizada para ingresar a MILab como <strong><%= tipoUsuario === 'docente' ? 'docente' : 'estudiante' %></strong>.
+            Usa la autenticación institucional de Microsoft con el correo <strong><%= correo %></strong>.
+          </p>
+        </td>
+      </tr>
+      <% if (Array.isArray(sanciones) && sanciones.length) { %>
+        <tr>
+          <td style="padding:8px 30px 24px;">
+            <h2 style="font-size:17px;margin:0 0 12px;">Sanciones vigentes registradas</h2>
+            <p style="font-size:14px;line-height:1.6;margin:0 0 12px;">
+              Revisa el detalle de las sanciones vigentes asociadas a tu cuenta:
+            </p>
+            <ul style="padding-left:20px;margin:0;">
+              <% sanciones.forEach((sancion) => { %>
+                <li style="font-size:14px;line-height:1.6;margin-bottom:10px;">
+                  <% const tipoSancion = String(sancion.tipo_sancion || ''); %>
+                  <% const esSuspension = tipoSancion.toLowerCase().includes('suspens'); %>
+                  <strong><%= esSuspension ? 'Tienes una suspensión vigente' : 'Tienes una sanción vigente' %></strong>
+                  en el laboratorio <strong><%= sancion.laboratorio || 'No especificado' %></strong>.
+                  <br><strong>Fecha:</strong>
+                  <%= sancion.fecha_multa ? (sancion.fecha_multa instanceof Date ? sancion.fecha_multa.toISOString().slice(0, 10) : String(sancion.fecha_multa).slice(0, 10)) : 'No especificada' %>
+                  <br><strong>Sanción:</strong> <%= sancion.cat_multa || 'No especificada' %>
+                  <br><strong>Tipo de sanción:</strong> <%= tipoSancion || 'No especificado' %>
+                  <br><strong>Detalle:</strong> <%= sancion.obs_multa || 'Sin detalles adicionales' %>
+                </li>
+              <% }); %>
+            </ul>
+          </td>
+        </tr>
+      <% } %>
+      <tr>
+        <td align="center" style="padding:0 30px 28px;">
+          <p style="font-size:15px;line-height:1.6;margin:0 0 16px;">
+            Regístrate en MILab para consultar más detalles de tu cuenta y tus sanciones.
+          </p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td align="center" bgcolor="#b3261e" style="border-radius:6px;">
+                <a href="<%= registrationUrl %>" style="display:inline-block;padding:13px 26px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;">
+                  Registrarse en MILab
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <%- buildEmailFooterHtml('<p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">Coordinación General de Laboratorios - MILab</p>') %>
+    </table>
+  </body>
+</html>

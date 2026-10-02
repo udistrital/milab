@@ -8,6 +8,7 @@ const routePath = path.resolve(__dirname, '../../../src/routes/api/dashboard.js'
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 
@@ -32,6 +33,8 @@ function loadDashboardRoute({
   fetchUserByIdImpl,
   buildSessionUserImpl,
   requestOatiImpl,
+  sendEmailNotificationImpl,
+  buildAppUrlImpl,
 } = {}) {
   const originals = new Map();
 
@@ -64,6 +67,14 @@ function loadDashboardRoute({
 
   const stubs = [
     [dbPath, poolStub],
+    [
+      path.resolve(__dirname, '../../../src/libs/email-notifications.js'),
+      { sendEmailNotification: sendEmailNotificationImpl || (async () => ({ status: 'SENT' })) },
+    ],
+    [
+      appUrlPath,
+      { buildAppUrl: buildAppUrlImpl || ((pathname) => `https://milab.test${pathname}`) },
+    ],
     [
       facultyScopePath,
       {
@@ -420,7 +431,12 @@ test('dashboard admin email edit requires enrollment type selection', async () =
 
 test('dashboard admin email edit enrolls user as estudiante', async () => {
   const clientQueries = [];
+  const notificationCalls = [];
   const loaded = loadDashboardRoute({
+    sendEmailNotificationImpl: async (payload) => {
+      notificationCalls.push(payload);
+      return { status: 'SENT' };
+    },
     clientQueryImpl: async (sql, params = []) => {
       clientQueries.push(sql);
 
@@ -518,6 +534,87 @@ test('dashboard admin email edit enrolls user as estudiante', async () => {
       ),
       true
     );
+    assert.equal(notificationCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin email edit optionally notifies the user with current sanctions', async () => {
+  const notificationCalls = [];
+  const loaded = loadDashboardRoute({
+    sendEmailNotificationImpl: async (payload) => {
+      notificationCalls.push(payload);
+      return { status: 'SENT' };
+    },
+    clientQueryImpl: async (sql, params = []) => {
+      if (
+        sql.includes('SELECT id, documento, correo, nombre, codigo, carrera, estado FROM usuario')
+      ) {
+        return {
+          rows: [
+            {
+              id: params[0],
+              documento: '1010',
+              correo: 'anterior@udistrital.edu.co',
+              nombre: 'Usuario Prueba',
+              codigo: '20251234',
+              carrera: 'Sistemas',
+              estado: 'ACTIVO',
+            },
+          ],
+        };
+      }
+
+      if (sql.includes('SELECT source, auth_document, documento_ref, usuario_id')) {
+        return { rows: [] };
+      }
+
+      if (sql.includes('FROM multa') && sql.includes('usuario_sancionado_id')) {
+        return {
+          rows: [
+            {
+              id: 9,
+              tipo_sancion: 'Daño de equipo',
+              cat_multa: 'Equipos',
+              obs_multa: 'Revisar con el laboratorio',
+              fecha_multa: '2026-09-10',
+              con_estado_multa: 'ACTIVA',
+              laboratorio: 'Laboratorio de Física',
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 1,
+      tipo: 'admin',
+      documento: '100',
+      roles: ['admin'],
+    });
+    const response = await request(app)
+      .post('/usuarios/25/correo')
+      .set('Accept', 'application/json')
+      .send({
+        correo: 'nuevo@udistrital.edu.co',
+        tipoUsuario: 'estudiante',
+        notificarUsuario: true,
+      });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.notificacion, { status: 'SENT' });
+    assert.equal(notificationCalls.length, 1);
+    assert.equal(notificationCalls[0].recipient, 'nuevo@udistrital.edu.co');
+    assert.equal(notificationCalls[0].templateName, 'dashboard/user-account-notification');
+    assert.equal(notificationCalls[0].variables.tipoUsuario, 'estudiante');
+    assert.equal(notificationCalls[0].variables.sanciones[0].tipo_sancion, 'Daño de equipo');
+    assert.equal(notificationCalls[0].variables.sanciones[0].laboratorio, 'Laboratorio de Física');
+    assert.equal(notificationCalls[0].variables.registrationUrl, 'https://milab.test/register');
   } finally {
     loaded.restore();
   }
