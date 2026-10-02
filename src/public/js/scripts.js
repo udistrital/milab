@@ -785,7 +785,7 @@
         createStep(
           ['[data-guide="account-menu"]', '[data-guide="account-menu-mobile"]'],
           'Cuenta del usuario',
-          'Este bloque te permite consultar tu informacion, cambiar la contrasena, cambiar el tema y cerrar sesion.',
+          'Este bloque te permite consultar tu informacion, cambiar la contrasena y cerrar sesion.',
           'bottom',
           'end'
         ),
@@ -794,13 +794,6 @@
           'Centro de ayuda',
           'Desde este menu puedes volver a abrir el tour guiado o consultar la carpeta de manuales en PDF.',
           'bottom',
-          'center'
-        ),
-        createStep(
-          ['[data-guide="theme-toggle"]'],
-          'Tema visual',
-          'Aqui puedes alternar entre modo claro y oscuro segun tu preferencia de visualizacion.',
-          'left',
           'center'
         ),
         createStep(

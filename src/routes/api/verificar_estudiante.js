@@ -175,12 +175,18 @@ router.post('/', requireVerificationAction, async (req, res) => {
 
     if (sgaDebtService.isConfigured()) {
       try {
-        sgaMultaInfo = await sgaDebtService.getActiveDebts({ codigo: con_codigo });
+        sgaMultaInfo = await sgaDebtService.getActiveDebts({
+          codigo: con_codigo,
+          documento,
+        });
       } catch (sgaError) {
         console.error('Error consultando multas del estudiante en SGA:', sgaError);
         sgaLookupError =
-          'No fue posible verificar las multas en SGA. No se puede generar el paz y salvo hasta completar esta consulta.';
+          'No fue posible verificar las multas en SGA. Puedes continuar con las multas registradas en MILab; el estado SGA queda sin confirmar.';
       }
+    } else {
+      sgaLookupError =
+        'El servicio SGA no está configurado en este ambiente. Puedes continuar con las multas registradas en MILab.';
     }
 
     if (resultMultas.rows.length > 0 || sgaMultaInfo.length > 0) {
@@ -191,24 +197,20 @@ router.post('/', requireVerificationAction, async (req, res) => {
       });
     }
 
-    if (sgaLookupError) {
-      return res.render('home/verificar_estudiante', { error: sgaLookupError });
-    } else {
-      const correo = await resolveStudentEmail(documento, con_codigo);
+    const correo = await resolveStudentEmail(documento, con_codigo);
 
-      // No tiene multas - Mostrar formulario para generar certificado (get-info2)
-      // Pasamos los datos necesarios para que get-info2 los muestre y get-data los procese
-      return res.render('home/get-info2', {
-        nombre: con_nombre,
-        documento: documento,
-        carrera: con_carrera_nombre,
-        estado: con_estado_nombre,
-        codigo: con_codigo,
-        correo,
-        correoAutoDetectado: Boolean(correo),
-        tipo: req.session.user.tipo, // Para mantener la sesión válida en la vista
-      });
-    }
+    // No hay multas activas; cualquier incidencia SGA se muestra como aviso y no bloquea el flujo.
+    return res.render('home/get-info2', {
+      nombre: con_nombre,
+      documento: documento,
+      carrera: con_carrera_nombre,
+      estado: con_estado_nombre,
+      codigo: con_codigo,
+      correo,
+      correoAutoDetectado: Boolean(correo),
+      sgaLookupWarning: sgaLookupError,
+      tipo: req.session.user.tipo,
+    });
   } catch (error) {
     console.error('Error en verificar_estudiante:', error);
     return res.render('home/verificar_estudiante', {

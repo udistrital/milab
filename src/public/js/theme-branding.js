@@ -23,7 +23,9 @@
 
   function applyThemeState() {
     var nextMode = FORCED_THEME;
-    document.documentElement.setAttribute('data-bs-theme', nextMode);
+    if (document.documentElement.getAttribute('data-bs-theme') !== nextMode) {
+      document.documentElement.setAttribute('data-bs-theme', nextMode);
+    }
     syncThemeLogos(nextMode);
     return nextMode;
   }
@@ -36,19 +38,8 @@
     }
   }
 
-  function hideThemeToggles() {
-    var toggles = document.querySelectorAll('[data-theme-toggle]');
-
-    toggles.forEach(function (toggle) {
-      toggle.setAttribute('hidden', 'hidden');
-      toggle.setAttribute('aria-hidden', 'true');
-      toggle.style.display = 'none';
-    });
-  }
-
   function syncStoredTheme() {
     clearStoredThemePreference();
-    hideThemeToggles();
     return applyThemeState(resolveTheme());
   }
 
@@ -59,11 +50,17 @@
     syncThemeLogos: syncThemeLogos,
   };
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', syncStoredTheme);
-  } else {
-    syncStoredTheme();
-  }
+  syncStoredTheme();
+
+  var themeObserver = new window.MutationObserver(function () {
+    if (document.documentElement.getAttribute('data-bs-theme') !== FORCED_THEME) {
+      syncStoredTheme();
+    }
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-bs-theme'],
+  });
 
   window.addEventListener('storage', function (event) {
     if (event.key === 'theme') {

@@ -10,6 +10,10 @@
     <p class="app-page-subtitle">Verifica tus datos y selecciona el motivo para generar el certificado.</p>
   </section>
 
+  <% if (locals.sgaLookupWarning) { %>
+    <div class="alert alert-warning" role="status"><%= locals.sgaLookupWarning %></div>
+  <% } %>
+
   <section class="card app-form-panel col-md-8 mx-auto d-flex justify-content-center text-light">
     <div class="card-body">
       <p class="lead mb-2"><em>- Verifique sus datos -</em></p>   
