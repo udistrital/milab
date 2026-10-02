@@ -9,21 +9,21 @@
   const quickLinks = primaryLinks.filter((link) => link && link.href !== '/milab/inicio').slice(0, 3);
   const newsItems = [
     {
-      title: 'Ventana de verificación operativa',
-      body: 'Consulta el estado de paz y salvo, revisa sanciones y confirma datos clave antes de emitir soportes o autorizaciones.',
-      tag: 'Operación diaria',
+      title: 'Reorganización del menú por módulos',
+      body: 'Reordenamos el menú principal para facilitar el acceso a cada opción y mejorar la concordancia con los módulos del sistema.',
+      tag: 'Navegación',
       accent: 'amber',
     },
     {
-      title: 'Gestión centralizada de sanciones',
-      body: 'Coordinadores y laboratoristas pueden seguir el ciclo de sanciones desde registro hasta aprobación y saldado en un solo flujo.',
-      tag: 'Seguimiento',
+      title: 'Nuevas acciones en el listado de sanciones',
+      body: 'Ahora el listado de sanciones permite activar, editar y aplazar registros directamente, agilizando la gestión operativa.',
+      tag: 'Sanciones',
       accent: 'red',
     },
     {
-      title: 'Acceso institucional y trazabilidad',
-      body: 'El sistema prioriza el ingreso con cuenta institucional y deja trazabilidad de acciones relevantes para soporte y auditoría.',
-      tag: 'Seguridad',
+      title: 'Recomendación para coordinadores',
+      body: 'Se recomienda activar las sanciones en estado pendiente o autorizar a sus laboratoristas para activar y retirar sanciones cuando corresponda.',
+      tag: 'Buenas prácticas',
       accent: 'teal',
     },
   ];
@@ -88,7 +88,7 @@
                 class="app-home-news-dot <%= index === 0 ? 'is-active' : '' %>"
                 data-news-dot="<%= index %>"
                 aria-label="Mostrar noticia <%= index + 1 %>"
-                aria-selected="<%= index === 0 ? 'true' : 'false' %>"
+                aria-pressed="<%= index === 0 ? 'true' : 'false' %>"
               ></button>
             <% }) %>
           </div>
@@ -131,7 +131,7 @@
       dots.forEach(function (dot, dotIndex) {
         const isActive = dotIndex === activeIndex;
         dot.classList.toggle('is-active', isActive);
-        dot.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        dot.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     }
 

@@ -73,6 +73,11 @@ function buildRouteCandidates(pathname) {
   return Array.from(new Set(candidates));
 }
 
+function hasRouteLevelApiAuthorization(pathname) {
+  const prefix = '/milab/api/capacitacion-cursos';
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 function selectPrioritizedMenuIds(candidates, menuRows) {
   const menuIdsByRoute = new Map();
 
@@ -98,6 +103,9 @@ async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
     const method = String(req.method || 'GET').toUpperCase();
+    if (hasRouteLevelApiAuthorization(path)) {
+      return next();
+    }
     const allowProfileFlow =
       req.session?.microsoftProfile &&
       (path === '/milab/api/profile' || path === '/milab/api/profile/identify');

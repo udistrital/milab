@@ -61,6 +61,7 @@ const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const {
   createApplicationErrorHandler,
+  enrichErrorPayloadForAdmin,
   renderApplicationError,
   wantsJson,
 } = require('./routes/middlewares/error-handler');
@@ -353,6 +354,34 @@ app.use((req, res, next) => {
 });
 app.use(requestLogger);
 
+app.use((req, res, next) => {
+  const originalRender = res.render.bind(res);
+
+  res.render = function patchedRender(view, locals, callback) {
+    const viewName = String(view || '');
+
+    if (viewName !== 'home/message_error') {
+      return originalRender(view, locals, callback);
+    }
+
+    let effectiveLocals = locals;
+    let effectiveCallback = callback;
+
+    if (typeof locals === 'function') {
+      effectiveCallback = locals;
+      effectiveLocals = undefined;
+    }
+
+    const normalizedLocals =
+      effectiveLocals && typeof effectiveLocals === 'object' ? effectiveLocals : {};
+    const enrichedLocals = enrichErrorPayloadForAdmin(req, normalizedLocals);
+
+    return originalRender(view, enrichedLocals, effectiveCallback);
+  };
+
+  return next();
+});
+
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 app.use('/css', express.static(path.join(publicDir, 'css')));
@@ -363,6 +392,7 @@ app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
 app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
+app.use('/milab/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';

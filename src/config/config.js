@@ -48,6 +48,9 @@ const config = {
   oatiDebtorsServiceName:
     process.env.OATI_DEBT_SERVICE_NAME ||
     (nonProductionEnvironments.has(envName) ? 'academica_pruebas' : ''),
+  edxCertApiUrl: process.env.EDX_CERT_API_URL || 'http://localhost:4000',
+  edxCertTimeoutMs: Number(process.env.EDX_CERT_TIMEOUT_MS || 5000),
+  edxCertUseMock: process.env.EDX_CERT_USE_MOCK !== 'false',
 };
 
 module.exports = { config };

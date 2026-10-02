@@ -1,0 +1,19 @@
+{
+  "name": "edx-mock",
+  "version": "1.0.0",
+  "description": "Mock service para simular la API de certificación EDX en MiLab",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.22.2",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

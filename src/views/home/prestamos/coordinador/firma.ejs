@@ -152,7 +152,7 @@
 
           <div class="d-flex justify-content-end gap-2 mt-4">
             <button type="button" class="btn btn-outline-secondary" id="btnCancelarFirma">Limpiar todo</button>
-            <button type="button" class="btn btn-perso" id="btnGuardarFirma">Guardar firma</button>
+            <button type="button" class="btn btn-perso" id="btnGuardarFirma" data-submit-lock="true">Guardar firma</button>
           </div>
         </div>
       </div>
@@ -348,16 +348,14 @@
 
     if (!dataUrl) {
       showSignatureError('Debe registrar una firma valida antes de guardar.');
+      MiLabSubmitLock.release(button);
       return;
     }
 
     hideSignatureError();
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Guardando...';
-    }
 
     try {
+      MiLabSubmitLock.lock(button, 'Guardando firma digital...');
       const response = await fetch(signatureRoute, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
@@ -381,10 +379,7 @@
     } catch (error) {
       showSignatureError('No fue posible guardar la firma del coordinador.');
     } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = 'Guardar firma';
-      }
+      MiLabSubmitLock.release(button);
     }
   }
 

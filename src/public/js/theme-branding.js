@@ -1,29 +1,10 @@
 /* global window, document */
 
 (function (window, document) {
+  var FORCED_THEME = 'light';
+
   function resolveTheme() {
-    var storedTheme;
-
-    try {
-      storedTheme = window.localStorage.getItem('theme');
-    } catch {
-      storedTheme = null;
-    }
-
-    if (storedTheme === 'dark' || storedTheme === 'light') {
-      return storedTheme;
-    }
-
-    var documentTheme = document.documentElement.getAttribute('data-bs-theme');
-    if (documentTheme === 'dark' || documentTheme === 'light') {
-      return documentTheme;
-    }
-
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-
-    return 'light';
+    return FORCED_THEME;
   }
 
   function syncThemeLogos(mode) {
@@ -40,29 +21,35 @@
     });
   }
 
-  function applyThemeState(mode) {
-    var nextMode = mode === 'dark' ? 'dark' : 'light';
+  function applyThemeState() {
+    var nextMode = FORCED_THEME;
     document.documentElement.setAttribute('data-bs-theme', nextMode);
     syncThemeLogos(nextMode);
     return nextMode;
   }
 
-  function syncStoredTheme() {
-    return applyThemeState(resolveTheme());
+  function clearStoredThemePreference() {
+    try {
+      window.localStorage.removeItem('theme');
+    } catch {
+      // ignore storage access errors
+    }
   }
 
-  function handleSystemThemeChange() {
-    var storedTheme;
+  function hideThemeToggles() {
+    var toggles = document.querySelectorAll('[data-theme-toggle]');
 
-    try {
-      storedTheme = window.localStorage.getItem('theme');
-    } catch {
-      storedTheme = null;
-    }
+    toggles.forEach(function (toggle) {
+      toggle.setAttribute('hidden', 'hidden');
+      toggle.setAttribute('aria-hidden', 'true');
+      toggle.style.display = 'none';
+    });
+  }
 
-    if (storedTheme !== 'dark' && storedTheme !== 'light') {
-      syncStoredTheme();
-    }
+  function syncStoredTheme() {
+    clearStoredThemePreference();
+    hideThemeToggles();
+    return applyThemeState(resolveTheme());
   }
 
   window.MiLabThemeBranding = {
@@ -76,16 +63,6 @@
     document.addEventListener('DOMContentLoaded', syncStoredTheme);
   } else {
     syncStoredTheme();
-  }
-
-  if (window.matchMedia) {
-    var mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', handleSystemThemeChange);
-    } else if (typeof mediaQuery.addListener === 'function') {
-      mediaQuery.addListener(handleSystemThemeChange);
-    }
   }
 
   window.addEventListener('storage', function (event) {

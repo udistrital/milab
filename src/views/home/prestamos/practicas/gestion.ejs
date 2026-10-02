@@ -145,7 +145,7 @@
 
                       <div class="d-flex gap-2 mt-auto flex-wrap">
                         <% if (item.estado === 'pendiente' || item.estado === 'por_aprobacion') { %>
-                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-check-circle"></i>
                             <span>Aprobar</span>
                           </button>
@@ -175,7 +175,7 @@
                           <span>Reasignar sala</span>
                         </button>
                         <% if (item.estado === 'aprobada') { %>
-                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-play-circle"></i>
                             <span>Iniciar</span>
                           </button>
@@ -185,7 +185,7 @@
                               <span>Ultima hora</span>
                             </button>
                           <% } %>
-                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-person-x"></i>
                             <span>No asistio</span>
                           </button>
@@ -259,7 +259,7 @@
 
                       <div class="d-flex gap-2 mt-auto flex-wrap">
                         <% if (item.estado === 'pendiente' || item.estado === 'por_aprobacion') { %>
-                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-success btn-sm flex-fill js-approve-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-check-circle"></i>
                             <span>Aprobar</span>
                           </button>
@@ -289,7 +289,7 @@
                           <span>Reasignar sala</span>
                         </button>
                         <% if (item.estado === 'aprobada') { %>
-                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-info btn-sm flex-fill js-start-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-play-circle"></i>
                             <span>Iniciar</span>
                           </button>
@@ -299,7 +299,7 @@
                               <span>Ultima hora</span>
                             </button>
                           <% } %>
-                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-person-x"></i>
                             <span>No asistio</span>
                           </button>
@@ -387,6 +387,7 @@
                             type="button"
                             class="btn btn-primary btn-sm flex-fill js-complete-practice"
                             data-reservation-id="<%= item.id %>"
+                            data-submit-lock="true"
                           >
                             <i class="bi bi-check2-square"></i>
                             <span>Completar</span>
@@ -401,7 +402,7 @@
                             <i class="bi bi-bug"></i>
                             <span>Incidencia</span>
                           </button>
-                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>">
+                          <button type="button" class="btn btn-outline-warning btn-sm flex-fill js-no-show-practice" data-reservation-id="<%= item.id %>" data-submit-lock="true">
                             <i class="bi bi-person-x"></i>
                             <span>No asistio</span>
                           </button>
@@ -501,6 +502,7 @@
                           type="button"
                           class="btn btn-outline-danger btn-sm js-cancel-practice-queue"
                           data-queue-id="<%= item.id %>"
+                          data-submit-lock="true"
                         >
                           <i class="bi bi-x-circle"></i>
                           <span>Cancelar</span>
@@ -542,7 +544,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-danger" id="rechazoPracticaSubmitBtn">Confirmar rechazo</button>
+          <button type="submit" class="btn btn-danger" id="rechazoPracticaSubmitBtn" data-submit-lock="true">Confirmar rechazo</button>
         </div>
       </form>
     </div>
@@ -572,7 +574,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-warning" id="comentariosPracticaSubmitBtn">Enviar</button>
+          <button type="submit" class="btn btn-warning" id="comentariosPracticaSubmitBtn" data-submit-lock="true">Enviar</button>
         </div>
       </form>
     </div>
@@ -635,7 +637,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-secondary" id="ultimaHoraPracticaSubmitBtn">Aplicar</button>
+          <button type="submit" class="btn btn-secondary" id="ultimaHoraPracticaSubmitBtn" data-submit-lock="true">Aplicar</button>
         </div>
       </form>
     </div>
@@ -718,7 +720,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn">Registrar incidencia y bloquear</button>
+          <button type="submit" class="btn btn-primary" id="incidenciaDocenteSubmitBtn" data-submit-lock="true">Registrar incidencia y bloquear</button>
         </div>
       </form>
     </div>
@@ -821,13 +823,13 @@
     }
 
     document.querySelectorAll('.js-approve-practice').forEach(function(button) {
-      button.addEventListener('click', async function() {
+      button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
         if (!reservationId || !window.confirm('¿Deseas aprobar esta practica?')) return;
-
-        button.disabled = true;
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Aprobando reserva...');
           var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/aprobar');
           showAlert('success', result.message || 'Practica aprobada correctamente.');
           window.setTimeout(function() {
@@ -835,19 +837,20 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible aprobar la practica.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });
 
     document.querySelectorAll('.js-start-practice').forEach(function(button) {
-      button.addEventListener('click', async function() {
+      button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
         if (!reservationId || !window.confirm('¿Deseas iniciar esta practica?')) return;
-
-        button.disabled = true;
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Iniciando practica...');
           var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/iniciar');
           showAlert('success', result.message || 'Practica iniciada correctamente.');
           window.setTimeout(function() {
@@ -855,21 +858,22 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible iniciar la practica.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });
 
     document.querySelectorAll('.js-complete-practice').forEach(function(button) {
-      button.addEventListener('click', async function() {
+      button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
         if (!reservationId) return;
 
         if (!window.confirm('¿Deseas completar esta practica?')) return;
-
-        button.disabled = true;
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Completando practica...');
           var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/completar');
           showAlert('success', result.message || 'Practica completada correctamente.');
           window.setTimeout(function() {
@@ -877,7 +881,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible completar la practica.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });
@@ -916,10 +921,10 @@
         showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion.');
         return;
       }
-
-      incidenciaSubmitButton.disabled = true;
+      var btn = incidenciaSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Registrando incidencia...');
         var formData = new FormData();
         formData.append('incidencia_tipo', tipoIncidencia);
         formData.append('incidencia_descripcion', descripcionIncidencia);
@@ -951,7 +956,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible registrar la incidencia.');
-        incidenciaSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -963,13 +969,13 @@
     });
 
     document.querySelectorAll('.js-no-show-practice').forEach(function(button) {
-      button.addEventListener('click', async function() {
+      button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
         if (!reservationId || !window.confirm('¿Deseas marcar esta practica como no asistio?')) return;
-
-        button.disabled = true;
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Registrando inasistencia...');
           var result = await postJson('/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/no-asistio');
           showAlert('success', result.message || 'Practica marcada como no asistio.');
           window.setTimeout(function() {
@@ -977,7 +983,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible marcar la practica como no asistio.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });
@@ -1050,13 +1057,13 @@
     });
 
     document.querySelectorAll('.js-cancel-practice-queue').forEach(function(button) {
-      button.addEventListener('click', async function() {
+      button.addEventListener('click', async function(event) {
         var queueId = button.getAttribute('data-queue-id');
         if (!queueId || !window.confirm('¿Deseas cancelar esta solicitud en cola?')) return;
-
-        button.disabled = true;
+        var btn = event.currentTarget;
 
         try {
+          window.MiLabSubmitLock.lock(btn, 'Cancelando solicitud en cola...');
           var result = await postJson(
             '/milab/prestamos/cola/practicas/' + encodeURIComponent(queueId) + '/cancelar'
           );
@@ -1066,7 +1073,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible cancelar la solicitud en cola.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(btn);
         }
       });
     });
@@ -1096,10 +1104,10 @@
 
       var reservationId = rejectIdInput.value;
       if (!reservationId) return;
-
-      rejectSubmitButton.disabled = true;
+      var btn = rejectSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Rechazando practica...');
         var result = await postJson(
           '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/rechazar',
           { motivo_rechazo: rejectReasonInput.value }
@@ -1112,7 +1120,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible rechazar la practica.');
-        rejectSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -1128,9 +1137,10 @@
       }
 
       commentTextInput.classList.remove('is-invalid');
-      commentSubmitButton.disabled = true;
+      var btn = commentSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Enviando comentarios...');
         var result = await postJson(
           '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/comentarios',
           { comentario: commentTextInput.value }
@@ -1143,7 +1153,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible enviar los comentarios.');
-        commentSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -1156,9 +1167,10 @@
       }
 
       lastMinuteDocumentInput.classList.remove('is-invalid');
-      lastMinuteSubmitButton.disabled = true;
+      var btn = lastMinuteSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Aplicando prestamo de ultima hora...');
         var result = await postJson(
           '/milab/prestamos/practicas/' + encodeURIComponent(lastMinuteIdInput.value) + '/ultima-hora',
           {
@@ -1172,7 +1184,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible aplicar el prestamo de ultima hora.');
-        lastMinuteSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -1185,9 +1198,10 @@
       }
 
       queueReservationIdInput.classList.remove('is-invalid');
-      queueSubmitButton.disabled = true;
+      var btn = queueSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Asignando solicitud en cola...');
         var result = await postJson(
           '/milab/prestamos/cola/practicas/' + encodeURIComponent(queueIdInput.value) + '/asignar-ultima-hora',
           {
@@ -1201,7 +1215,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible asignar la solicitud en cola.');
-        queueSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
@@ -1225,10 +1240,10 @@
 
       var reservationId = document.getElementById('reasignarPracticaId').value;
       if (!reservationId || !reassignSalaSelect.value) return;
-
-      reassignSubmitButton.disabled = true;
+      var btn = reassignSubmitButton;
 
       try {
+        window.MiLabSubmitLock.lock(btn, 'Reasignando sala...');
         var result = await postJson(
           '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/reasignar-sala',
           { sala_id: reassignSalaSelect.value }
@@ -1240,7 +1255,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible reasignar la sala.');
-        reassignSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(btn);
       }
     });
 
