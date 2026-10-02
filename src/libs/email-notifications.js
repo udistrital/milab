@@ -142,6 +142,7 @@ async function createNotificationRecord(payload, throwOnError) {
     return { ok: true, id };
   } catch (error) {
     throwIfRequired(error, throwOnError);
+    console.error('Error registrando notificacion pendiente por correo:', error);
     return { ok: false, response: buildFailedResponse(null, error) };
   }
 }
@@ -201,23 +202,24 @@ async function sendEmailNotification({
     },
     throwOnError
   );
-  if (!creationResult.ok) {
-    return creationResult.response;
-  }
-  const id = creationResult.id;
+  const id = creationResult.ok ? creationResult.id : null;
 
   try {
     await sendNotificationEmail(templateName, variables, recipient, subject);
-
-    if (id) {
-      await markSent(id);
-    }
-    return { id: id || null, status: 'SENT' };
   } catch (error) {
     await markFailedSafely(id, error);
     throwIfRequired(error, throwOnError);
     return buildFailedResponse(id, error);
   }
+
+  if (id) {
+    try {
+      await markSent(id);
+    } catch (error) {
+      console.error('Error registrando notificacion enviada por correo:', error);
+    }
+  }
+  return { id: id || null, status: 'SENT' };
 }
 
 module.exports = {
