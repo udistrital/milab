@@ -2815,7 +2815,240 @@ body.app-shell .app-password-change-submit {
 }
 
 body.app-shell .modal .modal-dialog {
-  max-width: 520px;
+  max-width: min(760px, calc(100vw - 2rem));
+}
+
+body.app-shell .modal .modal-dialog.modal-sm {
+  max-width: min(440px, calc(100vw - 2rem));
+}
+
+body.app-shell .modal .modal-dialog.modal-lg {
+  max-width: min(1000px, calc(100vw - 2rem));
+}
+
+body.app-shell .modal .modal-dialog.modal-xl {
+  max-width: min(1200px, calc(100vw - 2rem));
+}
+
+body.app-shell .sanction-detail-header {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem 1.75rem 1.2rem !important;
+  background: linear-gradient(135deg, var(--app-surface-muted), var(--app-surface-strong));
+  border-bottom: 1px solid var(--app-border) !important;
+}
+
+body.app-shell .sanction-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+body.app-shell .sanction-detail-icon {
+  display: grid;
+  flex: 0 0 3rem;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--app-accent);
+  color: #ffffff;
+  font-size: 1.35rem;
+}
+
+body.app-shell .sanction-detail-kicker {
+  margin: 0 0 0.25rem !important;
+  color: var(--app-accent) !important;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+body.app-shell .sanction-detail-heading .modal-title {
+  font-size: 1.55rem;
+}
+
+body.app-shell .sanction-detail-subtitle {
+  margin: 0.35rem 0 0 !important;
+  color: var(--app-text-muted) !important;
+  font-size: 0.92rem;
+}
+
+body.app-shell .sanction-detail-section {
+  padding: 1.15rem 0 1.35rem;
+}
+
+body.app-shell .sanction-detail-section + .sanction-detail-section {
+  border-top: 1px solid var(--app-border);
+}
+
+body.app-shell .sanction-detail-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+body.app-shell .sanction-detail-section-heading > i {
+  display: grid;
+  flex: 0 0 2.4rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--app-highlight-soft);
+  color: var(--app-accent-deep);
+  font-size: 1.1rem;
+}
+
+body.app-shell .sanction-detail-section-heading h6 {
+  margin: 0;
+  color: var(--app-text-main);
+  font-family: var(--app-font-display);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+body.app-shell .sanction-detail-section-heading p {
+  margin: 0.15rem 0 0 !important;
+  color: var(--app-text-muted) !important;
+  font-size: 0.84rem;
+}
+
+body.app-shell .sanction-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+body.app-shell .sanction-detail-field {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface-muted);
+}
+
+body.app-shell .sanction-detail-field--wide {
+  grid-column: 1 / -1;
+}
+
+body.app-shell .sanction-detail-field > span {
+  color: var(--app-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+body.app-shell .sanction-detail-field > strong {
+  color: var(--app-text-main);
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .sanction-sga-panel {
+  margin: 0.5rem 0 1.25rem;
+  padding: 1.15rem;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface-muted);
+}
+
+body.app-shell .sanction-sga-heading {
+  margin-bottom: 0.75rem;
+}
+
+body.app-shell .sanction-sga-status {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 0.88rem;
+}
+
+body.app-shell .sanction-sga-status[data-state='error'] {
+  color: #b42318;
+}
+
+body.app-shell .sanction-sga-status[data-state='clear'] {
+  color: #1f6a35;
+}
+
+body.app-shell .sanction-sga-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+body.app-shell .sanction-sga-item {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--app-border);
+  border-left: 4px solid var(--app-accent);
+  border-radius: 8px;
+  background: var(--app-surface-strong);
+}
+
+body.app-shell .sanction-sga-item h6 {
+  margin: 0 0 0.75rem;
+  color: var(--app-text-main);
+  font-size: 0.95rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .sanction-sga-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+body.app-shell .sanction-sga-field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+body.app-shell .sanction-sga-field span {
+  color: var(--app-text-muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+body.app-shell .sanction-sga-field strong {
+  color: var(--app-text-main);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+  body.app-shell .modal .modal-dialog,
+  body.app-shell .modal .modal-dialog.modal-sm,
+  body.app-shell .modal .modal-dialog.modal-lg,
+  body.app-shell .modal .modal-dialog.modal-xl {
+    max-width: calc(100vw - 1rem);
+    margin: 0.5rem auto;
+  }
+
+  body.app-shell .sanction-detail-header {
+    padding: 1rem !important;
+  }
+
+  body.app-shell .sanction-detail-grid,
+  body.app-shell .sanction-sga-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479.98px) {
+  body.app-shell .sanction-detail-grid,
+  body.app-shell .sanction-sga-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.app-shell .sanction-detail-field--wide {
+    grid-column: auto;
+  }
 }
 
 body.app-shell .modal .modal-content {

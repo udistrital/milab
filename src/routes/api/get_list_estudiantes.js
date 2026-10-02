@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
-const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { sgaDebtService } = require('../../libs/oati-debts');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const bp = require('body-parser');
@@ -24,26 +24,24 @@ const requireBulkStudentQueryAccess = requireRoles(['admin', 'laboratorista', 'c
   limit: 'noSession',
 });
 
-async function hasOatiStudentRecord(identificador) {
-  if (!identificador) return false;
+function mapSgaDebtToMulta(debt, student) {
+  const details = [
+    debt.DEU_MULTA ? `Valor SGA: ${debt.DEU_MULTA}` : '',
+    debt.DEU_ANO || debt.DEU_PER ? `Periodo: ${debt.DEU_ANO || '-'} / ${debt.DEU_PER || '-'}` : '',
+    debt.DEU_FECHA_PAGO ? `Fecha de pago: ${debt.DEU_FECHA_PAGO}` : '',
+  ].filter(Boolean);
 
-  const paths = [
-    getAcademicServicePath(`datos_basicos_estudiante/${identificador}`),
-    getAcademicServicePath(`datos_basicos_activos_cedula/${identificador}`),
-  ];
-
-  for (const path of paths) {
-    try {
-      const respuesta = await requestOati(path);
-      const records = respuesta?.datosEstudianteCollection?.datosBasicosEstudiante;
-      const hasRecords = Array.isArray(records) ? records.length > 0 : Boolean(records);
-      if (hasRecords) return true;
-    } catch {
-      // Intentar con el siguiente endpoint.
-    }
-  }
-
-  return false;
+  return {
+    origen: 'SGA',
+    cat_multa: debt.DEU_MATERIAL || 'Multa reportada por SGA',
+    con_estado_multa: `ACTIVA (estado SGA ${String(debt.DEU_ESTADO || '2').trim()})`,
+    fecha_multa: debt.DEU_FECHA || null,
+    obs_multa: details.join('; ') || 'Multa activa reportada por SGA.',
+    nombre_laboratorista: '-',
+    ual: 'SGA',
+    documento: student.documento || null,
+    codigo: debt.DEU_EST_COD || student.codigo || null,
+  };
 }
 
 router.get('/', requireAdminStudentsListAccess, async (req, res) => {
@@ -136,7 +134,11 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
 
 router.get('/get_consulta', requireBulkStudentQueryAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
-  res.render('home/consulta_masiva', { sampleData1: 0, error: null });
+  res.render('home/consulta_masiva', {
+    sampleData1: 0,
+    error: null,
+    sgaConsultaOmitida: !sgaDebtService.isConfigured(),
+  });
 });
 
 router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (req, res) {
@@ -151,6 +153,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
     res.render('home/consulta_masiva', {
       sampleData1: 0,
       error: 'Has excedido el límite de 20 estudiantes, inténtalo nuevamente.',
+      sgaConsultaOmitida: !sgaDebtService.isConfigured(),
     });
   } else {
     const query = `
@@ -189,46 +192,62 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
     const values = [entries.join(',')];
     const sampleData1 = await pool.query(query, values);
 
-    const processedData = sampleData1.rows.map((row) => {
-      const identificador = row.identificador;
-      let multas = row.multas;
+    const sgaConfigurado = sgaDebtService.isConfigured();
+    const filteredData = sampleData1.rows.map((row) => ({
+      identificador: row.identificador,
+      documento: row.documento || null,
+      codigo: row.codigo || null,
+      multas: (Array.isArray(row.multas) ? row.multas : [])
+        .filter((multa) => multa !== null)
+        .map((multa) => ({ ...multa, origen: 'MILab' })),
+    }));
 
-      // Verifica si todos los objetos en multas son null
-      const allNull = multas.every((multa) => multa === null);
-
-      // Si todos son null, deja solo un objeto null
-      if (allNull) {
-        multas = [null];
-      }
-
-      // Devuelve el objeto procesado
-      return {
-        identificador,
-        documento: row.documento || null,
-        codigo: row.codigo || null,
-        multas: multas,
-      };
-    });
-    const filteredData = processedData.map((row) => {
-      const multas = row.multas;
-
-      if (multas !== null && multas.length > 1) {
-        row.multas = multas.filter((multa) => multa !== null);
-      }
-
-      return row;
-    });
     await Promise.all(
       filteredData.map(async (row) => {
-        if (row.multas[0] !== null) return;
+        const tieneMultasMilab = row.multas.length > 0;
+        let codigoEstudiante = String(row.codigo || '').trim();
 
-        const hasRecord = await hasOatiStudentRecord(row.identificador);
-        if (!hasRecord) {
-          row.multas[0] = 'unknown';
+        if (!codigoEstudiante && (!tieneMultasMilab || sgaConfigurado)) {
+          codigoEstudiante =
+            (await sgaDebtService.resolveStudentCode({
+              documento: row.documento,
+              identificador: row.identificador,
+            })) || '';
+          if (!codigoEstudiante && !tieneMultasMilab) {
+            row.multas = ['unknown'];
+            return;
+          }
+
+          row.codigo = codigoEstudiante || row.codigo;
+        }
+
+        if (sgaConfigurado) {
+          if (!codigoEstudiante) {
+            row.multas.push('sga-error');
+            return;
+          }
+
+          try {
+            const activeSgaDebts = await sgaDebtService.getActiveDebts({
+              codigo: codigoEstudiante,
+            });
+            row.multas.push(...activeSgaDebts.map((debt) => mapSgaDebtToMulta(debt, row)));
+          } catch (error) {
+            console.error(`Error consultando multas SGA para ${codigoEstudiante}:`, error);
+            row.multas.push('sga-error');
+          }
+        }
+
+        if (!row.multas.length) {
+          row.multas = [null];
         }
       })
     );
-    res.render('home/consulta_masiva', { sampleData1: filteredData, error: null });
+    res.render('home/consulta_masiva', {
+      sampleData1: filteredData,
+      error: null,
+      sgaConsultaOmitida: !sgaConfigurado,
+    });
   }
 });
 
@@ -246,6 +265,9 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     if (data.multas[0] === 'unknown') {
       data.multas[0] = 'Datos inválidos. Verifica la información e inténtalo nuevamente.';
     }
+    data.multas = data.multas.map((multa) =>
+      multa === 'sga-error' ? 'No fue posible verificar el estado en SGA.' : multa
+    );
   });
 
   if (sampleData1.length > 0) {
@@ -300,7 +322,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
       .moveDown(1);
 
     //  fila de encabezado  columnas
-    const numberOfColumns = 5;
+    const numberOfColumns = 6;
     const cellWidth = (doc.page.width - 40) / numberOfColumns;
     const startX = 20; // Posición de inicio con margen
     let y = doc.y;
@@ -319,6 +341,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
 
     const tableHeaders = [
       'Código/Documento Estudiante',
+      'Origen',
       'Motivo Multa',
       'Fecha de la Multa',
       'Observación',
@@ -330,6 +353,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
       item.multas.forEach((multa) => {
         tableRows.push([
           item.identificador,
+          multa?.origen || '-',
           multa?.cat_multa || 'El estudiante no tiene multas',
           // multa?.con_estado_multa || '',
           multa?.fecha_multa || '',
