@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { sgaDebtService } = require('../../libs/oati-debts');
 const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const router = express.Router();
@@ -169,12 +170,29 @@ router.post('/', requireVerificationAction, async (req, res) => {
     const queryMultas =
       "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
     const resultMultas = await pool.query(queryMultas, [usuarioId]);
+    let sgaMultaInfo = [];
+    let sgaLookupError = null;
 
-    if (resultMultas.rows.length > 0) {
-      // Tiene multas activas
+    if (sgaDebtService.isConfigured()) {
+      try {
+        sgaMultaInfo = await sgaDebtService.getActiveDebts({ codigo: con_codigo });
+      } catch (sgaError) {
+        console.error('Error consultando multas del estudiante en SGA:', sgaError);
+        sgaLookupError =
+          'No fue posible verificar las multas en SGA. No se puede generar el paz y salvo hasta completar esta consulta.';
+      }
+    }
+
+    if (resultMultas.rows.length > 0 || sgaMultaInfo.length > 0) {
       return res.render('home/alerta-multado', {
         multaInfo: resultMultas.rows,
+        sgaMultaInfo,
+        sgaLookupError,
       });
+    }
+
+    if (sgaLookupError) {
+      return res.render('home/verificar_estudiante', { error: sgaLookupError });
     } else {
       const correo = await resolveStudentEmail(documento, con_codigo);
 

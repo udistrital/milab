@@ -161,6 +161,8 @@
                                                                 data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
                                                                 data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
+                                                                data-sancion-tipo-persona="<%= data.tipo_sancionado %>"
+                                                                data-sga-configurado="<%= sgaConfigured ? 'true' : 'false' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
@@ -257,6 +259,8 @@
                                                                 data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
                                                                 data-sancion-documento="<%= data.documento_sancionado %>"
                                                                 data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
+                                                                data-sancion-tipo-persona="<%= data.tipo_sancionado %>"
+                                                                data-sga-configurado="<%= sgaConfigured ? 'true' : 'false' %>"
                                                                 data-sancion-fecha="<%= data.fecha_multa_formateada %>"
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
@@ -326,60 +330,99 @@
     </main>
 
     <div class="modal fade app-detail-modal" id="detalleSancionModal" tabindex="-1" aria-labelledby="detalleSancionLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="detalleSancionLabel">Detalle de la sanción</h5>
+                <div class="modal-header sanction-detail-header">
+                    <div class="sanction-detail-heading">
+                        <span class="sanction-detail-icon" aria-hidden="true"><i class="bi bi-shield-exclamation"></i></span>
+                        <div>
+                            <p class="sanction-detail-kicker">Gestión de sanciones</p>
+                            <h5 class="modal-title" id="detalleSancionLabel">Detalle de la sanción</h5>
+                            <p class="sanction-detail-subtitle">Información del estudiante, la sanción y su consulta en SGA.</p>
+                        </div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="text-muted small">ID</div>
-                            <div class="fw-semibold" data-detail-field="id"></div>
+                    <section class="sanction-detail-section" aria-labelledby="sanctionPersonHeading">
+                        <div class="sanction-detail-section-heading">
+                            <i class="bi bi-person-vcard" aria-hidden="true"></i>
+                            <div>
+                                <h6 id="sanctionPersonHeading">Persona sancionada</h6>
+                                <p>Identificación y estado actual</p>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Estado</div>
-                            <div class="fw-semibold" data-detail-field="estado"></div>
+                        <div class="sanction-detail-grid">
+                            <div class="sanction-detail-field sanction-detail-field--wide">
+                                <span>Nombre</span>
+                                <strong data-detail-field="nombre"></strong>
+                                <small class="text-warning d-none" data-oati-status aria-live="polite"></small>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Documento</span>
+                                <strong data-detail-field="documento"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Código</span>
+                                <strong data-detail-field="codigo"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Estado</span>
+                                <strong data-detail-field="estado"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Identificador de sanción</span>
+                                <strong data-detail-field="id"></strong>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Nombre sancionado</div>
-                            <div class="fw-semibold" data-detail-field="nombre"></div>
-                            <div class="small text-warning mt-1 d-none" data-oati-status aria-live="polite"></div>
+                    </section>
+
+                    <section class="sanction-detail-section" aria-labelledby="sanctionInfoHeading">
+                        <div class="sanction-detail-section-heading">
+                            <i class="bi bi-clipboard2-check" aria-hidden="true"></i>
+                            <div>
+                                <h6 id="sanctionInfoHeading">Información de la sanción</h6>
+                                <p>Registro en el sistema de laboratorios</p>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Documento</div>
-                            <div class="fw-semibold" data-detail-field="documento"></div>
+                        <div class="sanction-detail-grid">
+                            <div class="sanction-detail-field">
+                                <span>Categoría</span>
+                                <strong data-detail-field="categoria"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Tipo</span>
+                                <strong data-detail-field="tipo"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Fecha</span>
+                                <strong data-detail-field="fecha"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Laboratorista</span>
+                                <strong data-detail-field="laboratorista"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>UAL</span>
+                                <strong data-detail-field="ual"></strong>
+                            </div>
+                            <div class="sanction-detail-field sanction-detail-field--wide">
+                                <span>Observaciones</span>
+                                <strong data-detail-field="observaciones"></strong>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Código</div>
-                            <div class="fw-semibold" data-detail-field="codigo"></div>
+                    </section>
+
+                    <section class="sanction-sga-panel d-none" data-sga-debts-panel aria-live="polite">
+                        <div class="sanction-detail-section-heading sanction-sga-heading">
+                            <i class="bi bi-bank" aria-hidden="true"></i>
+                            <div>
+                                <h6>Multas activas en SGA</h6>
+                                <p data-sga-debts-status>Consultando...</p>
+                            </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Fecha</div>
-                            <div class="fw-semibold" data-detail-field="fecha"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Laboratorista</div>
-                            <div class="fw-semibold" data-detail-field="laboratorista"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">UAL</div>
-                            <div class="fw-semibold" data-detail-field="ual"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Categoría de la sanción</div>
-                            <div class="fw-semibold" data-detail-field="categoria"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="text-muted small">Tipo de sanción</div>
-                            <div class="fw-semibold" data-detail-field="tipo"></div>
-                        </div>
-                        <div class="col-12">
-                            <div class="text-muted small">Observaciones</div>
-                            <div class="fw-semibold" data-detail-field="observaciones"></div>
-                        </div>
-                    </div>
+                        <div class="sanction-sga-list" data-sga-debts-list></div>
+                    </section>
                     <div class="border-top pt-3 mt-3 d-none" data-sanction-action-panel>
                         <h6 class="mb-3" data-sanction-action-title>Actualizar sanción</h6>
                         <form action="/milab/api/aprobacion_multa/activar" method="POST" data-sanction-action-form="activate" class="d-none row g-3">
@@ -464,6 +507,8 @@
         let activeNameRequestController = null;
         let activeNameRequestId = 0;
         let activeNameRetryTimer = null;
+        let activeSgaRequestController = null;
+        let activeSgaRequestId = 0;
 
         function updateOatiStatus(message) {
             const statusTarget = document.querySelector('[data-oati-status]');
@@ -492,6 +537,109 @@
                 activeNameRetryTimer = null;
             }
             updateOatiStatus('');
+        }
+
+        function stopSgaDebtLookup() {
+            activeSgaRequestId += 1;
+            if (activeSgaRequestController) {
+                activeSgaRequestController.abort();
+                activeSgaRequestController = null;
+            }
+
+            const panel = document.querySelector('[data-sga-debts-panel]');
+            const status = document.querySelector('[data-sga-debts-status]');
+            const list = document.querySelector('[data-sga-debts-list]');
+            if (panel) panel.classList.add('d-none');
+            if (status) status.textContent = '';
+            if (list) list.replaceChildren();
+        }
+
+        function addSgaDebtField(container, label, value) {
+            const field = document.createElement('div');
+            field.className = 'sanction-sga-field';
+            const labelElement = document.createElement('span');
+            labelElement.textContent = label;
+            const valueElement = document.createElement('strong');
+            valueElement.textContent = value || '-';
+            field.append(labelElement, valueElement);
+            container.append(field);
+        }
+
+        async function loadSgaDebtsForStudent(sanctionId, isConfigured) {
+            const panel = document.querySelector('[data-sga-debts-panel]');
+            const status = document.querySelector('[data-sga-debts-status]');
+            const list = document.querySelector('[data-sga-debts-list]');
+            if (!panel || !status || !list) return;
+
+            panel.classList.remove('d-none');
+            list.replaceChildren();
+            if (!isConfigured) {
+                status.textContent = 'La consulta SGA no está configurada en este ambiente.';
+                status.dataset.state = 'warning';
+                return;
+            }
+
+            const requestId = activeSgaRequestId;
+            const controller = new AbortController();
+            activeSgaRequestController = controller;
+            status.textContent = 'Consultando multas activas en SGA...';
+            status.dataset.state = 'loading';
+
+            try {
+                const response = await fetch(
+                    `/milab/api/get_list_multas/${encodeURIComponent(sanctionId)}/sga-multas`,
+                    { signal: controller.signal, headers: { Accept: 'application/json' } }
+                );
+                const result = await response.json();
+                if (requestId !== activeSgaRequestId) return;
+                if (!response.ok || !result.ok) {
+                    throw new Error(result.message || 'No fue posible consultar SGA.');
+                }
+                if (!result.configured) {
+                    status.textContent = 'La consulta SGA no está configurada en este ambiente.';
+                    status.dataset.state = 'warning';
+                    return;
+                }
+                if (!result.supported) {
+                    status.textContent = 'La consulta de deudores SGA aplica únicamente a estudiantes.';
+                    status.dataset.state = 'warning';
+                    return;
+                }
+
+                const debts = Array.isArray(result.multas) ? result.multas : [];
+                if (!debts.length) {
+                    status.textContent = 'No se encontraron multas activas en SGA.';
+                    status.dataset.state = 'clear';
+                    return;
+                }
+
+                status.textContent = `${debts.length} multa(s) activa(s) reportada(s) por SGA.`;
+                status.dataset.state = 'warning';
+                debts.forEach((debt) => {
+                    const item = document.createElement('article');
+                    item.className = 'sanction-sga-item';
+                    const title = document.createElement('h6');
+                    title.textContent = debt.DEU_MATERIAL || 'Multa reportada por SGA';
+                    const fields = document.createElement('div');
+                    fields.className = 'sanction-sga-grid';
+                    addSgaDebtField(fields, 'Código', debt.DEU_EST_COD);
+                    addSgaDebtField(fields, 'Estado SGA', debt.DEU_ESTADO);
+                    addSgaDebtField(fields, 'Fecha', debt.DEU_FECHA);
+                    addSgaDebtField(fields, 'Periodo', [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / '));
+                    addSgaDebtField(fields, 'Valor reportado', debt.DEU_MULTA);
+                    addSgaDebtField(fields, 'Fecha de pago', debt.DEU_FECHA_PAGO || 'Pendiente');
+                    item.append(title, fields);
+                    list.append(item);
+                });
+            } catch (error) {
+                if (error.name === 'AbortError' || requestId !== activeSgaRequestId) return;
+                status.textContent = error.message || 'No fue posible consultar multas en SGA.';
+                status.dataset.state = 'error';
+            } finally {
+                if (activeSgaRequestController === controller) {
+                    activeSgaRequestController = null;
+                }
+            }
         }
 
         function fetchNameWithRetry(requestId, documento, attempt) {
@@ -561,6 +709,7 @@
         if (detailModal) {
             detailModal.addEventListener('hidden.bs.modal', function () {
                 stopActiveNameLookup();
+                stopSgaDebtLookup();
             });
         }
 
@@ -577,6 +726,7 @@
                 : trigger.closest('tr')?.querySelector('.app-detail-button[data-sancion-documento]');
 
             const source = detailSource || trigger;
+            stopSgaDebtLookup();
 
             const fields = {
                 id: source.getAttribute('data-sancion-id'),
@@ -617,6 +767,17 @@
             }
 
             const action = trigger.getAttribute('data-sancion-action') || '';
+            if (
+                trigger.classList.contains('app-detail-button') &&
+                !action &&
+                source.getAttribute('data-sancion-tipo-persona') === 'estudiante'
+            ) {
+                loadSgaDebtsForStudent(
+                    fields.id,
+                    source.getAttribute('data-sga-configurado') === 'true'
+                );
+            }
+
             const actionPanel = document.querySelector('[data-sanction-action-panel]');
             const actionTitle = document.querySelector('[data-sanction-action-title]');
             const actionForms = document.querySelectorAll('[data-sanction-action-form]');

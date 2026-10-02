@@ -28,10 +28,15 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute() {
+function loadRoute({ multaRows = [] } = {}) {
   const originals = new Map();
   const stubs = [
-    [dbPath, { query: async () => ({ rows: [] }) }],
+    [
+      dbPath,
+      {
+        query: async (sql) => ({ rows: sql.includes('FROM multa m') ? multaRows : [] }),
+      },
+    ],
     [
       oatiClientPath,
       {
@@ -103,6 +108,24 @@ test('verificar_docente parses form submissions and reaches the success flow', a
     assert.equal(response.body.view, 'home/get-info-docente');
     assert.equal(response.body.locals.documento, '79520182');
     assert.equal(response.body.locals.nombre, 'Docente Prueba');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('verificar_docente blocks paz y salvo when active MILab sanctions exist', async () => {
+  const multa = { id: 12, cat_multa: 'Préstamo vencido' };
+  const loaded = loadRoute({ multaRows: [multa] });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      documento: '79520182',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/alerta-multado');
+    assert.deepEqual(response.body.locals.multaInfo, [multa]);
   } finally {
     loaded.restore();
   }
