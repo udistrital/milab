@@ -50,6 +50,13 @@ test('SgaDebtService returns an empty list for a valid no-debts response', () =>
   assert.deepEqual(service.parseResponse('<deudas/>'), []);
 });
 
+test('SgaDebtService accepts the object Axios creates from an XML response', () => {
+  const { service } = createService();
+  const activeDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '2' };
+
+  assert.deepEqual(service.parseResponse({ deudas: { estudiantes: [activeDebt] } }), [activeDebt]);
+});
+
 test('SgaDebtService rejects responses without the expected root', () => {
   const { service } = createService();
   assert.throws(() => service.parseResponse('<error>unavailable</error>'), /resultado de deudas/i);
@@ -91,6 +98,21 @@ test('SgaDebtService resolves a document to student code and fetches active SGA 
   assert.deepEqual(calls.academic, ['datos_basicos_estudiante/79520182']);
   assert.equal(calls.post[0][0], 'wso2eiserver/services/academica_pruebas/deudores/2024100001');
   assert.match(calls.post[0][1], /<xs:codigo_estudiante>2024100001<\/xs:codigo_estudiante>/);
+});
+
+test('SgaDebtService handles Axios-parsed debts and returns only state-2 records', async () => {
+  const activeDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '2', DEU_ID: '75806' };
+  const paidDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '3', DEU_ID: '92915' };
+  const { service } = createService({
+    debtResponse: { deudas: { estudiantes: [activeDebt, paidDebt] } },
+  });
+
+  const result = await service.getActiveDebts({
+    codigo: '20161104039',
+    documento: '1089907605',
+  });
+
+  assert.deepEqual(result, [activeDebt]);
 });
 
 test('SgaDebtService skips SGA and academic requests when not configured', async () => {

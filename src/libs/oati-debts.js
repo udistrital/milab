@@ -47,12 +47,12 @@ class SgaDebtService {
     return `wso2eiserver/services/${serviceName}/deudores/${encodeURIComponent(normalizedCode)}`;
   }
 
-  parseResponse(xmlResponse) {
-    if (typeof xmlResponse !== 'string' || !xmlResponse.trim()) {
+  parseResponse(response) {
+    if (!response || (typeof response !== 'string' && typeof response !== 'object')) {
       throw new Error('El servicio SGA devolvió una respuesta vacía o inválida.');
     }
 
-    const parsedResponse = this.xmlParser.parse(xmlResponse);
+    const parsedResponse = typeof response === 'string' ? this.xmlParser.parse(response) : response;
     if (!Object.hasOwn(parsedResponse, 'deudas')) {
       throw new Error('La respuesta del servicio SGA no contiene el resultado de deudas esperado.');
     }
