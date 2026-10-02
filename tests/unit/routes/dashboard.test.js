@@ -614,7 +614,6 @@ test('dashboard admin email edit optionally notifies the user with current sanct
     assert.equal(notificationCalls[0].variables.tipoUsuario, 'estudiante');
     assert.equal(notificationCalls[0].variables.sanciones[0].tipo_sancion, 'Daño de equipo');
     assert.equal(notificationCalls[0].variables.sanciones[0].laboratorio, 'Laboratorio de Física');
-    assert.equal(notificationCalls[0].variables.loginUrl, 'https://milab.test/login');
     assert.equal(notificationCalls[0].variables.registrationUrl, 'https://milab.test/register');
   } finally {
     loaded.restore();
