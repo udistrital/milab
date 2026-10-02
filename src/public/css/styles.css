@@ -259,6 +259,7 @@ html[data-bs-theme='light'] .modal .modal-content {
 }
 
 :root {
+  color-scheme: light;
   --app-font-display: 'Sora', 'Manrope', sans-serif;
   --app-font-body: 'Manrope', 'Segoe UI', sans-serif;
   --app-bg: #faf6ed;

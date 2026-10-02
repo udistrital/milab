@@ -377,16 +377,6 @@
 
                     <li>
                       <button
-                        class="dropdown-item app-user-menu-action app-user-menu-theme"
-                        type="button"
-                        data-theme-toggle
-                        data-guide="theme-toggle"
-                        aria-label="Cambiar tema"
-                        title="Cambiar tema"
-                      ></button>
-                    </li>
-                    <li>
-                      <button
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
                         type="button"
                         data-logout-trigger="true"
@@ -556,16 +546,6 @@
 
                     <li>
                       <button
-                        class="dropdown-item app-user-menu-action app-user-menu-theme"
-                        type="button"
-                        data-theme-toggle
-                        data-guide="theme-toggle"
-                        aria-label="Cambiar tema"
-                        title="Cambiar tema"
-                      ></button>
-                    </li>
-                    <li>
-                      <button
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
                         type="button"
                         data-logout-trigger="true"
@@ -612,10 +592,6 @@
             <% } %>
 
             <% if (!isAuthenticated) { %>
-              <button class="btn app-theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema"></button>
-            <% } %>
-
-            <% if (!isAuthenticated) { %>
               <a class="btn app-login-pill" href="/milab/auth/login">
                 <i class="bi bi-box-arrow-in-right"></i>
                 <span>Ingresar</span>
@@ -641,62 +617,4 @@
       const top = window.innerHeight / 2 - height / 2;
       window.open(url, 'MicrosoftLogin', `width=${width},height=${height},left=${left},top=${top}`);
     }
-  </script>
-  <script nonce="<%= cspNonce %>">
-    (function() {
-      function getThemeLabel(mode) {
-        if (mode === 'dark') {
-          return '<i class="bi bi-sun"></i>';
-        }
-        return '<i class="bi bi-moon-stars"></i>';
-      }
-
-      function syncThemeLogos(mode) {
-        var logos = document.querySelectorAll('[data-theme-logo]');
-        logos.forEach(function(logo) {
-          var lightSrc = logo.getAttribute('data-logo-light');
-          var darkSrc = logo.getAttribute('data-logo-dark');
-          var nextSrc = mode === 'dark' ? darkSrc : lightSrc;
-
-          if (nextSrc && logo.getAttribute('src') !== nextSrc) {
-            logo.setAttribute('src', nextSrc);
-          }
-        });
-      }
-
-      function syncThemeButtons(mode) {
-        var buttons = document.querySelectorAll('[data-theme-toggle]');
-        buttons.forEach(function(btn) {
-          btn.innerHTML = getThemeLabel(mode);
-          btn.classList.toggle('is-dark', mode === 'dark');
-          btn.setAttribute('title', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
-          btn.setAttribute('aria-label', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
-        });
-      }
-
-      function applyTheme(mode) {
-        if (window.MiLabThemeBranding && typeof window.MiLabThemeBranding.applyThemeState === 'function') {
-          window.MiLabThemeBranding.applyThemeState(mode);
-        } else {
-          document.documentElement.setAttribute('data-bs-theme', mode);
-        }
-        try { localStorage.setItem('theme', mode); } catch(e) {}
-        syncThemeButtons(mode);
-      }
-
-      var saved = 'light';
-      try { saved = localStorage.getItem('theme') || 'light'; } catch(e) {}
-      applyTheme(saved);
-
-      document.addEventListener('DOMContentLoaded', function() {
-        var buttons = document.querySelectorAll('[data-theme-toggle]');
-        buttons.forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            var current = document.documentElement.getAttribute('data-bs-theme') || 'light';
-            var next = current === 'dark' ? 'light' : 'dark';
-            applyTheme(next);
-          });
-        });
-      });
-    })();
   </script>
