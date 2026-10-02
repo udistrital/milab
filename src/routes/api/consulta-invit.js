@@ -3,6 +3,7 @@ const router = express.Router();
 const { verifyRecaptchaToken } = require('../../libs/recaptcha');
 const pool = require('../../libs/db');
 const { resolveUsuarioIdForStudent } = require('../../libs/user-identity');
+const { sgaDebtService } = require('../../libs/oati-debts');
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
@@ -102,7 +103,26 @@ router.post('/', async (req, res) => {
         `SELECT 1 FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA' LIMIT 1`,
         [usuarioId]
       );
-      if (result.rows.length > 0) estado = 'MULTADO';
+      let sgaMultaActiva = false;
+
+      if (sgaDebtService.isConfigured()) {
+        try {
+          const sgaMultas = await sgaDebtService.getActiveDebts({ codigo: documento });
+          sgaMultaActiva = sgaMultas.length > 0;
+        } catch (sgaError) {
+          console.error('Error consultando multas SGA en consulta anónima:', sgaError.message);
+          if (result.rows.length === 0) {
+            return res.status(500).render('home/consulta-invit', {
+              siteKey: process.env.RECAPTCHA_SITE_KEY,
+              error: 'No fue posible consultar las multas en SGA.',
+              estadoResultado: null,
+              estadoSinFormato: null,
+            });
+          }
+        }
+      }
+
+      if (result.rows.length > 0 || sgaMultaActiva) estado = 'MULTADO';
     } catch (err) {
       // Si hay error en la consulta de multas, mostrar error controlado
       console.error('Error consultando multas:', err.message);

@@ -46,15 +46,19 @@
         </tr>
       <% } %>
       <tr>
-        <td style="padding:0 30px 28px;">
+        <td align="center" style="padding:0 30px 28px;">
           <p style="font-size:15px;line-height:1.6;margin:0 0 16px;">
-            Ingresa a MILab para consultar más detalles de tu cuenta y tus sanciones.
+            Regístrate en MILab para consultar más detalles de tu cuenta y tus sanciones.
           </p>
-          <p style="font-size:14px;line-height:1.8;margin:0;">
-            <a href="<%= loginUrl %>" style="color:#1769aa;font-weight:700;">Ingresar a MILab</a>
-            &nbsp;|&nbsp;
-            <a href="<%= registrationUrl %>" style="color:#1769aa;font-weight:700;">Registrarme en MILab</a>
-          </p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+              <td align="center" bgcolor="#b3261e" style="border-radius:6px;">
+                <a href="<%= registrationUrl %>" style="display:inline-block;padding:13px 26px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;">
+                  Registrarse en MILab
+                </a>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
       <%- buildEmailFooterHtml('<p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">Coordinación General de Laboratorios - MILab</p>') %>

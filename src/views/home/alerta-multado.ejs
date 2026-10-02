@@ -1,9 +1,15 @@
 <%- include('../partials/header'); -%>
 
+<% const sancionesMilab = Array.isArray(multaInfo) ? multaInfo : []; %>
+<% const sancionesSga = typeof sgaMultaInfo !== 'undefined' && Array.isArray(sgaMultaInfo) ? sgaMultaInfo : []; %>
+
 <div class="container mt-5">
   <div class="alert alert-danger" role="alert">
     <h4 class="alert-heading">No se puede generar certificado, el usuario actualmente se encuentra Sancionado</h4>
-    <p>El usuario actualmente tiene las siguientes sanciones:</p>
+    <p>El usuario tiene las siguientes sanciones activas:</p>
+    <% if (typeof sgaLookupError !== 'undefined' && sgaLookupError) { %>
+      <p class="alert alert-warning mb-3"><%= sgaLookupError %></p>
+    <% } %>
 
 
 
@@ -17,7 +23,7 @@
     <div class="card">
       <div class="card-header">
         <div class="row">
-          <div class="encabezado-tabla col text-center">Registro de sanciones activas en la Universidad</div>
+          <div class="encabezado-tabla col text-center">Sanciones activas en MILab</div>
         </div>
       </div>
       <div class="card-body">
@@ -32,8 +38,8 @@
               <th>Fecha de la sanción</th>
               <th>Observaciones</th>
             </tr>
-            <% if(multaInfo.length > 0) { %>
-              <% multaInfo.forEach(function(data){ %>
+            <% if(sancionesMilab.length > 0) { %>
+              <% sancionesMilab.forEach(function(data){ %>
                 <% const referenciaSancionado = data.documento_sancionado || data.usuario_sancionado_id; %>
                 <tr>
                   <td><%= data.id %></td>
@@ -47,13 +53,53 @@
               <% }); %>
             <% } else { %>
               <tr>
-                <td colspan="8">No hay registros en la base de datos</td>
+                <td colspan="8">No hay sanciones activas registradas en MILab.</td>
               </tr>
             <% } %>
           </table>
         </div>
       </div>
     </div>
+
+    <% if (sancionesSga.length > 0) { %>
+      <div class="card mt-4">
+        <div class="card-header">
+          <div class="row">
+            <div class="encabezado-tabla col text-center">Multas activas reportadas por SGA</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-bordered" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Estudiante</th>
+                  <th>Código</th>
+                  <th>Detalle reportado</th>
+                  <th>Fecha</th>
+                  <th>Periodo</th>
+                  <th>Valor reportado</th>
+                  <th>Fecha de pago</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% sancionesSga.forEach(function(data){ %>
+                  <tr>
+                    <td><%= data.DEU_DEUDOR_NOMBRE || '-' %></td>
+                    <td><%= data.DEU_EST_COD || '-' %></td>
+                    <td><%= data.DEU_MATERIAL || '-' %></td>
+                    <td><%= data.DEU_FECHA || '-' %></td>
+                    <td><%= data.DEU_ANO || '-' %> / <%= data.DEU_PER || '-' %></td>
+                    <td><%= data.DEU_MULTA || '-' %></td>
+                    <td><%= data.DEU_FECHA_PAGO || 'Pendiente' %></td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    <% } %>
     <br>
     
 

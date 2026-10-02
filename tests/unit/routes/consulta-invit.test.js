@@ -10,6 +10,7 @@ const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const axiosPath = require.resolve('axios');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
+const oatiDebtsPath = path.resolve(__dirname, '../../../src/libs/oati-debts.js');
 
 function buildApp(route) {
   const app = express();
@@ -30,16 +31,22 @@ function loadRoute({
   usuarioIdResult = 'fake-user-id',
   usuarioIdError = null,
   multaActiva = false,
+  sgaServiceConfigured = false,
+  sgaMultaActiva = false,
+  sgaError = null,
 } = {}) {
   const originalRecaptcha = require.cache[recaptchaPath];
   const originalAppUrl = require.cache[appUrlPath];
   const originalAxios = require.cache[axiosPath];
   const originalUserIdentity = require.cache[userIdentityPath];
   const originalDb = require.cache[dbPath];
+  const originalOatiDebts = require.cache[oatiDebtsPath];
   const originalEnv = {
     RECAPTCHA_SITE_KEY: process.env.RECAPTCHA_SITE_KEY,
   };
   let getCalls = 0;
+  let sgaCalls = 0;
+  let sgaCode;
 
   process.env.RECAPTCHA_SITE_KEY = 'site-key';
 
@@ -101,10 +108,28 @@ function loadRoute({
       },
     },
   };
+  require.cache[oatiDebtsPath] = {
+    id: oatiDebtsPath,
+    filename: oatiDebtsPath,
+    loaded: true,
+    exports: {
+      sgaDebtService: {
+        isConfigured: () => sgaServiceConfigured,
+        getActiveDebts: async ({ codigo }) => {
+          sgaCalls += 1;
+          sgaCode = codigo;
+          if (sgaError) throw sgaError;
+          return sgaMultaActiva ? [{ DEU_ESTADO: '2' }] : [];
+        },
+      },
+    },
+  };
 
   return {
     route: require(routePath),
     getCalls: () => getCalls,
+    sgaCalls: () => sgaCalls,
+    sgaCode: () => sgaCode,
     restore() {
       if (originalRecaptcha) {
         require.cache[recaptchaPath] = originalRecaptcha;
@@ -130,6 +155,11 @@ function loadRoute({
         require.cache[dbPath] = originalDb;
       } else {
         delete require.cache[dbPath];
+      }
+      if (originalOatiDebts) {
+        require.cache[oatiDebtsPath] = originalOatiDebts;
+      } else {
+        delete require.cache[oatiDebtsPath];
       }
       Object.entries(originalEnv).forEach(([key, value]) => {
         if (value === undefined) {
@@ -215,6 +245,65 @@ test('consulta-invit renders estado when recaptcha and API lookup succeed', asyn
     assert.equal(response.body.locals.estadoResultado, 'El estudiante está: PAZ_Y_SALVO');
     // El mock de axios ya no se usa, así que getCalls debe ser 0
     assert.equal(loaded.getCalls(), 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta-invit reports MULTADO when SGA has an active fine', async () => {
+  const loaded = loadRoute({ sgaServiceConfigured: true, sgaMultaActiva: true });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      documento: '2024100001',
+      'g-recaptcha-response': 'token',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.estadoSinFormato, 'MULTADO');
+    assert.equal(response.body.locals.estadoResultado, 'El estudiante está: MULTADO');
+    assert.equal(loaded.sgaCalls(), 1);
+    assert.equal(loaded.sgaCode(), '2024100001');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta-invit skips SGA when its service is not configured', async () => {
+  const loaded = loadRoute({ sgaServiceConfigured: false });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      documento: '2024100001',
+      'g-recaptcha-response': 'token',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.estadoSinFormato, 'PAZ_Y_SALVO');
+    assert.equal(loaded.sgaCalls(), 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta-invit does not report paz y salvo when the configured SGA lookup fails', async () => {
+  const loaded = loadRoute({
+    sgaServiceConfigured: true,
+    sgaError: new Error('SGA unavailable'),
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      documento: '2024100001',
+      'g-recaptcha-response': 'token',
+    });
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.locals.estadoSinFormato, null);
+    assert.match(response.body.locals.error, /no fue posible consultar las multas en SGA/i);
   } finally {
     loaded.restore();
   }

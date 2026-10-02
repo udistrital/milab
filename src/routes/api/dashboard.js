@@ -1260,7 +1260,6 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
             correo,
             tipoUsuario,
             sanciones,
-            loginUrl: buildAppUrl('/login'),
             registrationUrl: buildAppUrl('/register'),
           },
         });
