@@ -64,8 +64,15 @@ function loadMiddleware({ poolQueryImpl } = {}) {
     };
   }
 
+  const { menuPermissionMiddleware } = require(middlewarePath);
+
   return {
-    menuPermissionMiddleware: require(middlewarePath).menuPermissionMiddleware,
+    menuPermissionMiddleware(req, res, next) {
+      return menuPermissionMiddleware(req, res, (error) => {
+        assert.ifError(error);
+        next();
+      });
+    },
     getCalls: () => calls,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
@@ -233,6 +240,137 @@ test('menuPermissionMiddleware prioritizes exact route over parent module fallba
   }
 });
 
+for (const role of ['admin', 'laboratorista', 'coordinador']) {
+  test(`menuPermissionMiddleware uses the bulk query menu for ${role} form submissions`, async () => {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async (sql, params) => {
+        if (sql.includes('FROM menu_item')) {
+          assert.ok(params[0].includes('/milab/api/get_list_estudiantes/get_consulta'));
+          return {
+            rows: [
+              { id: 11, route: '/milab/api/get_list_estudiantes' },
+              { id: 10, route: '/milab/api/get_list_estudiantes/get_consulta' },
+            ],
+          };
+        }
+
+        if (sql.includes('FROM rol_permiso')) {
+          assert.deepEqual(params, [[10], [role]]);
+          return { rows: [{}] };
+        }
+
+        return { rows: [] };
+      },
+    });
+
+    try {
+      const req = {
+        method: 'POST',
+        originalUrl: '/milab/api/get_list_estudiantes/consulta_masiva/?source=form',
+        session: { user: { tipo: role } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true);
+      assert.equal(res.rendered, null);
+    } finally {
+      loaded.restore();
+    }
+  });
+}
+
+for (const hasExplicitActionMenu of [false, true]) {
+  test(`menuPermissionMiddleware preserves bulk query denials with explicit action menu=${hasExplicitActionMenu}`, async () => {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async (sql, params) => {
+        if (sql.includes('FROM menu_item')) {
+          const rows = [
+            { id: 11, route: '/milab/api/get_list_estudiantes' },
+            { id: 10, route: '/milab/api/get_list_estudiantes/get_consulta' },
+          ];
+          if (hasExplicitActionMenu) {
+            rows.push({ id: 12, route: '/milab/api/get_list_estudiantes/consulta_masiva' });
+          }
+          return { rows };
+        }
+
+        if (sql.includes('FROM rol_permiso')) {
+          assert.deepEqual(params[0], [hasExplicitActionMenu ? 12 : 10]);
+          return { rows: [] };
+        }
+
+        return { rows: [] };
+      },
+    });
+
+    try {
+      const req = {
+        method: 'POST',
+        originalUrl: '/milab/api/get_list_estudiantes/consulta_masiva',
+        session: { user: { tipo: 'laboratorista' } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, false);
+      assert.match(res.rendered.payload.message2, /No tienes permisos para este modulo/i);
+    } finally {
+      loaded.restore();
+    }
+  });
+}
+
+for (const requestPath of [
+  '/milab/api/get_list_estudiantes',
+  '/milab/api/get_list_estudiantes/consulta_masiva',
+]) {
+  test(`menuPermissionMiddleware does not grant bulk query permissions to GET ${requestPath}`, async () => {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async (sql, params) => {
+        if (sql.includes('FROM menu_item')) {
+          assert.equal(params[0].includes('/milab/api/get_list_estudiantes/get_consulta'), false);
+          return { rows: [{ id: 11, route: '/milab/api/get_list_estudiantes' }] };
+        }
+
+        if (sql.includes('FROM rol_permiso')) {
+          assert.deepEqual(params[0], [11]);
+          return { rows: [] };
+        }
+
+        return { rows: [] };
+      },
+    });
+
+    try {
+      const req = {
+        method: 'GET',
+        originalUrl: requestPath,
+        session: { user: { tipo: 'laboratorista' } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, false);
+      assert.match(res.rendered.payload.message, /Acceso denegado/i);
+    } finally {
+      loaded.restore();
+    }
+  });
+}
+
 test('menuPermissionMiddleware delegates course API authorization to its routes', async () => {
   const loaded = loadMiddleware({
     poolQueryImpl: async () => ({ rows: [] }),
@@ -262,6 +400,62 @@ test('menuPermissionMiddleware delegates course API authorization to its routes'
     loaded.restore();
   }
 });
+
+test('menuPermissionMiddleware delegates impersonation exit without requiring the dashboard menu', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => {
+      throw new Error('Impersonation exit must use route authorization, not dashboard permissions');
+    },
+  });
+
+  try {
+    const req = {
+      method: 'POST',
+      originalUrl: '/milab/api/dashboard/impersonacion/detener/?source=header',
+      session: { user: { tipo: 'estudiante' } },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+    assert.equal(loaded.getCalls().length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+for (const [method, pathname] of [
+  ['GET', '/milab/api/dashboard/impersonacion/detener'],
+  ['POST', '/milab/api/dashboard/impersonacion/iniciar'],
+  ['POST', '/milab/api/dashboard/impersonacion/detener/extra'],
+]) {
+  test(`menuPermissionMiddleware still checks dashboard permissions for ${method} ${pathname}`, async () => {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async (sql) => ({
+        rows: sql.includes('FROM menu_item') ? [{ id: 1, route: '/milab/api/dashboard' }] : [],
+      }),
+    });
+    try {
+      const req = {
+        method,
+        originalUrl: pathname,
+        session: { user: { tipo: 'estudiante' } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+      assert.equal(nextCalled, false);
+      assert.match(res.rendered.payload.message2, /No tienes permisos para este modulo/);
+    } finally {
+      loaded.restore();
+    }
+  });
+}
 
 test('menuPermissionMiddleware blocks unregistered private API GET routes', async () => {
   const loaded = loadMiddleware({

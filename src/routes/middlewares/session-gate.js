@@ -1,3 +1,5 @@
+const { expireSession } = require('./session-expiration');
+
 function normalizeRequestPath(originalUrl) {
   return String(originalUrl || '').split('?')[0];
 }
@@ -38,15 +40,6 @@ function isProtectedMilabPath(requestPath) {
   );
 }
 
-function shouldReturnJson(req) {
-  if (req.xhr) return true;
-
-  const accept = String(req.get?.('accept') || '').toLowerCase();
-  // Navegacion directa del navegador incluye text/html en el Accept; los
-  // clientes fetch/AJAX del propio frontend solo piden application/json.
-  return accept.includes('application/json') && !accept.includes('text/html');
-}
-
 function sessionGateMiddleware(req, res, next) {
   const requestPath = normalizeRequestPath(req.originalUrl);
   const method = String(req.method || 'GET').toUpperCase();
@@ -70,16 +63,7 @@ function sessionGateMiddleware(req, res, next) {
     return next();
   }
 
-  if (shouldReturnJson(req)) {
-    return res.status(401).json({
-      ok: false,
-      code: 'SESSION_EXPIRED',
-      message: 'Debe iniciar sesión para continuar.',
-      message2: 'Tu sesión expiró o no es válida.',
-    });
-  }
-
-  return res.redirect('/milab/auth/login');
+  return expireSession(req, res, next);
 }
 
 module.exports = {

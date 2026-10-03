@@ -52,6 +52,18 @@ Esta matriz resume los permisos funcionales actuales por rol en MiLab, con base 
 
 ## Controles Transversales
 
+La consulta masiva usa el permiso de menu de
+`/milab/api/get_list_estudiantes/get_consulta` tanto al abrir el formulario (`GET`)
+como al enviarlo a `/milab/api/get_list_estudiantes/consulta_masiva` (`POST`).
+Si existe un menu especifico para el `POST`, su permiso tiene prioridad.
+El envio no debe heredar el permiso administrativo del listado de certificados
+(`/milab/api/get_list_estudiantes`).
+
+El `POST /milab/api/dashboard/impersonacion/detener` delega su autorizacion en
+la ruta, sin exigir el permiso de menu del dashboard al usuario impersonado.
+La restauracion solo ocurre si existe `impersonationAdminUser` en la sesion
+del servidor; se mantienen la validacion de rol y la proteccion CSRF.
+
 | Control                 | Aplicacion                                               |
 | ----------------------- | -------------------------------------------------------- |
 | Autenticacion de sesion | `requireUser(...)`                                       |

@@ -4,6 +4,7 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
+const { startSessionLifetime } = require('../../libs/session-policy');
 
 const router = express.Router();
 
@@ -736,6 +737,7 @@ router.post('/identify', async (req, res) => {
     await regenerateSession(req);
     if (req.session) {
       req.session.user = buildSessionUser(usuario);
+      startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
     }
     return res.redirect('/milab/inicio');
@@ -781,6 +783,7 @@ router.post('/identify', async (req, res) => {
     await regenerateSession(req);
     if (req.session) {
       req.session.user = buildSessionUser(usuario);
+      startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
     }
 
@@ -976,6 +979,7 @@ router.post('/', async (req, res) => {
     await regenerateSession(req);
     if (req.session) {
       req.session.user = buildSessionUser(refreshed);
+      startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
     }
 
