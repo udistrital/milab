@@ -32,6 +32,12 @@ Referencias: [OWASP Session Management](https://cheatsheetseries.owasp.org/cheat
 
 Implementación: [política](src/libs/session-policy.js), [control del servidor](src/routes/middlewares/session-expiration.js), [endpoints de estado/actividad](src/routes/api/session.js) y [cliente global](src/public/js/session-control.js).
 
+## Consulta de multas SGA
+
+- El servicio de deudores por ambiente se define en [src/config/sga-services.js](src/config/sga-services.js) (`SGA_DEBTORS_SERVICE_NAMES`) y no se lee del `.env` (`OATI_DEBT_SERVICE_NAME` no tiene efecto). Las consultas usan el gateway https de OATI con token OAuth, no el puerto 8282.
+- `NODE_ENV=production` (o cualquier ambiente no listado como no productivo, incluido vacío) usa `servicios_academicos_produccion`; `dev`, `development`, `local`, `test`, `testing`, `staging` y `preprod` usan `academica_pruebas`.
+- Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
+
 ## Arquitectura y Estructura del Proyecto
 
 - **Backend:** Node.js + Express
