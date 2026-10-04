@@ -914,14 +914,14 @@
     );
   }
 
-  async function impersonarUsuarioDesdeDashboard(rowId) {
+  async function impersonarUsuarioDesdeDashboard(rowId, btnElement) {
     const row = getUsuarioDashboardRowById(rowId);
     if (!row || !Number.isInteger(Number(row.id))) return;
 
     hideDashboardFeedback();
 
+    window.MiLabSubmitLock.lock(btnElement, 'Realizando acción en dashboard...');
     try {
-      window.MiLabSubmitLock.lock(btnElement, 'Realizando acción en dashboard...');
       const response = await fetch('/milab/api/dashboard/impersonacion/iniciar', {
         method: 'POST',
         headers: {
@@ -935,11 +935,14 @@
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) {
         showDashboardFeedback(payload.message || 'No fue posible impersonar la cuenta seleccionada.', 'error');
+        window.MiLabSubmitLock.release(btnElement);
         return;
       }
 
       window.location.href = payload.redirect || '/milab/inicio';
-    } finally {
+    } catch (error) {
+      console.error('Error iniciando impersonación:', error);
+      showDashboardFeedback('No fue posible impersonar la cuenta seleccionada. Inténtalo nuevamente.', 'error');
       window.MiLabSubmitLock.release(btnElement);
     }
   }
@@ -1448,7 +1451,7 @@
         }
 
         if (action === 'impersonar') {
-          await impersonarUsuarioDesdeDashboard(rowId);
+          await impersonarUsuarioDesdeDashboard(rowId, button);
         }
       });
     }
