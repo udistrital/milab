@@ -312,3 +312,63 @@ test('get_list_estudiantes consulta_masiva marks SGA lookup failures as unverifi
     loaded.restore();
   }
 });
+
+test('get_list_estudiantes buildPdfTableRows keeps SGA fines and failures in the PDF', () => {
+  const loaded = loadRoute();
+
+  try {
+    const rows = loaded.route.buildPdfTableRows([
+      {
+        identificador: '2024100001',
+        multas: [
+          {
+            origen: 'MILab',
+            cat_multa: 'Daño',
+            fecha_multa: '2026-01-01',
+            obs_multa: 'x',
+            ual: 'L1',
+          },
+          {
+            origen: 'SGA',
+            cat_multa: 'Tablet',
+            fecha_multa: '2026-02-01',
+            obs_multa: 'y',
+            ual: 'SGA',
+          },
+          'sga-error',
+        ],
+      },
+      { identificador: '2024100002', multas: [null] },
+      { identificador: 'abc', multas: ['unknown'] },
+    ]);
+
+    assert.deepEqual(rows[0], ['2024100001', 'MILab', 'Daño', '2026-01-01', 'x', 'L1']);
+    assert.deepEqual(rows[1], ['2024100001', 'SGA', 'Tablet', '2026-02-01', 'y', 'SGA']);
+    assert.equal(rows[2][1], 'SGA');
+    assert.equal(rows[2][2], 'No fue posible verificar el estado en SGA.');
+    assert.notEqual(rows[2][4], 'El estudiante está a paz y salvo');
+    assert.equal(rows[3][4], 'El estudiante está a paz y salvo');
+    assert.match(rows[4][2], /Datos inválidos/);
+    assert.notEqual(rows[4][4], 'El estudiante está a paz y salvo');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_estudiantes generate_pdf renders a PDF including SGA markers', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const data = JSON.stringify([
+      { identificador: '2024100001', multas: ['sga-error'] },
+      { identificador: '2024100002', multas: [null] },
+    ]);
+    const response = await request(app).get('/generate_pdf').query({ data });
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/pdf/);
+  } finally {
+    loaded.restore();
+  }
+});
