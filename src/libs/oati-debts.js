@@ -30,6 +30,19 @@ class SgaDebtService {
     return String(debt?.DEU_ESTADO || '').trim() === '2';
   }
 
+  // Las deudas de biblioteca no corresponden a laboratorios: no se muestran ni bloquean.
+  isLibraryDebt(debt) {
+    const detail = String(debt?.DEU_MATERIAL || '')
+      .normalize('NFD')
+      .replaceAll(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    return detail.includes('biblioteca');
+  }
+
+  isBlockingDebt(debt) {
+    return this.isActiveDebt(debt) && !this.isLibraryDebt(debt);
+  }
+
   buildServicePath(codigoEstudiante) {
     const normalizedCode = String(codigoEstudiante || '').trim();
     if (!/^\d+$/.test(normalizedCode)) {
@@ -114,7 +127,7 @@ class SgaDebtService {
     }
 
     const debts = await this.fetchDebtsByStudentCode(codigoEstudiante);
-    return debts.filter((debt) => this.isActiveDebt(debt));
+    return debts.filter((debt) => this.isBlockingDebt(debt));
   }
 }
 
