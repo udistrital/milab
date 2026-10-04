@@ -182,7 +182,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
       } catch (sgaError) {
         console.error('Error consultando multas del estudiante en SGA:', sgaError);
         sgaLookupError =
-          'No fue posible verificar las multas en SGA. Puedes continuar con las multas registradas en MILab; el estado SGA queda sin confirmar.';
+          'No fue posible verificar las multas en SGA. El estado SGA queda sin confirmar y el certificado no podrá generarse hasta que SGA responda; inténtalo nuevamente en unos minutos.';
       }
     } else {
       sgaLookupError =
