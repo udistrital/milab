@@ -44,6 +44,56 @@ function mapSgaDebtToMulta(debt, student) {
   };
 }
 
+const PDF_MARKER_ROWS = {
+  unknown: ['-', 'Datos inválidos. Verifica la información e inténtalo nuevamente.', '', '', ''],
+  'sga-error': [
+    'SGA',
+    'No fue posible verificar el estado en SGA.',
+    '',
+    'Estado sin verificar',
+    '',
+  ],
+};
+
+function buildPdfTableRows(students) {
+  const rows = [];
+
+  (Array.isArray(students) ? students : []).forEach((item) => {
+    const multas = Array.isArray(item?.multas) && item.multas.length ? item.multas : [null];
+
+    multas.forEach((multa) => {
+      if (multa === null || multa === undefined) {
+        rows.push([
+          item.identificador,
+          '-',
+          'El estudiante no tiene multas',
+          '',
+          'El estudiante está a paz y salvo',
+          '',
+        ]);
+        return;
+      }
+
+      if (typeof multa === 'string') {
+        const markerRow = PDF_MARKER_ROWS[multa] || ['-', multa, '', '', ''];
+        rows.push([item.identificador, ...markerRow]);
+        return;
+      }
+
+      rows.push([
+        item.identificador,
+        multa.origen || 'MILab',
+        multa.cat_multa || '-',
+        multa.fecha_multa || '',
+        multa.obs_multa || '',
+        multa.ual || '',
+      ]);
+    });
+  });
+
+  return rows;
+}
+
 router.get('/', requireAdminStudentsListAccess, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
@@ -256,19 +306,6 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
   const PDFDocument = require('pdfkit');
 
   const sampleData1 = JSON.parse(req.query.data || '[]');
-  sampleData1.forEach((data) => {
-    if (data.multas[0] === null) {
-      data.multas[0] = 'El estudiante no tiene multas';
-      return;
-    }
-
-    if (data.multas[0] === 'unknown') {
-      data.multas[0] = 'Datos inválidos. Verifica la información e inténtalo nuevamente.';
-    }
-    data.multas = data.multas.map((multa) =>
-      multa === 'sga-error' ? 'No fue posible verificar el estado en SGA.' : multa
-    );
-  });
 
   if (sampleData1.length > 0) {
     const doc = new PDFDocument();
@@ -347,21 +384,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
       'Observación',
       'UAL',
     ]; //'Estado Multa'
-    const tableRows = [];
-
-    sampleData1.forEach((item) => {
-      item.multas.forEach((multa) => {
-        tableRows.push([
-          item.identificador,
-          multa?.origen || '-',
-          multa?.cat_multa || 'El estudiante no tiene multas',
-          // multa?.con_estado_multa || '',
-          multa?.fecha_multa || '',
-          multa?.obs_multa || 'El estudiante está a paz y salvo',
-          multa?.ual || '',
-        ]);
-      });
-    });
+    const tableRows = buildPdfTableRows(sampleData1);
 
     //  encabezados tabla
     doc.fontSize(12).font('Helvetica');
@@ -443,3 +466,4 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
 });
 
 module.exports = router;
+module.exports.buildPdfTableRows = buildPdfTableRows;
