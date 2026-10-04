@@ -73,6 +73,11 @@ const {
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 const { requireApiSessionUnlessPublic } = require('./routes/middlewares/api-session-gate');
 const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
+const { getSessionPolicy } = require('./libs/session-policy');
+const {
+  createSessionLifetimeMiddleware,
+  expireSession,
+} = require('./routes/middlewares/session-expiration');
 const {
   startCoordinatorPendingNotificationsJob,
 } = require('./jobs/coordinator-pending-notifications.job');
@@ -152,6 +157,7 @@ if (!['lax', 'strict', 'none'].includes(sessionSameSite)) {
 if (sessionSameSite === 'none') {
   sessionCookieSecure = true;
 }
+const sessionPolicy = getSessionPolicy();
 //Middleware
 // Genera un nonce criptográfico por solicitud para CSP scriptSrc
 app.use((req, res, next) => {
@@ -275,8 +281,9 @@ app.use(
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
-      maxAge: Number(process.env.SESSION_MAX_AGE_MS || 1 * 60 * 60 * 1000),
+      maxAge: sessionPolicy.idleTimeoutMs,
       secure: sessionCookieSecure,
       sameSite: sessionSameSite,
       httpOnly: true,
@@ -284,7 +291,23 @@ app.use(
   })
 );
 
+app.use(requestLogger);
+app.use((req, res, next) => {
+  req.sessionCookieSecure = sessionCookieSecure;
+  req.sessionSameSite = sessionSameSite;
+  next();
+});
+app.use(createSessionLifetimeMiddleware(sessionPolicy));
 app.use(csrfTokenMiddleware);
+app.use(
+  '/milab/auth/session',
+  (req, res, next) => {
+    if (!req.session?.user) return expireSession(req, res, next);
+    return next();
+  },
+  verifyCsrfToken,
+  require('./routes/api/session')
+);
 app.use(navigationMiddleware);
 app.use((req, res, next) => {
   res.locals.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY || '';
@@ -296,7 +319,6 @@ app.use((req, res, next) => {
   res.setHeader('X-App-Version', appVersion);
   next();
 });
-app.use(requestLogger);
 
 app.use((req, res, next) => {
   const originalRender = res.render.bind(res);

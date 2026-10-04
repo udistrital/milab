@@ -53,8 +53,12 @@ function isPublicApiPath(requestPath, method) {
   });
 }
 
-function buildRouteCandidates(pathname) {
+function buildRouteCandidates(pathname, method) {
   const candidates = [pathname];
+
+  if (method === 'POST' && pathname === '/milab/api/get_list_estudiantes/consulta_masiva') {
+    candidates.push('/milab/api/get_list_estudiantes/get_consulta');
+  }
 
   if (!pathname.endsWith('/load_info')) {
     candidates.push(`${pathname}/load_info`);
@@ -73,7 +77,11 @@ function buildRouteCandidates(pathname) {
   return Array.from(new Set(candidates));
 }
 
-function hasRouteLevelApiAuthorization(pathname) {
+function hasRouteLevelApiAuthorization(pathname, method) {
+  if (method === 'POST' && pathname === '/milab/api/dashboard/impersonacion/detener') {
+    return true;
+  }
+
   const prefix = '/milab/api/capacitacion-cursos';
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
@@ -103,7 +111,7 @@ async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
     const method = String(req.method || 'GET').toUpperCase();
-    if (hasRouteLevelApiAuthorization(path)) {
+    if (hasRouteLevelApiAuthorization(path, method)) {
       return next();
     }
     const allowProfileFlow =
@@ -118,7 +126,7 @@ async function menuPermissionMiddleware(req, res, next) {
       return next();
     }
 
-    const candidates = buildRouteCandidates(path);
+    const candidates = buildRouteCandidates(path, method);
 
     const menuResult = await pool.query(
       `

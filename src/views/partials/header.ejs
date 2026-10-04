@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="<%= locals.csrfToken || '' %>" />
   <link rel="icon" type="image/png" sizes="32x32" href="/milab/public/img/favicon-32x32.png?v=20260513" />
   <link rel="shortcut icon" href="/milab/public/img/favicon-32x32.png?v=20260513" />
   <link rel="apple-touch-icon" sizes="180x180" href="/milab/public/img/apple-touch-icon.png?v=20260513" />
@@ -149,7 +150,10 @@
   class="app-shell"
   data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
   data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
+  data-session-expires-in="<%= locals.sessionExpiresInMs || '' %>"
+  data-session-idle-timeout="<%= locals.sessionPolicy ? locals.sessionPolicy.idleTimeoutMs : '' %>"
 >
+  <script src="/milab/public/js/session-control.js"></script>
   <header class="app-header">
     <%- include('./environment-banner', { environmentBannerAttached: true }) %>
     <% if (isImpersonatingSession) { %>

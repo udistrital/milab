@@ -1,4 +1,5 @@
-const { renderAuthError } = require('./auth');
+const { expireSession } = require('./session-expiration');
+const { isPublicMilabApiRequest } = require('./session-gate');
 
 const publicApiAllowlist = [
   { prefix: '/api/login/login', methods: ['POST'], allowSubpaths: false },
@@ -18,6 +19,7 @@ function normalizeRequestPath(originalUrl) {
 function isPublicApiRequest(req) {
   const requestPath = normalizeRequestPath(req.originalUrl);
   const method = String(req.method || '').toUpperCase();
+  if (isPublicMilabApiRequest(requestPath, method)) return true;
 
   return publicApiAllowlist.some((rule) => {
     if (!rule.methods.includes(method)) return false;
@@ -30,32 +32,21 @@ function isPublicApiRequest(req) {
   });
 }
 
-function expectsJsonResponse(req) {
-  if (req.xhr) return true;
-  if (typeof req.get === 'function') {
-    const accept = req.get('accept') || '';
-    return accept.includes('application/json');
-  }
-  return false;
-}
-
 function requireApiSessionUnlessPublic(req, res, next) {
   if (isPublicApiRequest(req) || req.session?.user) {
     return next();
   }
 
-  if (expectsJsonResponse(req)) {
-    return res.status(401).json({
-      ok: false,
-      message: 'Debe iniciar sesión para continuar.',
-    });
+  if (
+    req.session?.microsoftProfile &&
+    ['/milab/api/profile', '/milab/api/profile/identify'].includes(
+      normalizeRequestPath(req.originalUrl)
+    )
+  ) {
+    return next();
   }
 
-  return renderAuthError(res, {
-    message: 'Acceso denegado',
-    message2: 'Debe iniciar sesion para continuar.',
-    limit: 'loginOnly',
-  });
+  return expireSession(req, res, next);
 }
 
 module.exports = {
