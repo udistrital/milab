@@ -6,6 +6,7 @@ const util = require('util');
 const { buildAppUrl } = require('../../libs/app-url');
 const { buildGeneratePath } = require('../../libs/generate-path');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { sgaDebtService } = require('../../libs/oati-debts');
 const {
   buildCertificateEmailFailureFeedback,
   buildCertificateEmailFeedback,
@@ -322,10 +323,26 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       }
 
       const multaRows = await consultar_multas(usuarioId);
+      let sgaMultaInfo;
+      try {
+        sgaMultaInfo = await consultarMultasSga();
+      } catch (sgaError) {
+        console.error(
+          'Error consultando multas SGA al generar certificado de estudiante:',
+          sgaError
+        );
+        return res.render('home/message_error', {
+          message: 'No fue posible verificar las multas del estudiante en SGA.',
+          message2:
+            'El certificado no se generó porque el estado en SGA no pudo confirmarse. Inténtalo nuevamente en unos minutos.',
+          limit: null,
+        });
+      }
 
-      if (multaRows.length > 0) {
+      if (multaRows.length > 0 || sgaMultaInfo.length > 0) {
         return res.render('home/alerta-multado', {
           multaInfo: multaRows,
+          sgaMultaInfo,
         });
       }
 
@@ -802,6 +819,16 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       console.error('error', error);
       throw error;
     }
+  }
+
+  // Si SGA no responde se lanza el error: el certificado no se genera sin confirmar el estado SGA.
+  async function consultarMultasSga() {
+    if (!sgaDebtService.isConfigured()) return [];
+
+    return sgaDebtService.getActiveDebts({
+      codigo: con_codigo,
+      documento: con_documento,
+    });
   }
 
   consultarEndpointAnidado();

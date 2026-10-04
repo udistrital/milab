@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { config } = require('../../../src/config/config');
+const {
+  resolveSgaDebtorsServiceName,
+  SGA_DEBTORS_SERVICE_NAMES,
+} = require('../../../src/config/sga-services');
 const { SgaDebtService, sgaDebtService } = require('../../../src/libs/oati-debts');
 
 function createService({ serviceName = 'academica_pruebas', studentResponse, debtResponse } = {}) {
@@ -135,4 +139,61 @@ test('SgaDebtService uses an explicit environment service name', () => {
   } finally {
     config.oatiDebtorsServiceName = originalServiceName;
   }
+});
+
+test('SGA debtors service name is fixed per environment and ignores .env overrides', () => {
+  const originalOverride = process.env.OATI_DEBT_SERVICE_NAME;
+  process.env.OATI_DEBT_SERVICE_NAME = 'otro_servicio';
+
+  try {
+    assert.equal(resolveSgaDebtorsServiceName('production'), 'servicios_academicos_produccion');
+    assert.equal(resolveSgaDebtorsServiceName('PRODUCTION'), 'servicios_academicos_produccion');
+    assert.equal(resolveSgaDebtorsServiceName(''), 'servicios_academicos_produccion');
+    for (const environmentName of ['dev', 'development', 'local', 'test', 'staging', 'preprod']) {
+      assert.equal(resolveSgaDebtorsServiceName(environmentName), 'academica_pruebas');
+    }
+    assert.ok(Object.isFrozen(SGA_DEBTORS_SERVICE_NAMES));
+  } finally {
+    if (originalOverride === undefined) delete process.env.OATI_DEBT_SERVICE_NAME;
+    else process.env.OATI_DEBT_SERVICE_NAME = originalOverride;
+  }
+});
+
+test('SgaDebtService builds the production debtors path', () => {
+  const { service } = createService({ serviceName: 'servicios_academicos_produccion' });
+  assert.equal(service.isConfigured(), true);
+  assert.equal(
+    service.buildServicePath('20161104039'),
+    'wso2eiserver/services/servicios_academicos_produccion/deudores/20161104039'
+  );
+});
+
+test('SgaDebtService ignores library debts even when they are active', async () => {
+  const labDebt = { DEU_ID: '1', DEU_ESTADO: '2', DEU_MATERIAL: 'TABLET LENOVO PLACA 123' };
+  const libraryDebts = [
+    { DEU_ID: '2', DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' },
+    { DEU_ID: '3', DEU_ESTADO: '2', DEU_MATERIAL: 'MULTA BIBLIOTECA CENTRAL' },
+    { DEU_ID: '4', DEU_ESTADO: '2', DEU_MATERIAL: 'libro no devuelto - bibliotéca' },
+  ];
+  const { service } = createService({
+    debtResponse: { deudas: { estudiantes: [labDebt, ...libraryDebts] } },
+  });
+
+  const result = await service.getActiveDebts({ codigo: '20161104039' });
+
+  assert.deepEqual(result, [labDebt]);
+});
+
+test('SgaDebtService classifies library debts by the reported detail', () => {
+  const { service } = createService();
+
+  assert.equal(service.isLibraryDebt({ DEU_MATERIAL: 'Biblioteca' }), true);
+  assert.equal(service.isLibraryDebt({ DEU_MATERIAL: 'BIBLIOTECA' }), true);
+  assert.equal(service.isLibraryDebt({ DEU_MATERIAL: 'Préstamo de BIBLIOTÉCA' }), true);
+  assert.equal(service.isLibraryDebt({ DEU_MATERIAL: 'Osciloscopio' }), false);
+  assert.equal(service.isLibraryDebt({ DEU_MATERIAL: null }), false);
+  assert.equal(service.isLibraryDebt({}), false);
+  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' }), false);
+  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '3', DEU_MATERIAL: 'Osciloscopio' }), false);
+  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Osciloscopio' }), true);
 });
