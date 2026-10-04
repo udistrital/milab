@@ -123,6 +123,7 @@
                           type="button"
                           class="btn btn-warning btn-sm js-request-close-incident"
                           data-incident-id="<%= item.id %>"
+                          data-submit-lock="true"
                         >
                           Pendiente por cerrar
                         </button>
@@ -215,7 +216,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="aprobarIncidenciaSubmitBtn">Confirmar aprobacion</button>
+          <button type="submit" class="btn btn-primary" id="aprobarIncidenciaSubmitBtn" data-submit-lock="true">Confirmar aprobacion</button>
         </div>
       </form>
     </div>
@@ -243,7 +244,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-success" id="cerrarIncidenciaSubmitBtn">Confirmar cierre</button>
+          <button type="submit" class="btn btn-success" id="cerrarIncidenciaSubmitBtn" data-submit-lock="true">Confirmar cierre</button>
         </div>
       </form>
     </div>
@@ -361,9 +362,8 @@
         if (!incidentId) return;
         if (!window.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?')) return;
 
-        button.disabled = true;
-
         try {
+          window.MiLabSubmitLock.lock(button, 'Marcando incidencia como pendiente por cerrar...');
           var result = await postJson(
             '/milab/prestamos/incidencias/' + encodeURIComponent(incidentId) + '/pendiente-cierre',
             {}
@@ -374,7 +374,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible actualizar la incidencia.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(button);
         }
       });
     });
@@ -406,9 +407,9 @@
 
       if (pazYSalvoJustificacion) pazYSalvoJustificacion.classList.remove('is-invalid');
       approveSancionTipo.classList.remove('is-invalid');
-      approveSubmitButton.disabled = true;
 
       try {
+        window.MiLabSubmitLock.lock(approveSubmitButton, 'Aprobando incidencia...');
         var result = await postJson(
           '/milab/prestamos/incidencias/' + encodeURIComponent(approveIdInput.value) + '/aprobar',
           {
@@ -426,16 +427,16 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible aprobar la incidencia.');
-        approveSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(approveSubmitButton);
       }
     });
 
     closeForm.addEventListener('submit', async function(event) {
       event.preventDefault();
 
-      closeSubmitButton.disabled = true;
-
       try {
+        window.MiLabSubmitLock.lock(closeSubmitButton, 'Cerrando incidencia...');
         var result = await postJson(
           '/milab/prestamos/incidencias/' + encodeURIComponent(closeIdInput.value) + '/solucionar',
           { descripcion_cierre: closeDescriptionInput.value }
@@ -448,7 +449,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible cerrar la incidencia.');
-        closeSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(closeSubmitButton);
       }
     });
 

@@ -10,6 +10,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { fetchUserByEmail, buildSessionUser } = require('../../libs/user-identity');
+const { startSessionLifetime } = require('../../libs/session-policy');
 
 const isDevEnvironment = (process.env.NODE_ENV || '').toLowerCase() === 'dev';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
@@ -110,6 +111,7 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
     );
 
     req.session.user = buildSessionUser(usuario);
+    startSessionLifetime(req.session);
 
     return res.redirect('/milab/inicio');
   });

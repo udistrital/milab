@@ -118,6 +118,7 @@
                           type="button"
                           class="btn btn-success js-approve-request"
                           data-request-id="<%= item.id %>"
+                          data-submit-lock="true"
                         >
                           <i class="bi bi-check-circle"></i>
                           <span>Aprobar</span>
@@ -128,6 +129,7 @@
                           class="btn btn-warning js-assign-queue-last-minute"
                           data-queue-id="<%= item.cola_id %>"
                           data-source-request-id="<%= item.solicitud_fuente_id %>"
+                          data-submit-lock="true"
                         >
                           <i class="bi bi-lightning-charge"></i>
                           <span>Asignar ultima hora</span>
@@ -150,6 +152,7 @@
                         type="button"
                         class="btn btn-success js-approve-request"
                         data-request-id="<%= item.id %>"
+                        data-submit-lock="true"
                       >
                         <i class="bi bi-check-circle"></i>
                         <span>Aprobar</span>
@@ -213,7 +216,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-danger" id="rechazoSolicitudSubmitBtn">Confirmar rechazo</button>
+          <button type="submit" class="btn btn-danger" id="rechazoSolicitudSubmitBtn" data-submit-lock="true">Confirmar rechazo</button>
         </div>
       </form>
     </div>
@@ -268,9 +271,8 @@
         var requestId = button.getAttribute('data-request-id');
         if (!requestId || !window.confirm('¿Deseas aprobar esta solicitud?')) return;
 
-        button.disabled = true;
-
         try {
+          window.MiLabSubmitLock.lock(button, 'Aprobando solicitud...');
           var result = await postJson('/milab/prestamos/gestion-solicitudes/' + encodeURIComponent(requestId) + '/aprobar');
           showAlert('success', result.message || 'Solicitud aprobada correctamente.');
           window.setTimeout(function() {
@@ -278,7 +280,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible aprobar la solicitud.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(button);
         }
       });
     });
@@ -290,9 +293,8 @@
         if (!queueId || !sourceRequestId) return;
         if (!window.confirm('¿Deseas asignar esta solicitud en cola por ultima hora?')) return;
 
-        button.disabled = true;
-
         try {
+          window.MiLabSubmitLock.lock(button, 'Asignando solicitud por ultima hora...');
           await postJson(
             '/milab/prestamos/cola/prestamos/' + encodeURIComponent(queueId) + '/asignar-ultima-hora',
             { solicitud_id: sourceRequestId }
@@ -303,7 +305,8 @@
           }, 900);
         } catch (error) {
           showAlert('danger', error.message || 'No fue posible asignar desde cola.');
-          button.disabled = false;
+        } finally {
+          window.MiLabSubmitLock.release(button);
         }
       });
     });
@@ -324,9 +327,8 @@
       var requestId = rejectIdInput.value;
       if (!requestId) return;
 
-      rejectSubmitButton.disabled = true;
-
       try {
+        window.MiLabSubmitLock.lock(rejectSubmitButton, 'Rechazando solicitud...');
         var result = await postJson(
           '/milab/prestamos/gestion-solicitudes/' + encodeURIComponent(requestId) + '/rechazar',
           { motivo_rechazo: rejectReasonInput.value }
@@ -339,7 +341,8 @@
         }, 900);
       } catch (error) {
         showAlert('danger', error.message || 'No fue posible rechazar la solicitud.');
-        rejectSubmitButton.disabled = false;
+      } finally {
+        window.MiLabSubmitLock.release(rejectSubmitButton);
       }
     });
 

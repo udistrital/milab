@@ -61,6 +61,7 @@ const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
 const {
   createApplicationErrorHandler,
+  enrichErrorPayloadForAdmin,
   renderApplicationError,
   wantsJson,
 } = require('./routes/middlewares/error-handler');
@@ -70,8 +71,13 @@ const {
   createCsrfVerifier,
 } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
-const { renderAuthError } = require('./routes/middlewares/auth');
+const { requireApiSessionUnlessPublic } = require('./routes/middlewares/api-session-gate');
 const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
+const { getSessionPolicy } = require('./libs/session-policy');
+const {
+  createSessionLifetimeMiddleware,
+  expireSession,
+} = require('./routes/middlewares/session-expiration');
 const {
   startCoordinatorPendingNotificationsJob,
 } = require('./jobs/coordinator-pending-notifications.job');
@@ -84,62 +90,6 @@ const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const apiCsrfExemptPaths = [];
 const verifyApiCsrfToken = createCsrfVerifier({ skipPaths: apiCsrfExemptPaths });
-const publicApiAllowlist = [
-  { prefix: '/api/login/login', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/register', methods: ['POST'], allowSubpaths: true },
-  { prefix: '/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
-  { prefix: '/api/get-data1', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/get-data2', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
-  { prefix: '/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
-];
-
-function normalizeRequestPath(originalUrl) {
-  return (originalUrl || '').split('?')[0];
-}
-
-function isPublicApiRequest(req) {
-  const requestPath = normalizeRequestPath(req.originalUrl);
-  const method = String(req.method || '').toUpperCase();
-
-  return publicApiAllowlist.some((rule) => {
-    if (!rule.methods.includes(method)) return false;
-
-    if (rule.allowSubpaths) {
-      return requestPath === rule.prefix || requestPath.startsWith(`${rule.prefix}/`);
-    }
-
-    return requestPath === rule.prefix;
-  });
-}
-
-function expectsJsonResponse(req) {
-  if (req.xhr) return true;
-  if (typeof req.get === 'function') {
-    const accept = req.get('accept') || '';
-    return accept.includes('application/json');
-  }
-  return false;
-}
-
-function requireApiSessionUnlessPublic(req, res, next) {
-  if (isPublicApiRequest(req) || req.session?.user) {
-    return next();
-  }
-
-  if (expectsJsonResponse(req)) {
-    return res.status(401).json({
-      ok: false,
-      message: 'Debe iniciar sesión para continuar.',
-    });
-  }
-
-  return renderAuthError(res, {
-    message: 'Acceso denegado',
-    message2: 'Debe iniciar sesion para continuar.',
-    limit: 'loginOnly',
-  });
-}
 const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
 const isProduction = normalizedNodeEnv === 'production';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
@@ -147,7 +97,7 @@ const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
 const isDevLoginRuntime = normalizedNodeEnv === 'dev';
-const codeDefinedAppVersion = '2.8.5';
+const codeDefinedAppVersion = '2.9.0';
 
 // Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
 if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
@@ -156,7 +106,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.8.5').toString().trim();
+const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.9.0').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
@@ -207,6 +157,7 @@ if (!['lax', 'strict', 'none'].includes(sessionSameSite)) {
 if (sessionSameSite === 'none') {
   sessionCookieSecure = true;
 }
+const sessionPolicy = getSessionPolicy();
 //Middleware
 // Genera un nonce criptográfico por solicitud para CSP scriptSrc
 app.use((req, res, next) => {
@@ -330,8 +281,9 @@ app.use(
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
-      maxAge: Number(process.env.SESSION_MAX_AGE_MS || 1 * 60 * 60 * 1000),
+      maxAge: sessionPolicy.idleTimeoutMs,
       secure: sessionCookieSecure,
       sameSite: sessionSameSite,
       httpOnly: true,
@@ -339,7 +291,23 @@ app.use(
   })
 );
 
+app.use(requestLogger);
+app.use((req, res, next) => {
+  req.sessionCookieSecure = sessionCookieSecure;
+  req.sessionSameSite = sessionSameSite;
+  next();
+});
+app.use(createSessionLifetimeMiddleware(sessionPolicy));
 app.use(csrfTokenMiddleware);
+app.use(
+  '/milab/auth/session',
+  (req, res, next) => {
+    if (!req.session?.user) return expireSession(req, res, next);
+    return next();
+  },
+  verifyCsrfToken,
+  require('./routes/api/session')
+);
 app.use(navigationMiddleware);
 app.use((req, res, next) => {
   res.locals.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY || '';
@@ -351,7 +319,34 @@ app.use((req, res, next) => {
   res.setHeader('X-App-Version', appVersion);
   next();
 });
-app.use(requestLogger);
+
+app.use((req, res, next) => {
+  const originalRender = res.render.bind(res);
+
+  res.render = function patchedRender(view, locals, callback) {
+    const viewName = String(view || '');
+
+    if (viewName !== 'home/message_error') {
+      return originalRender(view, locals, callback);
+    }
+
+    let effectiveLocals = locals;
+    let effectiveCallback = callback;
+
+    if (typeof locals === 'function') {
+      effectiveCallback = locals;
+      effectiveLocals = undefined;
+    }
+
+    const normalizedLocals =
+      effectiveLocals && typeof effectiveLocals === 'object' ? effectiveLocals : {};
+    const enrichedLocals = enrichErrorPayloadForAdmin(req, normalizedLocals);
+
+    return originalRender(view, enrichedLocals, effectiveCallback);
+  };
+
+  return next();
+});
 
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
@@ -363,6 +358,7 @@ app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
 app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
+app.use('/milab/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';

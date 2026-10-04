@@ -9,6 +9,7 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 const oatiNamePath = path.resolve(__dirname, '../../../src/libs/oati-name.js');
+const oatiDebtsPath = path.resolve(__dirname, '../../../src/libs/oati-debts.js');
 
 function buildApp(route, user) {
   const app = express();
@@ -23,7 +24,12 @@ function buildApp(route, user) {
   return app;
 }
 
-function loadRoute({ resolveScopeImpl, clientQueryImpl, resolveOatiNameImpl } = {}) {
+function loadRoute({
+  resolveScopeImpl,
+  clientQueryImpl,
+  resolveOatiNameImpl,
+  sgaDebtServiceImpl,
+} = {}) {
   const originals = new Map();
   const client = {
     release() {},
@@ -69,6 +75,17 @@ function loadRoute({ resolveScopeImpl, clientQueryImpl, resolveOatiNameImpl } = 
         resolveOatiName: resolveOatiNameImpl || (async () => 'Nombre OATI'),
       },
     ],
+    [
+      oatiDebtsPath,
+      {
+        sgaDebtService: sgaDebtServiceImpl || {
+          isConfigured: () => false,
+          async getActiveDebts() {
+            return [];
+          },
+        },
+      },
+    ],
   ];
 
   delete require.cache[routePath];
@@ -98,7 +115,16 @@ function loadRoute({ resolveScopeImpl, clientQueryImpl, resolveOatiNameImpl } = 
 }
 
 test('get_list_multas returns grouped sanctions for non-coordinator roles', async () => {
-  const loaded = loadRoute();
+  let sgaCalls = 0;
+  const loaded = loadRoute({
+    sgaDebtServiceImpl: {
+      isConfigured: () => true,
+      async getActiveDebts() {
+        sgaCalls += 1;
+        return [];
+      },
+    },
+  });
 
   try {
     const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
@@ -109,6 +135,7 @@ test('get_list_multas returns grouped sanctions for non-coordinator roles', asyn
     assert.equal(response.body.locals.sampleData.length, 2);
     assert.equal(response.body.locals.sancionesEstudiantes.length, 1);
     assert.equal(response.body.locals.sancionesDocentes.length, 1);
+    assert.equal(sgaCalls, 0);
   } finally {
     loaded.restore();
   }
@@ -340,6 +367,128 @@ test('get_list_multas resolve_name returns false when documento is missing', asy
 
     assert.equal(response.status, 200);
     assert.deepEqual(response.body, { ok: false, nombre: '' });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_multas queries SGA debts for a student only when detail is requested', async () => {
+  let serviceArguments;
+  const activeDebt = { DEU_EST_COD: '2024100001', DEU_ESTADO: '2', DEU_MATERIAL: 'Tablet' };
+  const loaded = loadRoute({
+    clientQueryImpl: async (sql, params) => {
+      assert.match(sql, /m\.id = \$1/);
+      assert.deepEqual(params, [55]);
+      return {
+        rows: [
+          {
+            id: 55,
+            tipo_sancionado: 'estudiante',
+            codigo_sancionado: '2024100001',
+            documento_sancionado: '79520182',
+          },
+        ],
+      };
+    },
+    sgaDebtServiceImpl: {
+      isConfigured: () => true,
+      async getActiveDebts(args) {
+        serviceArguments = args;
+        return [activeDebt];
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const response = await request(app).get('/55/sga-multas');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(serviceArguments, {
+      codigo: '2024100001',
+      documento: '79520182',
+    });
+    assert.deepEqual(response.body, {
+      ok: true,
+      configured: true,
+      supported: true,
+      multas: [activeDebt],
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_multas SGA detail applies coordinator faculty scope', async () => {
+  let capturedSql = '';
+  let capturedParams = [];
+  const loaded = loadRoute({
+    resolveScopeImpl: async () => ({ coordinatorDocument: '900', facultyIds: [10, 12] }),
+    clientQueryImpl: async (sql, params) => {
+      capturedSql = sql;
+      capturedParams = params;
+      return {
+        rows: [
+          {
+            id: 55,
+            tipo_sancionado: 'estudiante',
+            codigo_sancionado: '2024100001',
+            documento_sancionado: '79520182',
+          },
+        ],
+      };
+    },
+    sgaDebtServiceImpl: {
+      isConfigured: () => true,
+      async getActiveDebts() {
+        return [];
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-user' });
+    const response = await request(app).get('/55/sga-multas');
+
+    assert.equal(response.status, 200);
+    assert.match(capturedSql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+    assert.match(capturedSql, /m\.id = \$2/);
+    assert.deepEqual(capturedParams, [[10, 12], 55]);
+    assert.equal(response.body.configured, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_multas SGA detail does not query docentes', async () => {
+  let sgaCalls = 0;
+  const loaded = loadRoute({
+    clientQueryImpl: async () => ({
+      rows: [
+        {
+          id: 55,
+          tipo_sancionado: 'docente',
+          codigo_sancionado: '',
+          documento_sancionado: '79520182',
+        },
+      ],
+    }),
+    sgaDebtServiceImpl: {
+      isConfigured: () => true,
+      async getActiveDebts() {
+        sgaCalls += 1;
+        return [];
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const response = await request(app).get('/55/sga-multas');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.supported, false);
+    assert.equal(sgaCalls, 0);
   } finally {
     loaded.restore();
   }

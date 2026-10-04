@@ -94,7 +94,7 @@
                   <form action="/milab/api/coordinadores_registrados/toggle-estado" method="POST">
                     <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
-                    <button type="submit" class="btn btn-sm <%= coordinador.tipo === 'coordinador' ? 'btn-outline-danger' : 'btn-outline-success' %>">
+                    <button type="submit" class="btn btn-sm <%= coordinador.tipo === 'coordinador' ? 'btn-outline-danger' : 'btn-outline-success' %>" data-submit-lock="true">
                       <%= coordinador.tipo === 'coordinador' ? 'Inactivar' : 'Activar' %>
                     </button>
                   </form>

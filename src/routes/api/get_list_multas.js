@@ -6,7 +6,12 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const { sgaDebtService } = require('../../libs/oati-debts');
+const {
+  renderApplicationError,
+  renderModuleError,
+  wantsJson,
+} = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
 
 const bp = require('body-parser');
@@ -321,6 +326,64 @@ router.get('/resolve_name', requireMultasAccess, async (req, res) => {
   }
 });
 
+router.get('/:multaId/sga-multas', requireMultasAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const multaId = Number(req.params.multaId);
+  if (!Number.isInteger(multaId) || multaId <= 0) {
+    return res.status(400).json({ ok: false, message: 'El ID de la sanción no es válido.' });
+  }
+
+  if (!sgaDebtService.isConfigured()) {
+    return res.json({ ok: true, configured: false, supported: true, multas: [] });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const queryContext = await buildMultasQueryContext(req, client);
+    if (queryContext.error) {
+      client.release();
+      return res.status(403).json({
+        ok: false,
+        message: queryContext.error.message2 || queryContext.error.message,
+      });
+    }
+
+    const idParameter = `$${queryContext.params.length + 1}`;
+    const rows = await queryMultasRows(
+      client,
+      [...queryContext.conditions, `m.id = ${idParameter}`],
+      [...queryContext.params, multaId]
+    );
+    client.release();
+    client = null;
+
+    const sanction = rows[0];
+    if (!sanction) {
+      return res
+        .status(404)
+        .json({ ok: false, message: 'La sanción no existe o está fuera de tu alcance.' });
+    }
+
+    if (sanction.tipo_sancionado !== 'estudiante') {
+      return res.json({ ok: true, configured: true, supported: false, multas: [] });
+    }
+
+    const multas = await sgaDebtService.getActiveDebts({
+      codigo: sanction.codigo_sancionado,
+      documento: sanction.documento_sancionado,
+    });
+    return res.json({ ok: true, configured: true, supported: true, multas });
+  } catch (error) {
+    if (client) client.release();
+    console.error('Error consultando multas SGA desde el detalle de sanción:', error);
+    return res.status(502).json({
+      ok: false,
+      message: 'No fue posible consultar las multas del estudiante en SGA.',
+    });
+  }
+});
+
 router.post('/editar', requireMultasEditAccess, async (req, res) => {
   const multaId = Number(req.body?.multa_id);
   const categoria = String(req.body?.cat_multa || '').trim();
@@ -384,11 +447,15 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
-    return res.render('home/message_error', {
-      message: 'No fue posible editar la sanción.',
-      message2: 'Inténtalo nuevamente.',
-      limit: null,
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: 'No fue posible editar la sanción.',
+        message2: 'Inténtalo nuevamente.',
+      },
+      error
+    );
   }
 });
 
@@ -419,6 +486,7 @@ router.get('/', requireMultasAccess, async (req, res) => {
       SANCTION_TYPES,
       filtros: queryContext.filters,
       successFeedback: normalizeListSuccessFeedback(req.query?.success),
+      sgaConfigured: sgaDebtService.isConfigured(),
     });
   } catch (error) {
     if (client) {
@@ -435,12 +503,17 @@ router.get('/', requireMultasAccess, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el listado de multas.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el listado de multas.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   }
 });
 

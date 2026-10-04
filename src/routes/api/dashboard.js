@@ -847,6 +847,7 @@ async function regenerateSession(req) {
   }
 
   const previousCsrfToken = req.session.csrfToken || '';
+  const previousLifetime = req.session.lifetime;
 
   await new Promise((resolve, reject) => {
     req.session.regenerate((error) => {
@@ -858,6 +859,7 @@ async function regenerateSession(req) {
       if (previousCsrfToken) {
         req.session.csrfToken = previousCsrfToken;
       }
+      if (previousLifetime) req.session.lifetime = previousLifetime;
 
       resolve();
     });
@@ -1511,6 +1513,12 @@ router.post(
       await saveSession(req);
     } catch (error) {
       console.error('Error cerrando impersonación:', error);
+      return renderApplicationError(res, {
+        status: 500,
+        message: 'No fue posible volver a tu sesión admin.',
+        message2: 'Intenta nuevamente. Si el problema persiste, contacta al soporte de MILab.',
+        limit: null,
+      });
     }
 
     return res.redirect('/milab/api/dashboard');

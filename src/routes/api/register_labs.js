@@ -18,6 +18,7 @@ const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
 const { requireRoles, requireUser } = require('../middlewares/auth');
+const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -359,12 +360,17 @@ router.get('/verify_token', async function (req, res) {
     jwt.verify(token, secretKey);
     req.session.registrationTokenVerified = true;
     return res.redirect(`${req.baseUrl}/new`);
-  } catch {
-    return res.render('home/message_error', {
-      message: '¡Algo ha salido mal!',
-      message2: 'Inténtalo nuevamente',
-      limit: 'noSession',
-    });
+  } catch (error) {
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: '¡Algo ha salido mal!',
+        message2: 'Inténtalo nuevamente',
+        limit: 'noSession',
+      },
+      error
+    );
   }
 });
 
@@ -441,12 +447,17 @@ router.get('/load_info', requireAdminOrCoordinatorLoadInfo, async function (req,
       lookupDocumento: documentoQuery,
       ...viewContext,
     });
-  } catch {
-    return res.render('home/message_error', {
-      message: '¡Algo ha salido mal!',
-      message2: 'Inténtalo nuevamente',
-      limit: null,
-    });
+  } catch (error) {
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: '¡Algo ha salido mal!',
+        message2: 'Inténtalo nuevamente',
+        limit: null,
+      },
+      error
+    );
   }
 });
 
@@ -607,12 +618,17 @@ router.post(
           message2: 'Exitosamente',
         });
       }
-    } catch {
-      return res.render('home/message_error', {
-        message: '¡Algo ha salido mal!',
-        message2: 'Inténtalo nuevamente',
-        limit: null,
-      });
+    } catch (error) {
+      return renderModuleError(
+        req,
+        res,
+        {
+          message: '¡Algo ha salido mal!',
+          message2: 'Inténtalo nuevamente',
+          limit: null,
+        },
+        error
+      );
     }
   }
 );

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="<%= locals.csrfToken || '' %>" />
   <link rel="icon" type="image/png" sizes="32x32" href="/milab/public/img/favicon-32x32.png?v=20260513" />
   <link rel="shortcut icon" href="/milab/public/img/favicon-32x32.png?v=20260513" />
   <link rel="apple-touch-icon" sizes="180x180" href="/milab/public/img/apple-touch-icon.png?v=20260513" />
@@ -113,6 +114,9 @@
     'Auditoria': 'nav-prestamos-auditoria',
     'Parametrizaciones': 'nav-prestamos-parametrizaciones',
     'Configuracion de practicas': 'nav-prestamos-configuracion-practicas',
+    'Capacitación': 'nav-capacitacion',
+    'Creación de cursos': 'nav-capacitacion-cursos',
+    'Asociación curso-equipo': 'nav-capacitacion-asociacion-equipos',
   };
   function getNavigationGuideAttribute(label) {
     const key = navigationGuideMap[label];
@@ -146,7 +150,10 @@
   class="app-shell"
   data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
   data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
+  data-session-expires-in="<%= locals.sessionExpiresInMs || '' %>"
+  data-session-idle-timeout="<%= locals.sessionPolicy ? locals.sessionPolicy.idleTimeoutMs : '' %>"
 >
+  <script src="/milab/public/js/session-control.js"></script>
   <header class="app-header">
     <%- include('./environment-banner', { environmentBannerAttached: true }) %>
     <% if (isImpersonatingSession) { %>
@@ -343,6 +350,23 @@
                     <% } %>
                     <li><hr class="dropdown-divider"></li>
 
+                    <% if (activeRole === 'estudiante' || activeRole === 'docente') { %>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item app-user-menu-action"
+                          data-guide="mis-cursos"
+                          data-bs-toggle="modal"
+                          data-bs-target="#misCursosModal"
+                          aria-label="Mis cursos certificados"
+                        >
+                          <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                          <span>Mis cursos</span>
+                        </button>
+                      </li>
+                      <li><hr class="dropdown-divider"></li>
+                    <% } %>
+
                     <% if (accountLinks.length) { %>
                       <% accountLinks.forEach(function(item) { %>
                         <li>
@@ -355,16 +379,6 @@
                       <li><hr class="dropdown-divider"></li>
                     <% } %>
 
-                    <li>
-                      <button
-                        class="dropdown-item app-user-menu-action app-user-menu-theme"
-                        type="button"
-                        data-theme-toggle
-                        data-guide="theme-toggle"
-                        aria-label="Cambiar tema"
-                        title="Cambiar tema"
-                      ></button>
-                    </li>
                     <li>
                       <button
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
@@ -536,16 +550,6 @@
 
                     <li>
                       <button
-                        class="dropdown-item app-user-menu-action app-user-menu-theme"
-                        type="button"
-                        data-theme-toggle
-                        data-guide="theme-toggle"
-                        aria-label="Cambiar tema"
-                        title="Cambiar tema"
-                      ></button>
-                    </li>
-                    <li>
-                      <button
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
                         type="button"
                         data-logout-trigger="true"
@@ -592,10 +596,6 @@
             <% } %>
 
             <% if (!isAuthenticated) { %>
-              <button class="btn app-theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema"></button>
-            <% } %>
-
-            <% if (!isAuthenticated) { %>
               <a class="btn app-login-pill" href="/milab/auth/login">
                 <i class="bi bi-box-arrow-in-right"></i>
                 <span>Ingresar</span>
@@ -621,62 +621,4 @@
       const top = window.innerHeight / 2 - height / 2;
       window.open(url, 'MicrosoftLogin', `width=${width},height=${height},left=${left},top=${top}`);
     }
-  </script>
-  <script nonce="<%= cspNonce %>">
-    (function() {
-      function getThemeLabel(mode) {
-        if (mode === 'dark') {
-          return '<i class="bi bi-sun"></i>';
-        }
-        return '<i class="bi bi-moon-stars"></i>';
-      }
-
-      function syncThemeLogos(mode) {
-        var logos = document.querySelectorAll('[data-theme-logo]');
-        logos.forEach(function(logo) {
-          var lightSrc = logo.getAttribute('data-logo-light');
-          var darkSrc = logo.getAttribute('data-logo-dark');
-          var nextSrc = mode === 'dark' ? darkSrc : lightSrc;
-
-          if (nextSrc && logo.getAttribute('src') !== nextSrc) {
-            logo.setAttribute('src', nextSrc);
-          }
-        });
-      }
-
-      function syncThemeButtons(mode) {
-        var buttons = document.querySelectorAll('[data-theme-toggle]');
-        buttons.forEach(function(btn) {
-          btn.innerHTML = getThemeLabel(mode);
-          btn.classList.toggle('is-dark', mode === 'dark');
-          btn.setAttribute('title', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
-          btn.setAttribute('aria-label', mode === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
-        });
-      }
-
-      function applyTheme(mode) {
-        if (window.MiLabThemeBranding && typeof window.MiLabThemeBranding.applyThemeState === 'function') {
-          window.MiLabThemeBranding.applyThemeState(mode);
-        } else {
-          document.documentElement.setAttribute('data-bs-theme', mode);
-        }
-        try { localStorage.setItem('theme', mode); } catch(e) {}
-        syncThemeButtons(mode);
-      }
-
-      var saved = 'light';
-      try { saved = localStorage.getItem('theme') || 'light'; } catch(e) {}
-      applyTheme(saved);
-
-      document.addEventListener('DOMContentLoaded', function() {
-        var buttons = document.querySelectorAll('[data-theme-toggle]');
-        buttons.forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            var current = document.documentElement.getAttribute('data-bs-theme') || 'light';
-            var next = current === 'dark' ? 'light' : 'dark';
-            applyTheme(next);
-          });
-        });
-      });
-    })();
   </script>

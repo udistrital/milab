@@ -151,11 +151,32 @@ async function requestOati(pathname) {
   return response.data;
 }
 
+async function requestOatiPost(pathname, body, contentType = 'application/json') {
+  const accessToken = await fetchAccessToken();
+  const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
+
+  const response = await withOatiRetry(() =>
+    withOatiTlsFallback((agent) =>
+      axios.post(url, body, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': contentType,
+        },
+        httpsAgent: agent,
+        timeout: config.oatiRequestTimeoutMs,
+      })
+    )
+  );
+
+  return response.data;
+}
+
 function getAcademicServicePath(servicePath) {
   return `wso2eiserver/services/servicios_academicos_produccion/${servicePath}`;
 }
 
 module.exports = {
   requestOati,
+  requestOatiPost,
   getAcademicServicePath,
 };

@@ -1,4 +1,4 @@
-﻿const crypto = require('crypto');
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const multer = require('multer');
@@ -19,6 +19,10 @@ const {
   resolveUsuarioIdForDocente,
   resolveUsuarioIdForStudent,
 } = require('../../libs/user-identity');
+const {
+  getCursosActivosDeEquipo,
+  validarCertificacionesParaReserva,
+} = require('../../libs/capacitacion-cert-validation');
 const { requirePermissions, requireRoles, renderAuthError } = require('../middlewares/auth');
 
 const router = express.Router();
@@ -8236,6 +8240,86 @@ router.get('/api/laboratorios/:facultad', requireSolicitudesAuthorized, async fu
 });
 
 router.get(
+  '/api/equipos/:id/validacion-capacitacion',
+  requireSolicitudesAuthorized,
+  async function (req, res) {
+    if (!isValidEquipmentId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El equipo seleccionado no es valido.',
+      });
+    }
+    try {
+      const usuario = await fetchSessionUsuario(req);
+      if (!usuario) {
+        return res.status(401).json({
+          success: false,
+          message: 'No fue posible identificar al usuario autenticado.',
+        });
+      }
+      const cursosTodos = await getCursosActivosDeEquipo(pool, req.params.id);
+      const onErrorTecnico = async function (msg) {
+        await registerPrestamosAuditEntry({
+          req,
+          accion: 'error tecnico validacion capacitacion equipo (precheck)',
+          persona: `equipo=${req.params.id} | usuario=${usuario.id} | ${msg}`,
+        });
+      };
+      try {
+        await validarCertificacionesParaReserva({
+          pool,
+          usuario,
+          idEquipo: req.params.id,
+          onErrorTecnico,
+        });
+        return res.json({
+          success: true,
+          permitir: true,
+          cursos_requeridos: cursosTodos,
+          cursos_completados: cursosTodos,
+          cursos_pendientes: [],
+          error_tecnico: false,
+        });
+      } catch (bloqueo) {
+        const cert = bloqueo?.bloqueoCert || null;
+        if (cert?.tipo === 'pendientes') {
+          return res.status(403).json({
+            success: false,
+            permitir: false,
+            cursos_requeridos: cursosTodos,
+            cursos_pendientes: cert.cursos,
+            error_tecnico: false,
+            bloqueo_cert: cert,
+            message: cert.mensaje,
+          });
+        }
+        if (cert?.tipo === 'error_tecnico') {
+          return res.status(503).json({
+            success: false,
+            permitir: false,
+            cursos_requeridos: cursosTodos,
+            cursos_pendientes: [],
+            error_tecnico: true,
+            bloqueo_cert: cert,
+            message: cert.mensaje,
+          });
+        }
+        throw bloqueo;
+      }
+    } catch (error) {
+      console.error('Error validando capacitacion de equipo MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible validar la capacitacion requerida para este equipo.'
+        ),
+      });
+    }
+  }
+);
+
+router.get(
   '/api/equipos/:id/disponibilidad',
   requireSolicitudesAuthorized,
   async function (req, res) {
@@ -8303,6 +8387,51 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
         success: false,
         message: 'Tienes sanciones activas y no puedes solicitar equipos por ahora.',
       });
+    }
+
+    const onErrorTecnicoAudit = async function (msg) {
+      try {
+        await registerPrestamosAuditEntry({
+          req,
+          accion: 'error tecnico validacion capacitacion equipo (crear solicitud)',
+          persona: `equipo=${payload.equipo_id} | usuario=${usuario.id} | ${msg}`,
+        });
+      } catch {
+        /* no-op */
+      }
+    };
+    try {
+      await validarCertificacionesParaReserva({
+        pool,
+        usuario,
+        idEquipo: payload.equipo_id,
+        onErrorTecnico: onErrorTecnicoAudit,
+      });
+    } catch (bloqueo) {
+      const cert = bloqueo?.bloqueoCert || null;
+      if (cert?.tipo === 'pendientes') {
+        return res.status(403).json({
+          success: false,
+          message: cert.mensaje,
+          bloqueo_cert: {
+            tipo: 'pendientes',
+            cursos_pendientes: cert.cursos,
+            cursos_todos: cert.cursos_todos,
+          },
+        });
+      }
+      if (cert?.tipo === 'error_tecnico') {
+        return res.status(503).json({
+          success: false,
+          message: cert.mensaje,
+          bloqueo_cert: {
+            tipo: 'error_tecnico',
+            cursos_requeridos: cert.cursos,
+            causas: cert.causas || [],
+          },
+        });
+      }
+      throw bloqueo;
     }
 
     const disponibilidad = await buildEquipmentLoanAvailability(payload.equipo_id);

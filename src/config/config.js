@@ -3,6 +3,15 @@
 require('dotenv').config();
 
 const envName = (process.env.NODE_ENV || '').toLowerCase();
+const nonProductionEnvironments = new Set([
+  'dev',
+  'development',
+  'local',
+  'test',
+  'testing',
+  'staging',
+  'preprod',
+]);
 const rawDbSecretEnabled = (process.env.DB_SECRET_ENABLED || '').toLowerCase();
 const dbSecretEnabledDefault = envName === 'production';
 const dbSecretEnabled =
@@ -36,6 +45,12 @@ const config = {
   oatiPublicBaseUrl:
     process.env.OATI_PUBLIC_BASE_URL || 'https://autenticacion.portaloas.udistrital.edu.co',
   oatiUsePublic: envName === 'dev',
+  oatiDebtorsServiceName:
+    process.env.OATI_DEBT_SERVICE_NAME ||
+    (nonProductionEnvironments.has(envName) ? 'academica_pruebas' : ''),
+  edxCertApiUrl: process.env.EDX_CERT_API_URL || 'http://localhost:4000',
+  edxCertTimeoutMs: Number(process.env.EDX_CERT_TIMEOUT_MS || 5000),
+  edxCertUseMock: process.env.EDX_CERT_USE_MOCK !== 'false',
 };
 
 module.exports = { config };
