@@ -386,6 +386,51 @@
           });
           capActions.appendChild(retryBtn);
         } else {
+          var MIS_CAP_URL = '/milab/capacitacion/mis-capacitaciones/load_info';
+          var MIS_CAP_SESIONES_URL = '/milab/capacitacion/mis-capacitaciones/load_info?tab=sesiones';
+          var firstCurso = (cursos && cursos[0]) ? cursos[0] : null;
+          var cursosListStr = (cursos || []).map(function (c) { return c.codigo_curso; }).filter(Boolean).join(',');
+
+          var solicitarGroup = document.createElement('div');
+          solicitarGroup.className = 'd-flex flex-wrap gap-2 w-100 justify-content-end';
+
+          var btnSolicitar = document.createElement('a');
+          btnSolicitar.className = 'btn btn-sm btn-primary';
+          btnSolicitar.target = '_blank';
+          btnSolicitar.rel = 'noopener noreferrer';
+          btnSolicitar.href = MIS_CAP_URL + (firstCurso && firstCurso.codigo_curso
+            ? '?tab=solicitudes&codigo_curso=' + encodeURIComponent(firstCurso.codigo_curso) +
+              (firstCurso.ual_id ? '&ual_id=' + encodeURIComponent(firstCurso.ual_id) : '') +
+              (cursosListStr ? '&cursos=' + encodeURIComponent(cursosListStr) : '')
+            : '?tab=solicitudes');
+          btnSolicitar.innerHTML =
+            '<i class="bi bi-journal-bookmark-fill me-1"></i>' +
+            'Solicitar capacitación' +
+            ((cursos && cursos.length === 1 && firstCurso && firstCurso.codigo_curso)
+              ? ' · ' + escapeHtml(firstCurso.codigo_curso)
+              : (cursos && cursos.length > 1 ? ' (' + cursos.length + ' cursos)' : ''));
+          solicitarGroup.appendChild(btnSolicitar);
+
+          var btnSesiones = document.createElement('a');
+          btnSesiones.className = 'btn btn-sm btn-outline-primary';
+          btnSesiones.target = '_blank';
+          btnSesiones.rel = 'noopener noreferrer';
+          btnSesiones.href = MIS_CAP_SESIONES_URL +
+            (firstCurso && firstCurso.codigo_curso ? '&codigo_curso=' + encodeURIComponent(firstCurso.codigo_curso) : '');
+          btnSesiones.innerHTML =
+            '<i class="bi bi-calendar-check me-1"></i>Ver sesiones abiertas';
+          solicitarGroup.appendChild(btnSesiones);
+
+          capActions.appendChild(solicitarGroup);
+
+          var div = document.createElement('div');
+          div.className = 'w-100 mt-2 pt-2 border-top border-danger-subtle small';
+          div.innerHTML =
+            '<span class="text-muted">💡 Consejo: usa <b>Solicitar capacitación</b> para enviar tu solicitud al ' +
+            'laboratorista de tu facultad. Inscríbete a una sesión programada, asiste y ' +
+            'obtén tu certificación local vigente. Una vez aprobada, regresa aquí para solicitar el préstamo.</span>';
+          capActions.appendChild(div);
+
           (cursos || []).forEach(function(curso, idx) {
             var url = curso.url_edx ? String(curso.url_edx).trim() : '';
             if (!url) return;
@@ -393,10 +438,10 @@
             btn.href = url;
             btn.target = '_blank';
             btn.rel = 'noopener noreferrer';
-            btn.className = 'btn btn-sm ' + (idx === 0 ? 'btn-perso' : 'btn-outline-secondary');
+            btn.className = 'btn btn-sm ' + (idx === 0 ? 'btn-outline-dark' : 'btn-outline-secondary') + ' ms-0 mt-2';
             btn.innerHTML =
               '<i class="bi bi-mortarboard me-1"></i>' +
-              'Ir al curso: ' + escapeHtml(curso.nombre_curso || curso.codigo_curso || 'EDX');
+              'Ir al curso EDX: ' + escapeHtml(curso.nombre_curso || curso.codigo_curso || 'Plataforma');
             capActions.appendChild(btn);
           });
         }

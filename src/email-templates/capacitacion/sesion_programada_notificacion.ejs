@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light only">
+  <title>Nueva capacitación programada: <%= cursoNombre %></title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8f9fa;">
+    <tr>
+      <td align="center" style="padding: 20px 10px;">
+        <table width="600" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.06);">
+          <%- buildEmailHeaderHtml() %>
+          <tr>
+            <td style="padding: 36px 30px 10px 30px; text-align: center;">
+              <h1 style="font-size: 26px; font-weight: 700; color: #202124; margin: 0;">Nueva capacitación programada</h1>
+              <p style="font-size: 15px; color: #5f6368; margin: 10px 0 0 0;">
+                Hola <strong><%= usuarioNombre %></strong>, hay una nueva sesión abierta para el curso:
+              </p>
+              <div style="display: inline-block; margin-top: 14px; padding: 10px 18px; background-color: #eef7ff; border: 1px solid #c7e6ff; border-radius: 8px; color: #085394; font-weight: 600; font-size: 16px;">
+                <i class="bi" style="font-style: normal;">📚</i>
+                <%= cursoNombre %>
+                <% if (cursoCodigo) { %>
+                  <span style="font-weight: 400; color: #0a5c84; font-size: 14px;">(<%= cursoCodigo %>)</span>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 30px 20px 30px; color: #202124; font-size: 16px; line-height: 1.6;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 6px; background-color: #fbfbfc; border: 1px solid #eaecef; border-radius: 10px; overflow: hidden;">
+                <tr>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><strong>🗓 Fecha y hora</strong></td>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><%= fechaInicioTexto %>
+                    <% if (fechaFinTexto && fechaFinTexto !== fechaInicioTexto) { %>
+                      <div class="text-muted" style="color: #5f6368; font-size: 14px;">hasta <%= fechaFinTexto %></div>
+                    <% } %>
+                  </td>
+                </tr>
+                <% if (lugar) { %>
+                <tr>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><strong>📍 Lugar / Laboratorio</strong></td>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><%= lugar %>
+                    <% if (ualNombre) { %>
+                      <div class="text-muted" style="color: #5f6368; font-size: 14px;"><%= ualNombre %></div>
+                    <% } %>
+                  </td>
+                </tr>
+                <% } %>
+                <tr>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><strong>👥 Cupo disponible</strong></td>
+                  <td style="padding: 12px 18px; border-bottom: 1px solid #eaecef;"><%= cupoMaximo %>
+                    <% if (cupoDisponibleHint && Number(cupoDisponibleHint) !== Number(cupoMaximo)) { %>
+                      <span class="text-muted" style="color: #5f6368; font-size: 14px;">(quedan <%= cupoDisponibleHint %>)</span>
+                    <% } %>
+                  </td>
+                </tr>
+                <% if (responsableNombre) { %>
+                <tr>
+                  <td style="padding: 12px 18px;"><strong>🧪 Responsable</strong></td>
+                  <td style="padding: 12px 18px;"><%= responsableNombre %>
+                    <% if (responsableDocumento) { %>
+                      <div class="text-muted" style="color: #5f6368; font-size: 14px;">Doc. <%= responsableDocumento %></div>
+                    <% } %>
+                  </td>
+                </tr>
+                <% } %>
+              </table>
+
+              <% if (descripcion) { %>
+                <p style="margin-top: 18px; margin-bottom: 0; color: #3c4043;">
+                  <strong>Descripción:</strong><br>
+                  <%= descripcion.replace(/\n/g, '<br>') %>
+                </p>
+              <% } %>
+
+              <% if (enlaceSesion) { %>
+                <p style="margin-top: 16px; margin-bottom: 0; color: #3c4043;">
+                  <strong>Enlace de la sesión:</strong><br>
+                  <a href="<%= enlaceSesion %>" target="_blank" rel="noopener noreferrer"><%= enlaceSesion %></a>
+                </p>
+              <% } %>
+
+              <p style="margin-top: 22px;">
+                <strong>Inscríbete ahora para reservar tu cupo</strong> (el cupo se llena por orden de inscripción):
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 4px;">
+                <tr>
+                  <td align="center" style="padding: 8px 0 12px 0;">
+                    <a href="<%= misCapacitacionesUrl %>" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 26px; background-color: #1a73e8; color: #ffffff; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 16px;">
+                      Inscribirme a esta capacitación
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="left" style="color: #5f6368; font-size: 14px; padding: 4px 0 0 0; line-height: 1.5;">
+                    Si el botón no funciona, copia y pega esta URL en tu navegador:<br>
+                    <a href="<%= misCapacitacionesUrl %>" target="_blank" rel="noopener noreferrer" style="color: #1a73e8; word-break: break-all;"><%= misCapacitacionesUrl %></a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <%- buildEmailFooterHtml(`
+            <p style="margin: 0; text-align: center; color: rgba(255,255,255,0.92); font-size: 14px; line-height: 1.6;">
+              Si ya no deseas recibir estas notificaciones, ajusta tus preferencias en MiLab.
+            </p>
+            <p style="margin: 8px 0 0 0; text-align: center; color: rgba(255,255,255,0.92); font-size: 14px; line-height: 1.6;">
+              <strong>Equipo de la Coordinación General de Laboratorios · MiLab</strong>
+            </p>
+          `) %>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

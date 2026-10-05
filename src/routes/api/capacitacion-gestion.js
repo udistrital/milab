@@ -6,6 +6,7 @@ const fs = require('fs');
 const { requireJsonRoles } = require('../middlewares/auth');
 const pool = require('../../libs/db');
 const { resolveLaboratoristaScope } = require('../../libs/capacitacion-scope');
+const { sendEmailNotification } = require('../../libs/email-notifications');
 
 const router = express.Router();
 
@@ -202,6 +203,10 @@ router.post('/solicitar', requireEstudianteODocente, async function (req, res) {
 
     const codigoCurso = truncate(req.body?.codigo_curso, 80);
     const motivo = truncate(req.body?.motivo, 500);
+    const mensajeSolicitante = truncate(req.body?.mensaje || req.body?.mensaje_solicitante, 1000);
+    const ualIdRaw = req.body?.ual_id_solicitud;
+    const ualId =
+      ualIdRaw != null && ualIdRaw !== '' ? parsePosInt(ualIdRaw, 'ual_id_solicitud') : null;
     if (!codigoCurso) return badRequest(res, 'El campo codigo_curso es obligatorio.');
 
     const cursoCheck = await pool.query(
@@ -238,10 +243,13 @@ router.post('/solicitar', requireEstudianteODocente, async function (req, res) {
         codigo_curso,
         nombre_curso_snapshot,
         facultad_id,
+        ual_id,
         motivo,
+        mensaje_solicitante,
         estado
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente')
-      RETURNING id, codigo_curso, nombre_curso_snapshot, estado, fecha_creacion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pendiente')
+      RETURNING id, codigo_curso, nombre_curso_snapshot, estado, fecha_creacion,
+                ual_id AS ual_id_solicitud
       `,
       [
         doc,
@@ -250,7 +258,9 @@ router.post('/solicitar', requireEstudianteODocente, async function (req, res) {
         codigoCurso,
         truncate(curso.nombre_curso, 255),
         curso.id_facultad || null,
+        ualId,
         motivo,
+        mensajeSolicitante,
       ]
     );
 
@@ -279,7 +289,7 @@ router.get('/mis-solicitudes', requireEstudianteODocente, async function (req, r
     const estadoValido = estadoRaw && SOLICITUD_ESTADOS.has(estadoRaw) ? estadoRaw : null;
 
     const sql = [
-      `SELECT id, solicitante_documento, codigo_curso, nombre_curso_snapshot, facultad_id, motivo, estado, observaciones_laboratorista, notas_internas, fecha_creacion, fecha_modificacion FROM solicitud_capacitacion WHERE solicitante_documento = $1`,
+      `SELECT id, solicitante_documento, codigo_curso, nombre_curso_snapshot, facultad_id, motivo, estado, observaciones_laboratorista, notas_internas, fecha_creacion, fecha_modificacion, ual_id AS ual_id_solicitud, sesion_capacitacion_id AS id_sesion_programada_notificada, fecha_notificacion_programacion FROM solicitud_capacitacion WHERE solicitante_documento = $1`,
       estadoValido ? ` AND estado = $2` : '',
       ` ORDER BY fecha_creacion DESC, id DESC LIMIT 200`,
     ]
@@ -331,6 +341,10 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
              sc.nombre_curso_snapshot,
              sc.facultad_id,
              f.nombre AS facultad_nombre,
+             sc.ual_id AS ual_id_solicitud,
+             u.nombre AS ual_nombre,
+             sc.sesion_capacitacion_id AS id_sesion_programada_notificada,
+             sc.fecha_notificacion_programacion,
              sc.motivo,
              sc.estado,
              sc.observaciones_laboratorista,
@@ -338,6 +352,7 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
              sc.fecha_modificacion
         FROM solicitud_capacitacion sc
         LEFT JOIN facultad f ON f.facultad_id = sc.facultad_id
+        LEFT JOIN ual u ON u.ual_id = sc.ual_id
       ${where}
        ORDER BY sc.estado = 'pendiente' DESC, sc.fecha_creacion DESC, sc.id DESC
        LIMIT $${params.length + 1}
@@ -455,7 +470,8 @@ router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async fun
         laboratorista_responsable_doc,
         laboratorista_responsable_nombre
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'programada', $11, $12)
-      RETURNING id, codigo_curso, nombre_curso_snapshot, facultad_id, ual_id, fecha_inicio, fecha_fin, cupo_maximo, lugar, estado, fecha_creacion
+      RETURNING id, codigo_curso, nombre_curso_snapshot, facultad_id, ual_id, fecha_inicio, fecha_fin, cupo_maximo, lugar, descripcion, enlace_sesion, estado, fecha_creacion,
+                laboratorista_responsable_doc, laboratorista_responsable_nombre
       `,
       [
         cursoCodigo,
@@ -472,23 +488,175 @@ router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async fun
         labNombre,
       ]
     );
+    const sesionNueva = insert.rows[0];
 
     if (String(req.body?.marcar_solicitudes_notificado || 'false') === 'true') {
       await pool.query(
-        `UPDATE solicitud_capacitacion SET estado = 'notificado', observaciones_laboratorista = COALESCE(observaciones_laboratorista, '') || $1, fecha_modificacion = CURRENT_TIMESTAMP WHERE solicitante_documento IN (
-          SELECT solicitante_documento FROM solicitud_capacitacion WHERE codigo_curso = $2 AND estado = 'pendiente' LIMIT 200
-        ) AND codigo_curso = $2 AND estado = 'pendiente'`,
+        `UPDATE solicitud_capacitacion SET estado = 'notificado_programada',
+           observaciones_laboratorista = COALESCE(observaciones_laboratorista, '') || $1,
+           sesion_capacitacion_id = $3,
+           fecha_notificacion_programacion = CURRENT_TIMESTAMP,
+           fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE solicitante_documento IN (
+           SELECT solicitante_documento FROM solicitud_capacitacion WHERE codigo_curso = $2 AND estado = 'pendiente' LIMIT 200
+         ) AND codigo_curso = $2 AND estado = 'pendiente'`,
         [
-          '; Notificación automática: nueva sesión programada id=' + insert.rows[0].id + '. ',
+          '; Notificación automática: nueva sesión programada id=' + sesionNueva.id + '. ',
           cursoCodigo,
+          sesionNueva.id,
         ]
       );
+    }
+
+    const notificarEmail =
+      String(req.body?.notificar_por_email ?? 'true') === 'true' &&
+      String(req.body?.marcar_solicitudes_notificado ?? 'true') === 'true';
+
+    if (notificarEmail) {
+      Promise.resolve()
+        .then(async function () {
+          try {
+            const appBase =
+              process.env.PUBLIC_APP_URL || process.env.APP_URL || 'https://labs.udistrital.edu.co';
+            const APP_PATH = process.env.APP_PATH || '/milab';
+            const appUrlBase = String(appBase || '').replace(/\/$/, '') + String(APP_PATH || '');
+            const misCapacitacionesUrl =
+              appUrlBase +
+              '/capacitacion/mis-capacitaciones/load_info?tab=sesiones&codigo_curso=' +
+              encodeURIComponent(sesionNueva.codigo_curso) +
+              '&sesion=' +
+              encodeURIComponent(String(sesionNueva.id || ''));
+
+            const rsDest = await pool.query(
+              `
+                WITH documentos_target AS (
+                  SELECT solicitante_documento AS documento,
+                         COALESCE(solicitante_nombre, '') AS nombre_snapshot
+                  FROM solicitud_capacitacion
+                  WHERE codigo_curso = $1
+                    AND estado IN ('pendiente','notificado','notificado_programada')
+                    AND activo = TRUE
+                  UNION
+                  SELECT usuario_documento AS documento,
+                         COALESCE(usuario_nombre, '') AS nombre_snapshot
+                  FROM inscripcion_sesion_capacitacion
+                  WHERE sesion_capacitacion_id = $2
+                    AND estado IN ('inscrito','cupo_excedido_lista_espera')
+                    AND activo = TRUE
+                )
+                SELECT DISTINCT ON (dt.documento)
+                       dt.documento,
+                       COALESCE(NULLIF(dt.nombre_snapshot,''), u.nombre, u.nombres || ' ' || u.apellidos, 'Usuario MiLab') AS usuario_nombre,
+                       u.correo AS correo
+                FROM documentos_target dt
+                LEFT JOIN usuario u ON u.documento = dt.documento OR CAST(u.id AS TEXT) = dt.documento
+                WHERE u.correo IS NOT NULL AND BTRIM(u.correo) <> ''
+                LIMIT 250
+              `,
+              [sesionNueva.codigo_curso, sesionNueva.id]
+            );
+
+            const destinatarios = (rsDest.rows || []).filter(function (r) {
+              return r && r.correo && /\S+@\S+\.\S+/.test(String(r.correo));
+            });
+            if (!destinatarios.length) return;
+
+            const ualNombre = sesionNueva.ual_id
+              ? (
+                  await pool.query(`SELECT nombre FROM ual WHERE ual_id = $1 LIMIT 1`, [
+                    sesionNueva.ual_id,
+                  ])
+                ).rows[0]?.nombre || null
+              : null;
+            const cupoLibreHint =
+              sesionNueva.cupo_maximo -
+                (
+                  await pool.query(
+                    `SELECT COUNT(*)::int AS c FROM inscripcion_sesion_capacitacion WHERE sesion_capacitacion_id = $1 AND estado = 'inscrito' AND activo = TRUE`,
+                    [sesionNueva.id]
+                  )
+                ).rows[0]?.c || 0;
+
+            function fmtFecha(ts) {
+              try {
+                const d = new Date(ts);
+                return d.toLocaleString('es-CO', {
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+              } catch {
+                return String(ts || '');
+              }
+            }
+
+            const subject =
+              'MiLab · Nueva capacitación programada: ' +
+              (sesionNueva.nombre_curso_snapshot ||
+                sesionNueva.codigo_curso ||
+                'Curso de capacitación');
+
+            for (const dest of destinatarios) {
+              try {
+                await sendEmailNotification({
+                  sourceSystem: 'capacitacion',
+                  templateName: 'capacitacion/sesion_programada_notificacion',
+                  recipient: String(dest.correo),
+                  subject,
+                  correlationId:
+                    'sesion_cap_' + sesionNueva.id + '_' + String(dest.documento || 'user'),
+                  throwOnError: false,
+                  variables: {
+                    usuarioNombre: String(dest.usuario_nombre || 'Usuario MiLab'),
+                    cursoNombre: String(
+                      sesionNueva.nombre_curso_snapshot ||
+                        sesionNueva.codigo_curso ||
+                        'Capacitación'
+                    ),
+                    cursoCodigo: String(sesionNueva.codigo_curso || ''),
+                    fechaInicioTexto: fmtFecha(sesionNueva.fecha_inicio),
+                    fechaFinTexto: fmtFecha(sesionNueva.fecha_fin),
+                    lugar: String(sesionNueva.lugar || ''),
+                    ualNombre: String(ualNombre || ''),
+                    cupoMaximo: String(sesionNueva.cupo_maximo || ''),
+                    cupoDisponibleHint: String(Math.max(0, Number(cupoLibreHint || 0))),
+                    responsableNombre: String(sesionNueva.laboratorista_responsable_nombre || ''),
+                    responsableDocumento: String(sesionNueva.laboratorista_responsable_doc || ''),
+                    descripcion: String(sesionNueva.descripcion || ''),
+                    enlaceSesion: String(sesionNueva.enlace_sesion || ''),
+                    misCapacitacionesUrl,
+                    appUrl: String(appUrlBase || ''),
+                  },
+                });
+              } catch (errMail) {
+                console.error(
+                  '[cap-email] Error enviando notificacion a',
+                  dest.correo,
+                  ':',
+                  errMail?.message || errMail
+                );
+              }
+            }
+          } catch (errOuter) {
+            console.error(
+              '[cap-email] Error general fire-and-forget programar sesion:',
+              errOuter?.message || errOuter
+            );
+          }
+        })
+        .catch(function () {
+          /* silently ignore - fire-and-forget */
+        });
     }
 
     return okJson(
       res,
       {
-        sesion: insert.rows[0],
+        sesion: sesionNueva,
+        notificacion_email: notificarEmail,
         message:
           'Sesión de capacitación programada exitosamente. Los estudiantes podrán inscribirse a partir de ahora.',
       },
@@ -941,14 +1109,14 @@ router.post('/gestion/asistencia/marcar', requireLaboratoristaOAdmin, async func
       `
       INSERT INTO asistencia_capacitacion (
         sesion_capacitacion_id,
-        inscripcion_id,
+        inscripcion_sesion_capacitacion_id,
         usuario_documento,
         asistio,
         metodo,
         registrado_por_laboratorista_doc,
         registrado_por_laboratorista_nombre
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT ON CONSTRAINT ux_asistencia_sesion_usuario
+      ON CONFLICT (sesion_capacitacion_id, usuario_documento) WHERE activo = TRUE
       DO UPDATE SET
         asistio = EXCLUDED.asistio,
         metodo = EXCLUDED.metodo,
@@ -1003,12 +1171,12 @@ router.get(
       }
       const asistencias = await pool.query(
         `
-      SELECT a.id, a.sesion_capacitacion_id, a.inscripcion_id, a.usuario_documento,
+      SELECT a.id, a.sesion_capacitacion_id, a.inscripcion_sesion_capacitacion_id, a.usuario_documento,
              a.asistio, a.metodo, a.fecha_registro, a.registrado_por_laboratorista_doc,
              i.usuario_nombre, i.estado AS inscripcion_estado, i.fecha_inscripcion,
              u.codigo AS usuario_codigo_estudiante
         FROM asistencia_capacitacion a
-        JOIN inscripcion_sesion_capacitacion i ON i.id = a.inscripcion_id
+        JOIN inscripcion_sesion_capacitacion i ON i.id = a.inscripcion_sesion_capacitacion_id
         LEFT JOIN usuario u ON u.documento = a.usuario_documento
        WHERE a.sesion_capacitacion_id = $1
        ORDER BY a.fecha_registro ASC, i.usuario_nombre ASC
@@ -1247,7 +1415,7 @@ router.post(
              MAX(a.fecha_registro) AS ultima_asistencia
         FROM asistencia_capacitacion a
         JOIN inscripcion_sesion_capacitacion i
-          ON i.id = a.inscripcion_id
+          ON i.id = a.inscripcion_sesion_capacitacion_id
        WHERE ${asistenciaWhere.join(' AND ')}
        GROUP BY a.usuario_documento, i.usuario_nombre
        ORDER BY ultima_asistencia ASC
@@ -1294,7 +1462,7 @@ router.post(
             fecha_emision,
             fecha_vencimiento,
             vigencia_meses,
-            sesion_id,
+            sesion_capacitacion_id,
             ual_id,
             certificado_por_laboratorista_doc,
             certificado_por_laboratorista_nombre,
@@ -1305,7 +1473,7 @@ router.post(
             CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
             $7, $8, $9, $10, $11, $12
           )
-          ON CONFLICT ON CONSTRAINT ux_cert_activa_curso_usuario DO NOTHING
+          ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
           RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
         ),
         cerrar_otras AS (
@@ -1394,5 +1562,311 @@ router.post(
     }
   }
 );
+
+/* ============================================================
+   7. REPORTE CAPACITACIONES (JSON + CSV) — Task 7
+   ============================================================ */
+
+async function buildReporteFiltrosYScope(req) {
+  const scope = await resolveLaboratoristaScope(req);
+
+  const estadoRaw =
+    String(req.query?.estado || '')
+      .trim()
+      .toLowerCase() || null;
+  const estadoValido = estadoRaw && SESION_ESTADOS.has(estadoRaw) ? estadoRaw : null;
+  const codigoCurso = truncate(req.query?.codigo_curso || req.query?.curso || '', 80);
+  const ualIdRaw = req.query?.ual_id || req.query?.lugar_id || req.query?.laboratorio_id;
+  const ualId = ualIdRaw && String(ualIdRaw).trim() !== '' ? parsePosInt(ualIdRaw, 'ual_id') : null;
+  const facultadIdRaw = req.query?.facultad_id;
+  const facultadId =
+    facultadIdRaw && String(facultadIdRaw).trim() !== ''
+      ? parsePosInt(facultadIdRaw, 'facultad_id')
+      : null;
+  const desdeRaw = req.query?.desde || req.query?.fecha_desde;
+  const hastaRaw = req.query?.hasta || req.query?.fecha_hasta;
+  const desde = desdeRaw ? new Date(desdeRaw) : null;
+  const hasta = hastaRaw ? new Date(hastaRaw) : null;
+  if (desde && isNaN(desde.getTime())) {
+    const e = new Error('Parametro desde/fecha_desde inválido. Use ISO 8601 (yyyy-mm-dd).');
+    e.status = 400;
+    throw e;
+  }
+  if (hasta && isNaN(hasta.getTime())) {
+    const e = new Error('Parametro hasta/fecha_hasta inválido. Use ISO 8601 (yyyy-mm-dd).');
+    e.status = 400;
+    throw e;
+  }
+
+  const clauses = ['s.activo = TRUE'];
+  const params = [];
+  if (estadoValido) {
+    params.push(estadoValido);
+    clauses.push('s.estado = $' + params.length);
+  }
+  if (codigoCurso) {
+    params.push(codigoCurso);
+    clauses.push('s.codigo_curso = $' + params.length);
+  }
+  if (ualId) {
+    params.push(ualId);
+    clauses.push('s.ual_id = $' + params.length);
+  }
+  if (facultadId) {
+    params.push(facultadId);
+    clauses.push('s.facultad_id = $' + params.length);
+  }
+  if (desde) {
+    params.push(desde);
+    clauses.push('s.fecha_fin >= $' + params.length);
+  }
+  if (hasta) {
+    params.push(hasta);
+    clauses.push('s.fecha_inicio <= $' + params.length);
+  }
+
+  if (!scope.isAdmin) {
+    if (scope.ualIds.length > 0 || scope.facultyIds.length > 0) {
+      if (scope.ualIds.length > 0) {
+        params.push(scope.ualIds);
+        clauses.push('s.ual_id = ANY($' + params.length + '::int[])');
+      }
+      if (scope.facultyIds.length > 0) {
+        params.push(scope.facultyIds);
+        clauses.push('(s.ual_id IS NULL OR s.facultad_id = ANY($' + params.length + '::int[]))');
+      }
+    } else {
+      clauses.push('FALSE');
+    }
+  }
+
+  return {
+    scope,
+    clauses,
+    params,
+    filtrosAplicados: {
+      estado: estadoValido,
+      codigo_curso: codigoCurso || null,
+      ual_id: ualId,
+      facultad_id: facultadId,
+      desde: desde ? desde.toISOString() : null,
+      hasta: hasta ? hasta.toISOString() : null,
+    },
+  };
+}
+
+function buildReporteAggregateSql(clauses, params, extraLimit) {
+  const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
+  const paging = extraLimit ? ' LIMIT ' + extraLimit : '';
+  return `
+    SELECT s.id AS sesion_id,
+           s.codigo_curso,
+           COALESCE(s.nombre_curso_snapshot, c.nombre_curso) AS nombre_curso,
+           s.facultad_id,
+           f.nombre AS facultad_nombre,
+           s.ual_id,
+           u.nombre AS ual_nombre,
+           u.codigo_unidad AS ual_codigo,
+           s.fecha_inicio,
+           s.fecha_fin,
+           s.cupo_maximo,
+           s.lugar,
+           s.estado,
+           COALESCE(s.evidencia_path, s.evidencia_ruta_rel) AS evidencia_path,
+           COALESCE(s.evidencia_mime, s.evidencia_mime_type) AS evidencia_mime,
+           s.evidencia_nombre_original,
+           s.evidencia_fecha_subida,
+           COALESCE(s.laboratorista_responsable_doc, s.laboratorista_documento) AS laboratorista_doc,
+           COALESCE(s.laboratorista_responsable_nombre, s.laboratorista_nombre) AS laboratorista_nombre,
+           (SELECT COUNT(*)::int
+              FROM inscripcion_sesion_capacitacion i
+             WHERE i.sesion_capacitacion_id = s.id
+               AND i.estado = 'inscrito'
+               AND i.activo = TRUE) AS inscritos,
+           (SELECT COUNT(*)::int
+              FROM asistencia_capacitacion a
+             WHERE a.sesion_capacitacion_id = s.id
+               AND a.asistio = TRUE
+               AND a.activo = TRUE) AS asistentes,
+           (SELECT COUNT(*)::int
+              FROM certificacion_usuario cert
+             WHERE cert.sesion_capacitacion_id = s.id
+               AND cert.activo = TRUE) AS certificados_emitidos,
+           CASE
+             WHEN EXISTS (
+               SELECT 1 FROM certificacion_usuario cert
+                WHERE cert.sesion_capacitacion_id = s.id
+                  AND cert.activo = TRUE
+                  AND cert.modalidad = 'prestamo'
+                LIMIT 1
+             ) THEN 'prestamo'
+             ELSE 'programada'
+           END AS modalidad,
+           s.fecha_creacion,
+           s.fecha_modificacion
+      FROM sesion_capacitacion s
+      LEFT JOIN cursos c ON c.codigo_curso = s.codigo_curso
+      LEFT JOIN ual u    ON u.ual_id = s.ual_id
+      LEFT JOIN facultad f ON f.facultad_id = s.facultad_id
+    ${where}
+     ORDER BY s.fecha_inicio DESC, s.id DESC
+    ${paging}
+  `;
+}
+
+router.get('/gestion/reporte', requireLaboratoristaOAdmin, async function (req, res) {
+  try {
+    const { scope, clauses, params, filtrosAplicados } = await buildReporteFiltrosYScope(req);
+    const sql = buildReporteAggregateSql(clauses, params, 10000);
+    const rs = await pool.query(sql, params);
+    return okJson(res, {
+      filas: rs.rows.length,
+      reporte: rs.rows,
+      filtros_aplicados: filtrosAplicados,
+      scope: {
+        is_admin: scope.isAdmin,
+        ual_ids: scope.ualIds,
+        faculty_ids: scope.facultyIds,
+        resolved_from: scope.resolvedFrom,
+      },
+    });
+  } catch (err) {
+    if (err && err.status === 400) return badRequest(res, err.message);
+    return serverError(
+      res,
+      err,
+      'No fue posible generar el reporte de capacitaciones.',
+      (function () {
+        try {
+          const out = {};
+          if (req?.query) out.query_params = req.query;
+          return out;
+        } catch {
+          return {};
+        }
+      })()
+    );
+  }
+});
+
+router.get('/gestion/reporte.csv', requireLaboratoristaOAdmin, async function (req, res) {
+  try {
+    const { scope, clauses, params, filtrosAplicados } = await buildReporteFiltrosYScope(req);
+    const sql = buildReporteAggregateSql(clauses, params, 100000);
+    const rs = await pool.query(sql, params);
+
+    const HEADER_CSV = [
+      'Sesion ID',
+      'Curso Código',
+      'Curso Nombre',
+      'Facultad',
+      'UAL / Laboratorio Código',
+      'UAL / Laboratorio Nombre',
+      'Fecha Inicio',
+      'Fecha Fin',
+      'Cupo Máximo',
+      'Inscritos',
+      'Asistentes',
+      'Certificados Emitidos',
+      'Modalidad',
+      'Estado',
+      'Evidencia',
+      'Laboratorista Responsable Documento',
+      'Laboratorista Responsable Nombre',
+    ];
+
+    function esc(v) {
+      if (v === null || v === undefined || v === '') return '';
+      let s = String(v).replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+      if (/[",;]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+    function fmtFechaLocal(v) {
+      if (!v) return '';
+      const d = v instanceof Date ? v : new Date(v);
+      if (isNaN(d.getTime())) return esc(v);
+      const pad = (n) => String(n).padStart(2, '0');
+      return (
+        d.getFullYear() +
+        '-' +
+        pad(d.getMonth() + 1) +
+        '-' +
+        pad(d.getDate()) +
+        ' ' +
+        pad(d.getHours()) +
+        ':' +
+        pad(d.getMinutes())
+      );
+    }
+
+    const lines = [];
+    lines.push(HEADER_CSV.map(esc).join(';'));
+    for (const r of rs.rows) {
+      lines.push(
+        [
+          r.sesion_id,
+          r.codigo_curso,
+          r.nombre_curso,
+          r.facultad_nombre,
+          r.ual_codigo,
+          r.ual_nombre,
+          fmtFechaLocal(r.fecha_inicio),
+          fmtFechaLocal(r.fecha_fin),
+          r.cupo_maximo,
+          r.inscritos,
+          r.asistentes,
+          r.certificados_emitidos,
+          r.modalidad === 'prestamo' ? 'Durante entrega préstamo' : 'Sesión programada',
+          String(r.estado || '').toUpperCase(),
+          r.evidencia_nombre_original || r.evidencia_path || '',
+          r.laboratorista_doc,
+          r.laboratorista_nombre,
+        ]
+          .map(esc)
+          .join(';')
+      );
+    }
+
+    const csvBody = '\uFEFF' + lines.join('\r\n');
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp =
+      now.getFullYear() +
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) +
+      '_' +
+      pad(now.getHours()) +
+      pad(now.getMinutes());
+    const filename = `reporte_capacitaciones_${stamp}.csv`;
+
+    res
+      .status(200)
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="' + filename + '"')
+      .header('X-Reporte-Filas', String(rs.rows.length))
+      .header('X-Scope-Is-Admin', scope.isAdmin ? '1' : '0')
+      .header('X-Filtros-Aplicados', encodeURIComponent(JSON.stringify(filtrosAplicados || {})))
+      .send(csvBody);
+  } catch (err) {
+    if (err && err.status === 400) {
+      return res
+        .status(400)
+        .header('Content-Type', 'text/plain; charset=utf-8')
+        .send('ERROR: ' + (err.message || 'Parámetros inválidos.'));
+    }
+    return serverError(
+      res,
+      err,
+      'No fue posible generar el archivo CSV del reporte de capacitaciones.',
+      (function () {
+        try {
+          return { query_params: req?.query || {} };
+        } catch {
+          return {};
+        }
+      })()
+    );
+  }
+});
 
 module.exports = router;

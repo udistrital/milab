@@ -199,6 +199,75 @@
           </div>
         </div>
 
+        <div class="col-12 mt-3 p-3 rounded-3" style="background: rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+          <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+            <div>
+              <label for="requiere_capacitacion" class="form-label mb-0">
+                <i class="bi bi-mortarboard-fill me-1" style="color:#7dd3fc;"></i>
+                Este equipo <b>requiere capacitación previa</b> para préstamo
+              </label>
+              <div class="form-text text-light mt-1">
+                Si lo marcas, MiLab bloqueará la solicitud de préstamo a usuarios que <b>no cuenten con certificación vigente</b> para el curso seleccionado.
+              </div>
+            </div>
+            <div class="form-check form-switch ms-0">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                role="switch"
+                id="requiere_capacitacion"
+                name="requiere_capacitacion"
+                style="width:2.6rem;height:1.3rem;"
+                <%= formItem.requiere_capacitacion ? 'checked' : '' %>
+              >
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-md-8">
+              <label for="codigo_curso_asociado" class="form-label">
+                Curso de capacitación asociado <span id="curso-required-mark" class="<%= formItem.requiere_capacitacion ? '' : 'd-none' %>">*</span>
+              </label>
+              <select
+                class="form-select"
+                id="codigo_curso_asociado"
+                name="codigo_curso_asociado"
+                <%= formItem.requiere_capacitacion ? 'required' : 'disabled' %>
+              >
+                <option value=""><%= formItem.requiere_capacitacion ? 'Selecciona el curso/capacitación' : 'Activa el switch para asociar un curso' %></option>
+                <% (Array.isArray(availableCursos) ? availableCursos : []).forEach(function(c) { %>
+                  <option
+                    value="<%= c.codigo_curso %>"
+                    <%= String(formItem.codigo_curso_asociado || '') === String(c.codigo_curso) ? 'selected' : '' %>
+                  >
+                    <%= (c.facultad_nombre ? c.facultad_nombre + ' — ' : '') + (c.nombre_curso || c.codigo_curso) %> <span class="text-muted">(<%= c.codigo_curso %>)</span>
+                  </option>
+                <% }) %>
+              </select>
+              <div id="cursoHelp" class="form-text text-light">
+                El curso debe estar creado previamente en el módulo Capacitación > Creación de cursos.
+                <% if (capacitacionAsociada?.nombre_curso_asociado) { %>
+                  · Actualmente asociado: <b><%= capacitacionAsociada.nombre_curso_asociado %></b>
+                <% } %>
+              </div>
+              <div class="invalid-feedback d-block" id="cursoErrorFeedback" style="display:none;">
+                Debes seleccionar el curso/capacitación cuando activas el requerimiento.
+              </div>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <a
+                class="btn btn-sm btn-outline-primary w-100 mb-1"
+                href="/milab/capacitacion/cursos/load_info"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <i class="bi bi-box-arrow-up-right me-1"></i>
+                Gestionar cursos
+              </a>
+            </div>
+          </div>
+        </div>
+
         <div class="col-12 d-flex justify-content-end gap-2">
           <a class="btn btn-outline-secondary" href="/milab/prestamos/equipos">Cancelar</a>
           <button class="btn btn-perso" type="submit" data-submit-lock="true"><%= isEdit ? 'Guardar cambios' : 'Crear equipo' %></button>
@@ -221,8 +290,54 @@
     var emptySchedulesMessage = document.getElementById('emptySchedulesMessage');
     var facultySelect = document.getElementById('facultad');
     var laboratorySelect = document.getElementById('laboratorio');
+    var requiereCapacitacionSwitch = document.getElementById('requiere_capacitacion');
+    var cursoAsociadoSelect = document.getElementById('codigo_curso_asociado');
+    var cursoRequiredMark = document.getElementById('curso-required-mark');
+    var cursoErrorFeedback = document.getElementById('cursoErrorFeedback');
+    var availableCursosList = <%- JSON.stringify(Array.isArray(availableCursos) ? availableCursos : []) %>;
     var laboratoryOptionsByFaculty = <%- JSON.stringify(laboratoryOptionsByFaculty) %>;
     var scheduleRowIndex = schedulesContainer ? schedulesContainer.querySelectorAll('.horario-row').length : 0;
+
+    function syncRequiereCapacitacion() {
+      var isCapacitacionRequired = Boolean(requiereCapacitacionSwitch && requiereCapacitacionSwitch.checked);
+      if (!cursoAsociadoSelect) return;
+      cursoAsociadoSelect.disabled = !isCapacitacionRequired;
+      if (isCapacitacionRequired) {
+        cursoAsociadoSelect.setAttribute('required', 'required');
+        cursoAsociadoSelect.required = true;
+        if (cursoRequiredMark) cursoRequiredMark.classList.remove('d-none');
+        if (cursoAsociadoSelect.options && cursoAsociadoSelect.options.length > 0) {
+          cursoAsociadoSelect.options[0].textContent = 'Selecciona el curso/capacitación';
+        }
+      } else {
+        cursoAsociadoSelect.removeAttribute('required');
+        cursoAsociadoSelect.required = false;
+        if (cursoRequiredMark) cursoRequiredMark.classList.add('d-none');
+        if (cursoErrorFeedback) cursoErrorFeedback.style.display = 'none';
+        if (cursoAsociadoSelect.options && cursoAsociadoSelect.options.length > 0) {
+          cursoAsociadoSelect.options[0].textContent = 'Activa el switch para asociar un curso';
+        }
+      }
+    }
+
+    if (requiereCapacitacionSwitch) {
+      requiereCapacitacionSwitch.addEventListener('change', function () {
+        syncRequiereCapacitacion();
+      });
+    }
+    syncRequiereCapacitacion();
+
+    function validateCursoAsociado() {
+      var isCapacitacionRequired = Boolean(requiereCapacitacionSwitch && requiereCapacitacionSwitch.checked);
+      if (!isCapacitacionRequired) return true;
+      var val = String(cursoAsociadoSelect && cursoAsociadoSelect.value || '').trim();
+      if (!val) {
+        if (cursoErrorFeedback) cursoErrorFeedback.style.display = 'block';
+        return false;
+      }
+      if (cursoErrorFeedback) cursoErrorFeedback.style.display = 'none';
+      return true;
+    }
 
     function validateLoanLocation() {
       var hasSelection = (insideCheckbox && insideCheckbox.checked) || (outsideCheckbox && outsideCheckbox.checked);
@@ -331,13 +446,17 @@
 
     form.addEventListener('submit', function(event) {
       var isLoanLocationValid = validateLoanLocation();
+      var isCursoAsociadoValid = validateCursoAsociado();
 
-      if (!form.checkValidity() || !isLoanLocationValid) {
+      if (!form.checkValidity() || !isLoanLocationValid || !isCursoAsociadoValid) {
         event.preventDefault();
         event.stopPropagation();
         form.classList.add('was-validated');
 
-        if (!isLoanLocationValid && insideCheckbox) {
+        if (!isCursoAsociadoValid && cursoAsociadoSelect) {
+          cursoAsociadoSelect.focus();
+          cursoAsociadoSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (!isLoanLocationValid && insideCheckbox) {
           insideCheckbox.focus();
         } else {
           var firstInvalidField = form.querySelector(':invalid');

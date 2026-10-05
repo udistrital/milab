@@ -1,0 +1,946 @@
+<%- include('../partials/header'); -%>
+<%
+  var userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  var isAdmin = userRole === 'admin';
+  var isLab = userRole === 'laboratorista' || userRole === 'laboratorista_ud' || userRole === 'laboratorista_ual';
+  var canManageFull = isAdmin || userRole === 'coordinador' || userRole === 'coordinador_general' || userRole === 'coordinacion general';
+%>
+
+<main class="container app-page-shell" id="capacitacion-gestion-shell">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Gestionar capacitaciones</h1>
+        <p class="app-page-subtitle">Gestiona solicitudes de estudiantes, programa sesiones, registra asistencia y certifica localmente a los usuarios.</p>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button type="button" id="btn-recargar" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-repeat"></i> Actualizar
+        </button>
+        <span id="scope-label" class="badge text-bg-light border">Scope: cargando…</span>
+        <span class="badge text-bg-light border border-warning-subtle">
+          <i class="bi bi-person-badge me-1" style="color:#b45309;"></i>
+          Rol: <%= isAdmin ? 'Administrador' : (isLab ? 'Laboratorista' : (canManageFull ? 'Coordinación' : (locals.sessionRoleLabel || userRole))) %>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <div id="mensajes-globales"></div>
+
+  <section class="mb-4" id="scope-alert-section" style="display:none;">
+    <div class="alert alert-warning" role="alert" style="border-color:#f0aa00;background:#fff7e1;">
+      <div class="d-flex align-items-start gap-3">
+        <i class="bi bi-shield-lock fs-3" style="color:#b45309;"></i>
+        <div>
+          <h5 class="alert-heading mb-1" style="color:#7c3b04;" id="scope-alert-title">Alcance de gestión</h5>
+          <p class="mb-0" id="scope-alert-body">Usted solo puede gestionar capacitaciones en los laboratorios y facultades que tiene asignados.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <form style="display:none;" novalidate>
+    <%- include('../partials/csrf_field'); -%>
+  </form>
+
+  <div class="mb-3" id="gestion-tabs-shell">
+    <ul class="nav nav-tabs flex-wrap mb-3" role="tablist" id="tabs-gestion-capacitacion">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-solicitudes" data-bs-toggle="tab" data-bs-target="#pane-solicitudes" type="button" role="tab" aria-controls="pane-solicitudes" aria-selected="true">
+          <i class="bi bi-envelope-exclamation me-1"></i> Solicitudes pendientes
+          <span id="count-solicitudes" class="badge rounded-pill bg-warning text-dark ms-1">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-sesiones" data-bs-toggle="tab" data-bs-target="#pane-sesiones" type="button" role="tab" aria-controls="pane-sesiones" aria-selected="false">
+          <i class="bi bi-calendar-event me-1"></i> Sesiones programadas
+          <span id="count-sesiones" class="badge rounded-pill bg-info text-dark ms-1">0</span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-asistencia" data-bs-toggle="tab" data-bs-target="#pane-asistencia" type="button" role="tab" aria-controls="pane-asistencia" aria-selected="false">
+          <i class="bi bi-clipboard-check me-1"></i> Asistencia de sesión
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-reporte" data-bs-toggle="tab" data-bs-target="#pane-reporte" type="button" role="tab" aria-controls="pane-reporte" aria-selected="false">
+          <i class="bi bi-file-bar-graph me-1"></i> Reporte capacitaciones
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="pane-solicitudes" role="tabpanel" aria-labelledby="tab-solicitudes">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#faf6ed;border-color:#f0e2c1;">
+            <h5 class="mb-0" style="color:#7c3b04;">
+              <i class="bi bi-filter me-2" style="color:#b45309;"></i>
+              Filtros
+            </h5>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <div class="input-group input-group-sm" style="max-width:260px;">
+                <span class="input-group-text">Curso</span>
+                <input type="text" class="form-control" id="filter-curso-solicitudes" placeholder="Buscar por código o nombre" />
+              </div>
+              <select class="form-select form-select-sm" id="filter-estado-solicitudes" style="max-width:200px;">
+                <option value="">Todos los estados</option>
+                <option value="pendiente" selected>Pendientes</option>
+                <option value="notificado_programada">Sesión notificada</option>
+                <option value="atendido_cerrado">Atendidas</option>
+                <option value="cancelado">Canceladas</option>
+              </select>
+              <button type="button" id="btn-aplicar-filtros-solicitudes" class="btn btn-sm btn-outline-secondary">Aplicar</button>
+              <button type="button" id="btn-programar-rapido" class="btn btn-sm btn-warning" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;">
+                <i class="bi bi-calendar-plus me-1"></i> Programar sesión
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="alert-solicitudes" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-solicitudes">
+                <thead style="background:#faf6ed;">
+                  <tr>
+                    <th>Fecha envío</th>
+                    <th>Solicitante</th>
+                    <th>Curso</th>
+                    <th>UAL / Facultad</th>
+                    <th>Estado</th>
+                    <th>Mensaje</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando solicitudes de tu alcance...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-pane fade" id="pane-sesiones" role="tabpanel" aria-labelledby="tab-sesiones">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#e8f6ee;border-color:#b7e5c9;">
+            <h5 class="mb-0" style="color:#137333;">
+              <i class="bi bi-calendar3 me-2" style="color:#1e8e3e;"></i>
+              Sesiones de capacitación (tu alcance)
+            </h5>
+            <button type="button" id="btn-nueva-sesion" class="btn btn-sm btn-success">
+              <i class="bi bi-plus-lg me-1"></i> Nueva sesión
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="alert-sesiones" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-sesiones">
+                <thead style="background:#e8f6ee;">
+                  <tr>
+                    <th># Sesión</th>
+                    <th>Curso</th>
+                    <th>Fecha / Hora</th>
+                    <th>Lugar (UAL)</th>
+                    <th>Cupo / Inscritos</th>
+                    <th>Estado</th>
+                    <th>Laboratorista</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="8" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando sesiones programadas...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-pane fade" id="pane-asistencia" role="tabpanel" aria-labelledby="tab-asistencia">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#eef7ff;border-color:#c7e6ff;">
+            <h5 class="mb-0" style="color:#085394;">
+              <i class="bi bi-qr-code me-2" style="color:#0a5c84;"></i>
+              Registrar asistencia a sesión
+            </h5>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+              <label class="form-label mb-0 small" for="asistencia-sesion-select"><b>Sesión:</b></label>
+              <select id="asistencia-sesion-select" class="form-select form-select-sm" style="max-width:420px;">
+                <option value="">(Seleccione una sesión programada o en curso)</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="alert-asistencia" class="alert d-none"></div>
+
+            <fieldset class="border rounded p-3 mb-4" style="border-color:#c7e6ff;background:#f7fbff;">
+              <legend class="float-none w-auto px-2 fs-6" style="color:#085394;">
+                <i class="bi bi-qr-code-scan me-1" style="color:#0a5c84;"></i>
+                Marcar asistencia por documento (QR / manual)
+              </legend>
+              <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                  <label for="asistencia-doc-input" class="form-label">Documento del estudiante *</label>
+                  <input type="text" class="form-control form-control-lg" id="asistencia-doc-input" maxlength="50" placeholder="Escanea QR del estudiante o pega su documento aquí" autocomplete="off" />
+                  <div class="form-text">Luego de escanear/ingresar el documento, presiona Enter o clic en Marcar.</div>
+                </div>
+                <div class="col-md-3">
+                  <label for="asistencia-metodo-select" class="form-label">Método de marcado</label>
+                  <select id="asistencia-metodo-select" class="form-select">
+                    <option value="qr_documento">📷 QR documento</option>
+                    <option value="manual">✍️ Manual / Lista</option>
+                    <option value="lista_asistencia">📋 Lista asistencia</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <button type="button" id="btn-marcar-asistencia" class="btn btn-primary w-100" data-submit-lock="true">
+                    <i class="bi bi-check2-square me-1"></i> Marcar asistencia
+                  </button>
+                </div>
+              </div>
+            </fieldset>
+
+            <div class="row g-3 align-items-end mb-4">
+              <div class="col-md-6">
+                <label for="filter-asistidos-search" class="form-label">Buscar inscrito</label>
+                <input type="text" id="filter-asistidos-search" class="form-control" placeholder="Filtrar tabla por nombre o documento" />
+              </div>
+              <div class="col-md-6 text-end">
+                <button type="button" id="btn-certificar-asistentes-sesion" class="btn btn-outline-success me-2">
+                  <i class="bi bi-patch-check me-1"></i> Certificar asistentes (todos)
+                </button>
+                <button type="button" id="btn-finalizar-sesion" class="btn btn-outline-secondary me-2">
+                  <i class="bi bi-flag me-1"></i> Marcar sesión Realizada
+                </button>
+                <button type="button" id="btn-evidencia-sesion" class="btn btn-outline-info">
+                  <i class="bi bi-cloud-upload me-1"></i> Subir evidencia
+                </button>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <div class="card border-success" style="background:#f3fff6;">
+                  <div class="card-header bg-success bg-opacity-10 border-success">
+                    <b>✅ Asistieron (<span id="count-asistidos">0</span>)</b>
+                  </div>
+                  <div class="card-body p-0">
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle mb-0" id="tabla-asistidos">
+                        <thead><tr><th>Documento</th><th>Nombre</th><th>Fecha marcado</th><th>Cert.</th></tr></thead>
+                        <tbody><tr><td colspan="4" class="text-center text-muted py-3">Seleccione una sesión para ver la lista de asistentes.</td></tr></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card border-secondary" style="background:#fafafa;">
+                  <div class="card-header bg-secondary bg-opacity-10 border-secondary">
+                    <b>⏳ Inscritos sin asistencia (<span id="count-faltantes">0</span>)</b>
+                  </div>
+                  <div class="card-body p-0">
+                    <div class="table-responsive">
+                      <table class="table table-sm align-middle mb-0" id="tabla-faltantes">
+                        <thead><tr><th>Documento</th><th>Nombre</th><th>Inscrito el</th><th>Acción</th></tr></thead>
+                        <tbody><tr><td colspan="4" class="text-center text-muted py-3">Seleccione una sesión para ver quienes faltan.</td></tr></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-pane fade" id="pane-reporte" role="tabpanel" aria-labelledby="tab-reporte">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#f4f4fb;border-color:#dcdcff;">
+            <h5 class="mb-0" style="color:#3a0ca3;">
+              <i class="bi bi-journal-text me-2" style="color:#560bad;"></i>
+              Reporte de capacitaciones (tu alcance)
+            </h5>
+            <button type="button" id="btn-descargar-csv" class="btn btn-sm btn-primary">
+              <i class="bi bi-filetype-csv me-1"></i> Exportar CSV
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="row g-3 mb-4">
+              <div class="col-md-3">
+                <label for="report-fecha-desde" class="form-label">Fecha desde</label>
+                <input type="date" class="form-control" id="report-fecha-desde" />
+              </div>
+              <div class="col-md-3">
+                <label for="report-fecha-hasta" class="form-label">Fecha hasta</label>
+                <input type="date" class="form-control" id="report-fecha-hasta" />
+              </div>
+              <div class="col-md-3">
+                <label for="report-estado-sesion" class="form-label">Estado sesión</label>
+                <select class="form-select" id="report-estado-sesion">
+                  <option value="">Todos</option>
+                  <option value="programada">Programada</option>
+                  <option value="en_curso">En curso</option>
+                  <option value="realizada">Realizada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </div>
+              <div class="col-md-3 d-flex align-items-end gap-2">
+                <button type="button" id="btn-aplicar-filtros-reporte" class="btn btn-outline-secondary w-100"><i class="bi bi-funnel me-1"></i> Aplicar filtros</button>
+              </div>
+            </div>
+
+            <div id="alert-reporte" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-reporte">
+                <thead style="background:#f4f4fb;">
+                  <tr>
+                    <th># Sesión</th>
+                    <th>Fecha</th>
+                    <th>Curso</th>
+                    <th>UAL / Facultad</th>
+                    <th>Cupo</th>
+                    <th>Inscritos</th>
+                    <th>Asistentes</th>
+                    <th>Certificados</th>
+                    <th>Modalidad</th>
+                    <th>Evidencia</th>
+                    <th>Lab. responsable</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="12" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando reporte (aplica filtros o espera...)…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="alert alert-info small mt-3" role="alert">
+              <i class="bi bi-info-circle me-2"></i>
+              <b>Nota:</b> El reporte CSV detallado y filtros avanzados se habilitarán con el Task 7 del módulo. Por ahora puedes exportar y ver resumenes de tus capacitaciones.
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+
+  var BASE_PATH = '/milab/api/capacitacion-gestion';
+  var api = {
+    solicitudes: BASE_PATH + '/gestion/solicitudes',
+    sesiones: BASE_PATH + '/gestion/sesiones',
+    programarSesion: BASE_PATH + '/gestion/sesiones/programar',
+    cambiarEstado: BASE_PATH + '/gestion/cambiar-estado',
+    marcarAsistencia: BASE_PATH + '/gestion/asistencia/marcar',
+    asistenciasList: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/asistencias'; },
+    evidencia: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/evidencia'; },
+    certificar: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/certificar-asistentes'; },
+    reporte: BASE_PATH + '/gestion/reporte',
+    reporteCsv: BASE_PATH + '/gestion/reporte.csv',
+    contextoCursos: '/milab/api/capacitacion-equipos/list',
+  };
+
+  function getCsrfToken() {
+    var el = document.querySelector('input[name="_csrf"]');
+    return el ? String(el.value || '') : '';
+  }
+  function setJsonPostHeaders(xhr) {
+    if (!xhr) return;
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'application/json');
+    var t = getCsrfToken();
+    if (t) xhr.setRequestHeader('X-CSRF-Token', t);
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  var state = {
+    scope: null,
+    solicitudes: [],
+    sesiones: [],
+    asistencias: { asistidos: [], faltantes: [], sesionId: null },
+    selectedSesionId: null,
+    reporte: [],
+    filtros: { solicitudes: {}, reporte: {} },
+  };
+
+  function setGlobalAlert(message, type, containerId) {
+    containerId = containerId || 'mensajes-globales';
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    el.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+    el.classList.add('alert', 'alert-' + (type || 'info'));
+    el.innerHTML = '';
+    var s = document.createElement('strong');
+    s.textContent = message || '';
+    el.appendChild(s);
+    if (type === 'success') {
+      setTimeout(function () {
+        if (!document.getElementById(containerId)) return;
+        el.classList.remove('alert', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+        el.classList.add('d-none');
+        el.textContent = '';
+      }, 6000);
+    }
+  }
+
+  function safeParseJsonXhr(xhr, label, onErrorMsg) {
+    var raw = xhr.responseText || '';
+    var ct = xhr.getResponseHeader && xhr.getResponseHeader('Content-Type') ? String(xhr.getResponseHeader('Content-Type')) : '';
+    try {
+      if (!xhr.status || xhr.status === 0) throw new Error('Sin respuesta del servidor (error de red).');
+      if (ct && ct.indexOf('application/json') === -1 && (ct.indexOf('text/html') !== -1 || (raw || '').trim().indexOf('<') === 0)) {
+        throw new Error(
+          'El servidor respondió con una página HTML en vez de JSON (status ' + (xhr.status || 0) + '). ' +
+          'Espere 30s y recargue Ctrl+Shift+R (pods actualizándose).'
+        );
+      }
+      return JSON.parse(raw || '{}');
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err || 'Error desconocido');
+      console.error('[cap-gestion] ' + label + ' safeParse ERROR:', err, ' preview:', raw && raw.length > 200 ? raw.slice(0, 200) + '…' : raw);
+      setGlobalAlert((onErrorMsg || 'Error procesando respuesta. Detalle: ') + escapeHtml(msg), 'danger');
+      return null;
+    }
+  }
+
+  function formatFecha(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      var d = new Date(dateStr);
+      if (!d || isNaN(d.getTime())) return escapeHtml(String(dateStr));
+      return d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+    } catch { return escapeHtml(String(dateStr)); }
+  }
+
+  function updateScopeLabels(scope) {
+    var lbl = document.getElementById('scope-label');
+    var title = document.getElementById('scope-alert-title');
+    var body = document.getElementById('scope-alert-body');
+    var section = document.getElementById('scope-alert-section');
+    state.scope = scope || null;
+    var isAdminScope = scope ? Boolean(scope.isAdmin || scope.adminAll) : false;
+    if (isAdminScope) {
+      if (lbl) lbl.textContent = 'Scope Administrador: TODAS las facultades y UALes';
+      if (section) section.style.display = 'none';
+      return;
+    }
+    var facs = (scope?.facultades || []).map(function (f) { return f.nombre; }).join(', ');
+    var labs = (scope?.laboratorios || []).map(function (l) { return l.nombre; }).join(', ');
+    var facIdsOk = Array.isArray(scope?.facultyIds) && scope.facultyIds.length > 0;
+    var ualIdsOk = Array.isArray(scope?.ualIds) && scope.ualIds.length > 0;
+    if (lbl) {
+      if (!facIdsOk && !ualIdsOk) lbl.textContent = '⚠️ Scope: SIN UALes ASIGNADAS. Contacta administración.';
+      else lbl.textContent = 'Scope: ' + (facs || labs || 'OK');
+    }
+    if (section) {
+      section.style.display = '';
+      if (title) title.textContent = facIdsOk || ualIdsOk ? 'Alcance de gestión (Laboratorista)' : 'Sin UALes asignadas';
+      if (body) body.textContent = facIdsOk || ualIdsOk
+        ? 'Usted gestiona: ' + (facs || labs || '—')
+        : 'Usted no tiene UALes o laboratorios asignados actualmente. Contacta Coordinación General para asignarte.';
+    }
+  }
+
+  function renderEstadoSolicitud(est) {
+    var s = String(est || '').trim().toLowerCase();
+    if (!s) return '<span class="badge text-bg-secondary">—</span>';
+    if (s.indexOf('pendiente') !== -1) return '<span class="badge text-bg-warning text-dark">Pendiente</span>';
+    if (s.indexOf('notificado') !== -1 || s.indexOf('programada') !== -1) return '<span class="badge text-bg-info">Sesión programada</span>';
+    if (s.indexOf('atendid') !== -1 || s.indexOf('cerrad') !== -1) return '<span class="badge text-bg-success">Atendida</span>';
+    if (s.indexOf('cancel') !== -1) return '<span class="badge text-bg-danger">Cancelada</span>';
+    return '<span class="badge text-bg-light border">' + escapeHtml(s) + '</span>';
+  }
+
+  function renderEstadoSesion(est) {
+    var s = String(est || '').trim().toLowerCase();
+    if (!s) return '<span class="badge text-bg-secondary">—</span>';
+    if (s.indexOf('programada') !== -1) return '<span class="badge text-bg-primary">Programada</span>';
+    if (s.indexOf('curso') !== -1) return '<span class="badge text-bg-info text-dark">En curso</span>';
+    if (s.indexOf('realizad') !== -1) return '<span class="badge text-bg-success">Realizada</span>';
+    if (s.indexOf('cancel') !== -1) return '<span class="badge text-bg-danger">Cancelada</span>';
+    return '<span class="badge text-bg-light border">' + escapeHtml(s) + '</span>';
+  }
+
+  function loadSolicitudes() {
+    var tbody = document.querySelector('#tabla-solicitudes tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando solicitudes...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    var url = api.solicitudes;
+    var fCurso = document.getElementById('filter-curso-solicitudes')?.value || '';
+    var fEstado = document.getElementById('filter-estado-solicitudes')?.value || '';
+    var qs = [];
+    if (fCurso) qs.push('q=' + encodeURIComponent(fCurso));
+    if (fEstado) qs.push('estado=' + encodeURIComponent(fEstado));
+    if (qs.length) url = url + (url.indexOf('?') === -1 ? '?' : '&') + qs.join('&');
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadSolicitudes', 'Error cargando solicitudes. ');
+      if (!data) return;
+      if (data.meta?.scope) updateScopeLabels(data.meta.scope);
+      state.solicitudes = Array.isArray(data.solicitudes) ? data.solicitudes : (Array.isArray(data.data) ? data.data : []);
+      renderSolicitudes();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando solicitudes.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderSolicitudes() {
+    var elCount = document.getElementById('count-solicitudes');
+    if (elCount) elCount.textContent = String(state.solicitudes.length);
+    var tbody = document.querySelector('#tabla-solicitudes tbody');
+    if (!tbody) return;
+    if (!state.solicitudes.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No hay solicitudes para mostrar (cambia filtros si es necesario).</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.solicitudes.map(function (s) {
+      return '<tr data-id-solicitud="' + escapeAttr(s.id) + '" data-codigo-curso="' + escapeAttr(s.codigo_curso || '') + '">' +
+        '<td>' + formatFecha(s.fecha_creacion || s.fecha_solicitud) + '</td>' +
+        '<td><b>' + escapeHtml(s.solicitante_nombre || ('Usuario ' + (s.solicitante_documento || ''))) + '</b><div class="small text-muted">Doc. ' + escapeHtml(s.solicitante_documento || '—') + '</div></td>' +
+        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td>' + escapeHtml(s.ual_nombre || s.laboratorio_nombre || (s.ual_id_solicitud ? 'UAL ' + s.ual_id_solicitud : 'Cualquiera')) + (s.facultad_nombre ? '<div class="small text-muted">' + escapeHtml(s.facultad_nombre) + '</div>' : '') + '</td>' +
+        '<td>' + renderEstadoSolicitud(s.estado) + '</td>' +
+        '<td>' + (s.mensaje_solicitante ? escapeHtml(s.mensaje_solicitante.length > 120 ? s.mensaje_solicitante.slice(0,120)+'…' : s.mensaje_solicitante) : '<span class="text-muted small">—</span>') + '</td>' +
+        '<td><button type="button" class="btn btn-sm btn-warning programar-btn" style="background:#ffbf00;border-color:#f0aa00;color:#7c3b04;" data-curso="' + escapeAttr(s.codigo_curso || '') + '" data-ual="' + escapeAttr(s.ual_id_solicitud || s.ual_id || '') + '">' +
+          '<i class="bi bi-calendar-plus me-1"></i>Programar' +
+          '</button></td>' +
+        '</tr>';
+    }).join('');
+    tbody.querySelectorAll('.programar-btn').forEach(function (btn) { btn.addEventListener('click', onProgramarDesdeSolicitud); });
+  }
+
+  function loadSesiones() {
+    var tbody = document.querySelector('#tabla-sesiones tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando sesiones...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.sesiones, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadSesiones', 'Error cargando sesiones. ');
+      if (!data) return;
+      state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : (Array.isArray(data.data) ? data.data : []);
+      renderSesiones();
+      populateAsistenciaSesionSelect();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando sesiones.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderSesiones() {
+    var elCount = document.getElementById('count-sesiones');
+    if (elCount) elCount.textContent = String(state.sesiones.length);
+    var tbody = document.querySelector('#tabla-sesiones tbody');
+    if (!tbody) return;
+    if (!state.sesiones.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No hay sesiones programadas en tu alcance. Programa una desde aquí o desde la pestaña solicitudes.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.sesiones.map(function (s) {
+      var cupo = Number(s.cupo_maximo || 0);
+      var insc = Number(s.inscripciones_count || s.inscritos_count || 0);
+      return '<tr data-id-sesion="' + escapeAttr(s.id) + '">' +
+        '<td><code>' + escapeHtml(s.id || '') + '</code></td>' +
+        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td>' + formatFecha(s.fecha_hora_inicio) + '<div class="small text-muted">hasta ' + formatFecha(s.fecha_hora_fin) + '</div></td>' +
+        '<td>' + escapeHtml(s.ual_nombre || ('UAL ' + (s.ual_id_lugar || s.ual_id || '?'))) + (s.facultad_nombre ? '<div class="small text-muted">' + escapeHtml(s.facultad_nombre) + '</div>' : '') + '</td>' +
+        '<td class="text-center"><b>' + (cupo || '∞') + '</b> / <span class="text-muted">' + insc + '</span></td>' +
+        '<td>' + renderEstadoSesion(s.estado) + '</td>' +
+        '<td>' + (s.laboratorista_nombre ? escapeHtml(s.laboratorista_nombre) : '<span class="text-muted small">' + escapeHtml(s.laboratorista_documento || '—') + '</span>') + '</td>' +
+        '<td><div class="btn-group btn-group-sm" role="group">' +
+          '<button type="button" class="btn btn-outline-primary estado-btn" data-estado="en_curso" data-id-sesion="' + escapeAttr(s.id) + '" title="Marcar como en curso">▶ En curso</button>' +
+          '<button type="button" class="btn btn-outline-info evidencia-btn" data-id-sesion="' + escapeAttr(s.id) + '" title="Subir evidencia">📎 Evidencia</button>' +
+          '<button type="button" class="btn btn-outline-success certificar-btn" data-id-sesion="' + escapeAttr(s.id) + '" title="Certificar asistentes">🎓 Certificar</button>' +
+          '<button type="button" class="btn btn-outline-secondary cancelar-btn" data-estado="cancelada" data-id-sesion="' + escapeAttr(s.id) + '" title="Cancelar sesión">⛔ Cancelar</button>' +
+        '</div></td>' +
+        '</tr>';
+    }).join('');
+    tbody.querySelectorAll('.estado-btn').forEach(function (btn) { btn.addEventListener('click', onCambiarEstadoSesion); });
+    tbody.querySelectorAll('.cancelar-btn').forEach(function (btn) { btn.addEventListener('click', onCambiarEstadoSesion); });
+    tbody.querySelectorAll('.evidencia-btn').forEach(function (btn) { btn.addEventListener('click', onEvidenciaBtn); });
+    tbody.querySelectorAll('.certificar-btn').forEach(function (btn) { btn.addEventListener('click', onCertificarBtn); });
+  }
+
+  function populateAsistenciaSesionSelect() {
+    var sel = document.getElementById('asistencia-sesion-select');
+    if (!sel) return;
+    var opts = ['<option value="">(Seleccione una sesión programada o en curso)</option>'];
+    state.sesiones.forEach(function (s) {
+      var est = String(s.estado || '').toLowerCase();
+      if (est.indexOf('cancel') !== -1) return;
+      opts.push('<option value="' + escapeAttr(s.id) + '">' +
+        '#' + escapeHtml(s.id) + ' | ' +
+        escapeHtml(s.codigo_curso || '') + ' - ' +
+        escapeHtml((s.nombre_curso || '').slice(0, 60)) + ' | ' +
+        formatFecha(s.fecha_hora_inicio) +
+        ' [' + escapeHtml(s.estado || '') + ']' +
+        '</option>');
+    });
+    sel.innerHTML = opts.join('');
+    if (state.selectedSesionId) sel.value = String(state.selectedSesionId);
+  }
+
+  function loadAsistenciasSesion(sesionId) {
+    if (!sesionId) return;
+    state.selectedSesionId = sesionId;
+    document.getElementById('asistencia-sesion-select').value = String(sesionId);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.asistenciasList(sesionId), true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadAsistenciasSesion', 'Error cargando asistencias. ');
+      if (!data) return;
+      state.asistencias = {
+        asistidos: Array.isArray(data.asistencias) || Array.isArray(data.asistidos) ? (data.asistencias || data.asistidos || []).filter(function (a) { return a?.asistio === true || a?.asistio === 'true'; }) : [],
+        faltantes: Array.isArray(data.inscritos_sin_asistencia) ? data.inscritos_sin_asistencia : [],
+        sesionId: sesionId,
+      };
+      renderAsistencias();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando asistencias.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderAsistencias() {
+    var aBody = document.querySelector('#tabla-asistidos tbody');
+    var fBody = document.querySelector('#tabla-faltantes tbody');
+    var countA = document.getElementById('count-asistidos');
+    var countF = document.getElementById('count-faltantes');
+    var asis = state.asistencias.asistidos || [];
+    var falt = state.asistencias.faltantes || [];
+    if (countA) countA.textContent = String(asis.length);
+    if (countF) countF.textContent = String(falt.length);
+    if (aBody) {
+      if (!asis.length) {
+        aBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Nadie ha sido marcado/a como asistente aún en esta sesión.</td></tr>';
+      } else {
+        aBody.innerHTML = asis.slice(0, 500).map(function (a) {
+          return '<tr>' +
+            '<td><code>' + escapeHtml(a.usuario_documento || a.documento || '') + '</code></td>' +
+            '<td>' + escapeHtml(a.usuario_nombre || a.nombre || '—') + '</td>' +
+            '<td>' + formatFecha(a.fecha_registro || a.fecha_hora_marcado_asistencia || a.fecha_marcado) + '</td>' +
+            '<td>' + (a.tiene_cert ? '<span class="badge text-bg-success">Sí</span>' : '<span class="text-muted small">Pendiente</span>') + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+    }
+    if (fBody) {
+      if (!falt.length) {
+        fBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Todos los inscritos fueron marcados como asistentes ✅.</td></tr>';
+      } else {
+        fBody.innerHTML = falt.slice(0, 500).map(function (f) {
+          return '<tr data-doc="' + escapeAttr(f.usuario_documento || f.documento || '') + '">' +
+            '<td><code>' + escapeHtml(f.usuario_documento || f.documento || '') + '</code></td>' +
+            '<td>' + escapeHtml(f.usuario_nombre || f.nombre || '—') + '</td>' +
+            '<td>' + formatFecha(f.fecha_inscripcion) + '</td>' +
+            '<td><button type="button" class="btn btn-sm btn-outline-success marcar-faltante-btn" data-doc="' + escapeAttr(f.usuario_documento || f.documento || '') + '"><i class="bi bi-check2-all me-1"></i>Marcar</button></td>' +
+            '</tr>';
+        }).join('');
+        fBody.querySelectorAll('.marcar-faltante-btn').forEach(function (btn) { btn.addEventListener('click', onMarcarFaltanteClick); });
+      }
+    }
+  }
+
+  function onProgramarDesdeSolicitud(ev) {
+    var btn = ev.currentTarget;
+    var curso = btn?.getAttribute('data-curso') || '';
+    var ual = btn?.getAttribute('data-ual') || '';
+    document.getElementById('tab-sesiones').click();
+    setGlobalAlert('Programar una nueva sesión: Click en "Nueva sesión" y llena los campos. Curso precargado = ' + escapeHtml(curso || 'elige uno') + '.', 'info');
+  }
+
+  function onCambiarEstadoSesion(ev) {
+    var btn = ev.currentTarget;
+    var id = btn?.getAttribute('data-id-sesion');
+    var est = btn?.getAttribute('data-estado');
+    if (!id || !est) return;
+    var okMsg = est === 'cancelada'
+      ? '¿Seguro deseas CANCELAR esta sesión? No podrá revertirse (mejor marca Realizada si solo deseas cerrarla).'
+      : '¿Cambiar estado de la sesión #' + id + ' a: ' + est.toUpperCase() + '?';
+    if (!window.confirm(okMsg)) return;
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Cambiando…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.cambiarEstado, true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'onCambiarEstadoSesion', 'Error cambiando estado. ');
+        if (!data) return;
+        if (data.ok || data.success) {
+          setGlobalAlert('✅ Estado actualizado: sesión #' + id + ' = ' + escapeHtml(est), 'success');
+          loadSesiones();
+        } else {
+          setGlobalAlert('❌ No se pudo cambiar estado: ' + (data.message || 'Error desconocido.'), 'danger');
+        }
+      };
+      xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
+      xhr.send(JSON.stringify({ sesion_id: id, id: id, estado: est }));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
+  }
+
+  function onMarcarAsistenciaClick(ev) {
+    if (!state.selectedSesionId) {
+      setGlobalAlert('Primero selecciona una sesión en el selector superior.', 'warning', 'alert-asistencia');
+      return;
+    }
+    var doc = String(document.getElementById('asistencia-doc-input')?.value || '').trim();
+    if (!doc) {
+      setGlobalAlert('Ingresa o escanea el documento del estudiante.', 'warning', 'alert-asistencia');
+      return;
+    }
+    var metodo = document.getElementById('asistencia-metodo-select')?.value || 'qr_documento';
+    var btn = ev?.currentTarget || document.getElementById('btn-marcar-asistencia');
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Registrando…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.marcarAsistencia, true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'onMarcarAsistenciaClick', 'Error marcando asistencia. ');
+        if (!data) return;
+        if (data.ok || data.success) {
+          document.getElementById('asistencia-doc-input').value = '';
+          setGlobalAlert('✅ Asistencia registrada para documento: ' + escapeHtml(doc) + '.', 'success', 'alert-asistencia');
+          loadAsistenciasSesion(state.selectedSesionId);
+        } else {
+          setGlobalAlert('❌ No se pudo registrar: ' + (data.message || 'Error desconocido.'), 'danger', 'alert-asistencia');
+        }
+      };
+      xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger', 'alert-asistencia'); };
+      xhr.send(JSON.stringify({
+        sesion_id: state.selectedSesionId,
+        id_sesion: state.selectedSesionId,
+        usuario_documento: doc,
+        documento: doc,
+        asistio: true,
+        metodo: metodo,
+        metodo_marcado: metodo,
+      }));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
+  }
+
+  function onMarcarFaltanteClick(ev) {
+    var doc = ev.currentTarget?.getAttribute('data-doc');
+    if (!doc) return;
+    document.getElementById('asistencia-doc-input').value = doc;
+    onMarcarAsistenciaClick(null);
+  }
+
+  function onCertificarBtn(ev) {
+    var id = ev?.currentTarget?.getAttribute('data-id-sesion') || state.selectedSesionId;
+    if (!id) { setGlobalAlert('Selecciona la sesión primero.', 'warning'); return; }
+    if (!window.confirm('¿CERTIFICAR a TODOS los asistentes de la sesión #' + id + '?\nEsto generará certificaciones locales vigentes para los usuarios que asistieron (asistio=TRUE) y marcará la sesión como "Realizada" por defecto.')) return;
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(ev?.currentTarget, 'Certificando…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.certificar(id), true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'onCertificarBtn', 'Error certificando asistentes. ');
+        if (!data) return;
+        if (data.ok || data.success) {
+          var n = Number(data.certificados_emitidos || data.count || (Array.isArray(data.certificados) ? data.certificados.length : 0)) || 0;
+          var omit = Number(data.ya_certificados_omitidos?.length || data.omitidos?.length || 0);
+          setGlobalAlert('✅ Certificación completada. ' + n + ' NUEVOS certificados. ' + omit + ' omitidos (ya tenían activa).', 'success');
+          loadSesiones();
+          if (state.selectedSesionId === id) loadAsistenciasSesion(id);
+        } else {
+          setGlobalAlert('❌ No se pudo certificar: ' + (data.message || 'Error desconocido.'), 'danger');
+        }
+      };
+      xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
+      xhr.send(JSON.stringify({ finalizar_sesion: true }));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(ev?.currentTarget);
+    }
+  }
+
+  function onEvidenciaBtn(ev) {
+    var id = ev?.currentTarget?.getAttribute('data-id-sesion') || state.selectedSesionId;
+    if (!id) { setGlobalAlert('Selecciona la sesión primero.', 'warning'); return; }
+    setGlobalAlert('Evidencia: endpoint POST ' + escapeHtml(api.evidencia(id)) + ' multipart/form-data field "evidencia" (jpg/png/pdf 10MB max). Implementación UI selector archivo = futura mejora; usa Postman/curl por ahora.', 'info');
+  }
+
+  function onRecargar() {
+    loadSolicitudes();
+    loadSesiones();
+    if (state.selectedSesionId) loadAsistenciasSesion(state.selectedSesionId);
+    setGlobalAlert('Datos recargados.', 'success');
+  }
+
+  function onAsistenciaDocKeyup(ev) { if (ev && ev.key === 'Enter') onMarcarAsistenciaClick(ev); }
+  function onAsistenciaSesionChange(ev) { var id = ev?.target?.value; if (id) loadAsistenciasSesion(id); }
+  function onAplicarFiltrosSolicitudes() { loadSolicitudes(); }
+  function onAplicarFiltrosReporte() { setGlobalAlert('Reporte detallado = Task 7 (CSV y filtros avanzados).', 'info', 'alert-reporte'); }
+  function onDescargarCsv() { setGlobalAlert('Exportación CSV = Task 7. Descarga directa desde GET ' + escapeHtml(api.reporteCsv) + ' (cuando esté habilitado).', 'info', 'alert-reporte'); }
+  function onBtnNuevaSesion() { setGlobalAlert('Programar sesión: usa Postman POST ' + escapeHtml(api.programarSesion) + ' con body {codigo_curso, ual_id_lugar, fecha_hora_inicio, fecha_hora_fin, cupo_maximo, observaciones?}. UI modal = próxima mejora.', 'info'); }
+  function onBtnEvidenciaSesion() { onEvidenciaBtn(null); }
+  function onBtnFinalizarSesion() {
+    if (!state.selectedSesionId) return setGlobalAlert('Selecciona una sesión primero.', 'warning', 'alert-asistencia');
+    if (!window.confirm('¿Marcar sesión #' + state.selectedSesionId + ' como REALIZADA (sin certificar aún)?')) return;
+    var btn = document.getElementById('btn-finalizar-sesion');
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Finalizando…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.cambiarEstado, true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'finalizar-sesion', 'Error finalizando. ');
+        if (!data) return;
+        if (data.ok || data.success) {
+          setGlobalAlert('✅ Sesión marcada como REALIZADA.', 'success', 'alert-asistencia');
+          loadSesiones();
+        } else {
+          setGlobalAlert('❌ No se pudo finalizar: ' + (data.message || 'Error desconocido.'), 'danger', 'alert-asistencia');
+        }
+      };
+      xhr.send(JSON.stringify({ sesion_id: state.selectedSesionId, estado: 'realizada' }));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
+  }
+  function onBtnCertificarAsistentesSesion() { onCertificarBtn(null); }
+
+  /* ---------- Task 7 - Reporte ---------- */
+  function buildReporteQueryString() {
+    var qs = [];
+    var fDesde = document.getElementById('report-fecha-desde')?.value || '';
+    var fHasta = document.getElementById('report-fecha-hasta')?.value || '';
+    var fEstado = document.getElementById('report-estado-sesion')?.value || '';
+    if (fDesde)  qs.push('desde=' + encodeURIComponent(fDesde));
+    if (fHasta)  qs.push('hasta=' + encodeURIComponent(fHasta + 'T23:59:59'));
+    if (fEstado) qs.push('estado=' + encodeURIComponent(fEstado));
+    state.filtros.reporte = { desde: fDesde, hasta: fHasta, estado: fEstado };
+    return qs.join('&');
+  }
+  function loadReporte() {
+    var tbody = document.querySelector('#tabla-reporte tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando reporte...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    var qs = buildReporteQueryString();
+    var url = api.reporte + (qs ? '?' + qs : '');
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadReporte', 'Error cargando reporte. ');
+      if (!data) return;
+      if (data && data.scope) updateScopeLabels({
+        isAdmin: Boolean(data.scope.is_admin),
+        adminAll: Boolean(data.scope.is_admin),
+        facultyIds: data.scope.faculty_ids || [],
+        ualIds: data.scope.ual_ids || [],
+        resolvedFrom: data.scope.resolved_from,
+      });
+      state.reporte = Array.isArray(data.reporte) ? data.reporte : [];
+      renderReporte();
+      if (typeof data.filas === 'number' && data.filas === 0) {
+        setGlobalAlert('No hay capacitaciones en este rango / filtros (0 filas).', 'info', 'alert-reporte');
+      } else {
+        setGlobalAlert('Reporte cargado: ' + (state.reporte.length) + ' filas.', 'success', 'alert-reporte');
+      }
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando reporte.', 'danger', 'alert-reporte'); };
+    xhr.send();
+  }
+  function renderReporte() {
+    var tbody = document.querySelector('#tabla-reporte tbody');
+    if (!tbody) return;
+    if (!state.reporte.length) {
+      tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">Sin datos para el reporte con los filtros actuales.</td></tr>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < state.reporte.length; i++) {
+      var r = state.reporte[i];
+      var ualFila = '';
+      if (r.ual_nombre || r.facultad_nombre) {
+        ualFila = escapeHtml((r.ual_codigo ? '[' + r.ual_codigo + '] ' : '') +
+          escapeHtml(r.ual_nombre || '—') + '<br><small class="text-muted">' + escapeHtml(r.facultad_nombre || '') + '</small>';
+      } else ualFila = '<span class="text-muted">—</span>';
+      var modalidad = (r.modalidad && r.modalidad === 'prestamo'
+        ? '<span class="badge text-bg-dark">En entrega préstamo</span>'
+        : '<span class="badge text-bg-light border">Sesión programada</span>');
+      var eviden = (r.evidencia_nombre_original || r.evidencia_path)
+        ? '<span class="badge text-bg-success"><i class="bi bi-paperclip me-1"></i>' + escapeHtml(r.evidencia_nombre_original || 'Adjunta') + '</span>'
+        : '<span class="text-muted small">—</span>';
+      var lab = (r.laboratorista_nombre || r.laboratorista_doc)
+          ? escapeHtml(r.laboratorista_nombre || '—') + '<br><small class="text-muted">' + escapeHtml(r.laboratorista_doc || '') + '</small>'
+          : '<span class="text-muted">—</span>';
+      html += '<tr>' +
+        '<th scope="row">' + escapeHtml(r.sesion_id) + '</th>' +
+        '<td>' + formatFecha(r.fecha_inicio) + '</td>' +
+        '<td><div><b>' + escapeHtml(r.nombre_curso || '—') + '</b><br><small class="text-muted">' + escapeHtml(r.codigo_curso || '') + '</small></div></td>' +
+        '<td>' + ualFila + '</td>' +
+        '<td>' + escapeHtml(r.cupo_maximo != null ? r.cupo_maximo : '—') + '</td>' +
+        '<td>' + escapeHtml(r.inscritos != null ? r.inscritos : 0) + '</td>' +
+        '<td>' + escapeHtml(r.asistentes != null ? r.asistentes : 0) + '</td>' +
+        '<td>' + escapeHtml(r.certificados_emitidos != null ? r.certificados_emitidos : 0) + '</td>' +
+        '<td>' + modalidad + '</td>' +
+        '<td>' + eviden + '</td>' +
+        '<td>' + lab + '</td>' +
+        '<td>' + renderEstadoSesion(r.estado) + '</td>' +
+      '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+  function onAplicarFiltrosReporte() { loadReporte(); }
+  function onDescargarCsv(ev) {
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(ev?.currentTarget, 'Generando…');
+    } catch (_) {}
+    try {
+      var qs = buildReporteQueryString();
+      var url = api.reporteCsv + (qs ? '?' + qs : '');
+      var a = document.createElement('a');
+      a.href = url;
+      a.setAttribute('download', '');
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { try { document.body.removeChild(a); } catch (_) {} }, 1500);
+      setGlobalAlert('Se está descargando el reporte CSV desde ' + escapeHtml(url), 'success', 'alert-reporte');
+    } finally {
+      setTimeout(function () {
+        try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(ev?.currentTarget); } catch (_) {}
+      }, 1200);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('btn-recargar')?.addEventListener('click', onRecargar);
+    document.getElementById('btn-aplicar-filtros-solicitudes')?.addEventListener('click', onAplicarFiltrosSolicitudes);
+    document.getElementById('btn-programar-rapido')?.addEventListener('click', onBtnNuevaSesion);
+    document.getElementById('btn-nueva-sesion')?.addEventListener('click', onBtnNuevaSesion);
+    document.getElementById('asistencia-sesion-select')?.addEventListener('change', onAsistenciaSesionChange);
+    document.getElementById('asistencia-doc-input')?.addEventListener('keyup', onAsistenciaDocKeyup);
+    document.getElementById('btn-marcar-asistencia')?.addEventListener('click', onMarcarAsistenciaClick);
+    document.getElementById('btn-evidencia-sesion')?.addEventListener('click', onBtnEvidenciaSesion);
+    document.getElementById('btn-certificar-asistentes-sesion')?.addEventListener('click', onBtnCertificarAsistentesSesion);
+    document.getElementById('btn-finalizar-sesion')?.addEventListener('click', onBtnFinalizarSesion);
+    document.getElementById('btn-aplicar-filtros-reporte')?.addEventListener('click', onAplicarFiltrosReporte);
+    document.getElementById('btn-descargar-csv')?.addEventListener('click', onDescargarCsv);
+    document.getElementById('tab-reporte')?.addEventListener('shown.bs.tab', function () {
+      if (!state.reporte || state.reporte.length === 0) loadReporte();
+    });
+
+
+    loadSolicitudes();
+    loadSesiones();
+  });
+})();
+</script>
+
+<%- include('../partials/footer'); -%>

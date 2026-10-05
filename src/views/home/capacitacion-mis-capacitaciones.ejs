@@ -1,0 +1,630 @@
+<%- include('../partials/header'); -%>
+<%
+  var userRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
+  var isEstudiante = userRole === 'estudiante';
+  var isDocente = userRole === 'docente';
+%>
+
+<main class="container app-page-shell" id="mis-capacitaciones-shell">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Mis capacitaciones</h1>
+        <p class="app-page-subtitle">Solicita nuevas capacitaciones, inscríbete a sesiones programadas y consulta el estado de tus certificaciones vigentes.</p>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button type="button" id="btn-recargar" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-repeat"></i> Actualizar
+        </button>
+        <span class="badge text-bg-light border border-info-subtle">
+          <i class="bi bi-person-badge me-1" style="color:#0a5c84;"></i>
+          Rol: <%= isEstudiante ? 'Estudiante' : (isDocente ? 'Docente' : (locals.sessionRoleLabel || userRole)) %>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <div id="mensajes-globales"></div>
+
+  <div class="alert alert-info small mb-4" role="alert" style="border-color:#b6e4fe;background:#f2faff;">
+    <div class="d-flex align-items-start gap-3">
+      <i class="bi bi-info-circle fs-3" style="color:#085394;"></i>
+      <div>
+        <h6 class="alert-heading mb-1" style="color:#085394;">¿Cómo funciona?</h6>
+        <ol class="mb-0 ps-3 small">
+          <li>En la pestaña <b>Mis solicitudes</b> puedes enviar una solicitud de capacitación para un curso específico. Te notificaremos cuando haya una sesión programada.</li>
+          <li>En <b>Sesiones e inscripciones</b> verás las sesiones abiertas disponibles de tus facultades y laboratorios. Inscríbete mientras haya cupo.</li>
+          <li>Después de asistir y ser certificado, tu certificación aparecerá como <span class="badge text-bg-success">Vigente</span> y podrás solicitar préstamos de equipos que requieran ese curso sin pasar por EDX.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-3" id="capacitacion-tabs-shell">
+    <ul class="nav nav-tabs flex-wrap mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-mis-solicitudes" data-bs-toggle="tab" data-bs-target="#pane-mis-solicitudes" type="button" role="tab" aria-controls="pane-mis-solicitudes" aria-selected="true">
+          <i class="bi bi-envelope-paper me-1"></i> Mis solicitudes
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-sesiones-inscripciones" data-bs-toggle="tab" data-bs-target="#pane-sesiones-inscripciones" type="button" role="tab" aria-controls="pane-sesiones-inscripciones" aria-selected="false">
+          <i class="bi bi-calendar3 me-1"></i> Sesiones e inscripciones
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="pane-mis-solicitudes" role="tabpanel" aria-labelledby="tab-mis-solicitudes">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between" style="background:#eef7ff;border-color:#c7e6ff;">
+            <h5 class="mb-0" style="color:#085394;">
+              <i class="bi bi-plus-circle me-2" style="color:#0a5c84;"></i>
+              Enviar nueva solicitud de capacitación
+            </h5>
+          </div>
+          <div class="card-body">
+            <div id="prefill-from-block-info" class="d-none alert alert-info py-2 mb-3 small">
+              <i class="bi bi-info-circle me-2"></i>
+              El curso ya fue precargado automáticamente desde el bloqueo del préstamo.
+              Revisa los datos y haz click en <b>Enviar solicitud</b> para notificar al laboratorista.
+            </div>
+            <form id="form-nueva-solicitud" class="row g-3" novalidate>
+              <%- include('../partials/csrf_field'); -%>
+
+              <div class="col-md-6">
+                <label for="codigo_curso_solicitud" class="form-label">Código del curso *</label>
+                <input type="text" class="form-control" id="codigo_curso_solicitud" maxlength="100" placeholder="MOCK-COURSE-006 o código real del curso" list="listado-cursos-solicitud" required />
+                <datalist id="listado-cursos-solicitud"></datalist>
+                <div class="form-text">Pega el código del curso que MiLab te mostró como requisito pendiente en el bloqueo del préstamo.</div>
+              </div>
+
+              <div class="col-md-6">
+                <label for="ual_solicitud" class="form-label">Laboratorio/UAL preferida (opcional)</label>
+                <select id="ual_solicitud" class="form-select">
+                  <option value="">Cualquier UAL / laboratorio</option>
+                </select>
+                <div class="form-text">Si eliges una UAL, tu solicitud se dirigirá preferentemente a los laboratoristas de ese espacio.</div>
+              </div>
+
+              <div class="col-md-12">
+                <label for="mensaje_solicitud" class="form-label">Mensaje / horario disponible (opcional)</label>
+                <textarea class="form-control" id="mensaje_solicitud" rows="3" maxlength="1000" placeholder="Indica tus horarios disponibles o algo que el laboratorista deba saber..."></textarea>
+              </div>
+
+              <div class="col-md-12 d-flex justify-content-end gap-2 align-items-center">
+                <span id="leyenda-sanciones" class="text-muted small"></span>
+                <button type="button" id="btn-limpiar-solicitud" class="btn btn-outline-secondary">Limpiar</button>
+                <button type="submit" id="btn-enviar-solicitud" class="btn btn-primary" data-submit-lock="true">
+                  <i class="bi bi-send"></i> Enviar solicitud
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between" style="background:#faf6ed;border-color:#f0e2c1;">
+            <h5 class="mb-0" style="color:#7c3b04;">
+              <i class="bi bi-list-columns-reverse me-2" style="color:#b45309;"></i>
+              Historial de mis solicitudes
+            </h5>
+            <span id="count-solicitudes" class="badge text-bg-light border">0</span>
+          </div>
+          <div class="card-body">
+            <div id="alert-solicitudes" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-solicitudes">
+                <thead style="background:#faf6ed;">
+                  <tr>
+                    <th>Curso</th>
+                    <th>Fecha envío</th>
+                    <th>UAL preferida</th>
+                    <th>Estado</th>
+                    <th>Sesión notificada</th>
+                    <th>Mensaje</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus solicitudes...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-pane fade" id="pane-sesiones-inscripciones" role="tabpanel" aria-labelledby="tab-sesiones-inscripciones">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between" style="background:#e8f6ee;border-color:#b7e5c9;">
+            <h5 class="mb-0" style="color:#137333;">
+              <i class="bi bi-calendar2-check me-2" style="color:#1e8e3e;"></i>
+              Sesiones de capacitación programadas disponibles
+            </h5>
+            <span id="count-sesiones" class="badge text-bg-light border">0</span>
+          </div>
+          <div class="card-body">
+            <div id="alert-sesiones" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-sesiones">
+                <thead style="background:#e8f6ee;">
+                  <tr>
+                    <th>Curso</th>
+                    <th>Fecha / Hora</th>
+                    <th>Lugar (UAL)</th>
+                    <th>Cupo</th>
+                    <th>Inscritos</th>
+                    <th>Observaciones</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando sesiones disponibles...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between" style="background:#eef7ff;border-color:#c7e6ff;">
+            <h5 class="mb-0" style="color:#085394;">
+              <i class="bi bi-journal-check me-2" style="color:#0a5c84;"></i>
+              Mis inscripciones
+            </h5>
+            <span id="count-inscripciones" class="badge text-bg-light border">0</span>
+          </div>
+          <div class="card-body">
+            <div id="alert-inscripciones" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-inscripciones">
+                <thead style="background:#eef7ff;">
+                  <tr>
+                    <th>Curso</th>
+                    <th>Fecha / Hora sesión</th>
+                    <th>UAL</th>
+                    <th>Estado inscripción</th>
+                    <th>Asistencia</th>
+                    <th>Certificación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus inscripciones...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  'use strict';
+
+  var BASE_PATH = '/milab/api/capacitacion-gestion';
+  var api = {
+    misSolicitudes: BASE_PATH + '/mis-solicitudes',
+    solicitar: BASE_PATH + '/solicitar',
+    sesionesDisponibles: BASE_PATH + '/sesiones-disponibles',
+    misInscripciones: BASE_PATH + '/mis-inscripciones',
+    inscribirme: function (sesionId) { return BASE_PATH + '/inscribirme/' + encodeURIComponent(sesionId); },
+    contextoCursos: '/milab/api/capacitacion-cursos/contexto',
+  };
+
+  function getCsrfToken() {
+    var el = document.querySelector('input[name="_csrf"]');
+    return el ? String(el.value || '') : '';
+  }
+  function setJsonPostHeaders(xhr) {
+    if (!xhr) return;
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'application/json');
+    var t = getCsrfToken();
+    if (t) xhr.setRequestHeader('X-CSRF-Token', t);
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  var state = {
+    solicitudes: [],
+    sesiones: [],
+    inscripciones: [],
+    cursosCatalogo: [],
+    uales: [],
+    sancionesActivas: 0,
+  };
+
+  function setGlobalAlert(message, type, containerId) {
+    containerId = containerId || 'mensajes-globales';
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    el.classList.add('alert', 'alert-' + (type || 'info'));
+    el.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+    el.classList.add('alert-' + (type || 'info'));
+    el.innerHTML = '';
+    var strong = document.createElement('strong');
+    strong.textContent = message || '';
+    el.appendChild(strong);
+    if (type === 'success') {
+      setTimeout(function () {
+        if (el && el.id === containerId) {
+          el.classList.remove('alert', 'alert-info', 'alert-success', 'alert-warning', 'alert-danger');
+          el.classList.add('d-none');
+          el.textContent = '';
+        }
+      }, 6000);
+    }
+  }
+
+  function safeParseJsonXhr(xhr, label, onErrorMsg) {
+    var raw = xhr.responseText || '';
+    var ct = xhr.getResponseHeader && xhr.getResponseHeader('Content-Type') ? String(xhr.getResponseHeader('Content-Type')) : '';
+    try {
+      if (!xhr.status || xhr.status === 0) throw new Error('Sin respuesta del servidor (error de red).');
+      if (ct && ct.indexOf('application/json') === -1 && (ct.indexOf('text/html') !== -1 || (raw || '').trim().indexOf('<') === 0)) {
+        throw new Error(
+          'El servidor respondió con una página HTML en vez de JSON (status ' + (xhr.status || 0) + '). ' +
+          'Espere 30 segundos y recargue (Ctrl+Shift+R).'
+        );
+      }
+      return JSON.parse(raw || '{}');
+    } catch (err) {
+      var msg = err && err.message ? err.message : String(err || 'Error desconocido');
+      console.error('[mis-cap] ' + label + ' safeParse ERROR:', err, ' | preview:', raw && raw.length > 200 ? raw.slice(0, 200) + '…' : raw);
+      setGlobalAlert((onErrorMsg || 'Error al procesar la respuesta. Detalle: ') + escapeHtml(msg), 'danger');
+      return null;
+    }
+  }
+
+  function renderEstadoBadge(estado) {
+    var s = String(estado || '').trim().toLowerCase();
+    if (!s) return '<span class="badge text-bg-secondary">—</span>';
+    if (s.indexOf('pendiente') !== -1) return '<span class="badge text-bg-warning text-dark">Pendiente</span>';
+    if (s.indexOf('notificado') !== -1 || s.indexOf('programada') !== -1) return '<span class="badge text-bg-primary">Sesión programada</span>';
+    if (s.indexOf('atendid') !== -1 || s.indexOf('cerr') !== -1 || s.indexOf('realizad') !== -1) return '<span class="badge text-bg-success">Atendida</span>';
+    if (s.indexOf('cancel') !== -1) return '<span class="badge text-bg-danger">Cancelada</span>';
+    return '<span class="badge text-bg-light border">' + escapeHtml(s) + '</span>';
+  }
+
+  function renderInscripcionBadge(estado) {
+    var s = String(estado || '').trim().toLowerCase();
+    if (!s) return '<span class="badge text-bg-secondary">—</span>';
+    if (s.indexOf('inscrit') !== -1) return '<span class="badge text-bg-success">Inscrito</span>';
+    if (s.indexOf('lista_espera') !== -1 || s.indexOf('cupo') !== -1) return '<span class="badge text-bg-warning text-dark">Lista de espera</span>';
+    if (s.indexOf('cancel') !== -1) return '<span class="badge text-bg-danger">Cancelado</span>';
+    return '<span class="badge text-bg-light border">' + escapeHtml(s) + '</span>';
+  }
+
+  function formatFecha(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      var d = new Date(dateStr);
+      if (!d || isNaN(d.getTime())) return escapeHtml(String(dateStr));
+      return d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+    } catch { return escapeHtml(String(dateStr)); }
+  }
+
+  function loadContextoCursos() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.contextoCursos, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadContextoCursos', 'Error cargando listado de cursos. ');
+      if (!data) return;
+      if (data.ok) {
+        state.cursosCatalogo = Array.isArray(data.cursos) ? data.cursos : [];
+        state.uales = Array.isArray(data.uales) ? data.uales : [];
+        renderCursoDatalist();
+        renderUalSelect();
+      }
+    };
+    xhr.send();
+  }
+
+  function renderCursoDatalist() {
+    var dl = document.getElementById('listado-cursos-solicitud');
+    if (!dl) return;
+    dl.innerHTML = (state.cursosCatalogo || [])
+      .filter(function (c) { return c && c.activo !== false; })
+      .map(function (c) { return '<option value="' + escapeAttr(c.codigo_curso) + '">' + escapeHtml(c.nombre_curso || '') + '</option>'; })
+      .join('');
+  }
+
+  function renderUalSelect() {
+    var sel = document.getElementById('ual_solicitud');
+    if (!sel) return;
+    var opts = ['<option value="">Cualquier UAL / laboratorio</option>'];
+    (state.uales || []).forEach(function (u) {
+      if (!u || u.activo === false) return;
+      opts.push('<option value="' + escapeAttr(u.ual_id) + '">' + escapeHtml((u.nombre || u.nombre_ual || ('UAL ' + u.ual_id)) + (u.facultad ? ' — ' + u.facultad : '')) + '</option>');
+    });
+    sel.innerHTML = opts.join('');
+  }
+
+  function loadMisSolicitudes() {
+    var tbody = document.querySelector('#tabla-solicitudes tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus solicitudes...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.misSolicitudes, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadMisSolicitudes', 'Error cargando tus solicitudes. ');
+      if (!data) return;
+      state.solicitudes = Array.isArray(data.solicitudes) ? data.solicitudes : (Array.isArray(data.data) ? data.data : []);
+      renderMisSolicitudes();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión al cargar solicitudes.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderMisSolicitudes() {
+    var count = document.getElementById('count-solicitudes');
+    if (count) count.textContent = String(state.solicitudes.length);
+    var tbody = document.querySelector('#tabla-solicitudes tbody');
+    if (!tbody) return;
+    if (!state.solicitudes.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No has enviado solicitudes aún. Usa el formulario superior para enviar una.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.solicitudes.map(function (s) {
+      return '<tr>' +
+        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td>' + formatFecha(s.fecha_creacion || s.fecha_solicitud) + '</td>' +
+        '<td>' + escapeHtml(s.ual_nombre || s.laboratorio_nombre || (s.ual_id_solicitud ? 'UAL ' + s.ual_id_solicitud : 'Cualquiera')) + '</td>' +
+        '<td>' + renderEstadoBadge(s.estado) + '</td>' +
+        '<td>' + (s.id_sesion_programada_notificada ? '<span class="badge text-bg-info">Sesión #' + escapeHtml(s.id_sesion_programada_notificada) + '</span> ' + formatFecha(s.fecha_notificacion_programacion) : '<span class="text-muted small">Pendiente</span>') + '</td>' +
+        '<td>' + (s.mensaje_solicitante ? escapeHtml(s.mensaje_solicitante.length > 120 ? s.mensaje_solicitante.slice(0, 120) + '…' : s.mensaje_solicitante) : '<span class="text-muted small">—</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function loadSesionesDisponibles() {
+    var tbody = document.querySelector('#tabla-sesiones tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando sesiones disponibles...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.sesionesDisponibles, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadSesionesDisponibles', 'Error cargando sesiones disponibles. ');
+      if (!data) return;
+      state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : (Array.isArray(data.data) ? data.data : []);
+      renderSesionesDisponibles();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión al cargar sesiones.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderSesionesDisponibles() {
+    var count = document.getElementById('count-sesiones');
+    if (count) count.textContent = String(state.sesiones.length);
+    var tbody = document.querySelector('#tabla-sesiones tbody');
+    if (!tbody) return;
+    if (!state.sesiones.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No hay sesiones abiertas disponibles en este momento. Envía una solicitud para que programen una capacitación.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.sesiones.map(function (s) {
+      var cupo = Number(s.cupo_maximo || s.cupo || 0);
+      var inscritos = Number(s.inscripciones_count || s.inscritos_count || 0);
+      var cupoFull = cupo > 0 && inscritos >= cupo;
+      var disponibilidad = cupoFull
+        ? '<span class="badge text-bg-warning text-dark">Cupo lleno</span>'
+        : '<span class="badge text-bg-success">Disponible</span>';
+      return '<tr data-id-sesion="' + escapeAttr(s.id) + '">' +
+        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td><i class="bi bi-calendar-event me-1 text-muted"></i>' + formatFecha(s.fecha_hora_inicio || s.fecha_inicio) +
+          (s.fecha_hora_fin ? '<div class="small text-muted">hasta ' + formatFecha(s.fecha_hora_fin) + '</div>' : '') + '</td>' +
+        '<td>' + escapeHtml(s.ual_nombre || ('UAL ' + (s.ual_id_lugar || s.ual_id || '?'))) + (s.facultad_nombre ? '<div class="small text-muted">' + escapeHtml(s.facultad_nombre) + '</div>' : '') + '</td>' +
+        '<td class="text-center">' + (cupo || '∞') + '</td>' +
+        '<td class="text-center"><b>' + inscritos + '</b>' + disponibilidad + '</td>' +
+        '<td>' + (s.observaciones ? escapeHtml(s.observaciones.length > 140 ? s.observaciones.slice(0, 140) + '…' : s.observaciones) : '<span class="text-muted small">—</span>') + '</td>' +
+        '<td><button type="button" class="btn btn-sm ' + (cupoFull ? 'btn-outline-secondary disabled' : 'btn-success') + ' inscribirme-btn" data-id-sesion="' + escapeAttr(s.id) + '" ' + (cupoFull ? 'disabled' : '') + '>' +
+          (cupoFull ? '<i class="bi bi-hourglass-split me-1"></i>Lista espera' : '<i class="bi bi-person-plus me-1"></i>Inscribirme') +
+          '</button></td>' +
+        '</tr>';
+    }).join('');
+    tbody.querySelectorAll('.inscribirme-btn').forEach(function (btn) {
+      btn.addEventListener('click', onInscribirmeClick);
+    });
+  }
+
+  function loadMisInscripciones() {
+    var tbody = document.querySelector('#tabla-inscripciones tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus inscripciones...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', api.misInscripciones, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadMisInscripciones', 'Error cargando tus inscripciones. ');
+      if (!data) return;
+      state.inscripciones = Array.isArray(data.inscripciones) ? data.inscripciones : (Array.isArray(data.data) ? data.data : []);
+      renderMisInscripciones();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión al cargar inscripciones.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderMisInscripciones() {
+    var count = document.getElementById('count-inscripciones');
+    if (count) count.textContent = String(state.inscripciones.length);
+    var tbody = document.querySelector('#tabla-inscripciones tbody');
+    if (!tbody) return;
+    if (!state.inscripciones.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No estás inscrito/a en ninguna sesión aún.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.inscripciones.map(function (ins) {
+      var asistio = ins.asistio === true || ins.asistio === 'true';
+      var tieneCert = Boolean(ins.certificacion_activa_id) || Boolean(ins.certificado);
+      return '<tr>' +
+        '<td><code>' + escapeHtml(ins.codigo_curso || '') + '</code>' + (ins.nombre_curso ? '<div class="small text-muted">' + escapeHtml(ins.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td>' + formatFecha(ins.fecha_hora_inicio || ins.sesion_fecha) + '</td>' +
+        '<td>' + escapeHtml(ins.ual_nombre || ('UAL ' + (ins.ual_id_lugar || ins.ual_id || '?'))) + '</td>' +
+        '<td>' + renderInscripcionBadge(ins.estado_inscripcion || ins.estado) + '</td>' +
+        '<td>' + (asistio
+          ? '<span class="badge text-bg-success"><i class="bi bi-check-circle me-1"></i>Asistió</span> ' + (ins.asistencia_fecha ? '<div class="small text-muted">' + formatFecha(ins.asistencia_fecha) + '</div>' : '')
+          : '<span class="badge text-bg-secondary">Sin registro</span>') +
+        '</td>' +
+        '<td>' + (tieneCert
+          ? '<span class="badge text-bg-success"><i class="bi bi-patch-check me-1"></i>Certificado</span>' + (ins.modalidad ? '<div class="small text-muted">Modalidad ' + escapeHtml(ins.modalidad) + '</div>' : '')
+          : '<span class="text-muted small">Pendiente</span>') +
+        '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function onNuevaSolicitudSubmit(ev) {
+    ev.preventDefault();
+    if (state.sancionesActivas > 0) {
+      setGlobalAlert('Tienes sanciones activas. No puedes enviar nuevas solicitudes de capacitación hasta regularizarlas.', 'warning');
+      return;
+    }
+    var codigo = String(document.getElementById('codigo_curso_solicitud')?.value || '').trim();
+    if (!codigo) { setGlobalAlert('Indica el código del curso para enviar la solicitud.', 'warning'); return; }
+    var ualRaw = document.getElementById('ual_id_solicitud')?.value || '';
+    var ualId = ualRaw ? Number(ualRaw) : null;
+    var mensaje = String(document.getElementById('mensaje_solicitud')?.value || '').trim() || null;
+    var btn = document.getElementById('btn-enviar-solicitud');
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Enviando solicitud…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.solicitar, true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'onNuevaSolicitudSubmit', 'Error enviando la solicitud. ');
+        if (!data) return;
+        if (data.ok) {
+          document.getElementById('form-nueva-solicitud')?.reset();
+          setGlobalAlert('✅ Solicitud enviada exitosamente. Te notificaremos cuando haya una sesión programada para este curso.', 'success');
+          loadMisSolicitudes();
+        } else {
+          setGlobalAlert('❌ No se pudo enviar la solicitud: ' + (data.message || 'Error desconocido.'), 'danger');
+        }
+      };
+      xhr.onerror = function () { setGlobalAlert('Error de conexión al enviar solicitud.', 'danger'); };
+      var body = { codigo_curso: codigo, mensaje: mensaje };
+      if (ualId && Number.isFinite(ualId) && ualId > 0) body.ual_id_solicitud = ualId;
+      xhr.send(JSON.stringify(body));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
+  }
+
+  function onInscribirmeClick(ev) {
+    var btn = ev.currentTarget;
+    var sesionId = btn?.getAttribute('data-id-sesion');
+    if (!sesionId) return;
+    if (state.sancionesActivas > 0) {
+      setGlobalAlert('Tienes sanciones activas. No puedes inscribirte en sesiones de capacitación hasta regularizarlas.', 'warning');
+      return;
+    }
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Inscribiendo…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.inscribirme(sesionId), true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        var data = safeParseJsonXhr(xhr, 'onInscribirmeClick', 'Error al inscribirte en la sesión. ');
+        if (!data) return;
+        if (data.ok) {
+          setGlobalAlert('✅ Inscripción exitosa: ' + (data.message || 'Ya estás inscrito. ¡No olvides asistir puntualmente!'), 'success');
+          loadSesionesDisponibles();
+          loadMisInscripciones();
+        } else {
+          setGlobalAlert('❌ No se pudo inscribir: ' + (data.message || 'Error desconocido.'), 'danger');
+        }
+      };
+      xhr.onerror = function () { setGlobalAlert('Error de conexión al inscribir.', 'danger'); };
+      xhr.send(JSON.stringify({}));
+    } finally {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
+  }
+
+  function onRecargarTodo() {
+    loadMisSolicitudes();
+    loadSesionesDisponibles();
+    loadMisInscripciones();
+    setGlobalAlert('Datos recargados.', 'success');
+  }
+
+  function onLimpiarSolicitud() {
+    var f = document.getElementById('form-nueva-solicitud');
+    if (f) f.reset();
+  }
+
+  function parseUrlParams() {
+    var q = new URLSearchParams(window.location.search || '');
+    return {
+      tab: (q.get('tab') || '').toLowerCase(),
+      codigo_curso: (q.get('codigo_curso') || '').trim(),
+      ual_id: (q.get('ual_id') || '').trim(),
+      cursos: (q.get('cursos') || '').trim(),
+    };
+  }
+
+  function applyPrefillFromUrl() {
+    try {
+      var params = parseUrlParams();
+      if (!params.tab && !params.codigo_curso && !params.ual_id && !params.cursos) return;
+
+      if (params.tab === 'sesiones' || params.tab === 'sesion' || params.tab === 'inscripciones') {
+        var tabBtn = document.getElementById('tab-sesiones-inscripciones');
+        if (tabBtn) try { (new bootstrap.Tab(tabBtn)).show(); } catch (_e) { tabBtn.click(); }
+      }
+
+      if (!params.codigo_curso) return;
+
+      var cursoInput = document.getElementById('codigo_curso_solicitud');
+      var ualSel = document.getElementById('ual_solicitud');
+      if (cursoInput) { cursoInput.value = params.codigo_curso; try { cursoInput.focus(); } catch (_) {} }
+      if (ualSel && params.ual_id) {
+        var opt = Array.prototype.find.call(ualSel.options || [], function (o) {
+          return String(o.value || '') === String(params.ual_id);
+        });
+        if (opt) ualSel.value = String(params.ual_id);
+      }
+
+      var multiple = params.cursos ? String(params.cursos).split(',').filter(Boolean).filter(function (c) {
+        return c && c !== params.codigo_curso;
+      }).slice(0, 3) : [];
+      if (multiple.length > 0) {
+        var msgArea = document.getElementById('mensaje_solicitud');
+        if (msgArea) {
+          var existing = String(msgArea.value || '').trim();
+          var extra = 'Cursos adicionales solicitados (vinculados al mismo equipo: ' + multiple.join(', ') + ')';
+          msgArea.value = existing ? (existing + '\n\n' + extra) : extra;
+        }
+      }
+
+      var msgFromBlock = document.getElementById('prefill-from-block-info');
+      if (msgFromBlock) msgFromBlock.classList.remove('d-none');
+    } catch (_err) {
+      /* no-op */
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('btn-recargar')?.addEventListener('click', onRecargarTodo);
+    document.getElementById('form-nueva-solicitud')?.addEventListener('submit', onNuevaSolicitudSubmit);
+    document.getElementById('btn-limpiar-solicitud')?.addEventListener('click', onLimpiarSolicitud);
+    loadContextoCursos();
+    loadMisSolicitudes();
+    loadSesionesDisponibles();
+    loadMisInscripciones();
+    window.setTimeout(applyPrefillFromUrl, 450);
+  });
+})();
+</script>
+
+<%- include('../partials/footer'); -%>

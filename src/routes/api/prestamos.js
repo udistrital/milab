@@ -2094,6 +2094,12 @@ function sanitizeEquipmentCode(value) {
 }
 
 function buildEquipmentPayload(body = {}) {
+  const requiereCapacitacionRaw =
+    body?.requiere_capacitacion === true ||
+    body?.requiere_capacitacion === 'true' ||
+    body?.requiere_capacitacion === 'on' ||
+    (typeof body?.requiere_capacitacion === 'string' &&
+      body.requiere_capacitacion.trim().length > 0);
   return {
     codigo: sanitizeEquipmentCode(body.codigo),
     nombre: sanitizeText(body.nombre),
@@ -2114,6 +2120,8 @@ function buildEquipmentPayload(body = {}) {
       serie: sanitizeText(body.serie_equipo),
       detalles: sanitizeText(body.detalles_tecnicos),
     },
+    requiere_capacitacion: requiereCapacitacionRaw,
+    codigo_curso_asociado: sanitizeText(body.codigo_curso_asociado),
   };
 }
 
@@ -2136,6 +2144,10 @@ function validateEquipmentPayload(payload) {
 
   if (!payload.ubicacion_prestamo.dentro && !payload.ubicacion_prestamo.fuera) {
     return 'Debes seleccionar al menos una ubicacion de prestamo.';
+  }
+
+  if (payload.requiere_capacitacion === true && !payload.codigo_curso_asociado) {
+    return 'Si marcas que el equipo requiere capacitacion, debes seleccionar el curso asociado.';
   }
 
   return '';
@@ -2420,7 +2432,7 @@ async function insertCertificacionPrestamoTx(client, ctx) {
           fecha_emision,
           fecha_vencimiento,
           vigencia_meses,
-          prestamo_solicitud_id,
+          solicitud_prestamo_id,
           entrega_equipo_id,
           certificado_por_laboratorista_doc,
           certificado_por_laboratorista_nombre,
@@ -2431,10 +2443,10 @@ async function insertCertificacionPrestamoTx(client, ctx) {
           CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
           $7, $8, $9, $10, $11, $12
         )
-        ON CONFLICT ON CONSTRAINT ux_cert_activa_curso_usuario DO NOTHING
+        ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
         RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento,
                   fecha_emision, fecha_vencimiento, vigencia_meses, modalidad,
-                  prestamo_solicitud_id, entrega_equipo_id
+                  solicitud_prestamo_id, entrega_equipo_id
       ),
       cerrar_otras AS (
         UPDATE certificacion_usuario
@@ -3757,11 +3769,102 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
   };
 }
 
+async function fetchCursosActivosParaEquipoForm(normalizedItem) {
+  try {
+    const facultad = sanitizeText(normalizedItem?.facultad) || '';
+    const params = [];
+    const where = [];
+    where.push('c.activo = TRUE');
+    if (facultad) {
+      params.push(facultad);
+      where.push('f.nombre = $' + params.length);
+    }
+    const result = await pool.query(
+      `
+        SELECT c.codigo_curso, c.nombre_curso, c.id_facultad, f.nombre AS facultad_nombre
+        FROM cursos c
+        JOIN facultad f ON f.facultad_id = c.id_facultad
+        ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+        ORDER BY f.nombre ASC, c.nombre_curso ASC
+      `,
+      params
+    );
+    return Array.isArray(result.rows) ? result.rows : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCapacitacionAsociadaEquipo(idEquipo) {
+  if (!idEquipo) return { requiere_capacitacion: false, codigo_curso_asociado: '' };
+  try {
+    const id = Number(idEquipo);
+    if (!Number.isInteger(id) || id <= 0)
+      return { requiere_capacitacion: false, codigo_curso_asociado: '' };
+    const result = await pool.query(
+      `
+        SELECT e.codigo_curso, c.nombre_curso
+        FROM equipo_especializado e
+        LEFT JOIN cursos c ON c.codigo_curso = e.codigo_curso
+        WHERE e.id_equipo = $1 AND e.activo = TRUE
+        LIMIT 1
+      `,
+      [id]
+    );
+    const row = result.rows[0] || null;
+    return {
+      requiere_capacitacion: Boolean(row),
+      codigo_curso_asociado: row ? String(row.codigo_curso || '') : '',
+      nombre_curso_asociado: row ? String(row.nombre_curso || row.codigo_curso || '') : '',
+    };
+  } catch {
+    return { requiere_capacitacion: false, codigo_curso_asociado: '' };
+  }
+}
+
+async function replaceEquipoCapacitacionAsociada(client, idEquipo, payload) {
+  if (!client || !idEquipo) return null;
+  const id = Number(idEquipo);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  await client.query('DELETE FROM equipo_especializado WHERE id_equipo = $1', [id]);
+  const requiere = Boolean(payload?.requiere_capacitacion);
+  const codigoCurso = sanitizeText(payload?.codigo_curso_asociado);
+  if (requiere && codigoCurso) {
+    await client.query(
+      `
+        INSERT INTO equipo_especializado (codigo_curso, id_equipo, activo, fecha_creacion, fecha_modificacion)
+        VALUES ($1, $2, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
+          SET activo = EXCLUDED.activo,
+              fecha_modificacion = CURRENT_TIMESTAMP
+      `,
+      [codigoCurso, id]
+    );
+  }
+  return { requiere_capacitacion: requiere, codigo_curso_asociado: codigoCurso };
+}
+
 async function renderEquipmentForm(req, res, options) {
   const normalizedItem = normalizeEquipmentForView(options?.item || {});
   const formOptions = await fetchEquipmentFormOptions(req, normalizedItem);
+  const availableCursos = await fetchCursosActivosParaEquipoForm(normalizedItem);
+  const capacitacionAsociada =
+    options?.isEdit && normalizedItem.id
+      ? await fetchCapacitacionAsociadaEquipo(normalizedItem.id)
+      : {
+          requiere_capacitacion: Boolean(normalizedItem.requiere_capacitacion),
+          codigo_curso_asociado: normalizedItem.codigo_curso_asociado || '',
+        };
   const effectiveItem = {
     ...normalizedItem,
+    requiere_capacitacion:
+      typeof normalizedItem.requiere_capacitacion === 'boolean'
+        ? normalizedItem.requiere_capacitacion
+        : capacitacionAsociada.requiere_capacitacion,
+    codigo_curso_asociado:
+      sanitizeText(normalizedItem.codigo_curso_asociado) ||
+      capacitacionAsociada.codigo_curso_asociado ||
+      '',
     facultad:
       sanitizeText(normalizedItem.facultad) ||
       (formOptions.facultades.length === 1 ? formOptions.facultades[0] : ''),
@@ -3773,6 +3876,8 @@ async function renderEquipmentForm(req, res, options) {
     errorMessage: sanitizeText(options?.errorMessage),
     availableFacultades: formOptions.facultades,
     availableLaboratoriosByFaculty: formOptions.laboratoriosByFaculty,
+    availableCursos,
+    capacitacionAsociada,
   });
 }
 
@@ -8100,6 +8205,7 @@ router.post('/equipos/crear', requireEquiposAuthorized, async function (req, res
       );
 
       await replaceEquipmentSchedules(client, createResult.rows[0].id, schedules);
+      await replaceEquipoCapacitacionAsociada(client, createResult.rows[0].id, payload);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -8216,6 +8322,7 @@ router.post('/equipos/:id/editar', requireEquiposAuthorized, async function (req
 
       if (result.rowCount > 0) {
         await replaceEquipmentSchedules(client, req.params.id, schedules);
+        await replaceEquipoCapacitacionAsociada(client, req.params.id, payload);
       }
 
       await client.query('COMMIT');
