@@ -873,8 +873,6 @@
           'No fue posible actualizar el correo. Verifica la conexión e inténtalo nuevamente.';
         modalFeedback.classList.remove('d-none');
       }
-    } finally {
-      window.MiLabSubmitLock.release(saveButton);
     }
   }
 
@@ -1356,7 +1354,13 @@
     if (emailEditorForm) {
       emailEditorForm.addEventListener('submit', async function(event) {
         event.preventDefault();
-        await actualizarCorreoUsuarioDesdeDashboard();
+        try {
+          await actualizarCorreoUsuarioDesdeDashboard();
+        } finally {
+          window.MiLabSubmitLock.release(document.getElementById('dashboardEmailEditorSaveButton'));
+          delete emailEditorForm.dataset.submitting;
+          syncDashboardEmailSaveState();
+        }
       });
     }
 
