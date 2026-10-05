@@ -2277,6 +2277,7 @@ function isValidLoanRequestId(id) {
 function buildLoanDeliveryPayload(body = {}) {
   return {
     condicion_entrega: sanitizeText(body.condicion_entrega || body.condicionEntrega),
+    capacitacion_realizada_raw: body?.capacitacion_realizada ?? body?.capacitacionRealizada ?? null,
   };
 }
 
@@ -2314,6 +2315,176 @@ function buildPazYSalvoDecisionPayload(body = {}) {
   );
 
   return { decision, justificacion };
+}
+
+function parseCapacitacionEntregaPayload(raw, cursosEquipo = []) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.activo !== true && raw.activo !== 'true') return null;
+  const cursosRaw = Array.isArray(raw.cursos) ? raw.cursos : [];
+  if (!cursosRaw.length) {
+    throw new Error('Debe indicar al menos un curso en capacitacion_realizada.cursos.');
+  }
+  const vigenciaRaw =
+    raw.vigencia_meses == null || raw.vigencia_meses === '' ? 12 : Number(raw.vigencia_meses);
+  if (!Number.isInteger(vigenciaRaw) || vigenciaRaw < 1 || vigenciaRaw > 60) {
+    throw new Error('vigencia_meses debe ser un entero entre 1 y 60 (default 12 meses = 1 año).');
+  }
+  const permitidosCodigos = new Set(
+    cursosEquipo.map((c) => String(c.codigo_curso || '').trim()).filter(Boolean)
+  );
+  const cursos = [];
+  const vistos = new Set();
+  for (const item of cursosRaw) {
+    if (!item || typeof item !== 'object') {
+      throw new Error(
+        'Cada elemento de capacitacion_realizada.cursos debe ser un objeto {codigo_curso, notas?}.'
+      );
+    }
+    const codigo = String(item.codigo_curso || item.codigoCurso || '').trim();
+    if (!codigo) {
+      throw new Error(
+        'El campo codigo_curso es obligatorio en cada curso de capacitacion_realizada.'
+      );
+    }
+    if (vistos.has(codigo)) {
+      throw new Error('Duplicado codigo_curso en capacitacion_realizada.cursos: ' + codigo + '.');
+    }
+    vistos.add(codigo);
+    if (permitidosCodigos.size > 0 && !permitidosCodigos.has(codigo)) {
+      throw new Error(
+        'El curso "' +
+          codigo +
+          '" no está asociado al equipo solicitado. Primero asócielo en el módulo Asociación curso-equipos.'
+      );
+    }
+    const notas = String(item.notas || item.nota || item.observaciones || '').trim() || null;
+    cursos.push({
+      codigo_curso: codigo,
+      notas: notas && notas.length > 500 ? notas.substring(0, 500) : notas,
+    });
+  }
+  return { vigencia_meses: vigenciaRaw, cursos };
+}
+
+async function validarCursosExistenActivos(client, cursosArray) {
+  const codigos = cursosArray.map((c) => c.codigo_curso);
+  const rs = await client.query(
+    `SELECT codigo_curso, nombre_curso, id_facultad FROM cursos WHERE codigo_curso = ANY($1::text[]) AND activo = TRUE`,
+    [codigos]
+  );
+  const mapa = new Map();
+  rs.rows.forEach((r) => mapa.set(String(r.codigo_curso), r));
+  for (const c of cursosArray) {
+    if (!mapa.has(c.codigo_curso)) {
+      throw new Error(
+        'El curso "' +
+          c.codigo_curso +
+          '" no existe o está inactivo. Verifique los códigos de curso asociados al equipo.'
+      );
+    }
+  }
+  return mapa;
+}
+
+async function insertCertificacionPrestamoTx(client, ctx) {
+  const {
+    cursosMetaMap,
+    cursosEntrega,
+    facultadId,
+    documentoUsuario,
+    usuarioId,
+    usuarioNombre,
+    solicitudId,
+    entregaEquipoId,
+    labDocumento,
+    labNombre,
+    vigenciaMeses,
+  } = ctx;
+  const certificados = [];
+  const omitidos = [];
+  for (const c of cursosEntrega) {
+    const meta = cursosMetaMap.get(c.codigo_curso);
+    const nombreSnapshot = meta?.nombre_curso ? String(meta.nombre_curso).substring(0, 255) : null;
+    const fId = facultadId || (meta?.id_facultad ? Number(meta.id_facultad) : null);
+    const upsert = await client.query(
+      `
+      WITH nueva AS (
+        INSERT INTO certificacion_usuario (
+          codigo_curso,
+          nombre_curso_snapshot,
+          facultad_id,
+          usuario_documento,
+          usuario_id,
+          usuario_nombre,
+          modalidad,
+          fecha_emision,
+          fecha_vencimiento,
+          vigencia_meses,
+          prestamo_solicitud_id,
+          entrega_equipo_id,
+          certificado_por_laboratorista_doc,
+          certificado_por_laboratorista_nombre,
+          notas
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, 'prestamo',
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
+          $7, $8, $9, $10, $11, $12
+        )
+        ON CONFLICT ON CONSTRAINT ux_cert_activa_curso_usuario DO NOTHING
+        RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento,
+                  fecha_emision, fecha_vencimiento, vigencia_meses, modalidad,
+                  prestamo_solicitud_id, entrega_equipo_id
+      ),
+      cerrar_otras AS (
+        UPDATE certificacion_usuario
+           SET activo = FALSE,
+               fecha_modificacion = CURRENT_TIMESTAMP
+         WHERE codigo_curso = $1
+           AND usuario_documento = $4
+           AND activo = TRUE
+           AND modalidad = 'prestamo'
+           AND id NOT IN (SELECT id FROM nueva)
+      )
+      SELECT * FROM nueva
+      `,
+      [
+        c.codigo_curso,
+        nombreSnapshot,
+        fId,
+        documentoUsuario,
+        usuarioId,
+        usuarioNombre ? String(usuarioNombre).substring(0, 255) : null,
+        vigenciaMeses,
+        solicitudId,
+        entregaEquipoId,
+        labDocumento ? String(labDocumento).substring(0, 30) : null,
+        labNombre ? String(labNombre).substring(0, 255) : null,
+        c.notas,
+      ]
+    );
+    if (upsert.rows.length > 0) {
+      certificados.push(upsert.rows[0]);
+    } else {
+      const exist = await client.query(
+        `SELECT id, fecha_vencimiento, modalidad, activo
+           FROM certificacion_usuario
+          WHERE codigo_curso = $1 AND usuario_documento = $2 AND activo = TRUE
+          LIMIT 1`,
+        [c.codigo_curso, documentoUsuario]
+      );
+      omitidos.push({
+        codigo_curso: c.codigo_curso,
+        usuario_documento: documentoUsuario,
+        motivo:
+          'Ya tenía una certificación activa vigente para este curso. No se duplicó (UNIQUE constraint).',
+        id_cert_existente: exist.rows[0]?.id || null,
+        vencimiento_existente: exist.rows[0]?.fecha_vencimiento || null,
+        modalidad_existente: exist.rows[0]?.modalidad || null,
+      });
+    }
+  }
+  return { certificados, omitidos };
 }
 
 function truncateText(value, maxLength) {
@@ -9346,6 +9517,8 @@ router.post(
     }
 
     const client = await pool.connect();
+    let entregaEquipoInsertedId = null;
+    let certificacionesEntrega = { count: 0, certificados: [], omitidos: [] };
 
     try {
       await client.query('BEGIN');
@@ -9370,6 +9543,25 @@ router.post(
       }
 
       const sessionUsuario = await fetchSessionUsuario(req);
+      const cursosEquipo = await getCursosActivosDeEquipo(client, solicitud.equipo_id);
+      let entregaEntregaParsed = null;
+      try {
+        entregaEntregaParsed = parseCapacitacionEntregaPayload(
+          payload.capacitacion_realizada_raw,
+          cursosEquipo
+        );
+      } catch (parseErr) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          message: 'Error en datos de capacitación durante entrega: ' + parseErr.message,
+          error_capacitacion: true,
+        });
+      }
+      let cursosMetaMap = null;
+      if (entregaEntregaParsed) {
+        cursosMetaMap = await validarCursosExistenActivos(client, entregaEntregaParsed.cursos);
+      }
 
       const updateRequest = await client.query(
         `
@@ -9391,7 +9583,7 @@ router.post(
         });
       }
 
-      await client.query(
+      const entregaInsert = await client.query(
         `
           INSERT INTO entrega_equipo (
             solicitud_prestamo_id,
@@ -9421,6 +9613,7 @@ router.post(
               firma_digital = EXCLUDED.firma_digital,
               fecha_firma = EXCLUDED.fecha_firma,
               fecha_modificacion = CURRENT_TIMESTAMP
+          RETURNING id, solicitud_prestamo_id
         `,
         [
           solicitud.id,
@@ -9431,6 +9624,9 @@ router.post(
           sanitizeText(solicitud.firma_digital) ? new Date() : null,
         ]
       );
+      if (entregaInsert.rows?.length) {
+        entregaEquipoInsertedId = Number(entregaInsert.rows[0].id) || null;
+      }
 
       await client.query(
         `
@@ -9442,18 +9638,71 @@ router.post(
         [solicitud.equipo_id]
       );
 
+      if (entregaEntregaParsed) {
+        const usuarioPrestamista = await client.query(
+          `SELECT u.id, u.documento, u.nombre, u.correo FROM usuario u WHERE u.id = $1 LIMIT 1`,
+          [solicitud.usuario_id]
+        );
+        const userRow = usuarioPrestamista.rows[0] || null;
+        const resCert = await insertCertificacionPrestamoTx(client, {
+          cursosMetaMap,
+          cursosEntrega: entregaEntregaParsed.cursos,
+          facultadId: solicitud.facultad_id ? Number(solicitud.facultad_id) : null,
+          documentoUsuario: userRow?.documento || null,
+          usuarioId: solicitud.usuario_id,
+          usuarioNombre: userRow?.nombre || null,
+          solicitudId: solicitud.id,
+          entregaEquipoId: entregaEquipoInsertedId,
+          labDocumento: sessionUsuario?.documento || null,
+          labNombre: sessionUsuario?.nombre || null,
+          vigenciaMeses: entregaEntregaParsed.vigencia_meses,
+        });
+        certificacionesEntrega = {
+          count: resCert.certificados.length,
+          certificados: resCert.certificados,
+          omitidos: resCert.omitidos,
+          facultad_id: solicitud.facultad_id ? Number(solicitud.facultad_id) : null,
+        };
+      }
+
       await client.query('COMMIT');
 
       await registerPrestamosAuditEntry({
         req,
-        accion: 'Entregar equipo (Prestamo)',
+        accion:
+          'Entregar equipo (Prestamo)' +
+          (entregaEntregaParsed && certificacionesEntrega.count > 0
+            ? ' | Capacitación PRESTAMO emitida: ' +
+              certificacionesEntrega.count +
+              ' certificado(s).'
+            : ''),
         persona: `Solicitud: ${solicitud.id}`,
       });
 
-      return res.json({
+      const responsePayload = {
         success: true,
-        message: 'Equipo entregado y solicitud marcada como activa.',
-      });
+        message:
+          'Equipo entregado y solicitud marcada como activa.' +
+          (entregaEntregaParsed
+            ? certificacionesEntrega.count > 0
+              ? ' ' +
+                certificacionesEntrega.count +
+                ' certificación(es) de capacitación emitida(s) en la entrega (vigencia ' +
+                entregaEntregaParsed.vigencia_meses +
+                ' meses). El usuario ahora puede reservar equipos que requieran este curso sin validar EDX.'
+              : certificacionesEntrega.omitidos.length > 0
+                ? ' No se emitieron nuevas certificaciones: el usuario ya tenía activa(s) la(s) certificación(es) solicitada(s).'
+                : ''
+            : ''),
+      };
+      if (entregaEntregaParsed) {
+        responsePayload.capacitacion_realizada = {
+          activo: true,
+          vigencia_meses: entregaEntregaParsed.vigencia_meses,
+        };
+        responsePayload.certificaciones_emitidas_en_entrega = certificacionesEntrega;
+      }
+      return res.json(responsePayload);
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error marcando equipo como prestado MiLab:', error);

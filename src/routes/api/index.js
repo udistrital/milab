@@ -58,6 +58,7 @@ router.use('/admin/roles', require('./admin/roles'));
 router.use('/certificacion-edx', require('./certificacion-edx'));
 router.use('/capacitacion-cursos', require('./capacitacion-cursos'));
 router.use('/capacitacion-equipos', require('./capacitacion-equipos'));
+router.use('/capacitacion-gestion', require('./capacitacion-gestion'));
 
 async function checkServiceStatus(log = serviceStatusLogger) {
   const services = [
