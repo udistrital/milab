@@ -242,6 +242,71 @@
   </div>
 </div>
 
+<div class="modal fade" id="dashboardUserEditorModal" tabindex="-1" aria-labelledby="dashboardUserEditorTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+    <div class="modal-content">
+      <form id="dashboardUserEditorForm">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="dashboardUserEditorTitle">Editar usuario</h5>
+            <p class="text-muted mb-0 small">Asocia la cuenta de MILab con uno de los registros académicos que OATI tiene para su documento.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="dashboardUserEditorFeedback" class="alert alert-danger d-none py-2" role="alert"></div>
+
+          <h6 class="mb-2">Datos actuales en MILab</h6>
+          <dl class="row small mb-4" id="dashboardUserEditorCurrent">
+            <dt class="col-sm-3">Nombre</dt><dd class="col-sm-9" data-user-field="nombre">-</dd>
+            <dt class="col-sm-3">Documento</dt><dd class="col-sm-9" data-user-field="documento">-</dd>
+            <dt class="col-sm-3">Correo</dt><dd class="col-sm-9" data-user-field="correo">-</dd>
+            <dt class="col-sm-3">Código</dt><dd class="col-sm-9" data-user-field="codigo">-</dd>
+            <dt class="col-sm-3">Programa</dt><dd class="col-sm-9" data-user-field="carrera">-</dd>
+            <dt class="col-sm-3">Estado</dt><dd class="col-sm-9" data-user-field="estado">-</dd>
+          </dl>
+
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h6 class="mb-0">Registros en OATI para el documento</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="dashboardUserEditorReload">
+              <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Consultar OATI
+            </button>
+          </div>
+          <p class="small text-muted mb-2">El documento y el correo de la cuenta no cambian. Se actualizarán nombre, código, programa y estado con el registro seleccionado.</p>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" class="text-center">Asociar</th>
+                  <th scope="col">Código</th>
+                  <th scope="col">Nombre</th>
+                  <th scope="col">Programa</th>
+                  <th scope="col">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="dashboardUserEditorRecords">
+                <tr><td colspan="5" class="text-center text-muted py-3">Sin consultar.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="dashboardUserEditorConfirm">
+            <label class="form-check-label" for="dashboardUserEditorConfirm">
+              Confirmo que quiero asociar el registro seleccionado a esta cuenta de MILab.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="dashboardUserEditorSave" disabled>Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script nonce="<%= cspNonce %>">
   const rawData = <%- JSON.stringify(chartsData) %>;
   const chartsData = {
@@ -378,6 +443,7 @@
   let usuariosDashboardFilter = 'registrados';
   let usuariosColumnFilter = { column: '__all', value: '' };
   let dashboardEmailEditContext = null;
+  let dashboardUserEditContext = null;
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -517,6 +583,7 @@
 
     return `
       <div class="d-flex flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-primary" data-dashboard-action="editar-usuario" data-row-id="${rowId}"><i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Editar usuario</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-dashboard-action="editar-correo" data-row-id="${rowId}">Editar correo</button>
         <button type="button" class="btn btn-sm ${toggleClass}" data-dashboard-action="toggle-activo" data-row-id="${rowId}">${toggleLabel}</button>
           <button
@@ -638,6 +705,220 @@
 
     saveButton.disabled = false;
     saveButton.textContent = 'Guardar y enrolar';
+  }
+
+  function setDashboardUserEditorFeedback(message, type = 'error') {
+    const feedback = document.getElementById('dashboardUserEditorFeedback');
+    if (!feedback) return;
+    if (!message) {
+      feedback.className = 'alert alert-danger d-none py-2';
+      feedback.textContent = '';
+      return;
+    }
+    const tone = type === 'warning' ? 'alert-warning' : type === 'info' ? 'alert-info' : 'alert-danger';
+    feedback.className = `alert ${tone} py-2`;
+    feedback.textContent = message;
+  }
+
+  function renderDashboardUserEditorCurrent(usuario) {
+    document.querySelectorAll('#dashboardUserEditorCurrent [data-user-field]').forEach((element) => {
+      const field = element.getAttribute('data-user-field');
+      const value = String(usuario?.[field] ?? '').trim();
+      element.textContent = value || '-';
+    });
+  }
+
+  function renderDashboardUserEditorRecords(registros, message) {
+    const body = document.getElementById('dashboardUserEditorRecords');
+    if (!body) return;
+
+    if (message) {
+      body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">${escapeHtml(message)}</td></tr>`;
+      return;
+    }
+
+    const currentCodigo = String(dashboardUserEditContext?.usuario?.codigo || '').trim();
+    body.innerHTML = registros
+      .map((registro, index) => {
+        const codigo = String(registro.codigo || '');
+        const isCurrent = codigo === currentCodigo;
+        const estado = String(registro.estado || '').trim();
+        const isEgresado = estado.toUpperCase() === 'EGRESADO';
+        const estadoBadgeClass = isEgresado ? 'text-bg-warning' : 'text-bg-light border';
+        const inputId = `dashboardUserEditorRecord${index}`;
+        return `
+          <tr class="${isCurrent ? 'table-primary' : ''}">
+            <td class="text-center">
+              <input class="form-check-input" type="radio" name="dashboardUserEditorRecord" id="${inputId}" value="${escapeHtml(codigo)}" ${isCurrent ? 'checked' : ''}>
+            </td>
+            <td>
+              <label for="${inputId}" class="mb-0 fw-semibold">${escapeHtml(codigo)}</label>
+              ${isCurrent ? '<span class="badge text-bg-primary ms-1">Actual en MILab</span>' : ''}
+            </td>
+            <td>${escapeHtml(registro.nombre || '-')}</td>
+            <td>${escapeHtml(registro.carrera || '-')}</td>
+            <td>${estado ? `<span class="badge ${estadoBadgeClass}">${escapeHtml(estado)}</span>` : '<span class="text-muted">-</span>'}${isEgresado ? '<div class="small text-warning-emphasis mt-1">Con este estado no se generan certificados.</div>' : ''}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  function getDashboardUserEditorSelectedCodigo() {
+    const selected = document.querySelector('input[name="dashboardUserEditorRecord"]:checked');
+    return selected ? String(selected.value || '').trim() : '';
+  }
+
+  function syncDashboardUserEditorSaveState() {
+    const saveButton = document.getElementById('dashboardUserEditorSave');
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+    if (!saveButton) return;
+    const selectedCodigo = getDashboardUserEditorSelectedCodigo();
+    const currentCodigo = String(dashboardUserEditContext?.usuario?.codigo || '').trim();
+    const canSave =
+      !dashboardUserEditContext?.loading &&
+      !dashboardUserEditContext?.saving &&
+      Boolean(selectedCodigo) &&
+      Boolean(confirmCheckbox?.checked);
+
+    saveButton.disabled = !canSave;
+    saveButton.textContent = dashboardUserEditContext?.saving
+      ? 'Guardando...'
+      : selectedCodigo && selectedCodigo === currentCodigo
+        ? 'Guardar (actualizar datos)'
+        : 'Guardar';
+  }
+
+  async function loadDashboardUserOatiRecords() {
+    if (!dashboardUserEditContext) return;
+    const rowId = dashboardUserEditContext.rowId;
+    const reloadButton = document.getElementById('dashboardUserEditorReload');
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+
+    dashboardUserEditContext.loading = true;
+    if (reloadButton) reloadButton.disabled = true;
+    if (confirmCheckbox) confirmCheckbox.checked = false;
+    setDashboardUserEditorFeedback('');
+    renderDashboardUserEditorRecords([], 'Consultando OATI...');
+    syncDashboardUserEditorSaveState();
+
+    try {
+      const response = await fetch(`/milab/api/dashboard/usuarios/${rowId}/oati-registros`, {
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (dashboardUserEditContext?.rowId !== rowId) return;
+
+      if (payload.usuario) {
+        dashboardUserEditContext.usuario = payload.usuario;
+        renderDashboardUserEditorCurrent(payload.usuario);
+      }
+
+      if (!response.ok || !payload.ok) {
+        setDashboardUserEditorFeedback(payload.message || 'No fue posible consultar OATI.');
+        renderDashboardUserEditorRecords([], 'No hay registros para mostrar.');
+        return;
+      }
+
+      const registros = Array.isArray(payload.registros) ? payload.registros : [];
+      if (!registros.length) {
+        setDashboardUserEditorFeedback('OATI no devolvió registros de estudiante para este documento.', 'warning');
+        renderDashboardUserEditorRecords([], 'Sin registros en OATI.');
+        return;
+      }
+
+      renderDashboardUserEditorRecords(registros);
+    } catch {
+      if (dashboardUserEditContext?.rowId !== rowId) return;
+      setDashboardUserEditorFeedback('No fue posible consultar OATI. Verifica la conexión e inténtalo nuevamente.');
+      renderDashboardUserEditorRecords([], 'No hay registros para mostrar.');
+    } finally {
+      if (dashboardUserEditContext?.rowId === rowId) {
+        dashboardUserEditContext.loading = false;
+        if (reloadButton) reloadButton.disabled = false;
+        syncDashboardUserEditorSaveState();
+      }
+    }
+  }
+
+  function openDashboardUserEditorModal(rowId) {
+    const row = getUsuarioDashboardRowById(rowId);
+    if (!row || !Number.isInteger(Number(row.id)) || !window.bootstrap) return;
+
+    dashboardUserEditContext = { rowId: Number(row.id), usuario: row, loading: false, saving: false };
+    renderDashboardUserEditorCurrent(row);
+
+    const modalElement = document.getElementById('dashboardUserEditorModal');
+    window.bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    loadDashboardUserOatiRecords();
+  }
+
+  function syncUsuariosRowsAfterUserUpdate(usuario) {
+    const rowId = Number(usuario?.id);
+    [tablesData.usuariosRegistrados, tablesData.usuariosPlaceholder].forEach((rows) => {
+      if (!Array.isArray(rows)) return;
+      const row = rows.find((item) => Number(item?.id) === rowId);
+      if (!row) return;
+      ['nombre', 'codigo', 'carrera', 'estado'].forEach((field) => {
+        row[field] = usuario[field];
+      });
+    });
+  }
+
+  async function guardarRegistroOatiUsuarioDesdeDashboard() {
+    if (!dashboardUserEditContext) return;
+    const rowId = dashboardUserEditContext.rowId;
+    const codigo = getDashboardUserEditorSelectedCodigo();
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+
+    if (!codigo) {
+      setDashboardUserEditorFeedback('Debes seleccionar un registro de OATI.');
+      return;
+    }
+
+    if (!confirmCheckbox?.checked) {
+      setDashboardUserEditorFeedback('Debes confirmar la asociación para continuar.');
+      return;
+    }
+
+    dashboardUserEditContext.saving = true;
+    setDashboardUserEditorFeedback('');
+    syncDashboardUserEditorSaveState();
+
+    try {
+      const response = await fetch(`/milab/api/dashboard/usuarios/${rowId}/oati-registro`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ codigo }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.ok) {
+        setDashboardUserEditorFeedback(payload.message || 'No fue posible guardar el registro seleccionado.');
+        return;
+      }
+
+      syncUsuariosRowsAfterUserUpdate(payload.usuario);
+      renderDetailTable('usuariosRegistrados');
+
+      const modalElement = document.getElementById('dashboardUserEditorModal');
+      window.bootstrap?.Modal.getOrCreateInstance(modalElement)?.hide();
+      showDashboardFeedback(
+        `Usuario actualizado: quedó asociado al código ${payload.usuario?.codigo || codigo} (${payload.usuario?.estado || 'sin estado'}).`,
+        'success'
+      );
+    } catch {
+      setDashboardUserEditorFeedback('No fue posible guardar el registro. Verifica la conexión e inténtalo nuevamente.');
+    } finally {
+      if (dashboardUserEditContext?.rowId === rowId) {
+        dashboardUserEditContext.saving = false;
+        syncDashboardUserEditorSaveState();
+      }
+    }
   }
 
   function isNoEmailPlaceholderCorreo(correo) {
@@ -1435,6 +1716,40 @@
     }
 
     const detailBody = document.getElementById('dashboardDetailTableBody');
+    const userEditorForm = document.getElementById('dashboardUserEditorForm');
+    if (userEditorForm) {
+      userEditorForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        await guardarRegistroOatiUsuarioDesdeDashboard();
+      });
+      userEditorForm.addEventListener('change', function(event) {
+        if (event.target?.name === 'dashboardUserEditorRecord') {
+          const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+          if (confirmCheckbox) confirmCheckbox.checked = false;
+        }
+        syncDashboardUserEditorSaveState();
+      });
+    }
+
+    const userEditorReload = document.getElementById('dashboardUserEditorReload');
+    if (userEditorReload) {
+      userEditorReload.addEventListener('click', function() {
+        loadDashboardUserOatiRecords();
+      });
+    }
+
+    const userEditorModal = document.getElementById('dashboardUserEditorModal');
+    if (userEditorModal) {
+      userEditorModal.addEventListener('hidden.bs.modal', function() {
+        dashboardUserEditContext = null;
+        setDashboardUserEditorFeedback('');
+        renderDashboardUserEditorRecords([], 'Sin consultar.');
+        const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+        if (confirmCheckbox) confirmCheckbox.checked = false;
+        syncDashboardUserEditorSaveState();
+      });
+    }
+
     if (detailBody) {
       detailBody.addEventListener('click', async function(event) {
         const button = event.target.closest('[data-dashboard-action]');
@@ -1443,6 +1758,11 @@
         const action = button.getAttribute('data-dashboard-action');
         const rowId = Number(button.getAttribute('data-row-id'));
         if (!Number.isInteger(rowId)) return;
+
+        if (action === 'editar-usuario') {
+          openDashboardUserEditorModal(rowId);
+          return;
+        }
 
         if (action === 'editar-correo') {
           openDashboardEmailEditorModal(rowId);
