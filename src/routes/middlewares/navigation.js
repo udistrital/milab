@@ -188,6 +188,22 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink('Creación de cursos', '/milab/capacitacion/cursos/load_info', 'bi-book'),
+        createLink(
+          'Asociación curso-equipo',
+          '/milab/capacitacion/asociacion-equipos/load_info',
+          'bi-diagram-3'
+        ),
+        createLink(
+          'Gestionar capacitaciones',
+          '/milab/capacitacion/gestion/load_info',
+          'bi-calendar-check'
+        ),
+      ])
+    );
   }
 
   if (role === 'coordinador') {
@@ -234,6 +250,21 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink(
+          'Asociación curso-equipo',
+          '/milab/capacitacion/asociacion-equipos/load_info',
+          'bi-diagram-3'
+        ),
+        createLink(
+          'Gestionar capacitaciones',
+          '/milab/capacitacion/gestion/load_info',
+          'bi-calendar-check'
+        ),
+      ])
+    );
   }
 
   if (role === 'laboratorista') {
@@ -267,6 +298,21 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink(
+          'Asociación curso-equipo',
+          '/milab/capacitacion/asociacion-equipos/load_info',
+          'bi-diagram-3'
+        ),
+        createLink(
+          'Gestionar capacitaciones',
+          '/milab/capacitacion/gestion/load_info',
+          'bi-calendar-check'
+        ),
+      ])
+    );
   }
 
   if (role === 'monitor') {
@@ -278,6 +324,16 @@ function buildStaticNavigation(user) {
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink(
+          'Mis capacitaciones',
+          '/milab/capacitacion/mis-capacitaciones/load_info',
+          'bi-journal-bookmark'
+        ),
+      ])
+    );
   }
 
   if (role === 'docente') {
@@ -289,6 +345,16 @@ function buildStaticNavigation(user) {
       )
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink(
+          'Mis capacitaciones',
+          '/milab/capacitacion/mis-capacitaciones/load_info',
+          'bi-journal-bookmark'
+        ),
+      ])
+    );
   }
 
   if (isAuthenticated) {
