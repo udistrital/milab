@@ -997,6 +997,69 @@ async function lookupEnrollmentTeacherData(documento) {
   }
 }
 
+function extractOatiStudentRecords(payload) {
+  const nested = payload?.datosEstudianteCollection?.datosBasicosEstudiante;
+  const flat = payload?.datosBasicosEstudiante;
+  const source = nested ?? flat;
+  if (Array.isArray(source)) return source.filter(Boolean);
+  return source ? [source] : [];
+}
+
+async function resolveOatiCatalogNames(codes, fetchName) {
+  const uniqueCodes = [...new Set(codes.filter(Boolean))];
+  const entries = await Promise.all(
+    uniqueCodes.map(async (code) => {
+      try {
+        return [code, String((await fetchName(code)) || '').trim() || code];
+      } catch {
+        return [code, code];
+      }
+    })
+  );
+  return new Map(entries);
+}
+
+async function lookupOatiStudentRecordsByDocumento(documento) {
+  const payload = await requestOati(
+    getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+  );
+
+  const rawRecords = extractOatiStudentRecords(payload).map((item) => ({
+    codigo: String(item.codigo ?? '').trim(),
+    nombre: String(item.nombre ?? '').trim(),
+    documento: String(item.documento ?? documento).trim(),
+    correo: resolveOatiEmail(item),
+    estadoCodigo: String(item.estado ?? '').trim(),
+    carreraCodigo: String(item.carrera ?? '').trim(),
+  }));
+
+  const [estados, carreras] = await Promise.all([
+    resolveOatiCatalogNames(
+      rawRecords.map((record) => record.estadoCodigo),
+      async (code) => {
+        const data = await requestOati(getAcademicServicePath(`estados_codigo/${code}`));
+        return data?.estado?.nombre;
+      }
+    ),
+    resolveOatiCatalogNames(
+      rawRecords.map((record) => record.carreraCodigo),
+      async (code) => {
+        const data = await requestOati(getAcademicServicePath(`carrera/${code}`));
+        const carrera = data?.carrerasCollection?.carrera;
+        return Array.isArray(carrera) ? carrera[0]?.nombre : carrera?.nombre;
+      }
+    ),
+  ]);
+
+  return rawRecords
+    .filter((record) => /^\d+$/.test(record.codigo))
+    .map((record) => ({
+      ...record,
+      estado: estados.get(record.estadoCodigo) || record.estadoCodigo || null,
+      carrera: carreras.get(record.carreraCodigo) || record.carreraCodigo || null,
+    }));
+}
+
 async function findDashboardEmailConflict(client, correo, target) {
   const normalizedCorreo = normalizeInstitutionalEmail(correo);
   const targetDocumento = String(target?.documento || '').trim();
@@ -1394,6 +1457,190 @@ router.post('/usuarios/:id/activo', requireDashboardAdminJson, async (req, res) 
       ok: false,
       message: 'No fue posible actualizar el estado activo del usuario. Inténtalo nuevamente.',
     });
+  }
+});
+
+function parseDashboardUsuarioId(value) {
+  const usuarioId = Number(value);
+  return Number.isInteger(usuarioId) && usuarioId > 0 ? usuarioId : null;
+}
+
+async function fetchDashboardEditableUsuario(client, usuarioId) {
+  const result = await client.query(
+    `SELECT id, documento, correo, nombre, codigo::text AS codigo, carrera, estado, activo
+     FROM usuario
+     WHERE id = $1
+     LIMIT 1`,
+    [usuarioId]
+  );
+  return result.rows[0] || null;
+}
+
+router.get('/usuarios/:id/oati-registros', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = parseDashboardUsuarioId(req.params.id);
+  if (!usuarioId) {
+    return res.status(400).json({ ok: false, message: 'Debes indicar un ID de usuario valido.' });
+  }
+
+  let usuario;
+  try {
+    usuario = await fetchDashboardEditableUsuario(pool, usuarioId);
+  } catch (error) {
+    console.error('Error consultando usuario para editar desde dashboard:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible cargar los datos del usuario. Inténtalo nuevamente.',
+    });
+  }
+
+  if (!usuario) {
+    return res.status(404).json({ ok: false, message: 'No encontramos la cuenta seleccionada.' });
+  }
+
+  const documento = String(usuario.documento || '').trim();
+  if (!/^\d+$/.test(documento)) {
+    return res.status(422).json({
+      ok: false,
+      usuario,
+      message: 'El usuario no tiene un documento numérico válido para consultar en OATI.',
+    });
+  }
+
+  try {
+    const registros = await lookupOatiStudentRecordsByDocumento(documento);
+    return res.json({ ok: true, usuario, registros });
+  } catch (error) {
+    console.error('Error consultando registros OATI desde dashboard:', error);
+    return res.status(502).json({
+      ok: false,
+      usuario,
+      message: 'No fue posible consultar OATI en este momento. Inténtalo nuevamente.',
+    });
+  }
+});
+
+router.post('/usuarios/:id/oati-registro', requireDashboardAdminJson, async (req, res) => {
+  const usuarioId = parseDashboardUsuarioId(req.params.id);
+  const codigo = String(req.body?.codigo ?? '').trim();
+
+  if (!usuarioId) {
+    return res.status(400).json({ ok: false, message: 'Debes indicar un ID de usuario valido.' });
+  }
+
+  if (!/^\d+$/.test(codigo)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes seleccionar un registro de OATI con un código válido.',
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const target = await fetchDashboardEditableUsuario(client, usuarioId);
+    if (!target) {
+      return res.status(404).json({ ok: false, message: 'No encontramos la cuenta seleccionada.' });
+    }
+
+    const documento = String(target.documento || '').trim();
+    if (!/^\d+$/.test(documento)) {
+      return res.status(422).json({
+        ok: false,
+        message: 'El usuario no tiene un documento numérico válido para consultar en OATI.',
+      });
+    }
+
+    let registros;
+    try {
+      registros = await lookupOatiStudentRecordsByDocumento(documento);
+    } catch (error) {
+      console.error('Error consultando registros OATI para asociar desde dashboard:', error);
+      return res.status(502).json({
+        ok: false,
+        message: 'No fue posible consultar OATI en este momento. Inténtalo nuevamente.',
+      });
+    }
+
+    // Revalida contra OATI para no confiar en datos académicos enviados por el navegador.
+    const registro = registros.find((item) => item.codigo === codigo);
+    if (!registro) {
+      return res.status(409).json({
+        ok: false,
+        message: 'El registro seleccionado ya no aparece en OATI para este documento.',
+      });
+    }
+
+    const nombre = registro.nombre || String(target.nombre || '').trim() || 'Sin nombre';
+    const estado = registro.estado || null;
+    const carrera = registro.carrera || null;
+
+    await client.query('BEGIN');
+    const updateResult = await client.query(
+      `UPDATE usuario
+       SET nombre = $1,
+           codigo = $2,
+           carrera = $3,
+           estado = $4,
+           fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE id = $5
+       RETURNING id, documento, correo, nombre, codigo::text AS codigo, carrera, estado, activo`,
+      [nombre, codigo, carrera, estado, usuarioId]
+    );
+
+    await client.query(
+      `INSERT INTO usuario_rol (usuario_id, rol_id)
+       SELECT $1, id
+       FROM rol
+       WHERE nombre = 'estudiante'
+       ON CONFLICT (usuario_id, rol_id) DO UPDATE
+       SET activo = TRUE,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [usuarioId]
+    );
+
+    await client.query(
+      `INSERT INTO perfil_estudiante (usuario_id, documento, nombre, codigo, programa, estado)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (usuario_id) DO UPDATE
+       SET documento = EXCLUDED.documento,
+           nombre = EXCLUDED.nombre,
+           codigo = EXCLUDED.codigo,
+           programa = EXCLUDED.programa,
+           estado = EXCLUDED.estado,
+           fecha_modificacion = CURRENT_TIMESTAMP`,
+      [usuarioId, documento, nombre, codigo, carrera, estado]
+    );
+
+    await client.query(
+      'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+      [
+        req.session?.user?.tipo || 'admin',
+        normalizeLogDocument(
+          req.session?.user?.documento || req.session?.user?.documento_real || ''
+        ),
+        `Asociar registro OATI ${codigo} (antes ${target.codigo || 'sin código'}) desde dashboard`,
+        documento,
+      ]
+    );
+    await client.query('COMMIT');
+
+    return res.json({ ok: true, usuario: updateResult.rows[0], registro });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error al revertir asociación de registro OATI:', rollbackError);
+      }
+    }
+
+    console.error('Error asociando registro OATI desde dashboard:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible guardar el registro seleccionado. Inténtalo nuevamente.',
+    });
+  } finally {
+    client?.release();
   }
 });
 
