@@ -66,12 +66,52 @@ test('SgaDebtService rejects responses without the expected root', () => {
   assert.throws(() => service.parseResponse('<error>unavailable</error>'), /resultado de deudas/i);
 });
 
-test('SgaDebtService considers only state 2 active', () => {
+test('SgaDebtService considers states 1 and 2 active for numeric and string values', () => {
   const { service } = createService();
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: '1' }), true);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: ' 1 ' }), true);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: 1 }), true);
   assert.equal(service.isActiveDebt({ DEU_ESTADO: '2' }), true);
   assert.equal(service.isActiveDebt({ DEU_ESTADO: ' 2 ' }), true);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: 2 }), true);
   assert.equal(service.isActiveDebt({ DEU_ESTADO: '3' }), false);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: 3 }), false);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: 0 }), false);
+  assert.equal(service.isActiveDebt({ DEU_ESTADO: '4' }), false);
+  assert.equal(service.isActiveDebt({}), false);
   assert.equal(service.isActiveDebt({ DEU_ESTADO: null }), false);
+});
+
+test('SgaDebtService includes the state-1 XML debt with nil fields reported by SGA', async () => {
+  const { service, calls } = createService({
+    serviceName: 'servicios_academicos_produccion',
+    debtResponse: `
+      <deudas xmlns="academica.co.edu.udistrital/qry_deudores">
+        <estudiantes>
+          <DEU_MATERIAL>Vaso precipitado 100 mL OMSONS</DEU_MATERIAL>
+          <DEU_ESTAMENTO xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>
+          <DEU_ESTADO>1</DEU_ESTADO>
+          <DEU_FECHA_PAGO xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>
+          <DEU_PER>3</DEU_PER>
+          <DEU_FECHA>2026-08-28T00:00:00.000+00:00</DEU_FECHA>
+          <DEU_ANO>2026</DEU_ANO>
+          <DEU_MULTA>1</DEU_MULTA>
+          <DEU_ID>111957</DEU_ID>
+          <DEU_EST_COD>20262109003</DEU_EST_COD>
+        </estudiantes>
+      </deudas>
+    `,
+  });
+
+  const debts = await service.getActiveDebts({ codigo: '20262109003' });
+
+  assert.equal(debts.length, 1);
+  assert.equal(debts[0].DEU_ID, '111957');
+  assert.equal(debts[0].DEU_ESTADO, '1');
+  assert.equal(debts[0].DEU_MULTA, '1');
+  assert.equal(debts[0].DEU_MATERIAL, 'Vaso precipitado 100 mL OMSONS');
+  assert.equal(debts[0].DEU_FECHA_PAGO, '');
+  assert.equal(calls.post[0][0], service.buildServicePath('20262109003'));
 });
 
 test('SgaDebtService detects whether the environment configured the service', () => {
@@ -104,11 +144,12 @@ test('SgaDebtService resolves a document to student code and fetches active SGA 
   assert.match(calls.post[0][1], /<xs:codigo_estudiante>2024100001<\/xs:codigo_estudiante>/);
 });
 
-test('SgaDebtService handles Axios-parsed debts and returns only state-2 records', async () => {
+test('SgaDebtService handles Axios-parsed debts and returns state-1 and state-2 records', async () => {
+  const newDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: 1, DEU_ID: '111951' };
   const activeDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '2', DEU_ID: '75806' };
   const paidDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '3', DEU_ID: '92915' };
   const { service } = createService({
-    debtResponse: { deudas: { estudiantes: [activeDebt, paidDebt] } },
+    debtResponse: { deudas: { estudiantes: [newDebt, activeDebt, paidDebt] } },
   });
 
   const result = await service.getActiveDebts({
@@ -116,7 +157,7 @@ test('SgaDebtService handles Axios-parsed debts and returns only state-2 records
     documento: '1089907605',
   });
 
-  assert.deepEqual(result, [activeDebt]);
+  assert.deepEqual(result, [newDebt, activeDebt]);
 });
 
 test('SgaDebtService skips SGA and academic requests when not configured', async () => {
@@ -171,6 +212,7 @@ test('SgaDebtService builds the production debtors path', () => {
 test('SgaDebtService ignores library debts even when they are active', async () => {
   const labDebt = { DEU_ID: '1', DEU_ESTADO: '2', DEU_MATERIAL: 'TABLET LENOVO PLACA 123' };
   const libraryDebts = [
+    { DEU_ID: '5', DEU_ESTADO: '1', DEU_MATERIAL: 'Biblioteca' },
     { DEU_ID: '2', DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' },
     { DEU_ID: '3', DEU_ESTADO: '2', DEU_MATERIAL: 'MULTA BIBLIOTECA CENTRAL' },
     { DEU_ID: '4', DEU_ESTADO: '2', DEU_MATERIAL: 'libro no devuelto - bibliotéca' },
@@ -194,6 +236,8 @@ test('SgaDebtService classifies library debts by the reported detail', () => {
   assert.equal(service.isLibraryDebt({ DEU_MATERIAL: null }), false);
   assert.equal(service.isLibraryDebt({}), false);
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' }), false);
+  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '1', DEU_MATERIAL: 'Biblioteca' }), false);
+  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '1', DEU_MATERIAL: 'Osciloscopio' }), true);
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '3', DEU_MATERIAL: 'Osciloscopio' }), false);
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Osciloscopio' }), true);
 });

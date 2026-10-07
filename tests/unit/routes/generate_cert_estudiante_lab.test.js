@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
+const { SgaDebtService } = require('../../../src/libs/oati-debts');
 
 const routePath = path.resolve(
   __dirname,
@@ -206,6 +207,39 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
   const loaded = loadRoute({
     studentRecord: defaultStudentRecord,
     sgaDebtsImpl: async () => [sgaDebt],
+  });
+
+  test('generate_cert_estudiante_lab blocks the certificate for a state-1 SGA debt', async () => {
+    const sgaDebt = {
+      DEU_ID: '111951',
+      DEU_ESTADO: 1,
+      DEU_EST_COD: defaultStudentRecord.codigo,
+      DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
+      DEU_MULTA: 1,
+      DEU_FECHA_PAGO: null,
+    };
+    const service = new SgaDebtService({
+      serviceConfig: { oatiDebtorsServiceName: 'servicios_academicos_produccion' },
+      requestPost: async () => ({ deudas: { estudiantes: sgaDebt } }),
+    });
+    const loaded = loadRoute({
+      studentRecord: defaultStudentRecord,
+      sgaDebtsImpl: (student) => service.getActiveDebts(student),
+    });
+
+    try {
+      const response = await request(buildApp(loaded.route))
+        .post('/')
+        .type('form')
+        .send(validCertificateForm);
+
+      assert.equal(response.status, 200);
+      assert.equal(response.body.view, 'home/alerta-multado');
+      assert.deepEqual(response.body.locals.multaInfo, []);
+      assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaDebt]);
+    } finally {
+      loaded.restore();
+    }
   });
 
   try {

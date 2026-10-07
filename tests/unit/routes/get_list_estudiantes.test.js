@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
+const { SgaDebtService } = require('../../../src/libs/oati-debts');
+
+const debtService = new SgaDebtService();
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/get_list_estudiantes.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
@@ -91,7 +94,7 @@ function loadRoute({
           getActiveDebts: async (student) => {
             if (!sgaDebtsImpl) return [];
             const debts = await sgaDebtsImpl(student.codigo);
-            return debts.filter((debt) => String(debt?.DEU_ESTADO || '').trim() === '2');
+            return debts.filter((debt) => debtService.isBlockingDebt(debt));
           },
         },
       },
@@ -212,6 +215,12 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
           DEU_MATERIAL: 'Tablet pendiente',
           DEU_MULTA: '650100',
         },
+        {
+          DEU_EST_COD: '2024100001',
+          DEU_ESTADO: '1',
+          DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
+          DEU_MULTA: '1',
+        },
         { DEU_EST_COD: '2024100001', DEU_ESTADO: '3' },
       ];
     },
@@ -228,10 +237,13 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
     assert.equal(requestedCode, '2024100001');
     assert.deepEqual(
       multas.map((multa) => multa.origen),
-      ['MILab', 'SGA']
+      ['MILab', 'SGA', 'SGA']
     );
     assert.equal(multas[1].cat_multa, 'Tablet pendiente');
     assert.match(multas[1].obs_multa, /Valor SGA: 650100/);
+    assert.equal(multas[2].cat_multa, 'Tubo de ensayo omsons 15x150mm');
+    assert.equal(multas[2].con_estado_multa, 'ACTIVA (estado SGA 1)');
+    assert.match(multas[2].obs_multa, /Valor SGA: 1/);
   } finally {
     loaded.restore();
   }
