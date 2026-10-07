@@ -116,54 +116,6 @@ EXECUTE FUNCTION validar_facultad_curso_laboratorio();
 --   capacitacion-gestion.js + prestamos.js (evita desalineación)
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
-    id BIGSERIAL NOT NULL,
-    codigo_curso VARCHAR(100) NOT NULL,
-    solicitante_documento VARCHAR(50) NOT NULL,
-    solicitante_usuario_id INT,
-    solicitante_nombre VARCHAR(255),
-    nombre_curso_snapshot VARCHAR(255),
-    ual_id INT,
-    facultad_id INT,
-    estado VARCHAR(30) NOT NULL DEFAULT 'pendiente',
-    mensaje_solicitante TEXT,
-    motivo TEXT,
-    observaciones_laboratorista TEXT,
-    notas_internas TEXT,
-    fecha_notificacion_programacion TIMESTAMPTZ,
-    sesion_capacitacion_id BIGINT,
-    activo BOOLEAN NOT NULL DEFAULT TRUE,
-    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    creado_por_documento VARCHAR(50),
-    modificado_por_documento VARCHAR(50),
-    CONSTRAINT pk_solicitud_capacitacion PRIMARY KEY (id),
-    CONSTRAINT fk_solicitud_capacitacion_cursos FOREIGN KEY (codigo_curso)
-        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
-    CONSTRAINT fk_solicitud_capacitacion_usuario FOREIGN KEY (solicitante_usuario_id)
-        REFERENCES usuario(id) ON DELETE SET NULL,
-    CONSTRAINT fk_solicitud_capacitacion_ual FOREIGN KEY (ual_id)
-        REFERENCES ual(ual_id) ON DELETE SET NULL,
-    CONSTRAINT fk_solicitud_capacitacion_facultad FOREIGN KEY (facultad_id)
-        REFERENCES facultad(facultad_id) ON DELETE SET NULL,
-    CONSTRAINT fk_solicitud_capacitacion_sesion_capacitacion FOREIGN KEY (sesion_capacitacion_id)
-        REFERENCES sesion_capacitacion(id) ON DELETE SET NULL,
-    CONSTRAINT ck_estado_solicitud_capacitacion CHECK (
-        estado IN ('pendiente','notificado','notificado_programada','atendido','atendido_cerrado','cancelado')
-    ),
-    CONSTRAINT ck_solicitante_documento_solicitud_capacitacion CHECK (
-        BTRIM(COALESCE(solicitante_documento,'')) <> ''
-    )
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_solicitante_documento_codigo_curso_estado_solicitud_capacitacion
-    ON solicitud_capacitacion(solicitante_documento, codigo_curso, estado)
-    WHERE estado IN ('pendiente','notificado','notificado_programada');
-CREATE INDEX IF NOT EXISTS idx_solicitud_capacitacion_estado_activo
-    ON solicitud_capacitacion(estado, activo);
-CREATE INDEX IF NOT EXISTS idx_solicitud_capacitacion_sesion_capacitacion
-    ON solicitud_capacitacion(sesion_capacitacion_id);
-
 CREATE TABLE IF NOT EXISTS sesion_capacitacion (
     id BIGSERIAL NOT NULL,
     codigo_curso VARCHAR(100) NOT NULL,
@@ -211,6 +163,54 @@ CREATE INDEX IF NOT EXISTS idx_sesion_capacitacion_ual_fecha
     ON sesion_capacitacion(ual_id, fecha_inicio);
 CREATE INDEX IF NOT EXISTS idx_sesion_capacitacion_estado_activo
     ON sesion_capacitacion(estado, activo);
+
+CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
+    id BIGSERIAL NOT NULL,
+    codigo_curso VARCHAR(100) NOT NULL,
+    solicitante_documento VARCHAR(50) NOT NULL,
+    solicitante_usuario_id INT,
+    solicitante_nombre VARCHAR(255),
+    nombre_curso_snapshot VARCHAR(255),
+    ual_id INT,
+    facultad_id INT,
+    estado VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+    mensaje_solicitante TEXT,
+    motivo TEXT,
+    observaciones_laboratorista TEXT,
+    notas_internas TEXT,
+    fecha_notificacion_programacion TIMESTAMPTZ,
+    sesion_capacitacion_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    creado_por_documento VARCHAR(50),
+    modificado_por_documento VARCHAR(50),
+    CONSTRAINT pk_solicitud_capacitacion PRIMARY KEY (id),
+    CONSTRAINT fk_solicitud_capacitacion_cursos FOREIGN KEY (codigo_curso)
+        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
+    CONSTRAINT fk_solicitud_capacitacion_usuario FOREIGN KEY (solicitante_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT fk_solicitud_capacitacion_ual FOREIGN KEY (ual_id)
+        REFERENCES ual(ual_id) ON DELETE SET NULL,
+    CONSTRAINT fk_solicitud_capacitacion_facultad FOREIGN KEY (facultad_id)
+        REFERENCES facultad(facultad_id) ON DELETE SET NULL,
+    CONSTRAINT fk_solicitud_capacitacion_sesion_capacitacion FOREIGN KEY (sesion_capacitacion_id)
+        REFERENCES sesion_capacitacion(id) ON DELETE SET NULL,
+    CONSTRAINT ck_estado_solicitud_capacitacion CHECK (
+        estado IN ('pendiente','notificado','notificado_programada','atendido','atendido_cerrado','cancelado')
+    ),
+    CONSTRAINT ck_solicitante_documento_solicitud_capacitacion CHECK (
+        BTRIM(COALESCE(solicitante_documento,'')) <> ''
+    )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_solicitante_documento_codigo_curso_estado_solicitud_capacitacion
+    ON solicitud_capacitacion(solicitante_documento, codigo_curso, estado)
+    WHERE estado IN ('pendiente','notificado','notificado_programada');
+CREATE INDEX IF NOT EXISTS idx_solicitud_capacitacion_estado_activo
+    ON solicitud_capacitacion(estado, activo);
+CREATE INDEX IF NOT EXISTS idx_solicitud_capacitacion_sesion_capacitacion
+    ON solicitud_capacitacion(sesion_capacitacion_id);
 
 CREATE TABLE IF NOT EXISTS inscripcion_sesion_capacitacion (
     id BIGSERIAL NOT NULL,
