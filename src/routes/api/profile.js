@@ -3,7 +3,6 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
-const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
 const { startSessionLifetime } = require('../../libs/session-policy');
 
@@ -88,55 +87,9 @@ async function findUsuarioByDocumento(documento) {
   return result.rows[0] || null;
 }
 
-async function promotePlaceholderIdentityAndEnroll({ correo, profileData, nombreFallback = '' }) {
-  const documento = String(profileData?.documento || '').trim();
-  const tipoUsuario = String(profileData?.tipo_usuario || '')
-    .trim()
-    .toLowerCase();
-
-  if (!documento || !['estudiante', 'docente'].includes(tipoUsuario)) {
-    return null;
-  }
-
+async function hasPlaceholderAccount(documento) {
   const existingByDocument = await findUsuarioByDocumento(documento);
-  if (!existingByDocument || !isNoEmailPlaceholder(existingByDocument.correo, documento)) {
-    return null;
-  }
-
-  const finalNombre =
-    profileData.nombre || nombreFallback || existingByDocument.nombre || 'Sin nombre';
-  const userId = await ensureUserIdentity({
-    correo,
-    documento,
-    nombre: finalNombre,
-  });
-
-  await ensureRoleAssignment(userId, tipoUsuario);
-
-  if (tipoUsuario === 'estudiante') {
-    await upsertStudentProfile(
-      userId,
-      documento,
-      profileData.codigo || '',
-      profileData.carrera || '',
-      profileData.estado || ''
-    );
-  }
-
-  if (tipoUsuario === 'docente') {
-    await upsertTeacherProfile(userId, documento, profileData.estado || '');
-  }
-
-  await upsertLegacyUsuario({
-    documento,
-    codigo: tipoUsuario === 'estudiante' ? profileData.codigo || null : null,
-    nombre: finalNombre,
-    correo,
-    estado: profileData.estado || '',
-    carrera: tipoUsuario === 'estudiante' ? profileData.carrera || null : null,
-  });
-
-  return userId;
+  return Boolean(existingByDocument && isNoEmailPlaceholder(existingByDocument.correo, documento));
 }
 
 function resolveOatiEmail(payload) {
@@ -267,7 +220,21 @@ async function ensureRoleAssignment(userId, roleName) {
   await pool.query(
     `INSERT INTO usuario_rol (usuario_id, rol_id)
      SELECT $1, id FROM rol WHERE nombre = $2
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (usuario_id, rol_id) DO UPDATE
+     SET activo = TRUE,
+         fecha_modificacion = CURRENT_TIMESTAMP`,
+    [userId, roleName]
+  );
+}
+
+async function deactivateRoleAssignment(userId, roleName) {
+  await pool.query(
+    `UPDATE usuario_rol
+     SET activo = FALSE,
+         fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE usuario_id = $1
+       AND activo = TRUE
+       AND rol_id IN (SELECT id FROM rol WHERE nombre = $2)`,
     [userId, roleName]
   );
 }
@@ -325,52 +292,79 @@ async function upsertLegacyUsuario({ documento, codigo, nombre, correo, estado, 
   );
 }
 
-async function lookupStudentByDocumento(documento) {
+function normalizeEstadoCodigo(value) {
+  return (value || '').toString().trim().toUpperCase();
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
+function isActiveStudentRecord(record) {
+  return normalizeEstadoCodigo(record?.estado) === 'A';
+}
+
+function isActiveTeacherRecord(record) {
+  const estado = normalizeEstadoCodigo(
+    record?.estado_docente || record?.estadoDocente || record?.estado
+  );
+  return estado === 'A' || estado === 'ACTIVO';
+}
+
+// Solo registros de estudiante con estado A (activo) que no resuelvan a EGRESADO.
+async function lookupActiveStudentRecords(documento) {
+  let studentData;
   try {
-    const studentData = await requestOati(
+    studentData = await requestOati(
       getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
     );
-
-    const collection = studentData?.datosEstudianteCollection?.datosBasicosEstudiante || [];
-    if (!collection.length) return null;
-
-    const lastItem = collection[collection.length - 1];
-    let item = lastItem;
-    try {
-      const seleccion = await selectStudentRecordForDocumento(collection, documento);
-      item = seleccion.record || lastItem;
-    } catch (selectionError) {
-      console.error('Error consultando el código asociado del estudiante:', selectionError);
-    }
-
-    const buildStudentProfile = async (record) => {
-      const estadoCodigo = record.estado || '';
-      const carreraCodigo = record.carrera || '';
-      const estadoData = await requestOati(
-        getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
-      );
-      const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
-
-      return {
-        tipo_usuario: 'estudiante',
-        documento,
-        codigo: record.codigo || '',
-        estado: estadoData?.estado?.nombre || estadoCodigo || '',
-        carrera: carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '',
-        nombre: record.nombre || '',
-        correo: resolveOatiEmail(record),
-      };
-    };
-
-    const profileData = await buildStudentProfile(item);
-    // Para el ingreso se conserva el comportamiento previo si el código asociado es de egresado.
-    if (item !== lastItem && profileData.estado === 'EGRESADO') {
-      return buildStudentProfile(lastItem);
-    }
-    return profileData;
   } catch {
-    return null;
+    return [];
   }
+
+  const collection = toArray(studentData?.datosEstudianteCollection?.datosBasicosEstudiante);
+  const seenCodigos = new Set();
+  const activeRecords = [];
+
+  for (const record of collection) {
+    const codigo = (record?.codigo || '').toString().trim();
+    if (!codigo || seenCodigos.has(codigo) || !isActiveStudentRecord(record)) continue;
+
+    let estado = 'ACTIVO';
+    try {
+      const estadoData = await requestOati(
+        getAcademicServicePath(`estados_codigo/${record.estado}`)
+      );
+      estado = estadoData?.estado?.nombre || estado;
+    } catch {
+      // Se conserva ACTIVO porque el código de estado ya es A.
+    }
+    if (normalizeEstadoCodigo(estado) === 'EGRESADO') continue;
+
+    let carrera = '';
+    try {
+      const carreraData = await requestOati(
+        getAcademicServicePath(`carrera/${record.carrera || ''}`)
+      );
+      carrera = carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '';
+    } catch {
+      // Se usa el código de carrera de OATI si no se puede resolver el nombre.
+    }
+
+    seenCodigos.add(codigo);
+    activeRecords.push({
+      tipo_usuario: 'estudiante',
+      documento,
+      codigo,
+      estado,
+      carrera: carrera || (record.carrera || '').toString(),
+      nombre: record.nombre || '',
+      correo: resolveOatiEmail(record),
+    });
+  }
+
+  return activeRecords;
 }
 
 async function lookupTeacherByDocumento(documento) {
@@ -379,14 +373,16 @@ async function lookupTeacherByDocumento(documento) {
       getAcademicServicePath(`consultar_estado_docente/${documento}`)
     );
 
-    const docente = teacherData?.docentesCollection?.docente?.[0];
+    const docente = toArray(teacherData?.docentesCollection?.docente).find((item) =>
+      isActiveTeacherRecord(item)
+    );
     if (!docente) return null;
 
     return {
       tipo_usuario: 'docente',
       documento,
       codigo: '',
-      estado: docente.estado_docente || '',
+      estado: docente.estado_docente || docente.estadoDocente || docente.estado || '',
       carrera: '',
       nombre: docente.nombre || '',
       correo: resolveOatiEmail(docente),
@@ -394,6 +390,152 @@ async function lookupTeacherByDocumento(documento) {
   } catch {
     return null;
   }
+}
+
+const MILAB_ROLE_TABLES = [
+  {
+    role: 'laboratorista',
+    sql: `SELECT documento, nombre, correo
+          FROM laboratorista
+          WHERE (documento = $1 OR n_usuario = $1
+                 OR ($2::text <> '' AND LOWER(COALESCE(correo, '')) = $2::text))
+            AND COALESCE(activo, TRUE) = TRUE
+          LIMIT 1`,
+  },
+  {
+    role: 'coordinador',
+    sql: `SELECT documento, nombre, correo
+          FROM coordinador
+          WHERE (documento = $1 OR nombre_u = $1
+                 OR ($2::text <> '' AND LOWER(COALESCE(correo, '')) = $2::text))
+            AND COALESCE(activo, TRUE) = TRUE
+          LIMIT 1`,
+  },
+  {
+    role: 'monitor',
+    sql: `SELECT documento, nombre, correo
+          FROM monitor
+          WHERE (documento = $1
+                 OR ($2::text <> '' AND LOWER(COALESCE(correo, '')) = $2::text))
+            AND COALESCE(activo, TRUE) = TRUE
+          LIMIT 1`,
+  },
+];
+
+const OATI_ROLES = ['estudiante', 'docente'];
+
+// Roles registrados en MILab: tablas de laboratorista/coordinador/monitor y roles ya
+// asignados (por ejemplo admin) a una cuenta provisional con ese documento.
+async function findMilabRolesByDocumento(documento, correo) {
+  const roles = new Set();
+  let identity = null;
+  const normalizedCorreo = normalizeEmail(correo);
+
+  for (const { role, sql } of MILAB_ROLE_TABLES) {
+    const result = await pool.query(sql, [documento, normalizedCorreo]);
+    const row = result.rows[0];
+    if (!row) continue;
+    roles.add(role);
+    if (!identity) identity = { nombre: row.nombre || '', correo: row.correo || '' };
+  }
+
+  const assigned = await pool.query(
+    `SELECT r.nombre AS rol, u.nombre, u.correo
+     FROM usuario u
+     JOIN usuario_rol ur ON ur.usuario_id = u.id AND ur.activo = TRUE
+     JOIN rol r ON r.id = ur.rol_id
+     WHERE u.documento = $1`,
+    [documento]
+  );
+  for (const row of assigned.rows) {
+    const rol = (row.rol || '').toString().trim().toLowerCase();
+    // Solo cuentas provisionales: una cuenta con correo real ingresa directamente por correo.
+    if (!rol || OATI_ROLES.includes(rol) || !isNoEmailPlaceholder(row.correo, documento)) continue;
+    roles.add(rol);
+    if (!identity) identity = { nombre: row.nombre || '', correo: '' };
+  }
+
+  return { roles: [...roles], identity };
+}
+
+async function linkMilabRoleRecords(userId, documento, correo) {
+  const normalizedCorreo = normalizeEmail(correo);
+  await pool.query(
+    `UPDATE laboratorista
+     SET usuario_id = $1, fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE (documento = $2 OR n_usuario = $2
+            OR ($3::text <> '' AND LOWER(COALESCE(correo, '')) = $3::text))
+       AND COALESCE(activo, TRUE) = TRUE`,
+    [userId, documento, normalizedCorreo]
+  );
+  await pool.query(
+    `UPDATE coordinador
+     SET usuario_id = $1, fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE (documento = $2 OR nombre_u = $2
+            OR ($3::text <> '' AND LOWER(COALESCE(correo, '')) = $3::text))
+       AND COALESCE(activo, TRUE) = TRUE`,
+    [userId, documento, normalizedCorreo]
+  );
+  await pool.query(
+    `UPDATE monitor
+     SET usuario_id = $1, fecha_modificacion = CURRENT_TIMESTAMP
+     WHERE (documento = $2
+            OR ($3::text <> '' AND LOWER(COALESCE(correo, '')) = $3::text))
+       AND COALESCE(activo, TRUE) = TRUE`,
+    [userId, documento, normalizedCorreo]
+  );
+}
+
+// Asigna exactamente los roles validados: estudiante/docente según OATI y los roles de MILab.
+async function completeRegistration({
+  correo,
+  documento,
+  nombre,
+  estudiante = null,
+  docente = null,
+  milabRoles = [],
+}) {
+  const userId = await ensureUserIdentity({ correo, documento, nombre });
+
+  if (estudiante) {
+    await ensureRoleAssignment(userId, 'estudiante');
+    await upsertStudentProfile(
+      userId,
+      documento,
+      estudiante.codigo,
+      estudiante.carrera,
+      estudiante.estado
+    );
+  } else {
+    await deactivateRoleAssignment(userId, 'estudiante');
+  }
+
+  if (docente) {
+    await ensureRoleAssignment(userId, 'docente');
+    await upsertTeacherProfile(userId, documento, docente.estado || '');
+  } else {
+    await deactivateRoleAssignment(userId, 'docente');
+  }
+
+  for (const role of milabRoles) {
+    await ensureRoleAssignment(userId, role);
+  }
+  if (milabRoles.length) {
+    await linkMilabRoleRecords(userId, documento, correo);
+  }
+
+  if (estudiante || docente) {
+    await upsertLegacyUsuario({
+      documento,
+      codigo: estudiante ? estudiante.codigo : null,
+      nombre,
+      correo,
+      estado: (estudiante || docente).estado || '',
+      carrera: estudiante ? estudiante.carrera : null,
+    });
+  }
+
+  return userId;
 }
 
 function buildReadonlyProfile({
@@ -703,76 +845,30 @@ router.post('/identify', async (req, res) => {
     });
   }
 
-  const studentData = await lookupStudentByDocumento(documento);
-  const teacherData = await lookupTeacherByDocumento(documento);
-  const profileData =
-    studentData && studentData.estado !== 'EGRESADO' ? studentData : teacherData || studentData;
+  const estudiantes = await lookupActiveStudentRecords(documento);
+  const docente = await lookupTeacherByDocumento(documento);
+  const { roles: milabRoles, identity: milabIdentity } = await findMilabRolesByDocumento(
+    documento,
+    correo
+  );
 
-  if (!profileData) {
-    const staffProfile =
-      (await loadLaboratoristaProfile(documento)) || (await loadCoordinadorProfile(documento));
-
-    if (!staffProfile) {
-      return denyAccess('El documento no esta asociado para ingresar a MILab.');
-    }
-
-    if (
-      staffProfile.correo &&
-      normalizeEmail(staffProfile.correo) !== correo &&
-      !shouldSkipIdentityMatch(correo)
-    ) {
-      return denyAccess('El documento no esta asociado al correo indicado.');
-    }
-
-    if (staffProfile.nombre && nombreEntra && !shouldSkipIdentityMatch(correo)) {
-      const coverage = tokenCoverageScore(staffProfile.nombre, nombreEntra);
-      const similarity = diceCoefficient(staffProfile.nombre, nombreEntra);
-      const score = Math.max(coverage, similarity);
-
-      if (score < 0.8) {
-        return denyAccess('El documento no esta asociado al correo indicado.');
-      }
-    }
-
-    const staffDocumento = staffProfile.documento || documento;
-    const staffNombre = staffProfile.nombre || nombreEntra || '';
-
-    const userId = await ensureUserIdentity({
-      correo,
-      documento: staffDocumento,
-      nombre: staffNombre,
-    });
-    await ensureRoleAssignment(userId, staffProfile.tipo_usuario);
-
-    const usuario = await fetchUserByEmail(correo);
-    if (!usuario) {
-      return denyAccess('No fue posible validar el acceso en MILab.');
-    }
-
-    await regenerateSession(req);
-    if (req.session) {
-      req.session.user = buildSessionUser(usuario);
-      startSessionLifetime(req.session);
-      req.session.microsoftProfile = null;
-    }
-    return res.redirect('/milab/inicio');
-  }
-
-  if (profileData.estado === 'EGRESADO') {
+  if (!estudiantes.length && !docente && !milabRoles.length) {
     return denyAccess('El documento no esta asociado para ingresar a MILab.');
   }
 
+  const identityRef = estudiantes[0] || docente || milabIdentity || {};
+
   if (
-    profileData.correo &&
-    normalizeEmail(profileData.correo) !== correo &&
+    identityRef.correo &&
+    normalizeEmail(identityRef.correo) !== correo &&
     !shouldSkipIdentityMatch(correo)
   ) {
     return denyAccess('El documento no esta asociado al correo indicado.');
   }
 
-  if (profileData.nombre && nombreEntra && !shouldSkipIdentityMatch(correo)) {
-    const coverage = tokenCoverageScore(profileData.nombre, nombreEntra);
-    const similarity = diceCoefficient(profileData.nombre, nombreEntra);
+  if (identityRef.nombre && nombreEntra && !shouldSkipIdentityMatch(correo)) {
+    const coverage = tokenCoverageScore(identityRef.nombre, nombreEntra);
+    const similarity = diceCoefficient(identityRef.nombre, nombreEntra);
     const score = Math.max(coverage, similarity);
 
     if (score < 0.8) {
@@ -780,16 +876,8 @@ router.post('/identify', async (req, res) => {
     }
   }
 
-  const promotedUserId = await promotePlaceholderIdentityAndEnroll({
-    correo,
-    profileData: {
-      ...profileData,
-      documento: profileData.documento || documento,
-    },
-    nombreFallback: nombreEntra,
-  });
-
-  if (promotedUserId) {
+  const nombreRegistro = identityRef.nombre || nombreEntra || '';
+  const loginRegisteredUser = async () => {
     const usuario = await fetchUserByEmail(correo);
     if (!usuario) {
       return denyAccess('No fue posible validar el acceso en MILab.');
@@ -800,26 +888,71 @@ router.post('/identify', async (req, res) => {
       req.session.user = buildSessionUser(usuario);
       startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
+      req.session.registroPendiente = null;
     }
-
     return res.redirect('/milab/inicio');
+  };
+
+  // Sin perfil OATI activo: ingresa solo con los roles registrados en MILab.
+  if (!estudiantes.length && !docente) {
+    await completeRegistration({ correo, documento, nombre: nombreRegistro, milabRoles });
+    return loginRegisteredUser();
   }
 
+  const singleChoice = estudiantes.length <= 1;
+  if (singleChoice && (await hasPlaceholderAccount(documento))) {
+    await completeRegistration({
+      correo,
+      documento,
+      nombre: nombreRegistro,
+      estudiante: estudiantes[0] || null,
+      docente,
+      milabRoles,
+    });
+    return loginRegisteredUser();
+  }
+
+  req.session.registroPendiente = {
+    correo,
+    documento,
+    estudiantes,
+    docente,
+    milabRoles,
+  };
+
+  const perfilBase = estudiantes.length === 1 ? estudiantes[0] : docente;
   return res.render('home/profile', {
     ...emptyProfileData(),
     modo: 'crear',
     profileLocked: true,
-    nombre: profileData.nombre || '',
+    nombre: nombreRegistro,
     correo,
-    documento: profileData.documento || '',
-    codigo: profileData.codigo || '',
-    estado: profileData.estado || '',
-    carrera: profileData.carrera || '',
-    tipo_usuario: profileData.tipo_usuario,
+    documento,
+    codigo: estudiantes.length === 1 ? estudiantes[0].codigo : '',
+    estado: estudiantes.length > 1 ? '' : perfilBase?.estado || '',
+    carrera: estudiantes.length === 1 ? estudiantes[0].carrera : '',
+    tipo_usuario: estudiantes.length ? 'estudiante' : 'docente',
+    opcionesCodigo: estudiantes.length > 1 ? estudiantes : [],
   });
 });
 
 router.post('/', async (req, res) => {
+  // Los datos de un usuario registrado solo los modifica el admin desde el dashboard.
+  if (req.session.user) {
+    let profileData = null;
+    try {
+      profileData = await loadProfileBySession(req.session.user);
+    } catch (error) {
+      console.error('Error cargando perfil:', error);
+    }
+    return res.status(403).render('home/profile', {
+      ...(profileData || emptyProfileData()),
+      readonly: true,
+      error: 'El perfil no se puede modificar. Solicite cualquier corrección al administrador.',
+      success: null,
+    });
+  }
+
   const formData = {
     modo: req.body.modo || 'crear',
     nombre: (req.body.nombre || '').trim(),
@@ -839,15 +972,63 @@ router.post('/', async (req, res) => {
     formData.correo = req.session.microsoftProfile.correo.trim().toLowerCase();
   }
 
-  const isStudent = formData.tipo_usuario === 'estudiante';
-  const isTeacher = formData.tipo_usuario === 'docente';
-
   if (!formData.correo.endsWith('@udistrital.edu.co')) {
     return res.render('home/profile', {
       ...formData,
       error: 'Solo se permiten correos institucionales @udistrital.edu.co.',
     });
   }
+
+  // En el registro solo se aceptan los datos validados contra OATI en /identify.
+  let registroPendiente = null;
+  let estudianteElegido = null;
+  if (!req.session.user && req.session.microsoftProfile) {
+    registroPendiente = req.session.registroPendiente;
+    if (!registroPendiente || normalizeEmail(registroPendiente.correo) !== formData.correo) {
+      return res.redirect('/milab/api/profile/identify');
+    }
+
+    const estudiantes = Array.isArray(registroPendiente.estudiantes)
+      ? registroPendiente.estudiantes
+      : [];
+    formData.modo = 'crear';
+    formData.documento = registroPendiente.documento;
+    formData.profileLocked = true;
+    formData.opcionesCodigo = estudiantes.length > 1 ? estudiantes : [];
+
+    if (estudiantes.length) {
+      estudianteElegido =
+        estudiantes.length === 1
+          ? estudiantes[0]
+          : estudiantes.find((item) => item.codigo === formData.codigo) || null;
+
+      if (!estudianteElegido) {
+        return res.render('home/profile', {
+          ...formData,
+          tipo_usuario: 'estudiante',
+          codigo: '',
+          estado: '',
+          carrera: '',
+          error: 'Seleccione el código de estudiante activo con el que desea registrarse.',
+        });
+      }
+
+      formData.tipo_usuario = 'estudiante';
+      formData.codigo = estudianteElegido.codigo;
+      formData.estado = estudianteElegido.estado;
+      formData.carrera = estudianteElegido.carrera;
+    } else if (registroPendiente.docente) {
+      formData.tipo_usuario = 'docente';
+      formData.codigo = '';
+      formData.carrera = '';
+      formData.estado = registroPendiente.docente.estado || formData.estado;
+    }
+
+    formData.nombre = (estudianteElegido || registroPendiente.docente)?.nombre || formData.nombre;
+  }
+
+  const isStudent = formData.tipo_usuario === 'estudiante';
+  const isTeacher = formData.tipo_usuario === 'docente';
 
   if (!formData.nombre || !formData.documento || !formData.estado) {
     return res.render('home/profile', {
@@ -871,62 +1052,6 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    if (req.session.user) {
-      const sessionRoles = normalizeRoles(req.session.user.roles || req.session.user.tipo);
-      const sessionIsStudent = sessionRoles.includes('estudiante');
-      const sessionIsTeacher = sessionRoles.includes('docente');
-
-      if (!sessionIsStudent && !sessionIsTeacher) {
-        return res.render('home/profile', {
-          ...formData,
-          error: 'El perfil solo puede actualizarse para roles estudiante o docente.',
-        });
-      }
-
-      const userId = req.session.user.id;
-
-      if (userId) {
-        await pool.query(
-          `UPDATE usuario
-           SET nombre = $1,
-               correo = $2,
-               documento = $3,
-               fecha_modificacion = CURRENT_TIMESTAMP
-           WHERE id = $4`,
-          [formData.nombre, formData.correo, formData.documento, userId]
-        );
-
-        if (isStudent) {
-          await upsertStudentProfile(
-            userId,
-            formData.documento,
-            formData.codigo,
-            formData.carrera,
-            formData.estado
-          );
-        }
-
-        if (isTeacher) {
-          await upsertTeacherProfile(userId, formData.documento, formData.estado);
-        }
-      }
-
-      await upsertLegacyUsuario({
-        documento: formData.documento,
-        codigo: isStudent ? formData.codigo : null,
-        nombre: formData.nombre,
-        correo: formData.correo,
-        estado: formData.estado,
-        carrera: isStudent ? formData.carrera : null,
-      });
-
-      return res.render('home/profile', {
-        ...formData,
-        modo: 'editar',
-        success: 'Perfil actualizado correctamente.',
-      });
-    }
-
     if (!req.session.microsoftProfile) {
       return res.redirect('/milab/auth/login');
     }
@@ -959,35 +1084,13 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const userId = await ensureUserIdentity({
+    await completeRegistration({
       correo: formData.correo,
       documento: formData.documento,
       nombre: formData.nombre,
-    });
-
-    await ensureRoleAssignment(userId, formData.tipo_usuario);
-
-    if (isStudent) {
-      await upsertStudentProfile(
-        userId,
-        formData.documento,
-        formData.codigo,
-        formData.carrera,
-        formData.estado
-      );
-    }
-
-    if (isTeacher) {
-      await upsertTeacherProfile(userId, formData.documento, formData.estado);
-    }
-
-    await upsertLegacyUsuario({
-      documento: formData.documento,
-      codigo: isStudent ? formData.codigo : null,
-      nombre: formData.nombre,
-      correo: formData.correo,
-      estado: formData.estado,
-      carrera: isStudent ? formData.carrera : null,
+      estudiante: estudianteElegido,
+      docente: registroPendiente.docente || null,
+      milabRoles: registroPendiente.milabRoles || [],
     });
 
     const refreshed = await fetchUserByEmail(formData.correo);
@@ -996,6 +1099,7 @@ router.post('/', async (req, res) => {
       req.session.user = buildSessionUser(refreshed);
       startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
+      req.session.registroPendiente = null;
     }
 
     return res.redirect('/milab/inicio');

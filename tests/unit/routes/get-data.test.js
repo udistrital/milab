@@ -32,7 +32,12 @@ const getDataStudentRecordPath = path.resolve(
   '../../../src/libs/oati-student-record.js'
 );
 
-function loadGetDataRoute({ studentRecords, usuarioCodigoRows = [], multaRows = [] }) {
+function loadGetDataRoute({
+  studentRecords,
+  usuarioCodigoRows = [],
+  multaRows = [],
+  sessionUser = { documento: '1001219870', documento_real: '1001219870', roles: ['estudiante'] },
+}) {
   const originals = new Map();
   const ensuredProfiles = [];
   const queries = [];
@@ -52,6 +57,8 @@ function loadGetDataRoute({ studentRecords, usuarioCodigoRows = [], multaRows = 
     oatiClient: {
       getAcademicServicePath: (value) => value,
       async requestOati(servicePath) {
+        const cedula = String(servicePath).match(/datos_basicos_activos_cedula\/(\w+)/);
+        if (cedula) requestedDocumentos.push(cedula[1]);
         if (servicePath.startsWith('estados_codigo/')) {
           return { estado: { nombre: servicePath === 'estados_codigo/E' ? 'EGRESADO' : 'ACTIVO' } };
         }
@@ -88,7 +95,9 @@ function loadGetDataRoute({ studentRecords, usuarioCodigoRows = [], multaRows = 
   }
 
   const app = express();
+  const requestedDocumentos = [];
   app.use((req, res, next) => {
+    req.session = { user: sessionUser };
     res.render = (view, locals) => res.status(200).json({ view, locals });
     next();
   });
@@ -98,6 +107,7 @@ function loadGetDataRoute({ studentRecords, usuarioCodigoRows = [], multaRows = 
     app,
     ensuredProfiles,
     queries,
+    requestedDocumentos,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
         if (original) require.cache[modulePath] = original;
@@ -142,6 +152,88 @@ test('get-data uses the code associated in MILab and blocks on sanctions of the 
       loaded.queries.some((item) => item.sql.includes('INSERT INTO certificado')),
       false
     );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data ignora la cédula del formulario y usa la del estudiante en sesión', async () => {
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    usuarioCodigoRows: [{ codigo: '20242583011' }],
+    multaRows: [{ id: 1 }],
+  });
+
+  try {
+    await request(loaded.app).post('/').type('form').send({
+      numero_documento_identificacion: '99999999',
+      motivo_exp: 'Grado',
+      correo: 'otro@udistrital.edu.co',
+    });
+
+    assert.deepEqual(loaded.requestedDocumentos, ['1001219870']);
+    assert.equal(loaded.ensuredProfiles[0].documento, '1001219870');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data usa la cédula del estudiante impersonado aunque tenga rol admin', async () => {
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    multaRows: [{ id: 1 }],
+    sessionUser: {
+      documento: '1001219870',
+      roles: ['admin', 'estudiante'],
+      __impersonating: true,
+    },
+  });
+
+  try {
+    await request(loaded.app)
+      .post('/')
+      .type('form')
+      .send({ numero_documento_identificacion: '99999999', motivo_exp: 'Grado' });
+
+    assert.deepEqual(loaded.requestedDocumentos, ['1001219870']);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data permite a un admin real consultar la cédula indicada', async () => {
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    multaRows: [{ id: 1 }],
+    sessionUser: { documento: '80000000', roles: ['admin'] },
+  });
+
+  try {
+    await request(loaded.app)
+      .post('/')
+      .type('form')
+      .send({ numero_documento_identificacion: '1001219870', motivo_exp: 'Grado' });
+
+    assert.deepEqual(loaded.requestedDocumentos, ['1001219870']);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data rechaza la solicitud si la sesión no tiene documento', async () => {
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    sessionUser: { roles: ['estudiante'] },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/')
+      .type('form')
+      .send({ numero_documento_identificacion: '1001219870', motivo_exp: 'Grado' });
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.deepEqual(loaded.requestedDocumentos, []);
   } finally {
     loaded.restore();
   }

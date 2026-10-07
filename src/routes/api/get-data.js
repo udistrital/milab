@@ -13,6 +13,7 @@ const {
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
+const { normalizeRoles } = require('../../libs/roles');
 
 // Variables de entorno
 require('dotenv').config();
@@ -29,7 +30,23 @@ const requireStudentCertificateAccess = requireRoles(['admin', 'estudiante'], {
 });
 
 router.post('/', requireStudentCertificateAccess, async function (req, res) {
-  const { numero_documento_identificacion, motivo_exp, correo } = req.body;
+  const { motivo_exp, correo } = req.body;
+  const sessionUser = req.session?.user || {};
+  const sessionRoles = normalizeRoles(sessionUser.roles || sessionUser.tipo);
+  // Solo un admin real puede consultar otra cédula; el estudiante (o la impersonación) usa la suya.
+  const puedeConsultarOtroDocumento =
+    sessionRoles.includes('admin') && !sessionUser.__impersonating;
+  const numero_documento_identificacion = puedeConsultarOtroDocumento
+    ? String(req.body.numero_documento_identificacion || '').trim()
+    : String(sessionUser.documento_real || sessionUser.documento || '').trim();
+
+  if (!numero_documento_identificacion) {
+    return res.render('home/message_error', {
+      message: '¡Algo ha salido mal!',
+      message2: 'No fue posible identificar el documento del estudiante en la sesión.',
+      limit: null,
+    });
+  }
   let con_codigo;
   let con_estado;
   let con_documento;
