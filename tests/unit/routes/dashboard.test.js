@@ -701,3 +701,222 @@ test('dashboard admin active toggle updates usuario.activo and returns new statu
     loaded.restore();
   }
 });
+
+const ADMIN_SESSION_USER = { id: 1, tipo: 'admin', documento: '100', roles: ['admin'] };
+
+const EDITABLE_USER_ROW = {
+  id: 25,
+  documento: '1010',
+  correo: 'estudiante@udistrital.edu.co',
+  nombre: 'Estudiante Prueba',
+  codigo: '20151234',
+  carrera: 'Tecnologia en Sistemas',
+  estado: 'EGRESADO',
+  activo: true,
+};
+
+async function multiRecordOatiImpl(servicePath) {
+  const value = String(servicePath);
+  if (value.includes('datos_basicos_activos_cedula/1010')) {
+    return {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [
+          { nombre: 'Estudiante Prueba', codigo: '20151234', estado: 'E', carrera: '578' },
+          { nombre: 'Estudiante Prueba', codigo: '20241234', estado: 'A', carrera: '31' },
+        ],
+      },
+    };
+  }
+  if (value.includes('estados_codigo/E')) return { estado: { nombre: 'EGRESADO' } };
+  if (value.includes('estados_codigo/A')) return { estado: { nombre: 'ACTIVO' } };
+  if (value.includes('carrera/578')) {
+    return { carrerasCollection: { carrera: [{ nombre: 'Tecnologia en Sistemas' }] } };
+  }
+  if (value.includes('carrera/31')) {
+    return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria de Sistemas' }] } };
+  }
+  return {};
+}
+
+test('dashboard admin user editor lists every OATI record for the user document', async () => {
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM usuario') && sql.includes('WHERE id = $1')) {
+        return { rows: [{ ...EDITABLE_USER_ROW, id: params[0] }] };
+      }
+      return { rows: [] };
+    },
+    requestOatiImpl: multiRecordOatiImpl,
+  });
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_SESSION_USER);
+    const response = await request(app)
+      .get('/usuarios/25/oati-registros')
+      .set('Accept', 'application/json');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.usuario.codigo, '20151234');
+    assert.deepEqual(
+      response.body.registros.map(({ codigo, estado, carrera }) => ({ codigo, estado, carrera })),
+      [
+        { codigo: '20151234', estado: 'EGRESADO', carrera: 'Tecnologia en Sistemas' },
+        { codigo: '20241234', estado: 'ACTIVO', carrera: 'Ingenieria de Sistemas' },
+      ]
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin user editor reports OATI outages without failing silently', async () => {
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM usuario') && sql.includes('WHERE id = $1')) {
+        return { rows: [{ ...EDITABLE_USER_ROW, id: params[0] }] };
+      }
+      return { rows: [] };
+    },
+    requestOatiImpl: async () => {
+      throw new Error('OATI down');
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_SESSION_USER);
+    const response = await request(app)
+      .get('/usuarios/25/oati-registros')
+      .set('Accept', 'application/json');
+
+    assert.equal(response.status, 502);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.usuario.documento, '1010');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin user editor associates the selected OATI record keeping document and email', async () => {
+  const clientCalls = [];
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      clientCalls.push({ sql, params });
+      if (sql.includes('FROM usuario') && sql.includes('WHERE id = $1')) {
+        return { rows: [{ ...EDITABLE_USER_ROW, id: params[0] }] };
+      }
+      if (sql.includes('UPDATE usuario') && sql.includes('RETURNING')) {
+        return {
+          rows: [
+            {
+              ...EDITABLE_USER_ROW,
+              nombre: params[0],
+              codigo: params[1],
+              carrera: params[2],
+              estado: params[3],
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    requestOatiImpl: multiRecordOatiImpl,
+  });
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_SESSION_USER);
+    const response = await request(app)
+      .post('/usuarios/25/oati-registro')
+      .set('Accept', 'application/json')
+      .send({ codigo: '20241234' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.usuario.codigo, '20241234');
+    assert.equal(response.body.usuario.estado, 'ACTIVO');
+    assert.equal(response.body.usuario.carrera, 'Ingenieria de Sistemas');
+    assert.equal(response.body.usuario.documento, '1010');
+    assert.equal(response.body.usuario.correo, 'estudiante@udistrital.edu.co');
+
+    const updateCall = clientCalls.find(({ sql }) => sql.includes('UPDATE usuario'));
+    const setClause = updateCall.sql.split('WHERE')[0];
+    assert.doesNotMatch(setClause, /correo|documento/);
+    assert.deepEqual(updateCall.params, [
+      'Estudiante Prueba',
+      '20241234',
+      'Ingenieria de Sistemas',
+      'ACTIVO',
+      25,
+    ]);
+
+    const profileCall = clientCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO perfil_estudiante')
+    );
+    assert.deepEqual(profileCall.params, [
+      25,
+      '1010',
+      'Estudiante Prueba',
+      '20241234',
+      'Ingenieria de Sistemas',
+      'ACTIVO',
+    ]);
+    assert.match(profileCall.sql, /codigo = EXCLUDED\.codigo/);
+
+    const logCall = clientCalls.find(({ sql }) => sql.includes('INSERT INTO log'));
+    assert.match(logCall.params[2], /20241234.*20151234/);
+    assert.equal(
+      clientCalls.some(({ sql }) => sql === 'COMMIT'),
+      true
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin user editor rejects codes that OATI does not return for the document', async () => {
+  const clientCalls = [];
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      clientCalls.push(sql);
+      if (sql.includes('FROM usuario') && sql.includes('WHERE id = $1')) {
+        return { rows: [{ ...EDITABLE_USER_ROW, id: params[0] }] };
+      }
+      return { rows: [] };
+    },
+    requestOatiImpl: multiRecordOatiImpl,
+  });
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_SESSION_USER);
+    const response = await request(app)
+      .post('/usuarios/25/oati-registro')
+      .set('Accept', 'application/json')
+      .send({ codigo: '99999999' });
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.ok, false);
+    assert.equal(
+      clientCalls.some((sql) => sql.includes('UPDATE usuario')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard admin user editor validates the selected OATI code format', async () => {
+  const loaded = loadDashboardRoute();
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_SESSION_USER);
+    const response = await request(app)
+      .post('/usuarios/25/oati-registro')
+      .set('Accept', 'application/json')
+      .send({ codigo: '2024abc' });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+  } finally {
+    loaded.restore();
+  }
+});

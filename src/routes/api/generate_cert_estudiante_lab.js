@@ -13,6 +13,11 @@ const {
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const {
+  collectStudentCodigos,
+  getActiveSgaDebtsForStudent,
+  selectStudentRecordForDocumento,
+} = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
@@ -72,6 +77,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   }
 
   let con_codigo;
+  let con_codigos = [];
   let con_estado;
   let con_documento;
   let con_carrera;
@@ -255,7 +261,14 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         throw new Error('Estudiante no encontrado en OAS');
       }
 
-      const datosEstudiante = studentRecords[studentRecords.length - 1];
+      const searchedByCodigo =
+        (!numero_documento_identificacion || numero_documento_identificacion === '0') &&
+        codigo_form;
+      const datosEstudiante = searchedByCodigo
+        ? studentRecords[studentRecords.length - 1]
+        : (await selectStudentRecordForDocumento(studentRecords, numero_documento_identificacion))
+            .record;
+      con_codigos = collectStudentCodigos(studentRecords);
 
       con_codigo = datosEstudiante.codigo;
       con_estado = datosEstudiante.estado;
@@ -825,8 +838,8 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   async function consultarMultasSga() {
     if (!sgaDebtService.isConfigured()) return [];
 
-    return sgaDebtService.getActiveDebts({
-      codigo: con_codigo,
+    return getActiveSgaDebtsForStudent(sgaDebtService, {
+      codigos: con_codigos.length ? con_codigos : collectStudentCodigos([], con_codigo),
       documento: con_documento,
     });
   }
