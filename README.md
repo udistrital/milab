@@ -38,7 +38,8 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 - El servicio de deudores por ambiente se define en [src/config/sga-services.js](src/config/sga-services.js) (`SGA_DEBTORS_SERVICE_NAMES`) y no se lee del `.env` (`OATI_DEBT_SERVICE_NAME` no tiene efecto). Las consultas usan el gateway https de OATI con token OAuth, no el puerto 8282.
 - `NODE_ENV=production` (o cualquier ambiente no listado como no productivo, incluido vacío) usa `servicios_academicos_produccion`; `dev`, `development`, `local`, `test`, `testing`, `staging` y `preprod` usan `academica_pruebas`.
 - Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
-- Se consideran deudas activas las de `DEU_ESTADO = 2`, excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea.
+- Se consideran deudas activas las de `DEU_ESTADO = 1` o `2` (se aceptan valores numéricos o texto), excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea. El estado `3` (saldada) y los demás estados no se incluyen.
+- Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes: una deuda registrada en producción puede no existir en pruebas. Para diagnosticar faltantes, verificar tanto el servicio seleccionado por ambiente como el estado devuelto; una respuesta válida sin registros no es un error de conexión.
 - La generación del paz y salvo de estudiante revisa las multas de MILab y SGA; si SGA no responde, el certificado no se genera.
 
 ## Arquitectura y Estructura del Proyecto
