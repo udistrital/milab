@@ -69,6 +69,46 @@ function buildAdminErrorDetail(error, req, status) {
   return lines.join('\n');
 }
 
+function buildFallbackAdminErrorDetail(req, payload = {}, status = 500) {
+  const lines = [
+    'Tipo: Error de aplicación (sin objeto Error adjunto)',
+    `Mensaje UI: ${payload.message || 'No definido'}`,
+    `Detalle UI: ${payload.message2 || 'No definido'}`,
+  ];
+
+  if (Number.isInteger(status)) {
+    lines.push(`Estado HTTP: ${status}`);
+  }
+
+  if (req?.method && req?.originalUrl) {
+    lines.push(`Solicitud: ${req.method} ${req.originalUrl}`);
+  }
+
+  lines.push(
+    'Sugerencia: captura la excepción en el catch y envíala en payload.error o usa renderApplicationError(..., error).'
+  );
+
+  return lines.join('\n');
+}
+
+function enrichErrorPayloadForAdmin(req, payload = {}, explicitError = null) {
+  const safePayload = payload && typeof payload === 'object' ? { ...payload } : {};
+  const statusCode = Number.isInteger(safePayload.status) ? safePayload.status : 500;
+
+  if (safePayload.adminErrorDetail || !req || !isAdminUser(req.session?.user)) {
+    delete safePayload.error;
+    return safePayload;
+  }
+
+  const errorToRender = explicitError || safePayload.error || null;
+  safePayload.adminErrorDetail = errorToRender
+    ? buildAdminErrorDetail(errorToRender, req, statusCode)
+    : buildFallbackAdminErrorDetail(req, safePayload, statusCode);
+
+  delete safePayload.error;
+  return safePayload;
+}
+
 function wantsJson(req) {
   if (req.xhr) {
     return true;
@@ -88,16 +128,29 @@ function renderApplicationError(res, overrides = {}, req = null, error = null) {
   };
 
   const errorToRender = error || payload.error || null;
-  delete payload.error;
 
   const statusCode = Number.isInteger(payload.status) ? payload.status : 500;
+  const normalizedPayload = enrichErrorPayloadForAdmin(req, payload, errorToRender);
+  delete normalizedPayload.status;
+
+  return res.status(statusCode).render('home/message_error', normalizedPayload);
+}
+
+function renderModuleError(req, res, overrides = {}, error = null) {
+  const payload = enrichErrorPayloadForAdmin(req, {
+    limit: null,
+    ...overrides,
+    error: error || overrides.error || null,
+  });
+
+  const statusCode = Number.isInteger(payload.status) ? payload.status : null;
   delete payload.status;
 
-  if (!payload.adminErrorDetail && req && isAdminUser(req.session?.user) && errorToRender) {
-    payload.adminErrorDetail = buildAdminErrorDetail(errorToRender, req, statusCode);
+  if (statusCode) {
+    return res.status(statusCode).render('home/message_error', payload);
   }
 
-  return res.status(statusCode).render('home/message_error', payload);
+  return res.render('home/message_error', payload);
 }
 
 function createApplicationErrorHandler(logger = console) {
@@ -133,7 +186,9 @@ function createApplicationErrorHandler(logger = console) {
 
 module.exports = {
   createApplicationErrorHandler,
+  enrichErrorPayloadForAdmin,
   normalizeErrorStatus,
   renderApplicationError,
+  renderModuleError,
   wantsJson,
 };

@@ -4,6 +4,7 @@ const { requestOati, getAcademicServicePath } = require('../../libs/oati-client'
 const pool = require('../../libs/db');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
+const { startSessionLifetime } = require('../../libs/session-policy');
 
 const router = Router();
 
@@ -275,6 +276,7 @@ router.get(
         await regenerateSession(req);
         if (req.session) {
           req.session.user = buildSessionUser(enriched || usuario);
+          startSessionLifetime(req.session);
           req.session.microsoftProfile = null;
         }
         return res.redirect('/milab/inicio');

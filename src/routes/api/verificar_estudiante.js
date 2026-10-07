@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
+const { sgaDebtService } = require('../../libs/oati-debts');
 const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const router = express.Router();
@@ -169,28 +170,47 @@ router.post('/', requireVerificationAction, async (req, res) => {
     const queryMultas =
       "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
     const resultMultas = await pool.query(queryMultas, [usuarioId]);
+    let sgaMultaInfo = [];
+    let sgaLookupError = null;
 
-    if (resultMultas.rows.length > 0) {
-      // Tiene multas activas
+    if (sgaDebtService.isConfigured()) {
+      try {
+        sgaMultaInfo = await sgaDebtService.getActiveDebts({
+          codigo: con_codigo,
+          documento,
+        });
+      } catch (sgaError) {
+        console.error('Error consultando multas del estudiante en SGA:', sgaError);
+        sgaLookupError =
+          'No fue posible verificar las multas en SGA. El estado SGA queda sin confirmar y el certificado no podrá generarse hasta que SGA responda; inténtalo nuevamente en unos minutos.';
+      }
+    } else {
+      sgaLookupError =
+        'El servicio SGA no está configurado en este ambiente. Puedes continuar con las multas registradas en MILab.';
+    }
+
+    if (resultMultas.rows.length > 0 || sgaMultaInfo.length > 0) {
       return res.render('home/alerta-multado', {
         multaInfo: resultMultas.rows,
-      });
-    } else {
-      const correo = await resolveStudentEmail(documento, con_codigo);
-
-      // No tiene multas - Mostrar formulario para generar certificado (get-info2)
-      // Pasamos los datos necesarios para que get-info2 los muestre y get-data los procese
-      return res.render('home/get-info2', {
-        nombre: con_nombre,
-        documento: documento,
-        carrera: con_carrera_nombre,
-        estado: con_estado_nombre,
-        codigo: con_codigo,
-        correo,
-        correoAutoDetectado: Boolean(correo),
-        tipo: req.session.user.tipo, // Para mantener la sesión válida en la vista
+        sgaMultaInfo,
+        sgaLookupError,
       });
     }
+
+    const correo = await resolveStudentEmail(documento, con_codigo);
+
+    // No hay multas activas; cualquier incidencia SGA se muestra como aviso y no bloquea el flujo.
+    return res.render('home/get-info2', {
+      nombre: con_nombre,
+      documento: documento,
+      carrera: con_carrera_nombre,
+      estado: con_estado_nombre,
+      codigo: con_codigo,
+      correo,
+      correoAutoDetectado: Boolean(correo),
+      sgaLookupWarning: sgaLookupError,
+      tipo: req.session.user.tipo,
+    });
   } catch (error) {
     console.error('Error en verificar_estudiante:', error);
     return res.render('home/verificar_estudiante', {

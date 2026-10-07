@@ -5,6 +5,7 @@ const { fetchUserById } = require('../../libs/user-identity');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
+const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -44,6 +45,21 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   let accionLog = 'Cambiar estado de multa a SALDADO';
   let mensajeSuccess = 'Multa actualizada correctamente';
   let mensajeSuccess2 = '';
+  const source = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
+  const returnToListFlow = source === 'listado';
+  const returnToTeacherFlow = source === 'docente';
+  const successReturnUrl = returnToListFlow
+    ? '/milab/api/get_list_multas'
+    : returnToTeacherFlow
+      ? '/milab/api/get-info-multa-docente/get'
+      : '/milab/api/get-info-multa/get';
+  const successReturnLabel = returnToListFlow
+    ? 'Volver al listado de sanciones'
+    : returnToTeacherFlow
+      ? 'Volver a gestión de sanciones docentes'
+      : 'Volver a gestión de sanciones estudiantiles';
 
   try {
     // Primero obtenemos la información base y alcance de la multa
@@ -164,17 +180,29 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       [req.session.user.tipo, documentoReal, accionLog, referenciaSancionado]
     );
 
+    if (returnToListFlow) {
+      const successParam = con_estado_saldado === 'SALDADA' ? '?success=saldada' : '';
+      return res.redirect(`${successReturnUrl}${successParam}`);
+    }
+
     return res.render('home/message_success', {
       message: mensajeSuccess,
       message2: mensajeSuccess2 || `Sancionado registrado: ${referenciaSancionado}`,
+      returnUrl: successReturnUrl,
+      returnLabel: successReturnLabel,
     });
   } catch (error) {
     console.error('Error:', error);
-    res.render('home/message_error', {
-      message: '¡Error en la operación!',
-      message2: 'Inténtalo nuevamente',
-      limit: 'noSession',
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: '¡Error en la operación!',
+        message2: 'Inténtalo nuevamente',
+        limit: 'noSession',
+      },
+      error
+    );
   }
 });
 

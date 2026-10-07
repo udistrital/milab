@@ -14,6 +14,7 @@ const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
+const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -25,6 +26,49 @@ const requireTeacherFineSubmissionAccess = requireRoles(['admin', 'laboratorista
   message2: 'Inténtalo nuevamente',
   limit: 'noSession',
 });
+
+const DUPLICATE_SUBMISSION_WINDOW_MS = 12000;
+
+function buildSubmissionFingerprint(payload) {
+  return [
+    payload.actorDocument,
+    payload.role,
+    payload.usuarioId,
+    payload.ualId,
+    payload.fecha,
+    payload.categoria,
+    payload.observaciones,
+    payload.estado,
+    payload.tipoSancion,
+  ]
+    .map((value) => String(value || '').trim())
+    .join('|');
+}
+
+function isDuplicateSubmission(req, fingerprint) {
+  if (!req.session || !fingerprint) {
+    return false;
+  }
+
+  const now = Date.now();
+  const cache = req.session.recentTeacherFineSubmissions || {};
+
+  Object.keys(cache).forEach((key) => {
+    if (now - Number(cache[key] || 0) > DUPLICATE_SUBMISSION_WINDOW_MS) {
+      delete cache[key];
+    }
+  });
+
+  const previousTimestamp = Number(cache[fingerprint] || 0);
+  if (previousTimestamp && now - previousTimestamp <= DUPLICATE_SUBMISSION_WINDOW_MS) {
+    req.session.recentTeacherFineSubmissions = cache;
+    return true;
+  }
+
+  cache[fingerprint] = now;
+  req.session.recentTeacherFineSubmissions = cache;
+  return false;
+}
 
 router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
   const requestBody = req.body || {};
@@ -175,6 +219,30 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       accionLog = 'Multa activa directa a docente';
       mensajeSuccessExtra =
         'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
+    }
+
+    const submissionFingerprint = buildSubmissionFingerprint({
+      actorDocument: sessionDocumento,
+      role: actorRole,
+      usuarioId: usuarioIdSancionado,
+      ualId: idUal,
+      fecha: fecha_multa,
+      categoria: cat_multa,
+      observaciones: obs_multa,
+      estado: finalEstado,
+      tipoSancion: tipoSancionFinal,
+    });
+
+    if (isDuplicateSubmission(req, submissionFingerprint)) {
+      return res.render('home/message_success', {
+        message: 'La solicitud ya estaba siendo procesada',
+        message2: 'Detectamos un doble clic y evitamos registrar la sanción dos veces.',
+        returnUrl: '/milab/api/get-info-multa-docente/get',
+        returnLabel: 'Volver a gestión de sanciones docentes',
+      });
+    }
+
+    if (permiteCrearActivaDirecta) {
       const inserted = await pool.query(
         'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
         [
@@ -239,14 +307,20 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',
       message2: mensajeSuccessExtra || `Documento sancionado: ${con_documento}`,
+      returnUrl: '/milab/api/get-info-multa-docente/get',
+      returnLabel: 'Volver a gestión de sanciones docentes',
     });
   } catch (error) {
     console.error('Error al insertar en la base de datos:', error);
-    return res.render('home/message_error', {
-      message: 'Error al registrar la sanción.',
-      message2: 'Inténtalo nuevamente.',
-      limit: null,
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: 'Error al registrar la sanción.',
+        message2: 'Inténtalo nuevamente.',
+      },
+      error
+    );
   }
 });
 

@@ -9,6 +9,10 @@ function createResponse() {
     statusCode: 200,
     redirectedTo: null,
     jsonBody: null,
+    clearCookie() {},
+    set() {
+      return this;
+    },
     status(code) {
       this.statusCode = code;
       return this;
@@ -17,7 +21,8 @@ function createResponse() {
       this.jsonBody = payload;
       return this;
     },
-    redirect(targetPath) {
+    redirect(status, targetPath) {
+      this.statusCode = status;
       this.redirectedTo = targetPath;
       return this;
     },
@@ -29,12 +34,16 @@ function loadMiddleware() {
   return require(middlewarePath);
 }
 
-test('sessionGateMiddleware redirects to login for expired HTML session', () => {
+function expiredSession() {
+  return { destroy: (callback) => callback(null) };
+}
+
+test('sessionGateMiddleware redirects home for expired HTML session', () => {
   const loaded = loadMiddleware();
   const req = {
     method: 'GET',
     originalUrl: '/milab/prestamos',
-    session: {},
+    session: expiredSession(),
     get: () => 'text/html',
   };
   const res = createResponse();
@@ -45,7 +54,8 @@ test('sessionGateMiddleware redirects to login for expired HTML session', () => 
   });
 
   assert.equal(nextCalled, false);
-  assert.equal(res.redirectedTo, '/milab/auth/login');
+  assert.equal(res.redirectedTo, '/milab/');
+  assert.equal(res.statusCode, 303);
 });
 
 test('sessionGateMiddleware returns 401 JSON for expired API session', () => {
@@ -53,7 +63,7 @@ test('sessionGateMiddleware returns 401 JSON for expired API session', () => {
   const req = {
     method: 'GET',
     originalUrl: '/milab/api/get_list_multas',
-    session: {},
+    session: expiredSession(),
     get: () => 'application/json',
     xhr: true,
   };
@@ -69,12 +79,12 @@ test('sessionGateMiddleware returns 401 JSON for expired API session', () => {
   assert.equal(res.jsonBody.code, 'SESSION_EXPIRED');
 });
 
-test('sessionGateMiddleware redirects to login when a protected API path is opened directly in the browser', () => {
+test('sessionGateMiddleware redirects home when a protected API path is opened directly in the browser', () => {
   const loaded = loadMiddleware();
   const req = {
     method: 'GET',
     originalUrl: '/milab/api/estudiantes_registrados',
-    session: {},
+    session: expiredSession(),
     get: (header) =>
       header === 'accept'
         ? 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
@@ -88,7 +98,7 @@ test('sessionGateMiddleware redirects to login when a protected API path is open
   });
 
   assert.equal(nextCalled, false);
-  assert.equal(res.redirectedTo, '/milab/auth/login');
+  assert.equal(res.redirectedTo, '/milab/');
   assert.equal(res.jsonBody, null);
 });
 

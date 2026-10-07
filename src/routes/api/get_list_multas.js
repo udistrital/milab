@@ -6,7 +6,12 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const { sgaDebtService } = require('../../libs/oati-debts');
+const {
+  renderApplicationError,
+  renderModuleError,
+  wantsJson,
+} = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
 
 const bp = require('body-parser');
@@ -14,7 +19,9 @@ router.use(bp.json());
 router.use(bp.urlencoded({ extended: true }));
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const MAX_FINE_CATEGORY_LENGTH = 500;
+const ALLOWED_FINE_STATES = new Set(['ACTIVA', 'APLAZADA', 'Pendiente', 'POR SALDAR', 'SALDADA']);
+const LIST_SUCCESS_VALUES = new Set(['activada', 'reactivada', 'aplazada', 'saldada', 'editada']);
 
 const requireMultasAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
   message: '¡Algo ha salido mal!',
@@ -111,6 +118,13 @@ function renderFilterError(req, res, message, message2) {
     message2,
     limit: null,
   });
+}
+
+function normalizeListSuccessFeedback(rawValue) {
+  const value = String(rawValue || '')
+    .trim()
+    .toLowerCase();
+  return LIST_SUCCESS_VALUES.has(value) ? value : null;
 }
 
 async function buildMultasQueryContext(req, client) {
@@ -225,6 +239,7 @@ async function queryMultasRows(client, conditions, params) {
         l.nombre AS nombre_laboratorista,
         l.documento AS cc_laboratorista,
         COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado,
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
@@ -281,6 +296,14 @@ async function addLaboratoristaActions(client, rows, req) {
       ...row,
       canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
       canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      canAplazar:
+        state === 'ACTIVA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
+      canReactivar:
+        state === 'APLAZADA' &&
+        (config?.permite_crear_multas_activas_directas === true ||
+          config?.permite_saldar_multas_directas === true),
       canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
       canEdit: state === 'ACTIVA',
     };
@@ -303,12 +326,75 @@ router.get('/resolve_name', requireMultasAccess, async (req, res) => {
   }
 });
 
+router.get('/:multaId/sga-multas', requireMultasAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const multaId = Number(req.params.multaId);
+  if (!Number.isInteger(multaId) || multaId <= 0) {
+    return res.status(400).json({ ok: false, message: 'El ID de la sanción no es válido.' });
+  }
+
+  if (!sgaDebtService.isConfigured()) {
+    return res.json({ ok: true, configured: false, supported: true, multas: [] });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const queryContext = await buildMultasQueryContext(req, client);
+    if (queryContext.error) {
+      client.release();
+      return res.status(403).json({
+        ok: false,
+        message: queryContext.error.message2 || queryContext.error.message,
+      });
+    }
+
+    const idParameter = `$${queryContext.params.length + 1}`;
+    const rows = await queryMultasRows(
+      client,
+      [...queryContext.conditions, `m.id = ${idParameter}`],
+      [...queryContext.params, multaId]
+    );
+    client.release();
+    client = null;
+
+    const sanction = rows[0];
+    if (!sanction) {
+      return res
+        .status(404)
+        .json({ ok: false, message: 'La sanción no existe o está fuera de tu alcance.' });
+    }
+
+    if (sanction.tipo_sancionado !== 'estudiante') {
+      return res.json({ ok: true, configured: true, supported: false, multas: [] });
+    }
+
+    const multas = await sgaDebtService.getActiveDebts({
+      codigo: sanction.codigo_sancionado,
+      documento: sanction.documento_sancionado,
+    });
+    return res.json({ ok: true, configured: true, supported: true, multas });
+  } catch (error) {
+    if (client) client.release();
+    console.error('Error consultando multas SGA desde el detalle de sanción:', error);
+    return res.status(502).json({
+      ok: false,
+      message: 'No fue posible consultar las multas del estudiante en SGA.',
+    });
+  }
+});
+
 router.post('/editar', requireMultasEditAccess, async (req, res) => {
   const multaId = Number(req.body?.multa_id);
   const categoria = String(req.body?.cat_multa || '').trim();
   const tipoSancion = String(req.body?.tipo_sancion || '').trim();
 
-  if (!Number.isInteger(multaId) || multaId <= 0 || !categoria || categoria.length > 100) {
+  if (
+    !Number.isInteger(multaId) ||
+    multaId <= 0 ||
+    !categoria ||
+    categoria.length > MAX_FINE_CATEGORY_LENGTH
+  ) {
     return res.render('home/message_error', {
       message: 'Datos de sanción inválidos.',
       message2: 'Selecciona una categoría válida.',
@@ -357,18 +443,19 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     );
     client.release();
 
-    return res.render('home/message_success', {
-      message: 'Sanción actualizada correctamente.',
-      message2: `Se actualizaron la categoría y el tipo de sanción #${multaId}.`,
-    });
+    return res.redirect('/milab/api/get_list_multas?success=editada');
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
-    return res.render('home/message_error', {
-      message: 'No fue posible editar la sanción.',
-      message2: 'Inténtalo nuevamente.',
-      limit: null,
-    });
+    return renderModuleError(
+      req,
+      res,
+      {
+        message: 'No fue posible editar la sanción.',
+        message2: 'Inténtalo nuevamente.',
+      },
+      error
+    );
   }
 });
 
@@ -398,6 +485,8 @@ router.get('/', requireMultasAccess, async (req, res) => {
       sancionesDocentes,
       SANCTION_TYPES,
       filtros: queryContext.filters,
+      successFeedback: normalizeListSuccessFeedback(req.query?.success),
+      sgaConfigured: sgaDebtService.isConfigured(),
     });
   } catch (error) {
     if (client) {
@@ -414,12 +503,17 @@ router.get('/', requireMultasAccess, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el listado de multas.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el listado de multas.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   }
 });
 

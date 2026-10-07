@@ -13,10 +13,34 @@ MILab es la aplicación web para la gestión de paz y salvos en laboratorios de 
 
 ## Cambios recientes (2.7.0)
 
-- **Sesión expirada más presentable:** al abrir directamente en el navegador una ruta protegida bajo `/milab/api/...` con la sesión vencida, la aplicación ahora redirige a la pantalla de inicio de sesión con la plantilla de MiLab en vez de mostrar el JSON crudo en blanco. Las llamadas AJAX/fetch internas (que piden `Accept: application/json`) siguen recibiendo la respuesta JSON `SESSION_EXPIRED` sin cambios ([src/routes/middlewares/session-gate.js](src/routes/middlewares/session-gate.js)).
+- **Edición de correos en dashboard:** el formulario libera el bloqueo de envío al terminar cada intento, incluidos los errores de validación o del servicio. Permite editar varias cuentas consecutivamente sin recargar la página y conserva la confirmación obligatoria y la protección contra envíos simultáneos.
+- **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
 - **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
+
+## Política de sesiones
+
+- **Inactividad:** 30 minutos por defecto. Las peticiones de trabajo renuevan el plazo y la cookie (`rolling: true`). El cliente registra interacción real (teclado, escritura, puntero y desplazamiento) y notifica actividad al servidor como máximo una vez por minuto, para no cerrar la sesión mientras se llenan formularios.
+- **Duración absoluta:** 8 horas desde la autenticación, incluso con actividad. Este límite exige iniciar sesión nuevamente; no se reinicia al entrar o salir de una impersonación.
+- **Sin actividad:** no se envían notificaciones de actividad. Las consultas de estado, el monitoreo `check-services` y los recursos estáticos no renuevan el reloj de inactividad. El servidor valida ambos límites antes de ejecutar acciones; las comprobaciones del navegador no sustituyen esa validación.
+- **Expiración:** se destruye todo el estado, incluido CSRF, perfil Microsoft pendiente e impersonación. Las respuestas HTML usan `303 /milab/`; AJAX recibe `401`, `code: SESSION_EXPIRED`, `redirect: /milab/` y `X-Session-Expired: 1`. El cliente compartido intercepta fetch/XHR y navega al inicio. Un `403` de permisos no cierra la sesión.
+- **Varias pestañas:** al vencer el temporizador del cliente se consulta el estado real, sin renovarlo, para respetar actividad realizada desde otra pestaña. Al volver a una pestaña visible también se comprueba el estado.
+- **Configuración fija:** los tiempos de 30 minutos de inactividad y 8 horas totales se definen en [src/libs/session-policy.js](src/libs/session-policy.js). No se leen del `.env`; `SESSION_IDLE_TIMEOUT_MS`, `SESSION_ABSOLUTE_TIMEOUT_MS` y el antiguo `SESSION_MAX_AGE_MS` no tienen efecto. Cambiar estos tiempos requiere modificar ese archivo y desplegar la aplicación.
+- **Limitación operativa pendiente:** se mantiene `MemoryStore`. Un reinicio o cambio de proceso puede perder una sesión activa; varias instancias requieren almacenamiento compartido o afinidad de sesiones. Esta corrección no añade persistencia. Mantener un `SESSION_SECRET` estable y revisar `TRUST_PROXY`/cookies HTTPS también es necesario.
+
+Referencias: [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) propone habitualmente 15–30 minutos de inactividad para aplicaciones de menor riesgo y 4–8 horas totales para jornadas de oficina. [NIST SP 800-63B-4](https://pages.nist.gov/800-63-4/sp800-63b/aal/#aal2reauth) recomienda en AAL2 no superar una hora de inactividad y 24 horas totales; no es un máximo universal ni una certificación AAL2 de MiLab. La política de 30 minutos/8 horas es la seleccionada para esta aplicación.
+
+Implementación: [política](src/libs/session-policy.js), [control del servidor](src/routes/middlewares/session-expiration.js), [endpoints de estado/actividad](src/routes/api/session.js) y [cliente global](src/public/js/session-control.js).
+
+## Consulta de multas SGA
+
+- El servicio de deudores por ambiente se define en [src/config/sga-services.js](src/config/sga-services.js) (`SGA_DEBTORS_SERVICE_NAMES`) y no se lee del `.env` (`OATI_DEBT_SERVICE_NAME` no tiene efecto). Las consultas usan el gateway https de OATI con token OAuth, no el puerto 8282.
+- `NODE_ENV=production` (o cualquier ambiente no listado como no productivo, incluido vacío) usa `servicios_academicos_produccion`; `dev`, `development`, `local`, `test`, `testing`, `staging` y `preprod` usan `academica_pruebas`.
+- Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
+- Se consideran deudas activas las de `DEU_ESTADO = 1` o `2` (se aceptan valores numéricos o texto), excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea. El estado `3` (saldada) y los demás estados no se incluyen.
+- Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes: una deuda registrada en producción puede no existir en pruebas. Para diagnosticar faltantes, verificar tanto el servicio seleccionado por ambiente como el estado devuelto; una respuesta válida sin registros no es un error de conexión.
+- La generación del paz y salvo de estudiante revisa las multas de MILab y SGA; si SGA no responde, el certificado no se genera.
 
 ## Arquitectura y Estructura del Proyecto
 

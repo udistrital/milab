@@ -40,6 +40,11 @@
             <%- error -%>
         </div>
         <% } %>
+        <% if (sgaConsultaOmitida) { %>
+        <div class="alert alert-warning mt-3" role="status">
+            El servicio SGA no está configurado en este ambiente; los resultados incluyen únicamente multas de MILab.
+        </div>
+        <% } %>
     </div>
     <div class="card-header col-md-11 mt-3 mx-auto text-center">
         <h5>Resultados del lote</h5>
@@ -51,6 +56,7 @@
                         <tr>
                             <th>Documento</th>
                             <th>Código</th>
+                            <th>Origen</th>
                             <th>Motivo de sanción</th>
                             <th>Estado de la sanción</th>
                             <th>Fecha de la sanción</th>
@@ -69,6 +75,7 @@
                                         <td class="text-light"><%= data.documento || '-' %></td>
                                         <td class="text-light"><%= data.codigo || data.identificador || '-' %></td>
                                         <% if (multa === null) { %>
+                                            <td class="text-light">-</td>
                                             <td class="text-light">
                                                 <em>El estudiante no tiene multas</em>
                                             </td>
@@ -79,6 +86,7 @@
                                             <td></td>
                                             <td class="text-center">-</td>
                                             <% } else if (multa === 'unknown') { %>
+                                                    <td class="text-light">-</td>
                                                 <td class="text-light">
                                                     <em>Este código no se encuentra registrado</em>
                                                 </td>
@@ -88,7 +96,17 @@
                                                 <td></td>
                                                 <td></td>
                                                 <td class="text-center">-</td>
+                                                <% } else if (multa === 'sga-error') { %>
+                                                    <td class="text-light">SGA</td>
+                                                    <td class="text-light"><em>No fue posible verificar las multas en SGA.</em></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td class="text-center">-</td>
                                             <% } else { %>
+                                                    <td class="text-light"><%= multa.origen || 'MILab' %></td>
                                                 <td class="text-light">
                                                     <em><%= resumirTexto(multa.cat_multa, 72) %></em>
                                                 </td>
@@ -105,6 +123,7 @@
                                                         data-bs-target="#detalleConsultaMasivaModal"
                                                         data-detalle-documento="<%= data.documento || '-' %>"
                                                         data-detalle-codigo="<%= data.codigo || data.identificador || '-' %>"
+                                                        data-detalle-origen="<%= multa.origen || 'MILab' %>"
                                                         data-detalle-categoria="<%= multa.cat_multa || '-' %>"
                                                         data-detalle-estado="<%= multa.con_estado_multa || '-' %>"
                                                         data-detalle-fecha="<%= multa.fecha_multa || '-' %>"
@@ -123,6 +142,7 @@
                         } else { %>
                             <tr>
                                 <td class="text-center">No hay registros en la base de datos</td>
+                                <td></td>
                                 <td></td>
                                 <td></td>
                                 <td></td>
@@ -164,6 +184,10 @@
                     <div class="col-md-6">
                         <div class="text-muted small">Código</div>
                         <div class="fw-semibold" data-detail-field="codigo"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Origen</div>
+                        <div class="fw-semibold" data-detail-field="origen"></div>
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted small">Estado</div>
@@ -213,6 +237,7 @@
         const fields = {
             documento: trigger.getAttribute('data-detalle-documento'),
             codigo: trigger.getAttribute('data-detalle-codigo'),
+            origen: trigger.getAttribute('data-detalle-origen'),
             categoria: trigger.getAttribute('data-detalle-categoria'),
             estado: trigger.getAttribute('data-detalle-estado'),
             fecha: trigger.getAttribute('data-detalle-fecha'),

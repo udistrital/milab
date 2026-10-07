@@ -169,12 +169,13 @@
             <h6 class="mb-3" data-detail-title="quitar">Quitar sanción</h6>
             <div class="alert alert-info d-none mb-3" data-detail-alert="directa" role="alert">Esta facultad tiene autorización para saldar directamente. La sanción pasará inmediatamente a SALDADA.</div>
             <div class="alert alert-secondary d-none mb-3" data-detail-alert="pendiente" role="alert">La sanción se marcará como POR SALDAR y el coordinador deberá aprobarla para cerrarla.</div>
-            <form action="/milab/api/quitar-multa" method="post" class="row g-3">
+            <form action="/milab/api/quitar-multa" method="post" class="row g-3" data-submit-once="true">
               <%- include('../partials/csrf_field') %>
               <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
+              <input type="hidden" name="source" value="estudiante">
               <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
-                <button class="btn btn-perso" type="submit" data-detail-button="quitar" data-submit-lock="true">Quitar sanción</button>
+                <button class="btn btn-perso" type="submit" data-detail-button="quitar" data-submit-lock="true" data-submit-loading-label="Procesando...">Quitar sanción</button>
               </div>
             </form>
           </div>
