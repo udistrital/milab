@@ -110,3 +110,31 @@ test('prestamos practicas configuracion view renders with minimal configuration 
   assert.match(html, /Configuracion De Practicas/i);
   assert.match(html, /Esquema Dinamico Del Laboratorio/i);
 });
+
+test('profile view renders the active program selector during registration', async () => {
+  const html = await renderView(
+    'src/views/home/profile.ejs',
+    buildBaseViewLocals({
+      modo: 'crear',
+      nombre: 'Estudiante Prueba',
+      correo: 'est@udistrital.edu.co',
+      documento: '1001219870',
+      codigo: '',
+      estado: '',
+      carrera: '',
+      tipo_usuario: 'estudiante',
+      readonly: false,
+      profileLocked: true,
+      error: null,
+      success: null,
+      opcionesCodigo: [
+        { codigo: '20242583011', carrera: 'INGENIERIA', estado: 'ACTIVO' },
+        { codigo: '2023999', carrera: 'TECNOLOGIA', estado: 'ACTIVO' },
+      ],
+    })
+  );
+
+  assert.match(html, /<select class="form-select" id="codigo" name="codigo" required>/);
+  assert.match(html, /20242583011 - INGENIERIA/);
+  assert.match(html, /2023999 - TECNOLOGIA/);
+});

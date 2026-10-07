@@ -100,10 +100,29 @@
               <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
             </div>
 
-            <div class="col-md-6 student-only">
-              <label for="codigo" class="form-label">Código</label>
-              <input type="text" class="form-control" id="codigo" name="codigo" value="<%= codigo || '' %>" <%= readonly ? 'readonly' : '' %>>
-            </div>
+            <% const opcionesCodigo = Array.isArray(locals.opcionesCodigo) ? locals.opcionesCodigo : []; %>
+            <% if (opcionesCodigo.length > 1) { %>
+              <div class="col-12 student-only">
+                <label for="codigo" class="form-label">Programa / código de estudiante</label>
+                <select class="form-select" id="codigo" name="codigo" required>
+                  <option value="" <%= !codigo ? 'selected' : '' %> disabled>Seleccione el programa con el que desea registrarse</option>
+                  <% opcionesCodigo.forEach(function(opcion) { %>
+                    <option
+                      value="<%= opcion.codigo %>"
+                      data-carrera="<%= opcion.carrera || '' %>"
+                      data-estado="<%= opcion.estado || '' %>"
+                      <%= codigo === opcion.codigo ? 'selected' : '' %>
+                    ><%= opcion.codigo %> - <%= opcion.carrera || 'Sin programa' %></option>
+                  <% }) %>
+                </select>
+                <div class="form-text">Su documento tiene varios registros activos en la universidad. Elija el programa que usará en MILab.</div>
+              </div>
+            <% } else { %>
+              <div class="col-md-6 student-only">
+                <label for="codigo" class="form-label">Código</label>
+                <input type="text" class="form-control" id="codigo" name="codigo" value="<%= codigo || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+              </div>
+            <% } %>
 
             <div class="col-md-6">
               <label for="estado" class="form-label">Estado</label>
@@ -146,7 +165,25 @@
     if (carrera) carrera.required = isStudent;
   }
 
-  document.addEventListener('DOMContentLoaded', toggleStudentFields);
+  function syncCodigoSelection() {
+    var codigo = document.getElementById('codigo');
+    if (!codigo || codigo.tagName !== 'SELECT') return;
+
+    var option = codigo.options[codigo.selectedIndex];
+    var carrera = document.getElementById('carrera');
+    var estado = document.getElementById('estado');
+    if (carrera) carrera.value = option && option.value ? option.getAttribute('data-carrera') || '' : '';
+    if (estado) estado.value = option && option.value ? option.getAttribute('data-estado') || '' : '';
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    toggleStudentFields();
+    var codigo = document.getElementById('codigo');
+    if (codigo && codigo.tagName === 'SELECT') {
+      codigo.addEventListener('change', syncCodigoSelection);
+      syncCodigoSelection();
+    }
+  });
 </script>
 
 <%- include('../partials/footer'); -%>
