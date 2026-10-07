@@ -11,6 +11,7 @@ const {
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
@@ -197,14 +198,16 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       const dato1 = await requestOati(
         getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
       );
-      const cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+      const { record: datosEstudiante } = await selectStudentRecordForDocumento(
+        dato1.datosEstudianteCollection.datosBasicosEstudiante,
+        numero_documento_identificacion
+      );
 
-      con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
-      con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
+      con_codigo = datosEstudiante.codigo;
+      con_estado = datosEstudiante.estado;
       con_documento = numero_documento_identificacion;
-      con_carrera =
-        dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
-      con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
+      con_carrera = datosEstudiante.carrera;
+      con_nombre = datosEstudiante.nombre;
 
       con_facultad = determinarFacultad(con_carrera);
 
@@ -258,6 +261,15 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
           message2: 'Verifica los datos e intenta nuevamente.',
           limit: null,
         });
+      }
+
+      // Las multas se asocian a la persona (cédula), así que incluyen las de otros códigos/programas.
+      const multasResult = await pool.query(
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
+        [usuarioId]
+      );
+      if (multasResult.rows.length > 0) {
+        return res.render('home/alerta-multado', { multaInfo: multasResult.rows });
       }
 
       let data_to_submit = {

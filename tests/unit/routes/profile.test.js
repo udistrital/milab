@@ -8,6 +8,7 @@ const routePath = path.resolve(__dirname, '../../../src/routes/api/profile.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
+const studentRecordPath = path.resolve(__dirname, '../../../src/libs/oati-student-record.js');
 
 function buildApp(route, sessionData) {
   const app = express();
@@ -83,6 +84,7 @@ function loadRoute({
   ];
 
   delete require.cache[routePath];
+  delete require.cache[studentRecordPath];
   for (const [modulePath, stub] of stubs) {
     originals.set(modulePath, require.cache[modulePath]);
     require.cache[modulePath] = {
@@ -104,6 +106,7 @@ function loadRoute({
         }
       }
       delete require.cache[routePath];
+      delete require.cache[studentRecordPath];
     },
   };
 }
@@ -268,4 +271,99 @@ test('profile identify promotes placeholder account and enrolls estudiante', asy
   } finally {
     loaded.restore();
   }
+});
+
+async function identifyWithStudentRecords({ records, usuarioCodigo }) {
+  const executed = [];
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql, params) => {
+      executed.push({ sql, params });
+      if (sql.includes('SELECT codigo::text AS codigo FROM usuario WHERE documento = $1')) {
+        return { rows: [{ codigo: usuarioCodigo }] };
+      }
+      if (sql.includes('FROM usuario') && sql.includes('WHERE documento = $1')) {
+        return { rows: [{ id: 25, documento: '1001219870', correo: 'est@udistrital.edu.co' }] };
+      }
+      if (
+        sql.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+      ) {
+        return { rows: [{ id: 25 }] };
+      }
+      if (sql.includes('SELECT documento FROM usuario WHERE documento = $1 OR LOWER(correo)')) {
+        return { rows: [{ documento: '1001219870' }] };
+      }
+      return { rows: [] };
+    },
+    requestOatiImpl: async (servicePath) => {
+      if (String(servicePath).includes('datos_basicos_activos_cedula/1001219870')) {
+        return { datosEstudianteCollection: { datosBasicosEstudiante: records } };
+      }
+      if (String(servicePath).includes('estados_codigo/E')) {
+        return { estado: { nombre: 'EGRESADO' } };
+      }
+      if (String(servicePath).includes('estados_codigo/A')) {
+        return { estado: { nombre: 'ACTIVO' } };
+      }
+      if (String(servicePath).includes('carrera/')) {
+        return { carrerasCollection: { carrera: [{ nombre: 'PROGRAMA' }] } };
+      }
+      return {};
+    },
+    fetchUserByEmailImpl: async (correo) => ({
+      id: 25,
+      correo,
+      documento: '1001219870',
+      nombre: 'ESTUDIANTE PRUEBA',
+      roles: ['estudiante'],
+      tipo: 'estudiante',
+    }),
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      microsoftProfile: { correo: 'est@udistrital.edu.co', nombre: 'ESTUDIANTE PRUEBA' },
+    });
+    const response = await request(app)
+      .post('/identify')
+      .type('form')
+      .send({ documento: '1001219870' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/profile');
+    return response.body.locals;
+  } finally {
+    loaded.restore();
+  }
+}
+
+const egresadoRecord = {
+  nombre: 'ESTUDIANTE PRUEBA',
+  codigo: '20151234',
+  estado: 'E',
+  carrera: '1',
+};
+const activoRecord = {
+  nombre: 'ESTUDIANTE PRUEBA',
+  codigo: '20242583011',
+  estado: 'A',
+  carrera: '2',
+};
+
+test('profile identify keeps the codigo associated in MILab on login', async () => {
+  const locals = await identifyWithStudentRecords({
+    records: [activoRecord, egresadoRecord],
+    usuarioCodigo: '20242583011',
+  });
+
+  assert.equal(locals.codigo, '20242583011');
+  assert.equal(locals.estado, 'ACTIVO');
+});
+
+test('profile identify falls back to the last record when the associated codigo is egresado', async () => {
+  const locals = await identifyWithStudentRecords({
+    records: [egresadoRecord, activoRecord],
+    usuarioCodigo: '20151234',
+  });
+
+  assert.equal(locals.codigo, '20242583011');
+  assert.equal(locals.estado, 'ACTIVO');
 });

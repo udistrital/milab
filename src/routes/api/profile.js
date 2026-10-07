@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
+const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
 const { startSessionLifetime } = require('../../libs/session-policy');
 
@@ -333,26 +334,40 @@ async function lookupStudentByDocumento(documento) {
     const collection = studentData?.datosEstudianteCollection?.datosBasicosEstudiante || [];
     if (!collection.length) return null;
 
-    const item = collection[collection.length - 1];
-    const codigo = item.codigo || '';
-    const estadoCodigo = item.estado || '';
-    const carreraCodigo = item.carrera || '';
-    const nombre = item.nombre || '';
-    const correo = resolveOatiEmail(item);
+    const lastItem = collection[collection.length - 1];
+    let item = lastItem;
+    try {
+      const seleccion = await selectStudentRecordForDocumento(collection, documento);
+      item = seleccion.record || lastItem;
+    } catch (selectionError) {
+      console.error('Error consultando el código asociado del estudiante:', selectionError);
+    }
 
-    const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${estadoCodigo}`));
+    const buildStudentProfile = async (record) => {
+      const estadoCodigo = record.estado || '';
+      const carreraCodigo = record.carrera || '';
+      const estadoData = await requestOati(
+        getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
+      );
+      const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
 
-    const carreraData = await requestOati(getAcademicServicePath(`carrera/${carreraCodigo}`));
-
-    return {
-      tipo_usuario: 'estudiante',
-      documento,
-      codigo,
-      estado: estadoData?.estado?.nombre || estadoCodigo || '',
-      carrera: carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '',
-      nombre,
-      correo,
+      return {
+        tipo_usuario: 'estudiante',
+        documento,
+        codigo: record.codigo || '',
+        estado: estadoData?.estado?.nombre || estadoCodigo || '',
+        carrera: carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '',
+        nombre: record.nombre || '',
+        correo: resolveOatiEmail(record),
+      };
     };
+
+    const profileData = await buildStudentProfile(item);
+    // Para el ingreso se conserva el comportamiento previo si el código asociado es de egresado.
+    if (item !== lastItem && profileData.estado === 'EGRESADO') {
+      return buildStudentProfile(lastItem);
+    }
+    return profileData;
   } catch {
     return null;
   }
