@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
+const { SgaDebtService } = require('../../../src/libs/oati-debts');
+
+const debtService = new SgaDebtService();
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/verificar_estudiante.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
@@ -70,7 +73,7 @@ function loadRoute({
             sgaRequest = student;
             if (sgaDebtsImpl) {
               const debts = await sgaDebtsImpl();
-              return debts.filter((debt) => String(debt?.DEU_ESTADO || '').trim() === '2');
+              return debts.filter((debt) => debtService.isBlockingDebt(debt));
             }
             return [];
           },
@@ -154,7 +157,11 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
   };
   const loaded = loadRoute({
     multaRows: [localFine],
-    sgaDebtsImpl: async () => [sgaFine, { ...sgaFine, DEU_ESTADO: '3' }],
+    sgaDebtsImpl: async () => [
+      sgaFine,
+      { ...sgaFine, DEU_ESTADO: '1' },
+      { ...sgaFine, DEU_ESTADO: '3' },
+    ],
   });
 
   try {
@@ -167,7 +174,7 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.deepEqual(response.body.locals.multaInfo, [localFine]);
-    assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaFine]);
+    assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaFine, { ...sgaFine, DEU_ESTADO: '1' }]);
   } finally {
     loaded.restore();
   }

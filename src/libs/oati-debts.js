@@ -27,7 +27,8 @@ class SgaDebtService {
   }
 
   isActiveDebt(debt) {
-    return String(debt?.DEU_ESTADO || '').trim() === '2';
+    const state = String(debt?.DEU_ESTADO ?? '').trim();
+    return state === '1' || state === '2';
   }
 
   // Las deudas de biblioteca no corresponden a laboratorios: no se muestran ni bloquean.
