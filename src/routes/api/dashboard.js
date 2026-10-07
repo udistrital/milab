@@ -1265,6 +1265,12 @@ router.post('/usuarios/:id/correo', requireDashboardAdminJson, async (req, res) 
             registrationUrl: buildAppUrl('/register'),
           },
         });
+        if (notificacion?.status === 'FAILED') {
+          console.error('Error enviando notificación de cuenta desde dashboard:', {
+            notificationId: notificacion.id,
+            error: notificacion.error,
+          });
+        }
       } catch (notificationError) {
         console.error('Error enviando notificación de cuenta desde dashboard:', notificationError);
         notificacion = { status: 'FAILED' };

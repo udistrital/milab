@@ -13,6 +13,7 @@ MILab es la aplicación web para la gestión de paz y salvos en laboratorios de 
 
 ## Cambios recientes (2.7.0)
 
+- **Edición de correos en dashboard:** el formulario libera el bloqueo de envío al terminar cada intento, incluidos los errores de validación o del servicio. Permite editar varias cuentas consecutivamente sin recargar la página y conserva la confirmación obligatoria y la protección contra envíos simultáneos.
 - **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
