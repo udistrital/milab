@@ -636,7 +636,7 @@
       if (ualId && Number.isFinite(ualId) && ualId > 0) body.ual_id_solicitud = ualId;
       xhr.send(JSON.stringify(body));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -667,7 +667,7 @@
       xhr.onerror = function () { setGlobalAlert('Error de conexión al inscribir.', 'danger'); };
       xhr.send(JSON.stringify({}));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 

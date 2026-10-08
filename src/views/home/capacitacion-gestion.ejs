@@ -418,7 +418,7 @@
     solicitudes: BASE_PATH + '/gestion/solicitudes',
     sesiones: BASE_PATH + '/gestion/sesiones',
     programarSesion: BASE_PATH + '/gestion/sesiones/programar',
-    cambiarEstado: BASE_PATH + '/gestion/cambiar-estado',
+    cambiarEstado: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/cambiar-estado'; },
     marcarAsistencia: BASE_PATH + '/gestion/asistencia/marcar',
     asistenciasList: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/asistencias'; },
     evidencia: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/evidencia'; },
@@ -592,6 +592,8 @@
           isAdmin: Boolean(data.scope_is_admin),
           facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
           ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+          facultades: Array.isArray(data.scope_facultades_detalle) ? data.scope_facultades_detalle : [],
+          laboratorios: Array.isArray(data.scope_laboratorios_detalle) ? data.scope_laboratorios_detalle : [],
           resolvedFrom: data.scope_resolved_from,
           vacio: Boolean(data.scope_vacio),
           scope_message: data.mensaje || data.scope_message || '',
@@ -670,6 +672,8 @@
           isAdmin: Boolean(data.scope_is_admin),
           facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
           ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+          facultades: Array.isArray(data.scope_facultades_detalle) ? data.scope_facultades_detalle : [],
+          laboratorios: Array.isArray(data.scope_laboratorios_detalle) ? data.scope_laboratorios_detalle : [],
           resolvedFrom: data.scope_resolved_from,
           vacio: Boolean(data.scope_vacio),
           scope_message: data.mensaje || data.scope_message || '',
@@ -1062,12 +1066,12 @@
             setModalAlert('❌ Error: ' + (data.message || 'Respuesta inválida.'), 'danger');
           }
         } finally {
-          if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+          if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
         }
       };
       xhr.onerror = function () {
         setModalAlert('❌ Error de conexión. Revisa red y reintenta.', 'danger');
-        if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+        if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
       };
       var body = {
         codigo_curso: codigoCurso,
@@ -1084,7 +1088,7 @@
       xhr.send(JSON.stringify(body));
     } catch (err) {
       setModalAlert('❌ Error al enviar: ' + (err?.message || String(err)), 'danger');
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -1100,7 +1104,7 @@
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Cambiando…');
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', api.cambiarEstado, true);
+      xhr.open('POST', api.cambiarEstado(id), true);
       setJsonPostHeaders(xhr);
       xhr.onload = function () {
         var data = safeParseJsonXhr(xhr, 'onCambiarEstadoSesion', 'Error cambiando estado. ');
@@ -1115,7 +1119,7 @@
       xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
       xhr.send(JSON.stringify({ sesion_id: id, id: id, estado: est }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -1158,7 +1162,7 @@
         metodo_marcado: metodo,
       }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -1194,14 +1198,63 @@
       xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
       xhr.send(JSON.stringify({ finalizar_sesion: true }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(ev?.currentTarget);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(ev?.currentTarget);
     }
   }
 
   function onEvidenciaBtn(ev) {
     var id = ev?.currentTarget?.getAttribute('data-id-sesion') || state.selectedSesionId;
     if (!id) { setGlobalAlert('Selecciona la sesión primero.', 'warning'); return; }
-    setGlobalAlert('Evidencia: endpoint POST ' + escapeHtml(api.evidencia(id)) + ' multipart/form-data field "evidencia" (jpg/png/pdf 10MB max). Implementación UI selector archivo = futura mejora; usa Postman/curl por ahora.', 'info');
+    var inputId = '__cap_evidencia_file';
+    var input = document.getElementById(inputId);
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = inputId;
+      input.accept = 'image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+    }
+    input.value = '';
+    input.onchange = function () {
+      var f = input.files && input.files[0];
+      if (!f) return;
+      var btn = ev?.currentTarget || document.querySelector('.evidencia-btn[data-id-sesion="' + id + '"]');
+      try {
+        if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Subiendo…');
+        var fd = new FormData();
+        fd.append('evidencia', f);
+        var t = getCsrfToken();
+        if (t) fd.append('_csrf', t);
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', api.evidencia(id), true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.onload = function () {
+          try {
+            var data = safeParseJsonXhr(xhr, 'onEvidenciaBtn', 'Error subiendo evidencia. ');
+            if (!data) return;
+            if (data.ok || data.success) {
+              var sizeKb = Math.round((Number(f.size) || 0) / 1024);
+              setGlobalAlert('✅ Evidencia #' + id + ' adjuntada: ' + escapeHtml(f.name) + ' (' + sizeKb + ' KB).', 'success');
+              loadSesiones();
+            } else {
+              setGlobalAlert('❌ No se pudo adjuntar evidencia: ' + (data.message || 'Error desconocido.'), 'danger');
+            }
+          } finally {
+            if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
+          }
+        };
+        xhr.onerror = function () {
+          try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn); } catch (_) {}
+          setGlobalAlert('Error de conexión al subir evidencia.', 'danger');
+        };
+        xhr.send(fd);
+      } catch (err) {
+        try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn); } catch (_) {}
+        setGlobalAlert('❌ Error al subir: ' + (err?.message || String(err)), 'danger');
+      }
+    };
+    input.click();
   }
 
   function onRecargar() {
@@ -1216,7 +1269,6 @@
   function onAplicarFiltrosSolicitudes() { loadSolicitudes(); }
   function onAplicarFiltrosReporte() { setGlobalAlert('Reporte detallado = Task 7 (CSV y filtros avanzados).', 'info', 'alert-reporte'); }
   function onDescargarCsv() { setGlobalAlert('Exportación CSV = Task 7. Descarga directa desde GET ' + escapeHtml(api.reporteCsv) + ' (cuando esté habilitado).', 'info', 'alert-reporte'); }
-  function onBtnNuevaSesion() { setGlobalAlert('Programar sesión: usa Postman POST ' + escapeHtml(api.programarSesion) + ' con body {codigo_curso, ual_id_lugar, fecha_hora_inicio, fecha_hora_fin, cupo_maximo, observaciones?}. UI modal = próxima mejora.', 'info'); }
   function onBtnEvidenciaSesion() { onEvidenciaBtn(null); }
   function onBtnFinalizarSesion() {
     if (!state.selectedSesionId) return setGlobalAlert('Selecciona una sesión primero.', 'warning', 'alert-asistencia');
@@ -1225,7 +1277,7 @@
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Finalizando…');
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', api.cambiarEstado, true);
+      xhr.open('POST', api.cambiarEstado(state.selectedSesionId), true);
       setJsonPostHeaders(xhr);
       xhr.onload = function () {
         var data = safeParseJsonXhr(xhr, 'finalizar-sesion', 'Error finalizando. ');
@@ -1239,7 +1291,7 @@
       };
       xhr.send(JSON.stringify({ sesion_id: state.selectedSesionId, estado: 'realizada' }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
   function onBtnCertificarAsistentesSesion() { onCertificarBtn(null); }
@@ -1344,7 +1396,7 @@
       setGlobalAlert('Se está descargando el reporte CSV desde ' + escapeHtml(url), 'success', 'alert-reporte');
     } finally {
       setTimeout(function () {
-        try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(ev?.currentTarget); } catch (_) {}
+        try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(ev?.currentTarget); } catch (_) {}
       }, 1200);
     }
   }
