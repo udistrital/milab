@@ -175,9 +175,7 @@ function ensureCapacitacionNavigationItems(navigation, roles) {
     : [];
   const capTitleLower = 'capacitación';
   let capGroupIndex = secondaryGroups.findIndex(
-    (g) =>
-      typeof g?.title === 'string' &&
-      g.title.trim().toLowerCase() === capTitleLower
+    (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === capTitleLower
   );
 
   if (capGroupIndex < 0) {
@@ -214,9 +212,7 @@ function ensureCapacitacionNavigationItems(navigation, roles) {
   secondaryGroups[capGroupIndex] = capGroup;
 
   if (normalizedRoles.includes('estudiante') || normalizedRoles.includes('docente')) {
-    const primaryLinks = Array.isArray(navigation.primaryLinks)
-      ? [...navigation.primaryLinks]
-      : [];
+    const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
     const misCap = {
       label: 'Solicitar / Mis capacitaciones',
       href: '/milab/capacitacion/mis-capacitaciones/load_info',

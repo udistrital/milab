@@ -327,7 +327,8 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
         scope_ual_ids: [],
         scope_resolved_from: scope.resolvedFrom,
         scope_vacio: true,
-        mensaje: 'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
+        mensaje:
+          'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
       });
     }
 
@@ -708,7 +709,8 @@ router.get('/gestion/sesiones', requireLaboratoristaOAdmin, async function (req,
         scope_is_admin: false,
         scope_resolved_from: scope.resolvedFrom,
         scope_vacio: true,
-        mensaje: 'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
+        mensaje:
+          'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
       });
     }
 
