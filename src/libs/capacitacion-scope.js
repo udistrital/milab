@@ -137,20 +137,35 @@ function isLaboratoristaRole(user) {
 
 function getUserDocumento(user) {
   if (!user) return '';
-  const raw = user.documento || user.doc || user.id_documento || '';
+  const raw = user.documento_real || user.documento || user.doc || user.id_documento || '';
   return String(raw || '').trim();
+}
+
+async function resolveLaboratoristaDocument(documento) {
+  if (!documento) return null;
+  try {
+    const res = await pool.query(
+      `SELECT documento FROM laboratorista WHERE (documento = $1 OR n_usuario = $1) AND activo = TRUE LIMIT 1`,
+      [documento]
+    );
+    return res?.rows?.[0]?.documento ? String(res.rows[0].documento).trim() : null;
+  } catch (err) {
+    console.warn('[capacitacion-scope:resolveLaboratoristaDocument] error:', err && err.message);
+    return String(documento).trim();
+  }
 }
 
 async function resolveLaboratoristaScope(req) {
   const user = req?.session?.user || null;
-  const documento = getUserDocumento(user);
+  const authDocumento = getUserDocumento(user);
   const admin = isAdminRole(user);
   const laboratorista = isLaboratoristaRole(user);
 
   const base = {
     isAdmin: admin,
     isLaboratorista: laboratorista,
-    documento,
+    authDocumento,
+    documento: authDocumento,
     resolvedFrom: admin ? 'role_admin' : laboratorista ? 'role_laboratorista' : 'unknown',
     facultyIds: [],
     ualIds: [],
@@ -159,47 +174,75 @@ async function resolveLaboratoristaScope(req) {
     cursoFilterRequired: !admin,
   };
 
-  if (admin || !laboratorista || !documento) {
+  if (admin || !laboratorista) {
+    return base;
+  }
+  if (!authDocumento) {
     return base;
   }
 
-  const rows = await pool.query(
-    `SELECT DISTINCT
-       u.ual_id,
-       u.nombre AS nombre_laboratorio,
-       u.codigo_abreviacion,
-       u.facultad_id,
-       f.nombre AS nombre_facultad
-     FROM laboratorista_ual lu
-     JOIN ual u
-       ON u.ual_id = lu.ual_id
-      AND u.activo = TRUE
-     JOIN facultad f
-       ON f.facultad_id = u.facultad_id
-      AND f.activo = TRUE
-     WHERE lu.laboratorista_documento_id = $1
-       AND lu.activo = TRUE
-     ORDER BY f.nombre ASC, u.nombre ASC`,
-    [documento]
-  );
+  const labDocumento = await resolveLaboratoristaDocument(authDocumento);
+  if (!labDocumento) {
+    return {
+      ...base,
+      resolvedFrom: base.resolvedFrom + '_no_laboratorista_row',
+    };
+  }
+  base.documento = labDocumento;
 
-  if (rows.rows.length === 0) {
-    return base;
+  let rows;
+  try {
+    rows = await pool.query(
+      `SELECT DISTINCT
+         u.ual_id,
+         u.nombre AS nombre_laboratorio,
+         u.codigo_abreviacion,
+         u.facultad_id,
+         f.nombre AS nombre_facultad
+       FROM laboratorista_ual lu
+       JOIN ual u
+         ON u.ual_id = lu.ual_id
+        AND u.activo = TRUE
+       JOIN facultad f
+         ON f.facultad_id = u.facultad_id
+        AND f.activo = TRUE
+       WHERE lu.laboratorista_documento_id = $1
+         AND lu.activo = TRUE
+       ORDER BY f.nombre ASC, u.nombre ASC`,
+      [labDocumento]
+    );
+  } catch (err) {
+    console.warn('[capacitacion-scope:resolveLaboratoristaScope] query error:', err && err.message);
+    return {
+      ...base,
+      resolvedFrom: base.resolvedFrom + '_query_error',
+    };
+  }
+
+  if (!rows?.rows?.length) {
+    return {
+      ...base,
+      resolvedFrom: base.resolvedFrom + '_no_ual_rows',
+    };
   }
 
   const uniqueFac = new Map();
   const uniqueUal = new Map();
   rows.rows.forEach((r) => {
-    uniqueFac.set(Number(r.facultad_id), {
-      facultad_id: Number(r.facultad_id),
-      nombre: r.nombre_facultad,
-    });
-    uniqueUal.set(Number(r.ual_id), {
-      ual_id: Number(r.ual_id),
-      nombre: r.nombre_laboratorio,
-      codigo_abreviacion: r.codigo_abreviacion,
-      facultad_id: Number(r.facultad_id),
-    });
+    const facId = Number(r.facultad_id);
+    const ualId = Number(r.ual_id);
+    if (Number.isInteger(facId)) {
+      uniqueFac.set(facId, { facultad_id: facId, nombre: r.nombre_facultad });
+    }
+    if (Number.isInteger(ualId)) {
+      uniqueUal.set(ualId, {
+        ual_id: ualId,
+        nombre: r.nombre_laboratorio,
+        codigo: r.codigo_abreviacion || null,
+        codigo_abreviacion: r.codigo_abreviacion || null,
+        facultad_id: facId,
+      });
+    }
   });
 
   return {
