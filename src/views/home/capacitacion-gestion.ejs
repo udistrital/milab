@@ -1239,7 +1239,7 @@
       var r = state.reporte[i];
       var ualFila = '';
       if (r.ual_nombre || r.facultad_nombre) {
-        ualFila = escapeHtml((r.ual_codigo ? '[' + r.ual_codigo + '] ' : '') +
+        ualFila = (r.ual_codigo ? '[' + escapeHtml(r.ual_codigo) + '] ' : '') +
           escapeHtml(r.ual_nombre || '—') + '<br><small class="text-muted">' + escapeHtml(r.facultad_nombre || '') + '</small>';
       } else ualFila = '<span class="text-muted">—</span>';
       var modalidad = (r.modalidad && r.modalidad === 'prestamo'
