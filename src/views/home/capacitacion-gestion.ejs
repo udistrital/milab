@@ -448,6 +448,13 @@
 
   var state = {
     scope: null,
+    scopeData: {
+      isAdmin: false,
+      facultades: [],
+      laboratorios: [],
+      facultyIds: [],
+      ualIds: [],
+    },
     solicitudes: [],
     sesiones: [],
     asistencias: { asistidos: [], faltantes: [], sesionId: null },
@@ -590,6 +597,16 @@
           scope_message: data.mensaje || data.scope_message || '',
         });
       }
+      if (data.scope_is_admin != null || data.scope_ual_ids != null || data.scope_laboratorios_detalle != null) {
+        state.scopeData = {
+          isAdmin: Boolean(data.scope_is_admin),
+          facultades: Array.isArray(data.scope_facultades_detalle) ? data.scope_facultades_detalle : [],
+          laboratorios: Array.isArray(data.scope_laboratorios_detalle) ? data.scope_laboratorios_detalle : [],
+          facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
+          ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+        };
+        try { populateProgramarSelects(); } catch (_) {}
+      }
       state.solicitudes = Array.isArray(data.solicitudes) ? data.solicitudes : (Array.isArray(data.data) ? data.data : []);
       state.lastScopeVacio_Solicitudes = Boolean(data.scope_vacio);
       state.lastScopeMessage_Solicitudes = data.mensaje || '';
@@ -657,6 +674,16 @@
           vacio: Boolean(data.scope_vacio),
           scope_message: data.mensaje || data.scope_message || '',
         });
+      }
+      if (data.scope_is_admin != null || data.scope_ual_ids != null || data.scope_laboratorios_detalle != null) {
+        state.scopeData = {
+          isAdmin: Boolean(data.scope_is_admin),
+          facultades: Array.isArray(data.scope_facultades_detalle) ? data.scope_facultades_detalle : [],
+          laboratorios: Array.isArray(data.scope_laboratorios_detalle) ? data.scope_laboratorios_detalle : [],
+          facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
+          ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+        };
+        try { populateProgramarSelects(); } catch (_) {}
       }
       state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : (Array.isArray(data.data) ? data.data : []);
       state.lastScopeVacio_Sesiones = Boolean(data.scope_vacio);
@@ -875,10 +902,41 @@
     }
     var ualSel = document.getElementById('ps-ual');
     if (ualSel) {
-      var opts = ['<option value="">Todas (cualquier UAL)</option>'];
-      state.contexto.uales.slice(0, 500).forEach(function (u) {
-        opts.push('<option value="' + escapeAttr(u.ual_id) + '">' + escapeHtml((u.codigo ? '[' + u.codigo + '] ' : '') + (u.nombre || ('UAL ' + u.ual_id))) + '</option>');
+      var useScopeUal = false;
+      var ualList = [];
+      if (state.scopeData && !state.scopeData.isAdmin && Array.isArray(state.scopeData.laboratorios) && state.scopeData.laboratorios.length > 0) {
+        useScopeUal = true;
+        ualList = state.scopeData.laboratorios.slice(0, 500);
+      } else {
+        ualList = state.contexto.uales.slice(0, 500);
+      }
+      var opts = [];
+      if (!useScopeUal) {
+        opts.push('<option value="">Todas (cualquier UAL)</option>');
+      }
+      var soloUnaUal = useScopeUal && ualList.length === 1;
+      ualList.forEach(function (u) {
+        var prefix = '';
+        if (u.codigo || u.codigo_abreviacion) {
+          prefix = '[' + (u.codigo || u.codigo_abreviacion) + '] ';
+        }
+        var suffix = u.nombre ? String(u.nombre) : ('UAL ' + String(u.ual_id));
+        var label = prefix + suffix;
+        var selAttr = soloUnaUal ? ' selected' : '';
+        opts.push(
+          '<option value="' + escapeAttr(u.ual_id) + '"' + selAttr + '>' +
+          escapeHtml(label) +
+          '</option>'
+        );
       });
+      if (soloUnaUal) {
+        var def0 = ualList[0] || {};
+        ualSel.title = 'Solo tu UAL asignada: ' + String(def0.nombre || def0.codigo_abreviacion || ('UAL ' + def0.ual_id));
+        ualSel.disabled = true;
+      } else {
+        ualSel.disabled = false;
+        ualSel.title = '';
+      }
       ualSel.innerHTML = opts.join('');
     }
     var hint = document.getElementById('ps-nombre-curso-hint');

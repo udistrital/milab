@@ -326,6 +326,8 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
         scope_faculty_ids: [],
         scope_ual_ids: [],
         scope_resolved_from: scope.resolvedFrom,
+        scope_facultades_detalle: [],
+        scope_laboratorios_detalle: [],
         scope_vacio: true,
         mensaje:
           'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
@@ -338,12 +340,21 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
       params.push(estadoValido);
       clauses.push('sc.estado = $' + params.length);
     }
-    if (!stateOnly && facultyIds.length > 0) {
-      clauses.push('sc.facultad_id = ANY($' + (params.length + 1) + '::int[])');
-      params.push(facultyIds);
-    }
-    if (!stateOnly && facultyIds.length === 0) {
-      clauses.push('FALSE');
+    if (!stateOnly) {
+      if (facultyIds.length > 0 || ualIds.length > 0) {
+        if (ualIds.length > 0) {
+          params.push(ualIds);
+          clauses.push('(sc.ual_id IS NULL OR sc.ual_id = ANY($' + params.length + '::int[]))');
+        }
+        if (facultyIds.length > 0) {
+          params.push(facultyIds);
+          clauses.push(
+            '(sc.ual_id IS NULL OR sc.facultad_id = ANY($' + params.length + '::int[]))'
+          );
+        }
+      } else {
+        clauses.push('FALSE');
+      }
     }
     const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
 
@@ -380,7 +391,10 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
       filas: rs.rows.length,
       scope_is_admin: scope.isAdmin,
       scope_faculty_ids: facultyIds,
+      scope_ual_ids: ualIds,
       scope_resolved_from: scope.resolvedFrom,
+      scope_facultades_detalle: Array.isArray(scope.facultades) ? scope.facultades : [],
+      scope_laboratorios_detalle: Array.isArray(scope.laboratorios) ? scope.laboratorios : [],
     });
   } catch (err) {
     return serverError(res, err, 'No fue posible listar las solicitudes de capacitación.');
@@ -777,6 +791,10 @@ router.get('/gestion/sesiones', requireLaboratoristaOAdmin, async function (req,
       filas: rs.rows.length,
       scope_is_admin: scope.isAdmin,
       scope_resolved_from: scope.resolvedFrom,
+      scope_faculty_ids: Array.isArray(scope.facultyIds) ? scope.facultyIds : [],
+      scope_ual_ids: Array.isArray(scope.ualIds) ? scope.ualIds : [],
+      scope_facultades_detalle: Array.isArray(scope.facultades) ? scope.facultades : [],
+      scope_laboratorios_detalle: Array.isArray(scope.laboratorios) ? scope.laboratorios : [],
     });
   } catch (err) {
     return serverError(res, err, 'No fue posible listar las sesiones programadas.');
