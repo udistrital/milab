@@ -211,27 +211,6 @@ function ensureCapacitacionNavigationItems(navigation, roles) {
   if (!capGroup.icon) capGroup.icon = 'bi-mortarboard';
   secondaryGroups[capGroupIndex] = capGroup;
 
-  if (normalizedRoles.includes('estudiante') || normalizedRoles.includes('docente')) {
-    const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
-    const misCap = {
-      label: 'Solicitar / Mis capacitaciones',
-      href: '/milab/capacitacion/mis-capacitaciones/load_info',
-      icon: 'bi-journal-bookmark',
-    };
-    const hasPrimary = primaryLinks.some((p) => p?.href === misCap.href);
-    if (!hasPrimary) {
-      const prestamosIndex = primaryLinks.findIndex(
-        (p) => p?.href && String(p.href).indexOf('/prestamos/') >= 0
-      );
-      if (prestamosIndex >= 0) {
-        primaryLinks.splice(prestamosIndex + 1, 0, misCap);
-      } else {
-        primaryLinks.push(misCap);
-      }
-    }
-    navigation = { ...navigation, primaryLinks };
-  }
-
   return {
     ...navigation,
     secondaryGroups,
