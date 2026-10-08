@@ -49,7 +49,13 @@
       </li>
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="tab-sesiones-inscripciones" data-bs-toggle="tab" data-bs-target="#pane-sesiones-inscripciones" type="button" role="tab" aria-controls="pane-sesiones-inscripciones" aria-selected="false">
-          <i class="bi bi-calendar3 me-1"></i> Sesiones e inscripciones
+          <i class="bi bi-calendar3 me-1"></i>Sesiones e inscripciones
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-mis-certificaciones" data-bs-toggle="tab" data-bs-target="#pane-mis-certificaciones" type="button" role="tab" aria-controls="pane-mis-certificaciones" aria-selected="false">
+          <i class="bi bi-patch-check me-1"></i>Mis certificaciones
+          <span id="count-certificaciones" class="badge rounded-pill bg-success ms-1">0</span>
         </button>
       </li>
     </ul>
@@ -196,6 +202,50 @@
           </div>
         </section>
       </div>
+
+      <div class="tab-pane fade" id="pane-mis-certificaciones" role="tabpanel" aria-labelledby="tab-mis-certificaciones">
+        <section class="card mb-4">
+          <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2" style="background:#e8f6ee;border-color:#b7e5c9;">
+            <h5 class="mb-0" style="color:#137333;">
+              <i class="bi bi-patch-check-fill me-2" style="color:#1e8e3e;"></i>Mis certificaciones de capacitación
+            </h5>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+              <select id="filter-certificaciones-vigente" class="form-select form-select-sm" style="max-width:220px;">
+                <option value="">Todas (vigentes y vencidas)</option>
+                <option value="true" selected>Solo vigentes</option>
+                <option value="false">Vencidas / inactivas</option>
+              </select>
+              <button id="btn-apply-certificaciones" class="btn btn-sm btn-outline-success">Aplicar</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="alert-certificaciones" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="tabla-certificaciones">
+                <thead style="background:#e8f6ee;">
+                  <tr>
+                    <th>Curso</th>
+                    <th>Fecha emisión</th>
+                    <th>Fecha vencimiento</th>
+                    <th>Estado</th>
+                    <th>Modalidad</th>
+                    <th>UAL / Facultad</th>
+                    <th>Certificado por</th>
+                    <th>Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="8" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus certificaciones...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="alert alert-success small mt-3 mb-0" role="alert" style="background:#effaf2;border-color:#b7e5c9;">
+              <i class="bi bi-info-circle me-2" style="color:#137333;"></i>
+              <b>Nota:</b> Las certificaciones con estado <span class="badge text-bg-success">Vigente</span> tienen <b>precedencia sobre EDX</b>. Si aparece aquí, puedes reservar equipos que requieran este curso sin consultar la plataforma EDX.
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </main>
@@ -210,6 +260,7 @@
     solicitar: BASE_PATH + '/solicitar',
     sesionesDisponibles: BASE_PATH + '/sesiones-disponibles',
     misInscripciones: BASE_PATH + '/mis-inscripciones',
+    misCertificaciones: BASE_PATH + '/mis-certificaciones',
     inscribirme: function (sesionId) { return BASE_PATH + '/inscribirme/' + encodeURIComponent(sesionId); },
     contextoCursos: '/milab/api/capacitacion-cursos/contexto',
   };
@@ -239,6 +290,7 @@
     solicitudes: [],
     sesiones: [],
     inscripciones: [],
+    certificaciones: [],
     cursosCatalogo: [],
     uales: [],
     sancionesActivas: 0,
@@ -350,6 +402,74 @@
     });
     sel.innerHTML = opts.join('');
   }
+
+  function loadMisCertificaciones() {
+    var tbody = document.querySelector('#tabla-certificaciones tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Cargando tus certificaciones...</td></tr>';
+    var xhr = new XMLHttpRequest();
+    var vigenteSel = document.getElementById('filter-certificaciones-vigente');
+    var vig = vigenteSel ? String(vigenteSel.value || '').trim() : '';
+    var url = api.misCertificaciones;
+    if (vig) url = url + '?vigente=' + encodeURIComponent(vig);
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var data = safeParseJsonXhr(xhr, 'loadMisCertificaciones', 'Error cargando certificaciones. ');
+      if (!data) return;
+      state.certificaciones = Array.isArray(data.certificaciones) ? data.certificaciones : (Array.isArray(data.data) ? data.data : []);
+      renderMisCertificaciones();
+    };
+    xhr.onerror = function () { setGlobalAlert('Error de conexión al cargar certificaciones.', 'danger'); };
+    xhr.send();
+  }
+
+  function renderMisCertificaciones() {
+    var count = document.getElementById('count-certificaciones');
+    if (count) count.textContent = String(state.certificaciones.length);
+    var tbody = document.querySelector('#tabla-certificaciones tbody');
+    if (!tbody) return;
+    if (!state.certificaciones.length) {
+      var vigSel = document.getElementById('filter-certificaciones-vigente');
+      var emptyMsg = 'No tienes certificaciones emitidas aún. Las certificaciones aparecen aquí después de asistir y certificarte en una sesión o después de una entrega de préstamo con capacitación.';
+      if (vigSel && String(vigSel.value) === 'true') emptyMsg = 'No tienes certificaciones VIGENTES en este momento. Completa cursos para verlas aquí. Cambia el filtro a "Todas" para ver vencidas.';
+      else if (vigSel && String(vigSel.value) === 'false') emptyMsg = 'No tienes certificaciones vencidas o inactivas.';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">' + escapeHtml(emptyMsg) + '</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.certificaciones.map(function (c) {
+      var vigente = c.vigente === true || c.vigente === 'true';
+      var badge = vigente
+        ? '<span class="badge text-bg-success"><i class="bi bi-patch-check-fill me-1"></i>Vigente</span>'
+        : (c.activo ? '<span class="badge text-bg-warning text-dark">Activa no vigente</span>' : '<span class="badge text-bg-secondary">Inactiva</span>');
+      var venc = c.fecha_vencimiento ? formatFecha(c.fecha_vencimiento) : '—';
+      if (c.vigente === false && c.dias_desde_vencimiento != null) {
+        var d = Number(c.dias_desde_vencimiento || 0);
+        venc += d > 0 ? '<div class="small text-danger">Hace ' + d + ' días</div>' : '';
+      }
+      var modalidad = (c.modalidad && String(c.modalidad).toLowerCase() === 'prestamo')
+        ? '<span class="badge text-bg-dark">Entrega préstamo</span>'
+        : '<span class="badge text-bg-light border">Sesión programada</span>';
+      var ualCell = escapeHtml(c.ual_nombre || (c.ual_id ? 'UAL ' + c.ual_id : ''));
+      if (c.facultad_nombre) ualCell = (ualCell ? ualCell + '<br>' : '') + '<small class="text-muted">' + escapeHtml(c.facultad_nombre) + '</small>';
+      if (!ualCell) ualCell = '<span class="text-muted small">—</span>';
+      var porLab = (c.certificado_por_laboratorista_nombre ? escapeHtml(c.certificado_por_laboratorista_nombre) : '')
+        + (c.certificado_por_laboratorista_doc ? '<div class="small text-muted">Doc. ' + escapeHtml(c.certificado_por_laboratorista_doc) + '</div>' : '');
+      if (!porLab) porLab = '<span class="text-muted small">MiLab/EDX</span>';
+      var notas = c.notas ? escapeHtml(String(c.notas).length > 140 ? String(c.notas).slice(0, 140) + '…' : c.notas) : '<span class="text-muted small">—</span>';
+      return '<tr>' +
+        '<td><code>' + escapeHtml(c.codigo_curso || '') + '</code>' + (c.nombre_curso ? '<div class="small text-muted">' + escapeHtml(c.nombre_curso) + '</div>' : '') + '</td>' +
+        '<td>' + formatFecha(c.fecha_emision) + '</td>' +
+        '<td>' + venc + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td>' + modalidad + '</td>' +
+        '<td>' + ualCell + '</td>' +
+        '<td>' + porLab + '</td>' +
+        '<td>' + notas + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function onMisCertificacionesFilter() { loadMisCertificaciones(); }
 
   function loadMisSolicitudes() {
     var tbody = document.querySelector('#tabla-solicitudes tbody');
@@ -555,6 +675,7 @@
     loadMisSolicitudes();
     loadSesionesDisponibles();
     loadMisInscripciones();
+    loadMisCertificaciones();
     setGlobalAlert('Datos recargados.', 'success');
   }
 
@@ -618,6 +739,10 @@
     document.getElementById('btn-recargar')?.addEventListener('click', onRecargarTodo);
     document.getElementById('form-nueva-solicitud')?.addEventListener('submit', onNuevaSolicitudSubmit);
     document.getElementById('btn-limpiar-solicitud')?.addEventListener('click', onLimpiarSolicitud);
+    document.getElementById('btn-apply-certificaciones')?.addEventListener('click', onMisCertificacionesFilter);
+    document.getElementById('tab-mis-certificaciones')?.addEventListener('shown.bs.tab', function () {
+      if (!state.certificaciones || state.certificaciones.length === 0) loadMisCertificaciones();
+    });
     loadContextoCursos();
     loadMisSolicitudes();
     loadSesionesDisponibles();

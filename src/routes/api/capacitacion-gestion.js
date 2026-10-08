@@ -309,6 +309,7 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
     const scope = await resolveLaboratoristaScope(req);
     const stateOnly = scope.isAdmin;
     const facultyIds = scopeFacultyIdList(scope);
+    const ualIds = Array.isArray(scope.ualIds) ? scope.ualIds.filter(Boolean) : [];
     const estadoRaw =
       String(req.query?.estado || '')
         .trim()
@@ -316,6 +317,19 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
     const estadoValido = estadoRaw && SOLICITUD_ESTADOS.has(estadoRaw) ? estadoRaw : null;
     const offset = Number(req.query?.offset) || 0;
     const limit = Math.min(500, Math.max(20, Number(req.query?.limit) || 200));
+
+    if (!stateOnly && facultyIds.length === 0 && ualIds.length === 0) {
+      return okJson(res, {
+        solicitudes: [],
+        filas: 0,
+        scope_is_admin: false,
+        scope_faculty_ids: [],
+        scope_ual_ids: [],
+        scope_resolved_from: scope.resolvedFrom,
+        scope_vacio: true,
+        mensaje: 'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
+      });
+    }
 
     const clauses = [];
     const params = [];
@@ -685,6 +699,19 @@ router.get('/gestion/sesiones', requireLaboratoristaOAdmin, async function (req,
     if (desde && isNaN(desde.getTime())) return badRequest(res, 'Parametro desde inválido.');
     if (hasta && isNaN(hasta.getTime())) return badRequest(res, 'Parametro hasta inválido.');
 
+    const facultyIds = Array.isArray(scope.facultyIds) ? scope.facultyIds.filter(Boolean) : [];
+    const ualIds = Array.isArray(scope.ualIds) ? scope.ualIds.filter(Boolean) : [];
+    if (!scope.isAdmin && facultyIds.length === 0 && ualIds.length === 0) {
+      return okJson(res, {
+        sesiones: [],
+        filas: 0,
+        scope_is_admin: false,
+        scope_resolved_from: scope.resolvedFrom,
+        scope_vacio: true,
+        mensaje: 'Usted no tiene UALes ni facultades asignadas. Contacte Coordinación General para asignar alcance.',
+      });
+    }
+
     const clauses = [];
     const params = [];
     if (estadoValido) {
@@ -983,6 +1010,61 @@ router.get('/mis-inscripciones', requireEstudianteODocente, async function (req,
     return okJson(res, { inscripciones: rs.rows, filas: rs.rows.length });
   } catch (err) {
     return serverError(res, err, 'No fue posible listar sus inscripciones.');
+  }
+});
+
+router.get('/mis-certificaciones', requireEstudianteODocente, async function (req, res) {
+  try {
+    const doc = getSessionDocument(req);
+    if (!doc) return badRequest(res, 'Usuario sin documento en sesión.');
+    const vigenteRaw = String(req.query?.vigente || '')
+      .trim()
+      .toLowerCase();
+    const sql = `
+      SELECT c.id,
+             c.codigo_curso,
+             COALESCE(NULLIF(c.nombre_curso_snapshot, ''), cur.nombre_curso) AS nombre_curso,
+             c.modalidad,
+             c.fecha_emision,
+             c.fecha_vencimiento,
+             c.vigencia_meses,
+             c.activo,
+             CASE WHEN c.activo = TRUE AND c.fecha_vencimiento > CURRENT_TIMESTAMP THEN TRUE ELSE FALSE END AS vigente,
+             (CURRENT_DATE - c.fecha_vencimiento::date) AS dias_desde_vencimiento,
+             c.sesion_capacitacion_id,
+             s.fecha_inicio AS sesion_fecha_inicio,
+             s.lugar AS sesion_lugar,
+             c.solicitud_prestamo_id,
+             c.ual_id,
+             u.nombre AS ual_nombre,
+             c.facultad_id,
+             f.nombre AS facultad_nombre,
+             c.certificado_por_laboratorista_doc,
+             c.certificado_por_laboratorista_nombre,
+             c.notas
+        FROM certificacion_usuario c
+        LEFT JOIN sesion_capacitacion s ON s.id = c.sesion_capacitacion_id
+        LEFT JOIN ual u ON u.ual_id = c.ual_id
+        LEFT JOIN facultad f ON f.facultad_id = c.facultad_id
+        LEFT JOIN cursos cur ON cur.codigo_curso = c.codigo_curso
+       WHERE c.usuario_documento = $1
+       ORDER BY CASE WHEN c.activo = TRUE AND c.fecha_vencimiento > CURRENT_TIMESTAMP THEN 0 ELSE 1 END,
+                c.fecha_vencimiento DESC, c.id DESC
+       LIMIT 500
+    `;
+    const rs = await pool.query(sql, [doc]);
+    let rows = rs.rows;
+    if (vigenteRaw === 'true')
+      rows = rows.filter(function (r) {
+        return !!r.vigente;
+      });
+    else if (vigenteRaw === 'false')
+      rows = rows.filter(function (r) {
+        return !r.vigente;
+      });
+    return okJson(res, { certificaciones: rows, filas: rows.length });
+  } catch (err) {
+    return serverError(res, err, 'No fue posible listar sus certificaciones.');
   }
 });
 

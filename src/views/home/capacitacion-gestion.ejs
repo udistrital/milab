@@ -325,6 +325,90 @@
   </div>
 </main>
 
+<!-- Modal Programar Sesión -->
+<div class="modal fade" id="modal-programar-sesion" tabindex="-1" aria-labelledby="modal-programar-sesion-title" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#e8f6ee;border-bottom:1px solid #b7e5c9;">
+        <h1 class="modal-title fs-5" id="modal-programar-sesion-title" style="color:#137333;">
+          <i class="bi bi-calendar-plus me-2" style="color:#1e8e3e;"></i>Programar nueva sesión de capacitación
+        </h1>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form id="form-programar-sesion" novalidate>
+        <div class="modal-body">
+          <div id="modal-programar-alert" class="alert d-none"></div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="ps-codigo-curso" class="form-label">Código curso *</label>
+              <input type="text" class="form-control" id="ps-codigo-curso" maxlength="100" list="ps-list-cursos" required placeholder="Código del catálogo cursos" />
+              <datalist id="ps-list-cursos"></datalist>
+              <div id="ps-nombre-curso-hint" class="form-text text-primary fw-semibold"></div>
+            </div>
+            <div class="col-md-6">
+              <label for="ps-ual" class="form-label">Laboratorio / UAL</label>
+              <select id="ps-ual" class="form-select">
+                <option value="">Todas (cualquier UAL)</option>
+              </select>
+              <div class="form-text">Si selecciona una UAL el curso debe pertenecer a la misma facultad de la UAL.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label for="ps-fecha-inicio" class="form-label">Fecha / Hora inicio *</label>
+              <input type="datetime-local" class="form-control" id="ps-fecha-inicio" required />
+            </div>
+            <div class="col-md-6">
+              <label for="ps-fecha-fin" class="form-label">Fecha / Hora fin *</label>
+              <input type="datetime-local" class="form-control" id="ps-fecha-fin" required />
+            </div>
+
+            <div class="col-md-6">
+              <label for="ps-cupo" class="form-label">Cupo máximo *</label>
+              <input type="number" class="form-control" id="ps-cupo" min="1" max="5000" step="1" value="25" required />
+            </div>
+            <div class="col-md-6">
+              <label for="ps-lugar" class="form-label">Lugar / ubicación</label>
+              <input type="text" class="form-control" id="ps-lugar" maxlength="255" placeholder="Salón 201, Bloque 5, etc." />
+            </div>
+
+            <div class="col-md-12">
+              <label for="ps-enlace" class="form-label">Enlace sesión (Meet / Teams)</label>
+              <input type="url" class="form-control" id="ps-enlace" maxlength="500" placeholder="https://..." />
+            </div>
+
+            <div class="col-md-12">
+              <label for="ps-descripcion" class="form-label">Descripción / agenda del curso</label>
+              <textarea id="ps-descripcion" rows="3" class="form-control" maxlength="1000" placeholder="Temas, pre-requisitos, material, agenda..."></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <div class="form-check form-switch ps-0 ms-1">
+                <input class="form-check-input float-none me-2" type="checkbox" role="switch" id="ps-marcar-notificado" checked style="width:2.2em;height:1.2em;">
+                <label class="form-check-label" for="ps-marcar-notificado"><b>Marcar solicitudes pendientes como "sesión notificada"</b></label>
+                <div class="form-text ms-0">Actualiza en lote el estado de solicitudes de estudiantes en este curso y les envía la notificación de sesión.</div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch ps-0 ms-1">
+                <input class="form-check-input float-none me-2" type="checkbox" role="switch" id="ps-notificar-email" checked style="width:2.2em;height:1.2em;">
+                <label class="form-check-label" for="ps-notificar-email"><b>Enviar correo a estudiantes interesados</b> (fire-and-forget)</label>
+                <div class="form-text ms-0">Envía email branded a quienes tengan solicitud o estén inscritos en la sesión. Requiere SMTP/Office365.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer flex-wrap gap-2">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" id="ps-btn-guardar" class="btn btn-success" data-submit-lock="true">
+            <i class="bi bi-calendar-check me-1"></i>Programar sesión
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script nonce="<%= cspNonce %>">
 (function () {
   'use strict';
@@ -370,6 +454,7 @@
     selectedSesionId: null,
     reporte: [],
     filtros: { solicitudes: {}, reporte: {} },
+    contexto: { cursos: [], uales: [] },
   };
 
   function setGlobalAlert(message, type, containerId) {
@@ -437,16 +522,19 @@
     var labs = (scope?.laboratorios || []).map(function (l) { return l.nombre; }).join(', ');
     var facIdsOk = Array.isArray(scope?.facultyIds) && scope.facultyIds.length > 0;
     var ualIdsOk = Array.isArray(scope?.ualIds) && scope.ualIds.length > 0;
+    var vacio = Boolean(scope?.vacio || (!facIdsOk && !ualIdsOk));
     if (lbl) {
-      if (!facIdsOk && !ualIdsOk) lbl.textContent = '⚠️ Scope: SIN UALes ASIGNADAS. Contacta administración.';
+      if (vacio) lbl.textContent = '⚠️ Scope: SIN UALes ASIGNADAS. Contacta administración.';
       else lbl.textContent = 'Scope: ' + (facs || labs || 'OK');
     }
     if (section) {
-      section.style.display = '';
-      if (title) title.textContent = facIdsOk || ualIdsOk ? 'Alcance de gestión (Laboratorista)' : 'Sin UALes asignadas';
-      if (body) body.textContent = facIdsOk || ualIdsOk
-        ? 'Usted gestiona: ' + (facs || labs || '—')
-        : 'Usted no tiene UALes o laboratorios asignados actualmente. Contacta Coordinación General para asignarte.';
+      section.style.display = vacio ? '' : (facIdsOk || ualIdsOk ? '' : 'none');
+      if (title) title.textContent = vacio ? 'Sin UALes asignadas (alcance limitado)' : (facIdsOk || ualIdsOk ? 'Alcance de gestión (Laboratorista)' : 'Scope OK');
+      if (body) {
+        if (scope && scope.scope_message) body.textContent = scope.scope_message;
+        else if (vacio) body.textContent = 'Usted no tiene UALes o laboratorios asignados actualmente. Contacta Coordinación General para asignarte.';
+        else body.textContent = 'Usted gestiona: ' + (facs || labs || '—');
+      }
     }
   }
 
@@ -485,12 +573,33 @@
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onload = function () {
       var data = safeParseJsonXhr(xhr, 'loadSolicitudes', 'Error cargando solicitudes. ');
-      if (!data) return;
-      if (data.meta?.scope) updateScopeLabels(data.meta.scope);
+      if (!data) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="alert alert-danger mb-0 d-inline-block text-start">No se pudieron cargar las solicitudes. Espere 30s y recargue la página (pods actualizándose). Si el error persiste contacte soporte.</div></td></tr>';
+        if (document.getElementById('count-solicitudes')) document.getElementById('count-solicitudes').textContent = '0';
+        return;
+      }
+      if (data.meta?.scope) {
+        updateScopeLabels(data.meta.scope);
+      } else if (data.scope_is_admin != null || data.scope_vacio) {
+        updateScopeLabels({
+          isAdmin: Boolean(data.scope_is_admin),
+          facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
+          ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+          resolvedFrom: data.scope_resolved_from,
+          vacio: Boolean(data.scope_vacio),
+          scope_message: data.mensaje || data.scope_message || '',
+        });
+      }
       state.solicitudes = Array.isArray(data.solicitudes) ? data.solicitudes : (Array.isArray(data.data) ? data.data : []);
+      state.lastScopeVacio_Solicitudes = Boolean(data.scope_vacio);
+      state.lastScopeMessage_Solicitudes = data.mensaje || '';
       renderSolicitudes();
     };
-    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando solicitudes.', 'danger'); };
+    xhr.onerror = function () {
+      setGlobalAlert('Error de conexión cargando solicitudes.', 'danger');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="alert alert-danger mb-0 d-inline-block text-start">Error de conexión cargando solicitudes. Revise su red y recargue.</div></td></tr>';
+      if (document.getElementById('count-solicitudes')) document.getElementById('count-solicitudes').textContent = '0';
+    };
     xhr.send();
   }
 
@@ -500,6 +609,13 @@
     var tbody = document.querySelector('#tabla-solicitudes tbody');
     if (!tbody) return;
     if (!state.solicitudes.length) {
+      if (state.lastScopeVacio_Solicitudes) {
+        var extraMsg = state.lastScopeMessage_Solicitudes
+          ? '<div class="small mt-2 text-muted">' + escapeHtml(state.lastScopeMessage_Solicitudes) + '</div>'
+          : '';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4"><div class="alert alert-warning mb-0 d-inline-block text-start" style="border-color:#f0aa00;background:#fff7e1;color:#7c3b04;"><i class="bi bi-shield-lock me-2"></i><b>Sin alcance para ver solicitudes.</b><br/>No tienes UALes o facultades asignadas. Contacta Coordinación General para asignarte un alcance.' + extraMsg + '</div></td></tr>';
+        return;
+      }
       tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No hay solicitudes para mostrar (cambia filtros si es necesario).</td></tr>';
       return;
     }
@@ -527,12 +643,32 @@
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onload = function () {
       var data = safeParseJsonXhr(xhr, 'loadSesiones', 'Error cargando sesiones. ');
-      if (!data) return;
+      if (!data) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><div class="alert alert-danger mb-0 d-inline-block text-start">No se pudieron cargar las sesiones programadas. Espere 30s y recargue (pods actualizándose). Si persiste contacte soporte.</div></td></tr>';
+        if (document.getElementById('count-sesiones')) document.getElementById('count-sesiones').textContent = '0';
+        return;
+      }
+      if (data.scope_is_admin != null || data.scope_vacio) {
+        updateScopeLabels({
+          isAdmin: Boolean(data.scope_is_admin),
+          facultyIds: Array.isArray(data.scope_faculty_ids) ? data.scope_faculty_ids : [],
+          ualIds: Array.isArray(data.scope_ual_ids) ? data.scope_ual_ids : [],
+          resolvedFrom: data.scope_resolved_from,
+          vacio: Boolean(data.scope_vacio),
+          scope_message: data.mensaje || data.scope_message || '',
+        });
+      }
       state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : (Array.isArray(data.data) ? data.data : []);
+      state.lastScopeVacio_Sesiones = Boolean(data.scope_vacio);
+      state.lastScopeMessage_Sesiones = data.mensaje || '';
       renderSesiones();
       populateAsistenciaSesionSelect();
     };
-    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando sesiones.', 'danger'); };
+    xhr.onerror = function () {
+      setGlobalAlert('Error de conexión cargando sesiones.', 'danger');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><div class="alert alert-danger mb-0 d-inline-block text-start">Error de conexión cargando sesiones. Revise su red y recargue.</div></td></tr>';
+      if (document.getElementById('count-sesiones')) document.getElementById('count-sesiones').textContent = '0';
+    };
     xhr.send();
   }
 
@@ -542,20 +678,32 @@
     var tbody = document.querySelector('#tabla-sesiones tbody');
     if (!tbody) return;
     if (!state.sesiones.length) {
+      if (state.lastScopeVacio_Sesiones) {
+        var extraMsg = state.lastScopeMessage_Sesiones
+          ? '<div class="small mt-2 text-muted">' + escapeHtml(state.lastScopeMessage_Sesiones) + '</div>'
+          : '';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4"><div class="alert alert-warning mb-0 d-inline-block text-start" style="border-color:#1e8e3e55;background:#e8f6ee;color:#137333;"><i class="bi bi-calendar3 me-2"></i><b>Sin alcance para ver sesiones programadas.</b><br/>No tienes UALes o facultades asignadas. Contacta Coordinación General para asignarte un alcance.' + extraMsg + '</div></td></tr>';
+        return;
+      }
       tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No hay sesiones programadas en tu alcance. Programa una desde aquí o desde la pestaña solicitudes.</td></tr>';
       return;
     }
     tbody.innerHTML = state.sesiones.map(function (s) {
       var cupo = Number(s.cupo_maximo || 0);
-      var insc = Number(s.inscripciones_count || s.inscritos_count || 0);
+      var insc = Number(s.inscripciones_count || s.inscritos_count || s.inscripciones_activas || 0);
+      var fi = s.fecha_hora_inicio || s.fecha_inicio;
+      var ff = s.fecha_hora_fin || s.fecha_fin;
+      var labNombre = s.laboratorista_nombre || s.laboratorista_responsable_nombre || '';
+      var labDoc = s.laboratorista_documento || s.laboratorista_responsable_doc || '';
+      var ualTxt = s.ual_nombre || ('UAL ' + (s.ual_id_lugar || s.ual_id || '?'));
       return '<tr data-id-sesion="' + escapeAttr(s.id) + '">' +
         '<td><code>' + escapeHtml(s.id || '') + '</code></td>' +
-        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : '') + '</td>' +
-        '<td>' + formatFecha(s.fecha_hora_inicio) + '<div class="small text-muted">hasta ' + formatFecha(s.fecha_hora_fin) + '</div></td>' +
-        '<td>' + escapeHtml(s.ual_nombre || ('UAL ' + (s.ual_id_lugar || s.ual_id || '?'))) + (s.facultad_nombre ? '<div class="small text-muted">' + escapeHtml(s.facultad_nombre) + '</div>' : '') + '</td>' +
+        '<td><code>' + escapeHtml(s.codigo_curso || '') + '</code>' + (s.nombre_curso ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso) + '</div>' : (s.nombre_curso_snapshot ? '<div class="small text-muted">' + escapeHtml(s.nombre_curso_snapshot) + '</div>' : '')) + '</td>' +
+        '<td>' + formatFecha(fi) + '<div class="small text-muted">hasta ' + formatFecha(ff) + '</div></td>' +
+        '<td>' + escapeHtml(ualTxt) + (s.facultad_nombre ? '<div class="small text-muted">' + escapeHtml(s.facultad_nombre) + '</div>' : '') + '</td>' +
         '<td class="text-center"><b>' + (cupo || '∞') + '</b> / <span class="text-muted">' + insc + '</span></td>' +
         '<td>' + renderEstadoSesion(s.estado) + '</td>' +
-        '<td>' + (s.laboratorista_nombre ? escapeHtml(s.laboratorista_nombre) : '<span class="text-muted small">' + escapeHtml(s.laboratorista_documento || '—') + '</span>') + '</td>' +
+        '<td>' + (labNombre ? escapeHtml(labNombre) : '<span class="text-muted small">' + escapeHtml(labDoc || '—') + '</span>') + '</td>' +
         '<td><div class="btn-group btn-group-sm" role="group">' +
           '<button type="button" class="btn btn-outline-primary estado-btn" data-estado="en_curso" data-id-sesion="' + escapeAttr(s.id) + '" title="Marcar como en curso">▶ En curso</button>' +
           '<button type="button" class="btn btn-outline-info evidencia-btn" data-id-sesion="' + escapeAttr(s.id) + '" title="Subir evidencia">📎 Evidencia</button>' +
@@ -593,12 +741,22 @@
     if (!sesionId) return;
     state.selectedSesionId = sesionId;
     document.getElementById('asistencia-sesion-select').value = String(sesionId);
+    var aBody = document.querySelector('#tabla-asistidos tbody');
+    var fBody = document.querySelector('#tabla-faltantes tbody');
+    if (aBody) aBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Cargando asistentes...</td></tr>';
+    if (fBody) fBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Cargando inscritos sin asistencia...</td></tr>';
     var xhr = new XMLHttpRequest();
     xhr.open('GET', api.asistenciasList(sesionId), true);
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onload = function () {
       var data = safeParseJsonXhr(xhr, 'loadAsistenciasSesion', 'Error cargando asistencias. ');
-      if (!data) return;
+      if (!data) {
+        if (aBody) aBody.innerHTML = '<tr><td colspan="4" class="text-center py-3"><div class="alert alert-danger mb-0 d-inline-block text-start">No se pudieron cargar los asistentes. Recargue la página.</div></td></tr>';
+        if (fBody) fBody.innerHTML = '<tr><td colspan="4" class="text-center py-3"><div class="alert alert-danger mb-0 d-inline-block text-start">No se pudieron cargar los inscritos. Recargue la página.</div></td></tr>';
+        if (document.getElementById('count-asistidos')) document.getElementById('count-asistidos').textContent = '0';
+        if (document.getElementById('count-faltantes')) document.getElementById('count-faltantes').textContent = '0';
+        return;
+      }
       state.asistencias = {
         asistidos: Array.isArray(data.asistencias) || Array.isArray(data.asistidos) ? (data.asistencias || data.asistidos || []).filter(function (a) { return a?.asistio === true || a?.asistio === 'true'; }) : [],
         faltantes: Array.isArray(data.inscritos_sin_asistencia) ? data.inscritos_sin_asistencia : [],
@@ -606,7 +764,11 @@
       };
       renderAsistencias();
     };
-    xhr.onerror = function () { setGlobalAlert('Error de conexión cargando asistencias.', 'danger'); };
+    xhr.onerror = function () {
+      setGlobalAlert('Error de conexión cargando asistencias.', 'danger');
+      if (aBody) aBody.innerHTML = '<tr><td colspan="4" class="text-center py-3"><div class="alert alert-danger mb-0 d-inline-block text-start">Error de conexión. Recargue.</div></td></tr>';
+      if (fBody) fBody.innerHTML = '<tr><td colspan="4" class="text-center py-3"><div class="alert alert-danger mb-0 d-inline-block text-start">Error de conexión. Recargue.</div></td></tr>';
+    };
     xhr.send();
   }
 
@@ -650,12 +812,222 @@
     }
   }
 
+  /* ---------- Contexto: cursos y UALes disponibles para selects ---------- */
+  function loadContexto() {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', api.contextoCursos, true);
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = function () {
+        try {
+          var data = JSON.parse(xhr.responseText || '{}');
+          state.contexto.cursos = Array.isArray(data?.cursos) ? data.cursos : (Array.isArray(data?.data?.cursos) ? data.data.cursos : []);
+          state.contexto.uales = Array.isArray(data?.uales) ? data.uales : (Array.isArray(data?.data?.uales) ? data.data.uales : []);
+          if (!state.contexto.cursos.length || !state.contexto.uales.length) {
+            loadContextoFallback();
+          } else {
+            populateProgramarSelects();
+          }
+        } catch {
+          loadContextoFallback();
+        }
+      };
+      xhr.onerror = function () { loadContextoFallback(); };
+      xhr.send();
+    } catch {
+      loadContextoFallback();
+    }
+  }
+  function loadContextoFallback() {
+    try {
+      var xS = new XMLHttpRequest();
+      xS.open('GET', api.sesiones + '?todos=1&estado=programada,en_curso,realizada', true);
+      xS.setRequestHeader('Accept', 'application/json');
+      xS.onload = function () {
+        try {
+          var d = JSON.parse(xS.responseText || '{}');
+          var sList = Array.isArray(d?.sesiones) ? d.sesiones : (Array.isArray(d?.data) ? d.data : []);
+          var seenCursos = {};
+          var seenUales = {};
+          sList.forEach(function (s) {
+            if (s.codigo_curso && !seenCursos[s.codigo_curso]) {
+              seenCursos[s.codigo_curso] = true;
+              state.contexto.cursos.push({ codigo_curso: s.codigo_curso, nombre_curso: s.nombre_curso_snapshot || s.nombre_curso || '' });
+            }
+            if (s.ual_id && !seenUales[s.ual_id]) {
+              seenUales[s.ual_id] = true;
+              state.contexto.uales.push({ ual_id: s.ual_id, nombre: s.ual_nombre || ('UAL ' + s.ual_id), facultad_id: s.facultad_id || null });
+            }
+          });
+          populateProgramarSelects();
+        } catch { populateProgramarSelects(); }
+      };
+      xS.onerror = function () { populateProgramarSelects(); };
+      xS.send();
+    } catch { populateProgramarSelects(); }
+  }
+  function populateProgramarSelects() {
+    var dl = document.getElementById('ps-list-cursos');
+    if (dl) {
+      dl.innerHTML = state.contexto.cursos.slice(0, 500).map(function (c) {
+        return '<option value="' + escapeAttr(c.codigo_curso) + '">' + escapeHtml((c.nombre_curso || '') + ' [' + (c.codigo_curso || '') + ']') + '</option>';
+      }).join('');
+    }
+    var ualSel = document.getElementById('ps-ual');
+    if (ualSel) {
+      var opts = ['<option value="">Todas (cualquier UAL)</option>'];
+      state.contexto.uales.slice(0, 500).forEach(function (u) {
+        opts.push('<option value="' + escapeAttr(u.ual_id) + '">' + escapeHtml((u.codigo ? '[' + u.codigo + '] ' : '') + (u.nombre || ('UAL ' + u.ual_id))) + '</option>');
+      });
+      ualSel.innerHTML = opts.join('');
+    }
+    var hint = document.getElementById('ps-nombre-curso-hint');
+    if (hint) {
+      var cur = state.contexto.cursos.find(function (c) { return String(c.codigo_curso || '').trim() === String(document.getElementById('ps-codigo-curso')?.value || '').trim(); });
+      hint.textContent = cur && cur.nombre_curso ? cur.nombre_curso : '';
+    }
+  }
+
+  /* ---------- Modal Programar Sesión ---------- */
+  function openProgramarSesionModal(prefill) {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+      setGlobalAlert('Bootstrap Modal no disponible. Actualiza la página.', 'danger');
+      return;
+    }
+    prefill = prefill || {};
+    var modalEl = document.getElementById('modal-programar-sesion');
+    if (!modalEl) return;
+
+    if (!state.contexto.cursos.length || !state.contexto.uales.length) {
+      loadContexto();
+    } else {
+      populateProgramarSelects();
+    }
+
+    document.getElementById('ps-codigo-curso').value = String(prefill.codigo_curso || '').trim();
+    var ualSel = document.getElementById('ps-ual');
+    if (ualSel && prefill.ual_id) ualSel.value = String(prefill.ual_id);
+    populateProgramarSelects();
+    document.getElementById('ps-cupo').value = Number(prefill.cupo || 25);
+    document.getElementById('ps-lugar').value = String(prefill.lugar || '').trim();
+    document.getElementById('ps-enlace').value = String(prefill.enlace_sesion || '').trim();
+    document.getElementById('ps-descripcion').value = String(prefill.descripcion || '').trim();
+    document.getElementById('ps-marcar-notificado').checked = prefill.marcar_solicitudes_notificado !== false;
+    document.getElementById('ps-notificar-email').checked = prefill.notificar_por_email !== false;
+
+    if (prefill.fecha_inicio) document.getElementById('ps-fecha-inicio').value = prefill.fecha_inicio;
+    if (prefill.fecha_fin) document.getElementById('ps-fecha-fin').value = prefill.fecha_fin;
+
+    var alertEl = document.getElementById('modal-programar-alert');
+    if (alertEl) alertEl.className = 'alert d-none';
+
+    var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    setTimeout(function () { document.getElementById('ps-codigo-curso')?.focus(); }, 200);
+  }
+
   function onProgramarDesdeSolicitud(ev) {
-    var btn = ev.currentTarget;
+    var btn = ev?.currentTarget;
     var curso = btn?.getAttribute('data-curso') || '';
     var ual = btn?.getAttribute('data-ual') || '';
-    document.getElementById('tab-sesiones').click();
-    setGlobalAlert('Programar una nueva sesión: Click en "Nueva sesión" y llena los campos. Curso precargado = ' + escapeHtml(curso || 'elige uno') + '.', 'info');
+    openProgramarSesionModal({ codigo_curso: curso, ual_id: ual, marcar_solicitudes_notificado: true, notificar_por_email: true });
+  }
+
+  function onBtnNuevaSesion() { openProgramarSesionModal({}); }
+
+  function onPsCursoChange() { populateProgramarSelects(); }
+
+  function toIsoLocalInput(valor) {
+    try {
+      var d = new Date(valor);
+      if (isNaN(d.getTime())) return null;
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch { return null; }
+  }
+
+  function submitFormProgramarSesion(ev) {
+    if (ev) ev.preventDefault();
+    var alertEl = document.getElementById('modal-programar-alert');
+    function setModalAlert(m, type) {
+      if (!alertEl) return;
+      alertEl.className = 'alert alert-' + (type || 'info');
+      alertEl.textContent = m || '';
+    }
+
+    var codigoCurso = String(document.getElementById('ps-codigo-curso')?.value || '').trim();
+    var ualId = String(document.getElementById('ps-ual')?.value || '').trim();
+    var fiRaw = document.getElementById('ps-fecha-inicio')?.value;
+    var ffRaw = document.getElementById('ps-fecha-fin')?.value;
+    var cupo = Number(document.getElementById('ps-cupo')?.value || 0);
+    var lugar = String(document.getElementById('ps-lugar')?.value || '').trim();
+    var enlace = String(document.getElementById('ps-enlace')?.value || '').trim();
+    var desc = String(document.getElementById('ps-descripcion')?.value || '').trim();
+    var marcarNotificado = Boolean(document.getElementById('ps-marcar-notificado')?.checked);
+    var notificarEmail = Boolean(document.getElementById('ps-notificar-email')?.checked);
+
+    if (!codigoCurso) return setModalAlert('Código de curso obligatorio.', 'warning');
+    if (!fiRaw || !ffRaw) return setModalAlert('Fecha/hora inicio y fin son obligatorias.', 'warning');
+    var fi = new Date(fiRaw);
+    var ff = new Date(ffRaw);
+    if (isNaN(fi.getTime()) || isNaN(ff.getTime())) return setModalAlert('Formato de fecha/hora inválido.', 'warning');
+    if (ff.getTime() <= fi.getTime()) return setModalAlert('Fecha fin debe ser posterior a fecha inicio.', 'warning');
+    if (!Number.isInteger(cupo) || cupo <= 0 || cupo > 5000) return setModalAlert('Cupo debe ser un entero 1 a 5000.', 'warning');
+
+    var btn = document.getElementById('ps-btn-guardar');
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Programando…');
+      setModalAlert('Enviando solicitud al servidor…', 'info');
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', api.programarSesion, true);
+      setJsonPostHeaders(xhr);
+      xhr.onload = function () {
+        try {
+          var data = safeParseJsonXhr(xhr, 'programar-sesion', 'No se pudo programar la sesión. ');
+          if (!data) return;
+          if (data.ok || data.success) {
+            setModalAlert('✅ Sesión programada. Recargando listados…', 'success');
+            setTimeout(function () {
+              try {
+                var modal = bootstrap.Modal.getInstance(document.getElementById('modal-programar-sesion'));
+                if (modal) modal.hide();
+              } catch {}
+              loadSolicitudes();
+              loadSesiones();
+              if (String(data?.sesion?.id || '')) {
+                setGlobalAlert('✅ Sesión #' + escapeHtml(data.sesion.id) + ' programada. ' + (data.notificacion_email ? 'Correos en proceso (fire-and-forget).' : 'Correo deshabilitado.'), 'success');
+              } else {
+                setGlobalAlert('✅ Sesión programada exitosamente.', 'success');
+              }
+            }, 700);
+          } else {
+            setModalAlert('❌ Error: ' + (data.message || 'Respuesta inválida.'), 'danger');
+          }
+        } finally {
+          if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+        }
+      };
+      xhr.onerror = function () {
+        setModalAlert('❌ Error de conexión. Revisa red y reintenta.', 'danger');
+        if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+      };
+      var body = {
+        codigo_curso: codigoCurso,
+        fecha_inicio: fi.toISOString(),
+        fecha_fin: ff.toISOString(),
+        cupo: cupo,
+        lugar: lugar || null,
+        descripcion: desc || null,
+        enlace_sesion: enlace || null,
+        marcar_solicitudes_notificado: marcarNotificado,
+        notificar_por_email: notificarEmail,
+      };
+      if (ualId) body.ual_id = ualId;
+      xhr.send(JSON.stringify(body));
+    } catch (err) {
+      setModalAlert('❌ Error al enviar: ' + (err?.message || String(err)), 'danger');
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.unlock(btn);
+    }
   }
 
   function onCambiarEstadoSesion(ev) {
@@ -932,11 +1304,13 @@
     document.getElementById('btn-finalizar-sesion')?.addEventListener('click', onBtnFinalizarSesion);
     document.getElementById('btn-aplicar-filtros-reporte')?.addEventListener('click', onAplicarFiltrosReporte);
     document.getElementById('btn-descargar-csv')?.addEventListener('click', onDescargarCsv);
+    document.getElementById('ps-codigo-curso')?.addEventListener('input', onPsCursoChange);
+    document.getElementById('form-programar-sesion')?.addEventListener('submit', submitFormProgramarSesion);
     document.getElementById('tab-reporte')?.addEventListener('shown.bs.tab', function () {
       if (!state.reporte || state.reporte.length === 0) loadReporte();
     });
 
-
+    loadContexto();
     loadSolicitudes();
     loadSesiones();
   });

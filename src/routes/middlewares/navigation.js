@@ -124,6 +124,124 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
+function ensureCapacitacionNavigationItems(navigation, roles) {
+  if (!navigation || typeof navigation !== 'object') return navigation;
+  const normalizedRoles = normalizeRoles(roles);
+  if (!normalizedRoles.length) return navigation;
+
+  const canGestionar = normalizedRoles.some((r) =>
+    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
+  );
+  const canCursos = normalizedRoles.includes('admin');
+  const canAsociacion = normalizedRoles.some((r) =>
+    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
+  );
+  const canMisCapacitaciones = normalizedRoles.some((r) => ['estudiante', 'docente'].includes(r));
+
+  const desiredItems = [];
+  if (canCursos) {
+    desiredItems.push({
+      label: 'Creación de cursos',
+      href: '/milab/capacitacion/cursos/load_info',
+      icon: 'bi-book',
+    });
+  }
+  if (canAsociacion) {
+    desiredItems.push({
+      label: 'Asociación curso-equipo',
+      href: '/milab/capacitacion/asociacion-equipos/load_info',
+      icon: 'bi-diagram-3',
+    });
+  }
+  if (canGestionar) {
+    desiredItems.push({
+      label: 'Gestionar capacitaciones',
+      href: '/milab/capacitacion/gestion/load_info',
+      icon: 'bi-calendar-check',
+    });
+  }
+  if (canMisCapacitaciones) {
+    desiredItems.push({
+      label: 'Mis capacitaciones',
+      href: '/milab/capacitacion/mis-capacitaciones/load_info',
+      icon: 'bi-journal-bookmark',
+    });
+  }
+
+  if (!desiredItems.length) return navigation;
+
+  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
+    ? [...navigation.secondaryGroups]
+    : [];
+  const capTitleLower = 'capacitación';
+  let capGroupIndex = secondaryGroups.findIndex(
+    (g) =>
+      typeof g?.title === 'string' &&
+      g.title.trim().toLowerCase() === capTitleLower
+  );
+
+  if (capGroupIndex < 0) {
+    secondaryGroups.push({
+      title: 'Capacitación',
+      icon: 'bi-mortarboard',
+      items: [],
+    });
+    capGroupIndex = secondaryGroups.length - 1;
+  }
+
+  const capGroup = { ...(secondaryGroups[capGroupIndex] || {}) };
+  const existingItems = Array.isArray(capGroup.items) ? [...capGroup.items] : [];
+  desiredItems.forEach((desired) => {
+    const exists = existingItems.some((item) => item?.href === desired.href);
+    if (!exists) existingItems.push(desired);
+  });
+
+  const ORDER_HINTS = {
+    '/milab/capacitacion/cursos/load_info': 1,
+    '/milab/capacitacion/asociacion-equipos/load_info': 2,
+    '/milab/capacitacion/gestion/load_info': 3,
+    '/milab/capacitacion/mis-capacitaciones/load_info': 4,
+  };
+  existingItems.sort((a, b) => {
+    const ha = ORDER_HINTS[a?.href] || 999;
+    const hb = ORDER_HINTS[b?.href] || 999;
+    if (ha !== hb) return ha - hb;
+    return (a?.label || '').localeCompare(b?.label || '');
+  });
+
+  capGroup.items = existingItems;
+  if (!capGroup.icon) capGroup.icon = 'bi-mortarboard';
+  secondaryGroups[capGroupIndex] = capGroup;
+
+  if (normalizedRoles.includes('estudiante') || normalizedRoles.includes('docente')) {
+    const primaryLinks = Array.isArray(navigation.primaryLinks)
+      ? [...navigation.primaryLinks]
+      : [];
+    const misCap = {
+      label: 'Solicitar / Mis capacitaciones',
+      href: '/milab/capacitacion/mis-capacitaciones/load_info',
+      icon: 'bi-journal-bookmark',
+    };
+    const hasPrimary = primaryLinks.some((p) => p?.href === misCap.href);
+    if (!hasPrimary) {
+      const prestamosIndex = primaryLinks.findIndex(
+        (p) => p?.href && String(p.href).indexOf('/prestamos/') >= 0
+      );
+      if (prestamosIndex >= 0) {
+        primaryLinks.splice(prestamosIndex + 1, 0, misCap);
+      } else {
+        primaryLinks.push(misCap);
+      }
+    }
+    navigation = { ...navigation, primaryLinks };
+  }
+
+  return {
+    ...navigation,
+    secondaryGroups,
+  };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -485,7 +603,7 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      return ensureCoordinatorSignatureAccountLink(
+      const patched = ensureCapacitacionNavigationItems(
         {
           isAuthenticated,
           role: getPrimaryRole(roles),
@@ -494,6 +612,7 @@ async function buildNavigation(user) {
         },
         roles
       );
+      return ensureCoordinatorSignatureAccountLink(patched, roles);
     }
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -502,10 +621,13 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return {
-      ...filteredFallback,
-      roleLabel: formatRoleLabel(roles),
-    };
+    return ensureCapacitacionNavigationItems(
+      {
+        ...filteredFallback,
+        roleLabel: formatRoleLabel(roles),
+      },
+      roles
+    );
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -514,10 +636,13 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return {
-    ...filteredFallback,
-    roleLabel: formatRoleLabel(roles),
-  };
+  return ensureCapacitacionNavigationItems(
+    {
+      ...filteredFallback,
+      roleLabel: formatRoleLabel(roles),
+    },
+    roles
+  );
 }
 
 async function navigationMiddleware(req, res, next) {
