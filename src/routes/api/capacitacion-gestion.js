@@ -1123,9 +1123,13 @@ router.post(
           return forbidden(res, 'No tiene UALes o facultades asignadas para gestionar sesiones.');
         }
       }
+      params.push(estadoNuevo);
+      const estadoPlaceholder = '$' + params.length;
       const upd = await pool.query(
-        `UPDATE sesion_capacitacion SET estado = $1, fecha_modificacion = CURRENT_TIMESTAMP WHERE ${clauses.join(' AND ')} RETURNING id, estado, fecha_inicio, fecha_fin`,
-        [estadoNuevo, ...params]
+        `UPDATE sesion_capacitacion SET estado = ` +
+          estadoPlaceholder +
+          `, fecha_modificacion = CURRENT_TIMESTAMP WHERE ${clauses.join(' AND ')} RETURNING id, estado, fecha_inicio, fecha_fin`,
+        params
       );
       if (upd.rows.length === 0) {
         return notFound(res, 'Sesión no existe o no está en su scope de gestión.');
@@ -1407,17 +1411,37 @@ router.post('/gestion/sesiones/:id/evidencia', requireLaboratoristaOAdmin, funct
       const mime = req.file.mimetype || null;
       const size = Number(req.file.size) || 0;
       const originalName = truncate(req.file.originalname, 255);
+      params.push(filePath);
+      const pPath = '$' + params.length;
+      params.push(mime);
+      const pMime = '$' + params.length;
+      params.push(size);
+      const pSize = '$' + params.length;
+      params.push(originalName);
+      const pOrig = '$' + params.length;
+      params.push(notas);
+      const pNotas = '$' + params.length;
       const upd = await pool.query(
         `UPDATE sesion_capacitacion
-            SET evidencia_path = $1,
-                evidencia_mime = $2,
-                evidencia_tamano_bytes = $3,
-                evidencia_nombre_original = $4,
-                notas_evidencia = COALESCE($5, notas_evidencia),
+            SET evidencia_path = ` +
+          pPath +
+          `,
+                evidencia_mime = ` +
+          pMime +
+          `,
+                evidencia_tamano_bytes = ` +
+          pSize +
+          `,
+                evidencia_nombre_original = ` +
+          pOrig +
+          `,
+                notas_evidencia = COALESCE(` +
+          pNotas +
+          `, notas_evidencia),
                 fecha_modificacion = CURRENT_TIMESTAMP
           WHERE ${clauses.join(' AND ')}
           RETURNING id, evidencia_path, evidencia_mime, evidencia_tamano_bytes, evidencia_nombre_original, notas_evidencia`,
-        [filePath, mime, size, originalName, notas, ...params]
+        params
       );
       if (upd.rows.length === 0) {
         try {
@@ -1534,7 +1558,15 @@ router.post(
         );
       }
 
-      const labDoc = getSessionDocument(req);
+      const labDocRaw = getSessionDocument(req);
+      const labDoc = labDocRaw ? String(labDocRaw).trim() : '';
+      if (!labDoc) {
+        await client.query('ROLLBACK');
+        return badRequest(
+          res,
+          'No se pudo identificar el documento del laboratorista/admin en sesión. Cierre sesión y vuelva a ingresar para certificar.'
+        );
+      }
       const labNombre = getSessionUserNombre(req);
       let certificados = [];
       let rechazados = [];
@@ -1600,7 +1632,7 @@ router.post(
             vigenciaMeses,
             sesionId,
             sesion.ual_id,
-            labDoc || null,
+            labDoc,
             labNombre,
             notas,
           ]

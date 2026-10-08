@@ -134,7 +134,9 @@ CREATE TABLE IF NOT EXISTS sesion_capacitacion (
     evidencia_path TEXT,
     evidencia_nombre_original TEXT,
     evidencia_mime VARCHAR(100),
+    evidencia_tamano_bytes BIGINT,
     evidencia_fecha_subida TIMESTAMPTZ,
+    notas_evidencia TEXT,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -163,6 +165,24 @@ CREATE INDEX IF NOT EXISTS idx_sesion_capacitacion_ual_fecha
     ON sesion_capacitacion(ual_id, fecha_inicio);
 CREATE INDEX IF NOT EXISTS idx_sesion_capacitacion_estado_activo
     ON sesion_capacitacion(estado, activo);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'sesion_capacitacion' AND column_name = 'evidencia_tamano_bytes'
+    ) THEN
+        ALTER TABLE sesion_capacitacion
+            ADD COLUMN evidencia_tamano_bytes BIGINT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'sesion_capacitacion' AND column_name = 'notas_evidencia'
+    ) THEN
+        ALTER TABLE sesion_capacitacion
+            ADD COLUMN notas_evidencia TEXT;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
     id BIGSERIAL NOT NULL,
