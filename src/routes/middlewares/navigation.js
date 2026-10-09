@@ -644,7 +644,13 @@ async function navigationMiddleware(req, res, next) {
     const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
-    const claimNotifications = await getClaimNotifications(sessionUser, primaryRole);
+    // Un contador del menú no debe impedir cargar la página.
+    const claimNotifications = await getClaimNotifications(sessionUser, primaryRole).catch(
+      (error) => {
+        console.warn('Navegación: no fue posible consultar reclamaciones:', error.message);
+        return null;
+      }
+    );
 
     if (sessionUser) {
       Object.assign(res.locals, sessionUser);
