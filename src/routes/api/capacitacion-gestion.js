@@ -83,24 +83,48 @@ function handleSchemaMissing(res, error) {
 }
 
 function okJson(res, data, status = 200) {
+  setCacheDynamic(res);
   return res.status(status).json(Object.assign({ ok: true }, data || {}));
 }
 
+function setCacheDynamic(res) {
+  try {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, private, proxy-revalidate'
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  } catch {
+    /* ignore if headers already sent */
+  }
+}
+
+router.use(function setCapacitacionGestionNoCache(req, res, next) {
+  setCacheDynamic(res);
+  next();
+});
+
 function badRequest(res, message, details) {
+  setCacheDynamic(res);
   const body = { ok: false, message };
   if (details) body.details = details;
   return res.status(400).json(body);
 }
 
 function forbidden(res, message) {
+  setCacheDynamic(res);
   return res.status(403).json({ ok: false, message });
 }
 
 function notFound(res, message) {
+  setCacheDynamic(res);
   return res.status(404).json({ ok: false, message });
 }
 
 function serverError(res, error, fallbackMessage) {
+  setCacheDynamic(res);
   const schemaResp = handleSchemaMissing(res, error);
   if (schemaResp) return schemaResp;
   const body = {
@@ -1891,18 +1915,18 @@ function buildReporteAggregateSql(clauses, params, extraLimit) {
            f.nombre AS facultad_nombre,
            s.ual_id,
            u.nombre AS ual_nombre,
-           u.codigo_unidad AS ual_codigo,
+           u.codigo_abreviacion AS ual_codigo,
            s.fecha_inicio,
            s.fecha_fin,
            s.cupo_maximo,
            s.lugar,
            s.estado,
-           COALESCE(s.evidencia_path, s.evidencia_ruta_rel) AS evidencia_path,
-           COALESCE(s.evidencia_mime, s.evidencia_mime_type) AS evidencia_mime,
+           s.evidencia_path,
+           s.evidencia_mime,
            s.evidencia_nombre_original,
            s.evidencia_fecha_subida,
-           COALESCE(s.laboratorista_responsable_doc, s.laboratorista_documento) AS laboratorista_doc,
-           COALESCE(s.laboratorista_responsable_nombre, s.laboratorista_nombre) AS laboratorista_nombre,
+           s.laboratorista_responsable_doc AS laboratorista_doc,
+           s.laboratorista_responsable_nombre AS laboratorista_nombre,
            (SELECT COUNT(*)::int
               FROM inscripcion_sesion_capacitacion i
              WHERE i.sesion_capacitacion_id = s.id
@@ -2063,6 +2087,7 @@ router.get('/gestion/reporte.csv', requireLaboratoristaOAdmin, async function (r
       pad(now.getHours()) +
       pad(now.getMinutes());
     const filename = `reporte_capacitaciones_${stamp}.csv`;
+    setCacheDynamic(res);
 
     res
       .status(200)
@@ -2125,6 +2150,7 @@ router.get('/gestion/reporte.json', requireLaboratoristaOAdmin, async function (
       pad(now.getMinutes());
     const filename = `reporte_capacitaciones_${stamp}.json`;
     const body = JSON.stringify(payload, null, 2);
+    setCacheDynamic(res);
 
     res
       .status(200)
