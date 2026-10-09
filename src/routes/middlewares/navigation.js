@@ -217,6 +217,66 @@ function ensureCapacitacionNavigationItems(navigation, roles) {
   };
 }
 
+function ensureHojasVidaNavigationItems(navigation, roles) {
+  if (!navigation || typeof navigation !== 'object') return navigation;
+  const normalizedRoles = normalizeRoles(roles);
+  if (!normalizedRoles.length) return navigation;
+
+  const canAccess = normalizedRoles.some((r) =>
+    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
+  );
+
+  if (!canAccess) return navigation;
+
+  const desiredItems = [
+    {
+      label: 'Hojas de Vida y Mantenimientos',
+      href: '/milab/prestamos/hojas-vida',
+      icon: 'bi-journal-medical',
+    },
+  ];
+
+  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
+    ? [...navigation.secondaryGroups]
+    : [];
+  const inventarioTitleLower = 'inventario';
+  const prestamosTitleLower = 'prestamos';
+  let targetGroupIndex = secondaryGroups.findIndex(
+    (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === inventarioTitleLower
+  );
+
+  if (targetGroupIndex < 0) {
+    targetGroupIndex = secondaryGroups.findIndex(
+      (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === prestamosTitleLower
+    );
+  }
+
+  if (targetGroupIndex < 0) {
+    secondaryGroups.push({
+      title: 'Inventario',
+      icon: 'bi-box-seam',
+      items: [],
+    });
+    targetGroupIndex = secondaryGroups.length - 1;
+  }
+
+  const targetGroup = { ...(secondaryGroups[targetGroupIndex] || {}) };
+  const existingItems = Array.isArray(targetGroup.items) ? [...targetGroup.items] : [];
+  desiredItems.forEach((desired) => {
+    const exists = existingItems.some((item) => item?.href === desired.href);
+    if (!exists) existingItems.push(desired);
+  });
+
+  targetGroup.items = existingItems;
+  if (!targetGroup.icon) targetGroup.icon = 'bi-box-seam';
+  secondaryGroups[targetGroupIndex] = targetGroup;
+
+  return {
+    ...navigation,
+    secondaryGroups,
+  };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -306,6 +366,16 @@ function buildStaticNavigation(user) {
         ),
       ])
     );
+
+    secondaryGroups.push(
+      createGroup('Inventario', 'bi-box-seam', [
+        createLink(
+          'Hojas de Vida y Mantenimientos',
+          '/milab/prestamos/hojas-vida',
+          'bi-journal-medical'
+        ),
+      ])
+    );
   }
 
   if (role === 'coordinador') {
@@ -367,6 +437,87 @@ function buildStaticNavigation(user) {
         ),
       ])
     );
+
+    secondaryGroups.push(
+      createGroup('Inventario', 'bi-box-seam', [
+        createLink(
+          'Hojas de Vida y Mantenimientos',
+          '/milab/prestamos/hojas-vida',
+          'bi-journal-medical'
+        ),
+      ])
+    );
+  }
+
+  if (role === 'coordinador_general') {
+    primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
+    primaryLinks.push(
+      createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
+    );
+    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
+
+    secondaryGroups.push(
+      createGroup('Registro', 'bi-person-plus', [
+        createLink(
+          'Registro de laboratoristas',
+          '/milab/api/register_labs/load_info',
+          'bi-person-plus'
+        ),
+      ])
+    );
+
+    secondaryGroups.push(
+      createGroup('Consulta y control', 'bi-grid-1x2', [
+        createLink(
+          'Consulta masiva',
+          '/milab/api/get_list_estudiantes/get_consulta',
+          'bi-collection'
+        ),
+        createLink(
+          'Estudiantes y docentes registrados',
+          '/milab/api/estudiantes_registrados',
+          'bi-card-list'
+        ),
+        createLink(
+          'Laboratoristas registrados',
+          '/milab/api/laboratoristas_registrados',
+          'bi-person-workspace'
+        ),
+        createLink('Sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation'),
+      ])
+    );
+
+    secondaryGroups.push(
+      createGroup('Paz y Salvos', 'bi-patch-check', [
+        createLink('Verificar estudiante', '/milab/api/verificar_estudiante', 'bi-person-check'),
+        createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
+      ])
+    );
+
+    secondaryGroups.push(
+      createGroup('Capacitación', 'bi-mortarboard', [
+        createLink(
+          'Asociación curso-equipo',
+          '/milab/capacitacion/asociacion-equipos/load_info',
+          'bi-diagram-3'
+        ),
+        createLink(
+          'Gestionar capacitaciones',
+          '/milab/capacitacion/gestion/load_info',
+          'bi-calendar-check'
+        ),
+      ])
+    );
+
+    secondaryGroups.push(
+      createGroup('Inventario', 'bi-box-seam', [
+        createLink(
+          'Hojas de Vida y Mantenimientos',
+          '/milab/prestamos/hojas-vida',
+          'bi-journal-medical'
+        ),
+      ])
+    );
   }
 
   if (role === 'laboratorista') {
@@ -415,6 +566,16 @@ function buildStaticNavigation(user) {
           'Gestionar capacitaciones',
           '/milab/capacitacion/gestion/load_info',
           'bi-calendar-check'
+        ),
+      ])
+    );
+
+    secondaryGroups.push(
+      createGroup('Inventario', 'bi-box-seam', [
+        createLink(
+          'Hojas de Vida y Mantenimientos',
+          '/milab/prestamos/hojas-vida',
+          'bi-journal-medical'
         ),
       ])
     );
@@ -593,7 +754,7 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      const patched = ensureCapacitacionNavigationItems(
+      const patchedCap = ensureCapacitacionNavigationItems(
         {
           isAuthenticated,
           role: getPrimaryRole(roles),
@@ -602,7 +763,8 @@ async function buildNavigation(user) {
         },
         roles
       );
-      return ensureCoordinatorSignatureAccountLink(patched, roles);
+      const patchedHV = ensureHojasVidaNavigationItems(patchedCap, roles);
+      return ensureCoordinatorSignatureAccountLink(patchedHV, roles);
     }
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -611,13 +773,14 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return ensureCapacitacionNavigationItems(
+    const patchedCap = ensureCapacitacionNavigationItems(
       {
         ...filteredFallback,
         roleLabel: formatRoleLabel(roles),
       },
       roles
     );
+    return ensureHojasVidaNavigationItems(patchedCap, roles);
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -626,13 +789,14 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return ensureCapacitacionNavigationItems(
+  const patchedCap = ensureCapacitacionNavigationItems(
     {
       ...filteredFallback,
       roleLabel: formatRoleLabel(roles),
     },
     roles
   );
+  return ensureHojasVidaNavigationItems(patchedCap, roles);
 }
 
 async function navigationMiddleware(req, res, next) {
