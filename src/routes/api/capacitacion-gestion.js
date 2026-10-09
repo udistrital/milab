@@ -118,7 +118,12 @@ function serverError(res, error, fallbackMessage) {
 }
 
 function getSessionDocument(req) {
-  const doc = req?.session?.user?.documento || req?.session?.user?.codigo || null;
+  const doc =
+    req?.session?.user?.documento_real ||
+    req?.session?.user?.documento ||
+    req?.session?.user?.codigo ||
+    req?.session?.user?.id_documento ||
+    null;
   return doc ? String(doc).trim() : '';
 }
 
@@ -1280,9 +1285,31 @@ router.get(
       SELECT a.id, a.sesion_capacitacion_id, a.inscripcion_sesion_capacitacion_id, a.usuario_documento,
              a.asistio, a.metodo, a.fecha_registro, a.registrado_por_laboratorista_doc,
              i.usuario_nombre, i.estado AS inscripcion_estado, i.fecha_inscripcion,
-             u.codigo AS usuario_codigo_estudiante
+             u.codigo AS usuario_codigo_estudiante,
+             EXISTS (
+               SELECT 1 FROM certificacion_usuario c
+                WHERE c.codigo_curso = check_ses.codigo_curso
+                  AND c.usuario_documento = a.usuario_documento
+                  AND c.activo = TRUE
+                  AND c.fecha_vencimiento > CURRENT_TIMESTAMP
+             ) AS tiene_cert_vigente,
+             (SELECT c.fecha_emision
+                FROM certificacion_usuario c
+               WHERE c.codigo_curso = check_ses.codigo_curso
+                 AND c.usuario_documento = a.usuario_documento
+                 AND c.activo = TRUE
+               ORDER BY c.fecha_emision DESC LIMIT 1
+             ) AS cert_fecha_ultima_emision,
+             (SELECT c.id
+                FROM certificacion_usuario c
+               WHERE c.codigo_curso = check_ses.codigo_curso
+                 AND c.usuario_documento = a.usuario_documento
+                 AND c.activo = TRUE
+               ORDER BY c.fecha_emision DESC LIMIT 1
+             ) AS cert_ultimo_id
         FROM asistencia_capacitacion a
         JOIN inscripcion_sesion_capacitacion i ON i.id = a.inscripcion_sesion_capacitacion_id
+        JOIN (SELECT codigo_curso FROM sesion_capacitacion WHERE id = $1) AS check_ses ON TRUE
         LEFT JOIN usuario u ON u.documento = a.usuario_documento
        WHERE a.sesion_capacitacion_id = $1
        ORDER BY a.fecha_registro ASC, i.usuario_nombre ASC
@@ -1591,75 +1618,87 @@ router.post(
           const usuarioId = userInfo.rows[0]?.id || null;
           const usuarioNombre = truncate(row.usuario_nombre, 255) || userInfo.rows[0]?.tipo || null;
 
-          const upsert = await client.query(
-            `
-        WITH nueva AS (
-          INSERT INTO certificacion_usuario (
-            codigo_curso,
-            nombre_curso_snapshot,
-            facultad_id,
-            usuario_documento,
-            usuario_id,
-            usuario_nombre,
-            modalidad,
-            fecha_emision,
-            fecha_vencimiento,
-            vigencia_meses,
-            sesion_capacitacion_id,
-            ual_id,
-            certificado_por_laboratorista_doc,
-            certificado_por_laboratorista_nombre,
-            notas
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, 'programada',
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
-            $7, $8, $9, $10, $11, $12
-          )
-          ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
-          RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
-        ),
-        cerrar_otras AS (
-          UPDATE certificacion_usuario
-             SET activo = FALSE,
-                 fecha_modificacion = CURRENT_TIMESTAMP
-           WHERE codigo_curso = $1
-             AND usuario_documento = $4
-             AND activo = TRUE
-             AND modalidad = 'programada'
-             AND id NOT IN (SELECT id FROM nueva)
-        )
-        SELECT * FROM nueva
-        `,
-            [
-              sesion.codigo_curso,
-              sesion.nombre_curso_snapshot,
-              sesion.facultad_id,
-              doc,
-              usuarioId,
-              usuarioNombre,
-              vigenciaMeses,
-              sesionId,
-              sesion.ual_id,
-              labDoc,
-              labNombre,
-              notas,
-            ]
+          const existenteVigente = await client.query(
+            `SELECT id, fecha_emision, fecha_vencimiento, vigencia_meses
+               FROM certificacion_usuario
+              WHERE codigo_curso = $1
+                AND usuario_documento = $2
+                AND activo = TRUE
+              ORDER BY fecha_emision DESC LIMIT 1`,
+            [sesion.codigo_curso, doc]
           );
-          if (upsert.rows.length > 0) {
-            certificados.push(upsert.rows[0]);
-          } else {
-            const existente = await client.query(
-              `SELECT id, fecha_vencimiento FROM certificacion_usuario
-            WHERE codigo_curso = $1 AND usuario_documento = $2 AND activo = TRUE LIMIT 1`,
-              [sesion.codigo_curso, doc]
-            );
+          if (existenteVigente.rows.length > 0) {
             rechazados.push({
               usuario_documento: doc,
               usuario_nombre: usuarioNombre,
               motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
-              id_cert_existente: existente.rows[0]?.id || null,
-              vencimiento_existente: existente.rows[0]?.fecha_vencimiento || null,
+              id_cert_existente: existenteVigente.rows[0].id,
+              vencimiento_existente: existenteVigente.rows[0].fecha_vencimiento,
+            });
+            try {
+              await client.query('RELEASE SAVEPOINT ' + spName);
+            } catch {
+              /* ignore */
+            }
+            continue;
+          }
+
+          const insertSql = `
+            INSERT INTO certificacion_usuario (
+              codigo_curso,
+              nombre_curso_snapshot,
+              facultad_id,
+              usuario_documento,
+              usuario_id,
+              usuario_nombre,
+              modalidad,
+              fecha_emision,
+              fecha_vencimiento,
+              vigencia_meses,
+              sesion_capacitacion_id,
+              ual_id,
+              certificado_por_laboratorista_doc,
+              certificado_por_laboratorista_nombre,
+              notas
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'programada',
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
+              $7, $8, $9, $10, $11, $12)
+            RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
+          `;
+          const insertParams = [
+            sesion.codigo_curso,
+            sesion.nombre_curso_snapshot,
+            sesion.facultad_id,
+            doc,
+            usuarioId,
+            usuarioNombre,
+            vigenciaMeses,
+            sesionId,
+            sesion.ual_id,
+            labDoc,
+            labNombre,
+            notas,
+          ];
+          const inserted = await client.query(insertSql, insertParams);
+          if (inserted.rows.length > 0) {
+            certificados.push(inserted.rows[0]);
+            await client.query(
+              `UPDATE certificacion_usuario
+                  SET activo = FALSE, fecha_modificacion = CURRENT_TIMESTAMP
+                WHERE codigo_curso = $1
+                  AND usuario_documento = $2
+                  AND activo = TRUE
+                  AND modalidad = 'programada'
+                  AND id <> $3`,
+              [sesion.codigo_curso, doc, inserted.rows[0].id]
+            );
+          } else {
+            rechazados.push({
+              usuario_documento: doc,
+              usuario_nombre: usuarioNombre,
+              motivo:
+                'No se pudo emitir la certificación: INSERT no retornó filas (restricción de BD / FK).',
             });
           }
           try {
@@ -2044,6 +2083,69 @@ router.get('/gestion/reporte.csv', requireLaboratoristaOAdmin, async function (r
       res,
       err,
       'No fue posible generar el archivo CSV del reporte de capacitaciones.',
+      (function () {
+        try {
+          return { query_params: req?.query || {} };
+        } catch {
+          return {};
+        }
+      })()
+    );
+  }
+});
+
+router.get('/gestion/reporte.json', requireLaboratoristaOAdmin, async function (req, res) {
+  try {
+    const { scope, clauses, params, filtrosAplicados } = await buildReporteFiltrosYScope(req);
+    const sql = buildReporteAggregateSql(clauses, params, 100000);
+    const rs = await pool.query(sql, params);
+
+    const payload = {
+      nombre_reporte: 'reporte_capacitaciones',
+      generado_en: new Date().toISOString(),
+      filas: rs.rows.length,
+      filtros_aplicados: filtrosAplicados || null,
+      scope: {
+        is_admin: scope.isAdmin,
+        ual_ids: scope.ualIds,
+        faculty_ids: scope.facultyIds,
+        resolved_from: scope.resolvedFrom,
+      },
+      reporte: rs.rows,
+    };
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp =
+      now.getFullYear() +
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) +
+      '_' +
+      pad(now.getHours()) +
+      pad(now.getMinutes());
+    const filename = `reporte_capacitaciones_${stamp}.json`;
+    const body = JSON.stringify(payload, null, 2);
+
+    res
+      .status(200)
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="' + filename + '"')
+      .header('X-Reporte-Filas', String(rs.rows.length))
+      .header('X-Scope-Is-Admin', scope.isAdmin ? '1' : '0')
+      .send(body);
+  } catch (err) {
+    if (err && err.status === 400) {
+      return res
+        .status(400)
+        .header('Content-Type', 'application/json; charset=utf-8')
+        .send(
+          JSON.stringify({ ok: false, error: err.message || 'Parámetros inválidos.' }, null, 2)
+        );
+    }
+    return serverError(
+      res,
+      err,
+      'No fue posible generar el archivo JSON del reporte de capacitaciones.',
       (function () {
         try {
           return { query_params: req?.query || {} };

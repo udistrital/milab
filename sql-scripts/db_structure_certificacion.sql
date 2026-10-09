@@ -207,6 +207,19 @@ BEGIN
     END IF;
 END $$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+         WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
+           AND table_name = 'certificacion_usuario'
+    ) THEN
+        ALTER TABLE certificacion_usuario
+            ADD CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario
+                UNIQUE (codigo_curso, usuario_documento) WHERE (activo = TRUE);
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
     id BIGSERIAL NOT NULL,
     codigo_curso VARCHAR(100) NOT NULL,
