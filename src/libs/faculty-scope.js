@@ -139,7 +139,7 @@ async function resolveCoordinatorScope(client, authDocument) {
 
   const coordinatorDocument = coordInfoRes.rows[0].documento;
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
     [coordinatorDocument]
   );
 
@@ -159,7 +159,7 @@ async function resolveCoordinatorFacultyNames(client, authDocument) {
   }
 
   const result = await client.query(
-    'SELECT nombre FROM facultad WHERE facultad_id = ANY($1::int[])',
+    'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[])',
     [scope.facultyIds]
   );
 

@@ -231,6 +231,15 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'admin') {
+    primaryLinks.push(
+      createLink('Reclamaciones', '/milab/api/sanciones/reclamaciones', 'bi-chat-left-text')
+    );
+    secondaryGroups.push(
+      createGroup('Configuración', 'bi-gear', [
+        createLink('Roles', '/milab/api/admin/roles', 'bi-people'),
+        createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
+      ])
+    );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
@@ -361,6 +370,9 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'laboratorista') {
+    primaryLinks.push(
+      createLink('Reclamaciones', '/milab/api/sanciones/reclamaciones', 'bi-chat-left-text')
+    );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
     secondaryGroups.push(
@@ -413,6 +425,9 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'estudiante') {
+    accountLinks.push(
+      createLink('Mis sanciones', '/milab/api/sanciones/mis-sanciones', 'bi-shield-exclamation')
+    );
     primaryLinks.push(
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
     );
@@ -629,6 +644,7 @@ async function navigationMiddleware(req, res, next) {
     const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
+    const claimNotifications = await getClaimNotifications(sessionUser, primaryRole);
 
     if (sessionUser) {
       Object.assign(res.locals, sessionUser);
@@ -644,10 +660,42 @@ async function navigationMiddleware(req, res, next) {
     res.locals.pendingSanctionsCount = pendingSanctionsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
+    res.locals.claimNotifications = claimNotifications;
 
     return next();
   } catch (error) {
     return next(error);
+  }
+
+  async function getClaimNotifications(user, role) {
+    if (!user || !['estudiante', 'laboratorista', 'admin'].includes(role)) return null;
+    const document = String(user.documento_real || user.documento || '');
+    let result;
+    if (role === 'estudiante') {
+      result = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN multa m ON m.id = r.multa_id JOIN usuario u ON u.id = m.usuario_sancionado_id
+         WHERE u.documento = $1 AND r.fecha_respuesta IS NOT NULL AND r.fecha_lectura IS NULL`,
+        [document]
+      );
+    } else {
+      result = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN laboratorista l ON l.documento = r.responsable_documento_id
+         WHERE r.fecha_respuesta IS NULL
+           AND ($1::boolean OR ((l.documento = $2 OR l.n_usuario = $2) AND l.activo = TRUE))`,
+        [role === 'admin', document]
+      );
+    }
+    return {
+      count: result.rows[0]?.total || 0,
+      label:
+        role === 'estudiante' ? 'Respuestas a reclamaciones sin leer' : 'Reclamaciones pendientes',
+      href:
+        role === 'estudiante'
+          ? '/milab/api/sanciones/mis-sanciones'
+          : '/milab/api/sanciones/reclamaciones',
+    };
   }
 }
 

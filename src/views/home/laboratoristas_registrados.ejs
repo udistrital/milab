@@ -23,9 +23,8 @@
               <th>Correo</th>
               <th>Laboratorio</th> <!-- cambiado de UAL a Laboratorio -->
               <th>Facultad</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
               <th>Estado actual</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
           <tbody class="text-center text-light">
@@ -54,19 +53,17 @@
                 </td> <!-- nombre del laboratorio -->
                 <td><%= laboratorista.con_facultad %></td> <!-- nombre de la facultad -->
                 <td>
+                  <span class="badge <%= laboratorista.activo ? 'text-bg-success' : 'text-bg-secondary' %>">
+                    <%= laboratorista.activo ? 'Activo' : 'Inactivo' %>
+                  </span>
+                </td>
+                <td>
                   <a
                     class="btn btn-sm btn-outline-primary"
                     href="/milab/api/laboratoristas_registrados/editar?documento=<%= encodeURIComponent(laboratorista.con_documento) %>"
                   >
                     Editar
                   </a>
-                </td>
-                <td>
-                  <span class="badge <%= laboratorista.activo ? 'text-bg-success' : 'text-bg-secondary' %>">
-                    <%= laboratorista.activo ? 'Activo' : 'Inactivo' %>
-                  </span>
-                </td>
-                <td>
                   <form action="/milab/api/laboratoristas_registrados/toggle-estado" method="POST">
                     <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= laboratorista.con_documento %>">

@@ -170,6 +170,35 @@ test('navigationMiddleware sets pending sanctions badge for coordinador', async 
   }
 });
 
+test('claim notification badges reflect unread student answers and assigned pending requests', async () => {
+  for (const role of ['estudiante', 'laboratorista', 'admin']) {
+    const loaded = loadNavigationModule({
+      queryImpl: async (sql) =>
+        sql.includes('reclamacion_sancion') ? { rows: [{ total: 2 }] } : { rows: [] },
+    });
+    try {
+      const res = { locals: {} };
+      await loaded.navigationMiddleware(
+        { session: { user: { tipo: role, documento: '123' } } },
+        res,
+        (error) => assert.ifError(error)
+      );
+      assert.equal(res.locals.claimNotifications.count, 2);
+      assert.match(
+        res.locals.claimNotifications.href,
+        role === 'estudiante' ? /mis-sanciones$/ : /reclamaciones$/
+      );
+      const query = loaded.getQueryCalls().find((call) => call.sql.includes('reclamacion_sancion'));
+      assert.match(
+        query.sql,
+        role === 'estudiante' ? /fecha_lectura IS NULL/ : /fecha_respuesta IS NULL/
+      );
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
 test('navigationMiddleware keeps pending sanctions badge at zero for non coordinador roles', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
@@ -197,7 +226,16 @@ test('navigationMiddleware keeps pending sanctions badge at zero for non coordin
 
     assert.equal(nextCalled, true);
     assert.equal(res.locals.pendingSanctionsCount, 0);
-    assert.equal(loaded.getQueryCalls().length, 0, 'no debe consultar conteo para no coordinador');
+    assert.ok(
+      !loaded
+        .getQueryCalls()
+        .some(
+          (call) =>
+            call.sql.includes('FROM multa m') && call.sql.includes("IN ('Pendiente', 'POR SALDAR')")
+        ),
+      'no debe consultar el conteo de autorizaciones para un laboratorista'
+    );
+    assert.equal(res.locals.claimNotifications.count, 0);
   } finally {
     loaded.restore();
   }

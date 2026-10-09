@@ -80,14 +80,14 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
              STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
-             ARRAY_AGG(DISTINCT f.facultad_id ORDER BY f.facultad_id) FILTER (WHERE f.facultad_id IS NOT NULL) AS facultad_ids,
+             ARRAY_AGG(DISTINCT f.dependencia_facultad_id ORDER BY f.dependencia_facultad_id) FILTER (WHERE f.dependencia_facultad_id IS NOT NULL) AS facultad_ids,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
              END AS tipo
       FROM coordinador c
       JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-      JOIN facultad f ON f.facultad_id = cf.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
         OR u.documento = c.documento
@@ -107,7 +107,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
     const coordinadores = result.rows;
 
     const facultadesResult = await client.query(
-      'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC'
+      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad ORDER BY nombre ASC'
     );
     const facultadesDisponibles = facultadesResult.rows;
 
@@ -232,12 +232,13 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       }
     }
 
-    const validFacultyColumn = await resolveExistingColumn('facultad', [
+    const validFacultyColumn = await resolveExistingColumn('dependencia_facultad', [
+      'dependencia_facultad_id',
       'facultad_id',
       'id_facultad',
     ]);
     const validFacs = await client.query(
-      `SELECT ${validFacultyColumn} AS facultad_id FROM facultad WHERE ${validFacultyColumn} = ANY($1::int[])`,
+      `SELECT ${validFacultyColumn} AS facultad_id FROM dependencia_facultad WHERE ${validFacultyColumn} = ANY($1::int[])`,
       [facultadIds]
     );
     if (validFacs.rows.length !== facultadIds.length) {

@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS parametro_practica_facultad (
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_parametro_practica_facultad PRIMARY KEY (id),
-    CONSTRAINT fk_parametro_practica_facultad_facultad FOREIGN KEY (facultad_id) REFERENCES facultad(facultad_id) ON DELETE CASCADE,
+    CONSTRAINT fk_parametro_practica_facultad_facultad FOREIGN KEY (facultad_id) REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE CASCADE,
     CONSTRAINT uq_parametro_practica_facultad_facultad UNIQUE (facultad_id),
     CONSTRAINT ck_parametro_practica_facultad_min_cancel_hours CHECK (min_cancel_hours >= 1),
     CONSTRAINT ck_parametro_practica_facultad_min_reserva_hours CHECK (min_reserva_hours >= 2),
@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS facultad_modulo_acceso (
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_facultad_modulo_acceso PRIMARY KEY (id),
     CONSTRAINT uq_facultad_modulo_acceso UNIQUE (facultad_id, modulo, rol),
-    CONSTRAINT fk_facultad_modulo_acceso_facultad FOREIGN KEY (facultad_id) REFERENCES facultad(facultad_id) ON DELETE CASCADE,
+    CONSTRAINT fk_facultad_modulo_acceso_facultad FOREIGN KEY (facultad_id) REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE CASCADE,
     CONSTRAINT ck_facultad_modulo_acceso_modulo CHECK (modulo IN ('prestamos')),
     CONSTRAINT ck_facultad_modulo_acceso_rol CHECK (rol IN ('coordinador', 'laboratorista', 'monitor'))
 );

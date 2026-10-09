@@ -44,6 +44,7 @@ function loadRoute() {
     [
       emailLayoutPath,
       {
+        ...require(emailLayoutPath),
         buildBrandedEmailAttachments: () => [],
         buildEmailFooterHtml: () => '',
         buildEmailHeaderHtml: () => '',
@@ -98,12 +99,14 @@ function loadRoute() {
 
 function loadRouteWithDbQuery(dbQueryImpl) {
   const originals = new Map();
+  const sentMessages = [];
   const stubs = [
     [dbPath, { query: dbQueryImpl }],
-    [mailPath, { sendMail: async () => {} }],
+    [mailPath, { sendMail: async (message) => sentMessages.push(message) }],
     [
       emailLayoutPath,
       {
+        ...require(emailLayoutPath),
         buildBrandedEmailAttachments: () => [],
         buildEmailFooterHtml: () => '',
         buildEmailHeaderHtml: () => '',
@@ -143,6 +146,7 @@ function loadRouteWithDbQuery(dbQueryImpl) {
 
   return {
     route: require(routePath),
+    sentMessages,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
         if (original) {
@@ -246,6 +250,10 @@ test('registro_coordinador does not require facultad_ids for coordinador_general
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_success');
+    assert.equal(loaded.sentMessages.length, 1);
+    assert.equal(loaded.sentMessages[0].from.name, 'MILab — No responder');
+    assert.match(loaded.sentMessages[0].text, /Por favor, no respondas a este correo/);
+    assert.match(loaded.sentMessages[0].html, /Por favor, no respondas a este correo/);
   } finally {
     loaded.restore();
   }

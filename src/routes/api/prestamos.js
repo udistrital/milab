@@ -3609,9 +3609,9 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
         SELECT DISTINCT
           f.nombre AS facultad,
           u.nombre AS laboratorio
-        FROM facultad f
+        FROM dependencia_facultad f
         LEFT JOIN ual u
-          ON u.facultad_id = f.facultad_id
+          ON u.facultad_id = f.dependencia_facultad_id
          AND u.activo = TRUE
         WHERE f.activo = TRUE
         ORDER BY f.nombre ASC, u.nombre ASC
@@ -3634,12 +3634,12 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
           SELECT DISTINCT
             f.nombre AS facultad,
             u.nombre AS laboratorio
-          FROM facultad f
+          FROM dependencia_facultad f
           LEFT JOIN ual u
-            ON u.facultad_id = f.facultad_id
+            ON u.facultad_id = f.dependencia_facultad_id
            AND u.activo = TRUE
           WHERE f.activo = TRUE
-            AND f.facultad_id = ANY($1::int[])
+            AND f.dependencia_facultad_id = ANY($1::int[])
           ORDER BY f.nombre ASC, u.nombre ASC
         `,
         [scopedFacultyIds]
@@ -3687,12 +3687,12 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
       const result = await pool.query(
         `
           SELECT DISTINCT
-            f.facultad_id,
+            f.dependencia_facultad_id AS facultad_id,
             f.nombre AS facultad,
             u.nombre AS laboratorio
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE u.activo = TRUE
             AND f.activo = TRUE
             AND u.ual_id = ANY($1::int[])
@@ -3783,7 +3783,7 @@ async function fetchCursosActivosParaEquipoForm(normalizedItem) {
       `
         SELECT c.codigo_curso, c.nombre_curso, c.id_facultad, f.nombre AS facultad_nombre
         FROM cursos c
-        JOIN facultad f ON f.facultad_id = c.id_facultad
+        JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY f.nombre ASC, c.nombre_curso ASC
       `,
@@ -3894,8 +3894,8 @@ function buildFacultyNameScopeClause(columnExpression, scope, params) {
   return `
     AND EXISTS (
       SELECT 1
-      FROM facultad f_scope
-      WHERE f_scope.facultad_id = ANY($${params.length}::int[])
+      FROM dependencia_facultad f_scope
+      WHERE f_scope.dependencia_facultad_id = ANY($${params.length}::int[])
         AND UPPER(f_scope.nombre) = UPPER(${columnExpression})
     )
   `;
@@ -5153,17 +5153,18 @@ async function fetchLoanDocumentRecord(req, loanId) {
           ON ee.solicitud_prestamo_id = sp.id
         LEFT JOIN ual ul
           ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-        LEFT JOIN facultad f
-          ON f.facultad_id = ul.facultad_id
+        LEFT JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = ul.facultad_id
         LEFT JOIN LATERAL (
           SELECT c.nombre, c.firma_digital
-          FROM coordinador_facultad cf
+          FROM coordinador_facultad_alcance cf
           JOIN coordinador c
             ON c.documento = cf.coordinador_documento_id
-          WHERE cf.facultad_id = f.facultad_id
+          WHERE cf.facultad_id = f.dependencia_facultad_id
             AND cf.activo = TRUE
             AND c.activo = TRUE
-          ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+          ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+            c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
           LIMIT 1
         ) coord
           ON TRUE
@@ -5189,7 +5190,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
   }
 
   const params = [loanId];
-  const scopeClause = buildFacultyIdScopeClause('f.facultad_id', scope, params);
+  const scopeClause = buildFacultyIdScopeClause('f.dependencia_facultad_id', scope, params);
   const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
   const result = await pool.query(
     `
@@ -5230,17 +5231,18 @@ async function fetchLoanDocumentRecord(req, loanId) {
         ON ee.solicitud_prestamo_id = sp.id
       LEFT JOIN ual ul
         ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = ul.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = ul.facultad_id
       LEFT JOIN LATERAL (
         SELECT c.nombre, c.firma_digital
-        FROM coordinador_facultad cf
+        FROM coordinador_facultad_alcance cf
         JOIN coordinador c
           ON c.documento = cf.coordinador_documento_id
-        WHERE cf.facultad_id = f.facultad_id
+        WHERE cf.facultad_id = f.dependencia_facultad_id
           AND cf.activo = TRUE
           AND c.activo = TRUE
-        ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+        ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+          c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
         LIMIT 1
       ) coord
         ON TRUE
@@ -5297,17 +5299,18 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
           ON u.id = rp.usuario_id
         LEFT JOIN sala s
           ON s.id = rp.sala_id
-        LEFT JOIN facultad f
+        LEFT JOIN dependencia_facultad f
           ON UPPER(f.nombre) = UPPER(rp.facultad)
         LEFT JOIN LATERAL (
           SELECT c.nombre, c.firma_digital
-          FROM coordinador_facultad cf
+          FROM coordinador_facultad_alcance cf
           JOIN coordinador c
             ON c.documento = cf.coordinador_documento_id
-          WHERE cf.facultad_id = f.facultad_id
+          WHERE cf.facultad_id = f.dependencia_facultad_id
             AND cf.activo = TRUE
             AND c.activo = TRUE
-          ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+          ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+            c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
           LIMIT 1
         ) coord
           ON TRUE
@@ -5373,17 +5376,18 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
         ON u.id = rp.usuario_id
       LEFT JOIN sala s
         ON s.id = rp.sala_id
-      LEFT JOIN facultad f
+      LEFT JOIN dependencia_facultad f
         ON UPPER(f.nombre) = UPPER(rp.facultad)
       LEFT JOIN LATERAL (
         SELECT c.nombre, c.firma_digital
-        FROM coordinador_facultad cf
+        FROM coordinador_facultad_alcance cf
         JOIN coordinador c
           ON c.documento = cf.coordinador_documento_id
-        WHERE cf.facultad_id = f.facultad_id
+        WHERE cf.facultad_id = f.dependencia_facultad_id
           AND cf.activo = TRUE
           AND c.activo = TRUE
-        ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+        ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+          c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
         LIMIT 1
       ) coord
         ON TRUE
@@ -6077,7 +6081,9 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6106,14 +6112,14 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
         e.nombre AS equipo_nombre,
         e.laboratorio,
         COALESCE(e.facultad, f.nombre) AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM solicitud_prestamo sp
       JOIN equipo e
         ON e.id = sp.equipo_id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE sp.id = $1
         ${facultyCondition}
         ${laboratoryCondition}
@@ -6130,7 +6136,9 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
     return null;
   }
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6166,7 +6174,7 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
             AND i.estado <> 'cerrada'
         ) AS incidencia_activa,
         COALESCE(e.facultad, f.nombre) AS facultad,
-        f.facultad_id,
+        f.dependencia_facultad_id AS facultad_id,
         ee.id AS entrega_id,
         ee.fecha_entrega,
         ee.fecha_devolucion_esperada,
@@ -6181,8 +6189,8 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
         ON ee.solicitud_prestamo_id = sp.id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE sp.id = $1
         ${facultyCondition}
         ${laboratoryCondition}
@@ -6255,11 +6263,11 @@ async function fetchManagedIncident(id, scope, executor = pool) {
       LEFT JOIN LATERAL (
         SELECT
           u.ual_id,
-          f.facultad_id,
+          f.dependencia_facultad_id AS facultad_id,
           f.nombre
         FROM ual u
-        JOIN facultad f
-          ON f.facultad_id = u.facultad_id
+        JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = u.facultad_id
         WHERE UPPER(u.nombre) = UPPER(COALESCE(e.laboratorio, rp.laboratorio))
         ORDER BY u.ual_id ASC
         LIMIT 1
@@ -6282,7 +6290,9 @@ async function fetchManagedPracticeReservation(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6318,13 +6328,13 @@ async function fetchManagedPracticeReservation(id, scope) {
         u.nombre AS usuario_nombre,
         u.documento AS usuario_documento,
         u.correo AS usuario_correo,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM reserva_practica rp
       JOIN usuario u
         ON u.id = rp.usuario_id
       LEFT JOIN sala s
         ON s.id = rp.sala_id
-      LEFT JOIN facultad f
+      LEFT JOIN dependencia_facultad f
         ON UPPER(f.nombre) = UPPER(rp.facultad)
       WHERE rp.id = $1
         ${facultyCondition}
@@ -6343,7 +6353,9 @@ async function resolveManagedUal(payload, scope) {
   }
 
   const params = [payload.facultad, payload.laboratorio];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($3::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($3::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6351,9 +6363,9 @@ async function resolveManagedUal(payload, scope) {
 
   const result = await pool.query(
     `
-      SELECT u.ual_id, u.nombre AS laboratorio, f.nombre AS facultad, f.facultad_id
+      SELECT u.ual_id, u.nombre AS laboratorio, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE UPPER(f.nombre) = UPPER($1::text)
         AND UPPER(u.nombre) = UPPER($2::text)
         ${facultyCondition}
@@ -6379,7 +6391,7 @@ async function fetchManagedUalById(ualId, scope) {
 
   if (!scope.unrestricted) {
     params.push(scope.facultyIds);
-    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+    whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
   if (
@@ -6397,9 +6409,9 @@ async function fetchManagedUalById(ualId, scope) {
         u.ual_id,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       LIMIT 1
     `,
@@ -6672,7 +6684,9 @@ async function fetchManagedSala(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6694,10 +6708,10 @@ async function fetchManagedSala(id, scope) {
         s.activo,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM sala s
       JOIN ual u ON u.ual_id = s.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE s.id = $1
         ${facultyCondition}
       LIMIT 1
@@ -6714,7 +6728,9 @@ async function fetchManagedHorarioSala(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6734,11 +6750,11 @@ async function fetchManagedHorarioSala(id, scope) {
         s.nombre AS sala_nombre,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM horario_sala h
       JOIN sala s ON s.id = h.sala_id
       JOIN ual u ON u.ual_id = s.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE h.id = $1
         ${facultyCondition}
       LIMIT 1
@@ -6810,7 +6826,7 @@ async function fetchPrestamoFacultades() {
   const result = await pool.query(
     `
       SELECT DISTINCT nombre AS facultad
-      FROM facultad
+      FROM dependencia_facultad
       WHERE activo = TRUE
       ORDER BY nombre ASC
     `
@@ -6824,8 +6840,8 @@ async function fetchPrestamoLaboratorios(facultad) {
     `
       SELECT DISTINCT u.nombre AS laboratorio
       FROM ual u
-      JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE u.activo = TRUE
         AND f.activo = TRUE
         AND UPPER(f.nombre) = UPPER($1)
@@ -6852,8 +6868,8 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
           (
             SELECT f.nombre
             FROM ual u
-            JOIN facultad f
-              ON f.facultad_id = u.facultad_id
+            JOIN dependencia_facultad f
+              ON f.dependencia_facultad_id = u.facultad_id
             WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
             ORDER BY f.nombre ASC
             LIMIT 1
@@ -6871,8 +6887,8 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
             (
               SELECT f.nombre
               FROM ual u
-              JOIN facultad f
-                ON f.facultad_id = u.facultad_id
+              JOIN dependencia_facultad f
+                ON f.dependencia_facultad_id = u.facultad_id
               WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
               ORDER BY f.nombre ASC
               LIMIT 1
@@ -7000,11 +7016,11 @@ async function fetchPracticeConfigurationByFacultyName(facultyName) {
 
   const result = await pool.query(
     `
-      SELECT f.facultad_id
-      FROM facultad f
+      SELECT f.dependencia_facultad_id AS facultad_id
+      FROM dependencia_facultad f
       WHERE UPPER(f.nombre) = UPPER($1::text)
          OR ($2::text IS NOT NULL AND UPPER(f.nombre) = UPPER($2::text))
-      ORDER BY f.facultad_id ASC
+      ORDER BY f.dependencia_facultad_id ASC
       LIMIT 1
     `,
     [normalizedName, canonicalName]
@@ -7039,8 +7055,8 @@ async function fetchCoordinatorSignatureRecord(req) {
       LEFT JOIN coordinador_facultad cf
         ON cf.coordinador_documento_id = c.documento
        AND cf.activo = TRUE
-      LEFT JOIN facultad f
-        ON f.facultad_id = cf.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = cf.facultad_id
       WHERE c.documento = $1
       ORDER BY cf.fecha_modificacion DESC NULLS LAST, cf.facultad_id ASC
       LIMIT 1
@@ -7057,8 +7073,8 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
   if (scope.unrestricted) {
     const result = await pool.query(
       `
-        SELECT facultad_id, nombre
-        FROM facultad
+        SELECT dependencia_facultad_id AS facultad_id, nombre
+        FROM dependencia_facultad
         WHERE activo = TRUE
         ORDER BY nombre ASC
       `
@@ -7073,9 +7089,9 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
 
   const result = await pool.query(
     `
-      SELECT facultad_id, nombre
-      FROM facultad
-      WHERE facultad_id = ANY($1::int[])
+      SELECT dependencia_facultad_id AS facultad_id, nombre
+      FROM dependencia_facultad
+      WHERE dependencia_facultad_id = ANY($1::int[])
       ORDER BY nombre ASC
     `,
     [scope.facultyIds]
@@ -7109,9 +7125,9 @@ async function fetchScopedPracticeConfigurationLaboratories(req, facultyId) {
 
   const result = await pool.query(
     `
-      SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+      SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       ORDER BY u.nombre ASC
     `,
@@ -7370,8 +7386,8 @@ async function fetchAcademicPracticesForReservation(facultad, laboratorio) {
       JOIN ual u
         ON u.ual_id = p.ual_id
        AND u.activo = TRUE
-      JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
        AND f.activo = TRUE
       LEFT JOIN asignatura_practica ap
         ON ap.practica_id = p.id
@@ -7473,7 +7489,7 @@ async function fetchManagedAcademicPractice(practiceId, scope) {
 
   if (!scope.unrestricted) {
     params.push(scope.facultyIds);
-    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+    whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
   if (
@@ -7494,10 +7510,10 @@ async function fetchManagedAcademicPractice(practiceId, scope) {
         p.estado,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM practica p
       JOIN ual u ON u.ual_id = p.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       LIMIT 1
     `,
@@ -8917,8 +8933,8 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
         LEFT JOIN LATERAL (
           SELECT f.nombre
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
           ORDER BY u.ual_id ASC
           LIMIT 1
@@ -8958,8 +8974,8 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
         LEFT JOIN LATERAL (
           SELECT f.nombre
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
           ORDER BY u.ual_id ASC
           LIMIT 1
@@ -9063,7 +9079,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
@@ -9099,8 +9115,8 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
             ON u.id = sp.usuario_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY sp.fecha_inicio ASC, sp.fecha_creacion ASC, sp.id ASC
         `,
@@ -9452,7 +9468,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
@@ -9510,8 +9526,8 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
             ON ee.solicitud_prestamo_id = sp.id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY sp.estado ASC, sp.fecha_inicio ASC, sp.id ASC
         `,
@@ -9531,7 +9547,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
 
       if (!scope.unrestricted) {
         queueParams.push(scope.facultyIds);
-        queueWhereParts.push(`f.facultad_id = ANY($${queueParams.length}::int[])`);
+        queueWhereParts.push(`f.dependencia_facultad_id = ANY($${queueParams.length}::int[])`);
       }
 
       const queueLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -9566,8 +9582,8 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
             ON e.id = c.equipo_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(COALESCE(e.laboratorio, c.laboratorio))
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${queueWhereParts.join(' AND ')}
           ORDER BY c.fecha_inicio ASC, c.id ASC
         `,
@@ -10065,8 +10081,8 @@ router.post(
             JOIN equipo e ON e.id = c.equipo_id
             LEFT JOIN ual u
               ON UPPER(u.nombre) = UPPER(e.laboratorio)
-            LEFT JOIN facultad f
-              ON f.facultad_id = u.facultad_id
+            LEFT JOIN dependencia_facultad f
+              ON f.dependencia_facultad_id = u.facultad_id
             WHERE c.id = $1
               AND c.tipo = 'prestamo'
               AND c.estado = 'pendiente'
@@ -10762,7 +10778,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause(
@@ -10822,8 +10838,8 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             ORDER BY ual_id ASC
             LIMIT 1
           ) ul ON TRUE
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY
             CASE i.estado
@@ -10868,7 +10884,9 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
   try {
     const scope = await resolveLoanManagementScope(req);
     const params = [req.params.id];
-    const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+    const facultyCondition = scope?.unrestricted
+      ? ''
+      : 'AND f.dependencia_facultad_id = ANY($2::int[])';
     if (!scope?.unrestricted) {
       if (!scope?.facultyIds?.length) {
         return res.status(404).send('La evidencia no existe o no esta disponible.');
@@ -10900,8 +10918,8 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
           ORDER BY ual_id ASC
           LIMIT 1
         ) ul ON TRUE
-        LEFT JOIN facultad f
-          ON f.facultad_id = ul.facultad_id
+        LEFT JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = ul.facultad_id
         WHERE i.id = $1
           ${facultyCondition}
           ${laboratoryCondition}
@@ -11257,7 +11275,7 @@ router.get(
         // no-op
       } else if (scope?.facultyIds?.length) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       } else {
         return res.render('home/prestamos/coordinador/sanciones_pendientes_bloqueo', {
           incidencias: [],
@@ -11305,8 +11323,8 @@ router.get(
             ON decisor.id = i.paz_y_salvo_decision_by_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY i.paz_y_salvo_decision_at DESC, i.id DESC
         `,
@@ -12712,7 +12730,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         dayParams.push(scope.facultyIds);
-        dayWhereParts.push(`f.facultad_id = ANY($${dayParams.length}::int[])`);
+        dayWhereParts.push(`f.dependencia_facultad_id = ANY($${dayParams.length}::int[])`);
       }
 
       const dayLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12765,7 +12783,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
           LEFT JOIN practica p ON p.id = rp.practica_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${dayWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12795,7 +12813,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         activeParams.push(scope.facultyIds);
-        activeWhereParts.push(`f.facultad_id = ANY($${activeParams.length}::int[])`);
+        activeWhereParts.push(`f.dependencia_facultad_id = ANY($${activeParams.length}::int[])`);
       }
 
       const activeLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12848,7 +12866,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
           LEFT JOIN practica p ON p.id = rp.practica_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${activeWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12870,7 +12888,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         cancelParams.push(scope.facultyIds);
-        cancelWhereParts.push(`f.facultad_id = ANY($${cancelParams.length}::int[])`);
+        cancelWhereParts.push(`f.dependencia_facultad_id = ANY($${cancelParams.length}::int[])`);
       }
 
       const cancelLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12900,7 +12918,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${cancelWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12914,7 +12932,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         queueParams.push(scope.facultyIds);
-        queueWhereParts.push(`f.facultad_id = ANY($${queueParams.length}::int[])`);
+        queueWhereParts.push(`f.dependencia_facultad_id = ANY($${queueParams.length}::int[])`);
       }
 
       const queueLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12947,7 +12965,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             ON u.id = c.usuario_id
           LEFT JOIN reserva_practica rp
             ON rp.id = c.referencia_id
-          LEFT JOIN facultad f
+          LEFT JOIN dependencia_facultad f
             ON UPPER(f.nombre) = UPPER(COALESCE(rp.facultad, ''))
           WHERE ${queueWhereParts.join(' AND ')}
           ORDER BY c.fecha_inicio ASC, c.id ASC
@@ -14094,7 +14112,9 @@ router.post(
       }
 
       const params = [req.params.id];
-      const facultyCondition = scope.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+      const facultyCondition = scope.unrestricted
+        ? ''
+        : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
@@ -14121,7 +14141,7 @@ router.post(
           FROM cola_solicitud c
           LEFT JOIN reserva_practica rp
             ON rp.id = c.referencia_id
-          LEFT JOIN facultad f
+          LEFT JOIN dependencia_facultad f
             ON UPPER(f.nombre) = UPPER(COALESCE(rp.facultad, ''))
           LEFT JOIN sala s
             ON s.id = rp.sala_id
@@ -14560,7 +14580,7 @@ router.get(
         ? await fetchScopedPracticeConfigurationFaculties(req)
         : [];
       let selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
-      if (selectedId && !facultades.some((f) => Number(f.facultad_id) === selectedId)) {
+      if (selectedId && !facultades.some((f) => Number(f.dependencia_facultad_id) === selectedId)) {
         selectedId = Number(facultades[0]?.facultad_id || 0);
       }
       const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
@@ -14598,9 +14618,9 @@ router.get(
             }
             const labsQ = await pool.query(
               `
-                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
                 FROM ual u
-                JOIN facultad f ON f.facultad_id = u.facultad_id
+                JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
                 WHERE ${whereParts.join(' AND ') || 'TRUE'}
                 ORDER BY f.nombre ASC, u.nombre ASC
               `,
@@ -15036,7 +15056,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
 
     if (!scope.unrestricted) {
       params.push(scope.facultyIds);
-      whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+      whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
     }
 
     if (facultad) {
@@ -15072,7 +15092,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
           ) AS total_horarios
         FROM sala s
         JOIN ual u ON u.ual_id = s.ual_id
-        JOIN facultad f ON f.facultad_id = u.facultad_id
+        JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
         WHERE ${whereParts.join(' AND ')}
         ORDER BY f.nombre ASC, u.nombre ASC, s.nombre ASC
       `,
@@ -15579,7 +15599,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           JOIN equipo e ON e.id = sp.equipo_id
           JOIN usuario u ON u.id = sp.usuario_id
           LEFT JOIN ual ual_item ON UPPER(ual_item.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f ON f.facultad_id = ual_item.facultad_id
+          LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual_item.facultad_id
           WHERE sp.fecha_inicio >= $1::date
             AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
@@ -15767,7 +15787,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           FROM reserva_practica rp
           JOIN sala s ON s.id = rp.sala_id
           JOIN ual u ON u.ual_id = s.ual_id
-          JOIN facultad f ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
           WHERE rp.fecha_inicio >= $1::date
             AND rp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}

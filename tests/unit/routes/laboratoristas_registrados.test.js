@@ -64,7 +64,7 @@ function loadRoute({
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
@@ -105,7 +105,7 @@ function loadRoute({
 
           if (
             sql.includes(
-              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+              'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
             )
           ) {
             return { rows: [{ facultad_id: 10 }] };
@@ -131,7 +131,7 @@ function loadRoute({
 
           if (
             sql.includes(
-              'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])'
+              'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[])'
             )
           ) {
             return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
@@ -275,7 +275,7 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }] };
@@ -329,7 +329,7 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };

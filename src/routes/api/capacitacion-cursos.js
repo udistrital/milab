@@ -262,13 +262,15 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
     let sqlWhereDescription = '';
     if (scope.isAdmin || scope.facultyIds.length === 0) {
       sqlWhereDescription = 'SCOPE_IS_ADMIN_OR_NO_FACULTIES → sin filtro WHERE';
-      result = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
+      result = await pool.query(
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad ORDER BY nombre ASC'
+      );
     } else {
       sqlWhereDescription = 'SCOPE_LABORATORISTA → WHERE facultad_id = ANY($1::int[])';
       result = await pool.query(
-        `SELECT facultad_id, nombre
-         FROM facultad
-         WHERE facultad_id = ANY($1::int[])
+        `SELECT dependencia_facultad_id AS facultad_id, nombre
+         FROM dependencia_facultad
+         WHERE dependencia_facultad_id = ANY($1::int[])
          ORDER BY nombre ASC`,
         [scope.facultyIds]
       );
@@ -377,7 +379,7 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     }
 
     const facRes = await pool.query(
-      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1',
+      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
       [idFacultad]
     );
     if (facRes.rows.length === 0) {
@@ -450,7 +452,7 @@ router.get('/list', requireCursosRead, async function (req, res) {
                 COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
                 COALESCE(lab.nombres, '[]') AS laboratorios_nombres
          FROM cursos c
-         JOIN facultad f ON f.facultad_id = c.id_facultad
+         JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
          LEFT JOIN (
              SELECT cl.codigo_curso,
                     COUNT(*) AS count_labs,
@@ -481,7 +483,7 @@ router.get('/list', requireCursosRead, async function (req, res) {
                 COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
                 COALESCE(lab.nombres, '[]') AS laboratorios_nombres
          FROM cursos c
-         JOIN facultad f ON f.facultad_id = c.id_facultad
+         JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
          LEFT JOIN (
              SELECT cl.codigo_curso,
                     COUNT(*) AS count_labs,
@@ -532,7 +534,7 @@ router.get('/detalle/:codigo_curso', requireCursosRead, async function (req, res
               c.url_edx,
               c.activo
        FROM cursos c
-       JOIN facultad f ON f.facultad_id = c.id_facultad
+       JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
        WHERE c.codigo_curso = $1`,
       [codigoCurso]
     );
@@ -614,7 +616,7 @@ router.post('/nuevo', requireCursosWrite, async function (req, res) {
     await client.query('BEGIN');
 
     const facRes = await client.query(
-      'SELECT nombre FROM facultad WHERE facultad_id = $1 AND activo = TRUE',
+      'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1 AND activo = TRUE',
       [idFacultad]
     );
     if (facRes.rows.length === 0) {
@@ -708,7 +710,7 @@ router.post('/editar', requireCursosWrite, async function (req, res) {
     }
 
     const facRes = await client.query(
-      'SELECT nombre FROM facultad WHERE facultad_id = $1 AND activo = TRUE',
+      'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1 AND activo = TRUE',
       [idFacultad]
     );
     if (facRes.rows.length === 0) {

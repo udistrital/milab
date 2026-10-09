@@ -3,9 +3,12 @@ const express = require('express');
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
+  NO_REPLY_NOTICE,
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
   escapeHtml,
 } = require('../../libs/email-layout');
 const { isPlaceholderEmail, isSyntheticInstitutionalEmail } = require('../../libs/user-identity');
@@ -314,7 +317,7 @@ router.post('/enviar-codigo', async (req, res) => {
   const registrationEmailOverrideActive = recipient !== usuario.correo;
   try {
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: buildNoReplySender(),
       to: recipient,
       subject: 'Verificación de correo - MILab Laboratorios UD',
       text: `Hola ${usuario.nombre || 'usuario'},
@@ -328,7 +331,9 @@ router.post('/enviar-codigo', async (req, res) => {
             Por tu seguridad, nunca compartas este código. Si no solicitaste esto, puedes ignorar este mensaje.
             
             Atentamente,
-            Equipo MILab`,
+            Equipo MILab
+
+            ${NO_REPLY_NOTICE}`,
 
       // 3. Versión HTML (la plantilla mejorada)
       // Usamos template literals (comillas invertidas ``) para insertar el HTML y las variables fácilmente.
@@ -403,6 +408,7 @@ router.post('/enviar-codigo', async (req, res) => {
                                         </td>
                                     </tr>
             
+                                    ${buildNoReplyNoticeHtml()}
                                     ${buildEmailFooterHtml(`
                                       <p class="fallback-font" style="font-size: 14px; color: rgba(255,255,255,0.92); margin: 0; text-align: center; line-height: 1.6;">
                                       Si no solicitó este código, puede ignorar este correo de forma segura. Es posible que otro usuario haya introducido su email por error.

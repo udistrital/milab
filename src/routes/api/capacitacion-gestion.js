@@ -377,7 +377,7 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
              sc.fecha_creacion,
              sc.fecha_modificacion
         FROM solicitud_capacitacion sc
-        LEFT JOIN facultad f ON f.facultad_id = sc.facultad_id
+        LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = sc.facultad_id
         LEFT JOIN ual u ON u.ual_id = sc.ual_id
       ${where}
        ORDER BY sc.estado = 'pendiente' DESC, sc.fecha_creacion DESC, sc.id DESC
@@ -780,7 +780,7 @@ router.get('/gestion/sesiones', requireLaboratoristaOAdmin, async function (req,
                 WHERE i.sesion_capacitacion_id = s.id AND i.estado = 'inscrito') AS inscripciones_activas
         FROM sesion_capacitacion s
         LEFT JOIN ual u ON u.ual_id = s.ual_id
-        LEFT JOIN facultad f ON f.facultad_id = s.facultad_id
+        LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = s.facultad_id
       ${where}
        ORDER BY s.fecha_inicio DESC, s.id DESC
        LIMIT 500
@@ -836,7 +836,7 @@ router.get('/sesiones-disponibles', requireEstudianteODocente, async function (r
              ), 0), s.cupo_maximo) AS cupo_disponible
         FROM sesion_capacitacion s
         LEFT JOIN ual u ON u.ual_id = s.ual_id
-        LEFT JOIN facultad f ON f.facultad_id = s.facultad_id
+        LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = s.facultad_id
       ${where}
        ORDER BY s.fecha_inicio ASC, s.id ASC
        LIMIT 500
@@ -1020,7 +1020,7 @@ router.get('/mis-inscripciones', requireEstudianteODocente, async function (req,
                  AND c.fecha_vencimiento > CURRENT_TIMESTAMP LIMIT 1) AS certificacion_activa_id
         FROM inscripcion_sesion_capacitacion i
         JOIN sesion_capacitacion s ON s.id = i.sesion_capacitacion_id
-        LEFT JOIN facultad f ON f.facultad_id = s.facultad_id
+        LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = s.facultad_id
         LEFT JOIN ual u ON u.ual_id = s.ual_id
        WHERE ${clauses.join(' AND ')}
        ORDER BY s.fecha_inicio DESC, i.id DESC
@@ -1065,7 +1065,7 @@ router.get('/mis-certificaciones', requireEstudianteODocente, async function (re
         FROM certificacion_usuario c
         LEFT JOIN sesion_capacitacion s ON s.id = c.sesion_capacitacion_id
         LEFT JOIN ual u ON u.ual_id = c.ual_id
-        LEFT JOIN facultad f ON f.facultad_id = c.facultad_id
+        LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.facultad_id
         LEFT JOIN cursos cur ON cur.codigo_curso = c.codigo_curso
        WHERE c.usuario_documento = $1
        ORDER BY CASE WHEN c.activo = TRUE AND c.fecha_vencimiento > CURRENT_TIMESTAMP THEN 0 ELSE 1 END,
@@ -1850,7 +1850,7 @@ function buildReporteAggregateSql(clauses, params, extraLimit) {
       FROM sesion_capacitacion s
       LEFT JOIN cursos c ON c.codigo_curso = s.codigo_curso
       LEFT JOIN ual u    ON u.ual_id = s.ual_id
-      LEFT JOIN facultad f ON f.facultad_id = s.facultad_id
+      LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = s.facultad_id
     ${where}
      ORDER BY s.fecha_inicio DESC, s.id DESC
     ${paging}

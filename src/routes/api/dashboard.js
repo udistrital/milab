@@ -9,7 +9,11 @@ const {
 } = require('../../libs/account-email');
 const { sendEmailNotification } = require('../../libs/email-notifications');
 const { buildAppUrl } = require('../../libs/app-url');
-const { resolveAcademicFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const {
+  resolveFacultyKeyFromName,
+  resolveStudentFacultyKey,
+} = require('../../libs/academic-faculty');
+const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
@@ -40,7 +44,12 @@ async function resolveExistingColumn(client, tableName, candidateColumns) {
 
 async function resolveDashboardSchemaColumns(client) {
   const ualIdColumn = await resolveExistingColumn(client, 'ual', ['ual_id', 'id_ual']);
-  const facultadIdColumn = await resolveExistingColumn(client, 'facultad', [
+  const facultadIdColumn = await resolveExistingColumn(client, 'dependencia_facultad', [
+    'dependencia_facultad_id',
+    'facultad_id',
+    'id_facultad',
+  ]);
+  const ualFacultadIdColumn = await resolveExistingColumn(client, 'ual', [
     'facultad_id',
     'id_facultad',
   ]);
@@ -66,6 +75,7 @@ async function resolveDashboardSchemaColumns(client) {
   return {
     ualIdColumn,
     facultadIdColumn,
+    ualFacultadIdColumn,
     multaUalIdColumn,
     laboratoristaUalIdColumn,
     laboratoristaUalDocumentColumn,
@@ -74,11 +84,14 @@ async function resolveDashboardSchemaColumns(client) {
   };
 }
 
-const requireDashboardAccess = requireRoles(['admin', 'coordinador', 'laboratorista'], {
-  message: '¡Acceso denegado!',
-  message2: 'No tienes permisos para ver el dashboard',
-  limit: 'noSession',
-});
+const requireDashboardAccess = requireRoles(
+  ['admin', 'coordinador_general', 'coordinador', 'laboratorista'],
+  {
+    message: '¡Acceso denegado!',
+    message2: 'No tienes permisos para ver el dashboard',
+    limit: 'noSession',
+  }
+);
 
 const requireDashboardAdminJson = requireJsonRoles(['admin'], {
   message: 'No tienes permisos para realizar esta acción.',
@@ -175,13 +188,18 @@ const CHART_DEFINITIONS = {
 function getDashboardRole(user) {
   const roles = normalizeRoles(user?.roles || user?.tipo);
   if (roles.includes('admin')) return 'admin';
+  if (roles.includes('coordinador_general')) return 'coordinador_general';
   if (roles.includes('coordinador')) return 'coordinador';
   if (roles.includes('laboratorista')) return 'laboratorista';
   return '';
 }
 
+function isGlobalDashboardRole(role) {
+  return role === 'admin' || role === 'coordinador_general';
+}
+
 function getAvailableChartIds(role) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return [
       'certificadosEstudiantes',
       'certificadosDocentes',
@@ -292,6 +310,7 @@ async function resolveLaboratoristaScope(client, authDocument) {
   if (
     !columns.ualIdColumn ||
     !columns.facultadIdColumn ||
+    !columns.ualFacultadIdColumn ||
     !columns.laboratoristaUalIdColumn ||
     !columns.laboratoristaUalDocumentColumn
   ) {
@@ -338,7 +357,7 @@ async function resolveLaboratoristaScope(client, authDocument) {
     const ualInfoRes = await client.query(
       `SELECT ${columns.ualIdColumn} AS ual_id,
               nombre,
-              ${columns.facultadIdColumn} AS facultad_id
+              ${columns.ualFacultadIdColumn} AS facultad_id
        FROM ual
        WHERE ${columns.ualIdColumn} = ANY($1::int[])
        ORDER BY nombre ASC`,
@@ -353,7 +372,7 @@ async function resolveLaboratoristaScope(client, authDocument) {
   if (facultyIds.length) {
     const facultyInfoRes = await client.query(
       `SELECT nombre
-       FROM facultad
+       FROM dependencia_facultad
        WHERE ${columns.facultadIdColumn} = ANY($1::int[])
        ORDER BY nombre ASC`,
       [facultyIds]
@@ -381,6 +400,16 @@ function buildScopePresentation(role, scope) {
     };
   }
 
+  if (role === 'coordinador_general') {
+    return {
+      badge: 'Vista global · consulta',
+      title: 'Monitoreo institucional',
+      subtitle:
+        'Indicadores de todas las facultades, dependencias y laboratorios en modo de solo consulta.',
+      chips: ['Toda la plataforma'],
+    };
+  }
+
   if (role === 'coordinador') {
     return {
       badge: 'Vista por facultad',
@@ -402,22 +431,28 @@ function buildScopePresentation(role, scope) {
 
 async function fetchStudentCertificateRows() {
   const result = await pool.query(
-    `SELECT ce.*
+    `SELECT ce.*,
+            u.codigo::text AS codigo_usuario,
+            u.carrera,
+            u.nombre AS nombre_usuario,
+            u.documento AS documento_usuario
      FROM certificado_estudiante ce
+     LEFT JOIN usuario u ON u.id = ce.usuario_id
      WHERE ce.fecha_creacion IS NOT NULL
-     ORDER BY ce.fecha_creacion DESC
-     LIMIT 300`
+     ORDER BY ce.fecha_creacion DESC`
   );
   return result.rows;
 }
 
 async function fetchTeacherCertificateRows() {
   const result = await pool.query(
-    `SELECT cd.*
+    `SELECT cd.*,
+            u.nombre AS nombre_usuario,
+            u.documento AS documento_usuario
      FROM certificado_docente cd
+     LEFT JOIN usuario u ON u.id = cd.usuario_id
      WHERE cd.fecha_creacion IS NOT NULL
-     ORDER BY cd.fecha_creacion DESC
-     LIMIT 300`
+     ORDER BY cd.fecha_creacion DESC`
   );
   return result.rows;
 }
@@ -428,8 +463,7 @@ async function fetchSanctionRows() {
      FROM multa m
      LEFT JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.fecha_multa IS NOT NULL
-     ORDER BY m.fecha_multa DESC
-     LIMIT 500`
+     ORDER BY m.fecha_multa DESC`
   );
   return result.rows;
 }
@@ -463,8 +497,7 @@ async function fetchLaboratoristaRows() {
        l.contrato,
        l.usuario_id,
        l.activo
-     ORDER BY l.fecha_creacion DESC NULLS LAST
-     LIMIT 300`
+     ORDER BY l.fecha_creacion DESC NULLS LAST`
   );
   return result.rows;
 }
@@ -493,8 +526,7 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id
-     ORDER BY c.fecha_creacion DESC NULLS LAST
-     LIMIT 300`
+     ORDER BY c.fecha_creacion DESC NULLS LAST`
   );
   return result.rows;
 }
@@ -653,8 +685,7 @@ async function fetchUsuarioRows() {
        estado
      FROM usuarios_ranked
      WHERE identity_rank = 1
-     ORDER BY fecha_creacion DESC NULLS LAST
-     LIMIT 500`
+     ORDER BY fecha_creacion DESC NULLS LAST`
   );
   return result.rows;
 }
@@ -729,19 +760,27 @@ function isUsuarioDocente(usuarioRow, roleIndex) {
   return !!(roles && roles.has('docente'));
 }
 
+function isStudentRowInFacultyScope(row, scope) {
+  const facultyKeys = new Set(scope.facultyKeys || []);
+  if (!facultyKeys.size) return false;
+
+  const facultyKey = resolveStudentFacultyKey({
+    codigo: row.codigo_usuario ?? row.codigo,
+    carrera: row.carrera,
+  });
+  return Boolean(facultyKey) && facultyKeys.has(facultyKey);
+}
+
 function filterStudentRowsByScope(rows, role, scope) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return rows;
   }
 
-  const facultyNamesSet = new Set(
-    (scope.facultyNames || []).map((name) => String(name || '').trim())
-  );
-  return rows.filter((row) => facultyNamesSet.has(resolveAcademicFacultyName(row.carrera || '')));
+  return rows.filter((row) => isStudentRowInFacultyScope(row, scope));
 }
 
 function filterSanctionRowsByScope(rows, role, scope) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return rows;
   }
 
@@ -773,7 +812,7 @@ function hasIntersection(leftValues, rightSet) {
 }
 
 function filterLaboratoristaRowsByScope(rows, role, scope) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return rows;
   }
 
@@ -791,7 +830,7 @@ function filterLaboratoristaRowsByScope(rows, role, scope) {
 }
 
 function filterCoordinatorRowsByScope(rows, role, scope) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return rows;
   }
 
@@ -804,23 +843,16 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
-  if (role === 'admin') {
+  if (isGlobalDashboardRole(role)) {
     return rows;
   }
 
   if (role === 'coordinador') {
-    const facultyNamesSet = new Set(
-      (scope.facultyNames || []).map((name) => String(name || '').trim())
-    );
     const facultyIds = toNumericSet(scope.facultyIds);
-    return rows.filter((row) => {
-      const resolvedFacultyName = resolveAcademicFacultyName(row.carrera || '');
-      if (resolvedFacultyName && facultyNamesSet.has(resolvedFacultyName)) {
-        return true;
-      }
-
-      return hasIntersection(row.faculty_ids, facultyIds);
-    });
+    return rows.filter(
+      (row) =>
+        isStudentRowInFacultyScope(row, scope) || hasIntersection(row.faculty_ids, facultyIds)
+    );
   }
 
   if (role === 'laboratorista') {
@@ -829,6 +861,415 @@ function filterUsuarioRowsByScope(rows, role, scope) {
   }
 
   return [];
+}
+
+const OPEN_SANCTION_STATES = ['ACTIVA', 'Pendiente', 'POR SALDAR'];
+const DETAIL_ROW_LIMIT = 500;
+const RANKING_LIMIT = 5;
+const UNCOVERED_UAL_LIMIT = 8;
+
+function buildSanctionScopeFilter(role, scope) {
+  if (isGlobalDashboardRole(role)) {
+    return { condition: 'TRUE', params: [] };
+  }
+
+  if (role === 'coordinador') {
+    return { condition: 'u.facultad_id = ANY($1::int[])', params: [scope.facultyIds || []] };
+  }
+
+  return { condition: 'm.ual_id = ANY($1::int[])', params: [scope.ualIds || []] };
+}
+
+function toInt(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed) : 0;
+}
+
+function topEntries(map, limit = RANKING_LIMIT) {
+  return Array.from(map.values())
+    .sort((a, b) => b.abiertas - a.abiertas || a.nombre.localeCompare(b.nombre, 'es'))
+    .slice(0, limit);
+}
+
+function addToRanking(map, key, nombre, abiertas) {
+  if (key === null || key === undefined || !nombre) return;
+  const current = map.get(key) || { nombre, abiertas: 0 };
+  current.abiertas += abiertas;
+  map.set(key, current);
+}
+
+async function fetchSanctionPazYSalvoSummary(client, role, scope) {
+  const { condition, params } = buildSanctionScopeFilter(role, scope);
+  const hasIncidenciaLink = Boolean(
+    await resolveExistingColumn(client, 'incidencia', ['paz_y_salvo_multa_id'])
+  );
+  const loanBlockExpression = hasIncidenciaLink
+    ? `COUNT(*) FILTER (
+         WHERE EXISTS (
+           SELECT 1 FROM incidencia i
+           WHERE i.paz_y_salvo_multa_id = m.id AND i.paz_y_salvo_bloquea = TRUE
+         )
+       )::int`
+    : '0';
+  const stateParam = params.length + 1;
+
+  const summaryRes = await client.query(
+    `SELECT
+       COUNT(*)::int AS abiertas,
+       COUNT(DISTINCT m.usuario_sancionado_id)::int AS personas_bloqueadas,
+       COUNT(*) FILTER (WHERE m.con_estado_multa = 'ACTIVA')::int AS activas,
+       COUNT(*) FILTER (WHERE m.con_estado_multa = 'Pendiente')::int AS pendientes,
+       COUNT(*) FILTER (WHERE m.con_estado_multa = 'POR SALDAR')::int AS por_saldar,
+       COUNT(*) FILTER (WHERE edad.dias <= 30)::int AS hasta_30,
+       COUNT(*) FILTER (WHERE edad.dias BETWEEN 31 AND 90)::int AS de_31_a_90,
+       COUNT(*) FILTER (WHERE edad.dias > 90)::int AS mas_90,
+       COALESCE(MAX(edad.dias), 0)::int AS max_dias,
+       ${loanBlockExpression} AS desde_prestamos
+     FROM multa m
+     JOIN ual u ON u.ual_id = m.ual_id
+     CROSS JOIN LATERAL (
+       SELECT CURRENT_DATE - COALESCE(m.fecha_multa, m.fecha_creacion::date) AS dias
+     ) edad
+     WHERE m.con_estado_multa = ANY($${stateParam}::text[])
+       AND ${condition}`,
+    [...params, OPEN_SANCTION_STATES]
+  );
+
+  const rankingRes = await client.query(
+    `SELECT
+       u.ual_id,
+       u.nombre AS ual_nombre,
+       d.dependencia_facultad_id AS dependencia_id,
+       d.nombre AS dependencia_nombre,
+       d.padre_id,
+       COALESCE(p.dependencia_facultad_id, d.dependencia_facultad_id) AS facultad_id,
+       COALESCE(p.nombre, d.nombre) AS facultad_nombre,
+       COUNT(*)::int AS abiertas
+     FROM multa m
+     JOIN ual u ON u.ual_id = m.ual_id
+     LEFT JOIN dependencia_facultad d ON d.dependencia_facultad_id = u.facultad_id
+     LEFT JOIN dependencia_facultad p ON p.dependencia_facultad_id = d.padre_id
+     WHERE m.con_estado_multa = ANY($${stateParam}::text[])
+       AND ${condition}
+     GROUP BY u.ual_id, u.nombre, d.dependencia_facultad_id, d.nombre, d.padre_id,
+              p.dependencia_facultad_id, p.nombre`,
+    [...params, OPEN_SANCTION_STATES]
+  );
+
+  const facultades = new Map();
+  const dependencias = new Map();
+  const uals = new Map();
+  rankingRes.rows.forEach((row) => {
+    const abiertas = toInt(row.abiertas);
+    addToRanking(facultades, row.facultad_id, row.facultad_nombre, abiertas);
+    if (row.padre_id !== null && row.padre_id !== undefined) {
+      addToRanking(dependencias, row.dependencia_id, row.dependencia_nombre, abiertas);
+    }
+    addToRanking(uals, row.ual_id, row.ual_nombre, abiertas);
+  });
+
+  const summary = summaryRes.rows[0] || {};
+  return {
+    abiertas: toInt(summary.abiertas),
+    personasBloqueadas: toInt(summary.personas_bloqueadas),
+    activas: toInt(summary.activas),
+    pendientes: toInt(summary.pendientes),
+    porSaldar: toInt(summary.por_saldar),
+    desdePrestamos: toInt(summary.desde_prestamos),
+    maxDias: toInt(summary.max_dias),
+    antiguedad: [
+      { label: '0 a 30 días', value: toInt(summary.hasta_30), tone: 'ok' },
+      { label: '31 a 90 días', value: toInt(summary.de_31_a_90), tone: 'warn' },
+      { label: 'Más de 90 días', value: toInt(summary.mas_90), tone: 'danger' },
+    ],
+    ranking: {
+      facultades: topEntries(facultades),
+      dependencias: topEntries(dependencias),
+      uals: topEntries(uals),
+    },
+  };
+}
+
+async function fetchClaimPazYSalvoSummary(client, role, scope) {
+  const hasClaims = Boolean(
+    await resolveExistingColumn(client, 'reclamacion_sancion', ['multa_id'])
+  );
+  if (!hasClaims) return null;
+
+  let condition = 'TRUE';
+  let params = [];
+  if (role === 'laboratorista') {
+    condition = 'r.responsable_documento_id = $1';
+    params = [scope.laboratoristaDocument || ''];
+  } else if (!isGlobalDashboardRole(role)) {
+    ({ condition, params } = buildSanctionScopeFilter(role, scope));
+  }
+
+  const result = await client.query(
+    `SELECT
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE r.fecha_respuesta IS NULL)::int AS pendientes,
+       COALESCE(
+         MAX(CURRENT_DATE - r.fecha_creacion::date) FILTER (WHERE r.fecha_respuesta IS NULL),
+         0
+       )::int AS max_dias_espera,
+       COUNT(*) FILTER (WHERE r.decision = 'PROCEDE')::int AS procede,
+       COUNT(*) FILTER (WHERE r.decision = 'NO_PROCEDE')::int AS no_procede,
+       ROUND(
+         (AVG(EXTRACT(EPOCH FROM (r.fecha_respuesta - r.fecha_creacion)) / 3600.0)
+           FILTER (WHERE r.fecha_respuesta IS NOT NULL))::numeric,
+         1
+       ) AS horas_promedio
+     FROM reclamacion_sancion r
+     JOIN multa m ON m.id = r.multa_id
+     JOIN ual u ON u.ual_id = m.ual_id
+     WHERE ${condition}`,
+    params
+  );
+
+  const row = result.rows[0] || {};
+  const procede = toInt(row.procede);
+  const noProcede = toInt(row.no_procede);
+  const respondidas = procede + noProcede;
+  const horasPromedio =
+    row.horas_promedio === null || row.horas_promedio === undefined
+      ? null
+      : Number(row.horas_promedio);
+
+  return {
+    total: toInt(row.total),
+    pendientes: toInt(row.pendientes),
+    maxDiasEspera: toInt(row.max_dias_espera),
+    procede,
+    noProcede,
+    tasaProcede: respondidas ? Math.round((procede / respondidas) * 100) : null,
+    horasPromedio: Number.isFinite(horasPromedio) ? horasPromedio : null,
+  };
+}
+
+async function fetchUalCoverage(client, role, scope) {
+  if (role === 'laboratorista') return null;
+
+  const scoped = role === 'coordinador';
+  const result = await client.query(
+    `SELECT
+       u.ual_id,
+       u.nombre,
+       COALESCE(p.nombre, d.nombre) AS facultad_nombre,
+       EXISTS (
+         SELECT 1
+         FROM laboratorista_ual lu
+         JOIN laboratorista l ON l.documento = lu.laboratorista_documento_id
+         WHERE lu.ual_id = u.ual_id
+           AND lu.activo IS DISTINCT FROM FALSE
+           AND l.activo IS DISTINCT FROM FALSE
+       ) AS tiene_laboratorista
+     FROM ual u
+     LEFT JOIN dependencia_facultad d ON d.dependencia_facultad_id = u.facultad_id
+     LEFT JOIN dependencia_facultad p ON p.dependencia_facultad_id = d.padre_id
+     WHERE u.activo = TRUE
+       AND ${scoped ? 'u.facultad_id = ANY($1::int[])' : 'TRUE'}
+     ORDER BY COALESCE(p.nombre, d.nombre) ASC NULLS LAST, u.nombre ASC`,
+    scoped ? [scope.facultyIds || []] : []
+  );
+
+  const sinLaboratorista = result.rows.filter((row) => row.tiene_laboratorista !== true);
+  return {
+    totalUals: result.rows.length,
+    sinLaboratoristaTotal: sinLaboratorista.length,
+    sinLaboratorista: sinLaboratorista.slice(0, UNCOVERED_UAL_LIMIT).map((row) => ({
+      nombre: row.nombre,
+      facultad: row.facultad_nombre || '',
+    })),
+  };
+}
+
+function countBy(rows, resolveKey) {
+  const counts = new Map();
+  rows.forEach((row) => {
+    const key = resolveKey(row);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .map(([nombre, total]) => ({ nombre, total }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+function resolveMotivoLabel(row) {
+  return String(row.motivo_exp || '').trim() || 'Sin motivo registrado';
+}
+
+function isWithinCurrentMonth(rawDate, now) {
+  const date = new Date(rawDate);
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth()
+  );
+}
+
+function buildCertificatePazYSalvoSummary(
+  studentRows,
+  teacherRows,
+  includeTeachers,
+  now = new Date()
+) {
+  const vigentes = studentRows.filter((row) => {
+    const vence = new Date(row.fecha_vencimiento);
+    return !Number.isNaN(vence.getTime()) && vence >= now;
+  }).length;
+  const studentSelfService = studentRows.filter(
+    (row) => !String(row.motivo_expedicion || '').trim()
+  ).length;
+  const teacherSelfService = includeTeachers
+    ? teacherRows.filter(
+        (row) =>
+          String(row.origen_descarga || '')
+            .trim()
+            .toUpperCase() === 'D'
+      ).length
+    : 0;
+  const allRows = includeTeachers ? [...studentRows, ...teacherRows] : studentRows;
+  const autogestion = studentSelfService + teacherSelfService;
+
+  return {
+    estudiantes: studentRows.length,
+    docentes: includeTeachers ? teacherRows.length : null,
+    vigentes,
+    vencidos: studentRows.length - vigentes,
+    emitidosMes: allRows.filter((row) => isWithinCurrentMonth(row.fecha_creacion, now)).length,
+    origen: [
+      { label: 'Autogestión', value: autogestion, tone: 'ok' },
+      { label: 'Generado por personal', value: allRows.length - autogestion, tone: 'info' },
+    ],
+    motivos: countBy(allRows, resolveMotivoLabel).slice(0, 6),
+  };
+}
+
+function buildPazYSalvoCards(role, indicators) {
+  const { sanciones, reclamaciones, cobertura, certificados } = indicators;
+  const multasUrl = '/milab/api/get_list_multas';
+  const claimsHref =
+    role === 'admin' || role === 'laboratorista' ? '/milab/api/sanciones/reclamaciones' : null;
+  const cards = [];
+
+  cards.push({
+    label: role === 'laboratorista' ? 'Personas bloqueadas por tus UAL' : 'Personas bloqueadas',
+    value: sanciones.personasBloqueadas,
+    hint: `${sanciones.abiertas} sanciones abiertas les impiden el paz y salvo`,
+    tone: sanciones.personasBloqueadas ? 'danger' : 'ok',
+    href: multasUrl,
+  });
+
+  const pendingApproval = sanciones.pendientes + sanciones.porSaldar;
+  cards.push({
+    label:
+      role === 'coordinador'
+        ? 'Pendientes de tu autorización'
+        : role === 'laboratorista'
+          ? 'Esperando al coordinador'
+          : 'Pendientes de autorización',
+    value: pendingApproval,
+    hint: `${sanciones.pendientes} por crear · ${sanciones.porSaldar} por saldar`,
+    tone: pendingApproval ? 'warn' : 'ok',
+    href: role === 'coordinador' ? '/milab/api/aprobacion_multa' : multasUrl,
+  });
+
+  if (reclamaciones) {
+    cards.push({
+      label:
+        role === 'laboratorista' ? 'Reclamaciones por responder' : 'Reclamaciones sin respuesta',
+      value: reclamaciones.pendientes,
+      hint: reclamaciones.pendientes
+        ? `La más antigua espera hace ${reclamaciones.maxDiasEspera} día(s)`
+        : 'Sin reclamaciones en espera',
+      tone: reclamaciones.pendientes ? 'warn' : 'ok',
+      href: claimsHref,
+    });
+  }
+
+  const oldSanctions = sanciones.antiguedad[2].value;
+  cards.push({
+    label: 'Sanciones con más de 90 días',
+    value: oldSanctions,
+    hint: sanciones.abiertas
+      ? `La más antigua lleva ${sanciones.maxDias} día(s) abierta`
+      : 'No hay sanciones abiertas',
+    tone: oldSanctions ? 'danger' : 'ok',
+    href: multasUrl,
+  });
+
+  if (cobertura) {
+    cards.push({
+      label: 'UAL sin laboratorista',
+      value: cobertura.sinLaboratoristaTotal,
+      hint: `De ${cobertura.totalUals} UAL activas; nadie puede saldar ni responder ahí`,
+      tone: cobertura.sinLaboratoristaTotal ? 'warn' : 'ok',
+      href: null,
+    });
+  }
+
+  if (certificados) {
+    cards.push({
+      label: 'Paz y salvos vigentes',
+      value: certificados.vigentes,
+      hint: `${certificados.emitidosMes} expedidos este mes · ${certificados.vencidos} vencidos`,
+      tone: 'info',
+      href: null,
+    });
+  }
+
+  cards.push({
+    label: 'Bloqueos desde préstamos',
+    value: sanciones.desdePrestamos,
+    hint: 'Sanciones abiertas originadas en incidencias de préstamo',
+    tone: sanciones.desdePrestamos ? 'warn' : 'ok',
+    href: null,
+  });
+
+  return cards;
+}
+
+async function buildPazYSalvoIndicators(client, role, scope, certificateRows) {
+  const sanciones = await fetchSanctionPazYSalvoSummary(client, role, scope);
+  const reclamaciones = await fetchClaimPazYSalvoSummary(client, role, scope);
+  const cobertura = await fetchUalCoverage(client, role, scope);
+  const certificados =
+    role === 'laboratorista'
+      ? null
+      : buildCertificatePazYSalvoSummary(
+          certificateRows.students,
+          certificateRows.teachers,
+          isGlobalDashboardRole(role)
+        );
+
+  let rankingGroups = [{ title: 'UAL', items: sanciones.ranking.uals }];
+  if (isGlobalDashboardRole(role)) {
+    rankingGroups = [
+      { title: 'Facultades', items: sanciones.ranking.facultades },
+      ...rankingGroups,
+    ];
+  } else if (role === 'coordinador') {
+    rankingGroups = [
+      { title: 'Dependencias', items: sanciones.ranking.dependencias },
+      ...rankingGroups,
+    ];
+  }
+
+  const indicators = { sanciones, reclamaciones, cobertura, certificados, rankingGroups };
+  return { ...indicators, cards: buildPazYSalvoCards(role, indicators) };
+}
+
+function limitDetailRows(tablesData, keepFull = []) {
+  const limited = {};
+  const meta = {};
+  Object.entries(tablesData).forEach(([key, rows]) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const shouldLimit = !keepFull.includes(key) && list.length > DETAIL_ROW_LIMIT;
+    limited[key] = shouldLimit ? list.slice(0, DETAIL_ROW_LIMIT) : list;
+    meta[key] = { total: list.length, shown: limited[key].length };
+  });
+  return { limited, meta };
 }
 
 async function writeDashboardAuditLog(actor, accion, persona) {
@@ -1794,6 +2235,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     let scope = {
       facultyIds: [],
       facultyNames: [],
+      facultyKeys: [],
       ualIds: [],
       ualNames: [],
     };
@@ -1821,12 +2263,27 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
       const facultiesRes = await client.query(
         `SELECT nombre
-         FROM facultad
+         FROM dependencia_facultad
          WHERE ${columns.facultadIdColumn} = ANY($1::int[])
          ORDER BY nombre ASC`,
         [scope.facultyIds]
       );
       scope.facultyNames = facultiesRes.rows.map((row) => row.nombre).filter(Boolean);
+
+      const academicFacultiesRes = await client.query(
+        `SELECT DISTINCT COALESCE(p.nombre, d.nombre) AS nombre
+         FROM dependencia_facultad d
+         LEFT JOIN dependencia_facultad p ON p.dependencia_facultad_id = d.padre_id
+         WHERE d.dependencia_facultad_id = ANY($1::int[])`,
+        [scope.facultyIds]
+      );
+      scope.facultyKeys = [
+        ...new Set(
+          academicFacultiesRes.rows
+            .map((row) => resolveFacultyKeyFromName(row.nombre))
+            .filter(Boolean)
+        ),
+      ];
     }
 
     if (dashboardRole === 'laboratorista') {
@@ -1863,8 +2320,9 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       : [];
     const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
     const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
+    const isGlobalRole = isGlobalDashboardRole(dashboardRole);
     const usuariosRegistradosResult =
-      needsUsuariosRegistrados && dashboardRole === 'admin'
+      needsUsuariosRegistrados && isGlobalRole
         ? await fetchUsuariosRegistradosRows()
         : { rows: [], columns: [] };
     const usuariosPlaceholderRows =
@@ -1887,10 +2345,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scope
     );
     const filteredUsuarios = filterUsuarioRowsByScope(usuarioRows, dashboardRole, scope);
-    const usuariosRegistradosRows =
-      dashboardRole === 'admin' ? usuariosRegistradosResult.rows : filteredUsuarios;
-    const usuariosRegistradosColumns =
-      dashboardRole === 'admin' ? usuariosRegistradosResult.columns : [];
+    const usuariosRegistradosRows = isGlobalRole
+      ? usuariosRegistradosResult.rows
+      : filteredUsuarios;
+    const usuariosRegistradosColumns = isGlobalRole ? usuariosRegistradosResult.columns : [];
     const filteredEstudiantes = filteredUsuarios
       .filter((row) => isUsuarioEstudiante(row, roleIndex))
       .map((row) => ({ ...row, __tipo: 'estudiante' }));
@@ -1972,21 +2430,13 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     });
 
     const scopePresentation = buildScopePresentation(dashboardRole, scope);
-    let scopeCounter = { label: 'Laboratorios', value: String(scope.ualIds.length) };
 
-    if (dashboardRole === 'admin') {
-      scopeCounter = { label: 'Cobertura', value: 'General' };
-    } else if (dashboardRole === 'coordinador') {
-      scopeCounter = { label: 'Facultades', value: String(scope.facultyIds.length) };
-    }
+    const pazYSalvo = await buildPazYSalvoIndicators(client, dashboardRole, scope, {
+      students: filteredStudentCerts,
+      teachers: filteredTeacherCerts,
+    });
 
-    const scopeCounters = [
-      scopeCounter,
-      { label: 'Indicadores', value: String(availableCharts.length) },
-      { label: 'Sanciones visibles', value: String(totalFromSeries(chartsData.multas)) },
-    ];
-
-    const tablesData = {
+    const fullTablesData = {
       certificadosEstudiantes: filteredStudentCerts,
       certificadosDocentes: filteredTeacherCerts,
       estudiantes: filteredEstudiantes,
@@ -2003,6 +2453,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       usuariosRegistrados: usuariosRegistradosRows,
       usuariosPlaceholder: usuariosPlaceholderRows,
     };
+    const keepFullTables =
+      dashboardRole === 'admin' ? ['usuariosRegistrados', 'usuariosPlaceholder'] : [];
+    const { limited: tablesData, meta: tablesMeta } = limitDetailRows(
+      fullTablesData,
+      keepFullTables
+    );
 
     return res.render('home/dashboard', {
       filtro,
@@ -2011,9 +2467,11 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       availableCharts,
       dashboardRole,
       scopePresentation,
-      scopeCounters,
       chartsData,
       tablesData,
+      tablesMeta,
+      detailRowLimit: DETAIL_ROW_LIMIT,
+      pazYSalvo,
       usuarioTableColumns: usuariosRegistradosColumns,
     });
   } catch (error) {
@@ -2048,6 +2506,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 });
 
 router.__private = {
+  buildCertificatePazYSalvoSummary,
+  buildPazYSalvoCards,
+  buildPazYSalvoIndicators,
+  getAvailableChartIds,
+  getDashboardRole,
+  limitDetailRows,
   fetchCoordinatorRows,
   fetchUsuarioRows,
   fetchUsuariosRegistradosRows,

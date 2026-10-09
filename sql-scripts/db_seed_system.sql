@@ -6,8 +6,8 @@ SET search_path TO milab;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM facultad) THEN
-        INSERT INTO facultad (facultad_id, nombre, activo) VALUES
+    IF NOT EXISTS (SELECT 1 FROM dependencia_facultad) THEN
+        INSERT INTO dependencia_facultad (dependencia_facultad_id, nombre, activo) VALUES
             (23, 'FACULTAD DEL MEDIO AMBIENTE Y RECURSOS NATURALES', TRUE),
             (24, 'FACULTAD DE CIENCIAS Y EDUCACION', TRUE),
             (32, 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA', TRUE),
@@ -17,8 +17,8 @@ BEGIN
             (101, 'FACULTAD DE ARTES-ASAB', TRUE);
 
         PERFORM setval(
-            pg_get_serial_sequence('facultad', 'facultad_id'),
-            (SELECT MAX(facultad_id) FROM facultad)
+            pg_get_serial_sequence('dependencia_facultad', 'dependencia_facultad_id'),
+            (SELECT MAX(dependencia_facultad_id) FROM dependencia_facultad)
         );
     END IF;
 END $$;
@@ -1390,6 +1390,42 @@ FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Configuración' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
 
+INSERT INTO menu_item (section, label, route, icon, order_index)
+VALUES ('account', 'Mis sanciones', '/milab/api/sanciones/mis-sanciones', 'bi-shield-exclamation', 3)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Reclamaciones', '/milab/api/sanciones/reclamaciones', 'bi-chat-left-text', 4
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Sanciones' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation', 3
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Configuración' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO categoria_sancion (nombre, descripcion)
+SELECT seed.nombre, seed.descripcion
+FROM (VALUES
+    ('Abandono o no devolución de equipos', 'Abandono de los equipos prestados o no devolución en los plazos establecidos'),
+    ('Agresión al personal o usuarios', 'Agredir física o verbalmente al personal de las unidades académicas de laboratorio, docentes, compañeros o cualquier usuario'),
+    ('Alteración de equipos o elementos', 'Cambiar o alterar el estado físico de los diferentes equipos, herramientas y demás elementos que se encuentren en las unidades académicas de las unidades académicas de laboratorios'),
+    ('Consumo de alimentos o bebidas', 'Consumir alimentos o bebidas dentro de las unidades académicas los laboratorios'),
+    ('Actividades o equipos no autorizados', 'Desarrollar actividades diferentes a las prácticas o ensayos de laboratorio y operar equipos diferentes a los asignados en cada trabajo experimental, sin previa autorización'),
+    ('Uso de elementos de distracción', 'Emplear dispositivos o elementos de distracción que pueda afectar el desarrollo de la práctica'),
+    ('Fumar en laboratorios', 'Fumar dentro de las unidades académicas de los laboratorios'),
+    ('Uso no autorizado de equipos', 'Hacer uso de los equipos y herramientas sin autorización y/o sin conocer su adecuado manejo'),
+    ('Ingreso bajo efectos de sustancias', 'Ingresar a las unidades académicas de laboratorios en estado de embriaguez o bajo el efecto de sustancias psicoactivas o alucinógenas, que afecten el estado consciente de una persona y su adecuado comportamiento durante la práctica'),
+    ('Sin elementos de seguridad', 'Ingresar y/o realizar cualquier tipo de prueba sin los elementos de seguridad que la actividad requiera y la indumentaria adecuada'),
+    ('Ingreso de niños o mascotas', 'Ingreso de niños y mascotas en las unidades académicas de laboratorios'),
+    ('Traslado no autorizado de equipos', 'Movilizar equipos, máquinas, implementos, mobiliario o sus componentes, de un lugar a otro, sin previa autorización del Coordinador del Laboratorio o Personal de apoyo de las unidades académicas de laboratorio'),
+    ('Documentos falsos o suplantación', 'Utilizar documentos falsos, adulterados o que pretendan suplantación')
+) AS seed(nombre, descripcion)
+WHERE NOT EXISTS (SELECT 1 FROM categoria_sancion)
+ON CONFLICT DO NOTHING;
+
 DELETE FROM rol_permiso rp
 USING rol r, menu_item mi
 WHERE rp.rol_id = r.id
@@ -1427,7 +1463,8 @@ INSERT INTO rol_permiso (rol_id, menu_item_id)
 SELECT role_map.id, menu_map.id
 FROM role_map
 JOIN menu_map ON menu_map.section = 'account'
-WHERE role_map.nombre IN (
+WHERE (menu_map.route IS DISTINCT FROM '/milab/api/sanciones/mis-sanciones' OR role_map.nombre = 'estudiante')
+AND role_map.nombre IN (
     'admin',
     'coordinador_general',
     'coordinador',
@@ -1446,6 +1483,7 @@ FROM role_map
 JOIN menu_map ON menu_map.section = 'secondary'
 WHERE (
     role_map.nombre = 'coordinador_general'
+    AND menu_map.route IS DISTINCT FROM '/milab/api/admin/sanciones'
 ) OR (
     role_map.nombre = 'admin' AND menu_map.label IN (
         'Registro',
@@ -1456,6 +1494,7 @@ WHERE (
         'Consulta y control',
         'Certificados',
         'Listado de sanciones',
+        'Reclamaciones',
         'Coordinadores registrados',
         'Estudiantes y docentes registrados',
         'Facultades y UAL',
@@ -1491,6 +1530,7 @@ WHERE (
         'Sanciones',
         'Registro de sanciones a estudiantes',
         'Registro de sanciones a docentes',
+        'Reclamaciones',
         'Paz y Salvos',
         'Generar PYS Estudiante',
         'Generar PYS Docente',
@@ -1501,7 +1541,16 @@ OR (
     role_map.nombre = 'admin' AND menu_map.label IN (
         'Configuración',
         'Permisos y menus',
-        'Roles'
+        'Roles',
+        'Catálogo de sanciones'
     )
 )
 ON CONFLICT DO NOTHING;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use)
+SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general'
+FROM rol r CROSS JOIN menu_item mi
+WHERE (r.nombre = 'estudiante' AND mi.route = '/milab/api/sanciones/mis-sanciones')
+   OR (r.nombre IN ('admin', 'laboratorista', 'coordinador_general')
+       AND mi.route = '/milab/api/sanciones/reclamaciones')
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE SET can_view = TRUE, can_use = EXCLUDED.can_use;

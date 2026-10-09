@@ -17,6 +17,7 @@ router.use('/get-data2', require('./get-data2'));
 router.use('/download-pdf', require('./download-pdf'));
 router.use('/download-pdf-docente', require('./download-pdf-docente'));
 router.use('/get_list_multas', require('./get_list_multas'));
+router.use('/sanciones', require('./sanciones'));
 router.use('/get_list_estudiantes', require('./get_list_estudiantes'));
 router.use('/validateqr', require('./validateqr'));
 router.use('/validateqr-docente', require('./validateqr-docente'));
@@ -48,6 +49,7 @@ router.use('/generate_cert_estudiante_lab', require('./generate_cert_estudiante_
 router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
 router.use('/admin/roles', require('./admin/roles'));
+router.use('/admin/sanciones', require('./admin/sanciones'));
 
 // Módulo Capacitación y Certificación EDX
 router.use('/certificacion-edx', require('./certificacion-edx'));

@@ -15,145 +15,282 @@
         </div>
       <% } %>
     </div>
-
-    <div class="dashboard-toolbar-inline dashboard-toolbar-inline--compact">
-      <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
-        <label for="filtro">Agrupar por</label>
-        <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
-        <div class="dashboard-select-shell">
-          <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select">
-            <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
-            <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
-            <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
-            <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
-          </select>
-          <i class="bi bi-calendar3"></i>
-        </div>
-      </form>
-
-      <div class="dashboard-control-group">
-        <label for="tipoGrafico">Indicador</label>
-        <div class="dashboard-select-shell">
-          <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select">
-            <% availableCharts.forEach(function(chart) { %>
-              <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
-            <% }) %>
-          </select>
-          <i class="bi bi-bar-chart-line"></i>
-        </div>
-      </div>
-    </div>
   </section>
 
-  <section class="dashboard-overview-grid">
-    <% scopeCounters.forEach(function(counter) { %>
-      <article class="dashboard-overview-card">
-        <span class="dashboard-overview-label"><%= counter.label %></span>
-        <strong class="dashboard-overview-value"><%= counter.value %></strong>
-      </article>
-    <% }) %>
-  </section>
-
-  <section class="dashboard-main-card dashboard-chart-card dashboard-main-card--compact">
-    <div class="dashboard-main-header dashboard-main-header--compact">
-      <div>
-        <span class="dashboard-panel-kicker">Serie principal</span>
-        <h2 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h2>
-        <p id="dashboardChartHint" class="dashboard-main-subtitle">
-          <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
-        </p>
-      </div>
-
-      <div class="dashboard-main-meta">
-        <div class="dashboard-main-total">
-          <span>Total</span>
-          <strong id="dashboardChartTotal">0</strong>
-        </div>
-        <span class="dashboard-panel-badge">Agrupado por <%= labelFormat %></span>
-      </div>
-    </div>
-
-    <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple dashboard-canvas-wrap--compact">
-      <canvas id="chartDinamico"></canvas>
-    </div>
-  </section>
-
-  <section class="dashboard-stats-grid dashboard-stats-grid--simplified dashboard-stats-grid--compact">
-    <% availableCharts.forEach(function(chart) { %>
-      <button
-        type="button"
-        class="dashboard-stat-card <%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
-        data-chart-target="<%= chart.id %>"
-      >
-        <span class="dashboard-stat-label"><%= chart.cardLabel %></span>
-        <strong class="dashboard-stat-value"><%= chart.total %></strong>
+  <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
+  <% if (hasPazYSalvo) { %>
+    <nav class="dashboard-section-tabs" role="tablist" aria-label="Secciones del dashboard">
+      <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
+        <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+        <span>Toda la plataforma</span>
       </button>
-    <% }) %>
-  </section>
+      <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
+        <i class="bi bi-patch-check" aria-hidden="true"></i>
+        <span>Paz y salvos</span>
+      </button>
+    </nav>
+  <% } %>
 
-  <section
-    id="dashboardDetailPanel"
-    class="app-form-panel dashboard-detail-panel mt-4"
-  >
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-      <div>
-        <h3 id="dashboardDetailTitle" class="mb-0" style="font-size: 1.1rem;">Detalle</h3>
-        <p id="dashboardDetailHint" class="mb-0 mt-1 text-muted" style="font-size: 0.88rem;">
-          Selecciona una tarjeta superior para ver el detalle de sus registros.
-        </p>
-      </div>
-      <div class="d-flex align-items-center gap-2">
-        <div id="dashboardUsuariosFilterWrap" class="dashboard-users-filter d-none">
-          <label for="dashboardUsuariosFiltro" class="form-label mb-0">Estado de registro</label>
-          <select id="dashboardUsuariosFiltro" class="form-select form-select-sm">
-            <option value="registrados" selected>Activos en plataforma</option>
-            <option value="placeholder">Pendientes (placeholder no-email)</option>
-          </select>
-        </div>
-        <div id="dashboardUsuariosColumnFilterWrap" class="dashboard-users-filter d-none">
-          <label for="dashboardUsuariosFiltroColumna" class="form-label mb-0">Filtro de usuarios</label>
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <select id="dashboardUsuariosFiltroColumna" class="form-select form-select-sm">
-              <option value="__all" selected>Todas las columnas</option>
+  <div id="dashboardSectionGeneral" class="dashboard-section-panel" <%- hasPazYSalvo ? 'role="tabpanel" aria-labelledby="dashboardTabGeneral"' : '' %>>
+    <section class="dashboard-section-head">
+      <h2 class="visually-hidden">Toda la plataforma</h2>
+      <div class="dashboard-toolbar-inline dashboard-toolbar-inline--compact dashboard-section-toolbar">
+        <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
+          <label for="filtro">Agrupar por</label>
+          <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
+          <div class="dashboard-select-shell">
+            <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select">
+              <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
+              <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
+              <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
+              <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
             </select>
-            <label for="dashboardUsuariosFiltroValor" class="visually-hidden">Valor exacto para filtrar</label>
-            <input
-              type="text"
-              id="dashboardUsuariosFiltroValor"
-              class="form-control form-control-sm"
-              placeholder="Valor exacto"
-              autocomplete="off"
-            >
-            <button type="button" id="dashboardUsuariosFiltroLimpiar" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+            <i class="bi bi-calendar3"></i>
+          </div>
+        </form>
+
+        <div class="dashboard-control-group">
+          <label for="tipoGrafico">Indicador</label>
+          <div class="dashboard-select-shell">
+            <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select">
+              <% availableCharts.forEach(function(chart) { %>
+                <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
+              <% }) %>
+            </select>
+            <i class="bi bi-bar-chart-line"></i>
           </div>
         </div>
-        <span id="dashboardDetailCount" class="badge text-bg-light border" style="font-size: 0.82rem;">
-          0 registros
-        </span>
       </div>
-    </div>
+    </section>
 
-    <div id="dashboardDetailFeedback" class="alert d-none py-2" role="alert"></div>
+    <section class="dashboard-main-card dashboard-chart-card dashboard-main-card--compact">
+      <div class="dashboard-main-header dashboard-main-header--compact">
+        <div>
+          <span class="dashboard-panel-kicker">Serie principal</span>
+          <h2 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h2>
+          <p id="dashboardChartHint" class="dashboard-main-subtitle">
+            <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
+          </p>
+        </div>
 
-    <div class="table-responsive dashboard-detail-table-wrap">
-      <table
-        id="dashboardDetailTable"
-        class="table table-striped table-hover align-middle"
-        style="width: 100%;"
-      >
-        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
-          <tr id="dashboardDetailTableHead"></tr>
-        </thead>
-        <tbody id="dashboardDetailTableBody">
-          <tr>
-            <td class="text-center py-4 text-muted">
-              Selecciona una tarjeta superior para cargar el detalle.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <div class="dashboard-main-meta">
+          <div class="dashboard-main-total">
+            <span>Total</span>
+            <strong id="dashboardChartTotal">0</strong>
+          </div>
+          <span class="dashboard-panel-badge">Agrupado por <%= labelFormat %></span>
+        </div>
+      </div>
+
+      <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple dashboard-canvas-wrap--compact">
+        <canvas id="chartDinamico"></canvas>
+      </div>
+    </section>
+
+    <section class="dashboard-stats-grid dashboard-stats-grid--simplified dashboard-stats-grid--compact">
+      <% availableCharts.forEach(function(chart) { %>
+        <button
+          type="button"
+          class="dashboard-stat-card <%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
+          data-chart-target="<%= chart.id %>"
+        >
+          <span class="dashboard-stat-label"><%= chart.cardLabel %></span>
+          <strong class="dashboard-stat-value"><%= chart.total %></strong>
+        </button>
+      <% }) %>
+    </section>
+
+    <section
+      id="dashboardDetailPanel"
+      class="app-form-panel dashboard-detail-panel mt-4"
+    >
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <div>
+          <h3 id="dashboardDetailTitle" class="mb-0" style="font-size: 1.1rem;">Detalle</h3>
+          <p id="dashboardDetailHint" class="mb-0 mt-1 text-muted" style="font-size: 0.88rem;">
+            Selecciona una tarjeta superior para ver el detalle de sus registros.
+          </p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <div id="dashboardUsuariosFilterWrap" class="dashboard-users-filter d-none">
+            <label for="dashboardUsuariosFiltro" class="form-label mb-0">Estado de registro</label>
+            <select id="dashboardUsuariosFiltro" class="form-select form-select-sm">
+              <option value="registrados" selected>Activos en plataforma</option>
+              <option value="placeholder">Pendientes (placeholder no-email)</option>
+            </select>
+          </div>
+          <div id="dashboardUsuariosColumnFilterWrap" class="dashboard-users-filter d-none">
+            <label for="dashboardUsuariosFiltroColumna" class="form-label mb-0">Filtro de usuarios</label>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <select id="dashboardUsuariosFiltroColumna" class="form-select form-select-sm">
+                <option value="__all" selected>Todas las columnas</option>
+              </select>
+              <label for="dashboardUsuariosFiltroValor" class="visually-hidden">Valor exacto para filtrar</label>
+              <input
+                type="text"
+                id="dashboardUsuariosFiltroValor"
+                class="form-control form-control-sm"
+                placeholder="Valor exacto"
+                autocomplete="off"
+              >
+              <button type="button" id="dashboardUsuariosFiltroLimpiar" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+            </div>
+          </div>
+          <span id="dashboardDetailCount" class="badge text-bg-light border" style="font-size: 0.82rem;">
+            0 registros
+          </span>
+        </div>
+      </div>
+
+      <div id="dashboardDetailFeedback" class="alert d-none py-2" role="alert"></div>
+
+      <div class="table-responsive dashboard-detail-table-wrap">
+        <table
+          id="dashboardDetailTable"
+          class="table table-striped table-hover align-middle"
+          style="width: 100%;"
+        >
+          <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+            <tr id="dashboardDetailTableHead"></tr>
+          </thead>
+          <tbody id="dashboardDetailTableBody">
+            <tr>
+              <td class="text-center py-4 text-muted">
+                Selecciona una tarjeta superior para cargar el detalle.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <% if (hasPazYSalvo) { %>
+    <div id="dashboardSectionPys" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabPys" hidden>
+      <section class="dashboard-pys" aria-labelledby="dashboardPysTitle">
+        <div class="dashboard-pys-header">
+          <h2 id="dashboardPysTitle" class="visually-hidden">Paz y salvos</h2>
+          <p class="dashboard-pys-note mb-0">
+            Bloquean el paz y salvo las sanciones en estado ACTIVA, Pendiente o POR SALDAR.
+          </p>
+        </div>
+
+        <div class="dashboard-pys-cards">
+          <% pazYSalvo.cards.forEach(function(card) { %>
+            <% const cardTag = card.href ? 'a' : 'article'; %>
+            <<%= cardTag %>
+              class="dashboard-pys-card pys-tone-<%= card.tone %>"
+              <% if (card.href) { %>href="<%= card.href %>"<% } %>
+            >
+              <span class="dashboard-pys-card-label"><%= card.label %></span>
+              <strong class="dashboard-pys-card-value"><%= Number(card.value || 0).toLocaleString('es-CO') %></strong>
+              <span class="dashboard-pys-card-hint"><%= card.hint %></span>
+            </<%= cardTag %>>
+          <% }) %>
+        </div>
+
+        <div class="dashboard-pys-panels">
+          <article class="dashboard-pys-panel">
+            <h3>Antigüedad de sanciones abiertas</h3>
+            <% const agingMax = Math.max(1, ...pazYSalvo.sanciones.antiguedad.map((item) => item.value)); %>
+            <ul class="dashboard-pys-bars">
+              <% pazYSalvo.sanciones.antiguedad.forEach(function(item) { %>
+                <li>
+                  <span class="dashboard-pys-bar-label"><%= item.label %></span>
+                  <span class="dashboard-pys-bar-track">
+                    <span class="dashboard-pys-bar-fill pys-tone-<%= item.tone %>" style="width: <%= Math.round((item.value / agingMax) * 100) %>%;"></span>
+                  </span>
+                  <strong><%= item.value %></strong>
+                </li>
+              <% }) %>
+            </ul>
+          </article>
+
+          <article class="dashboard-pys-panel">
+            <h3>¿Dónde se concentran los bloqueos?</h3>
+            <% pazYSalvo.rankingGroups.forEach(function(group) { %>
+              <p class="dashboard-pys-subtitle"><%= group.title %></p>
+              <% if (!group.items.length) { %>
+                <p class="dashboard-pys-empty">Sin sanciones abiertas.</p>
+              <% } else { %>
+                <ol class="dashboard-pys-ranking">
+                  <% group.items.forEach(function(item) { %>
+                    <li><span title="<%= item.nombre %>"><%= item.nombre %></span><strong><%= item.abiertas %></strong></li>
+                  <% }) %>
+                </ol>
+              <% } %>
+            <% }) %>
+          </article>
+
+          <% if (pazYSalvo.reclamaciones) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Reclamaciones</h3>
+              <dl class="dashboard-pys-stats">
+                <div><dt>Recibidas</dt><dd><%= pazYSalvo.reclamaciones.total %></dd></div>
+                <div><dt>Sin respuesta</dt><dd><%= pazYSalvo.reclamaciones.pendientes %></dd></div>
+                <div><dt>Procede</dt><dd><%= pazYSalvo.reclamaciones.procede %></dd></div>
+                <div><dt>No procede</dt><dd><%= pazYSalvo.reclamaciones.noProcede %></dd></div>
+                <div>
+                  <dt>% que procede</dt>
+                  <dd><%= pazYSalvo.reclamaciones.tasaProcede === null ? '—' : pazYSalvo.reclamaciones.tasaProcede + '%' %></dd>
+                </div>
+                <div>
+                  <dt>Respuesta promedio</dt>
+                  <dd>
+                    <% const avgHours = pazYSalvo.reclamaciones.horasPromedio; %>
+                    <%= avgHours === null ? '—' : (avgHours >= 48 ? (avgHours / 24).toFixed(1) + ' días' : avgHours + ' h') %>
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          <% } %>
+
+          <% if (pazYSalvo.certificados) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Paz y salvos expedidos</h3>
+              <dl class="dashboard-pys-stats">
+                <div><dt>Estudiantes</dt><dd><%= pazYSalvo.certificados.estudiantes %></dd></div>
+                <% if (pazYSalvo.certificados.docentes !== null) { %>
+                  <div><dt>Docentes</dt><dd><%= pazYSalvo.certificados.docentes %></dd></div>
+                <% } %>
+                <% pazYSalvo.certificados.origen.forEach(function(item) { %>
+                  <div><dt><%= item.label %></dt><dd><%= item.value %></dd></div>
+                <% }) %>
+              </dl>
+              <p class="dashboard-pys-subtitle">Motivos más frecuentes</p>
+              <% if (!pazYSalvo.certificados.motivos.length) { %>
+                <p class="dashboard-pys-empty">Aún no hay paz y salvos en este alcance.</p>
+              <% } else { %>
+                <ol class="dashboard-pys-ranking">
+                  <% pazYSalvo.certificados.motivos.forEach(function(item) { %>
+                    <li><span title="<%= item.nombre %>"><%= item.nombre %></span><strong><%= item.total %></strong></li>
+                  <% }) %>
+                </ol>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (pazYSalvo.cobertura && pazYSalvo.cobertura.sinLaboratoristaTotal) { %>
+            <article class="dashboard-pys-panel">
+              <h3>UAL sin laboratorista activo</h3>
+              <ul class="dashboard-pys-ranking dashboard-pys-ranking--plain">
+                <% pazYSalvo.cobertura.sinLaboratorista.forEach(function(item) { %>
+                  <li>
+                    <span title="<%= item.nombre %>"><%= item.nombre %></span>
+                    <small><%= item.facultad %></small>
+                  </li>
+                <% }) %>
+              </ul>
+              <% const remainingUals = pazYSalvo.cobertura.sinLaboratoristaTotal - pazYSalvo.cobertura.sinLaboratorista.length; %>
+              <% if (remainingUals > 0) { %>
+                <p class="dashboard-pys-empty">y <%= remainingUals %> más.</p>
+              <% } %>
+            </article>
+          <% } %>
+        </div>
+      </section>
     </div>
-  </section>
+  <% } %>
 </main>
 
 <div class="modal fade" id="dashboardEmailEditorModal" tabindex="-1" aria-hidden="true">
@@ -317,6 +454,7 @@
   };
 
   const tablesData = <%- JSON.stringify(tablesData || {}) %>;
+  const tablesMeta = <%- JSON.stringify(typeof tablesMeta !== 'undefined' ? tablesMeta : {}) %>;
   const usuarioTableColumns = <%- JSON.stringify(usuarioTableColumns || []) %>;
   const dynamicUsuariosColumns = Array.isArray(usuarioTableColumns)
     ? usuarioTableColumns
@@ -326,9 +464,19 @@
         if (columnName === 'activo') {
           return { key: columnName, label: 'Activo', format: (v) => renderBooleanBadge(v) };
         }
-        return { key: columnName, label: columnName };
+        if (columnName.startsWith('fecha_')) {
+          return { key: columnName, label: humanizeColumnName(columnName), format: (v) => formatDate(v) };
+        }
+        return { key: columnName, label: humanizeColumnName(columnName) };
       })
     : [];
+
+  function humanizeColumnName(columnName) {
+    const knownLabels = { id: 'ID', codigo: 'Código', fecha_creacion: 'Fecha creación', fecha_modificacion: 'Fecha modificación' };
+    if (knownLabels[columnName]) return knownLabels[columnName];
+    const text = columnName.replace(/_/g, ' ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
   const defaultUsuariosColumns = [
     { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
     { key: 'nombre', label: 'Nombre' },
@@ -343,7 +491,8 @@
     certificadosEstudiantes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
       { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+      { key: 'nombre_usuario', label: 'Nombre' },
+      { key: 'documento_usuario', label: 'Documento' },
       { key: 'correo', label: 'Correo' },
       { key: 'motivo_exp', label: 'Motivo' },
       { key: 'motivo_expedicion', label: 'Detalle motivo' },
@@ -353,7 +502,8 @@
     certificadosDocentes: [
       { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
       { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
+      { key: 'nombre_usuario', label: 'Nombre' },
+      { key: 'documento_usuario', label: 'Documento' },
       { key: 'correo', label: 'Correo' },
       { key: 'motivo_exp', label: 'Motivo' },
       { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
@@ -578,24 +728,23 @@
     }
 
     const usuarioActivo = isActiveFlag(row?.activo);
-    const toggleLabel = usuarioActivo ? 'Inactivar' : 'Activar';
-    const toggleClass = usuarioActivo ? 'btn-outline-warning' : 'btn-outline-success';
+    const actions = [
+      { action: 'editar-usuario', label: 'Editar usuario', icon: 'bi-person-gear', tone: 'primary' },
+      { action: 'editar-correo', label: 'Editar correo', icon: 'bi-envelope', tone: 'secondary' },
+      usuarioActivo
+        ? { action: 'toggle-activo', label: 'Inactivar usuario', icon: 'bi-person-dash', tone: 'danger' }
+        : { action: 'toggle-activo', label: 'Activar usuario', icon: 'bi-person-check', tone: 'success' },
+      { action: 'impersonar', label: 'Impersonar usuario', icon: 'bi-incognito', tone: 'info' },
+    ];
 
-    return `
-      <div class="d-flex flex-wrap gap-1">
-        <button type="button" class="btn btn-sm btn-outline-primary" data-dashboard-action="editar-usuario" data-row-id="${rowId}"><i class="bi bi-pencil-square me-1" aria-hidden="true"></i>Editar usuario</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-dashboard-action="editar-correo" data-row-id="${rowId}">Editar correo</button>
-        <button type="button" class="btn btn-sm ${toggleClass}" data-dashboard-action="toggle-activo" data-row-id="${rowId}">${toggleLabel}</button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary"
-            data-dashboard-action="impersonar"
-            data-row-id="${rowId}"
-            title="Impersonar usuario"
-            aria-label="Impersonar usuario"
-          ><i class="bi bi-incognito me-1" aria-hidden="true"></i>Impersonar</button>
-      </div>
-    `;
+    const buttons = actions
+      .map(
+        (item) =>
+          `<button type="button" class="app-grid-action" data-grid-action-tone="${item.tone}" data-dashboard-action="${item.action}" data-row-id="${rowId}" title="${item.label}" aria-label="${item.label}"><i class="bi ${item.icon} app-grid-action-icon" aria-hidden="true"></i></button>`
+      )
+      .join('');
+
+    return `<div class="app-grid-actions dashboard-row-actions">${buttons}</div>`;
   }
 
   function getUsuariosFilterWrapElement() {
@@ -1273,7 +1422,11 @@
     hintEl.textContent =
       config.summary ||
       'Registros que componen el total mostrado en la tarjeta. Se presenta el detalle paginado y buscable.';
-    countEl.textContent = `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
+    const detailMeta = tablesMeta[tipo];
+    const isTruncated = detailMeta && detailMeta.total > detailMeta.shown;
+    countEl.textContent = isTruncated
+      ? `Últimos ${detailMeta.shown.toLocaleString()} de ${detailMeta.total.toLocaleString()} registros`
+      : `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
 
     const shouldRenderAdminActions = canAdminManageUsuarios && tipo === 'usuariosRegistrados';
     const resolvedColumns = shouldRenderAdminActions
@@ -1286,7 +1439,11 @@
     }
 
     headEl.innerHTML = resolvedColumns
-      .map((col) => `<th scope="col">${escapeHtml(col.label)}</th>`)
+      .map((col) =>
+        col.key === '__acciones_admin'
+          ? `<th scope="col" class="app-grid-actions-heading dashboard-actions-cell">${escapeHtml(col.label)}</th>`
+          : `<th scope="col">${escapeHtml(col.label)}</th>`
+      )
       .join('');
 
     if (!rows.length) {
@@ -1299,7 +1456,7 @@
         const cells = resolvedColumns
           .map((col) => {
             if (col.key === '__acciones_admin') {
-              return `<td>${renderUsuariosAdminActions(row)}</td>`;
+              return `<td class="app-grid-actions-cell dashboard-actions-cell">${renderUsuariosAdminActions(row)}</td>`;
             }
 
             if (tipo === 'coordinadores' && col.key === 'soporte_resolucion') {
@@ -1608,7 +1765,49 @@
     renderChart(document.getElementById('tipoGrafico').value, { renderDetail: false });
   }
 
+  function initDashboardSectionTabs() {
+    const tabs = Array.from(document.querySelectorAll('[data-dashboard-section]'));
+    if (!tabs.length) return;
+
+    function activate(sectionId, { focus = false, updateHash = true } = {}) {
+      const target = tabs.find((tab) => tab.dataset.dashboardSection === sectionId) || tabs[0];
+      tabs.forEach((tab) => {
+        const isActive = tab === target;
+        tab.classList.toggle('is-active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        tab.tabIndex = isActive ? 0 : -1;
+        const panel = document.getElementById(tab.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !isActive;
+      });
+      if (focus) target.focus();
+      if (updateHash) {
+        const hash = target.dataset.dashboardSection === 'general' ? '' : `#${target.dataset.dashboardSection}`;
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+      }
+      if (target.dataset.dashboardSection === 'general' && chartInstance) {
+        chartInstance.resize();
+      }
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab.dataset.dashboardSection));
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = tabs.length - 1;
+        activate(tabs[nextIndex].dataset.dashboardSection, { focus: true });
+      });
+    });
+
+    activate(window.location.hash.replace('#', '') || 'general', { updateHash: false });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
+    initDashboardSectionTabs();
     const emailEditorForm = document.getElementById('dashboardEmailEditorForm');
     const emailRoleSelect = document.getElementById('dashboardEmailEditorRole');
     const emailInput = document.getElementById('dashboardEmailEditorInput');

@@ -1,0 +1,51 @@
+<%- include('../partials/header'); -%>
+<main class="container-fluid app-page-shell app-sanctions-report">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Mis sanciones</h1>
+    <p class="app-page-subtitle">Consulta tus sanciones y sus respuestas, incluso si ya no están activas. Cada sanción permite una reclamación y una respuesta definitiva.</p>
+  </section>
+  <% if (feedback) { %>
+    <div class="alert alert-<%= feedback.type %>" role="status"><%= feedback.message %></div>
+  <% } %>
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <p>Presentar una reclamación no suspende ni modifica automáticamente la sanción.</p>
+      <table class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
+        <thead><tr><th>Sanción y laboratorio</th><th>Fecha</th><th>Estado</th><th>Reclamación</th><th data-grid-filter="false" data-grid-orderable="false">Acciones</th></tr></thead>
+        <tbody>
+          <% sanctions.forEach(sanction => { %>
+            <% const payload = {
+              multa_id: sanction.id, cat_multa: sanction.cat_multa, laboratorio: sanction.laboratorio,
+              obs_multa: sanction.obs_multa, con_estado_multa: sanction.con_estado_multa,
+              fecha_multa: sanction.fecha_multa, creador: sanction.creador,
+              id: sanction.reclamacion_id, texto: sanction.texto, fecha_creacion: sanction.fecha_reclamacion,
+              respuesta: sanction.respuesta, decision: sanction.decision, fecha_respuesta: sanction.fecha_respuesta,
+              fecha_lectura: sanction.fecha_lectura, responsable: sanction.responsable,
+              respondido_por: sanction.respondido_por, responsable_activo: sanction.responsable_activo
+            }; %>
+            <tr id="sancion-<%= sanction.id %>">
+              <td class="app-claim-text"><strong><%= sanction.cat_multa %></strong><br><span><%= sanction.laboratorio || 'Laboratorio no disponible' %></span><br><small>Sanción #<%= sanction.id %></small></td>
+              <td data-order="<%= sanction.fecha_multa || '' %>"><%= sanction.fecha_multa ? new Date(sanction.fecha_multa).toLocaleDateString('es-CO', { timeZone: 'UTC' }) : '-' %></td>
+              <td><%= sanction.con_estado_multa %></td>
+              <td>
+                <%= sanction.reclamacion_id ? (sanction.fecha_respuesta ? 'Respondida' : 'Pendiente de respuesta') : 'Sin reclamación' %>
+                <% if (sanction.fecha_respuesta && !sanction.fecha_lectura) { %><span class="badge text-bg-info">Nueva respuesta</span><% } %>
+                <% if (sanction.reclamacion_id && !sanction.fecha_respuesta && sanction.responsable_activo === false) { %><br><span class="text-warning">Responsable inactivo; pendiente de reasignación por el administrador.</span><% } %>
+              </td>
+              <td>
+                <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#reclamacionModal" data-claim-action="view" data-claim="<%= JSON.stringify(payload) %>">Ver detalle</button>
+                <% if (!sanction.reclamacion_id && sanction.con_estado_multa === 'ACTIVA') { %>
+                  <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#reclamacionModal" data-claim-action="claim" data-claim="<%= JSON.stringify(payload) %>">Enviar reclamación</button>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (!sanctions.length) { %><p class="text-muted">No tienes sanciones registradas en MILab.</p><% } %>
+    </div>
+  </section>
+</main>
+<%- include('../partials/sanction-claim-modal', { studentView: true, laboratoristas: [] }) %>
+<script src="/milab/public/js/sanction-claims.js"></script>
+<%- include('../partials/footer'); -%>

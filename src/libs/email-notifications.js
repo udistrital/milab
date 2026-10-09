@@ -2,10 +2,13 @@ const path = require('node:path');
 const ejs = require('ejs');
 
 const pool = require('./db');
+const { buildAppUrl } = require('./app-url');
 const {
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
 } = require('./email-layout');
 const transporter = require('./mail');
 
@@ -68,6 +71,8 @@ async function renderTemplate(templateName, variables = {}) {
     ...variables,
     buildEmailFooterHtml,
     buildEmailHeaderHtml,
+    buildNoReplyNoticeHtml,
+    buildAppUrl,
   });
 }
 
@@ -151,7 +156,11 @@ async function sendNotificationEmail(templateName, variables, recipient, subject
   const html = await renderTemplate(templateName, variables || {});
 
   await transporter.sendMail({
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    from:
+      templateName === 'dashboard/user-account-notification' ||
+      templateName.startsWith('sanciones/')
+        ? buildNoReplySender(process.env.EMAIL_FROM || process.env.EMAIL_USER)
+        : process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: recipient,
     subject,
     html,

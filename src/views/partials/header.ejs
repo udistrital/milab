@@ -44,7 +44,8 @@
   const sanctionsActionHref =
     activeRole === 'docente'
       ? '/milab/api/verifica_multa_docente/verificacion'
-      : '/milab/api/get-data1/verificacion';
+      : '/milab/api/sanciones/mis-sanciones';
+  const claimNotifications = locals.claimNotifications;
   const studentUsageSummary = locals.studentUsageSummary || null;
   const environmentName = (locals.environmentName || 'development').toString().trim();
   const isNonProductionEnvironment = Boolean(locals.isNonProductionEnvironment);
@@ -238,6 +239,12 @@
           </div>
 
           <div class="app-navbar-actions">
+            <% if (claimNotifications && claimNotifications.count > 0) { %>
+              <a class="btn app-help-pill" href="<%= claimNotifications.href %>" aria-label="<%= claimNotifications.label %>: <%= claimNotifications.count %>" title="<%= claimNotifications.label %>">
+                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
+                <span class="app-nav-badge"><%= claimNotifications.count %></span>
+              </a>
+            <% } %>
             <% if (isAuthenticated) { %>
               <div class="app-user-tools d-none d-xl-flex">
                 <div class="dropdown">

@@ -163,7 +163,7 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   }
 
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
     [normalizedDocument]
   );
 
@@ -186,7 +186,7 @@ async function fetchCoordinatorOptions(client) {
             COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS facultades
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-     LEFT JOIN facultad f ON f.facultad_id = cf.facultad_id
+     LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
      GROUP BY c.documento, c.nombre
      ORDER BY c.nombre ASC`
   );
@@ -207,7 +207,7 @@ async function buildRegisterMonitorViewContext(sessionUser, options = {}) {
       facultades: facultyIds.length
         ? (
             await pool.query(
-              'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+              'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
               [facultyIds]
             )
           ).rows
@@ -237,7 +237,7 @@ async function buildRegisterMonitorViewContext(sessionUser, options = {}) {
       if (scope.facultyIds.length) {
         facultades = (
           await pool.query(
-            'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
             [scope.facultyIds]
           )
         ).rows;

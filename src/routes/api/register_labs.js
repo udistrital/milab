@@ -4,9 +4,12 @@ const { requestOati, getAcademicServicePath } = require('../../libs/oati-client'
 const pool = require('../../libs/db');
 const transporter = require('../../libs/mail');
 const {
+  NO_REPLY_NOTICE,
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
   escapeHtml,
 } = require('../../libs/email-layout');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
@@ -145,7 +148,7 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   }
 
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
     [normalizedDocument]
   );
 
@@ -168,7 +171,7 @@ async function fetchCoordinatorOptions(client) {
             COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS facultades
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-     LEFT JOIN facultad f ON f.facultad_id = cf.facultad_id
+     LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
      GROUP BY c.documento, c.nombre
      ORDER BY c.nombre ASC`
   );
@@ -231,7 +234,7 @@ async function buildRegisterLabsViewContext(sessionUser, options = {}) {
 
     const facultades = (
       await pool.query(
-        'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [scope.facultyIds]
       )
     ).rows;
@@ -263,7 +266,7 @@ async function buildRegisterLabsViewContext(sessionUser, options = {}) {
       if (scope.facultyIds.length > 0) {
         facultades = (
           await pool.query(
-            'SELECT * FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
             [scope.facultyIds]
           )
         ).rows;
@@ -287,7 +290,11 @@ async function buildRegisterLabsViewContext(sessionUser, options = {}) {
   }
 
   return {
-    facultades: (await pool.query('SELECT * FROM facultad ORDER BY nombre ASC')).rows,
+    facultades: (
+      await pool.query(
+        'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad ORDER BY nombre ASC'
+      )
+    ).rows,
     uals: (
       await pool.query(
         'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE ORDER BY nombre ASC'
@@ -689,7 +696,7 @@ async function create_account(data, userSession) {
       );
 
       const facultadInfo = await client.query(
-        'SELECT nombre FROM facultad WHERE facultad_id = $1',
+        'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
         [selectedFacultyId]
       );
       const ualInfo = await client.query(
@@ -741,7 +748,7 @@ async function enviarCorreoBienvenidaLaboratorista(datosLaboratorista) {
 
   try {
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: buildNoReplySender(),
       to: datosLaboratorista.correo,
       subject: `Bienvenido a MILab - Laboratorios UD`,
       text: `Estimad@ ${datosLaboratorista.nombre},
@@ -767,7 +774,9 @@ Puede acceder al sistema en: ${appBaseUrl}
 Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.
 
 Atentamente,
-MILab - Coordinación General de Laboratorios`,
+MILab - Coordinación General de Laboratorios
+
+${NO_REPLY_NOTICE}`,
 
       html: `
       <!DOCTYPE html>
@@ -880,6 +889,7 @@ MILab - Coordinación General de Laboratorios`,
                               </td>
                           </tr>
                           
+                          ${buildNoReplyNoticeHtml()}
                           ${buildEmailFooterHtml(`
                             <p class="fallback-font" style="font-size: 14px; color: rgba(255,255,255,0.92); margin: 0; text-align: center; line-height: 1.6;">
                               Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.

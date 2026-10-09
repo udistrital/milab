@@ -117,7 +117,7 @@ router.get('/contact', function (req, res) {
 });
 
 router.get('/reg_multa', function (req, res) {
-  res.render('home/reg_multa');
+  return redirectToCanonicalPublicRoute(req, res, '/milab/api/get-info-multa/get');
 });
 router.get('/get-info-multa-docente', function (req, res) {
   res.render('home/get-info-multa-docente');
