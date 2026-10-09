@@ -32,72 +32,287 @@
   <% } %>
 
   <div id="dashboardSectionGeneral" class="dashboard-section-panel" <%- hasPazYSalvo ? 'role="tabpanel" aria-labelledby="dashboardTabGeneral"' : '' %>>
-    <section class="dashboard-section-head">
-      <h2 class="visually-hidden">Toda la plataforma</h2>
-      <div class="dashboard-toolbar-inline dashboard-toolbar-inline--compact dashboard-section-toolbar">
-        <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
-          <label for="filtro">Agrupar por</label>
-          <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
-          <div class="dashboard-select-shell">
-            <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select">
-              <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
-              <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
-              <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
-              <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
-            </select>
-            <i class="bi bi-calendar3"></i>
-          </div>
-        </form>
+    <% const overview = typeof generalOverview !== 'undefined' && generalOverview ? generalOverview : null; %>
+    <% const overviewHints = overview ? overview.hints : {}; %>
+    <% const kpiIcons = {
+      estudiantes: 'bi-people',
+      docentes: 'bi-person-video3',
+      laboratoristas: 'bi-tools',
+      coordinadores: 'bi-diagram-3',
+      usuariosRegistrados: 'bi-person-check',
+    }; %>
+    <section class="dashboard-general" aria-labelledby="dashboardGeneralTitle">
+      <h2 id="dashboardGeneralTitle" class="visually-hidden">Toda la plataforma</h2>
 
-        <div class="dashboard-control-group">
-          <label for="tipoGrafico">Indicador</label>
-          <div class="dashboard-select-shell">
-            <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select">
-              <% availableCharts.forEach(function(chart) { %>
-                <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
-              <% }) %>
-            </select>
-            <i class="bi bi-bar-chart-line"></i>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="dashboard-main-card dashboard-chart-card dashboard-main-card--compact">
-      <div class="dashboard-main-header dashboard-main-header--compact">
-        <div>
-          <span class="dashboard-panel-kicker">Serie principal</span>
-          <h2 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h2>
-          <p id="dashboardChartHint" class="dashboard-main-subtitle">
-            <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
-          </p>
-        </div>
-
-        <div class="dashboard-main-meta">
-          <div class="dashboard-main-total">
-            <span>Total</span>
-            <strong id="dashboardChartTotal">0</strong>
-          </div>
-          <span class="dashboard-panel-badge">Agrupado por <%= labelFormat %></span>
-        </div>
+      <div class="dashboard-pys-cards dashboard-kpi-grid">
+        <% availableCharts.forEach(function(chart) { %>
+          <button
+            type="button"
+            class="dashboard-pys-card dashboard-kpi-card kpi-<%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
+            data-chart-target="<%= chart.id %>"
+            aria-pressed="<%= chart.id === selectedChart ? 'true' : 'false' %>"
+          >
+            <span class="dashboard-pys-card-label">
+              <i class="bi <%= kpiIcons[chart.id] || 'bi-graph-up' %>" aria-hidden="true"></i>
+              <%= chart.cardLabel %>
+            </span>
+            <strong class="dashboard-pys-card-value"><%= Number(chart.total || 0).toLocaleString('es-CO') %></strong>
+            <span class="dashboard-pys-card-hint"><%= overviewHints[chart.id] || 'Ver evolución y detalle' %></span>
+          </button>
+        <% }) %>
       </div>
 
-      <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple dashboard-canvas-wrap--compact">
-        <canvas id="chartDinamico"></canvas>
-      </div>
-    </section>
+      <div class="dashboard-pys-panels">
+        <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+          <div class="dashboard-gen-evolution-head">
+            <div class="dashboard-gen-evolution-copy">
+              <h3 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h3>
+              <p id="dashboardChartHint" class="dashboard-gen-hint">
+                <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
+              </p>
+            </div>
+            <div class="dashboard-gen-evolution-tools">
+              <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
+                <label for="filtro">Agrupar por</label>
+                <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
+                <div class="dashboard-select-shell">
+                  <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select form-select-sm">
+                    <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
+                    <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
+                    <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
+                    <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
+                  </select>
+                  <i class="bi bi-calendar3"></i>
+                </div>
+              </form>
+              <div class="dashboard-control-group">
+                <label for="tipoGrafico">Indicador</label>
+                <div class="dashboard-select-shell">
+                  <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select form-select-sm">
+                    <% availableCharts.forEach(function(chart) { %>
+                      <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
+                    <% }) %>
+                  </select>
+                  <i class="bi bi-bar-chart-line"></i>
+                </div>
+              </div>
+              <dl class="dashboard-pys-kpis dashboard-gen-total">
+                <div>
+                  <dt>Total · por <%= labelFormat.toLowerCase() %></dt>
+                  <dd id="dashboardChartTotal">0</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+          <div class="dashboard-pys-chart" style="height: 260px;">
+            <canvas id="chartDinamico" role="img" aria-label="Evolución del indicador seleccionado"></canvas>
+          </div>
+        </article>
 
-    <section class="dashboard-stats-grid dashboard-stats-grid--simplified dashboard-stats-grid--compact">
-      <% availableCharts.forEach(function(chart) { %>
-        <button
-          type="button"
-          class="dashboard-stat-card <%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
-          data-chart-target="<%= chart.id %>"
-        >
-          <span class="dashboard-stat-label"><%= chart.cardLabel %></span>
-          <strong class="dashboard-stat-value"><%= chart.total %></strong>
-        </button>
-      <% }) %>
+        <% if (overview) { %>
+          <% const activityTotal = overview.actividad.datasets.reduce((sum, item) => sum + item.data.reduce((acc, value) => acc + value, 0), 0); %>
+          <% if (overview.actividad.datasets.length) { %>
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>Nuevos registros en los últimos 12 meses</h3>
+              <% if (activityTotal) { %>
+                <div class="dashboard-pys-chart" style="height: 230px;">
+                  <canvas data-gen-chart="activity" role="img" aria-label="Nuevos registros por mes: <%= overview.actividad.datasets.map((item) => item.label + ' ' + item.data.reduce((acc, value) => acc + value, 0)).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin registros nuevos en los últimos 12 meses.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.usuarios) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Usuarios por tipo</h3>
+              <% if (overview.usuarios.some((item) => item.value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="users" role="img" aria-label="Usuarios por tipo: <%= overview.usuarios.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay usuarios en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.estadosCuenta) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Estado de cuentas académicas</h3>
+              <% if (overview.estadosCuenta.length) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="accountStates" role="img" aria-label="Estado de cuentas: <%= overview.estadosCuenta.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay estudiantes ni docentes en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.programas) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Estudiantes por programa</h3>
+              <% if (overview.programas.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + overview.programas.length * 28 %>px;">
+                  <canvas data-gen-chart="programs" role="img" aria-label="Estudiantes por programa: <%= overview.programas.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay estudiantes en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.laboratoristasEstado) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Laboratoristas activos</h3>
+              <% if (overview.laboratoristasEstado.some((item) => item.value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="labStatus" role="img" aria-label="Laboratoristas: <%= overview.laboratoristasEstado.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay laboratoristas en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+        <% } %>
+      </div>
+
+      <% const cobertura = typeof coberturaOperativa !== 'undefined' && coberturaOperativa ? coberturaOperativa : null; %>
+      <% if (cobertura) { %>
+        <% const coverageTotals = cobertura.totales; %>
+        <section class="dashboard-gen-block" aria-labelledby="dashboardCoverageTitle">
+          <header class="dashboard-gen-block-head">
+            <h3 id="dashboardCoverageTitle"><i class="bi bi-diagram-3" aria-hidden="true"></i> Cobertura operativa</h3>
+            <span class="dashboard-gen-block-scope">Toda la universidad</span>
+          </header>
+          <div class="dashboard-pys-panels dashboard-gen-panels--pair">
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>UAL activas por facultad</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Facultades</dt><dd><%= coverageTotals.facultades %></dd></div>
+                <div><dt>UAL activas</dt><dd><%= coverageTotals.ualActivas.toLocaleString('es-CO') %></dd></div>
+                <div>
+                  <dt>Con laboratorista</dt>
+                  <dd><%= coverageTotals.ualConLaboratorista.toLocaleString('es-CO') %><% if (coverageTotals.porcentajeCubierto !== null) { %> <small class="dashboard-gen-kpi-note">(<%= coverageTotals.porcentajeCubierto %>%)</small><% } %></dd>
+                </div>
+                <div><dt>Laboratoristas activos</dt><dd><%= coverageTotals.laboratoristas %></dd></div>
+                <div><dt>Coordinadores activos</dt><dd><%= coverageTotals.coordinadores %></dd></div>
+                <div><dt>Monitores activos</dt><dd><%= coverageTotals.monitores %></dd></div>
+                <div class="<%= coverageTotals.monitoresPorVencer ? 'dashboard-gen-kpi--warn' : '' %>">
+                  <dt>Monitores que vencen en 30 días</dt><dd><%= coverageTotals.monitoresPorVencer %></dd>
+                </div>
+              </dl>
+              <% if (cobertura.facultades.some((item) => item.ualActivas > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 40 + cobertura.facultades.length * 30 %>px;">
+                  <canvas data-gen-chart="coverage" role="img" aria-label="UAL por facultad: <%= cobertura.facultades.map((item) => item.nombre + ' ' + item.ualConLaboratorista + ' de ' + item.ualActivas + ' con laboratorista').join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay UAL activas.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Cobertura de laboratoristas</h3>
+              <% if (coverageTotals.ualActivas) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="coverageShare" role="img" aria-label="UAL con laboratorista <%= coverageTotals.ualConLaboratorista %>, sin laboratorista <%= coverageTotals.ualActivas - coverageTotals.ualConLaboratorista %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay UAL activas.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Personal por facultad</h3>
+              <% if (cobertura.facultadesSinCoordinador) { %>
+                <p class="dashboard-gen-hint mb-2"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> <%= cobertura.facultadesSinCoordinador %> facultad(es) sin coordinador activo.</p>
+              <% } %>
+              <% if (cobertura.facultades.some((item) => item.laboratoristas || item.coordinadores)) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 50 + cobertura.facultades.length * 30 %>px;">
+                  <canvas data-gen-chart="staff" role="img" aria-label="Personal por facultad: <%= cobertura.facultades.map((item) => item.nombre + ' ' + item.laboratoristas + ' laboratoristas y ' + item.coordinadores + ' coordinadores').join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay personal asignado.</p>
+              <% } %>
+            </article>
+          </div>
+        </section>
+      <% } %>
+
+      <% const actividadLog = typeof actividadPlataforma !== 'undefined' && actividadPlataforma ? actividadPlataforma : null; %>
+      <% if (actividadLog) { %>
+        <section class="dashboard-gen-block" aria-labelledby="dashboardActivityTitle">
+          <header class="dashboard-gen-block-head">
+            <h3 id="dashboardActivityTitle"><i class="bi bi-activity" aria-hidden="true"></i> Actividad en la plataforma</h3>
+            <span class="dashboard-gen-block-scope">Registro de auditoría · solo administrador</span>
+          </header>
+          <div class="dashboard-pys-panels dashboard-gen-panels--pair">
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>Acciones registradas por mes</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Acciones · últimos 30 días</dt><dd><%= actividadLog.acciones30.toLocaleString('es-CO') %></dd></div>
+                <div class="<%= actividadLog.variacion === null ? '' : (actividadLog.variacion >= 0 ? 'dashboard-gen-kpi--up' : 'dashboard-gen-kpi--down') %>">
+                  <dt>Vs. 30 días anteriores</dt>
+                  <dd><%= actividadLog.variacion === null ? '—' : (actividadLog.variacion > 0 ? '+' : '') + actividadLog.variacion + '%' %></dd>
+                </div>
+                <div><dt>Usuarios que registraron acciones</dt><dd><%= actividadLog.actores30 %></dd></div>
+              </dl>
+              <% if (actividadLog.mensual.data.some((value) => value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 220px;">
+                  <canvas data-gen-chart="logMonthly" role="img" aria-label="Acciones por mes: <%= actividadLog.mensual.labels.map((label, index) => label + ' ' + actividadLog.mensual.data[index]).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones registradas en los últimos 12 meses.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Acciones más frecuentes <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.acciones.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + actividadLog.acciones.length * 28 %>px;">
+                  <canvas data-gen-chart="logActions" role="img" aria-label="Acciones más frecuentes: <%= actividadLog.acciones.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Acciones por tipo de usuario <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.roles.length) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="logRoles" role="img" aria-label="Acciones por tipo de usuario: <%= actividadLog.roles.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Actividad por día de la semana <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.semana.data.some((value) => value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 230px;">
+                  <canvas data-gen-chart="logWeekday" role="img" aria-label="Acciones por día: <%= actividadLog.semana.labels.map((label, index) => label + ' ' + actividadLog.semana.data[index]).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Usuarios más activos <small class="dashboard-gen-kpi-note">· 30 días</small></h3>
+              <% if (actividadLog.actores.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + actividadLog.actores.length * 28 %>px;">
+                  <canvas data-gen-chart="logActors" role="img" aria-label="Usuarios más activos: <%= actividadLog.actores.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 30 días.</p>
+              <% } %>
+            </article>
+          </div>
+        </section>
+      <% } %>
     </section>
 
     <section
@@ -189,101 +404,82 @@
           <% }) %>
         </div>
 
+        <% const pysSanciones = pazYSalvo.sanciones; %>
+        <% const pysReclamaciones = pazYSalvo.reclamaciones; %>
+        <% const pysCertificados = pazYSalvo.certificados; %>
         <div class="dashboard-pys-panels">
           <article class="dashboard-pys-panel">
             <h3>Antigüedad de sanciones abiertas</h3>
-            <% const agingMax = Math.max(1, ...pazYSalvo.sanciones.antiguedad.map((item) => item.value)); %>
-            <ul class="dashboard-pys-bars">
-              <% pazYSalvo.sanciones.antiguedad.forEach(function(item) { %>
-                <li>
-                  <span class="dashboard-pys-bar-label"><%= item.label %></span>
-                  <span class="dashboard-pys-bar-track">
-                    <span class="dashboard-pys-bar-fill pys-tone-<%= item.tone %>" style="width: <%= Math.round((item.value / agingMax) * 100) %>%;"></span>
-                  </span>
-                  <strong><%= item.value %></strong>
-                </li>
-              <% }) %>
-            </ul>
+            <% if (pysSanciones.abiertas) { %>
+              <div class="dashboard-pys-chart" style="height: 150px;">
+                <canvas data-pys-chart="aging" role="img" aria-label="Antigüedad de sanciones abiertas: <%= pysSanciones.antiguedad.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+              </div>
+            <% } else { %>
+              <p class="dashboard-pys-empty">Sin sanciones abiertas.</p>
+            <% } %>
           </article>
 
           <article class="dashboard-pys-panel">
             <h3>¿Dónde se concentran los bloqueos?</h3>
-            <% pazYSalvo.rankingGroups.forEach(function(group) { %>
+            <% pazYSalvo.rankingGroups.forEach(function(group, groupIndex) { %>
               <p class="dashboard-pys-subtitle"><%= group.title %></p>
               <% if (!group.items.length) { %>
                 <p class="dashboard-pys-empty">Sin sanciones abiertas.</p>
               <% } else { %>
-                <ol class="dashboard-pys-ranking">
-                  <% group.items.forEach(function(item) { %>
-                    <li><span title="<%= item.nombre %>"><%= item.nombre %></span><strong><%= item.abiertas %></strong></li>
-                  <% }) %>
-                </ol>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + group.items.length * 26 %>px;">
+                  <canvas data-pys-chart="ranking" data-pys-group="<%= groupIndex %>" role="img" aria-label="Sanciones abiertas por <%= group.title.toLowerCase() %>: <%= group.items.map((item) => item.nombre + ' ' + item.abiertas).join(', ') %>"></canvas>
+                </div>
               <% } %>
             <% }) %>
           </article>
 
-          <% if (pazYSalvo.reclamaciones) { %>
+          <% if (pysReclamaciones) { %>
+            <% const avgHours = pysReclamaciones.horasPromedio; %>
             <article class="dashboard-pys-panel">
               <h3>Reclamaciones</h3>
-              <dl class="dashboard-pys-stats">
-                <div><dt>Recibidas</dt><dd><%= pazYSalvo.reclamaciones.total %></dd></div>
-                <div><dt>Sin respuesta</dt><dd><%= pazYSalvo.reclamaciones.pendientes %></dd></div>
-                <div><dt>Procede</dt><dd><%= pazYSalvo.reclamaciones.procede %></dd></div>
-                <div><dt>No procede</dt><dd><%= pazYSalvo.reclamaciones.noProcede %></dd></div>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Recibidas</dt><dd><%= pysReclamaciones.total %></dd></div>
                 <div>
                   <dt>% que procede</dt>
-                  <dd><%= pazYSalvo.reclamaciones.tasaProcede === null ? '—' : pazYSalvo.reclamaciones.tasaProcede + '%' %></dd>
+                  <dd><%= pysReclamaciones.tasaProcede === null ? '—' : pysReclamaciones.tasaProcede + '%' %></dd>
                 </div>
                 <div>
                   <dt>Respuesta promedio</dt>
-                  <dd>
-                    <% const avgHours = pazYSalvo.reclamaciones.horasPromedio; %>
-                    <%= avgHours === null ? '—' : (avgHours >= 48 ? (avgHours / 24).toFixed(1) + ' días' : avgHours + ' h') %>
-                  </dd>
+                  <dd><%= avgHours === null ? '—' : (avgHours >= 48 ? (avgHours / 24).toFixed(1) + ' días' : avgHours + ' h') %></dd>
                 </div>
               </dl>
-            </article>
-          <% } %>
-
-          <% if (pazYSalvo.certificados) { %>
-            <article class="dashboard-pys-panel">
-              <h3>Paz y salvos expedidos</h3>
-              <dl class="dashboard-pys-stats">
-                <div><dt>Estudiantes</dt><dd><%= pazYSalvo.certificados.estudiantes %></dd></div>
-                <% if (pazYSalvo.certificados.docentes !== null) { %>
-                  <div><dt>Docentes</dt><dd><%= pazYSalvo.certificados.docentes %></dd></div>
-                <% } %>
-                <% pazYSalvo.certificados.origen.forEach(function(item) { %>
-                  <div><dt><%= item.label %></dt><dd><%= item.value %></dd></div>
-                <% }) %>
-              </dl>
-              <p class="dashboard-pys-subtitle">Motivos más frecuentes</p>
-              <% if (!pazYSalvo.certificados.motivos.length) { %>
-                <p class="dashboard-pys-empty">Aún no hay paz y salvos en este alcance.</p>
+              <% if (pysReclamaciones.total) { %>
+                <div class="dashboard-pys-chart" style="height: 180px;">
+                  <canvas data-pys-chart="claims" role="img" aria-label="Reclamaciones: sin respuesta <%= pysReclamaciones.pendientes %>, procede <%= pysReclamaciones.procede %>, no procede <%= pysReclamaciones.noProcede %>"></canvas>
+                </div>
               <% } else { %>
-                <ol class="dashboard-pys-ranking">
-                  <% pazYSalvo.certificados.motivos.forEach(function(item) { %>
-                    <li><span title="<%= item.nombre %>"><%= item.nombre %></span><strong><%= item.total %></strong></li>
-                  <% }) %>
-                </ol>
+                <p class="dashboard-pys-empty">Aún no hay reclamaciones en este alcance.</p>
               <% } %>
             </article>
           <% } %>
 
-          <% if (pazYSalvo.cobertura && pazYSalvo.cobertura.sinLaboratoristaTotal) { %>
+          <% if (pysCertificados) { %>
+            <% const totalCertificados = pysCertificados.estudiantes + (pysCertificados.docentes || 0); %>
             <article class="dashboard-pys-panel">
-              <h3>UAL sin laboratorista activo</h3>
-              <ul class="dashboard-pys-ranking dashboard-pys-ranking--plain">
-                <% pazYSalvo.cobertura.sinLaboratorista.forEach(function(item) { %>
-                  <li>
-                    <span title="<%= item.nombre %>"><%= item.nombre %></span>
-                    <small><%= item.facultad %></small>
-                  </li>
-                <% }) %>
-              </ul>
-              <% const remainingUals = pazYSalvo.cobertura.sinLaboratoristaTotal - pazYSalvo.cobertura.sinLaboratorista.length; %>
-              <% if (remainingUals > 0) { %>
-                <p class="dashboard-pys-empty">y <%= remainingUals %> más.</p>
+              <h3>Paz y salvos expedidos</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Estudiantes</dt><dd><%= pysCertificados.estudiantes %></dd></div>
+                <% if (pysCertificados.docentes !== null) { %>
+                  <div><dt>Docentes</dt><dd><%= pysCertificados.docentes %></dd></div>
+                <% } %>
+                <div><dt>Total</dt><dd><%= totalCertificados %></dd></div>
+              </dl>
+              <% if (totalCertificados) { %>
+                <p class="dashboard-pys-subtitle">Origen</p>
+                <div class="dashboard-pys-chart" style="height: 160px;">
+                  <canvas data-pys-chart="origin" role="img" aria-label="Origen de los paz y salvos: <%= pysCertificados.origen.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+                <p class="dashboard-pys-subtitle">Motivos más frecuentes</p>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + pysCertificados.motivos.length * 26 %>px;">
+                  <canvas data-pys-chart="reasons" role="img" aria-label="Motivos más frecuentes: <%= pysCertificados.motivos.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay paz y salvos en este alcance.</p>
               <% } %>
             </article>
           <% } %>
@@ -445,16 +641,35 @@
 </div>
 
 <script nonce="<%= cspNonce %>">
-  const rawData = <%- JSON.stringify(chartsData) %>;
-  const chartsData = {
-    ...rawData,
-    sanciones: rawData.multas,
-    sancionesActivas: rawData.multasActivas,
-    sancionesSaldadas: rawData.multasSaldadas,
-  };
+  const chartsData = <%- JSON.stringify(chartsData) %>;
 
   const tablesData = <%- JSON.stringify(tablesData || {}) %>;
   const tablesMeta = <%- JSON.stringify(typeof tablesMeta !== 'undefined' ? tablesMeta : {}) %>;
+  const pazYSalvoChartData = <%- JSON.stringify(
+    typeof pazYSalvo !== 'undefined' && pazYSalvo
+      ? {
+          antiguedad: pazYSalvo.sanciones.antiguedad,
+          rankingGroups: pazYSalvo.rankingGroups,
+          reclamaciones: pazYSalvo.reclamaciones,
+          certificados: pazYSalvo.certificados
+            ? { origen: pazYSalvo.certificados.origen, motivos: pazYSalvo.certificados.motivos }
+            : null,
+        }
+      : null
+  ).replace(/</g, '\\u003c') %>;
+  const generalChartData = <%- JSON.stringify(
+    typeof generalOverview !== 'undefined' && generalOverview
+      ? {
+          actividad: generalOverview.actividad,
+          usuarios: generalOverview.usuarios,
+          programas: generalOverview.programas,
+          estadosCuenta: generalOverview.estadosCuenta,
+          laboratoristasEstado: generalOverview.laboratoristasEstado,
+          cobertura: typeof coberturaOperativa !== 'undefined' ? coberturaOperativa : null,
+          actividadLog: typeof actividadPlataforma !== 'undefined' ? actividadPlataforma : null,
+        }
+      : null
+  ).replace(/</g, '\\u003c') %>;
   const usuarioTableColumns = <%- JSON.stringify(usuarioTableColumns || []) %>;
   const dynamicUsuariosColumns = Array.isArray(usuarioTableColumns)
     ? usuarioTableColumns
@@ -488,27 +703,6 @@
   ];
 
   const TABLE_COLUMN_DEFS = {
-    certificadosEstudiantes: [
-      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'nombre_usuario', label: 'Nombre' },
-      { key: 'documento_usuario', label: 'Documento' },
-      { key: 'correo', label: 'Correo' },
-      { key: 'motivo_exp', label: 'Motivo' },
-      { key: 'motivo_expedicion', label: 'Detalle motivo' },
-      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'fecha_vencimiento', label: 'Vence', format: (v) => formatDate(v) },
-    ],
-    certificadosDocentes: [
-      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'nombre_usuario', label: 'Nombre' },
-      { key: 'documento_usuario', label: 'Documento' },
-      { key: 'correo', label: 'Correo' },
-      { key: 'motivo_exp', label: 'Motivo' },
-      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'origen_descarga', label: 'Origen' },
-    ],
     estudiantes: [
       { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
       { key: 'nombre', label: 'Nombres y apellidos' },
@@ -528,38 +722,6 @@
       { key: 'correo', label: 'Correo' },
       { key: 'carrera', label: 'Programa', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
       { key: 'estado', label: 'Estado cuenta', format: (v) => renderEstadoBadge(v) },
-    ],
-    sanciones: [
-      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
-    ],
-    sancionesActivas: [
-      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
-    ],
-    sancionesSaldadas: [
-      { key: 'fecha_multa', label: 'Fecha registro', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
     ],
     laboratoristas: [
       { key: 'fecha_creacion', label: 'Fecha registro', format: (v) => formatDate(v) },
@@ -1521,37 +1683,54 @@
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
   let detailEnabled = false;
 
-  const chartVisualConfig = {
-    estudiantes: {
-      color: '#1f7aec',
-      backgroundColor: 'rgba(31, 122, 236, 0.18)',
-    },
-    docentes: {
-      color: '#219653',
-      backgroundColor: 'rgba(33, 150, 83, 0.18)',
-    },
-    sanciones: {},
-    sancionesActivas: {
-      color: '#e63946',
-      backgroundColor: 'rgba(230, 57, 70, 0.18)',
-    },
-    sancionesSaldadas: {
-      color: '#28b6d8',
-      backgroundColor: 'rgba(40, 182, 216, 0.18)',
-    },
-    laboratoristas: {
-      color: '#2a2f36',
-      backgroundColor: 'rgba(42, 47, 54, 0.18)',
-    },
-    coordinadores: {
-      color: '#8b949e',
-      backgroundColor: 'rgba(139, 148, 158, 0.18)',
-    },
-    usuariosRegistrados: {
-      color: '#ff7a00',
-      backgroundColor: 'rgba(255, 122, 0, 0.18)',
-    },
+  const GEN_COLORS = {
+    blue: '#1f7aec',
+    green: '#219653',
+    amber: '#e08a00',
+    red: '#d62839',
+    teal: '#0f9fb5',
+    purple: '#7b4fd6',
+    slate: '#5e7178',
+    orange: '#f2700d',
+    pink: '#d6409f',
   };
+  const GEN_SERIES_COLORS = [
+    GEN_COLORS.blue,
+    GEN_COLORS.amber,
+    GEN_COLORS.purple,
+    GEN_COLORS.teal,
+    GEN_COLORS.pink,
+    GEN_COLORS.green,
+    GEN_COLORS.orange,
+    GEN_COLORS.slate,
+  ];
+  const chartVisualConfig = {
+    estudiantes: { color: GEN_COLORS.blue },
+    docentes: { color: GEN_COLORS.green },
+    laboratoristas: { color: GEN_COLORS.purple },
+    coordinadores: { color: GEN_COLORS.slate },
+    usuariosRegistrados: { color: GEN_COLORS.orange },
+  };
+
+  function hexToRgba(hex, alpha) {
+    const value = String(hex || '').replace('#', '');
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function buildAreaGradient(color) {
+    return function(context) {
+      const { chart } = context;
+      const area = chart.chartArea;
+      if (!area) return hexToRgba(color, 0.15);
+      const gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+      gradient.addColorStop(0, hexToRgba(color, 0.32));
+      gradient.addColorStop(1, hexToRgba(color, 0.02));
+      return gradient;
+    };
+  }
 
   function getChartTheme() {
     const styles = getComputedStyle(document.documentElement);
@@ -1582,8 +1761,10 @@
     document.getElementById('dashboardChartHint').textContent = config.summary;
     document.getElementById('dashboardChartTotal').textContent = getTotal(tipo).toLocaleString();
 
-    document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
-      card.classList.toggle('is-active', card.dataset.chartTarget === tipo);
+    document.querySelectorAll('.dashboard-kpi-card').forEach((card) => {
+      const isActive = card.dataset.chartTarget === tipo;
+      card.classList.toggle('is-active', isActive);
+      card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
 
     try {
@@ -1636,83 +1817,8 @@
 
     updateSummary(tipo, options);
 
-    if (tipo === 'sanciones') {
-      chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: chartsData.sanciones.labels,
-          datasets: [
-            {
-              label: 'Total sanciones',
-              data: chartsData.sanciones.data,
-              fill: false,
-              borderColor: '#ffbf1f',
-              backgroundColor: 'rgba(255, 191, 31, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#ffbf1f',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 3,
-            },
-            {
-              label: 'Sanciones activas',
-              data: chartsData.sancionesActivas.data,
-              fill: false,
-              borderColor: '#e63946',
-              backgroundColor: 'rgba(230, 57, 70, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#e63946',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 2,
-            },
-            {
-              label: 'Sanciones saldadas',
-              data: chartsData.sancionesSaldadas.data,
-              fill: false,
-              borderColor: '#28b6d8',
-              backgroundColor: 'rgba(40, 182, 216, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#28b6d8',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 2,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: theme.text }, display: true },
-          },
-          scales: {
-            x: {
-              ticks: { color: theme.muted },
-              grid: { color: theme.grid },
-            },
-            y: {
-              ticks: {
-                color: theme.muted,
-                stepSize: 1,
-                callback: function(value) {
-                  return Number.isInteger(value) ? value : '';
-                },
-              },
-              beginAtZero: true,
-              grid: { color: theme.grid },
-            },
-          },
-        },
-      });
-      return;
-    }
-
     const data = chartsData[tipo] || { labels: [], data: [] };
-    const visual = chartVisualConfig[tipo] || chartVisualConfig.sancionesActivas;
+    const visual = chartVisualConfig[tipo] || { color: GEN_COLORS.blue };
     chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
@@ -1723,7 +1829,7 @@
             data: data.data,
             fill: true,
             borderColor: visual.color,
-            backgroundColor: visual.backgroundColor,
+            backgroundColor: buildAreaGradient(visual.color),
             tension: 0.35,
             pointBackgroundColor: visual.color,
             pointBorderColor: theme.surface,
@@ -1765,6 +1871,496 @@
     renderChart(document.getElementById('tipoGrafico').value, { renderDetail: false });
   }
 
+  const PYS_TONE_COLORS = { ok: '#219653', warn: '#e08a00', danger: '#d62839', info: '#1f7aec' };
+  const PYS_RANKING_COLOR = '#1f7aec';
+  const pazYSalvoCharts = [];
+  let pazYSalvoChartsRendered = false;
+
+  function truncatePysLabel(value, maxLength = 28) {
+    const text = String(value || '');
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function buildPysHorizontalBarConfig(labels, values, colors, theme) {
+    return {
+      type: 'bar',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label)),
+        datasets: [
+          {
+            data: values,
+            backgroundColor: colors,
+            borderRadius: 6,
+            maxBarThickness: 18,
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: {
+            ticks: { color: theme.text, font: { size: 11 } },
+            grid: { display: false },
+          },
+        },
+      },
+    };
+  }
+
+  function buildPysDoughnutConfig(labels, values, colors, theme) {
+    return {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderColor: theme.surface, borderWidth: 2 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+        },
+      },
+    };
+  }
+
+  function buildPysChartConfig(canvas, theme) {
+    const data = pazYSalvoChartData;
+    const kind = canvas.dataset.pysChart;
+
+    if (kind === 'aging') {
+      return buildPysHorizontalBarConfig(
+        data.antiguedad.map((item) => item.label),
+        data.antiguedad.map((item) => item.value),
+        data.antiguedad.map((item) => PYS_TONE_COLORS[item.tone] || PYS_RANKING_COLOR),
+        theme
+      );
+    }
+
+    if (kind === 'ranking') {
+      const group = data.rankingGroups[Number(canvas.dataset.pysGroup)];
+      if (!group) return null;
+      return buildPysHorizontalBarConfig(
+        group.items.map((item) => item.nombre),
+        group.items.map((item) => item.abiertas),
+        PYS_RANKING_COLOR,
+        theme
+      );
+    }
+
+    if (kind === 'claims' && data.reclamaciones) {
+      return buildPysDoughnutConfig(
+        ['Sin respuesta', 'Procede', 'No procede'],
+        [data.reclamaciones.pendientes, data.reclamaciones.procede, data.reclamaciones.noProcede],
+        [PYS_TONE_COLORS.warn, PYS_TONE_COLORS.ok, PYS_TONE_COLORS.danger],
+        theme
+      );
+    }
+
+    if (kind === 'origin' && data.certificados) {
+      return buildPysDoughnutConfig(
+        data.certificados.origen.map((item) => item.label),
+        data.certificados.origen.map((item) => item.value),
+        data.certificados.origen.map((item) => PYS_TONE_COLORS[item.tone] || PYS_RANKING_COLOR),
+        theme
+      );
+    }
+
+    if (kind === 'reasons' && data.certificados) {
+      return buildPysHorizontalBarConfig(
+        data.certificados.motivos.map((item) => item.nombre),
+        data.certificados.motivos.map((item) => item.total),
+        PYS_TONE_COLORS.info,
+        theme
+      );
+    }
+
+    return null;
+  }
+
+  function renderPazYSalvoCharts() {
+    if (!pazYSalvoChartData || typeof Chart === 'undefined') return;
+    pazYSalvoCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    document.querySelectorAll('[data-pys-chart]').forEach((canvas) => {
+      const config = buildPysChartConfig(canvas, theme);
+      if (config) pazYSalvoCharts.push(new Chart(canvas, config));
+    });
+    pazYSalvoChartsRendered = true;
+  }
+
+  const GEN_USER_COLORS = {
+    estudiantes: GEN_COLORS.blue,
+    docentes: GEN_COLORS.green,
+    laboratoristas: GEN_COLORS.purple,
+    coordinadores: GEN_COLORS.slate,
+  };
+  const generalOverviewCharts = [];
+  let generalOverviewChartsRendered = false;
+
+  function buildGenActivityConfig(actividad, theme) {
+    return {
+      type: 'bar',
+      data: {
+        labels: actividad.labels,
+        datasets: actividad.datasets.map((dataset) => {
+          const color = GEN_USER_COLORS[dataset.key] || GEN_COLORS.slate;
+          return {
+            label: dataset.label,
+            data: dataset.data,
+            backgroundColor: hexToRgba(color, 0.85),
+            hoverBackgroundColor: color,
+            borderRadius: 5,
+            maxBarThickness: 16,
+          };
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+        },
+        scales: {
+          x: { ticks: { color: theme.muted, font: { size: 11 } }, grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenPolarConfig(labels, values, colors, theme) {
+    return {
+      type: 'polarArea',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label, 24)),
+        datasets: [
+          {
+            data: values,
+            backgroundColor: colors.map((color) => hexToRgba(color, 0.72)),
+            borderColor: theme.surface,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { display: false },
+            grid: { color: theme.grid },
+            angleLines: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenGroupedHorizontalConfig(labels, datasets, theme, stacked, labelLength = 34) {
+    return {
+      type: 'bar',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label, labelLength)),
+        datasets: datasets.map((dataset) => ({
+          label: dataset.label,
+          data: dataset.data,
+          backgroundColor: hexToRgba(dataset.color, 0.85),
+          hoverBackgroundColor: dataset.color,
+          borderRadius: 5,
+          maxBarThickness: 16,
+        })),
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          x: {
+            stacked,
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: { stacked, ticks: { color: theme.text, font: { size: 11 } }, grid: { display: false } },
+        },
+      },
+    };
+  }
+
+  function buildGenAreaConfig(labels, values, color, label, theme) {
+    return {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label,
+            data: values,
+            fill: true,
+            borderColor: color,
+            backgroundColor: buildAreaGradient(color),
+            tension: 0.35,
+            pointBackgroundColor: color,
+            pointBorderColor: theme.surface,
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            borderWidth: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: theme.muted, font: { size: 11 } }, grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenRadarConfig(labels, values, color, theme) {
+    return {
+      type: 'radar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Acciones',
+            data: values,
+            fill: true,
+            backgroundColor: hexToRgba(color, 0.22),
+            borderColor: color,
+            pointBackgroundColor: color,
+            pointBorderColor: theme.surface,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { display: false },
+            grid: { color: theme.grid },
+            angleLines: { color: theme.grid },
+            pointLabels: { color: theme.text, font: { size: 11 } },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenCoverageChartConfig(kind, theme) {
+    const cobertura = generalChartData.cobertura;
+    const actividad = generalChartData.actividadLog;
+
+    if (kind === 'coverage' && cobertura) {
+      return buildGenGroupedHorizontalConfig(
+        cobertura.facultades.map((item) => item.nombre),
+        [
+          {
+            label: 'Con laboratorista',
+            data: cobertura.facultades.map((item) => item.ualConLaboratorista),
+            color: GEN_COLORS.green,
+          },
+          {
+            label: 'Sin laboratorista',
+            data: cobertura.facultades.map((item) => item.ualActivas - item.ualConLaboratorista),
+            color: GEN_COLORS.red,
+          },
+        ],
+        theme,
+        true
+      );
+    }
+
+    if (kind === 'coverageShare' && cobertura) {
+      const totals = cobertura.totales;
+      return buildPysDoughnutConfig(
+        ['Con laboratorista', 'Sin laboratorista'],
+        [totals.ualConLaboratorista, totals.ualActivas - totals.ualConLaboratorista],
+        [GEN_COLORS.green, GEN_COLORS.red],
+        theme
+      );
+    }
+
+    if (kind === 'staff' && cobertura) {
+      return buildGenGroupedHorizontalConfig(
+        cobertura.facultades.map((item) => item.nombre),
+        [
+          {
+            label: 'Laboratoristas',
+            data: cobertura.facultades.map((item) => item.laboratoristas),
+            color: GEN_COLORS.purple,
+          },
+          {
+            label: 'Coordinadores',
+            data: cobertura.facultades.map((item) => item.coordinadores),
+            color: GEN_COLORS.teal,
+          },
+        ],
+        theme,
+        false,
+        22
+      );
+    }
+
+    if (kind === 'logMonthly' && actividad) {
+      return buildGenAreaConfig(
+        actividad.mensual.labels,
+        actividad.mensual.data,
+        GEN_COLORS.blue,
+        'Acciones',
+        theme
+      );
+    }
+
+    if (kind === 'logActions' && actividad) {
+      return buildPysHorizontalBarConfig(
+        actividad.acciones.map((item) => item.nombre),
+        actividad.acciones.map((item) => item.total),
+        actividad.acciones.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'logRoles' && actividad) {
+      return buildPysDoughnutConfig(
+        actividad.roles.map((item) => item.nombre),
+        actividad.roles.map((item) => item.total),
+        actividad.roles.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'logWeekday' && actividad) {
+      return buildGenRadarConfig(actividad.semana.labels, actividad.semana.data, GEN_COLORS.pink, theme);
+    }
+
+    if (kind === 'logActors' && actividad) {
+      return buildPysHorizontalBarConfig(
+        actividad.actores.map((item) => item.nombre),
+        actividad.actores.map((item) => item.total),
+        actividad.actores.map((_, index) => hexToRgba(GEN_COLORS.orange, Math.max(0.35, 0.95 - index * 0.08))),
+        theme
+      );
+    }
+
+    return null;
+  }
+
+  function buildGeneralChartConfig(canvas, theme) {
+    const data = generalChartData;
+    const kind = canvas.dataset.genChart;
+
+    if (kind === 'activity') {
+      return buildGenActivityConfig(data.actividad, theme);
+    }
+
+    if (kind === 'accountStates' && data.estadosCuenta) {
+      return buildGenPolarConfig(
+        data.estadosCuenta.map((item) => item.nombre),
+        data.estadosCuenta.map((item) => item.total),
+        data.estadosCuenta.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'labStatus' && data.laboratoristasEstado) {
+      return buildPysDoughnutConfig(
+        data.laboratoristasEstado.map((item) => item.label),
+        data.laboratoristasEstado.map((item) => item.value),
+        [GEN_COLORS.purple, GEN_COLORS.slate],
+        theme
+      );
+    }
+
+    if (kind === 'programs' && data.programas) {
+      return buildPysHorizontalBarConfig(
+        data.programas.map((item) => item.nombre),
+        data.programas.map((item) => item.total),
+        data.programas.map((_, index) => hexToRgba(GEN_COLORS.blue, Math.max(0.35, 0.95 - index * 0.11))),
+        theme
+      );
+    }
+
+    if (kind === 'users' && data.usuarios) {
+      const config = buildPysDoughnutConfig(
+        data.usuarios.map((item) => item.label),
+        data.usuarios.map((item) => item.value),
+        data.usuarios.map((item) => GEN_USER_COLORS[item.key] || GEN_COLORS.slate),
+        theme
+      );
+      config.type = 'pie';
+      delete config.options.cutout;
+      return config;
+    }
+
+    return buildGenCoverageChartConfig(kind, theme);
+  }
+
+  function renderGeneralOverviewCharts() {
+    if (!generalChartData || typeof Chart === 'undefined') return;
+    generalOverviewCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    document.querySelectorAll('[data-gen-chart]').forEach((canvas) => {
+      const config = buildGeneralChartConfig(canvas, theme);
+      if (config) generalOverviewCharts.push(new Chart(canvas, config));
+    });
+    generalOverviewChartsRendered = true;
+  }
+
   function initDashboardSectionTabs() {
     const tabs = Array.from(document.querySelectorAll('[data-dashboard-section]'));
     if (!tabs.length) return;
@@ -1784,8 +2380,12 @@
         const hash = target.dataset.dashboardSection === 'general' ? '' : `#${target.dataset.dashboardSection}`;
         history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
       }
-      if (target.dataset.dashboardSection === 'general' && chartInstance) {
-        chartInstance.resize();
+      if (target.dataset.dashboardSection === 'general') {
+        if (chartInstance) chartInstance.resize();
+        if (!generalOverviewChartsRendered) renderGeneralOverviewCharts();
+      }
+      if (target.dataset.dashboardSection === 'paz-y-salvos' && !pazYSalvoChartsRendered) {
+        renderPazYSalvoCharts();
       }
     }
 
@@ -1979,7 +2579,7 @@
       });
     }
 
-    document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
+    document.querySelectorAll('.dashboard-kpi-card').forEach((card) => {
       card.addEventListener('click', function() {
         const chartTarget = card.dataset.chartTarget;
         detailEnabled = true;
@@ -1990,9 +2590,15 @@
 
     resetDetailPanel();
     renderChart(currentChartType, { renderDetail: false });
+    const generalCanvas = document.querySelector('[data-gen-chart]');
+    if (!generalOverviewChartsRendered && generalCanvas && generalCanvas.offsetParent) {
+      renderGeneralOverviewCharts();
+    }
 
     const themeObserver = new MutationObserver(function() {
       renderChart(currentChartType, { renderDetail: detailEnabled });
+      if (generalOverviewChartsRendered) renderGeneralOverviewCharts();
+      if (pazYSalvoChartsRendered) renderPazYSalvoCharts();
     });
 
     themeObserver.observe(document.documentElement, {

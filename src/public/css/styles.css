@@ -1908,7 +1908,7 @@ body.app-shell .dashboard-pys-card-hint {
 
 body.app-shell .dashboard-pys-panels {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 0.75rem;
 }
 
@@ -1940,95 +1940,231 @@ body.app-shell .dashboard-pys-empty {
   color: var(--app-text-muted);
 }
 
-body.app-shell .dashboard-pys-bars {
-  display: grid;
-  gap: 0.55rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-body.app-shell .dashboard-pys-bars li {
-  display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr) 2.5rem;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.84rem;
-}
-
-body.app-shell .dashboard-pys-bars strong {
-  text-align: right;
-}
-
-body.app-shell .dashboard-pys-bar-track {
-  height: 0.55rem;
-  border-radius: 999px;
-  background: rgba(127, 127, 127, 0.16);
-  overflow: hidden;
-}
-
-body.app-shell .dashboard-pys-bar-fill {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: var(--pys-tone);
-}
-
-body.app-shell .dashboard-pys-ranking {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+body.app-shell .dashboard-pys-chart {
+  position: relative;
+  width: 100%;
   min-width: 0;
-  gap: 0.3rem;
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  font-size: 0.84rem;
 }
 
-body.app-shell .dashboard-pys-ranking li {
+body.app-shell .dashboard-pys-kpis {
   display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin: 0 0 0.5rem;
 }
 
-body.app-shell .dashboard-pys-ranking--plain li {
-  display: grid;
-  gap: 0;
-}
-
-body.app-shell .dashboard-pys-ranking span {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-body.app-shell .dashboard-pys-ranking small {
-  font-size: 0.74rem;
-  color: var(--app-text-muted);
-}
-
-body.app-shell .dashboard-pys-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem 0.75rem;
-  margin: 0;
-}
-
-body.app-shell .dashboard-pys-stats dt {
-  font-size: 0.72rem;
+body.app-shell .dashboard-pys-kpis dt {
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--app-text-muted);
 }
 
-body.app-shell .dashboard-pys-stats dd {
+body.app-shell .dashboard-pys-kpis dd {
   margin: 0;
+  font-size: 1.05rem;
   font-weight: 800;
+}
+
+body.app-shell .dashboard-general {
+  display: grid;
+  gap: 0.75rem;
+}
+
+body.app-shell .dashboard-kpi-card {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+body.app-shell .dashboard-kpi-card .dashboard-pys-card-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+body.app-shell .dashboard-kpi-card .dashboard-pys-card-label i {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--pys-tone) 14%, transparent);
+  color: var(--pys-tone);
+  font-size: 0.85rem;
+}
+
+body.app-shell .dashboard-kpi-card:hover,
+body.app-shell .dashboard-kpi-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+}
+
+body.app-shell .dashboard-kpi-card.is-active {
+  border-color: var(--pys-tone);
+  background: color-mix(in srgb, var(--pys-tone) 7%, var(--app-surface));
+  box-shadow: 0 0 0 1px var(--pys-tone);
+}
+
+body.app-shell .kpi-tone-students {
+  --pys-tone: #1f7aec;
+}
+
+body.app-shell .kpi-tone-teachers {
+  --pys-tone: #219653;
+}
+
+body.app-shell .kpi-tone-sanctions {
+  --pys-tone: #e08a00;
+}
+
+body.app-shell .kpi-tone-alert {
+  --pys-tone: #d62839;
+}
+
+body.app-shell .kpi-tone-info {
+  --pys-tone: #0f9fb5;
+}
+
+body.app-shell .kpi-tone-labs {
+  --pys-tone: #7b4fd6;
+}
+
+body.app-shell .kpi-tone-coords {
+  --pys-tone: #5e7178;
+}
+
+body.app-shell .kpi-tone-users {
+  --pys-tone: #f2700d;
+}
+
+body.app-shell .dashboard-gen-panel--wide {
+  grid-column: 1 / -1;
+}
+
+body.app-shell .dashboard-gen-evolution-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  margin-bottom: 0.6rem;
+}
+
+body.app-shell .dashboard-gen-evolution-head h3 {
+  margin: 0;
+}
+
+body.app-shell .dashboard-gen-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .dashboard-gen-evolution-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 0.9rem;
+}
+
+body.app-shell .dashboard-gen-evolution-tools .dashboard-control-group {
+  min-width: 150px;
+}
+
+body.app-shell .dashboard-gen-total {
+  margin: 0;
+}
+
+body.app-shell .dashboard-gen-block {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+body.app-shell .dashboard-gen-panels--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 767.98px) {
+  body.app-shell .dashboard-gen-panels--pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+body.app-shell .dashboard-gen-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+body.app-shell .dashboard-gen-block-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+body.app-shell .dashboard-gen-block-head h3 i {
+  color: #1f7aec;
+}
+
+body.app-shell .dashboard-gen-block-scope {
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .dashboard-gen-kpi-note {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .dashboard-gen-kpi--warn dd {
+  color: #e08a00;
+}
+
+body.app-shell .dashboard-gen-kpi--up dd {
+  color: #219653;
+}
+
+body.app-shell .dashboard-gen-kpi--down dd {
+  color: #d62839;
+}
+
+@media (max-width: 575.98px) {
+  body.app-shell .dashboard-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.5rem;
+  }
+
+  body.app-shell .dashboard-kpi-card {
+    padding: 0.7rem 0.75rem;
+  }
+
+  body.app-shell .dashboard-kpi-card .dashboard-pys-card-label {
+    font-size: 0.66rem;
+    letter-spacing: 0.03em;
+  }
+
+  body.app-shell .dashboard-kpi-card .dashboard-pys-card-label i {
+    width: 1.35rem;
+    height: 1.35rem;
+    flex: none;
+  }
+
+  body.app-shell .dashboard-gen-evolution-tools,
+  body.app-shell .dashboard-gen-evolution-tools .dashboard-control-group {
+    width: 100%;
+  }
 }
 
 body.app-shell .dashboard-page--simplified .dashboard-control-group {

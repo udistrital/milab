@@ -104,7 +104,7 @@ test('dashboard flow renders admin summary from mounted HTTP handler', async () 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard');
     assert.equal(response.body.locals.dashboardRole, 'admin');
-    assert.equal(response.body.locals.selectedChart, 'certificadosEstudiantes');
+    assert.equal(response.body.locals.selectedChart, 'estudiantes');
   } finally {
     loaded.restore();
   }
@@ -128,7 +128,7 @@ test('dashboard flow rejects coordinators without associated faculties', async (
   }
 });
 
-test('dashboard flow counts only sanctions visible to coordinador faculties', async () => {
+test('dashboard flow keeps sanctions out of the coordinador platform tab', async () => {
   const loaded = loadDashboardApp({
     user: createUser({ tipo: 'coordinador', roles: ['coordinador'], documento: 'coord-1' }),
     scopeImpl: async () => ({ coordinatorDocument: 'coord-1', facultyIds: [10] }),
@@ -165,10 +165,9 @@ test('dashboard flow counts only sanctions visible to coordinador faculties', as
     const sanctionsChart = (response.body.locals.availableCharts || []).find(
       (chart) => chart.id === 'sanciones'
     );
-    assert.equal(Boolean(sanctionsChart), true);
-    assert.equal(sanctionsChart.total, 1);
+    assert.equal(sanctionsChart, undefined);
     assert.equal(response.body.locals.scopeCounters, undefined);
-    assert.equal((response.body.locals.tablesData?.sanciones || []).length, 1);
+    assert.equal('sanciones' in (response.body.locals.tablesData || {}), false);
   } finally {
     loaded.restore();
   }
