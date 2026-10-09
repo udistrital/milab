@@ -261,9 +261,14 @@
               <i class="bi bi-journal-text me-2" style="color:#560bad;"></i>
               Reporte de capacitaciones (tu alcance)
             </h5>
-            <button type="button" id="btn-descargar-csv" class="btn btn-sm btn-primary">
-              <i class="bi bi-filetype-csv me-1"></i> Exportar CSV
-            </button>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <button type="button" id="btn-exportar-json" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-filetype-json me-1"></i> Exportar JSON
+              </button>
+              <button type="button" id="btn-descargar-csv" class="btn btn-sm btn-primary">
+                <i class="bi bi-filetype-csv me-1"></i> Exportar CSV
+              </button>
+            </div>
           </div>
           <div class="card-body">
             <div class="row g-3 mb-4">
@@ -285,7 +290,23 @@
                   <option value="cancelada">Cancelada</option>
                 </select>
               </div>
-              <div class="col-md-3 d-flex align-items-end gap-2">
+              <div class="col-md-3">
+                <label for="report-codigo-curso" class="form-label">Código curso</label>
+                <input type="text" class="form-control" id="report-codigo-curso" placeholder="Ej. MOCK-COURSE-055" />
+              </div>
+              <div class="col-md-3">
+                <label for="report-ual" class="form-label">Laboratorio / UAL</label>
+                <select id="report-ual" class="form-select">
+                  <option value="">Todas</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label for="report-facultad" class="form-label">Facultad</label>
+                <select id="report-facultad" class="form-select">
+                  <option value="">Todas</option>
+                </select>
+              </div>
+              <div class="col-md-6 d-flex align-items-end gap-2">
                 <button type="button" id="btn-aplicar-filtros-reporte" class="btn btn-outline-secondary w-100"><i class="bi bi-funnel me-1"></i> Aplicar filtros</button>
               </div>
             </div>
@@ -425,6 +446,7 @@
     certificar: function (sesionId) { return BASE_PATH + '/gestion/sesiones/' + encodeURIComponent(sesionId) + '/certificar-asistentes'; },
     reporte: BASE_PATH + '/gestion/reporte',
     reporteCsv: BASE_PATH + '/gestion/reporte.csv',
+    reporteJson: BASE_PATH + '/gestion/reporte.json',
     contextoCursos: '/milab/api/capacitacion-equipos/list',
   };
 
@@ -821,7 +843,7 @@
             '<td><code>' + escapeHtml(a.usuario_documento || a.documento || '') + '</code></td>' +
             '<td>' + escapeHtml(a.usuario_nombre || a.nombre || '—') + '</td>' +
             '<td>' + formatFecha(a.fecha_registro || a.fecha_hora_marcado_asistencia || a.fecha_marcado) + '</td>' +
-            '<td>' + (a.tiene_cert ? '<span class="badge text-bg-success">Sí</span>' : '<span class="text-muted small">Pendiente</span>') + '</td>' +
+            '<td>' + ((a.tiene_cert || a.tiene_cert_vigente || a.certificacion_activa_id || a.cert_ultimo_id) ? '<span class="badge text-bg-success">Vigente</span>' : '<span class="text-muted small">Pendiente</span>') + '</td>' +
             '</tr>';
         }).join('');
       }
@@ -947,6 +969,71 @@
     if (hint) {
       var cur = state.contexto.cursos.find(function (c) { return String(c.codigo_curso || '').trim() === String(document.getElementById('ps-codigo-curso')?.value || '').trim(); });
       hint.textContent = cur && cur.nombre_curso ? cur.nombre_curso : '';
+    }
+
+    var repUal = document.getElementById('report-ual');
+    if (repUal) {
+      var useRepScope = state.scopeData && !state.scopeData.isAdmin && Array.isArray(state.scopeData.laboratorios) && state.scopeData.laboratorios.length > 0;
+      var repUalList = useRepScope ? state.scopeData.laboratorios.slice(0, 500) : state.contexto.uales.slice(0, 500);
+      var repOpts = ['<option value="">Todas</option>'];
+      repUalList.forEach(function (u) {
+        var pf = (u.codigo || u.codigo_abreviacion) ? '[' + (u.codigo || u.codigo_abreviacion) + '] ' : '';
+        var sf = u.nombre ? String(u.nombre) : ('UAL ' + String(u.ual_id));
+        repOpts.push('<option value="' + escapeAttr(u.ual_id) + '">' + escapeHtml(pf + sf) + '</option>');
+      });
+      repUal.innerHTML = repOpts.join('');
+    }
+
+    var repFac = document.getElementById('report-facultad');
+    if (repFac) {
+      var facMap = {};
+      var allUales = [];
+      if (state.scopeData && !state.scopeData.isAdmin && Array.isArray(state.scopeData.laboratorios) && state.scopeData.laboratorios.length > 0) {
+        allUales = state.scopeData.laboratorios.slice(0, 1000);
+      } else {
+        allUales = state.contexto.uales.slice(0, 1000);
+      }
+      allUales.forEach(function (u) {
+        var fid = u.facultad_id || null;
+        if (!fid) return;
+        if (facMap[fid]) return;
+        facMap[fid] = {
+          facultad_id: fid,
+          nombre: u.facultad_nombre || u.facultad || ('Facultad ' + fid),
+        };
+      });
+      if (state.contexto.facultades && Array.isArray(state.contexto.facultades)) {
+        state.contexto.facultades.slice(0, 500).forEach(function (f) {
+          if (!f || !f.facultad_id) return;
+          if (facMap[f.facultad_id]) {
+            if (!facMap[f.facultad_id].nombre || facMap[f.facultad_id].nombre.indexOf('Facultad ') === 0) {
+              facMap[f.facultad_id].nombre = f.nombre || facMap[f.facultad_id].nombre;
+            }
+            return;
+          }
+          facMap[f.facultad_id] = { facultad_id: f.facultad_id, nombre: f.nombre || ('Facultad ' + f.facultad_id) };
+        });
+      }
+      if (state.scopeData && Array.isArray(state.scopeData.facultades)) {
+        state.scopeData.facultades.slice(0, 500).forEach(function (f) {
+          if (!f || !f.facultad_id) return;
+          if (facMap[f.facultad_id]) {
+            if (!facMap[f.facultad_id].nombre || facMap[f.facultad_id].nombre.indexOf('Facultad ') === 0) {
+              facMap[f.facultad_id].nombre = f.nombre || facMap[f.facultad_id].nombre;
+            }
+            return;
+          }
+          facMap[f.facultad_id] = { facultad_id: f.facultad_id, nombre: f.nombre || ('Facultad ' + f.facultad_id) };
+        });
+      }
+      var facRows = Object.keys(facMap).map(function (k) { return facMap[k]; }).sort(function (a, b) {
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+      });
+      var facOpts = ['<option value="">Todas</option>'];
+      facRows.forEach(function (f) {
+        facOpts.push('<option value="' + escapeAttr(f.facultad_id) + '">' + escapeHtml(f.nombre || ('Facultad ' + f.facultad_id)) + '</option>');
+      });
+      repFac.innerHTML = facOpts.join('');
     }
   }
 
@@ -1303,10 +1390,16 @@
     var fDesde = document.getElementById('report-fecha-desde')?.value || '';
     var fHasta = document.getElementById('report-fecha-hasta')?.value || '';
     var fEstado = document.getElementById('report-estado-sesion')?.value || '';
+    var fCurso = String(document.getElementById('report-codigo-curso')?.value || '').trim();
+    var fUal = String(document.getElementById('report-ual')?.value || '').trim();
+    var fFac = String(document.getElementById('report-facultad')?.value || '').trim();
     if (fDesde)  qs.push('desde=' + encodeURIComponent(fDesde));
     if (fHasta)  qs.push('hasta=' + encodeURIComponent(fHasta + 'T23:59:59'));
     if (fEstado) qs.push('estado=' + encodeURIComponent(fEstado));
-    state.filtros.reporte = { desde: fDesde, hasta: fHasta, estado: fEstado };
+    if (fCurso)  qs.push('codigo_curso=' + encodeURIComponent(fCurso));
+    if (fUal)    qs.push('ual_id=' + encodeURIComponent(fUal));
+    if (fFac)    qs.push('facultad_id=' + encodeURIComponent(fFac));
+    state.filtros.reporte = { desde: fDesde, hasta: fHasta, estado: fEstado, codigo_curso: fCurso || null, ual_id: fUal || null, facultad_id: fFac || null };
     return qs.join('&');
   }
   function loadReporte() {
@@ -1332,7 +1425,7 @@
       if (typeof data.filas === 'number' && data.filas === 0) {
         setGlobalAlert('No hay capacitaciones en este rango / filtros (0 filas).', 'info', 'alert-reporte');
       } else {
-        setGlobalAlert('Reporte cargado: ' + (state.reporte.length) + ' filas.', 'success', 'alert-reporte');
+        setGlobalAlert('Reporte cargado: ' + (state.reporte.length) + ' filas.' + (data.filtros_aplicados ? (' Filtros: ' + escapeHtml(JSON.stringify(data.filtros_aplicados))) : ''), 'success', 'alert-reporte');
       }
     };
     xhr.onerror = function () { setGlobalAlert('Error de conexión cargando reporte.', 'danger', 'alert-reporte'); };
@@ -1401,6 +1494,27 @@
       }, 1200);
     }
   }
+  function onExportarJson(ev) {
+    try {
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(ev?.currentTarget, 'Generando…');
+    } catch (_) {}
+    try {
+      var qs = buildReporteQueryString();
+      var url = api.reporteJson + (qs ? '?' + qs : '');
+      var a = document.createElement('a');
+      a.href = url;
+      a.setAttribute('download', '');
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { try { document.body.removeChild(a); } catch (_) {} }, 1500);
+      setGlobalAlert('Se está descargando el reporte JSON desde ' + escapeHtml(url), 'success', 'alert-reporte');
+    } finally {
+      setTimeout(function () {
+        try { if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(ev?.currentTarget); } catch (_) {}
+      }, 1200);
+    }
+  }
 
   document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-recargar')?.addEventListener('click', onRecargar);
@@ -1415,6 +1529,7 @@
     document.getElementById('btn-finalizar-sesion')?.addEventListener('click', onBtnFinalizarSesion);
     document.getElementById('btn-aplicar-filtros-reporte')?.addEventListener('click', onAplicarFiltrosReporte);
     document.getElementById('btn-descargar-csv')?.addEventListener('click', onDescargarCsv);
+    document.getElementById('btn-exportar-json')?.addEventListener('click', onExportarJson);
     document.getElementById('ps-codigo-curso')?.addEventListener('input', onPsCursoChange);
     document.getElementById('form-programar-sesion')?.addEventListener('submit', submitFormProgramarSesion);
     document.getElementById('tab-reporte')?.addEventListener('shown.bs.tab', function () {
