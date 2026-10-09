@@ -114,7 +114,9 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
       }
 
       if (
-        sql.includes('SELECT facultad_id, nombre FROM facultad') &&
+        sql.includes(
+          'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad'
+        ) &&
         sql.includes('ORDER BY nombre ASC') &&
         !sql.includes('WHERE')
       ) {

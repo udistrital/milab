@@ -1,13 +1,13 @@
 <%- include('../partials/header'); -%>
-<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador'  ) { %>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador' && locals.tipo !== 'coordinador_general') { %>
     <script nonce="<%= cspNonce %>">
     window.location.href = '/milab/auth/login';
     </script>
   <% } else { %>
 
 
-        <main class="container app-page-shell">
-            <style>
+        <main class="container-fluid app-page-shell app-sanctions-report">
+            <style nonce="<%= cspNonce %>">
                 .app-detail-modal {
                     z-index: 3000;
                 }
@@ -39,9 +39,17 @@
         <% } %>
         <section class="card app-table-panel mb-3">
             <div class="card-body">
-                <form action="/milab/api/get_list_multas" method="GET" class="row g-3 align-items-end">
+                <form action="/milab/api/get_list_multas" method="GET" class="row g-3 align-items-end" id="sanctions-filter-form">
                     <% const filtros = locals.filtros || {}; %>
-                    <div class="col-12 col-md-4">
+                    <% const filterAccess = locals.filterAccess || {}; %>
+                    <% const locationOptions = locals.locationOptions || {}; %>
+                    <% const facultadOptions = Array.isArray(locationOptions.facultades) ? locationOptions.facultades : []; %>
+                    <% const dependenciaOptions = Array.isArray(locationOptions.dependencias) ? locationOptions.dependencias : []; %>
+                    <% const ualOptions = Array.isArray(locationOptions.uals) ? locationOptions.uals : []; %>
+                    <div class="col-12">
+                        <h2 class="app-filter-title"><i class="bi bi-funnel" aria-hidden="true"></i> Filtro de sanciones</h2>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-4">
                         <label for="fecha_desde" class="form-label">Desde</label>
                         <input
                             type="date"
@@ -51,7 +59,7 @@
                             value="<%= filtros.fecha_desde || '' %>"
                         >
                     </div>
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-sm-6 col-lg-4">
                         <label for="fecha_hasta" class="form-label">Hasta</label>
                         <input
                             type="date"
@@ -61,7 +69,7 @@
                             value="<%= filtros.fecha_hasta || '' %>"
                         >
                     </div>
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-sm-6 col-lg-4">
                         <label for="estado_multa" class="form-label">Estado</label>
                         <select id="estado_multa" name="estado_multa" class="form-select">
                             <option value="" <%= !filtros.estado_multa ? 'selected' : '' %>>Todos los estados</option>
@@ -72,6 +80,39 @@
                             <option value="SALDADA" <%= filtros.estado_multa === 'SALDADA' ? 'selected' : '' %>>SALDADA</option>
                         </select>
                     </div>
+                    <% if (filterAccess.facultad) { %>
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <label for="filtro_facultad" class="form-label">Facultad</label>
+                        <select id="filtro_facultad" name="facultad_id" class="form-select">
+                            <option value="">Todas las facultades</option>
+                            <% facultadOptions.forEach(function (opt) { %>
+                                <option value="<%= opt.id %>" <%= String(filtros.facultad_id) === String(opt.id) ? 'selected' : '' %>><%= opt.nombre %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <% } %>
+                    <% if (filterAccess.dependencia) { %>
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <label for="filtro_dependencia" class="form-label">Dependencia</label>
+                        <select id="filtro_dependencia" name="dependencia_id" class="form-select">
+                            <option value="">Todas las dependencias</option>
+                            <% dependenciaOptions.forEach(function (opt) { %>
+                                <option value="<%= opt.id %>" data-facultad-id="<%= opt.facultad_id %>" <%= String(filtros.dependencia_id) === String(opt.id) ? 'selected' : '' %>><%= opt.nombre %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <% } %>
+                    <% if (filterAccess.ual) { %>
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <label for="filtro_ual" class="form-label">UAL</label>
+                        <select id="filtro_ual" name="ual_id" class="form-select">
+                            <option value="">Todas las UAL</option>
+                            <% ualOptions.forEach(function (opt) { %>
+                                <option value="<%= opt.id %>" data-facultad-id="<%= opt.facultad_id %>" data-dependencia-id="<%= opt.dependencia_id || '' %>" <%= String(filtros.ual_id) === String(opt.id) ? 'selected' : '' %>><%= opt.nombre %></option>
+                            <% }) %>
+                        </select>
+                    </div>
+                    <% } %>
                     <div class="col-12 d-flex gap-2">
                         <button type="submit" class="btn btn-perso">Filtrar</button>
                         <button
@@ -110,6 +151,7 @@
                                     aria-selected="true"
                                 >
                                     Sanciones de estudiantes
+                                    <span class="badge rounded-pill text-bg-secondary ms-1"><%= estudiantes.length %></span>
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
@@ -124,6 +166,7 @@
                                     aria-selected="false"
                                 >
                                     Sanciones de docentes
+                                    <span class="badge rounded-pill text-bg-secondary ms-1"><%= docentes.length %></span>
                                 </button>
                             </li>
                         </ul>
@@ -131,27 +174,23 @@
                         <div class="tab-content">
                             <div class="tab-pane fade show active" id="pane-estudiantes" role="tabpanel" aria-labelledby="tab-estudiantes">
                                 <% if (estudiantes.length > 0) { %>
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered table-striped app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+                                    <div>
+                                        <table id="tbl-sanciones-estudiantes" class="table table-bordered table-striped table-hover app-table-compact app-sanctions-table js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
                                             <thead class="text-light">
                                                 <tr>
-                                                    <th>ID</th>
-                                                    <th>Documento</th>
-                                                    <th>Código</th>
+                                                    <th>Identificación</th>
+                                                    <th>Estudiante</th>
+                                                    <th>Laboratorio</th>
                                                     <th>Fecha</th>
                                                     <th>Estado</th>
-                                                    <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
+                                                    <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <% estudiantes.forEach(function(data) { %>
                                                     <tr>
-                                                        <td class="text-light"><%= data.id %></td>
-                                                        <td class="text-light"><%= data.documento_sancionado %></td>
-                                                        <td class="text-light"><%= data.codigo_sancionado || '-' %></td>
-                                                        <td class="text-light"><%= data.fecha_multa_formateada %></td>
-                                                        <td class="text-light"><%= data.con_estado_multa %></td>
-                                                        <td class="text-light">
+                                                        <%- include('../partials/sanction-report-cells', { sanction: data }) %>
+                                                        <td class="app-sanction-actions">
                                                             <button
                                                                 type="button"
                                                                 class="btn btn-outline-info btn-sm app-detail-button"
@@ -229,27 +268,23 @@
 
                             <div class="tab-pane fade" id="pane-docentes" role="tabpanel" aria-labelledby="tab-docentes">
                                 <% if (docentes.length > 0) { %>
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered table-striped app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+                                    <div>
+                                        <table id="tbl-sanciones-docentes" class="table table-bordered table-striped table-hover app-table-compact app-sanctions-table js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
                                             <thead class="text-light">
                                                 <tr>
-                                                    <th>ID</th>
-                                                    <th>Documento</th>
-                                                    <th>Código</th>
+                                                    <th>Identificación</th>
+                                                    <th>Docente</th>
+                                                    <th>Laboratorio</th>
                                                     <th>Fecha</th>
                                                     <th>Estado</th>
-                                                    <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
+                                                    <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 <% docentes.forEach(function(data) { %>
                                                     <tr>
-                                                        <td class="text-light"><%= data.id %></td>
-                                                        <td class="text-light"><%= data.documento_sancionado %></td>
-                                                        <td class="text-light"><%= data.codigo_sancionado || '-' %></td>
-                                                        <td class="text-light"><%= data.fecha_multa_formateada %></td>
-                                                        <td class="text-light"><%= data.con_estado_multa %></td>
-                                                        <td class="text-light">
+                                                        <%- include('../partials/sanction-report-cells', { sanction: data }) %>
+                                                        <td class="app-sanction-actions">
                                                             <button
                                                                 type="button"
                                                                 class="btn btn-outline-info btn-sm app-detail-button"
@@ -413,6 +448,10 @@
                         </div>
                     </section>
 
+                    <section class="sanction-detail-section" aria-labelledby="sanctionClaimHeading">
+                        <h6 id="sanctionClaimHeading">Historial de reclamación del estudiante</h6>
+                        <div data-claim-history aria-live="polite"></div>
+                    </section>
                     <section class="sanction-sga-panel d-none" data-sga-debts-panel aria-live="polite">
                         <div class="sanction-detail-section-heading sanction-sga-heading">
                             <i class="bi bi-bank" aria-hidden="true"></i>
@@ -813,11 +852,76 @@
             if (action === 'edit') {
                 const categorySelect = document.querySelector('#categoria_sancion_listado');
                 const typeSelect = document.querySelector('#tipo_sancion_edicion_listado');
-                if (categorySelect) categorySelect.value = fields.categoria || '';
+                if (categorySelect) {
+                    categorySelect.querySelectorAll('[data-historical-category]').forEach(option => option.remove());
+                    const currentCategory = fields.categoria || '';
+                    if (currentCategory && !Array.from(categorySelect.options).some(option => option.value === currentCategory)) {
+                        const option = new Option(currentCategory + ' (categoría histórica)', currentCategory);
+                        option.setAttribute('data-historical-category', 'true');
+                        categorySelect.add(option);
+                    }
+                    categorySelect.value = currentCategory;
+                }
                 if (typeSelect) typeSelect.value = fields.tipo || '';
             }
         });
     </script>
+    <script nonce="<%= cspNonce %>">
+        (function () {
+            const facultySelect = document.getElementById('filtro_facultad');
+            const dependencySelect = document.getElementById('filtro_dependencia');
+            const ualSelect = document.getElementById('filtro_ual');
 
+            function snapshot(select) {
+                if (!select) return [];
+                return Array.from(select.options).slice(1).map(function (option) {
+                    return {
+                        value: option.value,
+                        text: option.textContent,
+                        facultadId: option.getAttribute('data-facultad-id') || '',
+                        dependenciaId: option.getAttribute('data-dependencia-id') || '',
+                    };
+                });
+            }
+
+            const allDependencies = snapshot(dependencySelect);
+            const allUals = snapshot(ualSelect);
+
+            function rebuild(select, items, predicate) {
+                if (!select) return;
+                const current = select.value;
+                while (select.options.length > 1) select.remove(1);
+                items.filter(predicate).forEach(function (item) {
+                    const option = new Option(item.text, item.value);
+                    option.setAttribute('data-facultad-id', item.facultadId);
+                    option.setAttribute('data-dependencia-id', item.dependenciaId);
+                    select.add(option);
+                });
+                select.value = Array.from(select.options).some(function (option) {
+                    return option.value === current;
+                })
+                    ? current
+                    : '';
+            }
+
+            function refresh() {
+                const facultadId = facultySelect ? facultySelect.value : '';
+                rebuild(dependencySelect, allDependencies, function (item) {
+                    return !facultadId || item.facultadId === facultadId;
+                });
+                const dependenciaId = dependencySelect ? dependencySelect.value : '';
+                rebuild(ualSelect, allUals, function (item) {
+                    if (dependenciaId) return item.dependenciaId === dependenciaId;
+                    return !facultadId || item.facultadId === facultadId;
+                });
+            }
+
+            if (facultySelect) facultySelect.addEventListener('change', refresh);
+            if (dependencySelect) dependencySelect.addEventListener('change', refresh);
+            refresh();
+        })();
+    </script>
+
+  <script src="/milab/public/js/sanction-claims.js"></script>
   <%- include('../partials/footer'); -%>
   <% } %>

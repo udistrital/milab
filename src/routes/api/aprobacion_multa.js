@@ -384,7 +384,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     const multasPendientes = result.rows;
 
     const facultadesResult = await pool.query(
-      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
       [scope.facultyIds]
     );
     const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
@@ -498,6 +498,8 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
     );
     if (studentInfo?.correo) {
       const emailResult = await sendSanctionActivationEmail({
+        multaId: multa_id,
+        permiteReclamacion: !studentInfo.es_docente,
         correo: studentInfo.correo,
         nombre: studentInfo.nombre,
         codigo: referencia,

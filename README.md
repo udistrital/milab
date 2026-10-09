@@ -42,6 +42,39 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 - Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes: una deuda registrada en producción puede no existir en pruebas. Para diagnosticar faltantes, verificar tanto el servicio seleccionado por ambiente como el estado devuelto; una respuesta válida sin registros no es un error de conexión.
 - La generación del paz y salvo de estudiante revisa las multas de MILab y SGA; si SGA no responde, el certificado no se genera.
 
+## Correos de registro y sanciones
+
+- Los correos de verificación de registro, bienvenida de laboratoristas y coordinadores, habilitación de cuentas desde el dashboard y activación de sanciones muestran el remitente **MILab — No responder** y una advertencia de uso exclusivo para notificaciones.
+- Se conserva la dirección de envío actual; no se modifica la autenticación SMTP ni se configura una dirección `Reply-To`. El nombre visible y la advertencia no bloquean las respuestas: para impedir que lleguen al buzón se necesita una dirección institucional no-reply autorizada y reglas de recepción en el servidor de correo.
+- Las notificaciones de activación de sanciones remiten al estudiante al laboratorio que reportó la sanción para aclarar su situación.
+
+## Grillas de facultades y UAL
+
+Las tablas de administración de facultades y UAL mantienen el desplazamiento horizontal dentro de la tabla, sin desplazar los filtros, el contador de registros ni la paginación. Los controles se distribuyen en varias filas en pantallas pequeñas y los paneles conservan el ancho disponible incluso con columnas extensas.
+
+## Reporte de sanciones
+
+El listado de sanciones aprovecha un ancho de hasta 1800 px y muestra código y documento en una misma columna, nombre de la persona, laboratorio, fecha y estado destacado. Las pestañas de estudiantes y docentes conservan sus acciones y muestran el número de sanciones del resultado actual. El identificador de sanción se muestra debajo del laboratorio; los nombres ausentes se indican explícitamente, sin consultar servicios externos al cargar el listado. El detalle y la exportación Excel conservan su información y permisos.
+
+El filtro de sanciones permite acotar por ubicación según el rol: admin y coordinador general filtran por facultad, dependencia y UAL (coordinador general en solo lectura); el coordinador filtra por las dependencias y UAL a su cargo; el laboratorista, por las UAL asignadas. Los selectores se encadenan (facultad → dependencia → UAL) y el servidor rechaza valores fuera del alcance del usuario. La exportación Excel aplica los mismos filtros.
+
+## Monitoreo de paz y salvo
+
+El dashboard de monitoreo se organiza en dos pestañas: **Toda la plataforma** (series, tarjetas e indicadores generales con su detalle) y **Paz y salvos**. La pestaña activa se conserva en la URL (`#paz-y-salvos`). En el detalle de usuarios, el administrador gestiona cada cuenta con iconos de acción (editar usuario, editar correo, activar/inactivar e impersonar) en una columna fija a la derecha.
+
+La pestaña **Paz y salvos** se calcula sobre el estado actual y el alcance de cada rol, sin cambios de base de datos:
+
+- **Todos los roles:** personas bloqueadas (sanciones `ACTIVA`, `Pendiente` o `POR SALDAR`), sanciones pendientes de autorización (por crear y por saldar), sanciones abiertas con más de 90 días, antigüedad de las sanciones abiertas, bloqueos originados en incidencias de préstamo y dónde se concentran (UAL; facultades para admin y coordinador general; dependencias para coordinador).
+- **Reclamaciones:** recibidas, sin respuesta, procede/no procede y tiempo promedio de respuesta. El laboratorista ve las que debe responder.
+- **Admin, coordinador general y coordinador:** UAL activas sin laboratorista activo y paz y salvos expedidos (vigentes, vencidos, emitidos en el mes, autogestión frente a personal y motivos más frecuentes).
+- Las tarjetas enlazan al flujo de cada rol: listado de sanciones, aprobación de sanciones (coordinador) o bandeja de reclamaciones (admin y laboratorista).
+
+El coordinador general accede al dashboard con vista global de solo consulta. Los totales y series ya no se truncan; las tablas de detalle envían los 500 registros más recientes e indican el total. El coordinador ve los certificados de su facultad según el programa codificado en el código estudiantil; cuando no hay código de 11 dígitos se usa el nombre del programa.
+
+## Acciones en las grillas
+
+Las acciones de las tablas se presentan como iconos uniformes, sin texto visible ni botones rectangulares y sin saltos de línea dentro de la celda de acciones. Conservan botones y enlaces semánticos, etiquetas accesibles, descripciones al pasar el cursor, navegación con teclado, formularios, permisos y confirmaciones. El componente compartido [grid-actions.js](src/public/js/grid-actions.js) también actualiza filas dinámicas y paginadas, sin sustituir los controles ni sus eventos. No afecta filtros, botones fuera de tablas ni controles para expandir texto. Las columnas de detalle y operaciones se identifican como **Acciones**; los controles de envío bloqueados muestran un indicador de procesamiento.
+
 ## Arquitectura y Estructura del Proyecto
 
 - **Backend:** Node.js + Express
@@ -399,3 +432,106 @@ Para proyectos de código abierto, indica cómo está licenciado.
 ## Estado del proyecto
 
 Si te has quedado sin energía o tiempo para tu proyecto, pon una nota en la parte superior del README indicando que el desarrollo se ha ralentizado o se ha detenido por completo. Alguien puede optar por hacer un fork del proyecto o ofrecerse como mantenedor, permitiendo que el proyecto siga adelante. También puedes hacer una solicitud explícita de mantenedores.
+## Catálogo administrativo de sanciones
+
+El menú **Configuración → Catálogo de sanciones** (`/milab/api/admin/sanciones`)
+está disponible exclusivamente para administradores. Permite agregar y editar
+el nombre corto y la descripción de cada categoría, así como inactivarla o
+reactivarla. Las acciones de la grilla usan los iconos compartidos.
+
+Antes de desplegar esta versión, ejecuta el script único
+[`sql/20261008_hotfix_sanciones_dependencias.sql`](sql/20261008_hotfix_sanciones_dependencias.sql)
+en la base de datos de MILab, con permisos para el esquema `milab`. Incluye
+el catálogo y las reclamaciones de sanciones y la jerarquía
+`dependencia_facultad`. Por ejemplo:
+
+```sh
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/20261008_hotfix_sanciones_dependencias.sql
+```
+
+Hasta esta versión las categorías eran una lista fija en
+`src/views/partials/multa-options.ejs`; la tabla `multa` solo guarda el texto
+en `cat_multa`. El script crea y carga el catálogo con esas 13 categorías,
+agrega la opción al menú y concede acceso al rol `admin`. Es transaccional y puede
+ejecutarse nuevamente sin reactivar ni sobrescribir categorías modificadas.
+Los scripts de estructura y semillas del sistema también incluyen el catálogo
+y el menú para instalaciones nuevas. No es necesario volver a ejecutar toda
+la semilla para actualizar una instalación existente.
+
+Los formularios de registro de estudiantes y docentes y la edición del listado
+consultan las categorías activas. El servidor rechaza categorías inexistentes
+o inactivas para nuevos registros. Editar o inactivar una categoría no reescribe
+las sanciones históricas: al editar una sanción asignada puede conservarse su
+categoría original o elegirse una categoría activa. Los cambios administrativos
+quedan registrados en `log` en la misma transacción que el cambio del catálogo.
+Si falta la migración, se informa el error de carga; no se usa un catálogo
+estático alternativo.
+
+## Facultades y dependencias
+
+La tabla `facultad` se renombró a `dependencia_facultad`. Su clave primaria es
+`dependencia_facultad_id`. Las tablas hijas (`ual`, `coordinador_facultad`,
+`config_facultad_multas`, etc.) conservan su columna `facultad_id`, que ahora
+referencia `dependencia_facultad`. La columna `padre_id` define dos niveles:
+
+- `padre_id` NULL: facultad.
+- `padre_id` con el id de una facultad: dependencia de esa facultad.
+
+Un trigger impide un tercer nivel: el padre debe ser una facultad, y una
+facultad que tiene dependencias no puede tener padre. Tampoco se puede eliminar
+una facultad con dependencias. La vista `coordinador_facultad_alcance` amplía
+cada asignación de coordinador a las dependencias de esa facultad. La usan las
+consultas de alcance, de modo que un coordinador de facultad gestiona también
+las UAL de sus dependencias.
+
+Al ejecutar el script único, todos los registros existentes quedan como
+facultades. Desde **Facultades** (`/milab/api/facultad`) el administrador:
+
+- abre las dependencias de cada facultad y luego sus UAL;
+- usa **Editar** para asignar una dependencia existente a su facultad;
+- agrega facultades, dependencias y UAL con el botón del encabezado de cada
+  grilla.
+- en las UAL de una dependencia ve cuántos laboratoristas tiene cada UAL y
+  quiénes son, y los coordinadores de la dependencia, incluidos los heredados
+  de su facultad.
+
+Las UAL que siguen colgando directamente de una facultad se señalan para
+moverlas a una dependencia. La configuración de multas y el acceso a préstamos
+siguen siendo por registro; las dependencias no los heredan de su facultad.
+
+## Reclamaciones de sanciones
+
+El mismo script único
+[`sql/20261008_hotfix_sanciones_dependencias.sql`](sql/20261008_hotfix_sanciones_dependencias.sql)
+crea la tabla `reclamacion_sancion`, sus restricciones y los menús y permisos.
+Para instalaciones nuevas, `sql-scripts/db_structure.sql` y
+`sql-scripts/db_seed_system.sql` ya incluyen estos cambios.
+
+- **Estudiantes:** Cuenta → Mis sanciones (`/milab/api/sanciones/mis-sanciones`),
+  también accesible desde el perfil mediante **Mis sanciones y reclamaciones**.
+  El historial muestra todas sus sanciones. Solo las activas sin reclamación
+  permiten enviar un texto de 1 a 500 caracteres, con confirmación. No se permite
+  editar, reabrir ni enviar una segunda reclamación para la misma sanción.
+- **Laboratoristas:** Sanciones → Reclamaciones. El responsable registrado en
+  la sanción recibe el caso, un aviso en MILab y un correo. Puede enviar una
+  única respuesta de 1 a 500 caracteres, indicando `PROCEDE` o `NO_PROCEDE`.
+  No se modifica automáticamente el estado de la sanción.
+- **Seguimiento:** el estudiante recibe un aviso de respuesta y puede marcarla
+  como leída. La reclamación y la respuesta siguen disponibles al saldar la
+  sanción. «Ver detalle» del listado de sanciones también carga ese historial,
+  sujeto al alcance existente de cada usuario (facultad o UAL).
+- **Administración:** puede consultar todas las reclamaciones y reasignar las
+  pendientes a un laboratorista activo, sin cambiar el creador de la sanción.
+  Un responsable inactivo se señala explícitamente. Coordinación general tiene
+  acceso de lectura; no puede responder ni reasignar.
+- **Correos:** la activación de sanciones estudiantiles incluye el enlace a
+  Mis sanciones. Los enlaces requieren autenticación y no conceden permisos.
+  Usa `APP_BASE_URL` con la URL pública completa de MILab para los enlaces.
+  Los avisos usan la infraestructura existente de `email_notification`.
+  Un fallo de correo no revierte la reclamación/respuesta: se conserva en MILab
+  y se muestra una advertencia. No hay reintentos automáticos de esos avisos.
+- **Integridad:** una restricción única por sanción y operaciones condicionales
+  impiden dobles envíos y respuestas simultáneas. Los cambios y su auditoría se
+  guardan en una misma transacción. La impersonación no permite presentar,
+  responder ni reasignar reclamaciones. Este canal no gestiona multas de SGA
+  ni reclamaciones de docentes.

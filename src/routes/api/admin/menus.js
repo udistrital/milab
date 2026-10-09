@@ -308,8 +308,8 @@ router.post('/prestamos-access', requireAdmin, async (req, res) => {
     const facultyResult = await pool.query(
       `
         SELECT nombre
-        FROM facultad
-        WHERE facultad_id = $1
+        FROM dependencia_facultad
+        WHERE dependencia_facultad_id = $1
           AND activo = TRUE
         LIMIT 1
       `,

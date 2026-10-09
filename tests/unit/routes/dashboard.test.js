@@ -278,7 +278,7 @@ test('dashboard shows visible sanctions counter for coordinador scope', async ()
         return { rows: [{ column_name: params[1][0] }] };
       }
 
-      if (sql.includes('FROM facultad') && sql.includes('= ANY($1::int[])')) {
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
         return { rows: [{ nombre: 'Tecnologica' }] };
       }
 
@@ -293,11 +293,12 @@ test('dashboard shows visible sanctions counter for coordinador scope', async ()
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard');
 
-    const sanctionCounter = (response.body.locals.scopeCounters || []).find(
-      (counter) => counter.label === 'Sanciones visibles'
+    const sanctionsChart = (response.body.locals.availableCharts || []).find(
+      (chart) => chart.id === 'sanciones'
     );
-    assert.equal(Boolean(sanctionCounter), true);
-    assert.equal(sanctionCounter.value, '1');
+    assert.equal(Boolean(sanctionsChart), true);
+    assert.equal(sanctionsChart.total, 1);
+    assert.equal(response.body.locals.scopeCounters, undefined);
   } finally {
     loaded.restore();
   }
@@ -916,6 +917,278 @@ test('dashboard admin user editor validates the selected OATI code format', asyn
 
     assert.equal(response.status, 400);
     assert.equal(response.body.ok, false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard resolves coordinador_general as a global consultation role', () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const { getDashboardRole, getAvailableChartIds } = loaded.route.__private;
+    assert.equal(
+      getDashboardRole({ roles: ['coordinador', 'coordinador_general'] }),
+      'coordinador_general'
+    );
+    assert.equal(getDashboardRole({ roles: ['admin', 'coordinador_general'] }), 'admin');
+    assert.deepEqual(getAvailableChartIds('coordinador_general'), getAvailableChartIds('admin'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard limitDetailRows trims detail payload and reports totals', () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const { limitDetailRows } = loaded.route.__private;
+    const rows = Array.from({ length: 600 }, (_, index) => ({ id: index }));
+    const { limited, meta } = limitDetailRows({ multas: rows, usuariosRegistrados: rows }, [
+      'usuariosRegistrados',
+    ]);
+    assert.equal(limited.multas.length, 500);
+    assert.equal(limited.usuariosRegistrados.length, 600);
+    assert.deepEqual(meta.multas, { total: 600, shown: 500 });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard summarizes paz y salvo certificates by validity, origin and reason', () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const { buildCertificatePazYSalvoSummary } = loaded.route.__private;
+    const now = new Date('2026-05-15T12:00:00Z');
+    const summary = buildCertificatePazYSalvoSummary(
+      [
+        {
+          fecha_creacion: '2026-05-10T12:00:00Z',
+          fecha_vencimiento: '2026-06-10',
+          motivo_exp: 'Grado',
+        },
+        {
+          fecha_creacion: '2026-01-10',
+          fecha_vencimiento: '2026-02-10',
+          motivo_exp: 'Grado',
+          motivo_expedicion: 'L',
+        },
+      ],
+      [{ fecha_creacion: '2026-05-02T12:00:00Z', motivo_exp: 'Retiro', origen_descarga: 'D' }],
+      true,
+      now
+    );
+    assert.equal(summary.estudiantes, 2);
+    assert.equal(summary.docentes, 1);
+    assert.equal(summary.vigentes, 1);
+    assert.equal(summary.vencidos, 1);
+    assert.equal(summary.emitidosMes, 2);
+    assert.deepEqual(
+      summary.origen.map((item) => item.value),
+      [2, 1]
+    );
+    assert.deepEqual(summary.motivos[0], { nombre: 'Grado', total: 2 });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard paz y salvo cards link each role to its own workflow', () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const { buildPazYSalvoCards } = loaded.route.__private;
+    const indicators = {
+      sanciones: {
+        abiertas: 4,
+        personasBloqueadas: 3,
+        pendientes: 1,
+        porSaldar: 1,
+        desdePrestamos: 0,
+        maxDias: 120,
+        antiguedad: [{ value: 2 }, { value: 1 }, { value: 1 }],
+      },
+      reclamaciones: { pendientes: 1, maxDiasEspera: 2 },
+      cobertura: null,
+      certificados: null,
+    };
+    const find = (cards, text) => cards.find((card) => card.label.includes(text));
+
+    const coordCards = buildPazYSalvoCards('coordinador', indicators);
+    assert.equal(find(coordCards, 'autorización').href, '/milab/api/aprobacion_multa');
+    assert.equal(find(coordCards, 'Reclamaciones').href, null);
+
+    const labCards = buildPazYSalvoCards('laboratorista', indicators);
+    assert.equal(find(labCards, 'Reclamaciones').href, '/milab/api/sanciones/reclamaciones');
+    assert.equal(find(labCards, 'más de 90').value, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard renders paz y salvo indicators for coordinador_general', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('AS personas_bloqueadas')) {
+        return {
+          rows: [
+            {
+              abiertas: 3,
+              personas_bloqueadas: 2,
+              activas: 1,
+              pendientes: 1,
+              por_saldar: 1,
+              hasta_30: 1,
+              de_31_a_90: 1,
+              mas_90: 1,
+              max_dias: 140,
+              desde_prestamos: 1,
+            },
+          ],
+        };
+      }
+      if (sql.includes('AS dependencia_nombre')) {
+        return {
+          rows: [
+            {
+              ual_id: 7,
+              ual_nombre: 'Lab Física',
+              dependencia_id: 50,
+              dependencia_nombre: 'Laboratorios Ciencias',
+              padre_id: 41,
+              facultad_id: 41,
+              facultad_nombre: 'FACULTAD DE CIENCIAS MATEMATICAS Y NATURALES',
+              abiertas: 3,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM reclamacion_sancion r')) {
+        return {
+          rows: [
+            {
+              total: 4,
+              pendientes: 1,
+              max_dias_espera: 3,
+              procede: 1,
+              no_procede: 2,
+              horas_promedio: '12.5',
+            },
+          ],
+        };
+      }
+      if (sql.includes('AS tiene_laboratorista')) {
+        return {
+          rows: [
+            { nombre: 'Lab A', facultad_nombre: 'Facultad X', tiene_laboratorista: true },
+            { nombre: 'Lab B', facultad_nombre: 'Facultad X', tiene_laboratorista: false },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador_general',
+      roles: ['coordinador_general'],
+      documento: '300',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    const { locals } = response.body;
+    assert.equal(locals.dashboardRole, 'coordinador_general');
+    assert.equal(locals.pazYSalvo.sanciones.personasBloqueadas, 2);
+    assert.equal(locals.pazYSalvo.sanciones.desdePrestamos, 1);
+    assert.equal(locals.pazYSalvo.reclamaciones.tasaProcede, 33);
+    assert.equal(locals.pazYSalvo.reclamaciones.horasPromedio, 12.5);
+    assert.equal(locals.pazYSalvo.cobertura.sinLaboratoristaTotal, 1);
+    assert.deepEqual(locals.pazYSalvo.cobertura.sinLaboratorista, [
+      { nombre: 'Lab B', facultad: 'Facultad X' },
+    ]);
+    assert.deepEqual(
+      locals.pazYSalvo.rankingGroups.map((group) => group.title),
+      ['Facultades', 'UAL']
+    );
+    assert.equal(
+      locals.pazYSalvo.rankingGroups[0].items[0].nombre,
+      'FACULTAD DE CIENCIAS MATEMATICAS Y NATURALES'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard scopes coordinator certificates by the faculty encoded in the student code', async () => {
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM certificado_estudiante ce')) {
+        return {
+          rows: [
+            { id: 1, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231077001' },
+            { id: 2, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231005001' },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return { rows: [{ nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: 'coord-user' });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    const certificates = response.body.locals.tablesData.certificadosEstudiantes;
+    assert.deepEqual(
+      certificates.map((row) => row.id),
+      [1]
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard laboratorista scope reads the UAL faculty column from ual', async () => {
+  const ualQueries = [];
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: '123' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        ualQueries.push(sql);
+        return { rows: [{ ual_id: 7, nombre: 'Lab Física', facultad_id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.dashboardRole, 'laboratorista');
+    assert.match(ualQueries[0], /facultad_id AS facultad_id/);
+    assert.doesNotMatch(ualQueries[0], /dependencia_facultad_id/);
   } finally {
     loaded.restore();
   }

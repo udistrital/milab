@@ -5,6 +5,7 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
+const { fetchSanctionCategories } = require('../../libs/sanction-categories');
 
 require('dotenv').config();
 
@@ -195,6 +196,7 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
     }
 
     return res.render('home/reg_multa_docente', {
+      sanctionCategories: await fetchSanctionCategories({ client: pool }),
       con_estado,
       con_documento,
       con_nombre,

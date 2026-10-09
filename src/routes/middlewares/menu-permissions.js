@@ -55,6 +55,10 @@ function isPublicApiPath(requestPath, method) {
 
 function buildRouteCandidates(pathname, method) {
   const candidates = [pathname];
+  for (const section of ['mis-sanciones', 'reclamaciones']) {
+    const parent = `/milab/api/sanciones/${section}`;
+    if (pathname.startsWith(`${parent}/`)) candidates.push(parent);
+  }
 
   if (method === 'POST' && pathname === '/milab/api/get_list_estudiantes/consulta_masiva') {
     candidates.push('/milab/api/get_list_estudiantes/get_consulta');
@@ -68,6 +72,9 @@ function buildRouteCandidates(pathname, method) {
 
   if (pathname.startsWith('/milab/api/')) {
     const parts = pathname.split('/').filter(Boolean);
+    if (parts[2] === 'admin' && parts.length > 4) {
+      candidates.push(`/${parts.slice(0, 4).join('/')}`);
+    }
     if (parts.length > 3) {
       const apiModuleRoute = `/${parts.slice(0, 3).join('/')}`;
       candidates.push(apiModuleRoute, `${apiModuleRoute}/load_info`);

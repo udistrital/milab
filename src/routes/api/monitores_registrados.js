@@ -53,8 +53,8 @@ router.get('/', requireAdminOrCoordinatorMonitorAccess, async function (req, res
       JOIN ual ua
         ON ua.ual_id = a.ual_id
        AND ua.activo = TRUE
-      LEFT JOIN facultad fac
-        ON fac.facultad_id = ua.facultad_id
+      LEFT JOIN dependencia_facultad fac
+        ON fac.dependencia_facultad_id = ua.facultad_id
       WHERE a.activo = TRUE
     `;
 

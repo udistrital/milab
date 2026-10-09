@@ -130,7 +130,7 @@ async function hasAnyPrestamosFacultyEnabled(client = pool) {
       `SELECT EXISTS (
          SELECT 1
          FROM facultad_modulo_acceso fma
-         JOIN facultad f ON f.facultad_id = fma.facultad_id
+         JOIN dependencia_facultad f ON f.dependencia_facultad_id = fma.facultad_id
          WHERE fma.modulo = 'prestamos'
            AND fma.activo = TRUE
            AND fma.permitido = TRUE
@@ -209,24 +209,24 @@ async function listPrestamosFacultyAccess(client = pool) {
     const result = await client.query(
       `
         SELECT
-          f.facultad_id,
+          f.dependencia_facultad_id AS facultad_id,
           f.nombre,
           COALESCE(coord.permitido, TRUE) AS coordinador_permitido,
           COALESCE(lab.permitido, TRUE) AS laboratorista_permitido,
           COALESCE(mon.permitido, TRUE) AS monitor_permitido
-        FROM facultad f
+        FROM dependencia_facultad f
         LEFT JOIN facultad_modulo_acceso coord
-          ON coord.facultad_id = f.facultad_id
+          ON coord.facultad_id = f.dependencia_facultad_id
          AND coord.modulo = 'prestamos'
          AND coord.rol = 'coordinador'
          AND coord.activo = TRUE
         LEFT JOIN facultad_modulo_acceso lab
-          ON lab.facultad_id = f.facultad_id
+          ON lab.facultad_id = f.dependencia_facultad_id
          AND lab.modulo = 'prestamos'
          AND lab.rol = 'laboratorista'
          AND lab.activo = TRUE
         LEFT JOIN facultad_modulo_acceso mon
-          ON mon.facultad_id = f.facultad_id
+          ON mon.facultad_id = f.dependencia_facultad_id
          AND mon.modulo = 'prestamos'
          AND mon.rol = 'monitor'
          AND mon.activo = TRUE
@@ -241,12 +241,12 @@ async function listPrestamosFacultyAccess(client = pool) {
       const fallback = await client.query(
         `
           SELECT
-            facultad_id,
+            dependencia_facultad_id AS facultad_id,
             nombre,
             TRUE AS coordinador_permitido,
             TRUE AS laboratorista_permitido,
             TRUE AS monitor_permitido
-          FROM facultad
+          FROM dependencia_facultad
           WHERE activo = TRUE
           ORDER BY nombre ASC
         `

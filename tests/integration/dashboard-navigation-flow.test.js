@@ -17,7 +17,7 @@ function createDashboardClient(scopeRows = {}) {
         return { rows: [{ column_name: params[1][0] }] };
       }
 
-      if (sql.includes('FROM facultad')) {
+      if (sql.includes('FROM dependencia_facultad')) {
         return { rows: scopeRows.faculties || [] };
       }
 
@@ -36,7 +36,7 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
       if (sql.includes('FROM information_schema.columns')) {
         return { rows: [{ column_name: (params && params[1] && params[1][0]) || 'id' }] };
       }
-      if (sql.includes('FROM facultad')) {
+      if (sql.includes('FROM dependencia_facultad')) {
         return { rows: scopeRows.faculties || [] };
       }
       if (sql.includes('FROM certificado_estudiante')) {
@@ -162,11 +162,12 @@ test('dashboard flow counts only sanctions visible to coordinador faculties', as
     assert.equal(response.body.view, 'home/dashboard');
     assert.equal(response.body.locals.dashboardRole, 'coordinador');
 
-    const sanctionsCounter = (response.body.locals.scopeCounters || []).find(
-      (counter) => counter.label === 'Sanciones visibles'
+    const sanctionsChart = (response.body.locals.availableCharts || []).find(
+      (chart) => chart.id === 'sanciones'
     );
-    assert.equal(Boolean(sanctionsCounter), true);
-    assert.equal(sanctionsCounter.value, '1');
+    assert.equal(Boolean(sanctionsChart), true);
+    assert.equal(sanctionsChart.total, 1);
+    assert.equal(response.body.locals.scopeCounters, undefined);
     assert.equal((response.body.locals.tablesData?.sanciones || []).length, 1);
   } finally {
     loaded.restore();

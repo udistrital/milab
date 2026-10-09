@@ -25,10 +25,10 @@ FROM (
         ('MOCK-COURSE-004', 'Curso de prueba 4', 'https://edx.org/course/mock-course-004')
 ) AS seed(codigo_curso, nombre_curso, url_edx)
 CROSS JOIN LATERAL (
-    SELECT facultad_id
-    FROM facultad
+    SELECT dependencia_facultad_id AS facultad_id
+    FROM dependencia_facultad
     WHERE activo = TRUE
-    ORDER BY facultad_id
+    ORDER BY dependencia_facultad_id
     LIMIT 1
 ) AS facultad
 ON CONFLICT (codigo_curso) DO UPDATE

@@ -7,6 +7,9 @@
   <div class="alert alert-danger" role="alert">
     <h4 class="alert-heading">No se puede generar certificado, el usuario actualmente se encuentra Sancionado</h4>
     <p>El usuario tiene las siguientes sanciones activas:</p>
+    <% if (locals.tipo === 'estudiante') { %>
+      <p><a class="btn btn-outline-primary" href="/milab/api/sanciones/mis-sanciones">Consultar mis sanciones y presentar una reclamación</a></p>
+    <% } %>
     <% if (typeof sgaLookupError !== 'undefined' && sgaLookupError) { %>
       <p class="alert alert-warning mb-3"><%= sgaLookupError %></p>
     <% } %>
@@ -129,4 +132,3 @@
     }
   </script>
 <%- include('../partials/footer'); -%>
-

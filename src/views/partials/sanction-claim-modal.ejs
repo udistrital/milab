@@ -1,0 +1,60 @@
+<div class="modal fade" id="reclamacionModal" tabindex="-1" aria-labelledby="reclamacionTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="reclamacionTitle">Sanción y reclamación</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <dl>
+          <dt>Sanción</dt><dd data-claim-field="multa_id"></dd>
+          <dt>Categoría</dt><dd data-claim-field="cat_multa"></dd>
+          <dt>Laboratorio</dt><dd data-claim-field="laboratorio"></dd>
+          <dt>Estado de la sanción</dt><dd data-claim-field="con_estado_multa"></dd>
+          <dt>Motivo / observaciones</dt><dd class="app-claim-text" data-claim-field="obs_multa"></dd>
+        </dl>
+        <section aria-labelledby="claimHistoryHeading">
+          <h3 id="claimHistoryHeading" class="h6">Historial de reclamación</h3>
+          <div data-claim-history></div>
+        </section>
+        <form method="POST" data-claim-form class="d-none mt-3">
+          <%- include('./csrf_field') %>
+          <p data-claim-guidance></p>
+          <div data-claim-decision class="d-none mb-3">
+            <label for="claimDecision" class="form-label">Decisión</label>
+            <select id="claimDecision" name="decision" class="form-select" disabled>
+              <option value="">Selecciona una decisión</option>
+              <option value="PROCEDE">Procede la reclamación</option>
+              <option value="NO_PROCEDE">No procede la reclamación</option>
+            </select>
+          </div>
+          <label for="claimText" class="form-label" data-claim-text-label>Reclamación</label>
+          <textarea id="claimText" name="texto" class="form-control" maxlength="500" rows="5" required></textarea>
+          <small class="d-block text-end" data-claim-counter aria-live="polite">0 / 500 caracteres</small>
+          <div class="form-check mt-3">
+            <input id="claimConfirm" type="checkbox" class="form-check-input" required>
+            <label for="claimConfirm" class="form-check-label">Revisé el texto y entiendo que solo se permite un envío definitivo.</label>
+          </div>
+          <button type="submit" class="btn btn-primary mt-3" data-submit-lock="true" data-claim-submit>Enviar</button>
+        </form>
+        <% if (studentView) { %>
+          <form method="POST" data-claim-read-form class="d-none mt-3">
+            <%- include('./csrf_field') %>
+            <button type="submit" class="btn btn-outline-primary" data-submit-lock="true">Marcar respuesta como leída</button>
+          </form>
+        <% } else { %>
+          <form method="POST" data-claim-reassign-form class="d-none mt-3">
+            <%- include('./csrf_field') %>
+            <label for="claimResponsible" class="form-label">Nuevo laboratorista responsable</label>
+            <select id="claimResponsible" name="responsable_documento" class="form-select" required>
+              <option value="">Selecciona un laboratorista activo</option>
+              <% laboratoristas.forEach(lab => { %><option value="<%= lab.documento %>"><%= lab.nombre %> — <%= lab.documento %></option><% }) %>
+            </select>
+            <button type="submit" class="btn btn-primary mt-3" data-submit-lock="true">Confirmar reasignación</button>
+          </form>
+        <% } %>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button></div>
+    </div>
+  </div>
+</div>

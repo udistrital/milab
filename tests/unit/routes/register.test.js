@@ -33,7 +33,7 @@ function buildApp(route, sessionState) {
   return app;
 }
 
-function loadRegisterRoute({ poolQueryImpl, userIdentityStub } = {}) {
+function loadRegisterRoute({ poolQueryImpl, userIdentityStub, sendMailImpl } = {}) {
   const originals = new Map();
   const stubs = [
     [
@@ -47,10 +47,11 @@ function loadRegisterRoute({ poolQueryImpl, userIdentityStub } = {}) {
         },
       },
     ],
-    [mailPath, { sendMail: async () => {} }],
+    [mailPath, { sendMail: sendMailImpl || (async () => {}) }],
     [
       emailLayoutPath,
       {
+        ...require(emailLayoutPath),
         buildBrandedEmailAttachments: () => [],
         buildEmailFooterHtml: () => '',
         buildEmailHeaderHtml: () => '',
@@ -111,6 +112,35 @@ test('register exports an Express router with handlers', () => {
   assert.equal(typeof router.use, 'function');
   assert.equal(Array.isArray(router.stack), true);
   assert.equal(router.stack.length > 0, true);
+});
+
+test('registration verification email includes no-reply sender and notice in both formats', async () => {
+  let message;
+  const loaded = loadRegisterRoute({
+    sendMailImpl: async (mail) => {
+      message = mail;
+    },
+  });
+  const sessionState = {
+    usuario_no_verificado: {
+      nombre: 'Estudiante',
+      correo: 'estudiante@udistrital.edu.co',
+    },
+  };
+
+  try {
+    await request(buildApp(loaded.route, sessionState)).post('/enviar-codigo');
+    assert.ok(message);
+    assert.deepEqual(message.from, {
+      name: 'MILab — No responder',
+      address: process.env.EMAIL_USER,
+    });
+    assert.match(message.text, /Por favor, no respondas a este correo/);
+    assert.match(message.html, /Por favor, no respondas a este correo/);
+    assert.ok(message.text.includes(sessionState.usuario_no_verificado.codigoVerificacion));
+  } finally {
+    loaded.restore();
+  }
 });
 
 test('email_verification promotes placeholder account by documento and allows first-time registration', async () => {

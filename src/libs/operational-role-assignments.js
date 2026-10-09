@@ -65,8 +65,8 @@ async function fetchOperationalRoleAssignmentsByUserId(userId, roleName, executo
       JOIN ual u
         ON u.ual_id = a.ual_id
        AND u.activo = TRUE
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE a.usuario_id = $1
         AND r.nombre = $2
         AND a.activo = TRUE

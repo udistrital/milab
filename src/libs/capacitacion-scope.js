@@ -174,8 +174,8 @@ async function resolveLaboratoristaScope(req) {
      JOIN ual u
        ON u.ual_id = lu.ual_id
       AND u.activo = TRUE
-     JOIN facultad f
-       ON f.facultad_id = u.facultad_id
+     JOIN dependencia_facultad f
+       ON f.dependencia_facultad_id = u.facultad_id
       AND f.activo = TRUE
      WHERE lu.laboratorista_documento_id = $1
        AND lu.activo = TRUE

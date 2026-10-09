@@ -34,10 +34,10 @@ async function fetchCoordinatorsWithPendingCounts() {
         STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultades,
         COUNT(DISTINCT m.id)::int AS pendientes
       FROM coordinador c
-      JOIN coordinador_facultad cf
+      JOIN coordinador_facultad_alcance cf
         ON cf.coordinador_documento_id = c.documento
-      JOIN facultad f
-        ON f.facultad_id = cf.facultad_id
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = cf.facultad_asignada_id
       LEFT JOIN LATERAL (
         SELECT id, nombre, correo
         FROM usuario

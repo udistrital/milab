@@ -1,0 +1,30 @@
+<%
+  const state = String(sanction.con_estado_multa || '').trim();
+  const stateStyles = {
+    ACTIVA: 'danger',
+    APLAZADA: 'secondary',
+    PENDIENTE: 'warning',
+    'POR SALDAR': 'info',
+    SALDADA: 'success',
+  };
+  const stateStyle = stateStyles[state.toUpperCase()] || 'secondary';
+%>
+<td>
+  <div class="app-sanction-identification">
+    <span><small>Código</small><strong><%= sanction.codigo_sancionado || 'Sin código' %></strong></span>
+    <span><small>Documento</small><strong><%= sanction.documento_sancionado || 'Sin documento' %></strong></span>
+  </div>
+</td>
+<td>
+  <strong class="app-sanction-person"><%= String(sanction.nombre_sancionado || '').trim() || 'Nombre no registrado' %></strong>
+</td>
+<td>
+  <strong class="app-sanction-lab"><%= sanction.ual || 'Laboratorio no registrado' %></strong>
+  <span class="app-sanction-meta">Sanción #<%= sanction.id %></span>
+</td>
+<td data-order="<%= sanction.fecha_multa_formateada || '' %>">
+  <time datetime="<%= sanction.fecha_multa_formateada || '' %>"><%= sanction.fecha_multa_formateada || 'Sin fecha' %></time>
+</td>
+<td>
+  <span class="badge rounded-pill text-bg-<%= stateStyle %> app-sanction-state"><%= state || 'Sin estado' %></span>
+</td>

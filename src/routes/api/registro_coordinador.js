@@ -4,9 +4,12 @@ const pool = require('../../libs/db');
 const jwt = require('jsonwebtoken');
 const transporter = require('../../libs/mail');
 const {
+  NO_REPLY_NOTICE,
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
   escapeHtml,
 } = require('../../libs/email-layout');
 const { normalizeLogDocument } = require('../../libs/account-email');
@@ -99,7 +102,11 @@ async function resolveSelectedFaculties({ needsFacultyAssignment, facultyIds }) 
     return { faculties: [], errorPayload: null };
   }
 
-  const facultyIdColumn = await resolveExistingColumn('facultad', ['facultad_id', 'id_facultad']);
+  const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
+    'dependencia_facultad_id',
+    'facultad_id',
+    'id_facultad',
+  ]);
   if (!facultyIdColumn) {
     return {
       faculties: [],
@@ -112,7 +119,7 @@ async function resolveSelectedFaculties({ needsFacultyAssignment, facultyIds }) 
 
   const facs = await pool.query(
     `SELECT ${facultyIdColumn} AS facultad_id, nombre
-     FROM facultad
+     FROM dependencia_facultad
      WHERE ${facultyIdColumn} = ANY($1::int[])`,
     [facultyIds]
   );
@@ -295,7 +302,11 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const facultyIdColumn = await resolveExistingColumn('facultad', ['facultad_id', 'id_facultad']);
+    const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
+      'dependencia_facultad_id',
+      'facultad_id',
+      'id_facultad',
+    ]);
     if (!facultyIdColumn) {
       return res.render('home/message_error', {
         message: '¡Algo ha salido mal!',
@@ -306,7 +317,7 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
 
     const result = await pool.query(
       `SELECT ${facultyIdColumn} AS facultad_id, nombre
-       FROM facultad
+       FROM dependencia_facultad
        ORDER BY nombre ASC`
     );
     const documentoQuery = (req.query.documento || '').toString().trim();
@@ -607,7 +618,7 @@ async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
 
   try {
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: buildNoReplySender(),
       to: datosCoordinador.correo,
       subject: `Bienvenido como ${roleLabel} - MILab Laboratorios UD`,
       text: `Estimad@ ${datosCoordinador.nombre},
@@ -633,7 +644,9 @@ Puede acceder al sistema en: ${appBaseUrl}
 Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.
 
 Atentamente,
-MILab - Coordinación General de Laboratorios`,
+MILab - Coordinación General de Laboratorios
+
+${NO_REPLY_NOTICE}`,
 
       html: `
             <!DOCTYPE html>
@@ -761,6 +774,7 @@ MILab - Coordinación General de Laboratorios`,
                                     </td>
                                 </tr>
 
+                                ${buildNoReplyNoticeHtml()}
                                 ${buildEmailFooterHtml(`
                                   <p class="fallback-font" style="font-size: 14px; color: rgba(255,255,255,0.92); margin: 0; text-align: center; line-height: 1.6;">
                                     Si tiene alguna duda o problema, no dude en contactar al administrador del sistema.
@@ -866,7 +880,9 @@ router.get('/new', async function (req, res) {
     });
   }
 
-  const result = await pool.query('SELECT * FROM facultad');
+  const result = await pool.query(
+    'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad'
+  );
   return res.render('home/registro_coordinador', {
     error: null,
     confirmacion: null,

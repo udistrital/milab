@@ -27,7 +27,7 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
+function loadRoute({ resolveUsuarioId = async () => 88, queryImpl, categoryActive = true } = {}) {
   const originals = new Map();
   const executedQueries = [];
   const stubs = [
@@ -36,6 +36,9 @@ function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
       {
         query: async (sql, params) => {
           executedQueries.push({ sql, params });
+          if (sql.includes('FROM categoria_sancion')) {
+            return { rows: categoryActive ? [{ id: 1 }] : [] };
+          }
           if (typeof queryImpl === 'function') {
             return queryImpl(sql, params);
           }
@@ -98,6 +101,24 @@ function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
     },
   };
 }
+
+test('submit_docente rejects inactive or removed catalog categories before inserting sanctions', async () => {
+  const loaded = loadRoute({ categoryActive: false });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/').type('form').send({
+      cat_multa: 'Uso indebido',
+      con_documento: '79520182',
+      ual_id: '21',
+      fecha_multa: '2026-01-01',
+      con_estado_multa: 'Pendiente',
+    });
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /Categoría.*no disponible/);
+    assert.ok(!loaded.getExecutedQueries().some((call) => call.sql.includes('INSERT INTO multa')));
+  } finally {
+    loaded.restore();
+  }
+});
 
 test('submit_docente rejects future fine date', async () => {
   const loaded = loadRoute();

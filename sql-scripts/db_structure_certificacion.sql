@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS cursos (
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_cursos PRIMARY KEY (codigo_curso),
     CONSTRAINT fk_cursos_facultad FOREIGN KEY (id_facultad)
-        REFERENCES facultad(facultad_id) ON DELETE RESTRICT,
+        REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE RESTRICT,
     CONSTRAINT ck_cursos_codigo_no_vacio CHECK (BTRIM(codigo_curso) <> ''),
     CONSTRAINT ck_cursos_nombre_no_vacio CHECK (BTRIM(nombre_curso) <> ''),
     CONSTRAINT ck_cursos_url_edx_no_vacia CHECK (BTRIM(url_edx) <> '')

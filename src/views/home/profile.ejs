@@ -12,6 +12,12 @@
   <section class="app-page-header">
     <h1 class="app-page-title">Perfil</h1>
     <p class="app-page-subtitle">Complete o actualice la información necesaria para usar MILab con su correo institucional.</p>
+    <% if (locals.tipo === 'estudiante' || (Array.isArray(locals.roles) && locals.roles.includes('estudiante'))) { %>
+      <a class="btn btn-outline-primary mt-2" href="/milab/api/sanciones/mis-sanciones">
+        <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+        Mis sanciones y reclamaciones
+      </a>
+    <% } %>
   </section>
 
   <section class="row justify-content-center">

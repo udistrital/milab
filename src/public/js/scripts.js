@@ -203,6 +203,9 @@
 
     const pageLength = Number($table.data('gridPageLength')) || 10;
     const dataTable = $table.DataTable({
+      dom: $table.hasClass('app-grid-contained')
+        ? '<"app-contained-grid"<"app-grid-toolbar"lf><"app-grid-scroll"t><"app-grid-footer"ip>>'
+        : 'lfrtip',
       language,
       pageLength,
       lengthMenu: [10, 25, 50, 100],

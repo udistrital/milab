@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 
 const pool = require('../../libs/db');
+const { isActiveSanctionCategory } = require('../../libs/sanction-categories');
 const { resolveUsuarioIdForDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const {
@@ -72,8 +73,15 @@ function isDuplicateSubmission(req, fingerprint) {
 
 router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
   const requestBody = req.body || {};
-  const { cat_multa, con_documento, ual_id, fecha_multa, con_estado_multa, obs_multa } =
-    requestBody;
+  const {
+    cat_multa: rawCategory,
+    con_documento,
+    ual_id,
+    fecha_multa,
+    con_estado_multa,
+    obs_multa,
+  } = requestBody;
+  const cat_multa = typeof rawCategory === 'string' ? rawCategory.trim() : '';
   const today = new Date().toISOString().slice(0, 10);
 
   try {
@@ -221,6 +229,14 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
         'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
     }
 
+    if (!(await isActiveSanctionCategory(cat_multa, pool))) {
+      return res.render('home/message_error', {
+        message: 'Categoría de sanción no disponible.',
+        message2: 'Selecciona una categoría activa del catálogo y vuelve a intentarlo.',
+        limit: null,
+      });
+    }
+
     const submissionFingerprint = buildSubmissionFingerprint({
       actorDocument: sessionDocumento,
       role: actorRole,
@@ -278,6 +294,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
         if (contacto && contacto.correo) {
           const ualRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [idUal]);
           await sendSanctionActivationEmail({
+            permiteReclamacion: false,
             correo: contacto.correo,
             nombre: contacto.nombre,
             codigo: contacto.codigo || contacto.documento || con_documento,

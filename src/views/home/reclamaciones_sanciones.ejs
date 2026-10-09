@@ -1,0 +1,41 @@
+<%- include('../partials/header'); -%>
+<main class="container-fluid app-page-shell app-sanctions-report">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Reclamaciones de sanciones</h1>
+    <p class="app-page-subtitle"><%= isAdmin || readOnly ? 'Consulta el seguimiento de las reclamaciones.' : 'Revisa las reclamaciones asignadas a tu cuenta y responde una sola vez a cada solicitud.' %></p>
+  </section>
+  <% if (feedback) { %><div class="alert alert-<%= feedback.type %>" role="status"><%= feedback.message %></div><% } %>
+  <% if (isAdmin) { %><p>El administrador puede reasignar reclamaciones pendientes a un laboratorista activo. La sanción conserva su creador original.</p><% } %>
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <table class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
+        <thead><tr><th>Estudiante</th><th>Sanción y laboratorio</th><th>Fecha de reclamación</th><th>Responsable</th><th>Estado</th><th data-grid-filter="false" data-grid-orderable="false">Acciones</th></tr></thead>
+        <tbody>
+          <% claims.forEach(claim => { %>
+            <% const payload = { ...claim, respondido_por: claim.nombre_respondiente }; %>
+            <tr>
+              <td><strong><%= claim.estudiante %></strong><br><small>Documento: <%= claim.documento %><br>Código: <%= claim.codigo || '-' %></small></td>
+              <td class="app-claim-text"><%= claim.cat_multa %><br><strong><%= claim.laboratorio || '-' %></strong><br><small>Sanción #<%= claim.multa_id %></small></td>
+              <td data-order="<%= new Date(claim.fecha_creacion).toISOString() %>"><%= new Date(claim.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></td>
+              <td><%= claim.responsable %><% if (claim.responsable_activo === false) { %><br><span class="badge text-bg-warning">Responsable inactivo</span><% } %></td>
+              <td><span class="badge <%= claim.fecha_respuesta ? 'text-bg-success' : 'text-bg-warning' %>"><%= claim.fecha_respuesta ? 'Respondida' : 'Pendiente de respuesta' %></span></td>
+              <td>
+                <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#reclamacionModal" data-claim-action="view" data-claim="<%= JSON.stringify(payload) %>">Ver detalle</button>
+                <% if (!claim.fecha_respuesta && !isAdmin && !readOnly) { %>
+                  <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#reclamacionModal" data-claim-action="respond" data-claim="<%= JSON.stringify(payload) %>">Responder</button>
+                <% } %>
+                <% if (!claim.fecha_respuesta && isAdmin) { %>
+                  <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#reclamacionModal" data-claim-action="reassign" data-claim="<%= JSON.stringify(payload) %>">Reasignar</button>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (!claims.length) { %><p class="text-muted">No hay reclamaciones asignadas.</p><% } %>
+    </div>
+  </section>
+</main>
+<%- include('../partials/sanction-claim-modal', { studentView: false, laboratoristas }) %>
+<script src="/milab/public/js/sanction-claims.js"></script>
+<%- include('../partials/footer'); -%>
