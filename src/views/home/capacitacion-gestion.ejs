@@ -1229,6 +1229,7 @@
         var xhr = new XMLHttpRequest();
         xhr.open('POST', api.evidencia(id), true);
         xhr.setRequestHeader('Accept', 'application/json');
+        if (t) xhr.setRequestHeader('X-CSRF-Token', t);
         xhr.onload = function () {
           try {
             var data = safeParseJsonXhr(xhr, 'onEvidenciaBtn', 'Error subiendo evidencia. ');

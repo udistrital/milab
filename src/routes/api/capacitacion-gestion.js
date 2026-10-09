@@ -1574,16 +1574,16 @@ router.post(
       for (const row of asistentes.rows) {
         const doc = String(row.usuario_documento || '').trim();
         if (!doc) continue;
+        try {
+          const userInfo = await client.query(
+            `SELECT id, documento, tipo FROM usuario WHERE documento = $1 LIMIT 1`,
+            [doc]
+          );
+          const usuarioId = userInfo.rows[0]?.id || null;
+          const usuarioNombre = truncate(row.usuario_nombre, 255) || userInfo.rows[0]?.tipo || null;
 
-        const userInfo = await client.query(
-          `SELECT id, documento, tipo FROM usuario WHERE documento = $1 LIMIT 1`,
-          [doc]
-        );
-        const usuarioId = userInfo.rows[0]?.id || null;
-        const usuarioNombre = truncate(row.usuario_nombre, 255) || userInfo.rows[0]?.tipo || null;
-
-        const upsert = await client.query(
-          `
+          const upsert = await client.query(
+            `
         WITH nueva AS (
           INSERT INTO certificacion_usuario (
             codigo_curso,
@@ -1622,35 +1622,44 @@ router.post(
         )
         SELECT * FROM nueva
         `,
-          [
-            sesion.codigo_curso,
-            sesion.nombre_curso_snapshot,
-            sesion.facultad_id,
-            doc,
-            usuarioId,
-            usuarioNombre,
-            vigenciaMeses,
-            sesionId,
-            sesion.ual_id,
-            labDoc,
-            labNombre,
-            notas,
-          ]
-        );
-        if (upsert.rows.length > 0) {
-          certificados.push(upsert.rows[0]);
-        } else {
-          const existente = await client.query(
-            `SELECT id, fecha_vencimiento FROM certificacion_usuario
-            WHERE codigo_curso = $1 AND usuario_documento = $2 AND activo = TRUE LIMIT 1`,
-            [sesion.codigo_curso, doc]
+            [
+              sesion.codigo_curso,
+              sesion.nombre_curso_snapshot,
+              sesion.facultad_id,
+              doc,
+              usuarioId,
+              usuarioNombre,
+              vigenciaMeses,
+              sesionId,
+              sesion.ual_id,
+              labDoc,
+              labNombre,
+              notas,
+            ]
           );
+          if (upsert.rows.length > 0) {
+            certificados.push(upsert.rows[0]);
+          } else {
+            const existente = await client.query(
+              `SELECT id, fecha_vencimiento FROM certificacion_usuario
+            WHERE codigo_curso = $1 AND usuario_documento = $2 AND activo = TRUE LIMIT 1`,
+              [sesion.codigo_curso, doc]
+            );
+            rechazados.push({
+              usuario_documento: doc,
+              usuario_nombre: usuarioNombre,
+              motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
+              id_cert_existente: existente.rows[0]?.id || null,
+              vencimiento_existente: existente.rows[0]?.fecha_vencimiento || null,
+            });
+          }
+        } catch (errUsuario) {
           rechazados.push({
             usuario_documento: doc,
-            usuario_nombre: usuarioNombre,
-            motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
-            id_cert_existente: existente.rows[0]?.id || null,
-            vencimiento_existente: existente.rows[0]?.fecha_vencimiento || null,
+            usuario_nombre: row.usuario_nombre || null,
+            motivo:
+              'Error individual al certificar: ' +
+              (errUsuario && errUsuario.message ? String(errUsuario.message) : String(errUsuario)),
           });
         }
       }

@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS sesion_capacitacion (
     modificado_por_documento VARCHAR(50),
     CONSTRAINT pk_sesion_capacitacion PRIMARY KEY (id),
     CONSTRAINT fk_sesion_capacitacion_cursos FOREIGN KEY (codigo_curso)
-        REFERENCES cursos(codigo_curso) ON DELETE RESTRICT,
+        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
     CONSTRAINT fk_sesion_capacitacion_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE RESTRICT,
     CONSTRAINT fk_sesion_capacitacion_facultad FOREIGN KEY (facultad_id)
@@ -181,6 +181,29 @@ BEGIN
     ) THEN
         ALTER TABLE sesion_capacitacion
             ADD COLUMN notas_evidencia TEXT;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+         WHERE constraint_name = 'fk_sesion_capacitacion_cursos' AND table_name = 'sesion_capacitacion'
+    ) THEN
+        ALTER TABLE sesion_capacitacion
+            DROP CONSTRAINT IF EXISTS fk_sesion_capacitacion_cursos,
+            ADD CONSTRAINT fk_sesion_capacitacion_cursos FOREIGN KEY (codigo_curso)
+                REFERENCES cursos(codigo_curso) ON DELETE CASCADE;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+         WHERE constraint_name = 'fk_certificacion_usuario_cursos' AND table_name = 'certificacion_usuario'
+    ) THEN
+        ALTER TABLE certificacion_usuario
+            DROP CONSTRAINT IF EXISTS fk_certificacion_usuario_cursos,
+            ADD CONSTRAINT fk_certificacion_usuario_cursos FOREIGN KEY (codigo_curso)
+                REFERENCES cursos(codigo_curso) ON DELETE CASCADE;
     END IF;
 END $$;
 
@@ -331,7 +354,7 @@ CREATE TABLE IF NOT EXISTS certificacion_usuario (
     modificado_por_documento VARCHAR(50),
     CONSTRAINT pk_certificacion_usuario PRIMARY KEY (id),
     CONSTRAINT fk_certificacion_usuario_cursos FOREIGN KEY (codigo_curso)
-        REFERENCES cursos(codigo_curso) ON DELETE RESTRICT,
+        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
     CONSTRAINT fk_certificacion_usuario_sesion_capacitacion FOREIGN KEY (sesion_capacitacion_id)
         REFERENCES sesion_capacitacion(id) ON DELETE SET NULL,
     CONSTRAINT fk_certificacion_usuario_ual FOREIGN KEY (ual_id)
