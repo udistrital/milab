@@ -55,6 +55,7 @@ router.use('/admin/sanciones', require('./admin/sanciones'));
 router.use('/certificacion-edx', require('./certificacion-edx'));
 router.use('/capacitacion-cursos', require('./capacitacion-cursos'));
 router.use('/capacitacion-equipos', require('./capacitacion-equipos'));
+router.use('/capacitacion-gestion', require('./capacitacion-gestion'));
 
 router.get('/check-services', async (req, res) => {
   const log = (req.log || serviceStatusLogger).child({ route: '/api/check-services' });

@@ -32,6 +32,36 @@ const requireCapacitacionEquiposView = requireRoles(
   }
 );
 
+const requireCapacitacionGestionView = requireRoles(
+  [
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador_general',
+    'coordinador general',
+    'coordinador',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+  ],
+  {
+    message: 'Acceso denegado',
+    message2:
+      'Solo los administradores, coordinación o laboratoristas pueden gestionar las capacitaciones programadas y solicitudes de usuarios.',
+    limit: 'loginOnly',
+  }
+);
+
+const requireCapacitacionMisView = requireRoles(
+  ['estudiante', 'docente', 'admin', 'administrador', 'coordinador_general'],
+  {
+    message: 'Acceso denegado',
+    message2:
+      'Esta sección permite solicitar e inscribirse a capacitaciones. Inicie sesión como estudiante o docente.',
+    limit: 'loginOnly',
+  }
+);
+
 function getAuthenticatedHomePath(user) {
   return user?.tipo ? '/milab/inicio' : null;
 }
@@ -184,5 +214,23 @@ router.get(
     return res.render('home/capacitacion-asociacion-equipos');
   }
 );
+
+router.get('/capacitacion/mis-capacitaciones', requireCapacitacionMisView, function (req, res) {
+  return res.redirect('/milab/capacitacion/mis-capacitaciones/load_info');
+});
+router.get(
+  '/capacitacion/mis-capacitaciones/load_info',
+  requireCapacitacionMisView,
+  function (req, res) {
+    return res.render('home/capacitacion-mis-capacitaciones');
+  }
+);
+
+router.get('/capacitacion/gestion', requireCapacitacionGestionView, function (req, res) {
+  return res.redirect('/milab/capacitacion/gestion/load_info');
+});
+router.get('/capacitacion/gestion/load_info', requireCapacitacionGestionView, function (req, res) {
+  return res.render('home/capacitacion-gestion');
+});
 
 module.exports = router;
