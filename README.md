@@ -432,6 +432,7 @@ Para proyectos de código abierto, indica cómo está licenciado.
 ## Estado del proyecto
 
 Si te has quedado sin energía o tiempo para tu proyecto, pon una nota en la parte superior del README indicando que el desarrollo se ha ralentizado o se ha detenido por completo. Alguien puede optar por hacer un fork del proyecto o ofrecerse como mantenedor, permitiendo que el proyecto siga adelante. También puedes hacer una solicitud explícita de mantenedores.
+
 ## Catálogo administrativo de sanciones
 
 El menú **Configuración → Catálogo de sanciones** (`/milab/api/admin/sanciones`)
