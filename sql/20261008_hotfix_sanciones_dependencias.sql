@@ -278,4 +278,45 @@ BEGIN
     END IF;
 END $$;
 
+-- 4. Permisos. Si el script se ejecuta con un usuario DBA distinto al de la
+-- aplicación, los objetos nuevos quedan sin permisos para la aplicación
+-- ("permission denied for table reclamacion_sancion"). Se replican los permisos
+-- que el dueño y los usuarios con acceso a milab.multa ya tienen sobre esa tabla.
+DO $$
+DECLARE
+    acceso RECORD;
+    objeto TEXT;
+    secuencia TEXT;
+BEGIN
+    FOR acceso IN
+        SELECT pg_get_userbyid(c.relowner) AS usuario, 'ALL' AS privilegios, TRUE AS escribe
+        FROM pg_class c
+        WHERE c.oid = 'milab.multa'::regclass
+        UNION
+        SELECT pg_get_userbyid(a.grantee),
+               string_agg(DISTINCT a.privilege_type, ', '),
+               bool_or(a.privilege_type IN ('INSERT', 'UPDATE'))
+        FROM pg_class c
+        CROSS JOIN LATERAL aclexplode(c.relacl) a
+        WHERE c.oid = 'milab.multa'::regclass
+          AND a.grantee <> 0
+          AND a.grantee <> c.relowner
+        GROUP BY a.grantee
+    LOOP
+        FOREACH objeto IN ARRAY ARRAY['categoria_sancion', 'reclamacion_sancion'] LOOP
+            EXECUTE format('GRANT %s ON TABLE milab.%I TO %I', acceso.privilegios, objeto, acceso.usuario);
+            secuencia := pg_get_serial_sequence(format('milab.%I', objeto), 'id');
+            IF secuencia IS NOT NULL THEN
+                EXECUTE format(
+                    'GRANT %s ON SEQUENCE %s TO %I',
+                    CASE WHEN acceso.escribe THEN 'USAGE, SELECT, UPDATE' ELSE 'SELECT' END,
+                    secuencia,
+                    acceso.usuario
+                );
+            END IF;
+        END LOOP;
+        EXECUTE format('GRANT SELECT ON milab.coordinador_facultad_alcance TO %I', acceso.usuario);
+    END LOOP;
+END $$;
+
 COMMIT;

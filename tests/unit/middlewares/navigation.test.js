@@ -199,6 +199,38 @@ test('claim notification badges reflect unread student answers and assigned pend
   }
 });
 
+test('navigationMiddleware still renders when claim notifications cannot be queried', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) => {
+      if (sql.includes('reclamacion_sancion')) {
+        throw Object.assign(new Error('permission denied for table reclamacion_sancion'), {
+          code: '42501',
+        });
+      }
+      return { rows: [] };
+    },
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const res = { locals: {} };
+    let nextError;
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'admin', documento: '123' } } },
+      res,
+      (error) => {
+        nextError = error;
+      }
+    );
+    assert.equal(nextError, undefined);
+    assert.equal(res.locals.claimNotifications, null);
+    assert.equal(res.locals.isAuthenticated, true);
+  } finally {
+    console.warn = originalWarn;
+    loaded.restore();
+  }
+});
+
 test('navigationMiddleware keeps pending sanctions badge at zero for non coordinador roles', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
