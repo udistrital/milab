@@ -1571,9 +1571,18 @@ router.post(
       let certificados = [];
       let rechazados = [];
 
-      for (const row of asistentes.rows) {
+      for (let i = 0; i < asistentes.rows.length; i++) {
+        const row = asistentes.rows[i];
         const doc = String(row.usuario_documento || '').trim();
         if (!doc) continue;
+
+        const spName = 'sp_cert_u_' + i;
+        try {
+          await client.query('SAVEPOINT ' + spName);
+        } catch {
+          /* ignore */
+        }
+
         try {
           const userInfo = await client.query(
             `SELECT id, documento, tipo FROM usuario WHERE documento = $1 LIMIT 1`,
@@ -1653,7 +1662,18 @@ router.post(
               vencimiento_existente: existente.rows[0]?.fecha_vencimiento || null,
             });
           }
+          try {
+            await client.query('RELEASE SAVEPOINT ' + spName);
+          } catch {
+            /* ignore */
+          }
         } catch (errUsuario) {
+          try {
+            await client.query('ROLLBACK TO SAVEPOINT ' + spName);
+            await client.query('RELEASE SAVEPOINT ' + spName);
+          } catch {
+            /* ignore */
+          }
           rechazados.push({
             usuario_documento: doc,
             usuario_nombre: row.usuario_nombre || null,
@@ -1667,10 +1687,33 @@ router.post(
       const finalizarSesion =
         String(req.body?.finalizar_sesion || 'true').toLowerCase() !== 'false';
       if (finalizarSesion && sesion.estado !== 'realizada') {
-        await client.query(
-          `UPDATE sesion_capacitacion SET estado = 'realizada', fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $1`,
-          [sesionId]
-        );
+        const spFin = 'sp_cert_fin_sesion';
+        try {
+          await client.query('SAVEPOINT ' + spFin);
+          await client.query(
+            `UPDATE sesion_capacitacion SET estado = 'realizada', fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $1`,
+            [sesionId]
+          );
+          try {
+            await client.query('RELEASE SAVEPOINT ' + spFin);
+          } catch {
+            /* ignore */
+          }
+        } catch (errFin) {
+          try {
+            await client.query('ROLLBACK TO SAVEPOINT ' + spFin);
+            await client.query('RELEASE SAVEPOINT ' + spFin);
+          } catch {
+            /* ignore */
+          }
+          rechazados.push({
+            usuario_documento: '__sesion__',
+            usuario_nombre: 'Marcar sesión Realizada',
+            motivo:
+              'No se pudo marcar la sesión como Realizada (los certificados SÍ fueron emitidos): ' +
+              (errFin && errFin.message ? String(errFin.message) : String(errFin)),
+          });
+        }
       }
 
       await client.query('COMMIT');
