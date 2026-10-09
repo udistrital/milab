@@ -98,24 +98,6 @@ const requireDashboardAdminJson = requireJsonRoles(['admin'], {
 });
 
 const CHART_DEFINITIONS = {
-  certificadosEstudiantes: {
-    id: 'certificadosEstudiantes',
-    optionLabel: 'Certificados de estudiantes',
-    cardLabel: 'Certificados estudiantes',
-    tone: 'tone-students',
-    title: 'Certificados de estudiantes',
-    summary:
-      'Mide la emisión de certificados de estudiantes dentro del alcance disponible para tu rol.',
-  },
-  certificadosDocentes: {
-    id: 'certificadosDocentes',
-    optionLabel: 'Certificados de docentes',
-    cardLabel: 'Certificados docentes',
-    tone: 'tone-teachers',
-    title: 'Certificados de docentes',
-    summary:
-      'Visualiza el comportamiento de los certificados emitidos para docentes en el periodo elegido.',
-  },
   estudiantes: {
     id: 'estudiantes',
     optionLabel: 'Estudiantes registrados',
@@ -133,31 +115,6 @@ const CHART_DEFINITIONS = {
     title: 'Docentes registrados',
     summary:
       'Perfiles académicos de docentes consolidados desde la tabla usuario con rol docente activo.',
-  },
-  sanciones: {
-    id: 'sanciones',
-    optionLabel: 'Sanciones totales',
-    cardLabel: 'Sanciones',
-    tone: 'tone-sanctions',
-    title: 'Sanciones totales',
-    summary:
-      'Compara el total de sanciones con sus estados activos y saldados dentro del alcance actual.',
-  },
-  sancionesActivas: {
-    id: 'sancionesActivas',
-    optionLabel: 'Sanciones activas',
-    cardLabel: 'Sanciones activas',
-    tone: 'tone-alert',
-    title: 'Sanciones activas',
-    summary: 'Enfoca la lectura en los casos que continúan abiertos y requieren seguimiento.',
-  },
-  sancionesSaldadas: {
-    id: 'sancionesSaldadas',
-    optionLabel: 'Sanciones saldadas',
-    cardLabel: 'Sanciones saldadas',
-    tone: 'tone-info',
-    title: 'Sanciones saldadas',
-    summary: 'Evalúa el ritmo de cierre y normalización de sanciones registradas.',
   },
   laboratoristas: {
     id: 'laboratoristas',
@@ -199,36 +156,15 @@ function isGlobalDashboardRole(role) {
 }
 
 function getAvailableChartIds(role) {
-  if (isGlobalDashboardRole(role)) {
-    return [
-      'certificadosEstudiantes',
-      'certificadosDocentes',
-      'estudiantes',
-      'docentes',
-      'sanciones',
-      'sancionesActivas',
-      'sancionesSaldadas',
-      'laboratoristas',
-      'coordinadores',
-      'usuariosRegistrados',
-    ];
+  if (isGlobalDashboardRole(role) || role === 'coordinador') {
+    return ['estudiantes', 'docentes', 'laboratoristas', 'coordinadores', 'usuariosRegistrados'];
   }
 
-  if (role === 'coordinador') {
-    return [
-      'certificadosEstudiantes',
-      'estudiantes',
-      'docentes',
-      'sanciones',
-      'sancionesActivas',
-      'sancionesSaldadas',
-      'laboratoristas',
-      'coordinadores',
-      'usuariosRegistrados',
-    ];
-  }
+  return ['laboratoristas'];
+}
 
-  return ['sanciones', 'sancionesActivas', 'sancionesSaldadas', 'laboratoristas'];
+function canSeeStudentCertificates(role) {
+  return role !== 'laboratorista';
 }
 
 function getStartOfBucket(rawDate, filtro) {
@@ -453,17 +389,6 @@ async function fetchTeacherCertificateRows() {
      LEFT JOIN usuario u ON u.id = cd.usuario_id
      WHERE cd.fecha_creacion IS NOT NULL
      ORDER BY cd.fecha_creacion DESC`
-  );
-  return result.rows;
-}
-
-async function fetchSanctionRows() {
-  const result = await pool.query(
-    `SELECT m.*, u.facultad_id AS faculty_id
-     FROM multa m
-     LEFT JOIN ual u ON u.ual_id = m.ual_id
-     WHERE m.fecha_multa IS NOT NULL
-     ORDER BY m.fecha_multa DESC`
   );
   return result.rows;
 }
@@ -779,28 +704,6 @@ function filterStudentRowsByScope(rows, role, scope) {
   return rows.filter((row) => isStudentRowInFacultyScope(row, scope));
 }
 
-function filterSanctionRowsByScope(rows, role, scope) {
-  if (isGlobalDashboardRole(role)) {
-    return rows;
-  }
-
-  if (role === 'coordinador') {
-    const facultyIds = new Set(scope.facultyIds || []);
-    return rows.filter((row) => {
-      const fid = Number(row.facultad_id || row.faculty_id);
-      if (Number.isFinite(fid)) return facultyIds.has(fid);
-      return false;
-    });
-  }
-
-  const ualIds = new Set(scope.ualIds || []);
-  return rows.filter((row) => {
-    const uid = Number(row.ual_id || row.id_ual);
-    if (Number.isFinite(uid)) return ualIds.has(uid);
-    return false;
-  });
-}
-
 function toNumericSet(values) {
   return new Set((values || []).map((value) => Number(value)).filter(Number.isInteger));
 }
@@ -866,7 +769,6 @@ function filterUsuarioRowsByScope(rows, role, scope) {
 const OPEN_SANCTION_STATES = ['ACTIVA', 'Pendiente', 'POR SALDAR'];
 const DETAIL_ROW_LIMIT = 500;
 const RANKING_LIMIT = 5;
-const UNCOVERED_UAL_LIMIT = 8;
 
 function buildSanctionScopeFilter(role, scope) {
   if (isGlobalDashboardRole(role)) {
@@ -1047,43 +949,6 @@ async function fetchClaimPazYSalvoSummary(client, role, scope) {
   };
 }
 
-async function fetchUalCoverage(client, role, scope) {
-  if (role === 'laboratorista') return null;
-
-  const scoped = role === 'coordinador';
-  const result = await client.query(
-    `SELECT
-       u.ual_id,
-       u.nombre,
-       COALESCE(p.nombre, d.nombre) AS facultad_nombre,
-       EXISTS (
-         SELECT 1
-         FROM laboratorista_ual lu
-         JOIN laboratorista l ON l.documento = lu.laboratorista_documento_id
-         WHERE lu.ual_id = u.ual_id
-           AND lu.activo IS DISTINCT FROM FALSE
-           AND l.activo IS DISTINCT FROM FALSE
-       ) AS tiene_laboratorista
-     FROM ual u
-     LEFT JOIN dependencia_facultad d ON d.dependencia_facultad_id = u.facultad_id
-     LEFT JOIN dependencia_facultad p ON p.dependencia_facultad_id = d.padre_id
-     WHERE u.activo = TRUE
-       AND ${scoped ? 'u.facultad_id = ANY($1::int[])' : 'TRUE'}
-     ORDER BY COALESCE(p.nombre, d.nombre) ASC NULLS LAST, u.nombre ASC`,
-    scoped ? [scope.facultyIds || []] : []
-  );
-
-  const sinLaboratorista = result.rows.filter((row) => row.tiene_laboratorista !== true);
-  return {
-    totalUals: result.rows.length,
-    sinLaboratoristaTotal: sinLaboratorista.length,
-    sinLaboratorista: sinLaboratorista.slice(0, UNCOVERED_UAL_LIMIT).map((row) => ({
-      nombre: row.nombre,
-      facultad: row.facultad_nombre || '',
-    })),
-  };
-}
-
 function countBy(rows, resolveKey) {
   const counts = new Map();
   rows.forEach((row) => {
@@ -1146,8 +1011,391 @@ function buildCertificatePazYSalvoSummary(
   };
 }
 
+const GENERAL_ACTIVITY_MONTHS = 12;
+const GENERAL_TOP_LIMIT = 6;
+const GENERAL_USER_TYPES = [
+  { key: 'estudiantes', label: 'Estudiantes' },
+  { key: 'docentes', label: 'Docentes' },
+  { key: 'laboratoristas', label: 'Laboratoristas' },
+  { key: 'coordinadores', label: 'Coordinadores' },
+];
+
+function toValidDate(rawDate) {
+  if (!rawDate) return null;
+  const date = new Date(rawDate);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function countDated(rows, field) {
+  return rows.filter((row) => toValidDate(row[field])).length;
+}
+
+function countInCurrentMonth(rows, field, now) {
+  return rows.filter((row) => row[field] && isWithinCurrentMonth(row[field], now)).length;
+}
+
+function buildMonthWindow(now) {
+  const months = [];
+  for (let offset = GENERAL_ACTIVITY_MONTHS - 1; offset >= 0; offset -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    months.push({
+      key: `${date.getFullYear()}-${date.getMonth()}`,
+      label: `${date.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')} ${String(
+        date.getFullYear()
+      ).slice(-2)}`,
+    });
+  }
+  return months;
+}
+
+function buildMonthlyActivity(datasets, now) {
+  const months = buildMonthWindow(now);
+  const indexByKey = new Map(months.map((month, index) => [month.key, index]));
+
+  return {
+    labels: months.map((month) => month.label),
+    datasets: datasets.map(({ key, label, dates }) => {
+      const data = months.map(() => 0);
+      dates.forEach((rawDate) => {
+        const date = toValidDate(rawDate);
+        if (!date) return;
+        const index = indexByKey.get(`${date.getFullYear()}-${date.getMonth()}`);
+        if (index !== undefined) data[index] += 1;
+      });
+      return { key, label, data };
+    }),
+  };
+}
+
+function topWithOthers(entries, limit = GENERAL_TOP_LIMIT) {
+  if (entries.length <= limit) return entries;
+  const others = entries.slice(limit - 1).reduce((sum, entry) => sum + entry.total, 0);
+  return [...entries.slice(0, limit - 1), { nombre: 'Otras', total: others }];
+}
+
+function normalizeAccountState(value) {
+  const state = String(value || '')
+    .trim()
+    .toUpperCase();
+  return state || 'ACTIVO';
+}
+
+function buildGeneralOverview(availableChartIds, rows, now = new Date()) {
+  const has = (chartId) => availableChartIds.includes(chartId);
+  const rowsByType = Object.fromEntries(
+    GENERAL_USER_TYPES.map(({ key }) => [key, has(key) ? rows[key] || [] : []])
+  );
+  const usuariosRegistrados = has('usuariosRegistrados') ? rows.usuariosRegistrados || [] : [];
+  const visibleTypes = GENERAL_USER_TYPES.filter(({ key }) => has(key));
+  const { laboratoristas } = rowsByType;
+  const activeLaboratoristas = laboratoristas.filter((row) => row.activo !== false).length;
+  const newThisMonth = (items) =>
+    `${countInCurrentMonth(items, 'fecha_creacion', now)} nuevos este mes`;
+
+  const hints = {
+    estudiantes: newThisMonth(rowsByType.estudiantes),
+    docentes: newThisMonth(rowsByType.docentes),
+    laboratoristas: `${activeLaboratoristas} activos de ${laboratoristas.length}`,
+    coordinadores: newThisMonth(rowsByType.coordinadores),
+    usuariosRegistrados: newThisMonth(usuariosRegistrados),
+  };
+
+  const usuarios = visibleTypes.map(({ key, label }) => ({
+    key,
+    label,
+    value: countDated(rowsByType[key], 'fecha_creacion'),
+  }));
+  const academicRows = [...rowsByType.estudiantes, ...rowsByType.docentes];
+
+  return {
+    hints,
+    actividad: buildMonthlyActivity(
+      visibleTypes.map(({ key, label }) => ({
+        key,
+        label,
+        dates: rowsByType[key].map((row) => row.fecha_creacion),
+      })),
+      now
+    ),
+    usuarios: usuarios.length > 1 ? usuarios : null,
+    programas: has('estudiantes')
+      ? topWithOthers(
+          countBy(
+            rowsByType.estudiantes,
+            (row) => String(row.carrera || '').trim() || 'Sin programa'
+          )
+        )
+      : null,
+    estadosCuenta:
+      has('estudiantes') || has('docentes')
+        ? topWithOthers(countBy(academicRows, (row) => normalizeAccountState(row.estado)))
+        : null,
+    laboratoristasEstado: has('laboratoristas')
+      ? [
+          { key: 'activos', label: 'Activos', value: activeLaboratoristas },
+          {
+            key: 'inactivos',
+            label: 'Inactivos',
+            value: laboratoristas.length - activeLaboratoristas,
+          },
+        ]
+      : null,
+  };
+}
+
+const ACTIVITY_ROLE_LABELS = {
+  admin: 'Administrador',
+  coordinador_general: 'Coordinador general',
+  coordinador: 'Coordinador',
+  laboratorista: 'Laboratorista',
+  docente: 'Docente',
+  estudiante: 'Estudiante',
+};
+const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const OPERATIONAL_FACULTY_TREE = `
+  SELECT
+    d.dependencia_facultad_id AS id,
+    COALESCE(p.dependencia_facultad_id, d.dependencia_facultad_id) AS facultad_id
+  FROM dependencia_facultad d
+  LEFT JOIN dependencia_facultad p ON p.dependencia_facultad_id = d.padre_id`;
+
+function percentOf(value, total) {
+  return total ? Math.round((value / total) * 100) : null;
+}
+
+async function fetchOperationalCoverage(client, now = new Date()) {
+  const [facultiesRes, ualRes, labRes, coordRes, totalsRes] = await Promise.all([
+    client.query(
+      `SELECT dependencia_facultad_id AS facultad_id, nombre
+       FROM dependencia_facultad
+       WHERE padre_id IS NULL AND activo IS DISTINCT FROM FALSE`
+    ),
+    client.query(
+      `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
+       SELECT
+         a.facultad_id,
+         COUNT(*)::int AS ual_activas,
+         COUNT(*) FILTER (
+           WHERE EXISTS (
+             SELECT 1
+             FROM laboratorista_ual lu
+             JOIN laboratorista l ON l.documento = lu.laboratorista_documento_id
+             WHERE lu.ual_id = u.ual_id
+               AND lu.activo IS DISTINCT FROM FALSE
+               AND l.activo IS DISTINCT FROM FALSE
+           )
+         )::int AS ual_con_laboratorista
+       FROM ual u
+       JOIN arbol a ON a.id = u.facultad_id
+       WHERE u.activo = TRUE
+       GROUP BY a.facultad_id`
+    ),
+    client.query(
+      `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
+       SELECT a.facultad_id, COUNT(DISTINCT l.documento)::int AS total
+       FROM laboratorista l
+       JOIN laboratorista_ual lu
+         ON lu.laboratorista_documento_id = l.documento
+        AND lu.activo IS DISTINCT FROM FALSE
+       JOIN ual u ON u.ual_id = lu.ual_id AND u.activo = TRUE
+       JOIN arbol a ON a.id = u.facultad_id
+       WHERE l.activo IS DISTINCT FROM FALSE
+       GROUP BY a.facultad_id`
+    ),
+    client.query(
+      `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
+       SELECT a.facultad_id, COUNT(DISTINCT c.documento)::int AS total
+       FROM coordinador c
+       JOIN coordinador_facultad cf
+         ON cf.coordinador_documento_id = c.documento
+        AND cf.activo IS DISTINCT FROM FALSE
+       JOIN arbol a ON a.id = cf.facultad_id
+       WHERE c.activo IS DISTINCT FROM FALSE
+       GROUP BY a.facultad_id`
+    ),
+    client.query(
+      `SELECT
+         (SELECT COUNT(*) FROM laboratorista WHERE activo IS DISTINCT FROM FALSE)::int
+           AS laboratoristas,
+         (SELECT COUNT(*) FROM coordinador WHERE activo IS DISTINCT FROM FALSE)::int
+           AS coordinadores,
+         (SELECT COUNT(*) FROM monitor WHERE activo IS DISTINCT FROM FALSE)::int AS monitores,
+         (SELECT COUNT(*) FROM monitor
+           WHERE activo IS DISTINCT FROM FALSE
+             AND fecha_fin BETWEEN $1::date AND ($1::date + 30))::int AS monitores_por_vencer`,
+      [now.toISOString().slice(0, 10)]
+    ),
+  ]);
+
+  const byFaculty = (rows) => new Map(rows.map((row) => [Number(row.facultad_id), row]));
+  const ualByFaculty = byFaculty(ualRes.rows);
+  const labsByFaculty = byFaculty(labRes.rows);
+  const coordsByFaculty = byFaculty(coordRes.rows);
+
+  const facultades = facultiesRes.rows
+    .map((row) => {
+      const id = Number(row.facultad_id);
+      const ual = ualByFaculty.get(id) || {};
+      return {
+        nombre: String(row.nombre || '').trim() || `Facultad ${id}`,
+        ualActivas: toInt(ual.ual_activas),
+        ualConLaboratorista: toInt(ual.ual_con_laboratorista),
+        laboratoristas: toInt(labsByFaculty.get(id)?.total),
+        coordinadores: toInt(coordsByFaculty.get(id)?.total),
+      };
+    })
+    .sort((a, b) => b.ualActivas - a.ualActivas || a.nombre.localeCompare(b.nombre, 'es'));
+
+  const ualActivas = facultades.reduce((sum, item) => sum + item.ualActivas, 0);
+  const ualConLaboratorista = facultades.reduce((sum, item) => sum + item.ualConLaboratorista, 0);
+  const totals = totalsRes.rows[0] || {};
+
+  return {
+    totales: {
+      facultades: facultades.length,
+      ualActivas,
+      ualConLaboratorista,
+      porcentajeCubierto: percentOf(ualConLaboratorista, ualActivas),
+      laboratoristas: toInt(totals.laboratoristas),
+      coordinadores: toInt(totals.coordinadores),
+      monitores: toInt(totals.monitores),
+      monitoresPorVencer: toInt(totals.monitores_por_vencer),
+    },
+    facultades,
+    facultadesSinCoordinador: facultades.filter((item) => !item.coordinadores).length,
+  };
+}
+
+function capitalizeLabel(value) {
+  const text = String(value || '').trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Sin descripción';
+}
+
+async function fetchPlatformActivity(client, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const [monthlyRes, summaryRes, actionsRes, rolesRes, weekdayRes, actorsRes] = await Promise.all([
+    client.query(
+      `SELECT to_char(fecha_creacion, 'YYYY-MM') AS mes, COUNT(*)::int AS total
+       FROM log
+       WHERE fecha_creacion >= date_trunc('month', $1::date) - INTERVAL '11 months'
+       GROUP BY 1`,
+      [today]
+    ),
+    client.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE fecha_creacion >= $1::date - 29)::int AS acciones_30,
+         COUNT(*) FILTER (
+           WHERE fecha_creacion >= $1::date - 59 AND fecha_creacion < $1::date - 29
+         )::int AS acciones_previas,
+         COUNT(DISTINCT documento) FILTER (WHERE fecha_creacion >= $1::date - 29)::int
+           AS actores_30
+       FROM log
+       WHERE fecha_creacion >= $1::date - 59`,
+      [today]
+    ),
+    client.query(
+      `SELECT LOWER(TRIM(regexp_replace(COALESCE(accion, ''), '\\s*\\(.*$', ''))) AS accion,
+              COUNT(*)::int AS total
+       FROM log
+       WHERE fecha_creacion >= $1::date - 89
+       GROUP BY 1
+       ORDER BY total DESC`,
+      [today]
+    ),
+    client.query(
+      `SELECT LOWER(TRIM(COALESCE(nombre, ''))) AS rol, COUNT(*)::int AS total
+       FROM log
+       WHERE fecha_creacion >= $1::date - 89
+       GROUP BY 1`,
+      [today]
+    ),
+    client.query(
+      `SELECT EXTRACT(ISODOW FROM fecha_creacion)::int AS dia, COUNT(*)::int AS total
+       FROM log
+       WHERE fecha_creacion >= $1::date - 89
+       GROUP BY 1`,
+      [today]
+    ),
+    client.query(
+      `SELECT
+         COALESCE(us.nombre, lg.documento::text) AS nombre,
+         COUNT(*)::int AS total
+       FROM log lg
+       LEFT JOIN usuario us ON us.documento = lg.documento::text
+       WHERE lg.fecha_creacion >= $1::date - 29
+       GROUP BY lg.documento, us.nombre
+       ORDER BY total DESC
+       LIMIT 8`,
+      [today]
+    ),
+  ]);
+
+  const months = buildMonthWindow(now);
+  const monthlyByKey = new Map(
+    monthlyRes.rows.map((row) => {
+      const [year, month] = String(row.mes || '').split('-');
+      return [`${Number(year)}-${Number(month) - 1}`, toInt(row.total)];
+    })
+  );
+
+  const actionCounts = new Map();
+  actionsRes.rows.forEach((row) => {
+    const label = capitalizeLabel(row.accion);
+    actionCounts.set(label, (actionCounts.get(label) || 0) + toInt(row.total));
+  });
+  const acciones = Array.from(actionCounts.entries())
+    .map(([nombre, total]) => ({ nombre, total }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
+
+  const roleCounts = new Map();
+  rolesRes.rows.forEach((row) => {
+    const label = ACTIVITY_ROLE_LABELS[row.rol] || 'Otros';
+    roleCounts.set(label, (roleCounts.get(label) || 0) + toInt(row.total));
+  });
+
+  const weekday = WEEKDAY_LABELS.map(() => 0);
+  weekdayRes.rows.forEach((row) => {
+    const index = toInt(row.dia) - 1;
+    if (index >= 0 && index < weekday.length) weekday[index] += toInt(row.total);
+  });
+
+  const summary = summaryRes.rows[0] || {};
+  const acciones30 = toInt(summary.acciones_30);
+  const accionesPrevias = toInt(summary.acciones_previas);
+
+  return {
+    acciones30,
+    actores30: toInt(summary.actores_30),
+    variacion: accionesPrevias
+      ? Math.round(((acciones30 - accionesPrevias) / accionesPrevias) * 100)
+      : null,
+    mensual: {
+      labels: months.map((month) => month.label),
+      data: months.map((month) => monthlyByKey.get(month.key) || 0),
+    },
+    acciones: topWithOthers(acciones),
+    roles: Array.from(roleCounts.entries())
+      .map(([nombre, total]) => ({ nombre, total }))
+      .sort((a, b) => b.total - a.total),
+    semana: { labels: WEEKDAY_LABELS, data: weekday },
+    actores: actorsRes.rows.map((row) => ({
+      nombre: String(row.nombre || '').trim() || 'Sin identificar',
+      total: toInt(row.total),
+    })),
+  };
+}
+
+async function safeIndicator(label, loader) {
+  try {
+    return await loader();
+  } catch (error) {
+    console.warn(`Dashboard: no fue posible calcular ${label}:`, error.message);
+    return null;
+  }
+}
+
 function buildPazYSalvoCards(role, indicators) {
-  const { sanciones, reclamaciones, cobertura, certificados } = indicators;
+  const { sanciones, reclamaciones, certificados } = indicators;
   const multasUrl = '/milab/api/get_list_multas';
   const claimsHref =
     role === 'admin' || role === 'laboratorista' ? '/milab/api/sanciones/reclamaciones' : null;
@@ -1199,16 +1447,6 @@ function buildPazYSalvoCards(role, indicators) {
     href: multasUrl,
   });
 
-  if (cobertura) {
-    cards.push({
-      label: 'UAL sin laboratorista',
-      value: cobertura.sinLaboratoristaTotal,
-      hint: `De ${cobertura.totalUals} UAL activas; nadie puede saldar ni responder ahí`,
-      tone: cobertura.sinLaboratoristaTotal ? 'warn' : 'ok',
-      href: null,
-    });
-  }
-
   if (certificados) {
     cards.push({
       label: 'Paz y salvos vigentes',
@@ -1233,7 +1471,6 @@ function buildPazYSalvoCards(role, indicators) {
 async function buildPazYSalvoIndicators(client, role, scope, certificateRows) {
   const sanciones = await fetchSanctionPazYSalvoSummary(client, role, scope);
   const reclamaciones = await fetchClaimPazYSalvoSummary(client, role, scope);
-  const cobertura = await fetchUalCoverage(client, role, scope);
   const certificados =
     role === 'laboratorista'
       ? null
@@ -1256,7 +1493,7 @@ async function buildPazYSalvoIndicators(client, role, scope, certificateRows) {
     ];
   }
 
-  const indicators = { sanciones, reclamaciones, cobertura, certificados, rankingGroups };
+  const indicators = { sanciones, reclamaciones, certificados, rankingGroups };
   return { ...indicators, cards: buildPazYSalvoCards(role, indicators) };
 }
 
@@ -2307,13 +2544,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
     const needsUsuariosRegistrados = availableChartIds.includes('usuariosRegistrados');
 
-    const studentCertRows = availableChartIds.includes('certificadosEstudiantes')
+    const studentCertRows = canSeeStudentCertificates(dashboardRole)
       ? await fetchStudentCertificateRows()
       : [];
-    const teacherCertRows = availableChartIds.includes('certificadosDocentes')
+    const teacherCertRows = isGlobalDashboardRole(dashboardRole)
       ? await fetchTeacherCertificateRows()
       : [];
-    const sanctionRows = await fetchSanctionRows();
     const laboratoristaRows = await fetchLaboratoristaRows();
     const coordinatorRows = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
@@ -2333,7 +2569,6 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
     const filteredStudentCerts = filterStudentRowsByScope(studentCertRows, dashboardRole, scope);
     const filteredTeacherCerts = teacherCertRows;
-    const filteredSanctions = filterSanctionRowsByScope(sanctionRows, dashboardRole, scope);
     const filteredLaboratoristas = filterLaboratoristaRowsByScope(
       laboratoristaRows,
       dashboardRole,
@@ -2357,38 +2592,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       .map((row) => ({ ...row, __tipo: 'docente' }));
 
     const chartsData = {
-      certificadosEstudiantes: buildSeriesFromDates(
-        filteredStudentCerts.map((row) => row.fecha_creacion),
-        filtro
-      ),
-      certificadosDocentes: buildSeriesFromDates(
-        filteredTeacherCerts.map((row) => row.fecha_creacion),
-        filtro
-      ),
       estudiantes: buildSeriesFromDates(
         filteredEstudiantes.map((row) => row.fecha_creacion),
         filtro
       ),
       docentes: buildSeriesFromDates(
         filteredDocentes.map((row) => row.fecha_creacion),
-        filtro
-      ),
-      multas: buildSeriesFromDates(
-        filteredSanctions.map((row) => row.fecha_multa),
-        filtro
-      ),
-      multasActivas: buildSeriesFromDates(
-        filteredSanctions
-          .filter((row) => String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA')
-          .map((row) => row.fecha_multa),
-        filtro
-      ),
-      multasSaldadas: buildSeriesFromDates(
-        filteredSanctions
-          .filter((row) =>
-            ['SALDADA', 'SALDADO'].includes(String(row.con_estado_multa || '').toUpperCase())
-          )
-          .map((row) => row.fecha_multa),
         filtro
       ),
       laboratoristas: buildSeriesFromDates(
@@ -2406,16 +2615,6 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     };
 
     const availableCharts = availableChartIds.map((chartId) => {
-      let series = chartsData[chartId];
-
-      if (chartId === 'sanciones') {
-        series = chartsData.multas;
-      } else if (chartId === 'sancionesActivas') {
-        series = chartsData.multasActivas;
-      } else if (chartId === 'sancionesSaldadas') {
-        series = chartsData.multasSaldadas;
-      }
-
       if (chartId === 'usuariosRegistrados') {
         return {
           ...CHART_DEFINITIONS[chartId],
@@ -2425,11 +2624,26 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
       return {
         ...CHART_DEFINITIONS[chartId],
-        total: totalFromSeries(series),
+        total: totalFromSeries(chartsData[chartId]),
       };
     });
 
     const scopePresentation = buildScopePresentation(dashboardRole, scope);
+    const generalOverview = buildGeneralOverview(availableChartIds, {
+      estudiantes: filteredEstudiantes,
+      docentes: filteredDocentes,
+      laboratoristas: filteredLaboratoristas,
+      coordinadores: filteredCoordinators,
+      usuariosRegistrados: usuariosRegistradosRows,
+    });
+
+    const coberturaOperativa = isGlobalRole
+      ? await safeIndicator('la cobertura operativa', () => fetchOperationalCoverage(client))
+      : null;
+    const actividadPlataforma =
+      dashboardRole === 'admin'
+        ? await safeIndicator('la actividad de la plataforma', () => fetchPlatformActivity(client))
+        : null;
 
     const pazYSalvo = await buildPazYSalvoIndicators(client, dashboardRole, scope, {
       students: filteredStudentCerts,
@@ -2437,17 +2651,8 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     });
 
     const fullTablesData = {
-      certificadosEstudiantes: filteredStudentCerts,
-      certificadosDocentes: filteredTeacherCerts,
       estudiantes: filteredEstudiantes,
       docentes: filteredDocentes,
-      sanciones: filteredSanctions,
-      sancionesActivas: filteredSanctions.filter(
-        (row) => String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA'
-      ),
-      sancionesSaldadas: filteredSanctions.filter((row) =>
-        ['SALDADA', 'SALDADO'].includes(String(row.con_estado_multa || '').toUpperCase())
-      ),
       laboratoristas: filteredLaboratoristas,
       coordinadores: filteredCoordinators,
       usuariosRegistrados: usuariosRegistradosRows,
@@ -2472,6 +2677,9 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       tablesMeta,
       detailRowLimit: DETAIL_ROW_LIMIT,
       pazYSalvo,
+      generalOverview,
+      coberturaOperativa,
+      actividadPlataforma,
       usuarioTableColumns: usuariosRegistradosColumns,
     });
   } catch (error) {
@@ -2507,6 +2715,9 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
 router.__private = {
   buildCertificatePazYSalvoSummary,
+  buildGeneralOverview,
+  fetchOperationalCoverage,
+  fetchPlatformActivity,
   buildPazYSalvoCards,
   buildPazYSalvoIndicators,
   getAvailableChartIds,
@@ -2517,7 +2728,6 @@ router.__private = {
   fetchUsuariosRegistradosRows,
   fetchUsuariosPlaceholderRows,
   fetchUsuarioRolesRows,
-  fetchSanctionRows,
   fetchLaboratoristaRows,
   fetchStudentCertificateRows,
   fetchTeacherCertificateRows,
