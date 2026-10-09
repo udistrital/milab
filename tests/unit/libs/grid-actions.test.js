@@ -105,6 +105,7 @@ test('grid actions use related icons and accessible labels without replacing con
     'Activar',
     'Eliminar',
     'Impersonar',
+    'Asignar a dependencia',
   ];
   const icons = [
     'bi-eye',
@@ -114,6 +115,7 @@ test('grid actions use related icons and accessible labels without replacing con
     'bi-check-circle',
     'bi-trash',
     'bi-person-badge',
+    'bi-diagram-3',
   ];
   const harness = createHarness(labels);
   const originalControl = harness.controls[1];

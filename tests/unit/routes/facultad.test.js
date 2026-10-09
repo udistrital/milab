@@ -69,6 +69,11 @@ function loadRoute(customQuery = null) {
     ],
   ];
 
+  stubs[0][1].connect = async () => ({
+    query: stubs[0][1].query,
+    release() {},
+  });
+
   delete require.cache[routePath];
 
   for (const [modulePath, stub] of stubs) {
@@ -114,7 +119,6 @@ test('facultad parses form body for UAL edit requests', async () => {
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=1');
-
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
         sql ===
@@ -127,8 +131,201 @@ test('facultad parses form body for UAL edit requests', async () => {
         params[5] === false &&
         params[6] === '10'
     );
-
     assert.ok(updatedNameQuery);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad assigns a direct UAL without changing its metadata or associations', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return { rows: [{ ual_id: 10, nombre: 'Laboratorio', facultad_id: 1, padre_id: null }] };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: '10', dependencia_id: '2' });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=1');
+    const updates = loaded.queryCalls.filter(({ sql }) => sql.startsWith('UPDATE'));
+    assert.deepEqual(updates, [
+      { sql: 'UPDATE ual SET facultad_id = $1 WHERE ual_id = ANY($2::int[])', params: [2, [10]] },
+    ]);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.ok(
+      loaded.queryCalls.some(
+        ({ sql, params }) =>
+          sql.startsWith('INSERT INTO log') && params[2] === 'asignar UAL a dependencia'
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rejects invalid UAL assignments without writing changes', async () => {
+  for (const [source, destination] of [
+    [null, { padre_id: 1 }],
+    [{ facultad_id: 1, padre_id: null }, null],
+    [{ facultad_id: 1, padre_id: null }, { padre_id: null }],
+    [{ facultad_id: 1, padre_id: null }, { padre_id: 3 }],
+    [{ facultad_id: 2, padre_id: 1 }, { padre_id: 1 }],
+  ]) {
+    const loaded = loadRoute((sql) => {
+      if (sql.includes('FOR UPDATE OF u, f')) return { rows: source ? [source] : [] };
+      if (sql.includes('FROM dependencia_facultad WHERE')) {
+        return { rows: destination ? [destination] : [] };
+      }
+      return null;
+    });
+    try {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send({ ual_id: 10, dependencia_id: 2 });
+      assert.equal(response.status, 400);
+      assert.equal(
+        loaded.queryCalls.some(({ sql }) => sql.startsWith('UPDATE')),
+        false
+      );
+      assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('facultad requires UAL and destination IDs before starting an assignment', async () => {
+  const loaded = loadRoute();
+  try {
+    for (const body of [
+      { ual_id: 10 },
+      { dependencia_id: 2 },
+      { ual_id: 0, dependencia_id: 2 },
+      { ual_id: ['10', 'bad'], dependencia_id: 2 },
+      { ual_id: '10abc', dependencia_id: 2 },
+      { ual_id: 10, dependencia_id: '2abc' },
+    ]) {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send(body);
+      assert.equal(response.status, 400);
+    }
+    assert.equal(loaded.queryCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad assigns several UAL atomically and audits each once', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return {
+        rows: [
+          { ual_id: 10, nombre: 'Lab 1', facultad_id: 1, padre_id: null },
+          { ual_id: 11, nombre: 'Lab 2', facultad_id: 1, padre_id: null },
+        ],
+      };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: ['10', '11', '10'], dependencia_id: 2 });
+    assert.equal(response.status, 302);
+    assert.deepEqual(loaded.queryCalls.find(({ sql }) => sql.startsWith('UPDATE')).params, [
+      2,
+      [10, 11],
+    ]);
+    assert.equal(
+      loaded.queryCalls.filter(({ sql }) => sql.startsWith('INSERT INTO log')).length,
+      2
+    );
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rejects the whole batch when a UAL is missing or belongs elsewhere', async () => {
+  for (const rows of [
+    [{ ual_id: 10, facultad_id: 1, padre_id: null }],
+    [
+      { ual_id: 10, facultad_id: 1, padre_id: null },
+      { ual_id: 11, facultad_id: 3, padre_id: null },
+    ],
+    [
+      { ual_id: 10, facultad_id: 1, padre_id: null },
+      { ual_id: 11, facultad_id: 2, padre_id: 1 },
+    ],
+  ]) {
+    const loaded = loadRoute((sql) => {
+      if (sql.includes('FOR UPDATE OF u, f')) return { rows };
+      if (sql.includes('FROM dependencia_facultad WHERE')) {
+        return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+      }
+      return null;
+    });
+    try {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send({ ual_id: ['10', '11'], dependencia_id: 2 });
+      assert.equal(response.status, 400);
+      assert.equal(
+        loaded.queryCalls.some(({ sql }) => sql.startsWith('UPDATE')),
+        false
+      );
+      assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('facultad rolls back the batch when auditing its second UAL fails', async () => {
+  let auditCalls = 0;
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return {
+        rows: [
+          { ual_id: 10, nombre: 'Lab 1', facultad_id: 1, padre_id: null },
+          { ual_id: 11, nombre: 'Lab 2', facultad_id: 1, padre_id: null },
+        ],
+      };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    if (sql.startsWith('INSERT INTO log') && ++auditCalls === 2)
+      throw new Error('Audit unavailable');
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: ['10', '11'], dependencia_id: 2 });
+    assert.equal(response.status, 500);
+    assert.equal(auditCalls, 2);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'),
+      false
+    );
   } finally {
     loaded.restore();
   }

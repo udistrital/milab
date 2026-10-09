@@ -497,8 +497,18 @@ facultades. Desde **Facultades** (`/milab/api/facultad`) el administrador:
   quiénes son, y los coordinadores de la dependencia, incluidos los heredados
   de su facultad.
 
-Las UAL que siguen colgando directamente de una facultad se señalan para
-moverlas a una dependencia. La configuración de multas y el acceso a préstamos
+Las UAL que siguen colgando directamente de una facultad se abren desde
+**Organizar** en la columna **UALs directas**. Cada fila permite **Editar** sus
+datos o **Asignar a dependencia** mediante un modal con las dependencias de esa
+misma facultad. La asignación conserva los datos, laboratoristas e historial de
+la UAL, se registra en auditoría y vuelve al listado de UAL directas.
+Para reorganizar varias UAL, se marcan las casillas junto a sus nombres o se usa
+**Seleccionar todas las filtradas** (incluye todas las páginas del resultado).
+La selección se conserva al paginar o filtrar; **Limpiar selección** la vacía.
+**Asignar seleccionadas a dependencia** mueve todo el lote en una transacción:
+si alguna UAL no pertenece a esa facultad o falla el guardado, no se mueve ninguna.
+Si no hay
+dependencias, primero debe crearse una. La configuración de multas y el acceso a préstamos
 siguen siendo por registro; las dependencias no los heredan de su facultad.
 
 ## Reclamaciones de sanciones

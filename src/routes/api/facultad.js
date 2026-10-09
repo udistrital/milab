@@ -504,7 +504,85 @@ router.post('/ual/add', async (req, res) => {
   }
 });
 
-// Editar UAL (admin o coordinador dentro de su facultad)
+router.post('/ual/asignar-dependencia', async (req, res) => {
+  const rawIds = Array.isArray(req.body.ual_id) ? req.body.ual_id : [req.body.ual_id];
+  const validId = (value) =>
+    /^\d+$/.test(String(value)) && Number(value) > 0 && Number(value) <= 2147483647;
+  if (!rawIds.length || !rawIds.every(validId) || !validId(req.body.dependencia_id)) {
+    return res.status(400).render('home/message_error', {
+      message: 'Asignación inválida',
+      message2: 'Selecciona una o varias UAL y una dependencia válidas.',
+      limit: null,
+    });
+  }
+  const ualIds = [...new Set(rawIds.map(Number))];
+  const dependenciaId = Number(req.body.dependencia_id);
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const sourceRes = await client.query(
+      `SELECT u.ual_id, u.nombre, u.facultad_id, f.padre_id
+       FROM ual u
+       JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
+       WHERE u.ual_id = ANY($1::int[]) ORDER BY u.ual_id FOR UPDATE OF u, f`,
+      [ualIds]
+    );
+    const source = sourceRes.rows[0];
+    const destinationRes = await client.query(
+      `SELECT dependencia_facultad_id AS facultad_id, nombre, padre_id
+       FROM dependencia_facultad WHERE dependencia_facultad_id = $1 FOR UPDATE`,
+      [dependenciaId]
+    );
+    const destination = destinationRes.rows[0];
+    if (
+      sourceRes.rows.length !== ualIds.length ||
+      !destination?.padre_id ||
+      sourceRes.rows.some(
+        (row) => row.padre_id || Number(destination.padre_id) !== Number(row.facultad_id)
+      )
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(400).render('home/message_error', {
+        message: 'Dependencia destino inválida',
+        message2:
+          'Todas las UAL deben estar asignadas directamente a la facultad padre de esa dependencia. No se realizó ningún cambio.',
+        limit: null,
+      });
+    }
+
+    await client.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = ANY($2::int[])', [
+      dependenciaId,
+      ualIds,
+    ]);
+    for (const row of sourceRes.rows) {
+      await client.query(
+        'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+        [
+          req.session.user.tipo,
+          getLogActorDocument(req),
+          'asignar UAL a dependencia',
+          `${row.nombre} | dependencia: ${destination.nombre} (ID: ${dependenciaId})`,
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    return res.redirect(buildFacultyRedirect({ facultadId: source.facultad_id }));
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    console.error('Error asignando UAL a dependencia:', error);
+    return res.status(500).render('home/message_error', {
+      message: 'Error al asignar UAL',
+      message2: 'No se pudo guardar la asignación. Inténtalo nuevamente.',
+      limit: null,
+    });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+// Editar UAL (solo admin)
 router.post('/ual/editar', async (req, res) => {
   const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
   const { nombre } = req.body;
