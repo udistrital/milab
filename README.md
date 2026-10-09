@@ -58,6 +58,11 @@ El listado de sanciones aprovecha un ancho de hasta 1800 px y muestra código y 
 
 El filtro de sanciones permite acotar por ubicación según el rol: admin y coordinador general filtran por facultad, dependencia y UAL (coordinador general en solo lectura); el coordinador filtra por las dependencias y UAL a su cargo; el laboratorista, por las UAL asignadas. Los selectores se encadenan (facultad → dependencia → UAL) y el servidor rechaza valores fuera del alcance del usuario. La exportación Excel aplica los mismos filtros.
 
+Para admin y coordinador general, Dependencia se habilita al elegir Facultad
+y UAL se habilita al elegir Dependencia, mostrando solo sus registros asociados.
+Cambiar un nivel limpia los filtros inferiores. El coordinador empieza en
+Dependencia y el laboratorista selecciona directamente entre sus UAL asignadas.
+
 ## Monitoreo de paz y salvo
 
 El dashboard de monitoreo se organiza en dos pestañas: **Toda la plataforma** (fichas de indicadores al inicio, evolución del indicador seleccionado y gráficas de nuevos registros de los últimos 12 meses, usuarios por tipo, estado de cuentas académicas, estudiantes por programa y laboratoristas activos, todas limitadas al alcance del rol, con su detalle) y **Paz y salvos**, la única pestaña con indicadores de sanciones, reclamaciones y paz y salvos. En **Toda la plataforma**, el administrador y el coordinador general ven además la **cobertura operativa** (UAL activas con y sin laboratorista por facultad, laboratoristas y coordinadores por facultad, facultades sin coordinador y monitores que vencen en 30 días). Solo el administrador ve la **actividad en la plataforma**, calculada sobre la tabla `log`: acciones por mes, acciones más frecuentes, acciones por tipo de usuario, actividad por día de la semana y usuarios más activos. Si alguno de estos cálculos falla, el dashboard se muestra sin ese bloque. La pestaña activa se conserva en la URL (`#paz-y-salvos`). En el detalle de usuarios, el administrador gestiona cada cuenta con iconos de acción (editar usuario, editar correo, activar/inactivar e impersonar) en una columna fija a la derecha.
