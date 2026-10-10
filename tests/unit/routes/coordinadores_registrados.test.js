@@ -344,7 +344,7 @@ test('coordinadores_registrados actualizar assigns only dependencies of the sele
       }
       return { rows: [] };
     },
-    connectQueryImpl: async (sql, params = []) => {
+    connectQueryImpl: async (sql) => {
       if (sql.includes('FROM coordinador WHERE documento = $1')) {
         return {
           rows: [
