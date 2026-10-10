@@ -107,6 +107,8 @@
   <%- include('../partials/coordinador-editor-modal', {
     actionUrl: '/milab/api/coordinadores_registrados/actualizar',
     facultadesDisponibles: facultadesDisponibles || [],
+    dependenciasDisponibles:
+      typeof dependenciasDisponibles !== 'undefined' ? dependenciasDisponibles : [],
   }) %>
 
 <div class="px-3">

@@ -16,6 +16,8 @@ const errorHandlerPath = path.resolve(
 function buildApp(route, sessionUser) {
   const app = express();
 
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
   app.use((req, res, next) => {
     req.session = { user: sessionUser };
     res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
@@ -246,6 +248,47 @@ test('coordinadores_registrados lists registered coordinators', async () => {
   }
 });
 
+test('coordinadores_registrados loads faculties separately from their dependencies', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('information_schema.columns')) {
+        const candidates = params[1] || [];
+        return { rows: [{ column_name: candidates[0] }] };
+      }
+      return { rows: [] };
+    },
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador c')) {
+        return { rows: [] };
+      }
+      if (sql.includes('WHERE padre_id IS NULL')) {
+        return { rows: [{ facultad_id: 1, nombre: 'Facultad de Ingenieria' }] };
+      }
+      if (sql.includes('WHERE padre_id IS NOT NULL')) {
+        return {
+          rows: [{ dependencia_id: 11, facultad_id: 1, nombre: 'Dependencia A' }],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.facultadesDisponibles, [
+      { facultad_id: 1, nombre: 'Facultad de Ingenieria' },
+    ]);
+    assert.deepEqual(response.body.locals.dependenciasDisponibles, [
+      { dependencia_id: 11, facultad_id: 1, nombre: 'Dependencia A' },
+    ]);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('coordinadores_registrados actualizar-correo rejects email conflicts', async () => {
   const loaded = loadRoute({
     findConflictImpl: async () => ({ documento: '99999' }),
@@ -286,6 +329,211 @@ test('coordinadores_registrados actualizar-correo updates coordinator and linked
     assert.equal(
       calls.some((call) => call.sql.includes('UPDATE usuario')),
       true
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados actualizar assigns only dependencies of the selected faculty', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('information_schema.columns')) {
+        const candidates = params[1] || [];
+        return { rows: [{ column_name: candidates[0] }] };
+      }
+      return { rows: [] };
+    },
+    connectQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('WHERE dependencia_facultad_id = $1 AND padre_id IS NULL')) {
+        return { rows: [{ facultad_id: 1, nombre: 'Facultad de Ingenieria' }] };
+      }
+      if (sql.includes('padre_id = $1') && sql.includes('ANY($2::int[])')) {
+        return {
+          rows: [
+            { dependencia_id: 11, nombre: 'Dependencia A' },
+            { dependencia_id: 12, nombre: 'Dependencia B' },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app)
+      .post('/actualizar')
+      .send({
+        documento: '900',
+        correo: 'coord@udistrital.edu.co',
+        facultad_id: '1',
+        alcance: 'dependencias',
+        dependencia_ids: ['11', '12'],
+      });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.facultad_ids, [11, 12]);
+    assert.equal(response.body.facultad_nombre, 'Dependencia A, Dependencia B');
+
+    const calls = loaded.getClientCalls();
+    assert.equal(
+      calls.some(
+        (call) => call.sql.includes('INSERT INTO coordinador_facultad') && call.params[1] === 1
+      ),
+      false
+    );
+    assert.deepEqual(
+      calls
+        .filter((call) => call.sql.includes('INSERT INTO coordinador_facultad'))
+        .map((call) => call.params[1]),
+      [11, 12]
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados actualizar assigns the selected faculty as a whole', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('information_schema.columns')) {
+        const candidates = params[1] || [];
+        return { rows: [{ column_name: candidates[0] }] };
+      }
+      return { rows: [] };
+    },
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('WHERE dependencia_facultad_id = $1 AND padre_id IS NULL')) {
+        return { rows: [{ facultad_id: 1, nombre: 'Facultad de Ingenieria' }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app).post('/actualizar').send({
+      documento: '900',
+      correo: 'coord@udistrital.edu.co',
+      facultad_id: '1',
+      alcance: 'facultad',
+      dependencia_ids: [],
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.facultad_ids, [1]);
+    assert.equal(response.body.facultad_nombre, 'Facultad de Ingenieria');
+    assert.deepEqual(
+      loaded
+        .getClientCalls()
+        .filter((call) => call.sql.includes('INSERT INTO coordinador_facultad'))
+        .map((call) => call.params[1]),
+      [1]
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados actualizar rejects dependencies outside the selected faculty', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql, params = []) => {
+      if (sql.includes('information_schema.columns')) {
+        const candidates = params[1] || [];
+        return { rows: [{ column_name: candidates[0] }] };
+      }
+      return { rows: [] };
+    },
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('WHERE dependencia_facultad_id = $1 AND padre_id IS NULL')) {
+        return { rows: [{ facultad_id: 1, nombre: 'Facultad de Ingenieria' }] };
+      }
+      if (sql.includes('padre_id = $1') && sql.includes('ANY($2::int[])')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app)
+      .post('/actualizar')
+      .send({
+        documento: '900',
+        correo: 'coord@udistrital.edu.co',
+        facultad_id: '1',
+        alcance: 'dependencias',
+        dependencia_ids: ['99'],
+      });
+
+    assert.equal(response.status, 400);
+    assert.match(response.body.message, /no pertenecen a la facultad seleccionada/i);
+    assert.equal(
+      loaded.getClientCalls().some((call) => call.sql === 'BEGIN'),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados actualizar preserves assignments when assignment is unchanged', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app).post('/actualizar').send({
+      documento: '900',
+      correo: 'nuevo@udistrital.edu.co',
+    });
+
+    assert.equal(response.status, 200);
+    const calls = loaded.getClientCalls();
+    assert.equal(
+      calls.some((call) => call.sql.includes('DELETE FROM coordinador_facultad')),
+      false
+    );
+    assert.equal(
+      calls.some((call) => call.sql.includes('INSERT INTO coordinador_facultad')),
+      false
     );
   } finally {
     loaded.restore();
