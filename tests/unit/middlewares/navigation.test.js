@@ -171,7 +171,7 @@ test('navigationMiddleware sets pending sanctions badge for coordinador', async 
 });
 
 test('claim notification badges reflect unread student answers and assigned pending requests', async () => {
-  for (const role of ['estudiante', 'laboratorista', 'admin']) {
+  for (const role of ['estudiante', 'laboratorista']) {
     const loaded = loadNavigationModule({
       queryImpl: async (sql) =>
         sql.includes('reclamacion_sancion') ? { rows: [{ total: 2 }] } : { rows: [] },
@@ -196,6 +196,30 @@ test('claim notification badges reflect unread student answers and assigned pend
     } finally {
       loaded.restore();
     }
+  }
+});
+
+test('admins can manage claims without receiving a pending-claim notification badge', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) =>
+      sql.includes('reclamacion_sancion') ? { rows: [{ total: 2 }] } : { rows: [] },
+  });
+
+  try {
+    const res = { locals: {} };
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'admin', documento: '123' } } },
+      res,
+      (error) => assert.ifError(error)
+    );
+
+    assert.equal(res.locals.claimNotifications, null);
+    assert.equal(
+      loaded.getQueryCalls().some((call) => call.sql.includes('reclamacion_sancion')),
+      false
+    );
+  } finally {
+    loaded.restore();
   }
 });
 
