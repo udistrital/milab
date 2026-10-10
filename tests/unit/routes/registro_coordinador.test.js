@@ -343,183 +343,6 @@ test('registro_coordinador creates coordinador_general successfully without facu
     return { rows: [] };
   });
 
-  test('registro_coordinador assigns a coordinator only to the selected dependencies', async () => {
-    const calls = [];
-    const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
-      const statement = String(sql || '');
-      calls.push({ sql: statement, params });
-
-      if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
-      if (statement.includes('existing_emails')) return { rows: [] };
-      if (
-        statement.includes(
-          'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2'
-        )
-      ) {
-        return { rows: [] };
-      }
-      if (statement.includes('INSERT INTO usuario (correo, documento, nombre)')) {
-        return { rows: [{ id: 321 }] };
-      }
-      if (statement.includes('information_schema.columns')) {
-        return {
-          rows: [
-            {
-              column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
-            },
-          ],
-        };
-      }
-      if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
-        return { rows: [{ facultad_id: 10, nombre: 'Facultad de prueba' }] };
-      }
-      if (statement.includes('FROM dependencia_facultad') && statement.includes('ANY($2::int[])')) {
-        return {
-          rows: [
-            { dependencia_id: 101, nombre: 'Dependencia A' },
-            { dependencia_id: 102, nombre: 'Dependencia B' },
-          ],
-        };
-      }
-      return { rows: [] };
-    });
-
-    try {
-      const response = await request(buildApp(loaded.route))
-        .post('/')
-        .type('form')
-        .send({
-          nombre: 'Coordinador Prueba',
-          documento: '79520185',
-          correo: 'coordinador.prueba@udistrital.edu.co',
-          role_name: 'coordinador',
-          facultad_id: '10',
-          alcance: 'dependencias',
-          dependencia_ids: ['101', '102'],
-          numero_resolucion_coordinador: 'Resolucion 1001 de 2026',
-          soporte_resolucion: 'https://example.test/resolucion.pdf',
-        });
-
-      assert.equal(response.status, 200);
-      assert.equal(response.body.view, 'home/message_success');
-      const assignment = calls.find((call) =>
-        call.sql.includes('INSERT INTO coordinador_facultad')
-      );
-      assert.deepEqual(assignment.params, ['79520185', [101, 102]]);
-      assert.match(assignment.sql, /UNNEST\(\$2::int\[\]\)/);
-      assert.match(loaded.sentMessages[0].text, /Dependencia A \(Facultad de prueba\)/);
-    } finally {
-      loaded.restore();
-    }
-  });
-
-  test('registro_coordinador assigns the faculty itself for whole-faculty scope', async () => {
-    const calls = [];
-    const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
-      const statement = String(sql || '');
-      calls.push({ sql: statement, params });
-      if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
-      if (statement.includes('existing_emails')) return { rows: [] };
-      if (
-        statement.includes(
-          'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2'
-        )
-      ) {
-        return { rows: [] };
-      }
-      if (statement.includes('INSERT INTO usuario (correo, documento, nombre)')) {
-        return { rows: [{ id: 322 }] };
-      }
-      if (statement.includes('information_schema.columns')) {
-        return {
-          rows: [
-            {
-              column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
-            },
-          ],
-        };
-      }
-      if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
-        return { rows: [{ facultad_id: 10, nombre: 'Facultad completa' }] };
-      }
-      return { rows: [] };
-    });
-
-    try {
-      const response = await request(buildApp(loaded.route)).post('/').type('form').send({
-        nombre: 'Coordinador Prueba',
-        documento: '79520187',
-        correo: 'coordinador.facultad@udistrital.edu.co',
-        role_name: 'coordinador',
-        facultad_id: '10',
-        alcance: 'facultad',
-        numero_resolucion_coordinador: 'Resolucion 1003 de 2026',
-        soporte_resolucion: 'https://example.test/resolucion.pdf',
-      });
-
-      assert.equal(response.status, 200);
-      assert.equal(response.body.view, 'home/message_success');
-      const assignment = calls.find((call) =>
-        call.sql.includes('INSERT INTO coordinador_facultad')
-      );
-      assert.deepEqual(assignment.params, ['79520187', [10]]);
-      assert.equal(
-        calls.some((call) => call.sql.includes('ANY($2::int[])')),
-        false
-      );
-    } finally {
-      loaded.restore();
-    }
-  });
-
-  test('registro_coordinador rejects dependencies outside the selected faculty', async () => {
-    const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
-      const statement = String(sql || '');
-      if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
-      if (statement.includes('existing_emails')) return { rows: [] };
-      if (statement.includes('information_schema.columns')) {
-        return {
-          rows: [
-            {
-              column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
-            },
-          ],
-        };
-      }
-      if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
-        return { rows: [{ facultad_id: 10, nombre: 'Facultad de prueba' }] };
-      }
-      if (statement.includes('FROM dependencia_facultad') && statement.includes('ANY($2::int[])')) {
-        return { rows: [{ dependencia_id: 101, nombre: 'Dependencia A' }] };
-      }
-      return { rows: [] };
-    });
-
-    try {
-      const response = await request(buildApp(loaded.route))
-        .post('/')
-        .type('form')
-        .send({
-          nombre: 'Coordinador Prueba',
-          documento: '79520186',
-          correo: 'coordinador.prueba@udistrital.edu.co',
-          role_name: 'coordinador',
-          facultad_id: '10',
-          alcance: 'dependencias',
-          dependencia_ids: ['101', '999'],
-          numero_resolucion_coordinador: 'Resolucion 1002 de 2026',
-          soporte_resolucion: 'https://example.test/resolucion.pdf',
-        });
-
-      assert.equal(response.status, 200);
-      assert.equal(response.body.view, 'home/message_error');
-      assert.match(response.body.locals.message, /no pertenecen a la facultad seleccionada/i);
-      assert.equal(loaded.sentMessages.length, 0);
-    } finally {
-      loaded.restore();
-    }
-  });
-
   try {
     const app = buildApp(loaded.route);
     const response = await request(app).post('/').type('form').send({
@@ -546,6 +369,175 @@ test('registro_coordinador creates coordinador_general successfully without facu
         entry.params[1] === 'coordinador_general'
     );
     assert.equal(hasGeneralRoleAssignment, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador assigns a coordinator only to the selected dependencies', async () => {
+  const calls = [];
+  const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
+    const statement = String(sql || '');
+    calls.push({ sql: statement, params });
+
+    if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
+    if (statement.includes('existing_emails')) return { rows: [] };
+    if (
+      statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+    ) {
+      return { rows: [] };
+    }
+    if (statement.includes('INSERT INTO usuario (correo, documento, nombre)')) {
+      return { rows: [{ id: 321 }] };
+    }
+    if (statement.includes('information_schema.columns')) {
+      return {
+        rows: [
+          {
+            column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
+          },
+        ],
+      };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
+      return { rows: [{ facultad_id: 10, nombre: 'Facultad de prueba' }] };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('ANY($2::int[])')) {
+      return {
+        rows: [
+          { dependencia_id: 101, nombre: 'Dependencia A' },
+          { dependencia_id: 102, nombre: 'Dependencia B' },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Coordinador Prueba',
+        documento: '79520185',
+        correo: 'coordinador.prueba@udistrital.edu.co',
+        role_name: 'coordinador',
+        facultad_id: '10',
+        alcance: 'dependencias',
+        dependencia_ids: ['101', '102'],
+        numero_resolucion_coordinador: 'Resolucion 1001 de 2026',
+        soporte_resolucion: 'https://example.test/resolucion.pdf',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    const assignment = calls.find((call) => call.sql.includes('INSERT INTO coordinador_facultad'));
+    assert.deepEqual(assignment.params, ['79520185', [101, 102]]);
+    assert.match(assignment.sql, /UNNEST\(\$2::int\[\]\)/);
+    assert.match(loaded.sentMessages[0].text, /Dependencia A \(Facultad de prueba\)/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador assigns the faculty itself for whole-faculty scope', async () => {
+  const calls = [];
+  const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
+    const statement = String(sql || '');
+    calls.push({ sql: statement, params });
+    if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
+    if (statement.includes('existing_emails')) return { rows: [] };
+    if (
+      statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+    ) {
+      return { rows: [] };
+    }
+    if (statement.includes('INSERT INTO usuario (correo, documento, nombre)')) {
+      return { rows: [{ id: 322 }] };
+    }
+    if (statement.includes('information_schema.columns')) {
+      return {
+        rows: [
+          {
+            column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
+          },
+        ],
+      };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
+      return { rows: [{ facultad_id: 10, nombre: 'Facultad completa' }] };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route)).post('/').type('form').send({
+      nombre: 'Coordinador Prueba',
+      documento: '79520187',
+      correo: 'coordinador.facultad@udistrital.edu.co',
+      role_name: 'coordinador',
+      facultad_id: '10',
+      alcance: 'facultad',
+      numero_resolucion_coordinador: 'Resolucion 1003 de 2026',
+      soporte_resolucion: 'https://example.test/resolucion.pdf',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    const assignment = calls.find((call) => call.sql.includes('INSERT INTO coordinador_facultad'));
+    assert.deepEqual(assignment.params, ['79520187', [10]]);
+    assert.equal(
+      calls.some((call) => call.sql.includes('ANY($2::int[])')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador rejects dependencies outside the selected faculty', async () => {
+  const loaded = loadRouteWithDbQuery(async (sql, params = []) => {
+    const statement = String(sql || '');
+    if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
+    if (statement.includes('existing_emails')) return { rows: [] };
+    if (statement.includes('information_schema.columns')) {
+      return {
+        rows: [
+          {
+            column_name: params[1].includes('padre_id') ? 'padre_id' : 'dependencia_facultad_id',
+          },
+        ],
+      };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
+      return { rows: [{ facultad_id: 10, nombre: 'Facultad de prueba' }] };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('ANY($2::int[])')) {
+      return { rows: [{ dependencia_id: 101, nombre: 'Dependencia A' }] };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Coordinador Prueba',
+        documento: '79520186',
+        correo: 'coordinador.prueba@udistrital.edu.co',
+        role_name: 'coordinador',
+        facultad_id: '10',
+        alcance: 'dependencias',
+        dependencia_ids: ['101', '999'],
+        numero_resolucion_coordinador: 'Resolucion 1002 de 2026',
+        soporte_resolucion: 'https://example.test/resolucion.pdf',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /no pertenecen a la facultad seleccionada/i);
+    assert.equal(loaded.sentMessages.length, 0);
   } finally {
     loaded.restore();
   }
