@@ -12,6 +12,82 @@
   transform: scale(1.05);
 }
 
+.coordinator-autocomplete-results {
+  position: absolute;
+  z-index: 20;
+  inset: 100% 0 auto;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--app-border, #ced4da);
+  border-radius: 0.75rem;
+  background: var(--app-surface-strong, #fff);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.16);
+  text-align: left;
+}
+
+[data-coordinator-autocomplete] {
+  position: relative;
+}
+
+.coordinator-autocomplete-option {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.coordinator-autocomplete-option:hover,
+.coordinator-autocomplete-option:focus-visible {
+  background: rgba(244, 163, 0, 0.14);
+  outline: none;
+}
+
+.coordinator-dependency-list,
+.lab-selection-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  max-height: 22rem;
+  overflow: auto;
+  padding: 0.6rem;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  border-radius: 0.75rem;
+  background: var(--app-surface-muted, rgba(255, 255, 255, 0.75));
+}
+
+.coordinator-dependency-option,
+.lab-selection-option {
+  min-width: 0;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 0.65rem;
+  background: var(--app-surface-strong, #fff);
+  overflow-wrap: anywhere;
+}
+
+.coordinator-dependency-option {
+  display: flex;
+  align-items: flex-start;
+}
+
+.lab-selection-toolbar {
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (max-width: 767.98px) {
+  .coordinator-dependency-list,
+  .lab-selection-list {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: 18rem;
+  }
+}
+
 #image-container {
   transition: all 0.3s;
 }

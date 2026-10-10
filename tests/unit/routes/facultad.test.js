@@ -122,17 +122,160 @@ test('facultad parses form body for UAL edit requests', async () => {
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
         sql ===
-          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6 WHERE ual_id = $7' &&
+          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6, facultad_id = $7 WHERE ual_id = $8' &&
         params[0] === 'UAL Nueva' &&
         params[1] === 'UAL_NUEVA' &&
         params[2] === 'Descripcion nueva' &&
         params[3] === null &&
         params[4] === null &&
         params[5] === false &&
-        params[6] === '10'
+        params[6] === '1' &&
+        params[7] === '10'
     );
     assert.ok(updatedNameQuery);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
   } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad editing a UAL between dependencias copies its direct coordinators atomically', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL Antigua',
+            ual_facultad: 10,
+            facultad_nombre: 'Dependencia anterior',
+            facultad_padre_id: 1,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return {
+        rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia nueva', padre_id: 1 }],
+      };
+    }
+    if (sql.includes('INSERT INTO coordinador_facultad')) {
+      return { rows: [{ coordinador_documento_id: '900' }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: '10',
+      facultad_id: '10',
+      new_facultad_id: '20',
+      nombre: 'UAL Actualizada',
+      codigo_abreviacion: 'UAL_ACT',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=20');
+    const copyIndex = loaded.queryCalls.findIndex(({ sql }) =>
+      sql.includes('INSERT INTO coordinador_facultad')
+    );
+    const moveIndex = loaded.queryCalls.findIndex(({ sql }) => sql.includes('UPDATE ual SET'));
+    const commitIndex = loaded.queryCalls.findIndex(({ sql }) => sql === 'COMMIT');
+    assert.ok(copyIndex > 0);
+    assert.ok(moveIndex > copyIndex);
+    assert.ok(commitIndex > moveIndex);
+    assert.deepEqual(loaded.queryCalls[copyIndex].params, [10, '20']);
+    assert.match(
+      loaded.queryCalls[copyIndex].sql,
+      /ON CONFLICT \(coordinador_documento_id, facultad_id\) DO NOTHING/
+    );
+    assert.ok(
+      loaded.queryCalls.some(
+        ({ sql, params }) =>
+          sql.startsWith('INSERT INTO log') &&
+          params[3].includes('coordinadores asignados en destino: 1')
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad moving a UAL from a root faculty does not duplicate inherited coordinators', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL de facultad',
+            ual_facultad: 1,
+            facultad_nombre: 'Facultad',
+            facultad_padre_id: null,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return { rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: 10,
+      facultad_id: 1,
+      new_facultad_id: 20,
+      nombre: 'UAL de facultad',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql.includes('INSERT INTO coordinador_facultad')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rolls back the coordinator assignment and UAL move if edit logging fails', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL Antigua',
+            ual_facultad: 10,
+            facultad_nombre: 'Dependencia anterior',
+            facultad_padre_id: 1,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return {
+        rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia nueva', padre_id: 1 }],
+      };
+    }
+    if (sql.includes('INSERT INTO coordinador_facultad')) {
+      return { rows: [{ coordinador_documento_id: '900' }] };
+    }
+    if (sql.startsWith('INSERT INTO log')) throw new Error('Audit unavailable');
+    return null;
+  });
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: 10,
+      facultad_id: 10,
+      new_facultad_id: 20,
+      nombre: 'UAL Actualizada',
+    });
+    assert.equal(response.status, 200);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'),
+      false
+    );
+  } finally {
+    console.error = originalError;
     loaded.restore();
   }
 });

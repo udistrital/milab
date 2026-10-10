@@ -17,6 +17,7 @@ MILab es la aplicación web para la gestión de paz y salvos en laboratorios de 
 - **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
+- **Registro de coordinadores y laboratoristas:** el coordinador queda asignado a una sola facultad, con alcance en toda ella o en dependencias específicas. El selector de coordinador permite buscar por nombre/documento y el listado de laboratorios se puede filtrar y seleccionar de forma ordenada.
 - **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
 
 ## Política de sesiones
@@ -456,6 +457,15 @@ el catálogo y las reclamaciones de sanciones y la jerarquía
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/20261008_hotfix_sanciones_dependencias.sql
 ```
 
+El registro de monitores no ejecuta DDL desde la aplicación, así que desplegar
+el código no requiere permisos `CREATE` sobre `milab` ni ejecutar una migración
+si `milab.monitor` ya existe y el rol de aplicación puede acceder a ella (la
+tabla forma parte de `sql-scripts/db_structure.sql`). Si en producción falta la
+tabla o el rol no tiene permisos de tabla, un administrador de base de datos
+debe aplicar
+[`sql/20261010_hotfix_monitor_schema_permissions.sql`](sql/20261010_hotfix_monitor_schema_permissions.sql),
+que crea la tabla si hace falta y replica en ella los permisos de `milab.multa`.
+
 Hasta esta versión las categorías eran una lista fija en
 `src/views/partials/multa-options.ejs`; la tabla `multa` solo guarda el texto
 en `cat_multa`. El script crea y carga el catálogo con esas 13 categorías,
@@ -515,6 +525,13 @@ si alguna UAL no pertenece a esa facultad o falla el guardado, no se mueve ningu
 Si no hay
 dependencias, primero debe crearse una. La configuración de multas y el acceso a préstamos
 siguen siendo por registro; las dependencias no los heredan de su facultad.
+
+Al editar una UAL de una dependencia y moverla a otra, las asignaciones directas
+de coordinadores de la dependencia de origen también se agregan a la dependencia
+destino, conservando las asignaciones originales y los estados activos/inactivos.
+El registro y el cambio de ubicación se guardan en una sola transacción. Los
+coordinadores asignados a una dependencia tienen alcance sobre todas sus UAL;
+las asignaciones a la facultad padre continúan heredándose automáticamente.
 
 ## Reclamaciones de sanciones
 

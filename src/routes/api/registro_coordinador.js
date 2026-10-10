@@ -74,15 +74,16 @@ function roleHasFacultyAssignments(roleName) {
   return roleName !== ROLE_COORDINADOR_GENERAL;
 }
 
-function parseFacultyIds(facultyIdsInput) {
-  return Array.isArray(facultyIdsInput)
-    ? facultyIdsInput.map((value) => Number.parseInt(value, 10)).filter(Number.isFinite)
-    : [Number.parseInt(facultyIdsInput, 10)].filter(Number.isFinite);
+function parseIdList(input) {
+  const values = Array.isArray(input) ? input : [input];
+  return [...new Set(values.map(Number).filter((value) => Number.isInteger(value) && value > 0))];
 }
 
 function hasRequiredCoordinatorFields({
   needsFacultyAssignment,
-  facultyIds,
+  facultyId,
+  assignmentScope,
+  dependencyIds,
   numeroResolucion,
   soporteResolucion,
 }) {
@@ -90,16 +91,27 @@ function hasRequiredCoordinatorFields({
     return false;
   }
 
-  if (needsFacultyAssignment && !facultyIds.length) {
+  if (
+    needsFacultyAssignment &&
+    (!Number.isInteger(facultyId) ||
+      facultyId <= 0 ||
+      !['facultad', 'dependencias'].includes(assignmentScope) ||
+      (assignmentScope === 'dependencias' && !dependencyIds.length))
+  ) {
     return false;
   }
 
   return true;
 }
 
-async function resolveSelectedFaculties({ needsFacultyAssignment, facultyIds }) {
+async function resolveSelectedCoordinatorAssignments({
+  needsFacultyAssignment,
+  facultyId,
+  assignmentScope,
+  dependencyIds,
+}) {
   if (!needsFacultyAssignment) {
-    return { faculties: [], errorPayload: null };
+    return { assignmentIds: [], assignmentLabels: [], errorPayload: null };
   }
 
   const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
@@ -109,32 +121,114 @@ async function resolveSelectedFaculties({ needsFacultyAssignment, facultyIds }) 
   ]);
   if (!facultyIdColumn) {
     return {
-      faculties: [],
+      assignmentIds: [],
+      assignmentLabels: [],
       errorPayload: {
         message: '¡Algo ha salido mal!',
-        message2: 'No fue posible validar las facultades seleccionadas.',
+        message2: 'No fue posible validar la facultad seleccionada.',
       },
     };
   }
 
-  const facs = await pool.query(
+  const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
+  if (!parentIdColumn) {
+    return {
+      assignmentIds: [],
+      assignmentLabels: [],
+      errorPayload: {
+        message: '¡Algo ha salido mal!',
+        message2: 'No fue posible validar las dependencias de la facultad.',
+      },
+    };
+  }
+
+  const facultyResult = await pool.query(
     `SELECT ${facultyIdColumn} AS facultad_id, nombre
      FROM dependencia_facultad
-     WHERE ${facultyIdColumn} = ANY($1::int[])`,
-    [facultyIds]
+     WHERE ${facultyIdColumn} = $1 AND ${parentIdColumn} IS NULL`,
+    [facultyId]
   );
 
-  if (facs.rows.length !== facultyIds.length) {
+  if (!facultyResult.rows.length) {
     return {
-      faculties: [],
+      assignmentIds: [],
+      assignmentLabels: [],
       errorPayload: {
-        message: 'Una o más facultades seleccionadas no existen.',
-        message2: 'Verifica la selección',
+        message: 'La facultad seleccionada no existe.',
+        message2: 'Selecciona una facultad válida.',
       },
     };
   }
 
-  return { faculties: facs.rows, errorPayload: null };
+  if (assignmentScope === 'facultad') {
+    return {
+      assignmentIds: [facultyId],
+      assignmentLabels: [facultyResult.rows[0].nombre],
+      errorPayload: null,
+    };
+  }
+
+  const dependencies = await pool.query(
+    `SELECT ${facultyIdColumn} AS dependencia_id, nombre
+     FROM dependencia_facultad
+     WHERE ${parentIdColumn} = $1
+       AND ${facultyIdColumn} = ANY($2::int[])
+     ORDER BY nombre ASC`,
+    [facultyId, dependencyIds]
+  );
+
+  if (dependencies.rows.length !== dependencyIds.length) {
+    return {
+      assignmentIds: [],
+      assignmentLabels: [],
+      errorPayload: {
+        message: 'Una o más dependencias no pertenecen a la facultad seleccionada.',
+        message2: 'Verifica la selección de dependencias.',
+      },
+    };
+  }
+
+  return {
+    assignmentIds: dependencies.rows.map((dependency) => dependency.dependencia_id),
+    assignmentLabels: dependencies.rows.map(
+      (dependency) => `${dependency.nombre} (${facultyResult.rows[0].nombre})`
+    ),
+    errorPayload: null,
+  };
+}
+
+async function fetchCoordinatorAssignmentOptions() {
+  const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
+    'dependencia_facultad_id',
+    'facultad_id',
+    'id_facultad',
+  ]);
+  const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
+  if (!facultyIdColumn || !parentIdColumn) {
+    throw new Error('No fue posible identificar facultades y dependencias.');
+  }
+
+  const [facultyResult, dependencyResult] = await Promise.all([
+    pool.query(
+      `SELECT ${facultyIdColumn} AS facultad_id, nombre
+       FROM dependencia_facultad
+       WHERE ${parentIdColumn} IS NULL
+       ORDER BY nombre ASC`
+    ),
+    pool.query(
+      `SELECT ${facultyIdColumn} AS dependencia_id,
+              ${parentIdColumn} AS facultad_id,
+              nombre
+       FROM dependencia_facultad
+       WHERE ${parentIdColumn} IS NOT NULL
+       ORDER BY nombre ASC`
+    ),
+  ]);
+
+  return {
+    facultades: facultyResult.rows,
+    dependencias: dependencyResult.rows,
+  };
 }
 
 function resolveOatiEmail(payload) {
@@ -302,24 +396,7 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
-      'dependencia_facultad_id',
-      'facultad_id',
-      'id_facultad',
-    ]);
-    if (!facultyIdColumn) {
-      return res.render('home/message_error', {
-        message: '¡Algo ha salido mal!',
-        message2: 'No fue posible cargar las facultades.',
-        limit: null,
-      });
-    }
-
-    const result = await pool.query(
-      `SELECT ${facultyIdColumn} AS facultad_id, nombre
-       FROM dependencia_facultad
-       ORDER BY nombre ASC`
-    );
+    const assignmentOptions = await fetchCoordinatorAssignmentOptions();
     const documentoQuery = (req.query.documento || '').toString().trim();
     let lookupData = null;
     let lookupMessage = null;
@@ -346,7 +423,7 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
     return res.render('home/registro_coordinador', {
       error: null,
       confirmacion: null,
-      facultades: result.rows,
+      ...assignmentOptions,
       selectedRole: resolveCoordinatorRegistrationRole(req.query.role_name),
       lookupData,
       lookupMessage,
@@ -394,30 +471,45 @@ router.post(
       .optional({ checkFalsy: true })
       .isIn(ALLOWED_COORDINATOR_REGISTRATION_ROLES)
       .withMessage('El rol de coordinador seleccionado no es valido'),
-    // Soporte de múltiples facultades: acepta array o string único
-    body('facultad_ids')
+    body('facultad_id').custom((val, { req }) => {
+      const selectedRole = resolveCoordinatorRegistrationRole(req.body.role_name);
+
+      if (!roleHasFacultyAssignments(selectedRole)) {
+        return true;
+      }
+
+      if (!/^\d+$/.test(String(val || '')) || Number(val) <= 0) {
+        throw new Error('Debe seleccionar una facultad válida');
+      }
+
+      return true;
+    }),
+    body('alcance').custom((val, { req }) => {
+      if (!roleHasFacultyAssignments(resolveCoordinatorRegistrationRole(req.body.role_name))) {
+        return true;
+      }
+
+      if (!['facultad', 'dependencias'].includes(val)) {
+        throw new Error(
+          'Selecciona si el coordinador tendrá alcance en toda la facultad o en dependencias específicas'
+        );
+      }
+
+      return true;
+    }),
+    body('dependencia_ids')
       .custom((val, { req }) => {
         const selectedRole = resolveCoordinatorRegistrationRole(req.body.role_name);
-
-        if (!roleHasFacultyAssignments(selectedRole)) {
+        if (!roleHasFacultyAssignments(selectedRole) || req.body.alcance !== 'dependencias') {
           return true;
         }
 
-        if (Array.isArray(val)) {
-          if (!val.length || !val.every((v) => /^\d+$/.test(String(v)))) {
-            throw new Error('Debe seleccionar al menos una facultad válida');
-          }
-          return true;
+        const ids = Array.isArray(val) ? val : [val];
+        if (!ids.length || ids.some((id) => !/^\d+$/.test(String(id || '')) || Number(id) <= 0)) {
+          throw new Error('Selecciona al menos una dependencia válida');
         }
 
-        if (typeof val === 'string') {
-          if (!/^\d+$/.test(val)) {
-            throw new Error('Debe seleccionar al menos una facultad válida');
-          }
-          return true;
-        }
-
-        throw new Error('Debe seleccionar al menos una facultad válida');
+        return true;
       })
       .bail(),
     body('numero_resolucion_coordinador')
@@ -453,20 +545,22 @@ router.post(
     const needsFacultyAssignment = roleHasFacultyAssignments(roleName);
     const normalizedEmail = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
 
-    // Normalizar facultades seleccionadas (array de enteros)
-    const facultyIdsInput = req.body.facultad_ids;
-    const facultyIds = parseFacultyIds(facultyIdsInput);
+    const facultyId = Number(req.body.facultad_id);
+    const assignmentScope = (req.body.alcance || '').toString();
+    const dependencyIds = parseIdList(req.body.dependencia_ids);
 
     if (
       !hasRequiredCoordinatorFields({
         needsFacultyAssignment,
-        facultyIds,
+        facultyId,
+        assignmentScope,
+        dependencyIds,
         numeroResolucion: numero_resolucion_coordinador,
         soporteResolucion: soporte_resolucion,
       })
     ) {
       return res.render('home/message_error', {
-        message: '¡Todos los campos son obligatorios!',
+        message: 'Debes seleccionar una facultad y definir su alcance.',
         message2: 'Inténtalo nuevamente',
         limit: null,
       });
@@ -486,14 +580,16 @@ router.post(
         });
       }
 
-      const selectedFaculties = await resolveSelectedFaculties({
+      const selectedAssignments = await resolveSelectedCoordinatorAssignments({
         needsFacultyAssignment,
-        facultyIds,
+        facultyId,
+        assignmentScope,
+        dependencyIds,
       });
-      if (selectedFaculties.errorPayload) {
+      if (selectedAssignments.errorPayload) {
         return res.render('home/message_error', {
-          message: selectedFaculties.errorPayload.message,
-          message2: selectedFaculties.errorPayload.message2,
+          message: selectedAssignments.errorPayload.message,
+          message2: selectedAssignments.errorPayload.message2,
           limit: null,
         });
       }
@@ -538,14 +634,13 @@ router.post(
           });
         }
 
-        for (const facId of facultyIds) {
-          await pool.query(
-            `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
-             VALUES ($1, $2)
-             ON CONFLICT DO NOTHING`,
-            [documento, facId]
-          );
-        }
+        await pool.query(
+          `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
+           SELECT $1, selected.facultad_id
+           FROM UNNEST($2::int[]) AS selected(facultad_id)
+           ON CONFLICT DO NOTHING`,
+          [documento, selectedAssignments.assignmentIds]
+        );
       }
 
       await pool.query(
@@ -558,9 +653,6 @@ router.post(
         ]
       );
 
-      // Obtener información de las facultades para el correo
-      const facultadInfo = selectedFaculties.faculties.map((faculty) => faculty.nombre);
-
       // Enviar correo de bienvenida al coordinador
       const datosCoordinador = {
         documento,
@@ -568,12 +660,12 @@ router.post(
         correo: normalizedEmail,
         role_name: roleName,
         role_label: roleDisplayName(roleName),
-        faculty_ids: facultyIds,
+        faculty_ids: selectedAssignments.assignmentIds,
         numero_resolucion_coordinador,
         soporte_resolucion,
         facultades_nombres:
-          facultadInfo.length > 0
-            ? facultadInfo.join(', ')
+          selectedAssignments.assignmentLabels.length > 0
+            ? selectedAssignments.assignmentLabels.join(', ')
             : 'Sin facultades asignadas (acceso general de lectura)',
         creado_por: req.session.user.tipo,
         documento_creador: req.session.user.documento,
@@ -606,7 +698,7 @@ async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
   const roleCapabilitiesMessage =
     datosCoordinador.role_name === ROLE_COORDINADOR_GENERAL
       ? 'usted tendrá acceso global de solo lectura sobre todos los módulos habilitados en MILab.'
-      : 'usted tendrá acceso a funcionalidades administrativas específicas para la gestión de laboratoristas y procesos de paz y salvos en su facultad.';
+      : 'usted tendrá acceso a funcionalidades administrativas específicas para la gestión de laboratoristas y procesos de paz y salvos dentro del alcance institucional asignado.';
 
   const fechaActual = new Date().toLocaleDateString('es-CO', {
     year: 'numeric',
@@ -880,13 +972,11 @@ router.get('/new', async function (req, res) {
     });
   }
 
-  const result = await pool.query(
-    'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad'
-  );
+  const assignmentOptions = await fetchCoordinatorAssignmentOptions();
   return res.render('home/registro_coordinador', {
     error: null,
     confirmacion: null,
-    facultades: result.rows,
+    ...assignmentOptions,
     selectedRole: ROLE_COORDINADOR,
     lookupData: null,
     lookupMessage: null,

@@ -19,19 +19,31 @@ function createExecutor(results = []) {
   };
 }
 
-test('ensureMonitorSchema creates table and index only once per process', async () => {
-  const executor = createExecutor();
+test('ensureMonitorSchema verifies the deployed table without creating schema objects', async () => {
+  const executor = createExecutor([
+    { rows: [{ monitor_table: 'milab.monitor' }] },
+    { rows: [{ monitor_table: 'milab.monitor' }] },
+  ]);
 
   await ensureMonitorSchema(executor);
-  const firstCallCount = executor.calls.length;
   await ensureMonitorSchema(executor);
 
-  assert.equal(firstCallCount, 2);
   assert.equal(executor.calls.length, 2);
+  assert.ok(executor.calls.every((call) => call.sql.includes("to_regclass('milab.monitor')")));
+  assert.ok(executor.calls.every((call) => !call.sql.includes('CREATE')));
+});
+
+test('ensureMonitorSchema reports when the monitor migration was not applied', async () => {
+  const executor = createExecutor([{ rows: [{ monitor_table: null }] }]);
+
+  await assert.rejects(
+    ensureMonitorSchema(executor),
+    /La tabla debe aprovisionarse con un usuario administrador/
+  );
 });
 
 test('fetchMonitorByDocumento returns null for empty documento', async () => {
-  const executor = createExecutor();
+  const executor = createExecutor([{ rows: [{ monitor_table: 'milab.monitor' }] }]);
 
   const result = await fetchMonitorByDocumento('   ', executor);
 
@@ -44,6 +56,7 @@ test('fetchMonitorByDocumento returns null for empty documento', async () => {
 
 test('fetchMonitorByDocumento returns the first matching row', async () => {
   const executor = createExecutor([
+    { rows: [{ monitor_table: 'milab.monitor' }] },
     {
       rows: [
         {
@@ -64,7 +77,7 @@ test('fetchMonitorByDocumento returns the first matching row', async () => {
 });
 
 test('upsertMonitorProfile rejects missing base monitor data', async () => {
-  const executor = createExecutor();
+  const executor = createExecutor([{ rows: [{ monitor_table: 'milab.monitor' }] }]);
 
   await assert.rejects(
     upsertMonitorProfile({ documento: '', nombre: 'Monitor', correo: '' }, executor),
@@ -73,7 +86,7 @@ test('upsertMonitorProfile rejects missing base monitor data', async () => {
 });
 
 test('upsertMonitorProfile normalizes correo and optional fields before persisting', async () => {
-  const executor = createExecutor();
+  const executor = createExecutor([{ rows: [{ monitor_table: 'milab.monitor' }] }]);
 
   await upsertMonitorProfile(
     {
