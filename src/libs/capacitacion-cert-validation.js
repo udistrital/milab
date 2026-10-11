@@ -178,7 +178,9 @@ async function validarCertificacionesParaReserva({ pool, usuario, idEquipo, onEr
 
     try {
       const individual = await consultarCurso(codigoUsuario, curso.codigo_curso);
-      if (!individual.completado) {
+      const completado = Boolean(individual.completado);
+      completadoPorCurso.set(key, completado);
+      if (!completado) {
         pendientes.push(curso);
       } else {
         origenPorCurso.set(key, { origen_completado: 'edx' });
