@@ -38,6 +38,7 @@
               <th>Nombre del laboratorista</th>
               <th>Código del sancionado</th>
               <th>UAL</th>
+              <th>Ubicación institucional</th>
               <th>Fecha de la sanción</th>
               <th>Observaciones</th>
             </tr>
@@ -50,6 +51,7 @@
                   <td><%= data.nombre_laboratorista %></td>
                   <td><%= referenciaSancionado %></td>
                   <td><%= data.ual %></td>
+                  <td><%- include('../partials/sanction-location', { sanction: data }) %></td>
                   <td><%= data.fecha_multa %></td>
                   <td><%= data.obs_multa %></td>
                 </tr>

@@ -221,7 +221,9 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                                 'documento', pe.documento,
                                 'codigo', pe.codigo::text,
                               'ual', u.nombre,
-                                'fecha_multa', m.fecha_multa,
+                                'laboratorio_facultad', COALESCE(facultad.nombre, unidad.nombre),
+                                'laboratorio_dependencia', CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END,
+                                  'fecha_multa', m.fecha_multa,
                                 'con_estado_multa', m.con_estado_multa,
                                 'obs_multa', m.obs_multa
                             )
@@ -235,6 +237,8 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                     OR pe.documento = t.identificador
                   LEFT JOIN multa m ON m.usuario_sancionado_id = pe.usuario_id
                   LEFT JOIN ual u ON u.ual_id = m.ual_id
+                  LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+                  LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
                   LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
                   GROUP BY
                     t.identificador;

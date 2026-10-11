@@ -34,6 +34,8 @@ async function sendSanctionActivationEmail({
   tipoSancion,
   observaciones,
   laboratorio,
+  facultad,
+  dependencia,
   fecha,
   multaId,
   permiteReclamacion = true,
@@ -47,8 +49,9 @@ async function sendSanctionActivationEmail({
 
   const safeNombre = nombre || 'estudiante';
   const h = escapeHtml;
+  const dependenciaVisible = dependencia || (facultad ? 'Toda la facultad' : 'No disponible');
   const clarificationMessage = laboratorio
-    ? `Si tienes dudas sobre la sanción reportada, por favor acércate al laboratorio ${laboratorio} para aclarar tu situación.`
+    ? `Si tienes dudas sobre la sanción reportada, por favor acércate al laboratorio ${laboratorio} (${facultad ? `Facultad: ${facultad}. ` : ''}Dependencia: ${dependenciaVisible}) para aclarar tu situación.`
     : 'Si tienes dudas sobre la sanción reportada, por favor acércate al laboratorio donde se registró la sanción para aclarar tu situación.';
   const claimUrl =
     buildAppUrl('/api/sanciones/mis-sanciones') +
@@ -60,7 +63,7 @@ async function sendSanctionActivationEmail({
     from: buildNoReplySender(),
     to: correo,
     subject: 'Notificación de sanción activada - MILab Laboratorios UD',
-    text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\n${clarificationMessage}\n\n${permiteReclamacion ? `${claimMessage}\n${claimUrl}\n\n` : ''}${NO_REPLY_NOTICE}`,
+    text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFacultad: ${facultad || 'No disponible'}.\nDependencia: ${dependenciaVisible}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\n${clarificationMessage}\n\n${permiteReclamacion ? `${claimMessage}\n${claimUrl}\n\n` : ''}${NO_REPLY_NOTICE}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -93,6 +96,8 @@ async function sendSanctionActivationEmail({
                     <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #e53935;margin-top:16px;">
                       <p style="margin:0;font-size:14px;color:#202124;"><strong>Tipo de sanción:</strong> ${h(tipoSancion)}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Laboratorio:</strong> ${h(laboratorio || 'N/A')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Facultad:</strong> ${h(facultad || 'No disponible')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Dependencia:</strong> ${h(dependenciaVisible)}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Fecha:</strong> ${h(fecha || 'N/A')}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Observaciones:</strong> ${h(observaciones || 'Sin observaciones')}</p>
                     </div>

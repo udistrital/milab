@@ -20,6 +20,7 @@
 </td>
 <td>
   <strong class="app-sanction-lab"><%= sanction.ual || 'Laboratorio no registrado' %></strong>
+  <%- include('./sanction-location', { sanction }) %>
   <span class="app-sanction-meta">Sanción #<%= sanction.id %></span>
 </td>
 <td data-order="<%= sanction.fecha_multa_formateada || '' %>">

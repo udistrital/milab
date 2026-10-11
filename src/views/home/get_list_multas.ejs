@@ -206,6 +206,8 @@
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
                                                                 data-sancion-ual="<%= data.ual %>"
+                                                                data-sancion-facultad="<%= data.laboratorio_facultad || '' %>"
+                                                                data-sancion-dependencia="<%= data.laboratorio_dependencia || '' %>"
                                                                 data-sancion-categoria="<%= data.cat_multa %>"
                                                                 data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                                                                 data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
@@ -300,6 +302,8 @@
                                                                 data-sancion-estado="<%= data.con_estado_multa %>"
                                                                 data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
                                                                 data-sancion-ual="<%= data.ual %>"
+                                                                data-sancion-facultad="<%= data.laboratorio_facultad || '' %>"
+                                                                data-sancion-dependencia="<%= data.laboratorio_dependencia || '' %>"
                                                                 data-sancion-categoria="<%= data.cat_multa %>"
                                                                 data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                                                                 data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
@@ -440,6 +444,14 @@
                             <div class="sanction-detail-field">
                                 <span>UAL</span>
                                 <strong data-detail-field="ual"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Facultad</span>
+                                <strong data-detail-field="facultad"></strong>
+                            </div>
+                            <div class="sanction-detail-field">
+                                <span>Dependencia</span>
+                                <strong data-detail-field="dependencia"></strong>
                             </div>
                             <div class="sanction-detail-field sanction-detail-field--wide">
                                 <span>Observaciones</span>
@@ -776,6 +788,8 @@
                 estado: source.getAttribute('data-sancion-estado'),
                 laboratorista: source.getAttribute('data-sancion-laboratorista'),
                 ual: source.getAttribute('data-sancion-ual'),
+                facultad: source.getAttribute('data-sancion-facultad'),
+                dependencia: source.getAttribute('data-sancion-dependencia'),
                 categoria: source.getAttribute('data-sancion-categoria'),
                 tipo: source.getAttribute('data-sancion-tipo'),
                 observaciones: source.getAttribute('data-sancion-observaciones'),

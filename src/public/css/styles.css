@@ -1393,6 +1393,66 @@ body.app-shell .app-page-header {
   box-shadow: var(--app-shadow);
 }
 
+body.app-shell .app-fine-search-card {
+  max-width: 900px;
+}
+
+body.app-shell .app-fine-person-summary {
+  max-width: 100%;
+}
+
+body.app-shell .app-fine-action-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+body.app-shell .app-fine-action-card {
+  height: 100%;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+body.app-shell .app-fine-action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px rgba(18, 40, 48, 0.12);
+}
+
+body.app-shell .app-fine-action-card:focus-within {
+  outline: 3px solid rgba(41, 184, 219, 0.3);
+  outline-offset: 2px;
+}
+
+body.app-shell .app-fine-action-card .card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+body.app-shell .app-fine-action-card .card-body > p {
+  flex-grow: 1;
+}
+
+body.app-shell .app-fine-action-icon {
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  place-items: center;
+  border-radius: 16px;
+  font-size: 1.25rem;
+}
+
+body.app-shell .app-fine-action-icon--register {
+  color: #176b4b;
+  background: rgba(36, 164, 111, 0.12);
+}
+
+body.app-shell .app-fine-action-icon--remove {
+  color: #365f76;
+  background: rgba(54, 122, 153, 0.12);
+}
+
 body.app-shell .app-page-title {
   margin: 0;
   font-family: var(--app-font-display);
@@ -2723,6 +2783,10 @@ body.app-shell .dashboard-page--simplified .tone-users {
   }
 
   body.app-shell .app-fine-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.app-shell .app-fine-action-options {
     grid-template-columns: 1fr;
   }
 
@@ -4661,7 +4725,16 @@ body.app-shell #confirmarCerrarSesionModal .modal-dialog {
   margin-top: 8rem;
 }
 body.app-shell .app-claim-text {
-  white-space: pre-wrap;
+  min-width: 0;
+  max-width: 32rem;
+  white-space: normal !important;
   overflow-wrap: anywhere;
-  max-width: 40rem;
+}
+
+body.app-shell .app-claim-summary {
+  display: block;
+  min-width: 0;
+  max-width: 32rem;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
 }
