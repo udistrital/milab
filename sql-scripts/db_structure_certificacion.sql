@@ -209,14 +209,14 @@ END $$;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM information_schema.table_constraints
          WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
            AND table_name = 'certificacion_usuario'
+           AND table_schema = current_schema()
     ) THEN
         ALTER TABLE certificacion_usuario
-            ADD CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario
-                UNIQUE (codigo_curso, usuario_documento) WHERE (activo = TRUE);
+            DROP CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario;
     END IF;
 END $$;
 

@@ -153,21 +153,17 @@ function truncate(s, n) {
 
 async function fetchActiveSanctionsCount(usuarioId) {
   if (!usuarioId) return 0;
-  try {
-    const result = await pool.query(
-      `
+  const result = await pool.query(
+    `
       SELECT COUNT(*)::int AS total
         FROM multa
        WHERE usuario_sancionado_id = $1
          AND activo = TRUE
          AND UPPER(COALESCE(con_estado_multa, '')) IN ('ACTIVA', 'PENDIENTE', 'POR SALDAR')
       `,
-      [usuarioId]
-    );
-    return Number(result.rows[0]?.total || 0);
-  } catch {
-    return 0;
-  }
+    [usuarioId]
+  );
+  return Number(result.rows[0]?.total || 0);
 }
 
 async function assertUsuarioSinSancionesActivas(req, res) {
@@ -883,7 +879,8 @@ router.post('/inscribirme/:sesionId', requireEstudianteODocente, async function 
       `SELECT s.id, s.codigo_curso, s.nombre_curso_snapshot, s.cupo_maximo, s.estado, s.fecha_fin, s.facultad_id, s.ual_id
          FROM sesion_capacitacion s
         WHERE s.id = $1
-        LIMIT 1`,
+        LIMIT 1
+        FOR UPDATE`,
       [sesionId]
     );
     if (sesionRs.rows.length === 0) {
@@ -1357,6 +1354,15 @@ function buildEvidenciaDirPath() {
   return path.join(tmpBase, 'milab-capacitacion-evidencias');
 }
 
+function removeUploadedEvidence(filePath) {
+  if (!filePath) return;
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    console.error('[capacitacion-gestion:evidencia:cleanup]', error);
+  }
+}
+
 const EVIDENCIA_ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf']);
 const EVIDENCIA_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.pdf']);
 const EVIDENCIA_MAX_BYTES = 10 * 1024 * 1024;
@@ -1427,6 +1433,7 @@ router.post('/gestion/sesiones/:id/evidencia', requireLaboratoristaOAdmin, funct
           params.push(scopedFacultyIds);
           clauses.push('(ual_id IS NULL OR facultad_id = ANY($' + params.length + '::int[]))');
         } else {
+          removeUploadedEvidence(req.file?.path);
           return forbidden(res, 'No tiene permisos sobre esta sesión.');
         }
       }
@@ -1471,11 +1478,7 @@ router.post('/gestion/sesiones/:id/evidencia', requireLaboratoristaOAdmin, funct
         params
       );
       if (upd.rows.length === 0) {
-        try {
-          fs.unlinkSync(filePath);
-        } catch {
-          /* ignore */
-        }
+        removeUploadedEvidence(filePath);
         return notFound(res, 'Sesión no existe o no está en su scope de gestión.');
       }
       return okJson(res, {
@@ -1484,6 +1487,7 @@ router.post('/gestion/sesiones/:id/evidencia', requireLaboratoristaOAdmin, funct
           'Evidencia cargada exitosamente. Quedará almacenada y asociada a la sesión para trazabilidad y auditoría.',
       });
     } catch (uploadErr) {
+      removeUploadedEvidence(req.file?.path);
       return serverError(res, uploadErr, 'No fue posible guardar la evidencia.');
     }
   });
@@ -1618,6 +1622,17 @@ router.post(
           const usuarioId = userInfo.rows[0]?.id || null;
           const usuarioNombre = truncate(row.usuario_nombre, 255) || userInfo.rows[0]?.tipo || null;
 
+          await client.query(
+            `UPDATE certificacion_usuario
+                SET activo = FALSE,
+                    fecha_modificacion = CURRENT_TIMESTAMP
+              WHERE codigo_curso = $1
+                AND usuario_documento = $2
+                AND activo = TRUE
+                AND fecha_vencimiento <= CURRENT_TIMESTAMP`,
+            [sesion.codigo_curso, doc]
+          );
+
           const existenteVigente = await client.query(
             `SELECT id, fecha_emision, fecha_vencimiento, vigencia_meses
                FROM certificacion_usuario
@@ -1664,6 +1679,7 @@ router.post(
               CURRENT_TIMESTAMP,
               CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
               $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
             RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
           `;
           const insertParams = [
@@ -1683,22 +1699,28 @@ router.post(
           const inserted = await client.query(insertSql, insertParams);
           if (inserted.rows.length > 0) {
             certificados.push(inserted.rows[0]);
-            await client.query(
-              `UPDATE certificacion_usuario
-                  SET activo = FALSE, fecha_modificacion = CURRENT_TIMESTAMP
+          } else {
+            const existente = await client.query(
+              `SELECT id, fecha_vencimiento
+                 FROM certificacion_usuario
                 WHERE codigo_curso = $1
                   AND usuario_documento = $2
                   AND activo = TRUE
-                  AND modalidad = 'programada'
-                  AND id <> $3`,
-              [sesion.codigo_curso, doc, inserted.rows[0].id]
+                ORDER BY fecha_emision DESC
+                LIMIT 1`,
+              [sesion.codigo_curso, doc]
             );
-          } else {
+            if (existente.rows.length === 0) {
+              throw new Error(
+                'No fue posible confirmar la certificación existente después de un conflicto de emisión.'
+              );
+            }
             rechazados.push({
               usuario_documento: doc,
               usuario_nombre: usuarioNombre,
-              motivo:
-                'No se pudo emitir la certificación: INSERT no retornó filas (restricción de BD / FK).',
+              motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
+              id_cert_existente: existente.rows[0].id,
+              vencimiento_existente: existente.rows[0].fecha_vencimiento,
             });
           }
           try {
