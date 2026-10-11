@@ -260,10 +260,15 @@ app.use(
 );
 
 const limiter2 = rateLimit({
-  windowMs: 60 * 1000, // tiempo de espera
-  max: 100, // límite de solicitudes por dirección IP
+  windowMs: 60 * 1000,
+  limit: (req) => {
+    const userType = req.session?.user?.tipo;
+    if (userType === 'admin') return 1000;
+    if (userType === 'laboratorista') return 700;
+    return 500;
+  },
   handler: (req, res) => {
-    return res.render('home/message_error', {
+    return res.status(429).render('home/message_error', {
       message: '¡Demasiadas solicitudes desde esta dirección IP!',
       message2: '!Inténtalo de nuevo más tarde!',
       limit: true,
@@ -271,10 +276,6 @@ const limiter2 = rateLimit({
   },
 });
 app.use(ipBlockMiddleware);
-app.use(limiter2);
-
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 
 app.use(
   session({
@@ -291,6 +292,9 @@ app.use(
   })
 );
 
+app.use(limiter2);
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(requestLogger);
 app.use((req, res, next) => {
   req.sessionCookieSecure = sessionCookieSecure;

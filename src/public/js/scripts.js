@@ -70,7 +70,56 @@
     $thead.append($filterRow);
   }
 
-  function resolveColumnDefs($table) {
+  function getActionColumnIndex(table) {
+    const headerRow = table.tHead && table.tHead.rows[0];
+
+    if (!headerRow || headerRow.cells.length === 0) {
+      return -1;
+    }
+
+    const lastColumnIndex = headerRow.cells.length - 1;
+    const lastHeading = headerRow.cells[lastColumnIndex].textContent
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/:$/, '')
+      .toLocaleLowerCase();
+
+    return ['acciones', 'acción', 'accion', 'opciones'].includes(lastHeading)
+      ? lastColumnIndex
+      : -1;
+  }
+
+  function applyStickyActionColumn(table, columnIndex) {
+    if (columnIndex < 0) {
+      return;
+    }
+
+    Array.from(table.tHead ? table.tHead.rows : []).forEach(function (row) {
+      if (row.cells[columnIndex]) {
+        row.cells[columnIndex].classList.add('app-grid-sticky-action');
+      }
+    });
+
+    Array.from(table.tBodies).forEach(function (body) {
+      Array.from(body.rows).forEach(function (row) {
+        if (row.cells[columnIndex]) {
+          row.cells[columnIndex].classList.add('app-grid-sticky-action');
+        }
+      });
+    });
+  }
+
+  function initializeStickyActionColumns() {
+    document.querySelectorAll('table:not(.js-data-grid)').forEach(function (table) {
+      if (table.closest('.dashboard-detail-table-wrap')) {
+        return;
+      }
+
+      applyStickyActionColumn(table, getActionColumnIndex(table));
+    });
+  }
+
+  function resolveColumnDefs($table, stickyActionColumn) {
     const nonOrderable = [];
     const nonSearchable = [];
 
@@ -98,6 +147,10 @@
 
     if (nonSearchable.length > 0) {
       defs.push({ targets: nonSearchable, searchable: false });
+    }
+
+    if (stickyActionColumn >= 0) {
+      defs.push({ targets: stickyActionColumn, className: 'app-grid-sticky-action' });
     }
 
     return defs;
@@ -200,6 +253,8 @@
 
     ensureTableId($table, index);
     buildFilterRow($table);
+    const stickyActionColumn = getActionColumnIndex(table);
+    applyStickyActionColumn(table, stickyActionColumn);
 
     const pageLength = Number($table.data('gridPageLength')) || 10;
     const dataTable = $table.DataTable({
@@ -214,7 +269,7 @@
       autoWidth: false,
       scrollX: resolveScrollX($table),
       searchDelay: 250,
-      columnDefs: resolveColumnDefs($table),
+      columnDefs: resolveColumnDefs($table, stickyActionColumn),
     });
 
     attachColumnFilters(dataTable, $table);
@@ -996,6 +1051,7 @@
 
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
+    initializeStickyActionColumns();
     $('.ocultar-columna').hide();
     initializeLaboratorioCellToggle();
     initializeEmailEditor();
@@ -1005,4 +1061,9 @@
   });
 
   document.addEventListener('shown.bs.tab', adjustTablesInTab);
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted && document.querySelector('table[data-grid-refresh-on-restore="true"]')) {
+      window.location.reload();
+    }
+  });
 })(window, document);

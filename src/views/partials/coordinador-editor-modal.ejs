@@ -218,43 +218,75 @@
       return input ? input.value || '' : '';
     }
 
-    function updateFacultadesCell(documento, facultadesText) {
-      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
-      if (!row) return;
-      var cell = row.querySelector('[data-facultades-cell="true"]');
-      if (cell) cell.textContent = facultadesText || '';
+    function findCoordinatorRow(documento) {
+      var expectedDocument = String(documento || '');
+      return Array.from(document.querySelectorAll('[data-coordinador-row]')).find(function(row) {
+        return row.getAttribute('data-coordinador-row') === expectedDocument;
+      }) || null;
     }
 
-    function updateEmailCell(documento, email) {
-      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
-      if (!row) return;
-      var cell = row.querySelector('[data-email-cell="true"]');
-      if (cell) cell.textContent = email || '';
-    }
-
-    function updateNumeroResolucionCell(documento, texto) {
-      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
-      if (!row) return;
-      var cell = row.querySelector('[data-numero-resolucion-cell="true"]');
-      if (cell) cell.textContent = texto || '';
-    }
-
-    function updateSoporteResolucionCell(documento, texto) {
-      var row = document.querySelector('[data-coordinador-row="' + String(documento || '').replace(/"/g, '\\"') + '"]');
-      if (!row) return;
-      var cell = row.querySelector('[data-soporte-resolucion-cell="true"]');
+    function updateCompactCell(cell, text) {
       if (!cell) return;
-      if (!texto) {
-        cell.textContent = '';
-        return;
-      }
-      var anchor = document.createElement('a');
-      anchor.href = texto;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener noreferrer';
-      anchor.textContent = texto;
+      var value = String(text || '');
+      var hasMore = value.length > 120;
+      var textElement = document.createElement('span');
+      textElement.className = 'app-labs-cell-text' + (hasMore ? ' is-collapsed' : '');
+      textElement.setAttribute('data-labs-text', 'true');
+      textElement.textContent = value;
+
       cell.textContent = '';
-      cell.appendChild(anchor);
+      cell.appendChild(textElement);
+      if (hasMore) {
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'app-labs-toggle';
+        toggle.setAttribute('data-labs-toggle', 'true');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.textContent = 'Ver más';
+        cell.appendChild(toggle);
+      }
+    }
+
+    function updateCoordinatorRow(documento, values, assignmentChanged) {
+      var row = findCoordinatorRow(documento);
+      if (!row) return null;
+
+      var emailCell = row.querySelector('[data-email-cell="true"]');
+      var numberCell = row.querySelector('[data-numero-resolucion-cell="true"]');
+      var supportCell = row.querySelector('[data-soporte-resolucion-cell="true"]');
+      if (emailCell) emailCell.textContent = values.correo;
+      if (numberCell) numberCell.textContent = values.numeroResolucion;
+      updateCompactCell(supportCell, values.soporteResolucion);
+
+      if (assignmentChanged) {
+        updateCompactCell(row.querySelector('[data-facultad-cell="true"]'), values.facultad);
+        updateCompactCell(row.querySelector('[data-dependencias-cell="true"]'), values.dependencias);
+      }
+
+      var trigger = row.querySelector('[data-coordinador-editor-trigger="true"]');
+      if (trigger) {
+        trigger.setAttribute('data-coordinador-editor-current-email', values.correo);
+        trigger.setAttribute('data-coordinador-editor-numero-resolucion', values.numeroResolucion);
+        trigger.setAttribute('data-coordinador-editor-soporte-resolucion', values.soporteResolucion);
+        if (assignmentChanged) {
+          trigger.setAttribute(
+            'data-coordinador-editor-facultad-ids',
+            JSON.stringify(values.facultadIds)
+          );
+        }
+      }
+
+      return row;
+    }
+
+    function refreshCoordinatorGridRow(row) {
+      var table = row && row.closest('table.js-data-grid');
+      var $ = window.jQuery;
+      if (!table || !$ || !$.fn.dataTable || !$.fn.dataTable.isDataTable(table)) return;
+
+      var dataTable = $(table).DataTable();
+      dataTable.row(row).invalidate('dom').draw(false);
+      dataTable.columns.adjust();
     }
 
     function selectedScope() {
@@ -350,42 +382,43 @@
       updateDependencyOptions();
     }
 
-    document.querySelectorAll('[data-coordinador-editor-trigger="true"]').forEach(function(button) {
-      button.addEventListener('click', function() {
-        clearModalState();
-        resetAssignmentSelection();
-        endpoint = button.getAttribute('data-coordinador-editor-endpoint') || form.getAttribute('action') || '';
-        if (form && endpoint) form.setAttribute('action', endpoint);
+    document.addEventListener('click', function(event) {
+      var button = event.target.closest('[data-coordinador-editor-trigger="true"]');
+      if (!button) return;
 
-        var documento = button.getAttribute('data-coordinador-editor-document') || '';
-        var nombre = button.getAttribute('data-coordinador-editor-name') || '';
-        var correo = button.getAttribute('data-coordinador-editor-current-email') || '';
-        var numeroResolucion = button.getAttribute('data-coordinador-editor-numero-resolucion') || '';
-        var soporteResolucion = button.getAttribute('data-coordinador-editor-soporte-resolucion') || '';
-        var rawFacIds = button.getAttribute('data-coordinador-editor-facultad-ids') || '[]';
-        var selectedIds = [];
-        try {
-          var parsed = JSON.parse(rawFacIds);
-          selectedIds = Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-          selectedIds = [];
-        }
+      clearModalState();
+      resetAssignmentSelection();
+      endpoint = button.getAttribute('data-coordinador-editor-endpoint') || form.getAttribute('action') || '';
+      if (form && endpoint) form.setAttribute('action', endpoint);
 
-        if (hiddenDocument) hiddenDocument.value = documento;
-        if (titleEl) titleEl.textContent = 'Editar coordinador';
-        if (nameEl) nameEl.value = nombre;
-        if (documentEl) documentEl.value = documento;
-        if (currentEl) currentEl.value = correo;
-        if (inputEl) {
-          inputEl.value = correo;
-        }
-        if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion;
-        if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion;
+      var documento = button.getAttribute('data-coordinador-editor-document') || '';
+      var nombre = button.getAttribute('data-coordinador-editor-name') || '';
+      var correo = button.getAttribute('data-coordinador-editor-current-email') || '';
+      var numeroResolucion = button.getAttribute('data-coordinador-editor-numero-resolucion') || '';
+      var soporteResolucion = button.getAttribute('data-coordinador-editor-soporte-resolucion') || '';
+      var rawFacIds = button.getAttribute('data-coordinador-editor-facultad-ids') || '[]';
+      var selectedIds = [];
+      try {
+        var parsed = JSON.parse(rawFacIds);
+        selectedIds = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        selectedIds = [];
+      }
 
-        setAssignmentFromExisting(selectedIds);
+      if (hiddenDocument) hiddenDocument.value = documento;
+      if (titleEl) titleEl.textContent = 'Editar coordinador';
+      if (nameEl) nameEl.value = nombre;
+      if (documentEl) documentEl.value = documento;
+      if (currentEl) currentEl.value = correo;
+      if (inputEl) {
+        inputEl.value = correo;
+      }
+      if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion;
+      if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion;
 
-        modal.show();
-      });
+      setAssignmentFromExisting(selectedIds);
+
+      modal.show();
     });
 
     if (facultySelect) {
@@ -481,24 +514,28 @@
             throw new Error(data.message || 'No fue posible actualizar el coordinador.');
           }
 
-          if (assignmentChanged) {
-            updateFacultadesCell(documento, data.facultad_nombre || '');
-            var trigger = document.querySelector(
-              '[data-coordinador-editor-trigger="true"][data-coordinador-editor-document="' +
-                String(documento || '').replace(/"/g, '\\"') +
-                '"]'
-            );
-            if (trigger) {
-              trigger.setAttribute('data-coordinador-editor-facultad-ids', JSON.stringify(data.facultad_ids || []));
-            }
-          }
-          updateEmailCell(documento, correo || data.correo || '');
-          updateNumeroResolucionCell(documento, numeroResolucion || data.numero_resolucion_coordinador || '');
-          updateSoporteResolucionCell(documento, soporteResolucion || data.soporte_resolucion || '');
+          var nextCorreo = correo || data.correo || '';
+          var nextNumeroResolucion =
+            numeroResolucion || data.numero_resolucion_coordinador || '';
+          var nextSoporteResolucion =
+            soporteResolucion || data.soporte_resolucion || '';
+          var row = updateCoordinatorRow(
+            documento,
+            {
+              correo: nextCorreo,
+              numeroResolucion: nextNumeroResolucion,
+              soporteResolucion: nextSoporteResolucion,
+              facultad: data.facultad_nombre || '',
+              dependencias: data.dependencia_nombre || '',
+              facultadIds: data.facultad_ids || [],
+            },
+            assignmentChanged
+          );
+          refreshCoordinatorGridRow(row);
 
-          if (currentEl) currentEl.value = correo || data.correo || '';
-          if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion || data.numero_resolucion_coordinador || '';
-          if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion || data.soporte_resolucion || '';
+          if (currentEl) currentEl.value = nextCorreo;
+          if (numeroResolucionEl) numeroResolucionEl.value = nextNumeroResolucion;
+          if (soporteResolucionEl) soporteResolucionEl.value = nextSoporteResolucion;
 
           modal.hide();
           showFeedback(pageFeedback, 'success', 'Coordinador actualizado correctamente.');

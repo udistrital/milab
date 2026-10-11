@@ -94,11 +94,7 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
         };
       }
 
-      if (
-        sql.includes('FROM coordinador c') &&
-        sql.includes('JOIN coordinador_facultad') &&
-        sql.includes('STRING_AGG(DISTINCT f.nombre')
-      ) {
+      if (sql.includes('FROM coordinador c') && sql.includes('JOIN coordinador_facultad')) {
         return {
           rows: [
             {
@@ -108,6 +104,7 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
               con_numero_resolucion_coordinador: '001-2025',
               con_soporte_resolucion: 'https://sgral.udistrital.edu.co/r/001-2025',
               facultad_nombre: 'Facultad de Ingenieria',
+              dependencia_nombre: 'Toda la facultad',
               facultad_ids: [1],
               tipo: 'coordinador',
             },
@@ -243,6 +240,8 @@ test('coordinadores_registrados lists registered coordinators', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/coordinadores_registrados');
     assert.equal(response.body.locals.coordinadores.length, 1);
+    assert.equal(response.body.locals.coordinadores[0].facultad_nombre, 'Facultad de Ingenieria');
+    assert.equal(response.body.locals.coordinadores[0].dependencia_nombre, 'Toda la facultad');
   } finally {
     loaded.restore();
   }
@@ -386,7 +385,8 @@ test('coordinadores_registrados actualizar assigns only dependencies of the sele
 
     assert.equal(response.status, 200);
     assert.deepEqual(response.body.facultad_ids, [11, 12]);
-    assert.equal(response.body.facultad_nombre, 'Dependencia A, Dependencia B');
+    assert.equal(response.body.facultad_nombre, 'Facultad de Ingenieria');
+    assert.equal(response.body.dependencia_nombre, 'Dependencia A, Dependencia B');
 
     const calls = loaded.getClientCalls();
     assert.equal(
@@ -448,6 +448,7 @@ test('coordinadores_registrados actualizar assigns the selected faculty as a who
     assert.equal(response.status, 200);
     assert.deepEqual(response.body.facultad_ids, [1]);
     assert.equal(response.body.facultad_nombre, 'Facultad de Ingenieria');
+    assert.equal(response.body.dependencia_nombre, 'Toda la facultad');
     assert.deepEqual(
       loaded
         .getClientCalls()
