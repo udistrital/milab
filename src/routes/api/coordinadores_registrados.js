@@ -214,12 +214,17 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       });
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar los coordinadores registrados.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    }, req, error);
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar los coordinadores registrados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   } finally {
     if (client) client.release();
   }
