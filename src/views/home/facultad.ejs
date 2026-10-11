@@ -19,11 +19,12 @@ body.app-shell .app-page-shell {
   min-width: 0;
 }
 
-.fac-level tbody td:first-child {
+body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
   min-width: 12rem;
   max-width: 28rem;
   white-space: normal;
   overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .fac-level {
@@ -200,10 +201,17 @@ body.app-shell .app-page-shell {
           <tbody class="text-center text-light">
             <% facultades.forEach(f => { %>
               <tr data-fac-id="<%= f.facultad_id %>">
-                <td class="text-start fw-semibold"><%= f.nombre %></td>
+                <td class="text-start fw-semibold">
+                  <%= f.nombre %>
+                  <span class="fac-legacy-note">ID: <%= f.facultad_id %></span>
+                </td>
                 <td><span class="fac-count<%= f.dependencias_count ? '' : ' is-zero' %>"><%= f.dependencias_count || 0 %></span></td>
                 <td>
-                  <span class="fac-count<%= f.uals_count ? '' : ' is-zero' %>"><%= f.uals_count || 0 %></span>
+                  <% if (f.uals_count) { %>
+                    <button type="button" class="btn btn-sm btn-outline-info btn-select-fac" data-id="<%= f.facultad_id %>" title="Ver y organizar UALs directas"><%= f.uals_count %> · Organizar</button>
+                  <% } else { %>
+                    <span class="fac-count is-zero">0</span>
+                  <% } %>
                   <% if (f.uals_count) { %>
                     <span class="fac-legacy-note">Sin dependencia asignada</span>
                   <% } %>
@@ -284,8 +292,16 @@ body.app-shell .app-page-shell {
         <div id="ual-content">
           <div id="ual-coordinadores" class="fac-people-strip" role="group" aria-label="Coordinadores"></div>
           <div id="ual-legacy-alert" class="alert alert-warning py-2" role="status" hidden>
-            Estas UAL están asignadas directamente a la facultad. Edítalas para moverlas a una de sus dependencias.
+            Estas UAL están asignadas directamente a la facultad. Usa «Asignar a dependencia» en cada fila para organizarlas sin modificar sus datos.
           </div>
+          <% if (locals.tipo === 'admin') { %>
+          <div id="ual-bulk-toolbar" class="d-flex d-none flex-wrap align-items-center gap-2 mb-3" hidden>
+            <button type="button" class="btn btn-sm btn-outline-info" id="btn-select-filtered-uals">Seleccionar todas las filtradas</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-clear-ual-selection">Limpiar selección</button>
+            <span id="ual-selection-count" class="small" role="status" aria-live="polite">0 UAL seleccionadas</span>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-assign-selected-uals" disabled>Asignar seleccionadas a dependencia</button>
+          </div>
+          <% } %>
           <table id="tbl-ual" class="table table-bordered table-striped table-hover app-table-compact" data-grid-page-length="15">
             <thead class="text-center">
               <tr>
@@ -493,6 +509,34 @@ body.app-shell .app-page-shell {
   </div>
 </div>
 
+<% if (locals.tipo === 'admin') { %>
+<div class="modal fade" id="asignarUalModal" tabindex="-1" aria-labelledby="asignarUalModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="asignarUalModalLabel">Asignar UAL a dependencia</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form action="/milab/api/facultad/ual/asignar-dependencia" method="POST" id="form-asignar-ual">
+        <%- include('../partials/csrf_field') %>
+        <div id="asignar_ual_ids"></div>
+        <div class="modal-body">
+          <p class="fw-semibold mb-1" id="asignar_ual_nombre"></p>
+          <p class="small text-muted" id="asignar_ual_facultad"></p>
+          <label for="asignar_ual_dependencia" class="form-label">Dependencia destino</label>
+          <select class="form-select" name="dependencia_id" id="asignar_ual_dependencia" required></select>
+          <p class="small text-muted mt-2" id="asignar_ual_ayuda"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="asignar_ual_submit" data-submit-lock="true">Asignar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<% } %>
+
 <div id="fac-delete-form-tpl" hidden>
   <%- include('../partials/csrf_field') %>
 </div>
@@ -531,6 +575,7 @@ body.app-shell .app-page-shell {
   var state = { padreId: null, unitId: null };
   var ualRequestSeq = 0;
   var currentUals = [];
+  var selectedUalIds = new Set();
   var currentCoordinadores = [];
 
   var gridLanguage = {
@@ -644,6 +689,10 @@ body.app-shell .app-page-shell {
       });
       $filterContainer.append($reset);
     }
+    if (tableEl.id === 'tbl-ual') {
+      $table.off('draw.dt.ualSelection').on('draw.dt.ualSelection', updateUalSelection);
+      updateUalSelection();
+    }
   }
 
   /* ── Navegación ─────────────────────────────────────────── */
@@ -752,7 +801,11 @@ body.app-shell .app-page-shell {
         : '';
       var actions = viewLabs || '<span class="text-muted small">–</span>';
       if (isAdmin) {
-        actions = viewLabs +
+        var unit = byId[String(unitId)];
+        var assignAction = unit && !unit.padre_id
+          ? '<button type="button" class="btn btn-sm btn-info btn-assign-ual" data-id="' + esc(u.ual_id) + '" title="Asignar a dependencia">Asignar a dependencia</button>'
+          : '';
+        actions = viewLabs + assignAction +
           '<button type="button" class="btn btn-sm btn-warning btn-edit-ual" ' +
             'data-id="' + esc(u.ual_id) + '" ' +
             'data-nombre="' + esc(u.nombre) + '" ' +
@@ -770,7 +823,10 @@ body.app-shell .app-page-shell {
           '</form>';
       }
       return '<tr data-row="1">' +
-        '<td class="text-start">' + esc(u.nombre) + '</td>' +
+        '<td class="text-start">' +
+          (isAdmin && byId[String(unitId)] && !byId[String(unitId)].padre_id
+            ? '<input type="checkbox" class="form-check-input me-2 ual-select" data-id="' + esc(u.ual_id) + '" aria-label="Seleccionar ' + esc(u.nombre) + '">'
+            : '') + esc(u.nombre) + '</td>' +
         '<td>' + esc(u.codigo_abreviacion || '–') + '</td>' +
         '<td><code>' + esc(u.sal_id_espacio || '–') + '</code></td>' +
         '<td>' + esc(u.sal_ocupantes || '–') + '</td>' +
@@ -860,6 +916,13 @@ body.app-shell .app-page-shell {
     destroyGrid(document.getElementById('tbl-ual'));
     ualTbody.innerHTML = '';
     currentUals = [];
+    selectedUalIds.clear();
+    var bulkToolbar = g('ual-bulk-toolbar');
+    if (bulkToolbar) {
+      bulkToolbar.hidden = !!byId[String(unitId)].padre_id;
+      bulkToolbar.classList.toggle('d-none', bulkToolbar.hidden);
+    }
+    updateUalSelection();
     currentCoordinadores = [];
     g('ual-coordinadores').innerHTML = '';
     level.classList.add('loading');
@@ -904,6 +967,7 @@ body.app-shell .app-page-shell {
   var facFormModal = hoistModal('facultadFormModal');
   var addUalModal = hoistModal('agregarUalModal');
   var editUalModal = hoistModal('editarUalModal');
+  var assignUalModal = hoistModal('asignarUalModal');
   var peopleModal = hoistModal('personasModal');
 
   function g(id) { return document.getElementById(id); }
@@ -974,6 +1038,50 @@ body.app-shell .app-page-shell {
     if (addUalModal) addUalModal.show();
   }
 
+  function updateUalSelection() {
+    if (!isAdmin) return;
+    g('ual-selection-count').textContent = selectedUalIds.size + ' UAL seleccionadas';
+    g('btn-assign-selected-uals').disabled = !selectedUalIds.size;
+    document.querySelectorAll('#tbl-ual .ual-select').forEach(function (checkbox) {
+      checkbox.checked = selectedUalIds.has(checkbox.dataset.id);
+    });
+  }
+
+  function selectFilteredUals() {
+    var table = g('tbl-ual');
+    var jq = window.jQuery;
+    var nodes = jq && jq.fn.dataTable.isDataTable(table)
+      ? jq(table).DataTable().rows({ search: 'applied' }).nodes().toArray()
+      : Array.from(table.querySelectorAll('tbody tr'));
+    nodes.forEach(function (row) {
+      var checkbox = row.querySelector('.ual-select');
+      if (checkbox) selectedUalIds.add(checkbox.dataset.id);
+    });
+    updateUalSelection();
+  }
+
+  function openAssignUal(ualIds) {
+    var ids = new Set(ualIds.map(String));
+    var selected = currentUals.filter(function (u) { return ids.has(String(u.ual_id)); });
+    if (!selected.length || !isAdmin) return;
+    var destinations = dependencias.filter(function (d) { return String(d.padre_id) === String(state.unitId); });
+    g('form-asignar-ual').reset();
+    g('asignar_ual_ids').innerHTML = selected.map(function (u) {
+      return '<input type="hidden" name="ual_id" value="' + esc(u.ual_id) + '">';
+    }).join('');
+    g('asignar_ual_nombre').textContent = selected.length === 1 ? selected[0].nombre : selected.length + ' UAL seleccionadas';
+    g('asignar_ual_facultad').textContent = 'Facultad: ' + nameOf(state.unitId);
+    g('asignar_ual_dependencia').innerHTML = '<option value="">Selecciona una dependencia</option>' +
+      destinations.map(function (d) {
+        return '<option value="' + esc(d.facultad_id) + '">' + esc(d.nombre) + ' (ID: ' + esc(d.facultad_id) + ')</option>';
+      }).join('');
+    g('asignar_ual_submit').disabled = !destinations.length;
+    g('asignar_ual_ayuda').textContent = destinations.length
+      ? 'Se conservarán los datos, laboratoristas e historial de la UAL.'
+      : 'Esta facultad no tiene dependencias. Vuelve a facultades y agrega una dependencia antes de asignar la UAL.';
+    if (assignUalModal) assignUalModal.show();
+  }
+
   function openEditUal(button) {
     var u = button.dataset;
     g('edit_ual_id').value = u.id || '';
@@ -997,6 +1105,13 @@ body.app-shell .app-page-shell {
     if ((el = target.closest('.btn-view-deps'))) return showDependencias(el.dataset.id);
     if ((el = target.closest('.btn-select-fac'))) return showUals(el.dataset.id);
     if ((el = target.closest('.btn-edit-ual'))) return openEditUal(el);
+    if ((el = target.closest('.btn-assign-ual'))) return openAssignUal([el.dataset.id]);
+    if (target.closest('#btn-select-filtered-uals')) return selectFilteredUals();
+    if (target.closest('#btn-clear-ual-selection')) {
+      selectedUalIds.clear();
+      return updateUalSelection();
+    }
+    if (target.closest('#btn-assign-selected-uals')) return openAssignUal(Array.from(selectedUalIds));
     if ((el = target.closest('.btn-view-labs'))) return openUalLabs(el.dataset.id);
     if (target.closest('#btn-view-coords')) return openCoordinadores();
     if ((el = target.closest('.btn-edit-facultad'))) {
@@ -1013,6 +1128,14 @@ body.app-shell .app-page-shell {
     if (target.closest('#btn-add-facultad')) return openFacultyForm('add-facultad');
     if (target.closest('#btn-add-dependencia')) return openFacultyForm('add-dependencia');
     if (target.closest('#btn-add-ual')) return openAddUal();
+  });
+
+  document.addEventListener('change', function (event) {
+    var checkbox = event.target.closest('.ual-select');
+    if (!checkbox) return;
+    if (checkbox.checked) selectedUalIds.add(checkbox.dataset.id);
+    else selectedUalIds.delete(checkbox.dataset.id);
+    updateUalSelection();
   });
 
   document.addEventListener('submit', function (event) {

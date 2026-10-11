@@ -674,7 +674,7 @@ async function navigationMiddleware(req, res, next) {
   }
 
   async function getClaimNotifications(user, role) {
-    if (!user || !['estudiante', 'laboratorista', 'admin'].includes(role)) return null;
+    if (!user || !['estudiante', 'laboratorista'].includes(role)) return null;
     const document = String(user.documento_real || user.documento || '');
     let result;
     if (role === 'estudiante') {
@@ -689,8 +689,9 @@ async function navigationMiddleware(req, res, next) {
         `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
          JOIN laboratorista l ON l.documento = r.responsable_documento_id
          WHERE r.fecha_respuesta IS NULL
-           AND ($1::boolean OR ((l.documento = $2 OR l.n_usuario = $2) AND l.activo = TRUE))`,
-        [role === 'admin', document]
+           AND (l.documento = $1 OR l.n_usuario = $1)
+           AND l.activo = TRUE`,
+        [document]
       );
     }
     return {

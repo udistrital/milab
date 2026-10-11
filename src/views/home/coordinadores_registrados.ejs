@@ -12,13 +12,14 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false" data-grid-refresh-on-restore="true">
           <thead class="text-light">
             <tr>
               <th>Nombres y Apellidos</th>
               <th>Cédula</th>
               <th>Correo</th>
               <th>Facultad</th>
+              <th>Dependencia</th>
               <th>Resoluci&oacute;n</th>
               <th>Soporte Resoluci&oacute;n</th>
               <th>Estado actual</th>
@@ -28,45 +29,21 @@
           <tbody>
             <% coordinadores.forEach(coordinador => { %>
               <% const facultadTexto = String(coordinador.facultad_nombre || ''); %>
+              <% const dependenciaTexto = String(coordinador.dependencia_nombre || ''); %>
               <% const soporteResolucionTexto = String(coordinador.con_soporte_resolucion || ''); %>
-              <% const mostrarToggleFacultad = facultadTexto.length > 120; %>
-              <% const mostrarToggleSoporte = soporteResolucionTexto.length > 120; %>
               <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
                 <td><%= coordinador.con_documento %></td>
                 <td data-email-cell="true"><%= coordinador.con_correo %></td>
-                <td data-facultades-cell="true">
-                  <span
-                    class="app-labs-cell-text <%= mostrarToggleFacultad ? 'is-collapsed' : '' %>"
-                    data-labs-text="true"
-                  ><%= facultadTexto %></span>
-                  <% if (mostrarToggleFacultad) { %>
-                    <button
-                      type="button"
-                      class="app-labs-toggle"
-                      data-labs-toggle="true"
-                      aria-expanded="false"
-                    >
-                      Ver más
-                    </button>
-                  <% } %>
+                <td data-facultad-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: facultadTexto }) %>
+                </td>
+                <td data-dependencias-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: dependenciaTexto }) %>
                 </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
                 <td data-soporte-resolucion-cell="true">
-                  <span
-                    class="app-labs-cell-text <%= mostrarToggleSoporte ? 'is-collapsed' : '' %>"
-                    data-labs-text="true"
-                  ><%= soporteResolucionTexto %></span>
-                  <% if (mostrarToggleSoporte) { %>
-                    <button
-                      type="button"
-                      class="app-labs-toggle"
-                      data-labs-toggle="true"
-                      aria-expanded="false"
-                    >
-                      Ver más
-                    </button>
-                  <% } %>
+                  <%- include('../partials/compact-list-cell', { text: soporteResolucionTexto }) %>
                 </td>
                 <td>
                   <span class="badge <%= coordinador.tipo === 'coordinador' ? 'text-bg-success' : 'text-bg-secondary' %>">
@@ -107,6 +84,8 @@
   <%- include('../partials/coordinador-editor-modal', {
     actionUrl: '/milab/api/coordinadores_registrados/actualizar',
     facultadesDisponibles: facultadesDisponibles || [],
+    dependenciasDisponibles:
+      typeof dependenciasDisponibles !== 'undefined' ? dependenciasDisponibles : [],
   }) %>
 
 <div class="px-3">

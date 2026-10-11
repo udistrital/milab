@@ -1,4 +1,7 @@
 <%- include('../partials/header'); -%>
+<% const selectedCoordinator = (coordinadores || []).find(function(coordinador) {
+  return selectedCoordinatorDocument === coordinador.documento;
+}); %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
@@ -16,14 +19,34 @@
         <% if (tipo === 'admin') { %>
           <div class="col-12 col-md-8 mx-auto text-center">
             <label for="coordinador_documento_lookup" class="form-label">Coordinador responsable</label>
-            <select class="form-select" id="coordinador_documento_lookup" name="coordinador_documento" required>
-              <option value="">Selecciona un coordinador</option>
+            <div data-coordinator-autocomplete data-submit-on-select="true">
+              <input
+                class="form-control"
+                type="search"
+                id="coordinador_documento_lookup"
+                data-coordinator-search
+                placeholder="Busca por nombre o documento..."
+                autocomplete="off"
+                aria-label="Buscar coordinador por nombre o documento"
+                value="<%= selectedCoordinator ? selectedCoordinator.nombre + (selectedCoordinator.facultades ? ' · ' + selectedCoordinator.facultades : '') : '' %>"
+              >
+              <input type="hidden" name="coordinador_documento" data-coordinator-value value="<%= selectedCoordinatorDocument || '' %>">
+              <div class="coordinator-autocomplete-results" data-coordinator-results hidden>
               <% coordinadores.forEach(function(coordinador) { %>
-                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
-                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
-                </option>
+                <button
+                  class="coordinator-autocomplete-option"
+                  type="button"
+                  data-coordinator-option
+                  data-value="<%= coordinador.documento %>"
+                  data-label="<%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>"
+                  data-search="<%= `${coordinador.nombre} ${coordinador.documento} ${coordinador.facultades || ''}`.toLocaleLowerCase() %>"
+                >
+                  <span class="d-block fw-semibold"><%= coordinador.nombre %></span>
+                  <small class="text-muted"><%= coordinador.documento %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %></small>
+                </button>
               <% }); %>
-            </select>
+              </div>
+            </div>
             <small class="form-text text-muted">El admin registra el laboratorista dentro del alcance de este coordinador.</small>
           </div>
         <% } %>
@@ -71,14 +94,15 @@
 
           <div class="col-md-12">
             <label for="coordinador_documento_display" class="form-label">Coordinador responsable</label>
-            <select class="form-select" id="coordinador_documento_display" disabled required>
-              <option value="">Selecciona un coordinador arriba</option>
-              <% coordinadores.forEach(function(coordinador) { %>
-                <option value="<%= coordinador.documento %>" <%= selectedCoordinatorDocument === coordinador.documento ? 'selected' : '' %>>
-                  <%= coordinador.nombre %><%= coordinador.facultades ? ' · ' + coordinador.facultades : '' %>
-                </option>
-              <% }); %>
-            </select>
+            <input
+              class="form-control"
+              type="text"
+              id="coordinador_documento_display"
+              value="<%= selectedCoordinator ? selectedCoordinator.nombre + (selectedCoordinator.facultades ? ' · ' + selectedCoordinator.facultades : '') : '' %>"
+              placeholder="Selecciona un coordinador arriba"
+              readonly
+              required
+            >
             <small class="form-text text-muted">Para cambiarlo usa el selector superior y vuelve a cargar el alcance.</small>
           </div>
         <% } %>
@@ -112,7 +136,7 @@
         </div>
 
         <div class="col-md-12">
-          <label class="form-label">Asignación institucional</label>
+          <h2 class="form-label fs-6">Asignación institucional</h2>
           <p class="form-text mt-0">Selecciona la sede o facultad y luego uno o varios laboratorios asociados.</p>
         </div>
 
@@ -127,12 +151,28 @@
         </div>
 
         <div class="col-md-12">
-          <label class="form-label">Laboratorios asignados</label>
+          <h2 class="form-label fs-6">Laboratorios asignados</h2>
           <p class="form-text mt-0">Selecciona uno o varios laboratorios. Todos deben pertenecer a la misma facultad elegida.</p>
-          <div class="row g-2" id="ualOptions">
+          <div class="lab-selection-toolbar">
+            <label class="form-label mb-0" for="ualSearch">Buscar laboratorio</label>
+            <input
+              type="search"
+              class="form-control"
+              id="ualSearch"
+              placeholder="Filtrar por nombre, código o descripción..."
+              autocomplete="off"
+              aria-label="Filtrar laboratorios por nombre, código o descripción"
+              disabled
+            >
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <button class="btn btn-sm btn-outline-secondary" type="button" id="selectVisibleUals" disabled>Marcar visibles</button>
+              <button class="btn btn-sm btn-outline-secondary" type="button" id="clearVisibleUals" disabled>Limpiar visibles</button>
+              <span class="text-muted small" id="ualSelectionCount" aria-live="polite">Selecciona una facultad para ver los laboratorios.</span>
+            </div>
+          </div>
+          <div class="lab-selection-list mt-2" id="ualOptions">
             <% uals.forEach(function(ual) { %>
-              <div class="col-md-6" data-ual-option="true" data-facultad="<%= ual.facultad_id %>">
-                <label class="form-check app-check-card w-100 h-100 p-3 border rounded-3">
+              <label class="form-check lab-selection-option" data-ual-option="true" data-facultad="<%= ual.facultad_id %>" data-search="<%= `${ual.nombre} ${ual.codigo_abreviacion || ''} ${ual.descripcion || ''} ${ual.sal_id_espacio || ''}`.toLocaleLowerCase() %>" hidden>
                   <input
                     class="form-check-input me-2"
                     type="checkbox"
@@ -141,22 +181,22 @@
                     data-ual-checkbox="true"
                     data-facultad="<%= ual.facultad_id %>"
                   >
-                  <span class="form-check-label d-block"><%= ual.nombre %></span>
+                  <span class="form-check-label fw-semibold"><%= ual.nombre %></span>
                   <% if (ual.codigo_abreviacion) { %>
-                    <small class="text-muted d-block mt-1">Código: <%= ual.codigo_abreviacion %></small>
+                    <small class="text-muted d-block">Código: <%= ual.codigo_abreviacion %></small>
                   <% } %>
                   <% if (ual.sal_id_espacio) { %>
-                    <small class="text-muted d-block mt-1">ID espacio: <%= ual.sal_id_espacio %></small>
+                    <small class="text-muted d-block">ID espacio: <%= ual.sal_id_espacio %></small>
                   <% } %>
                   <% if (ual.sal_ocupantes) { %>
-                    <small class="text-muted d-block mt-1">Ocupantes: <%= ual.sal_ocupantes %></small>
+                    <small class="text-muted d-block">Ocupantes: <%= ual.sal_ocupantes %></small>
                   <% } %>
                   <% if (ual.descripcion) { %>
-                    <small class="text-muted d-block mt-1"><%= ual.descripcion %></small>
+                    <small class="text-muted d-block"><%= ual.descripcion %></small>
                   <% } %>
-                </label>
-              </div>
+              </label>
             <% }); %>
+            <p class="text-muted m-0 p-3" id="ualsEmpty" hidden>No hay laboratorios que coincidan con la búsqueda en esta facultad.</p>
           </div>
         </div>
 
@@ -182,82 +222,75 @@
 </main>
 
 <%- include('../partials/footer'); -%>
+<script src="/milab/public/js/coordinator-autocomplete.js"></script>
 
 <script nonce="<%= cspNonce %>">
   const tipoUsuario = '<%= tipo %>';
   const idFacultadSesion = '<%= facultades[0]?.facultad_id || "" %>';
-  const selectedCoordinatorDocument = '<%= selectedCoordinatorDocument || "" %>';
-
-  function filtrarUalsPorFacultad(selectedFacultadId) {
-    const items = document.querySelectorAll('#ual .ual-item');
-    items.forEach(item => {
-      const fac = item.getAttribute('data-facultad');
-      if (!selectedFacultadId || String(fac) === String(selectedFacultadId)) {
-        item.style.display = '';
-      } else {
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        if (checkbox) checkbox.checked = false;
-        item.style.display = 'none';
-      }
-    });
-  }
 
   window.addEventListener('DOMContentLoaded', function () {
     const facultadSelect = document.getElementById('facultad');
-    const optionRows = document.querySelectorAll('[data-ual-option="true"]');
-    const checkboxes = document.querySelectorAll('[data-ual-checkbox="true"]');
-    const coordinatorLookupSelect = document.getElementById('coordinador_documento_lookup');
-
     if (!facultadSelect) {
       return;
     }
 
-    if (tipoUsuario === 'admin' && coordinatorLookupSelect) {
-      coordinatorLookupSelect.addEventListener('change', function () {
-        if (!this.form) {
-          return;
-        }
-
-        this.form.submit();
-      });
-    }
-
-    if (tipoUsuario === 'admin' && !selectedCoordinatorDocument) {
-      filtrarUalsPorFacultad('', optionRows, checkboxes);
-      return;
-    }
-
-    if (tipoUsuario === 'coordinador' && idFacultadSesion) {
+    if (tipoUsuario === 'coordinador' && !facultadSelect.value && idFacultadSesion) {
       facultadSelect.value = idFacultadSesion;
-      filtrarUalsPorFacultad(idFacultadSesion, optionRows, checkboxes);
-      return;
     }
 
-    filtrarUalsPorFacultad(facultadSelect.value, optionRows, checkboxes);
+    actualizarLaboratorios();
   });
 
-  document.getElementById('facultad').addEventListener('change', function () {
-    filtrarUalsPorFacultad(
-      this.value,
-      document.querySelectorAll('[data-ual-option="true"]'),
-      document.querySelectorAll('[data-ual-checkbox="true"]')
-    );
-  });
+  function actualizarLaboratorios() {
+    const facultyId = document.getElementById('facultad').value;
+    const filter = document.getElementById('ualSearch').value.trim().toLocaleLowerCase();
+    const options = document.querySelectorAll('[data-ual-option="true"]');
+    const visibleCheckboxes = [];
+    let matchingCount = 0;
 
-  function filtrarUalsPorFacultad(selectedFacultadId, optionRows, checkboxes) {
-    optionRows.forEach(function (row) {
-      const belongsToFaculty = row.getAttribute('data-facultad') === selectedFacultadId;
-      row.hidden = !belongsToFaculty;
-    });
+    options.forEach(function (option) {
+      const checkbox = option.querySelector('[data-ual-checkbox="true"]');
+      const matchesFaculty = option.getAttribute('data-facultad') === facultyId;
+      const matchesFilter = option.getAttribute('data-search').includes(filter);
+      option.hidden = !matchesFaculty || !matchesFilter;
 
-    checkboxes.forEach(function (checkbox) {
-      const belongsToFaculty = checkbox.getAttribute('data-facultad') === selectedFacultadId;
-
-      if (!belongsToFaculty) {
-        checkbox.checked = false;
+      if (!matchesFaculty) checkbox.checked = false;
+      if (!option.hidden) {
+        matchingCount++;
+        visibleCheckboxes.push(checkbox);
       }
     });
+
+    const hasFaculty = Boolean(facultyId);
+    document.getElementById('ualSearch').disabled = !hasFaculty;
+    document.getElementById('selectVisibleUals').disabled = !matchingCount;
+    document.getElementById('clearVisibleUals').disabled = !matchingCount;
+    document.getElementById('ualsEmpty').hidden = !hasFaculty || matchingCount > 0;
+    const selectedCount = document.querySelectorAll(
+      '[data-ual-checkbox="true"]:checked'
+    ).length;
+    document.getElementById('ualSelectionCount').textContent = hasFaculty
+      ? `${matchingCount} laboratorios visibles · ${selectedCount} seleccionados`
+      : 'Selecciona una facultad para ver los laboratorios.';
+
+    return visibleCheckboxes;
   }
+
+  document.getElementById('facultad').addEventListener('change', actualizarLaboratorios);
+  document.getElementById('ualSearch').addEventListener('input', actualizarLaboratorios);
+  document.getElementById('ualOptions').addEventListener('change', actualizarLaboratorios);
+  document.getElementById('selectVisibleUals').addEventListener('click', function () {
+    actualizarLaboratorios().forEach(function (checkbox) {
+      checkbox.checked = true;
+    });
+    actualizarLaboratorios();
+  });
+  document.getElementById('clearVisibleUals').addEventListener('click', function () {
+    actualizarLaboratorios().forEach(function (checkbox) {
+      checkbox.checked = false;
+    });
+    actualizarLaboratorios();
+  });
 
   function validarCorreo() {
     var correoInput = document.getElementById('correo');

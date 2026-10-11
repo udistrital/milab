@@ -887,10 +887,12 @@
             const allDependencies = snapshot(dependencySelect);
             const allUals = snapshot(ualSelect);
 
-            function rebuild(select, items, predicate) {
+            function rebuild(select, items, predicate, enabled, placeholder) {
                 if (!select) return;
                 const current = select.value;
                 while (select.options.length > 1) select.remove(1);
+                select.disabled = !enabled;
+                select.options[0].textContent = placeholder;
                 items.filter(predicate).forEach(function (item) {
                     const option = new Option(item.text, item.value);
                     option.setAttribute('data-facultad-id', item.facultadId);
@@ -906,18 +908,38 @@
 
             function refresh() {
                 const facultadId = facultySelect ? facultySelect.value : '';
+                const dependenciesEnabled = !facultySelect || !!facultadId;
                 rebuild(dependencySelect, allDependencies, function (item) {
-                    return !facultadId || item.facultadId === facultadId;
-                });
+                    return dependenciesEnabled && (!facultySelect || item.facultadId === facultadId);
+                }, dependenciesEnabled, dependenciesEnabled ? 'Todas las dependencias' : 'Selecciona primero una facultad');
                 const dependenciaId = dependencySelect ? dependencySelect.value : '';
-                rebuild(ualSelect, allUals, function (item) {
-                    if (dependenciaId) return item.dependenciaId === dependenciaId;
-                    return !facultadId || item.facultadId === facultadId;
+                const directUal = allUals.find(function (item) {
+                    return ualSelect && item.value === ualSelect.value && !item.dependenciaId &&
+                        (!facultySelect || item.facultadId === facultadId);
                 });
+                const ualsEnabled = dependencySelect ? dependenciesEnabled && (!!dependenciaId || !!directUal) : true;
+                rebuild(ualSelect, allUals, function (item) {
+                    return ualsEnabled && (!dependencySelect ||
+                        (dependenciaId ? item.dependenciaId === dependenciaId : directUal && item.value === directUal.value));
+                }, ualsEnabled, ualsEnabled ? 'Todas las UAL' : 'Selecciona primero una dependencia');
             }
 
-            if (facultySelect) facultySelect.addEventListener('change', refresh);
-            if (dependencySelect) dependencySelect.addEventListener('change', refresh);
+            // Conserva filtros de enlaces que incluyen solo una dependencia o UAL.
+            const initialUal = allUals.find(function (item) { return ualSelect && item.value === ualSelect.value; });
+            if (dependencySelect && !dependencySelect.value && initialUal) dependencySelect.value = initialUal.dependenciaId;
+            const initialDependency = allDependencies.find(function (item) { return dependencySelect && item.value === dependencySelect.value; });
+            if (facultySelect && !facultySelect.value) {
+                facultySelect.value = initialDependency ? initialDependency.facultadId : (initialUal ? initialUal.facultadId : '');
+            }
+            if (facultySelect) facultySelect.addEventListener('change', function () {
+                if (dependencySelect) dependencySelect.value = '';
+                if (ualSelect) ualSelect.value = '';
+                refresh();
+            });
+            if (dependencySelect) dependencySelect.addEventListener('change', function () {
+                if (ualSelect) ualSelect.value = '';
+                refresh();
+            });
             refresh();
         })();
     </script>

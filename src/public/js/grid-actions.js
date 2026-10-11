@@ -8,6 +8,7 @@
     [/^responder/i, 'bi-reply', 'primary'],
     [/^(ver detalle|detalle)$/i, 'bi-eye', 'info'],
     [/^ver dependencias$/i, 'bi-diagram-3', 'info'],
+    [/^asignar a dependencia$/i, 'bi-diagram-3', 'info'],
     [/^ver uals$/i, 'bi-grid-3x3-gap', 'info'],
     [/^ver (laboratoristas|coordinadores)$/i, 'bi-people', 'info'],
     [/^editar correo/i, 'bi-envelope', 'primary'],
