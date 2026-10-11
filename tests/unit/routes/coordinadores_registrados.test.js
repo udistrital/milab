@@ -31,6 +31,7 @@ function buildApp(route, sessionUser) {
 function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
   const originals = new Map();
   const clientCalls = [];
+  const renderErrorCalls = [];
 
   const client = {
     async query(sql, params = []) {
@@ -193,7 +194,10 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
       errorHandlerPath,
       {
         wantsJson: () => false,
-        renderApplicationError: (res, payload) => res.status(payload.status || 500).json(payload),
+        renderApplicationError: (res, payload, req, error) => {
+          renderErrorCalls.push({ req, error });
+          return res.status(payload.status || 500).json(payload);
+        },
       },
     ],
   ];
@@ -212,6 +216,7 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
   return {
     route: require(routePath),
     getClientCalls: () => clientCalls,
+    getRenderErrorCalls: () => renderErrorCalls,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
         if (original) {
@@ -245,6 +250,27 @@ test('coordinadores_registrados lists registered coordinators', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/coordinadores_registrados');
     assert.equal(response.body.locals.coordinadores.length, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados forwards loading errors to the shared error handler', async () => {
+  const databaseError = new Error('Database unavailable');
+  const loaded = loadRoute({
+    connectQueryImpl: async () => {
+      throw databaseError;
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app).get('/');
+    const [renderErrorCall] = loaded.getRenderErrorCalls();
+
+    assert.equal(response.status, 500);
+    assert.equal(renderErrorCall.req.method, 'GET');
+    assert.equal(renderErrorCall.error, databaseError);
   } finally {
     loaded.restore();
   }

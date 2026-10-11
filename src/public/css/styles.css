@@ -3059,7 +3059,9 @@ body.app-shell .table-multas td:nth-child(7) {
 body.app-shell .table-laboratoristas th:nth-child(4),
 body.app-shell .table-laboratoristas td:nth-child(4),
 body.app-shell .table-laboratoristas th:nth-child(5),
-body.app-shell .table-laboratoristas td:nth-child(5) {
+body.app-shell .table-laboratoristas td:nth-child(5),
+body.app-shell .table-laboratoristas th:nth-child(6),
+body.app-shell .table-laboratoristas td:nth-child(6) {
   white-space: normal;
   min-width: 220px;
   max-width: 340px;
@@ -3067,7 +3069,9 @@ body.app-shell .table-laboratoristas td:nth-child(5) {
   overflow-wrap: anywhere;
 }
 
-body.app-shell .table-laboratoristas td:nth-child(4) {
+body.app-shell .table-laboratoristas td:nth-child(4),
+body.app-shell .table-laboratoristas td:nth-child(5),
+body.app-shell .table-laboratoristas td:nth-child(6) {
   line-height: 1.35;
 }
 
@@ -3102,8 +3106,12 @@ body.app-shell .table-laboratoristas .app-labs-toggle:focus {
 
 body.app-shell .table-coordinadores th:nth-child(4),
 body.app-shell .table-coordinadores td:nth-child(4),
+body.app-shell .table-coordinadores th:nth-child(5),
+body.app-shell .table-coordinadores td:nth-child(5),
 body.app-shell .table-coordinadores th:nth-child(6),
-body.app-shell .table-coordinadores td:nth-child(6) {
+body.app-shell .table-coordinadores td:nth-child(6),
+body.app-shell .table-coordinadores th:nth-child(8),
+body.app-shell .table-coordinadores td:nth-child(8) {
   white-space: normal;
   min-width: 220px;
   max-width: 340px;
@@ -3143,15 +3151,13 @@ body.app-shell .table-coordinadores .app-labs-toggle:focus {
 
 body.app-shell .table-coordinadores th:nth-child(7),
 body.app-shell .table-coordinadores td:nth-child(7),
-body.app-shell .table-coordinadores th:nth-child(8),
-body.app-shell .table-coordinadores td:nth-child(8),
 body.app-shell .table-coordinadores th:nth-child(9),
-body.app-shell .table-coordinadores td:nth-child(9) {
+body.app-shell .table-coordinadores td:nth-child(9),
+body.app-shell .table-coordinadores th:nth-child(10),
+body.app-shell .table-coordinadores td:nth-child(10) {
   width: 1%;
 }
 
-body.app-shell .table-laboratoristas th:nth-child(6),
-body.app-shell .table-laboratoristas td:nth-child(6),
 body.app-shell .table-laboratoristas th:nth-child(7),
 body.app-shell .table-laboratoristas td:nth-child(7),
 body.app-shell .table-laboratoristas th:nth-child(8),
