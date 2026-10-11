@@ -3,6 +3,10 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const {
+  createSanctionPersonLookup,
+  resolveSanctionPersonLookup,
+} = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
 const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
@@ -69,72 +73,118 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
 
   const requestBody = req.body || {};
   const { tipo_busqueda, valor_busqueda } = requestBody;
-  let con_codigo;
-  let con_estado;
-  let con_documento;
-  let con_carrera;
-  let con_nombre;
+  const lookupToken = String(requestBody.lookup_token || '').trim();
+  const searchedPerson = lookupToken
+    ? resolveSanctionPersonLookup(req, lookupToken, 'estudiante')
+    : null;
+  if (lookupToken && !searchedPerson) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
+
+  let con_codigo = searchedPerson?.codigo;
+  let con_estado = searchedPerson?.estado;
+  let con_documento = searchedPerson?.documento;
+  let con_carrera = searchedPerson?.programa;
+  let con_nombre = searchedPerson?.nombre;
+  let usuarioId = searchedPerson?.usuarioId;
 
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
-    let servicePath;
-    if (tipo_busqueda === 'codigo') {
-      servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
-    } else {
-      servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
-    }
+    if (!searchedPerson) {
+      let servicePath;
+      if (tipo_busqueda === 'codigo') {
+        servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
+      } else {
+        servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
+      }
 
-    const dato1 = await requestOati(servicePath);
-    const studentRecords = extractOasStudentRecords(dato1);
-    if (!studentRecords.length) {
-      throw new Error('Estudiante no encontrado en OAS');
-    }
+      const dato1 = await requestOati(servicePath);
+      const studentRecords = extractOasStudentRecords(dato1);
+      if (!studentRecords.length) {
+        throw new Error('Estudiante no encontrado en OAS');
+      }
 
-    const studentRecord = studentRecords[studentRecords.length - 1];
+      const studentRecord = studentRecords[studentRecords.length - 1];
 
-    con_codigo = studentRecord.codigo;
-    con_estado = studentRecord.estado;
-    con_documento =
-      studentRecord.documento || studentRecord.numero_documento_identificacion || null;
-    if (
-      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
-      tipo_busqueda === 'documento'
-    ) {
-      con_documento = String(valor_busqueda || '').trim();
-    }
-    con_carrera = studentRecord.carrera;
-    con_nombre = studentRecord.nombre;
+      con_codigo = studentRecord.codigo;
+      con_estado = studentRecord.estado;
+      con_documento =
+        studentRecord.documento || studentRecord.numero_documento_identificacion || null;
+      if (
+        (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
+        tipo_busqueda === 'documento'
+      ) {
+        con_documento = String(valor_busqueda || '').trim();
+      }
+      con_carrera = studentRecord.carrera;
+      con_nombre = studentRecord.nombre;
 
-    if (!con_documento || con_documento === 'undefined' || con_documento === 'null') {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo resolver el documento del estudiante.',
+      if (!con_documento || con_documento === 'undefined' || con_documento === 'null') {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo resolver el documento del estudiante.',
+        });
+      }
+
+      const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
+      con_estado = dato2.estado.nombre;
+
+      const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
+      con_carrera = dato3.carrerasCollection.carrera[0].nombre;
+
+      console.log('con_codigo ' + con_codigo);
+      console.log('con_estado ' + con_estado);
+      console.log('con_documento ' + con_documento);
+      console.log('con_carrera ' + con_carrera);
+      console.log('con_nombre ' + con_nombre);
+
+      usuarioId = await ensurePerfilEstudiante({
+        documento: con_documento,
+        nombre: con_nombre,
+        codigo: con_codigo,
+        programa: con_carrera,
+        estado: con_estado,
+        correo: null,
       });
-    }
 
-    const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
-    con_estado = dato2.estado.nombre;
+      if (!usuarioId) {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo registrar el perfil del estudiante.',
+        });
+      }
 
-    const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
-    con_carrera = dato3.carrerasCollection.carrera[0].nombre;
+      if (con_estado === 'EGRESADO') {
+        console.log('El estudiante es egresado. No se puede continuar.');
+        return res.render('home/alerta-egresado', {
+          message: 'El estudiante es egresado. No se puede continuar.',
+        });
+      }
 
-    console.log('con_codigo ' + con_codigo);
-    console.log('con_estado ' + con_estado);
-    console.log('con_documento ' + con_documento);
-    console.log('con_carrera ' + con_carrera);
-    console.log('con_nombre ' + con_nombre);
+      const activeSanctionsResult = await pool.query(
+        "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
+        [usuarioId]
+      );
+      const createdLookupToken = createSanctionPersonLookup(req, 'estudiante', {
+        usuarioId,
+        codigo: con_codigo,
+        estado: con_estado,
+        documento: con_documento,
+        programa: con_carrera,
+        nombre: con_nombre,
+      });
 
-    const usuarioId = await ensurePerfilEstudiante({
-      documento: con_documento,
-      nombre: con_nombre,
-      codigo: con_codigo,
-      programa: con_carrera,
-      estado: con_estado,
-      correo: null,
-    });
-
-    if (!usuarioId) {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo registrar el perfil del estudiante.',
+      return res.render('home/sancion-person-actions', {
+        lookupToken: createdLookupToken,
+        personType: 'estudiante',
+        person: {
+          codigo: con_codigo,
+          estado: con_estado,
+          documento: con_documento,
+          programa: con_carrera,
+          nombre: con_nombre,
+        },
+        activeSanctionCount: Number(activeSanctionsResult.rows[0]?.total || 0),
       });
     }
 

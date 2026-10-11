@@ -12,14 +12,15 @@ const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.j
 
 function buildApp(route) {
   const app = express();
+  const session = {
+    user: {
+      tipo: 'laboratorista',
+      documento: '1024467835',
+    },
+  };
 
   app.use((req, res, next) => {
-    req.session = {
-      user: {
-        tipo: 'laboratorista',
-        documento: '1024467835',
-      },
-    };
+    req.session = session;
     res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
     next();
   });
@@ -148,8 +149,10 @@ test('get-info-multa exports an Express router with handlers', () => {
 });
 
 test('get-info-multa reuses searched document when OAS omits documento', async () => {
+  let oatiRequestCount = 0;
   const loaded = loadRoute({
     requestOatiImpl: async (servicePath) => {
+      oatiRequestCount += 1;
       if (servicePath.includes('datos_basicos_activos_cedula')) {
         return {
           datosEstudianteCollection: {
@@ -185,22 +188,82 @@ test('get-info-multa reuses searched document when OAS omits documento', async (
     });
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.view, 'home/reg_multa');
-    assert.equal(response.body.locals.con_documento, '79520182');
-    assert.equal(response.body.locals.con_codigo, '2024100001');
+    assert.equal(response.body.view, 'home/sancion-person-actions');
+    assert.equal(response.body.locals.person.documento, '79520182');
+    assert.equal(response.body.locals.person.codigo, '2024100001');
+    assert.equal(response.body.locals.activeSanctionCount, 0);
+    assert.equal(typeof response.body.locals.lookupToken, 'string');
+    assert.equal(oatiRequestCount, 3);
   } finally {
     loaded.restore();
   }
 });
 
-test('get-info-multa loads only assigned laboratorista UALs', async () => {
+test('get-info-multa reuses the session lookup when the user chooses registration', async () => {
+  let oatiRequestCount = 0;
+  const loaded = loadRoute({
+    requestOatiImpl: async (servicePath) => {
+      oatiRequestCount += 1;
+      if (servicePath.includes('datos_basicos_activos_cedula')) {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                codigo: '2024100001',
+                nombre: 'Estudiante Prueba',
+                carrera: '1',
+                estado: 'A',
+                documento: '79520182',
+              },
+            ],
+          },
+        };
+      }
+
+      if (servicePath.includes('estados_codigo')) {
+        return { estado: { nombre: 'ACTIVO' } };
+      }
+
+      if (servicePath.includes('carrera')) {
+        return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria' }] } };
+      }
+
+      return {};
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const searchResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const actionResponse = await request(app).post('/').type('form').send({
+      lookup_token: searchResponse.body.locals.lookupToken,
+    });
+
+    assert.equal(searchResponse.body.view, 'home/sancion-person-actions');
+    assert.equal(actionResponse.status, 200);
+    assert.equal(actionResponse.body.view, 'home/reg_multa');
+    assert.equal(actionResponse.body.locals.con_documento, '79520182');
+    assert.equal(actionResponse.body.locals.con_codigo, '2024100001');
+    assert.equal(oatiRequestCount, 3);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa loads only assigned laboratorista UALs after registration is selected', async () => {
   const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route);
-    const response = await request(app).post('/').type('form').send({
+    const searchResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
+    });
+    const response = await request(app).post('/').type('form').send({
+      lookup_token: searchResponse.body.locals.lookupToken,
     });
 
     assert.equal(response.status, 200);

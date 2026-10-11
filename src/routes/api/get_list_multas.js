@@ -396,6 +396,8 @@ async function queryMultasRows(client, conditions, params) {
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
+        COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+        CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
         m.ual_id,
         u.facultad_id,
         TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
@@ -404,6 +406,8 @@ async function queryMultasRows(client, conditions, params) {
         m.tipo_sancion
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
+      LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
       LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
       LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
       LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id

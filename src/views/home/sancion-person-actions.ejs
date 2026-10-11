@@ -1,0 +1,117 @@
+<%- include('../partials/header'); -%>
+<% if (locals.tipo !== 'admin' && locals.tipo !== 'laboratorista' && locals.tipo !== 'coordinador') { %>
+  <script nonce="<%= cspNonce %>">
+    window.location.href = '/milab/auth/login';
+  </script>
+<% } else { %>
+  <%
+    const isTeacher = personType === 'docente';
+    const personKind = isTeacher ? 'docente' : 'estudiante';
+    const registrationUrl = isTeacher
+      ? '/milab/api/get-info-multa-docente'
+      : '/milab/api/get-info-multa';
+    const removalUrl = isTeacher
+      ? '/milab/api/get-info-erase-multa-docente'
+      : '/milab/api/get-info-erase-multa';
+    const searchUrl = isTeacher
+      ? '/milab/api/get-info-multa-docente/get'
+      : '/milab/api/get-info-multa/get';
+  %>
+  <main class="container app-page-shell">
+    <section class="app-page-header">
+      <p class="app-home-welcome-kicker">Paso 2 de 2</p>
+      <h1 class="app-page-title">Acciones para <%= personKind %></h1>
+      <p class="app-page-subtitle">Revisa la identidad y selecciona qué deseas hacer. No tendrás que buscar de nuevo.</p>
+    </section>
+
+    <section class="card app-form-panel app-fine-person-summary">
+      <div class="card-body">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+          <div>
+            <span class="text-muted small"><%= personKind %> encontrado</span>
+            <h2 class="app-panel-title mt-1 mb-0"><%= person.nombre %></h2>
+          </div>
+          <span class="badge rounded-pill text-bg-<%= person.estado === 'ACTIVO' ? 'success' : 'secondary' %>">
+            <%= person.estado || 'Estado no disponible' %>
+          </span>
+        </div>
+        <dl class="row g-3 mb-0 mt-2">
+          <div class="col-12 col-md-4">
+            <dt class="text-muted small">Documento</dt>
+            <dd class="mb-0 fw-semibold"><%= person.documento %></dd>
+          </div>
+          <% if (!isTeacher) { %>
+            <div class="col-12 col-md-4">
+              <dt class="text-muted small">Código institucional</dt>
+              <dd class="mb-0 fw-semibold"><%= person.codigo || 'No disponible' %></dd>
+            </div>
+            <div class="col-12 col-md-4">
+              <dt class="text-muted small">Programa académico</dt>
+              <dd class="mb-0 fw-semibold"><%= person.programa || 'No disponible' %></dd>
+            </div>
+          <% } %>
+        </dl>
+      </div>
+    </section>
+
+    <section class="mt-4" aria-labelledby="fineActionHeading">
+      <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
+        <div>
+          <p class="app-home-welcome-kicker mb-1">Selecciona una acción</p>
+          <h2 class="app-panel-title mb-0" id="fineActionHeading">¿Cómo deseas continuar?</h2>
+        </div>
+        <span class="badge rounded-pill text-bg-<%= activeSanctionCount > 0 ? 'warning' : 'light' %>">
+          <%= activeSanctionCount %> sanciones activas
+        </span>
+      </div>
+
+      <div class="app-fine-action-options">
+        <form method="POST" action="<%= registrationUrl %>" class="card app-fine-action-card">
+          <%- include('../partials/csrf_field') %>
+          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+          <div class="card-body">
+            <div class="app-fine-action-icon app-fine-action-icon--register" aria-hidden="true">
+              <i class="bi bi-plus-circle"></i>
+            </div>
+            <h3 class="h5 mt-3">Registrar sanción</h3>
+            <p class="text-muted">Crear un nuevo registro para esta persona.</p>
+            <button class="btn btn-perso w-100" type="submit" data-submit-lock="true">
+              Continuar con el registro
+            </button>
+          </div>
+        </form>
+
+        <form method="POST" action="<%= removalUrl %>" class="card app-fine-action-card">
+          <%- include('../partials/csrf_field') %>
+          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+          <div class="card-body">
+            <div class="app-fine-action-icon app-fine-action-icon--remove" aria-hidden="true">
+              <i class="bi bi-dash-circle"></i>
+            </div>
+            <h3 class="h5 mt-3">Retirar sanción</h3>
+            <p class="text-muted">
+              <% if (activeSanctionCount > 0) { %>
+                Revisar las sanciones activas antes de retirarlas.
+              <% } else { %>
+                Esta persona no tiene sanciones activas para retirar.
+              <% } %>
+            </p>
+            <button
+              class="btn btn-outline-secondary w-100"
+              type="submit"
+              data-submit-lock="true"
+              <%= activeSanctionCount > 0 ? '' : 'disabled' %>
+            >
+              Revisar sanciones activas
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="mt-3">
+        <a class="btn btn-link px-0" href="<%= searchUrl %>">Buscar otra persona</a>
+      </div>
+    </section>
+  </main>
+  <%- include('../partials/footer'); -%>
+<% } %>

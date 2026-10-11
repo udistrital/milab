@@ -15,7 +15,14 @@
             <% const payload = { ...claim, respondido_por: claim.nombre_respondiente }; %>
             <tr>
               <td><strong><%= claim.estudiante %></strong><br><small>Documento: <%= claim.documento %><br>Código: <%= claim.codigo || '-' %></small></td>
-              <td class="app-claim-text"><%= claim.cat_multa %><br><strong><%= claim.laboratorio || '-' %></strong><br><small>Sanción #<%= claim.multa_id %></small></td>
+              <td class="app-claim-text">
+                <div class="app-claim-summary">
+                  <%= claim.cat_multa %>
+                  <strong><%= claim.laboratorio || '-' %></strong>
+                  <%- include('../partials/sanction-location', { sanction: claim }) %>
+                  <small>Sanción #<%= claim.multa_id %></small>
+                </div>
+              </td>
               <td data-order="<%= new Date(claim.fecha_creacion).toISOString() %>"><%= new Date(claim.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></td>
               <td><%= claim.responsable %><% if (claim.responsable_activo === false) { %><br><span class="badge text-bg-warning">Responsable inactivo</span><% } %></td>
               <td><span class="badge <%= claim.fecha_respuesta ? 'text-bg-success' : 'text-bg-warning' %>"><%= claim.fecha_respuesta ? 'Respondida' : 'Pendiente de respuesta' %></span></td>

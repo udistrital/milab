@@ -10,12 +10,13 @@ const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 const multaConfigPath = path.resolve(__dirname, '../../../src/libs/multa-config.js');
+const { createSanctionPersonLookup } = require('../../../src/libs/sanction-person-lookup');
 
-function buildApp(route, sessionUser) {
+function buildApp(route, sessionUser, session = { user: sessionUser }) {
   const app = express();
 
   app.use((req, res, next) => {
-    req.session = { user: sessionUser };
+    req.session = session;
     res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
     next();
   });
@@ -24,7 +25,7 @@ function buildApp(route, sessionUser) {
   return app;
 }
 
-function loadRoute({ queryImpl } = {}) {
+function loadRoute({ queryImpl, requestOatiImpl } = {}) {
   const originals = new Map();
   const stubs = [
     [
@@ -42,30 +43,32 @@ function loadRoute({ queryImpl } = {}) {
       oatiClientPath,
       {
         getAcademicServicePath: (value) => value,
-        requestOati: async (servicePath) => {
-          if (servicePath.includes('datos_basicos')) {
-            return {
-              datosEstudianteCollection: {
-                datosBasicosEstudiante: [
-                  {
-                    codigo: '2024100001',
-                    nombre: 'Estudiante Prueba',
-                    carrera: '1',
-                    estado: 'A',
-                    documento: '79520182',
-                  },
-                ],
-              },
-            };
-          }
-          if (servicePath.includes('estados_codigo')) {
-            return { estado: { nombre: 'ACTIVO' } };
-          }
-          if (servicePath.includes('carrera')) {
-            return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria' }] } };
-          }
-          return {};
-        },
+        requestOati:
+          requestOatiImpl ||
+          (async (servicePath) => {
+            if (servicePath.includes('datos_basicos')) {
+              return {
+                datosEstudianteCollection: {
+                  datosBasicosEstudiante: [
+                    {
+                      codigo: '2024100001',
+                      nombre: 'Estudiante Prueba',
+                      carrera: '1',
+                      estado: 'A',
+                      documento: '79520182',
+                    },
+                  ],
+                },
+              };
+            }
+            if (servicePath.includes('estados_codigo')) {
+              return { estado: { nombre: 'ACTIVO' } };
+            }
+            if (servicePath.includes('carrera')) {
+              return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria' }] } };
+            }
+            return {};
+          }),
       },
     ],
     [
@@ -164,6 +167,67 @@ test('get-info-erase-multa exposes assigned UAL ids for laboratorista to allow r
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/reg_multa_erase');
     assert.deepEqual(response.body.locals.laboratoristaUalIds, [21, 22]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-erase-multa reuses the session lookup without querying OATI again', async () => {
+  let oatiRequestCount = 0;
+  const loaded = loadRoute({
+    requestOatiImpl: async () => {
+      oatiRequestCount += 1;
+      return {};
+    },
+    queryImpl: async (sql) => {
+      if (sql.includes('SELECT COUNT(*) AS multado FROM multa')) {
+        return { rows: [{ multado: '1' }] };
+      }
+      if (sql.includes('SELECT m.*')) {
+        return {
+          rows: [
+            {
+              id: 1,
+              ual_id: 21,
+              laboratorista_documento_id: '1024467835',
+              con_estado_multa: 'ACTIVA',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
+        return { rows: [{ documento: '1024467835' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual WHERE laboratorista_documento_id = $1')) {
+        return { rows: [{ ual_id: 21 }, { ual_id: 22 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const session = {
+      user: {
+        tipo: 'laboratorista',
+        documento: '1024467835',
+      },
+    };
+    const lookupToken = createSanctionPersonLookup({ session }, 'estudiante', {
+      usuarioId: 99,
+      codigo: '2024100001',
+      estado: 'ACTIVO',
+      documento: '79520182',
+      programa: 'Ingenieria',
+      nombre: 'Estudiante Prueba',
+    });
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '1024467835' }, session);
+    const response = await request(app).post('/').type('form').send({ lookup_token: lookupToken });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/reg_multa_erase');
+    assert.equal(response.body.locals.con_documento, '79520182');
+    assert.deepEqual(response.body.locals.laboratoristaUalIds, [21, 22]);
+    assert.equal(oatiRequestCount, 0);
   } finally {
     loaded.restore();
   }

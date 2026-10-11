@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilDocente } = require('../../libs/user-identity');
+const { resolveSanctionPersonLookup } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
@@ -45,37 +46,50 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};
+  const lookupToken = String(requestBody.lookup_token || '').trim();
+  const searchedPerson = lookupToken
+    ? resolveSanctionPersonLookup(req, lookupToken, 'docente')
+    : null;
+  if (lookupToken && !searchedPerson) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
+
   const { numero_documento_identificacion } = requestBody;
-  let con_estado;
-  let con_documento;
-  let con_nombre;
+  let con_estado = searchedPerson?.estado;
+  let con_documento = searchedPerson?.documento;
+  let con_nombre = searchedPerson?.nombre;
+  let usuarioId = searchedPerson?.usuarioId;
 
   try {
-    // Consulta al OAS
-    const dato1 = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
-    );
+    if (!searchedPerson) {
+      // Consulta al OAS
+      const dato1 = await requestOati(
+        getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
+      );
 
-    const docenteData = dato1.docentesCollection.docente[0];
-    con_estado = docenteData.estado_docente;
-    con_documento = numero_documento_identificacion;
-    con_nombre = docenteData.nombre;
+      const docenteData = dato1.docentesCollection.docente[0];
+      con_estado = docenteData.estado_docente;
+      con_documento = numero_documento_identificacion;
+      con_nombre = docenteData.nombre;
 
-    console.log('con_estado ' + con_estado);
-    console.log('con_documento ' + con_documento);
-    console.log('con_nombre ' + con_nombre);
+      console.log('con_estado ' + con_estado);
+      console.log('con_documento ' + con_documento);
+      console.log('con_nombre ' + con_nombre);
 
-    const usuarioId = await ensurePerfilDocente({
-      documento: con_documento,
-      nombre: con_nombre,
-      estado: con_estado,
-      correo: null,
-    });
-
-    if (!usuarioId) {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo registrar el perfil del docente.',
+      usuarioId = await ensurePerfilDocente({
+        documento: con_documento,
+        nombre: con_nombre,
+        estado: con_estado,
+        correo: null,
       });
+
+      if (!usuarioId) {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo registrar el perfil del docente.',
+        });
+      }
     }
 
     // Consulta solo multas ACTIVAS
@@ -89,7 +103,7 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
     let multaInfo = null;
     if (con_multado) {
       const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa = $2';
+        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad, CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa = $2';
       const valuesMultaInfo = [usuarioId, 'ACTIVA'];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;

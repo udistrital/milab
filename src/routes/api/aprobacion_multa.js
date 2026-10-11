@@ -365,13 +365,17 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         us.codigo AS codigo_sancionado,
         l.nombre AS nombre_laboratorista,
         m.cat_multa,
-        u.nombre AS ual, 
+        u.nombre AS ual,
+        COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+        CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
         m.fecha_multa, 
         m.con_estado_multa, 
         m.obs_multa,
         m.tipo_sancion
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
+      LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
       LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
         LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
         LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
@@ -478,7 +482,14 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
     }
 
     const multaInfo = await pool.query(
-      'SELECT m.usuario_sancionado_id, m.fecha_multa, u.nombre AS ual, m.obs_multa FROM multa m LEFT JOIN ual u ON u.ual_id = m.ual_id WHERE m.id = $1',
+      `SELECT m.usuario_sancionado_id, m.fecha_multa, u.nombre AS ual, m.obs_multa,
+              COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+              CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia
+       FROM multa m
+       LEFT JOIN ual u ON u.ual_id = m.ual_id
+       LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+       LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
+       WHERE m.id = $1`,
       [multa_id]
     );
     const usuarioId = multaInfo.rows[0]?.usuario_sancionado_id;
@@ -506,6 +517,8 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
         tipoSancion: tipo_sancion,
         observaciones: multaInfo.rows[0]?.obs_multa,
         laboratorio: multaInfo.rows[0]?.ual,
+        facultad: multaInfo.rows[0]?.laboratorio_facultad,
+        dependencia: multaInfo.rows[0]?.laboratorio_dependencia,
         fecha: multaInfo.rows[0]?.fecha_multa,
       });
 

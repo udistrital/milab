@@ -228,6 +228,18 @@ test('sanction edit preserves its original historical category but rejects inact
 test('get_list_multas returns grouped sanctions for non-coordinator roles', async () => {
   let sgaCalls = 0;
   const loaded = loadRoute({
+    clientQueryImpl: async (sql) => {
+      if (sql.includes('FROM multa m')) {
+        assert.match(sql, /COALESCE\(facultad\.nombre, unidad\.nombre\) AS laboratorio_facultad/);
+        assert.match(sql, /AS laboratorio_dependencia/);
+      }
+      return {
+        rows: [
+          { id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'Pendiente' },
+          { id: 2, tipo_sancionado: 'docente', con_estado_multa: 'POR SALDAR' },
+        ],
+      };
+    },
     sgaDebtServiceImpl: {
       isConfigured: () => true,
       async getActiveDebts() {
