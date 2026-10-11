@@ -16,6 +16,7 @@ const {
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
 const { renderModuleError } = require('../middlewares/error-handler');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 
 const router = express.Router();
 
@@ -181,24 +182,19 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     }
 
     if (actorRole === 'coordinador') {
-      const coordinadorResult = await pool.query(
-        'SELECT facultad_id FROM coordinador WHERE documento = $1',
-        [sessionDocumento]
-      );
       const ualFacultadResult = await pool.query('SELECT facultad_id FROM ual WHERE ual_id = $1', [
         idUal,
       ]);
-      const facultadCoordinador = coordinadorResult.rows[0]?.facultad_id;
       const facultadUal = ualFacultadResult.rows[0]?.facultad_id;
+      const coordinatorScope = await resolveCoordinatorScope(pool, sessionDocumento);
 
       if (
-        !facultadCoordinador ||
-        !facultadUal ||
-        Number(facultadCoordinador) !== Number(facultadUal)
+        !coordinatorScope.coordinatorDocument ||
+        !coordinatorScopeAllowsUal(coordinatorScope, idUal, facultadUal)
       ) {
         return res.render('home/message_error', {
           message: 'No autorizado',
-          message2: 'No puedes registrar sanciones en una UAL fuera de tu facultad.',
+          message2: 'No puedes registrar sanciones en una UAL fuera de tu alcance.',
           limit: null,
         });
       }

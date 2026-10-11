@@ -6,7 +6,7 @@ const {
   fetchSanctionCategories,
   isActiveSanctionCategory,
 } = require('../../libs/sanction-categories');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles, requireJsonRoles } = require('../middlewares/auth');
 const { fetchSanctionClaimHistory } = require('../../libs/sanction-claims');
 const { resolveOatiName } = require('../../libs/oati-name');
@@ -86,7 +86,7 @@ async function validateFineEditScope(req, client, multaId) {
 
   if (userType === 'coordinador') {
     const scope = await resolveCoordinatorScope(client, getSessionDocument(req));
-    if (scope.facultyIds.includes(Number(multa.facultad_id)))
+    if (coordinatorScopeAllowsUal(scope, multa.ual_id, multa.facultad_id))
       return { ok: true, categoria: multa.cat_multa };
     return { ok: false, message: 'La sanción está fuera del alcance de tu facultad.' };
   }
@@ -272,9 +272,15 @@ async function buildMultasQueryContext(req, client, { includeLocationOptions = f
       };
     }
 
-    conditions.push(`u.facultad_id = ANY(${nextParam(scope.facultyIds)}::int[])`);
-    optionsScopeCondition = 'u.facultad_id = ANY($1::int[])';
-    optionsScopeParams = [scope.facultyIds];
+    if (scope.scopeType === 'uales') {
+      conditions.push(`m.ual_id = ANY(${nextParam(scope.ualIds)}::int[])`);
+      optionsScopeCondition = 'u.ual_id = ANY($1::int[])';
+      optionsScopeParams = [scope.ualIds];
+    } else {
+      conditions.push(`u.facultad_id = ANY(${nextParam(scope.facultyIds)}::int[])`);
+      optionsScopeCondition = 'u.facultad_id = ANY($1::int[])';
+      optionsScopeParams = [scope.facultyIds];
+    }
   } else if (userType === 'laboratorista' && !isGlobalViewer) {
     const laboratoristaDocument = await resolveLaboratoristaDocument(
       client,

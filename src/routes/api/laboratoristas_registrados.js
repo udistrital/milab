@@ -9,6 +9,7 @@ const {
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 
 const router = express.Router();
 
@@ -48,37 +49,13 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   if (!normalizedDocument) {
     return {
       coordinatorDocument: null,
+      scopeType: null,
       facultyIds: [],
+      ualIds: [],
     };
   }
 
-  const coordinatorRes = await client.query(
-    'SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1',
-    [normalizedDocument]
-  );
-
-  if (coordinatorRes.rows.length === 0) {
-    return {
-      coordinatorDocument: null,
-      facultyIds: [],
-    };
-  }
-
-  const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
-    [normalizedDocument]
-  );
-
-  return {
-    coordinatorDocument: normalizedDocument,
-    facultyIds: [
-      ...new Set(
-        facultiesRes.rows
-          .map((row) => Number(row.facultad_id))
-          .filter((value) => Number.isInteger(value))
-      ),
-    ],
-  };
+  return resolveCoordinatorScope(client, normalizedDocument);
 }
 
 async function fetchCoordinatorOptions(client) {
@@ -108,34 +85,31 @@ async function resolveActorDocumentForLogs(req, client) {
   return result.rows[0]?.documento || req.session.user.documento;
 }
 
-async function resolveCoordinatorFacultyIds(client, authDocument) {
-  const coordInfoRes = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
-    authDocument,
-  ]);
-
-  if (coordInfoRes.rows.length === 0) {
-    return [];
-  }
-
-  const coordDocumento = coordInfoRes.rows[0].documento;
-  const facultadesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
-    [coordDocumento]
-  );
-
-  return facultadesRes.rows.map((row) => row.facultad_id);
-}
-
-async function resolveLaboratoristaFacultyIds(client, laboratoristaDocumento) {
+async function resolveLaboratoristaUalAssignments(client, laboratoristaDocumento) {
   const result = await client.query(
-    `SELECT DISTINCT u.facultad_id
+    `SELECT DISTINCT lu.ual_id, u.facultad_id
      FROM laboratorista_ual lu
      JOIN ual u ON u.ual_id = lu.ual_id
      WHERE lu.laboratorista_documento_id = $1`,
     [laboratoristaDocumento]
   );
 
-  return result.rows.map((row) => Number(row.facultad_id)).filter(Boolean);
+  return result.rows.map((row) => ({
+    ualId: Number(row.ual_id),
+    facultyId: Number(row.facultad_id),
+  }));
+}
+
+function laboratoristaAssignmentsWithinCoordinatorScope(assignments, scope) {
+  if (!scope?.coordinatorDocument || !scope.facultyIds.length) {
+    return false;
+  }
+
+  return assignments.some(({ ualId, facultyId }) =>
+    scope.scopeType === 'uales'
+      ? coordinatorScopeAllowsUal(scope, ualId, facultyId)
+      : scope.facultyIds.includes(facultyId)
+  );
 }
 
 router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
@@ -150,12 +124,24 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         l.documento AS con_documento,
         l.correo AS con_correo,
         l.activo AS activo,
-        COALESCE(STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre), '') AS con_ual,
-        COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS con_facultad
+        COALESCE(
+          STRING_AGG(
+            DISTINCT COALESCE(facultad_padre.nombre, f.nombre),
+            ', ' ORDER BY COALESCE(facultad_padre.nombre, f.nombre)
+          ),
+          ''
+        ) AS con_facultad,
+        COALESCE(
+          STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre)
+            FILTER (WHERE f.padre_id IS NOT NULL),
+          ''
+        ) AS con_dependencia,
+        COALESCE(STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre), '') AS con_ual
       FROM laboratorista l
       LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
       LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id
       LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = u_rel.facultad_id
+      LEFT JOIN dependencia_facultad facultad_padre ON facultad_padre.dependencia_facultad_id = f.padre_id
     `;
 
     if (req.session.user.tipo === 'admin') {
@@ -166,12 +152,8 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       );
       laboratoristas = result.rows;
     } else if (req.session.user.tipo === 'coordinador') {
-      const coordInfoRes = await pool.query(
-        `SELECT documento FROM coordinador WHERE nombre_u = $1`,
-        [req.session.user.documento]
-      );
-
-      if (coordInfoRes.rows.length === 0) {
+      const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+      if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
         return res.render('home/message_error', {
           message: '¡Error!',
           message2: 'No se encontró información del coordinador',
@@ -179,34 +161,29 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         });
       }
 
-      const coordDocumento = coordInfoRes.rows[0].documento;
-      const cfRes = await pool.query(
-        `SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1`,
-        [coordDocumento]
+      const scopeIds = scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds;
+      const scopeColumn = scope.scopeType === 'uales' ? 'u_scope.ual_id' : 'u_scope.facultad_id';
+      const visibleUalCondition =
+        scope.scopeType === 'uales'
+          ? 'AND u_rel.ual_id = ANY($1::int[])'
+          : 'AND u_rel.facultad_id = ANY($1::int[])';
+      const scopedBaseQuery = baseQuery.replace(
+        'LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id',
+        `LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id ${visibleUalCondition}`
       );
 
-      const facultadesCoord = cfRes.rows.map((r) => r.facultad_id);
-
-      if (facultadesCoord.length === 0) {
-        return res.render('home/message_error', {
-          message: '¡Error!',
-          message2: 'El coordinador no tiene facultades asociadas',
-          limit: null,
-        });
-      }
-
       const result = await pool.query(
-        `${baseQuery}
+        `${scopedBaseQuery}
          WHERE EXISTS (
            SELECT 1
            FROM laboratorista_ual lu_scope
            JOIN ual u_scope ON u_scope.ual_id = lu_scope.ual_id
            WHERE lu_scope.laboratorista_documento_id = l.documento
-             AND u_scope.facultad_id = ANY($1::int[])
+             AND ${scopeColumn} = ANY($1::int[])
          )
          GROUP BY l.nombre, l.documento, l.correo, l.activo
          ORDER BY l.nombre ASC`,
-        [facultadesCoord]
+        [scopeIds]
       );
       laboratoristas = result.rows;
     }
@@ -243,7 +220,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
   try {
     const isAdmin = req.session.user.tipo === 'admin';
     const coordinatorOptions = isAdmin ? await fetchCoordinatorOptions(pool) : [];
-    const coordinatorScope = isAdmin
+    const requestedCoordinatorScope = isAdmin
       ? await resolveCoordinatorScopeByDocument(pool, requestedCoordinatorDocument)
       : null;
 
@@ -265,23 +242,36 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     }
 
     const laboratorista = laboratoristaRes.rows[0];
-    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(pool, documento);
-    const selectedFacultyId = laboratoristaFacultyIds[0] || null;
+    const laboratoristaAssignments = await resolveLaboratoristaUalAssignments(pool, documento);
+    const laboratoristaFacultyIds = [
+      ...new Set(laboratoristaAssignments.map((assignment) => assignment.facultyId)),
+    ];
+    let selectedFacultyId = laboratoristaFacultyIds[0] || null;
     let facultadesPermitidas = null;
+    let coordinatorUserScope = null;
 
     if (req.session.user.tipo === 'coordinador') {
-      facultadesPermitidas = await resolveCoordinatorFacultyIds(pool, req.session.user.documento);
-      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
-        facultadesPermitidas.includes(facultyId)
+      coordinatorUserScope = await resolveCoordinatorScope(pool, req.session.user.documento);
+      facultadesPermitidas = coordinatorUserScope.facultyIds;
+      const isWithinCoordinatorScope = laboratoristaAssignmentsWithinCoordinatorScope(
+        laboratoristaAssignments,
+        coordinatorUserScope
       );
 
-      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
+      if (!isWithinCoordinatorScope) {
         return res.render('home/message_error', {
           message: '¡Acceso denegado!',
           message2: 'No tienes permisos para editar este laboratorista.',
           limit: null,
         });
       }
+
+      const visibleAssignment = laboratoristaAssignments.find((assignment) =>
+        coordinatorUserScope.scopeType === 'uales'
+          ? coordinatorScopeAllowsUal(coordinatorUserScope, assignment.ualId, assignment.facultyId)
+          : facultadesPermitidas.includes(assignment.facultyId)
+      );
+      selectedFacultyId = visibleAssignment?.facultyId || facultadesPermitidas[0] || null;
     }
 
     let facultadesRes;
@@ -290,10 +280,13 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [facultadesPermitidas]
       );
-    } else if (coordinatorScope?.coordinatorDocument && coordinatorScope.facultyIds.length) {
+    } else if (
+      requestedCoordinatorScope?.coordinatorDocument &&
+      requestedCoordinatorScope.facultyIds.length
+    ) {
       facultadesRes = await pool.query(
         'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-        [coordinatorScope.facultyIds]
+        [requestedCoordinatorScope.facultyIds]
       );
     } else {
       facultadesRes = await pool.query(
@@ -302,15 +295,23 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     }
 
     let ualsRes;
-    if (req.session.user.tipo === 'coordinador') {
+    if (req.session.user.tipo === 'coordinador' && coordinatorUserScope.scopeType === 'uales') {
+      ualsRes = await pool.query(
+        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) AND ual_id = ANY($2::int[]) ORDER BY nombre ASC',
+        [facultadesPermitidas, coordinatorUserScope.ualIds]
+      );
+    } else if (req.session.user.tipo === 'coordinador') {
       ualsRes = await pool.query(
         'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [facultadesPermitidas]
       );
-    } else if (coordinatorScope?.coordinatorDocument && coordinatorScope.facultyIds.length) {
+    } else if (
+      requestedCoordinatorScope?.coordinatorDocument &&
+      requestedCoordinatorScope.facultyIds.length
+    ) {
       ualsRes = await pool.query(
         'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-        [coordinatorScope.facultyIds]
+        [requestedCoordinatorScope.facultyIds]
       );
     } else {
       ualsRes = await pool.query(
@@ -334,7 +335,7 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
       uals: ualsRes.rows,
       assignedUalIds,
       coordinadores: coordinatorOptions,
-      selectedCoordinatorDocument: coordinatorScope?.coordinatorDocument || '',
+      selectedCoordinatorDocument: requestedCoordinatorScope?.coordinatorDocument || '',
       error: null,
     });
   } catch (error) {
@@ -377,8 +378,10 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
   try {
     client = await pool.connect();
 
+    let selectedCoordinatorScope = null;
     if (req.session.user.tipo === 'admin' && requestedCoordinatorDocument) {
       const scope = await resolveCoordinatorScopeByDocument(client, requestedCoordinatorDocument);
+      selectedCoordinatorScope = scope;
       if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
         client.release();
         return res.render('home/message_error', {
@@ -413,21 +416,24 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     }
 
     const laboratorista = laboratoristaRes.rows[0];
-    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
+    const assignedUalAssignments = await resolveLaboratoristaUalAssignments(client, documento);
 
     if (req.session.user.tipo === 'coordinador') {
-      const facultadesPermitidas = await resolveCoordinatorFacultyIds(
-        client,
-        req.session.user.documento
-      );
-      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
-        facultadesPermitidas.includes(facultyId)
+      selectedCoordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      const isWithinCoordinatorScope = laboratoristaAssignmentsWithinCoordinatorScope(
+        assignedUalAssignments,
+        selectedCoordinatorScope
       );
 
       if (
-        facultadesPermitidas.length === 0 ||
+        selectedCoordinatorScope.facultyIds.length === 0 ||
         !isWithinCoordinatorScope ||
-        !facultadesPermitidas.includes(selectedFacultyId)
+        (selectedCoordinatorScope.scopeType !== 'uales' &&
+          !selectedCoordinatorScope.facultyIds.includes(selectedFacultyId)) ||
+        (selectedCoordinatorScope.scopeType === 'uales' &&
+          selectedUalIds.some(
+            (ualId) => !coordinatorScopeAllowsUal(selectedCoordinatorScope, ualId)
+          ))
       ) {
         client.release();
         return res.render('home/message_error', {
@@ -436,6 +442,20 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
           limit: null,
         });
       }
+    }
+
+    if (
+      req.session.user.tipo === 'admin' &&
+      selectedCoordinatorScope?.scopeType === 'uales' &&
+      selectedUalIds.some((ualId) => !coordinatorScopeAllowsUal(selectedCoordinatorScope, ualId))
+    ) {
+      client.release();
+      return res.render('home/message_error', {
+        message: 'Selección inválida de UALs',
+        message2:
+          'Una o más UALs seleccionadas están fuera del alcance del coordinador responsable.',
+        limit: null,
+      });
     }
 
     const ualsRes = await client.query(
@@ -451,6 +471,19 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
         limit: null,
       });
     }
+
+    const retainedUalIds =
+      req.session.user.tipo === 'coordinador'
+        ? assignedUalAssignments
+            .filter(
+              ({ ualId, facultyId }) =>
+                facultyId !== selectedFacultyId ||
+                (selectedCoordinatorScope.scopeType === 'uales' &&
+                  !coordinatorScopeAllowsUal(selectedCoordinatorScope, ualId, facultyId))
+            )
+            .map((assignment) => assignment.ualId)
+        : [];
+    const ualIdsToPersist = [...new Set([...selectedUalIds, ...retainedUalIds])];
 
     const conflict = await findEmailConflict(client, correo, laboratorista.documento);
 
@@ -498,7 +531,7 @@ router.post('/editar', requireAdminOrCoordinadorLabAction, async (req, res) => {
     ]);
     await client.query(
       'INSERT INTO laboratorista_ual (laboratorista_documento_id, ual_id) SELECT $1, UNNEST($2::int[])',
-      [documento, selectedUalIds]
+      [documento, ualIdsToPersist]
     );
 
     const actorDocument = await resolveActorDocumentForLogs(req, client);
@@ -572,18 +605,15 @@ router.post('/actualizar-correo', requireAdminOrCoordinadorLabEmailEdit, async (
     }
 
     const laboratorista = laboratoristaResult.rows[0];
-    const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
-
     if (req.session.user.tipo === 'coordinador') {
-      const facultadesPermitidas = await resolveCoordinatorFacultyIds(
-        client,
-        req.session.user.documento
-      );
-      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
-        facultadesPermitidas.includes(facultyId)
+      const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      const assignments = await resolveLaboratoristaUalAssignments(client, documento);
+      const isWithinCoordinatorScope = laboratoristaAssignmentsWithinCoordinatorScope(
+        assignments,
+        coordinatorScope
       );
 
-      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
+      if (!isWithinCoordinatorScope) {
         client.release();
         return res.status(403).json({
           ok: false,
@@ -702,16 +732,14 @@ router.post('/toggle-estado', requireAdminOrCoordinadorLabAction, async (req, re
     }
 
     if (req.session.user.tipo === 'coordinador') {
-      const facultadesPermitidas = await resolveCoordinatorFacultyIds(
-        client,
-        req.session.user.documento
-      );
-      const laboratoristaFacultyIds = await resolveLaboratoristaFacultyIds(client, documento);
-      const isWithinCoordinatorScope = laboratoristaFacultyIds.some((facultyId) =>
-        facultadesPermitidas.includes(facultyId)
+      const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
+      const assignments = await resolveLaboratoristaUalAssignments(client, documento);
+      const isWithinCoordinatorScope = laboratoristaAssignmentsWithinCoordinatorScope(
+        assignments,
+        coordinatorScope
       );
 
-      if (facultadesPermitidas.length === 0 || !isWithinCoordinatorScope) {
+      if (!isWithinCoordinatorScope) {
         client.release();
         return res.render('home/message_error', {
           message: '¡Acceso denegado!',

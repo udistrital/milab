@@ -107,6 +107,10 @@
                   <input class="form-check-input" type="radio" id="coordinadorEditorScopeDependencies" name="coordinador_editor_scope" value="dependencias">
                   <label class="form-check-label" for="coordinadorEditorScopeDependencies">Solo dependencias espec&iacute;ficas</label>
                 </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" id="coordinadorEditorScopeUals" name="coordinador_editor_scope" value="uales">
+                  <label class="form-check-label" for="coordinadorEditorScopeUals">Solo UALs espec&iacute;ficas</label>
+                </div>
               </div>
             </fieldset>
 
@@ -147,6 +151,43 @@
               <small class="form-text text-muted">Puedes seleccionar una o varias dependencias de la facultad elegida.</small>
             </div>
 
+            <div class="col-12 d-none" data-coordinador-editor-uals-section="true">
+              <label class="form-label" for="coordinadorEditorUalSearch">UALs autorizadas</label>
+              <input
+                type="search"
+                class="form-control mb-2"
+                id="coordinadorEditorUalSearch"
+                placeholder="Filtrar UALs..."
+                autocomplete="off"
+                data-coordinador-editor-ual-search="true"
+              >
+              <div class="coordinator-dependency-list" data-coordinador-editor-uals-container="true">
+                <% if (Array.isArray(ualsDisponibles) && ualsDisponibles.length) { %>
+                  <% ualsDisponibles.forEach(function(ual) { %>
+                    <label
+                      class="form-check coordinator-dependency-option"
+                      data-coordinador-editor-ual-option="true"
+                      data-facultad="<%= ual.facultad_id %>"
+                      data-search="<%= `${ual.nombre} ${ual.codigo_abreviacion || ''}`.toLowerCase() %>"
+                      hidden
+                    >
+                      <input
+                        class="form-check-input me-2"
+                        type="checkbox"
+                        value="<%= ual.ual_id %>"
+                        data-coordinador-editor-ual="true"
+                      >
+                      <span class="form-check-label"><%= ual.nombre %><% if (ual.codigo_abreviacion) { %> (<%= ual.codigo_abreviacion %>)<% } %></span>
+                    </label>
+                  <% }); %>
+                  <p class="text-muted mb-0" data-coordinador-editor-uals-empty="true" hidden>No hay UALs activas que coincidan con la facultad y b&uacute;squeda seleccionadas.</p>
+                <% } else { %>
+                  <p class="text-muted mb-0">No hay UALs activas disponibles.</p>
+                <% } %>
+              </div>
+              <small class="form-text text-muted">El coordinador solo tendr&aacute; acceso a las UALs seleccionadas.</small>
+            </div>
+
             <div class="col-12 alert alert-info d-none mb-0" role="status" data-coordinador-editor-legacy-assignment="true">
               La asignaci&oacute;n actual abarca varias facultades o no coincide con el nuevo esquema. Si no cambias esta selecci&oacute;n, se conservar&aacute; sin modificaciones; al elegir una facultad se reemplazar&aacute; por el nuevo alcance.
             </div>
@@ -183,6 +224,9 @@
     var dependenciesSection = modalEl.querySelector('[data-coordinador-editor-dependencies-section="true"]');
     var dependenciesContainer = modalEl.querySelector('[data-coordinador-editor-dependencies-container="true"]');
     var dependencySearch = modalEl.querySelector('[data-coordinador-editor-dependency-search="true"]');
+    var ualsSection = modalEl.querySelector('[data-coordinador-editor-uals-section="true"]');
+    var ualsContainer = modalEl.querySelector('[data-coordinador-editor-uals-container="true"]');
+    var ualSearch = modalEl.querySelector('[data-coordinador-editor-ual-search="true"]');
     var legacyAssignmentNotice = modalEl.querySelector('[data-coordinador-editor-legacy-assignment="true"]');
     var saveBtn = modalEl.querySelector('[data-coordinador-editor-save="true"]');
 
@@ -268,10 +312,16 @@
       var filter = dependencySearch ? dependencySearch.value.trim().toLocaleLowerCase() : '';
       var options = dependenciesContainer.querySelectorAll('[data-coordinador-editor-dependency-option="true"]');
       var visibleCount = 0;
+      var ualFilter = ualSearch ? ualSearch.value.trim().toLocaleLowerCase() : '';
+      var ualOptions = ualsContainer
+        ? ualsContainer.querySelectorAll('[data-coordinador-editor-ual-option="true"]')
+        : [];
+      var visibleUalCount = 0;
 
       if (dependenciesSection) {
         dependenciesSection.classList.toggle('d-none', selectedScope() !== 'dependencias');
       }
+      if (ualsSection) ualsSection.classList.toggle('d-none', selectedScope() !== 'uales');
       options.forEach(function(option) {
         var matchesFaculty = option.getAttribute('data-facultad') === facultyId;
         var matchesFilter = (option.getAttribute('data-search') || '').includes(filter);
@@ -285,6 +335,20 @@
 
       var emptyMessage = dependenciesContainer.querySelector('[data-coordinador-editor-dependencies-empty="true"]');
       if (emptyMessage) emptyMessage.hidden = !facultyId || visibleCount > 0;
+      ualOptions.forEach(function(option) {
+        var matchesFaculty = option.getAttribute('data-facultad') === facultyId;
+        var matchesFilter = (option.getAttribute('data-search') || '').includes(ualFilter);
+        option.hidden = !matchesFaculty || !matchesFilter;
+        if (!option.hidden) visibleUalCount++;
+        if (!matchesFaculty) {
+          var checkbox = option.querySelector('[data-coordinador-editor-ual="true"]');
+          if (checkbox) checkbox.checked = false;
+        }
+      });
+      var emptyUalMessage = ualsContainer
+        ? ualsContainer.querySelector('[data-coordinador-editor-uals-empty="true"]')
+        : null;
+      if (emptyUalMessage) emptyUalMessage.hidden = !facultyId || visibleUalCount > 0;
     }
 
     function resetAssignmentSelection() {
@@ -299,12 +363,46 @@
           check.checked = false;
         });
       }
+      if (ualsContainer) {
+        ualsContainer.querySelectorAll('[data-coordinador-editor-ual="true"]').forEach(function(check) {
+          check.checked = false;
+        });
+      }
       if (legacyAssignmentNotice) legacyAssignmentNotice.classList.add('d-none');
       updateDependencyOptions();
     }
 
-    function setAssignmentFromExisting(selectedIds) {
+    function setAssignmentFromExisting(selectedIds, selectedUalIds) {
       var ids = selectedIds.map(String);
+      var ualIds = selectedUalIds.map(String);
+      if (ualIds.length) {
+        var ualOptions = ualsContainer
+          ? Array.from(ualsContainer.querySelectorAll('[data-coordinador-editor-ual-option="true"]'))
+          : [];
+        var ualParents = new Set();
+        var allUalsAvailable = ualIds.every(function(id) {
+          var option = ualOptions.find(function(item) {
+            var checkbox = item.querySelector('[data-coordinador-editor-ual="true"]');
+            return checkbox && checkbox.value === id;
+          });
+          if (!option) return false;
+          ualParents.add(option.getAttribute('data-facultad'));
+          return true;
+        });
+        if (allUalsAvailable && ualParents.size === 1) {
+          facultySelect.value = Array.from(ualParents)[0];
+          modalEl.querySelector('#coordinadorEditorScopeUals').checked = true;
+          ualOptions.forEach(function(option) {
+            var checkbox = option.querySelector('[data-coordinador-editor-ual="true"]');
+            if (checkbox) checkbox.checked = ualIds.indexOf(checkbox.value) >= 0;
+          });
+          updateDependencyOptions();
+          return;
+        }
+        if (legacyAssignmentNotice) legacyAssignmentNotice.classList.remove('d-none');
+        updateDependencyOptions();
+        return;
+      }
       var rootIds = Array.from(facultySelect.options)
         .filter(function(option) {
           return option.hasAttribute('data-coordinador-editor-facultad') && ids.indexOf(option.value) >= 0;
@@ -363,12 +461,20 @@
         var numeroResolucion = button.getAttribute('data-coordinador-editor-numero-resolucion') || '';
         var soporteResolucion = button.getAttribute('data-coordinador-editor-soporte-resolucion') || '';
         var rawFacIds = button.getAttribute('data-coordinador-editor-facultad-ids') || '[]';
+        var rawUalIds = button.getAttribute('data-coordinador-editor-ual-ids') || '[]';
         var selectedIds = [];
+        var selectedUalIds = [];
         try {
           var parsed = JSON.parse(rawFacIds);
           selectedIds = Array.isArray(parsed) ? parsed : [];
         } catch (e) {
           selectedIds = [];
+        }
+        try {
+          var parsedUals = JSON.parse(rawUalIds);
+          selectedUalIds = Array.isArray(parsedUals) ? parsedUals : [];
+        } catch (e) {
+          selectedUalIds = [];
         }
 
         if (hiddenDocument) hiddenDocument.value = documento;
@@ -382,7 +488,7 @@
         if (numeroResolucionEl) numeroResolucionEl.value = numeroResolucion;
         if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion;
 
-        setAssignmentFromExisting(selectedIds);
+        setAssignmentFromExisting(selectedIds, selectedUalIds);
 
         modal.show();
       });
@@ -394,6 +500,11 @@
         if (legacyAssignmentNotice) legacyAssignmentNotice.classList.add('d-none');
         if (dependenciesContainer) {
           dependenciesContainer.querySelectorAll('[data-coordinador-editor-dependency="true"]').forEach(function(check) {
+            check.checked = false;
+          });
+        }
+        if (ualsContainer) {
+          ualsContainer.querySelectorAll('[data-coordinador-editor-ual="true"]').forEach(function(check) {
             check.checked = false;
           });
         }
@@ -417,8 +528,17 @@
         }
       });
     }
+    if (ualsContainer) {
+      ualsContainer.addEventListener('change', function(event) {
+        if (event.target.matches('[data-coordinador-editor-ual="true"]')) {
+          assignmentChanged = true;
+          if (legacyAssignmentNotice) legacyAssignmentNotice.classList.add('d-none');
+        }
+      });
+    }
 
     if (dependencySearch) dependencySearch.addEventListener('input', updateDependencyOptions);
+    if (ualSearch) ualSearch.addEventListener('input', updateDependencyOptions);
 
     if (form) {
       form.addEventListener('submit', async function(event) {
@@ -432,12 +552,19 @@
         var selectedDependencies = dependenciesContainer
           ? dependenciesContainer.querySelectorAll('[data-coordinador-editor-dependency="true"]:checked')
           : [];
+        var selectedUals = ualsContainer
+          ? ualsContainer.querySelectorAll('[data-coordinador-editor-ual="true"]:checked')
+          : [];
         if (assignmentChanged && !facultySelect.value) {
           showFeedback(feedback, 'warning', 'Debes seleccionar una facultad.');
           return;
         }
         if (assignmentChanged && selectedScope() === 'dependencias' && selectedDependencies.length === 0) {
           showFeedback(feedback, 'warning', 'Debes seleccionar al menos una dependencia.');
+          return;
+        }
+        if (assignmentChanged && selectedScope() === 'uales' && selectedUals.length === 0) {
+          showFeedback(feedback, 'warning', 'Debes seleccionar al menos una UAL.');
           return;
         }
 
@@ -458,6 +585,9 @@
           requestBody.facultad_id = facultySelect.value;
           requestBody.alcance = selectedScope();
           requestBody.dependencia_ids = Array.from(selectedDependencies).map(function(check) {
+            return check.value;
+          });
+          requestBody.ual_ids = Array.from(selectedUals).map(function(check) {
             return check.value;
           });
         }
@@ -490,6 +620,7 @@
             );
             if (trigger) {
               trigger.setAttribute('data-coordinador-editor-facultad-ids', JSON.stringify(data.facultad_ids || []));
+              trigger.setAttribute('data-coordinador-editor-ual-ids', JSON.stringify(data.ual_ids || []));
             }
           }
           updateEmailCell(documento, correo || data.correo || '');

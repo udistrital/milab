@@ -50,6 +50,10 @@ function loadRoute({
         };
       }
 
+      if (sql.includes('FROM laboratorista_ual lu')) {
+        return { rows: [{ ual_id: 11, facultad_id: 2 }] };
+      }
+
       if (sql.includes('SELECT DISTINCT u.facultad_id')) {
         return { rows: [{ facultad_id: 2 }] };
       }
@@ -62,11 +66,7 @@ function loadRoute({
         return { rows: [{ documento: '900' }] };
       }
 
-      if (
-        sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
-        )
-      ) {
+      if (sql.includes('FROM coordinador_facultad_alcance')) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
       }
 
@@ -103,11 +103,7 @@ function loadRoute({
             return { rows: [{ documento: params[0] }] };
           }
 
-          if (
-            sql.includes(
-              'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
-            )
-          ) {
+          if (sql.includes('FROM coordinador_facultad_alcance')) {
             return { rows: [{ facultad_id: 10 }] };
           }
 
@@ -125,8 +121,8 @@ function loadRoute({
             };
           }
 
-          if (sql.includes('SELECT DISTINCT u.facultad_id')) {
-            return { rows: [{ facultad_id: 10 }] };
+          if (sql.includes('FROM laboratorista_ual lu')) {
+            return { rows: [{ ual_id: 11, facultad_id: 10 }] };
           }
 
           if (
@@ -147,14 +143,6 @@ function loadRoute({
                 { ual_id: 12, nombre: 'Lab 12', facultad_id: 10, activo: true },
               ],
             };
-          }
-
-          if (
-            sql.includes(
-              'SELECT ual_id FROM laboratorista_ual WHERE laboratorista_documento_id = $1'
-            )
-          ) {
-            return { rows: [{ ual_id: 11 }] };
           }
 
           return { rows: [] };
@@ -269,15 +257,11 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
         };
       }
 
-      if (sql.includes('SELECT DISTINCT u.facultad_id')) {
-        return { rows: [{ facultad_id: 99 }] };
+      if (sql.includes('FROM laboratorista_ual lu')) {
+        return { rows: [{ ual_id: 12, facultad_id: 99 }] };
       }
 
-      if (
-        sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
-        )
-      ) {
+      if (sql.includes('FROM coordinador_facultad_alcance')) {
         return { rows: [{ facultad_id: 10 }] };
       }
 
@@ -323,24 +307,34 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
         };
       }
 
-      if (sql.includes('SELECT DISTINCT u.facultad_id')) {
-        return { rows: [{ facultad_id: 10 }] };
+      if (sql.includes('FROM laboratorista_ual lu')) {
+        return {
+          rows: [
+            { ual_id: 11, facultad_id: 10 },
+            { ual_id: 12, facultad_id: 10 },
+          ],
+        };
       }
 
-      if (
-        sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
-        )
-      ) {
+      if (sql.includes('FROM coordinador_facultad_alcance')) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
       }
 
-      if (sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1')) {
+      if (
+        sql.includes('SELECT ual_id FROM ual WHERE activo = TRUE AND facultad_id = $1') &&
+        sql.includes('ual_id = ANY($2::int[])')
+      ) {
         return { rows: [{ ual_id: 21 }, { ual_id: 22 }] };
       }
 
       if (sql.includes('SELECT documento FROM coordinador WHERE nombre_u = $1')) {
         return { rows: [{ documento: '900' }] };
+      }
+
+      if (sql.includes('FROM coordinador') && sql.includes('usuario_id')) {
+        return {
+          rows: [{ documento: '900', nombre_u: 'coord-user', usuario_id: null }],
+        };
       }
 
       return { rows: [] };
@@ -361,7 +355,7 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
         contrato: 'Planta',
       });
 
-    assert.equal(response.status, 302);
+    assert.equal(response.status, 302, JSON.stringify(response.body));
     assert.equal(response.headers.location, '/milab/api/laboratoristas_registrados?updated=1');
 
     const calls = loaded.getClientCalls();
@@ -371,6 +365,10 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
 
     assert.ok(logCall);
     assert.equal(logCall.params[1], '900');
+    const assignmentCall = calls.find((call) =>
+      call.sql.includes('INSERT INTO laboratorista_ual (laboratorista_documento_id, ual_id)')
+    );
+    assert.deepEqual(assignmentCall.params[1], [21, 22, 11, 12]);
   } finally {
     loaded.restore();
   }

@@ -283,6 +283,14 @@ test('submit allows coordinador to register on behalf of an assigned laboratoris
       if (sql.includes('SELECT facultad_id FROM ual WHERE ual_id = $1')) {
         return { rows: [{ facultad_id: 5 }] };
       }
+      if (sql.includes('FROM coordinador') && sql.includes('usuario_id')) {
+        return {
+          rows: [{ documento: 'coord-1', nombre_u: 'coord-1', usuario_id: null }],
+        };
+      }
+      if (sql.includes('FROM coordinador_facultad_alcance')) {
+        return { rows: [{ facultad_id: 5 }] };
+      }
 
       return { rows: [] };
     },
@@ -337,6 +345,14 @@ test('submit blocks coordinador delegating outside their faculty scope', async (
       if (sql.includes('SELECT facultad_id FROM ual WHERE ual_id = $1')) {
         return { rows: [{ facultad_id: 99 }] };
       }
+      if (sql.includes('FROM coordinador') && sql.includes('usuario_id')) {
+        return {
+          rows: [{ documento: 'coord-1', nombre_u: 'coord-1', usuario_id: null }],
+        };
+      }
+      if (sql.includes('FROM coordinador_facultad_alcance')) {
+        return { rows: [{ facultad_id: 5 }] };
+      }
 
       return { rows: [] };
     },
@@ -356,7 +372,7 @@ test('submit blocks coordinador delegating outside their faculty scope', async (
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_error');
-    assert.match(response.body.locals.message2, /fuera de tu facultad/i);
+    assert.match(response.body.locals.message2, /fuera de tu alcance/i);
   } finally {
     loaded.restore();
   }

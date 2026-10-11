@@ -70,6 +70,9 @@
         <h3 class="app-panel-title mb-0">Autorizaciones de facultades</h3>
         <small class="text-muted">Activa los switches por facultad para otorgar permisos directos sobre el ciclo de vida de las multas.</small>
       </div>
+      <% if (ualOnlyScope) { %>
+        <div class="alert alert-info">Tu alcance está limitado a UALs específicas. Puedes gestionar sanciones dentro de ellas, pero las autorizaciones directas se administran a nivel de facultad y no se pueden cambiar desde este alcance.</div>
+      <% } %>
 
       <% if (!Array.isArray(facultadesParaAutorizar) || facultadesParaAutorizar.length === 0) { %>
         <div class="alert alert-info text-center mb-0">No se encontraron facultades asociadas a tu coordinación para gestionar autorizaciones.</div>
@@ -94,6 +97,7 @@
                     </div>
                   </div>
 
+                  <% if (!ualOnlyScope) { %>
                   <div class="row g-2 mb-3 faculty-config-row">
                     <div class="col-md-6 d-flex">
                       <div class="faculty-config-card">
@@ -117,6 +121,7 @@
                             >
                             <label class="form-check-label" for="toggle_crear_<%= facultad.facultad_id %>">Crear sanciones ACTIVAS directamente</label>
                           </div>
+                          <% } %>
                         </form>
                         <div class="small text-muted faculty-config-desc">El laboratorista asigna directamente el tipo de sanción y la multa queda vigente de inmediato, enviando correo al sancionado.</div>
                       </div>

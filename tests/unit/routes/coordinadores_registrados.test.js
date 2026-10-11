@@ -94,11 +94,7 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
         };
       }
 
-      if (
-        sql.includes('FROM coordinador c') &&
-        sql.includes('JOIN coordinador_facultad') &&
-        sql.includes('STRING_AGG(DISTINCT f.nombre')
-      ) {
+      if (sql.includes('FROM coordinador c') && sql.includes('scope_display')) {
         return {
           rows: [
             {
@@ -108,7 +104,13 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
               con_numero_resolucion_coordinador: '001-2025',
               con_soporte_resolucion: 'https://sgral.udistrital.edu.co/r/001-2025',
               facultad_nombre: 'Facultad de Ingenieria',
+              dependencia_nombre: '',
+              ual_nombre: '',
+              scope_has_faculty: true,
+              scope_has_dependencies: false,
+              scope_has_uals: false,
               facultad_ids: [1],
+              ual_ids: [],
               tipo: 'coordinador',
             },
           ],
@@ -345,6 +347,9 @@ test('coordinadores_registrados actualizar assigns only dependencies of the sele
       return { rows: [] };
     },
     connectQueryImpl: async (sql) => {
+      if (sql.includes('to_regclass')) {
+        return { rows: [{ table_name: 'milab.usuario_ual_rol_operativo' }] };
+      }
       if (sql.includes('FROM coordinador WHERE documento = $1')) {
         return {
           rows: [
@@ -416,6 +421,9 @@ test('coordinadores_registrados actualizar assigns the selected faculty as a who
       return { rows: [] };
     },
     connectQueryImpl: async (sql) => {
+      if (sql.includes('to_regclass')) {
+        return { rows: [{ table_name: 'milab.usuario_ual_rol_operativo' }] };
+      }
       if (sql.includes('FROM coordinador WHERE documento = $1')) {
         return {
           rows: [

@@ -2,7 +2,7 @@
 const express = require('express');
 const pool = require('../../libs/db');
 const { fetchUserById } = require('../../libs/user-identity');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 const { renderModuleError } = require('../middlewares/error-handler');
@@ -96,10 +96,13 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       }
 
       const facultadId = Number(multaActual.facultad_id);
-      if (!Number.isFinite(facultadId) || !coordinatorScope.facultyIds.includes(facultadId)) {
+      if (
+        !Number.isFinite(facultadId) ||
+        !coordinatorScopeAllowsUal(coordinatorScope, multaActual.ual_id, facultadId)
+      ) {
         return res.render('home/message_error', {
           message: 'No autorizado',
-          message2: 'No puedes retirar sanciones de una facultad fuera de tu alcance.',
+          message2: 'No puedes retirar sanciones de una facultad o UAL fuera de tu alcance.',
           limit: null,
         });
       }

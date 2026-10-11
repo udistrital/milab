@@ -12,13 +12,15 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped app-table-compact js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="true">
           <thead class="text-light">
             <tr>
               <th>Nombres y Apellidos</th>
               <th>Cédula</th>
               <th>Correo</th>
               <th>Facultad</th>
+              <th>Dependencias</th>
+              <th>UALs</th>
               <th>Resoluci&oacute;n</th>
               <th>Soporte Resoluci&oacute;n</th>
               <th>Estado actual</th>
@@ -27,9 +29,19 @@
           </thead>
           <tbody>
             <% coordinadores.forEach(coordinador => { %>
-              <% const facultadTexto = String(coordinador.facultad_nombre || ''); %>
+              <% const facultadTexto = String(coordinador.facultad_nombre || 'Sin alcance asignado'); %>
+              <% const dependenciasTexto = coordinador.scope_has_faculty
+                ? 'Todas las dependencias de la facultad'
+                : String(coordinador.dependencia_nombre || (coordinador.scope_has_dependencies ? 'Sin dependencias asignadas' : '—')); %>
+              <% const ualesTexto = coordinador.scope_has_faculty
+                ? 'Todas las UALs de la facultad'
+                : coordinador.scope_has_dependencies
+                  ? 'Todas las UALs de las dependencias asignadas'
+                  : String(coordinador.ual_nombre || '—'); %>
               <% const soporteResolucionTexto = String(coordinador.con_soporte_resolucion || ''); %>
               <% const mostrarToggleFacultad = facultadTexto.length > 120; %>
+              <% const mostrarToggleDependencias = dependenciasTexto.length > 120; %>
+              <% const mostrarToggleUales = ualesTexto.length > 120; %>
               <% const mostrarToggleSoporte = soporteResolucionTexto.length > 120; %>
               <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
@@ -49,6 +61,24 @@
                     >
                       Ver más
                     </button>
+                  <% } %>
+                </td>
+                <td>
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleDependencias ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= dependenciasTexto %></span>
+                  <% if (mostrarToggleDependencias) { %>
+                    <button type="button" class="app-labs-toggle" data-labs-toggle="true" aria-expanded="false">Ver más</button>
+                  <% } %>
+                </td>
+                <td>
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleUales ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= ualesTexto %></span>
+                  <% if (mostrarToggleUales) { %>
+                    <button type="button" class="app-labs-toggle" data-labs-toggle="true" aria-expanded="false">Ver más</button>
                   <% } %>
                 </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
@@ -85,6 +115,7 @@
                     data-coordinador-editor-numero-resolucion="<%= coordinador.con_numero_resolucion_coordinador || '' %>"
                     data-coordinador-editor-soporte-resolucion="<%= coordinador.con_soporte_resolucion || '' %>"
                     data-coordinador-editor-facultad-ids='<%= JSON.stringify(Array.isArray(coordinador.facultad_ids) ? coordinador.facultad_ids : []) %>'
+                    data-coordinador-editor-ual-ids='<%= JSON.stringify(Array.isArray(coordinador.ual_ids) ? coordinador.ual_ids : []) %>'
                   >
                     Editar
                   </button>
@@ -109,6 +140,7 @@
     facultadesDisponibles: facultadesDisponibles || [],
     dependenciasDisponibles:
       typeof dependenciasDisponibles !== 'undefined' ? dependenciasDisponibles : [],
+    ualsDisponibles: typeof ualsDisponibles !== 'undefined' ? ualsDisponibles : [],
   }) %>
 
 <div class="px-3">

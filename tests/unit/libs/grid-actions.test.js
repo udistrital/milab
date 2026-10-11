@@ -228,13 +228,19 @@ test('merged action columns preserve table structure and state in registered-use
     con_correo: 'prueba@example.org',
     con_ual: 'Laboratorio',
     con_facultad: 'Facultad',
+    con_dependencia: 'Departamento de prueba',
+    facultad_nombre: 'Facultad',
+    dependencia_nombre: 'Departamento de prueba',
+    ual_nombre: 'Laboratorio',
+    scope_has_faculty: false,
+    scope_has_dependencies: true,
+    scope_has_uals: false,
     activo: true,
     tipo: 'coordinador',
-    facultad_nombre: 'Facultad',
   };
   for (const [view, variables, expectedColumns] of [
-    ['laboratoristas_registrados', { laboratoristas: [person] }, 7],
-    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 8],
+    ['laboratoristas_registrados', { laboratoristas: [person] }, 8],
+    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 10],
     [
       'facultad',
       {

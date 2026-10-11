@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const {
   SANCTION_TYPES,
@@ -130,23 +130,43 @@ async function resolveLaboratoristaDocument(userDocument) {
   return result.rows[0]?.documento || null;
 }
 
+async function resolveCoordinatorActionScope(req, multaId) {
+  const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
+  if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+    return {
+      allowed: false,
+      message2: 'La cuenta de coordinador no tiene facultades o UALs asociadas.',
+    };
+  }
+  const multaResult = await pool.query(
+    `SELECT m.ual_id, u.facultad_id
+     FROM multa m
+     JOIN ual u ON u.ual_id = m.ual_id
+     WHERE m.id = $1
+     LIMIT 1`,
+    [multaId]
+  );
+  const multa = multaResult.rows[0];
+  if (!multa || !coordinatorScopeAllowsUal(scope, multa.ual_id, multa.facultad_id)) {
+    return {
+      allowed: false,
+      message2: 'La sanción no pertenece a una facultad o UAL dentro de tu alcance.',
+    };
+  }
+  return {
+    allowed: true,
+    actorDocument: scope.coordinatorDocument,
+    facultyIds: scope.facultyIds,
+    ualIds: scope.scopeType === 'uales' ? scope.ualIds : null,
+    role: 'coordinador',
+  };
+}
+
 async function resolveApprovalActionScope(req, multaId, requiredFlagForLaboratorista) {
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
-    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
-    if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
-      return {
-        allowed: false,
-        message2: 'La cuenta de coordinador no tiene facultades asociadas.',
-      };
-    }
-    return {
-      allowed: true,
-      actorDocument: scope.coordinatorDocument,
-      facultyIds: scope.facultyIds,
-      role,
-    };
+    return resolveCoordinatorActionScope(req, multaId);
   }
 
   if (role !== 'laboratorista') {
@@ -227,6 +247,7 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
     allowed: true,
     actorDocument: laboratoristaDocument,
     facultyIds: [facultadId],
+    ualIds: null,
     role,
   };
 }
@@ -235,19 +256,7 @@ async function resolveAplazamientoActionScope(req, multaId) {
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
-    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
-    if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
-      return {
-        allowed: false,
-        message2: 'La cuenta de coordinador no tiene facultades asociadas.',
-      };
-    }
-    return {
-      allowed: true,
-      actorDocument: scope.coordinatorDocument,
-      facultyIds: scope.facultyIds,
-      role,
-    };
+    return resolveCoordinatorActionScope(req, multaId);
   }
 
   if (role !== 'laboratorista') {
@@ -329,6 +338,7 @@ async function resolveAplazamientoActionScope(req, multaId) {
     allowed: true,
     actorDocument: laboratoristaDocument,
     facultyIds: [facultadId],
+    ualIds: null,
     role,
   };
 }
@@ -356,6 +366,9 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
       });
     }
 
+    const fineScopeSql =
+      scope.scopeType === 'uales' ? 'm.ual_id = ANY($1::int[])' : 'u.facultad_id = ANY($1::int[])';
+    const fineScopeIds = scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds;
     const result = await pool.query(
       `SELECT 
         m.id,
@@ -377,8 +390,8 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
         LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-        AND u.facultad_id = ANY($1::int[])`,
-      [scope.facultyIds]
+        AND ${fineScopeSql}`,
+      [fineScopeIds]
     );
 
     const multasPendientes = result.rows;
@@ -407,6 +420,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
       nombreCoordinador: req.session.user.nombre,
       SANCTION_TYPES,
       facultadesParaAutorizar,
+      ualOnlyScope: scope.scopeType === 'uales',
     });
   } catch (error) {
     console.error('Error en /aprobacion_multa:', error);
@@ -465,8 +479,9 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
         AND m.con_estado_multa = 'Pendiente'
         AND u.ual_id = m.ual_id
         AND u.facultad_id = ANY($3::int[])
+        AND ($4::int[] IS NULL OR m.ual_id = ANY($4::int[]))
     `,
-      [multa_id, tipo_sancion, scope.facultyIds]
+      [multa_id, tipo_sancion, scope.facultyIds, scope.ualIds]
     );
 
     if (result.rowCount === 0) {
@@ -561,8 +576,9 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
         AND m.con_estado_multa = 'POR SALDAR'
         AND u.ual_id = m.ual_id
         AND u.facultad_id = ANY($2::int[])
+        AND ($3::int[] IS NULL OR m.ual_id = ANY($3::int[]))
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scope.facultyIds, scope.ualIds]
     );
 
     if (result.rowCount === 0) {
@@ -639,8 +655,9 @@ router.post('/aplazar', requireApprovalAction, async function (req, res) {
         AND m.con_estado_multa = 'ACTIVA'
         AND u.ual_id = m.ual_id
         AND u.facultad_id = ANY($2::int[])
+        AND ($3::int[] IS NULL OR m.ual_id = ANY($3::int[]))
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scope.facultyIds, scope.ualIds]
     );
 
     if (result.rowCount === 0) {
@@ -718,8 +735,9 @@ router.post('/reactivar', requireApprovalAction, async function (req, res) {
         AND m.con_estado_multa = 'APLAZADA'
         AND u.ual_id = m.ual_id
         AND u.facultad_id = ANY($2::int[])
+        AND ($3::int[] IS NULL OR m.ual_id = ANY($3::int[]))
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scope.facultyIds, scope.ualIds]
     );
 
     if (result.rowCount === 0) {
@@ -776,6 +794,16 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
         return req.accepts('json')
           ? res.status(401).json({ ok: false, ...msg })
           : res.render('home/message_error', { ...msg, limit: null });
+      }
+      if (scope.scopeType === 'uales') {
+        const msg = {
+          message: 'Configuración no disponible',
+          message2:
+            'El alcance por UAL permite gestionar sanciones dentro de las UALs asignadas, pero no cambiar autorizaciones globales por facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(403).json({ ok: false, ...msg })
+          : res.status(403).render('home/message_error', { ...msg, limit: null });
       }
       const facultadIdParam = Number(req.params.facultad_id);
       if (!Number.isFinite(facultadIdParam)) {

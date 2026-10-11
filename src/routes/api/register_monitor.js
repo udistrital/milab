@@ -2,7 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { requestOati, getAcademicServicePath } = require('../../libs/oati-client');
 const pool = require('../../libs/db');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const {
   ensureOperationalRoleAssignmentsSchema,
   replaceOperationalRoleAssignments,
@@ -146,37 +146,13 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   if (!normalizedDocument) {
     return {
       coordinatorDocument: null,
+      scopeType: null,
       facultyIds: [],
+      ualIds: [],
     };
   }
 
-  const coordinatorRes = await client.query(
-    'SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1',
-    [normalizedDocument]
-  );
-
-  if (!coordinatorRes.rows.length) {
-    return {
-      coordinatorDocument: null,
-      facultyIds: [],
-    };
-  }
-
-  const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
-    [normalizedDocument]
-  );
-
-  return {
-    coordinatorDocument: normalizedDocument,
-    facultyIds: [
-      ...new Set(
-        facultiesRes.rows
-          .map((row) => Number(row.facultad_id))
-          .filter((value) => Number.isInteger(value) && value > 0)
-      ),
-    ],
-  };
+  return resolveCoordinatorScope(client, normalizedDocument);
 }
 
 async function fetchCoordinatorOptions(client) {
@@ -215,8 +191,10 @@ async function buildRegisterMonitorViewContext(sessionUser, options = {}) {
       uals: facultyIds.length
         ? (
             await pool.query(
-              'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-              [facultyIds]
+              scope.scopeType === 'uales'
+                ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[]) ORDER BY nombre ASC'
+                : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+              [scope.scopeType === 'uales' ? scope.ualIds : facultyIds]
             )
           ).rows
         : [],
@@ -243,8 +221,10 @@ async function buildRegisterMonitorViewContext(sessionUser, options = {}) {
         ).rows;
         uals = (
           await pool.query(
-            'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-            [scope.facultyIds]
+            scope.scopeType === 'uales'
+              ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[]) ORDER BY nombre ASC'
+              : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            [scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds]
           )
         ).rows;
       }
@@ -463,6 +443,7 @@ router.post(
     }
 
     try {
+      let coordinatorScope;
       if (req.session.user.tipo === 'admin') {
         if (!selectedCoordinatorDocument) {
           return renderRegisterMonitorWithError(
@@ -473,6 +454,7 @@ router.post(
         }
 
         const scope = await resolveCoordinatorScopeByDocument(pool, selectedCoordinatorDocument);
+        coordinatorScope = scope;
         if (!scope.coordinatorDocument || !scope.facultyIds.includes(selectedFacultyId)) {
           return renderRegisterMonitorWithError(
             req,
@@ -482,6 +464,7 @@ router.post(
         }
       } else {
         const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+        coordinatorScope = scope;
         if (!scope.coordinatorDocument || !(scope.facultyIds || []).includes(selectedFacultyId)) {
           return renderRegisterMonitorWithError(
             req,
@@ -501,6 +484,18 @@ router.post(
           req,
           res,
           'Todos los laboratorios seleccionados deben pertenecer a la facultad indicada.'
+        );
+      }
+      if (
+        coordinatorScope?.scopeType === 'uales' &&
+        selectedUalIds.some(
+          (ualId) => !coordinatorScopeAllowsUal(coordinatorScope, ualId, selectedFacultyId)
+        )
+      ) {
+        return renderRegisterMonitorWithError(
+          req,
+          res,
+          'Una o más UALs seleccionadas están fuera del alcance del coordinador responsable.'
         );
       }
 

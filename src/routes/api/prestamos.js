@@ -3518,16 +3518,34 @@ async function resolveLoanManagementScope(req) {
     const allowedFacultyIds = Array.isArray(req?.prestamosModuleAccess?.allowedFacultyIds)
       ? req.prestamosModuleAccess.allowedFacultyIds
       : [];
+    const allowedUalIds = Array.isArray(req?.prestamosModuleAccess?.allowedUalIds)
+      ? req.prestamosModuleAccess.allowedUalIds
+      : scope.ualIds || [];
     const scopedFacultyIds = (scope.facultyIds || [])
       .map((item) => Number(item))
       .filter(Number.isInteger)
       .filter((facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId));
+    const scopedUalIds =
+      scope.scopeType === 'uales'
+        ? (scope.ualIds || []).filter((ualId) => allowedUalIds.includes(Number(ualId)))
+        : [];
+    const laboratoryNames =
+      scopedUalIds.length > 0
+        ? (
+            await pool.query(
+              'SELECT UPPER(nombre) AS nombre FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[])',
+              [scopedUalIds]
+            )
+          ).rows.map((row) => sanitizeText(row.nombre))
+        : [];
 
     return {
       unrestricted: false,
       facultyIds: scopedFacultyIds,
-      laboratoryNames: [],
-      restrictToLaboratories: false,
+      ualIds: scopedUalIds,
+      scopeType: scope.scopeType,
+      laboratoryNames,
+      restrictToLaboratories: scope.scopeType === 'uales',
     };
   }
 
@@ -3536,6 +3554,7 @@ async function resolveLoanManagementScope(req) {
       `
         SELECT
           ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS facultades,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids,
           ARRAY_REMOVE(ARRAY_AGG(DISTINCT UPPER(u.nombre)), NULL) AS laboratorios
         FROM (
           SELECT documento
@@ -3562,12 +3581,16 @@ async function resolveLoanManagementScope(req) {
     const laboratoryNames = Array.isArray(result.rows[0]?.laboratorios)
       ? result.rows[0].laboratorios.map((item) => sanitizeText(item)).filter(Boolean)
       : [];
+    const ualIds = Array.isArray(result.rows[0]?.ual_ids)
+      ? result.rows[0].ual_ids.map((item) => Number(item)).filter(Number.isInteger)
+      : [];
 
     return {
       unrestricted: false,
       facultyIds: facultyIds.filter(
         (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
       ),
+      ualIds,
       laboratoryNames,
       restrictToLaboratories: true,
     };
@@ -3584,6 +3607,7 @@ async function resolveLoanManagementScope(req) {
       facultyIds: (scope.facultyIds || []).filter(
         (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
       ),
+      ualIds: scope.ualIds || [],
       laboratoryNames: scope.laboratoryNames || [],
       restrictToLaboratories: true,
     };
@@ -3629,8 +3653,25 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
       .filter((facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId));
 
     if (scopedFacultyIds.length) {
+      const isUalScoped = scope.scopeType === 'uales';
+      const allowedUalIds = Array.isArray(req?.prestamosModuleAccess?.allowedUalIds)
+        ? req.prestamosModuleAccess.allowedUalIds
+        : scope.ualIds || [];
       const result = await pool.query(
+        isUalScoped
+          ? `
+          SELECT DISTINCT
+            f.nombre AS facultad,
+            u.nombre AS laboratorio
+          FROM dependencia_facultad f
+          JOIN ual u
+            ON u.facultad_id = f.dependencia_facultad_id
+           AND u.activo = TRUE
+          WHERE f.activo = TRUE
+            AND u.ual_id = ANY($1::int[])
+          ORDER BY f.nombre ASC, u.nombre ASC
         `
+          : `
           SELECT DISTINCT
             f.nombre AS facultad,
             u.nombre AS laboratorio
@@ -3642,7 +3683,7 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
             AND f.dependencia_facultad_id = ANY($1::int[])
           ORDER BY f.nombre ASC, u.nombre ASC
         `,
-        [scopedFacultyIds]
+        [isUalScoped ? allowedUalIds : scopedFacultyIds]
       );
       rows = result.rows || [];
     }
@@ -3912,6 +3953,19 @@ function buildLaboratoryNameScopeClause(columnExpression, scope, params) {
 
   params.push(scope.laboratoryNames);
   return ` AND UPPER(COALESCE(${columnExpression}, '')) = ANY($${params.length}::text[])`;
+}
+
+function buildUalIdScopeClause(columnExpression, scope, params) {
+  if (scope?.unrestricted || !scope?.restrictToLaboratories) {
+    return '';
+  }
+
+  if (!Array.isArray(scope.ualIds) || !scope.ualIds.length) {
+    return ' AND 1 = 0';
+  }
+
+  params.push(scope.ualIds);
+  return ` AND ${columnExpression} = ANY($${params.length}::int[])`;
 }
 
 function buildFacultyIdScopeClause(columnExpression, scope, params) {
@@ -6360,6 +6414,7 @@ async function resolveManagedUal(payload, scope) {
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
   }
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
 
   const result = await pool.query(
     `
@@ -6369,6 +6424,7 @@ async function resolveManagedUal(payload, scope) {
       WHERE UPPER(f.nombre) = UPPER($1::text)
         AND UPPER(u.nombre) = UPPER($2::text)
         ${facultyCondition}
+        ${ualIdClause}
       LIMIT 1
     `,
     params
@@ -6394,13 +6450,9 @@ async function fetchManagedUalById(ualId, scope) {
     whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
-  if (
-    scope.restrictToLaboratories &&
-    Array.isArray(scope.laboratoryNames) &&
-    scope.laboratoryNames.length
-  ) {
-    params.push(scope.laboratoryNames);
-    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
+  if (ualIdClause) {
+    whereParts.push(ualIdClause.replace(/^\s*AND\s+/i, ''));
   }
 
   const result = await pool.query(
@@ -6691,6 +6743,7 @@ async function fetchManagedSala(id, scope) {
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
   }
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
 
   const result = await pool.query(
     `
@@ -6714,6 +6767,7 @@ async function fetchManagedSala(id, scope) {
       JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE s.id = $1
         ${facultyCondition}
+        ${ualIdClause}
       LIMIT 1
     `,
     params
@@ -6735,6 +6789,7 @@ async function fetchManagedHorarioSala(id, scope) {
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
   }
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
 
   const result = await pool.query(
     `
@@ -6757,6 +6812,7 @@ async function fetchManagedHorarioSala(id, scope) {
       JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE h.id = $1
         ${facultyCondition}
+        ${ualIdClause}
       LIMIT 1
     `,
     params
@@ -7114,13 +7170,9 @@ async function fetchScopedPracticeConfigurationLaboratories(req, facultyId) {
     whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
   }
 
-  if (
-    scope.restrictToLaboratories &&
-    Array.isArray(scope.laboratoryNames) &&
-    scope.laboratoryNames.length
-  ) {
-    params.push(scope.laboratoryNames);
-    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
+  if (ualIdClause) {
+    whereParts.push(ualIdClause.replace(/^\s*AND\s+/i, ''));
   }
 
   const result = await pool.query(
@@ -7492,13 +7544,9 @@ async function fetchManagedAcademicPractice(practiceId, scope) {
     whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
-  if (
-    scope.restrictToLaboratories &&
-    Array.isArray(scope.laboratoryNames) &&
-    scope.laboratoryNames.length
-  ) {
-    params.push(scope.laboratoryNames);
-    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
+  if (ualIdClause) {
+    whereParts.push(ualIdClause.replace(/^\s*AND\s+/i, ''));
   }
 
   const result = await pool.query(
@@ -14595,26 +14643,16 @@ router.get(
         }
         if (!laboratorios.length) {
           const scope = await resolveLoanManagementScope(req);
-          if (
-            scope.unrestricted ||
-            Array.isArray(scope.laboratoryNames) ||
-            scope.facultyIds.length
-          ) {
-            const unrestrictedLabs = scope.unrestricted
-              ? null
-              : {
-                  facultyIds: scope.facultyIds,
-                  laboratoryNames: scope.laboratoryNames,
-                };
+          if (scope.unrestricted || scope.facultyIds.length) {
             const params = [];
             const whereParts = ['u.activo = TRUE'];
-            if (unrestrictedLabs?.facultyIds?.length) {
-              params.push(unrestrictedLabs.facultyIds);
+            if (!scope.unrestricted) {
+              params.push(scope.facultyIds);
               whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
             }
-            if (unrestrictedLabs?.laboratoryNames?.length) {
-              params.push(unrestrictedLabs.laboratoryNames);
-              whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+            const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
+            if (ualIdClause) {
+              whereParts.push(ualIdClause.replace(/^\s*AND\s+/i, ''));
             }
             const labsQ = await pool.query(
               `
@@ -15057,6 +15095,11 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     if (!scope.unrestricted) {
       params.push(scope.facultyIds);
       whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
+    }
+
+    const ualIdClause = buildUalIdScopeClause('u.ual_id', scope, params);
+    if (ualIdClause) {
+      whereParts.push(ualIdClause.replace(/^\s*AND\s+/i, ''));
     }
 
     if (facultad) {
@@ -15578,6 +15621,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
     if (dataset === 'solicitudes') {
       const params = [range.fechaInicio, range.fechaFin];
       const scopeClause = buildFacultyNameScopeClause('e.facultad', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
       const result = await pool.query(
         `
           SELECT
@@ -15603,6 +15647,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           WHERE sp.fecha_inicio >= $1::date
             AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
+            ${laboratoryClause}
           ORDER BY sp.fecha_inicio DESC, sp.id DESC
         `,
         params
@@ -15634,6 +15679,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
     if (dataset === 'practicas') {
       const params = [range.fechaInicio, range.fechaFin];
       const scopeClause = buildFacultyNameScopeClause('rp.facultad', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause('rp.laboratorio', scope, params);
       const result = await pool.query(
         `
           SELECT
@@ -15659,6 +15705,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           WHERE rp.fecha_inicio >= $1::date
             AND rp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
+            ${laboratoryClause}
           ORDER BY rp.fecha_inicio DESC, rp.id DESC
         `,
         params
@@ -15692,6 +15739,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
     if (dataset === 'incidencias') {
       const params = [range.fechaInicio, range.fechaFin];
       const scopeClause = buildFacultyNameScopeClause('e.facultad', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
       const result = await pool.query(
         `
           SELECT
@@ -15712,6 +15760,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           WHERE i.fecha_creacion >= $1::date
             AND i.fecha_creacion < ($2::date + INTERVAL '1 day')
             ${scopeClause}
+            ${laboratoryClause}
           ORDER BY i.fecha_creacion DESC, i.id DESC
         `,
         params
@@ -15777,6 +15826,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
     if (dataset === 'salas-top') {
       const params = [range.fechaInicio, range.fechaFin];
       const scopeClause = buildFacultyIdScopeClause('u.facultad_id', scope, params);
+      const laboratoryClause = buildLaboratoryNameScopeClause('u.nombre', scope, params);
       const result = await pool.query(
         `
           SELECT
@@ -15791,6 +15841,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           WHERE rp.fecha_inicio >= $1::date
             AND rp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
+            ${laboratoryClause}
           GROUP BY s.id, s.nombre, f.nombre, u.nombre
           ORDER BY cantidad DESC, s.nombre ASC
         `,

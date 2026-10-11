@@ -15,6 +15,10 @@ const {
 const { normalizeLogDocument } = require('../../libs/account-email');
 const { appBaseUrl, buildAppUrl } = require('../../libs/app-url');
 const { getRegistrationTokenSecret } = require('../../libs/registration-token');
+const {
+  ensureOperationalRoleAssignmentsSchema,
+  replaceOperationalRoleAssignments,
+} = require('../../libs/operational-role-assignments');
 const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
@@ -84,6 +88,7 @@ function hasRequiredCoordinatorFields({
   facultyId,
   assignmentScope,
   dependencyIds,
+  ualIds,
   numeroResolucion,
   soporteResolucion,
 }) {
@@ -95,8 +100,9 @@ function hasRequiredCoordinatorFields({
     needsFacultyAssignment &&
     (!Number.isInteger(facultyId) ||
       facultyId <= 0 ||
-      !['facultad', 'dependencias'].includes(assignmentScope) ||
-      (assignmentScope === 'dependencias' && !dependencyIds.length))
+      !['facultad', 'dependencias', 'uales'].includes(assignmentScope) ||
+      (assignmentScope === 'dependencias' && !dependencyIds.length) ||
+      (assignmentScope === 'uales' && !ualIds.length))
   ) {
     return false;
   }
@@ -109,9 +115,10 @@ async function resolveSelectedCoordinatorAssignments({
   facultyId,
   assignmentScope,
   dependencyIds,
+  ualIds,
 }) {
   if (!needsFacultyAssignment) {
-    return { assignmentIds: [], assignmentLabels: [], errorPayload: null };
+    return { assignmentIds: [], assignmentLabels: [], ualIds: [], errorPayload: null };
   }
 
   const facultyIdColumn = await resolveExistingColumn('dependencia_facultad', [
@@ -123,6 +130,7 @@ async function resolveSelectedCoordinatorAssignments({
     return {
       assignmentIds: [],
       assignmentLabels: [],
+      ualIds: [],
       errorPayload: {
         message: '¡Algo ha salido mal!',
         message2: 'No fue posible validar la facultad seleccionada.',
@@ -135,6 +143,7 @@ async function resolveSelectedCoordinatorAssignments({
     return {
       assignmentIds: [],
       assignmentLabels: [],
+      ualIds: [],
       errorPayload: {
         message: '¡Algo ha salido mal!',
         message2: 'No fue posible validar las dependencias de la facultad.',
@@ -153,6 +162,7 @@ async function resolveSelectedCoordinatorAssignments({
     return {
       assignmentIds: [],
       assignmentLabels: [],
+      ualIds: [],
       errorPayload: {
         message: 'La facultad seleccionada no existe.',
         message2: 'Selecciona una facultad válida.',
@@ -164,6 +174,38 @@ async function resolveSelectedCoordinatorAssignments({
     return {
       assignmentIds: [facultyId],
       assignmentLabels: [facultyResult.rows[0].nombre],
+      ualIds: [],
+      errorPayload: null,
+    };
+  }
+
+  if (assignmentScope === 'uales') {
+    const selectedUals = await pool.query(
+      `SELECT ual_id, nombre
+       FROM ual
+       WHERE facultad_id = $1
+         AND activo = TRUE
+         AND ual_id = ANY($2::int[])
+       ORDER BY nombre ASC`,
+      [facultyId, ualIds]
+    );
+
+    if (selectedUals.rows.length !== ualIds.length) {
+      return {
+        assignmentIds: [],
+        assignmentLabels: [],
+        ualIds: [],
+        errorPayload: {
+          message: 'Una o más UALs no pertenecen a la facultad seleccionada.',
+          message2: 'Verifica que las UALs estén activas y correspondan a la facultad.',
+        },
+      };
+    }
+
+    return {
+      assignmentIds: [],
+      assignmentLabels: selectedUals.rows.map((ual) => `UAL: ${ual.nombre}`),
+      ualIds: selectedUals.rows.map((ual) => Number(ual.ual_id)),
       errorPayload: null,
     };
   }
@@ -181,6 +223,7 @@ async function resolveSelectedCoordinatorAssignments({
     return {
       assignmentIds: [],
       assignmentLabels: [],
+      ualIds: [],
       errorPayload: {
         message: 'Una o más dependencias no pertenecen a la facultad seleccionada.',
         message2: 'Verifica la selección de dependencias.',
@@ -193,6 +236,7 @@ async function resolveSelectedCoordinatorAssignments({
     assignmentLabels: dependencies.rows.map(
       (dependency) => `${dependency.nombre} (${facultyResult.rows[0].nombre})`
     ),
+    ualIds: [],
     errorPayload: null,
   };
 }
@@ -224,10 +268,17 @@ async function fetchCoordinatorAssignmentOptions() {
        ORDER BY nombre ASC`
     ),
   ]);
+  const ualResult = await pool.query(
+    `SELECT ual_id, facultad_id AS facultad_id, nombre, codigo_abreviacion
+     FROM ual
+     WHERE activo = TRUE
+     ORDER BY nombre ASC`
+  );
 
   return {
     facultades: facultyResult.rows,
     dependencias: dependencyResult.rows,
+    uals: ualResult.rows,
   };
 }
 
@@ -548,6 +599,7 @@ router.post(
     const facultyId = Number(req.body.facultad_id);
     const assignmentScope = (req.body.alcance || '').toString();
     const dependencyIds = parseIdList(req.body.dependencia_ids);
+    const ualIds = parseIdList(req.body.ual_ids);
 
     if (
       !hasRequiredCoordinatorFields({
@@ -555,6 +607,7 @@ router.post(
         facultyId,
         assignmentScope,
         dependencyIds,
+        ualIds,
         numeroResolucion: numero_resolucion_coordinador,
         soporteResolucion: soporte_resolucion,
       })
@@ -585,6 +638,7 @@ router.post(
         facultyId,
         assignmentScope,
         dependencyIds,
+        ualIds,
       });
       if (selectedAssignments.errorPayload) {
         return res.render('home/message_error', {
@@ -592,6 +646,9 @@ router.post(
           message2: selectedAssignments.errorPayload.message2,
           limit: null,
         });
+      }
+      if (selectedAssignments.ualIds.length) {
+        await ensureOperationalRoleAssignmentsSchema(pool);
       }
 
       const usuarioId = await ensureUserIdentityForRole({
@@ -603,8 +660,8 @@ router.post(
 
       await pool.query(
         `INSERT INTO coordinador
-             (documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion, nombre_u)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+             (documento, nombre, correo, numero_resolucion_coordinador, soporte_resolucion, nombre_u, usuario_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           documento,
           nombre,
@@ -612,13 +669,9 @@ router.post(
           numero_resolucion_coordinador,
           soporte_resolucion,
           documento,
+          usuarioId,
         ]
       );
-
-      await pool.query('UPDATE coordinador SET usuario_id = $1 WHERE documento = $2', [
-        usuarioId,
-        documento,
-      ]);
 
       // Insertar asociaciones de facultad solo para coordinador de facultad.
       if (needsFacultyAssignment) {
@@ -634,13 +687,23 @@ router.post(
           });
         }
 
-        await pool.query(
-          `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
-           SELECT $1, selected.facultad_id
-           FROM UNNEST($2::int[]) AS selected(facultad_id)
-           ON CONFLICT DO NOTHING`,
-          [documento, selectedAssignments.assignmentIds]
-        );
+        if (selectedAssignments.assignmentIds.length) {
+          await pool.query(
+            `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyIdColumn})
+             SELECT $1, selected.facultad_id
+             FROM UNNEST($2::int[]) AS selected(facultad_id)
+             ON CONFLICT DO NOTHING`,
+            [documento, selectedAssignments.assignmentIds]
+          );
+        }
+        if (selectedAssignments.ualIds.length) {
+          await replaceOperationalRoleAssignments({
+            userId: usuarioId,
+            roleName: ROLE_COORDINADOR,
+            ualIds: selectedAssignments.ualIds,
+            createdByUserId: req.session.user.id,
+          });
+        }
       }
 
       await pool.query(

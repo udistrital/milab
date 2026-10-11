@@ -12,7 +12,7 @@ const {
   buildNoReplySender,
   escapeHtml,
 } = require('../../libs/email-layout');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const { coordinatorScopeAllowsUal, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { appBaseUrl, buildAppUrl } = require('../../libs/app-url');
 const jwt = require('jsonwebtoken');
 const { getRegistrationTokenSecret } = require('../../libs/registration-token');
@@ -131,37 +131,13 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   if (!normalizedDocument) {
     return {
       coordinatorDocument: null,
+      scopeType: null,
       facultyIds: [],
+      ualIds: [],
     };
   }
 
-  const coordinatorRes = await client.query(
-    'SELECT documento FROM coordinador WHERE documento = $1 LIMIT 1',
-    [normalizedDocument]
-  );
-
-  if (coordinatorRes.rows.length === 0) {
-    return {
-      coordinatorDocument: null,
-      facultyIds: [],
-    };
-  }
-
-  const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
-    [normalizedDocument]
-  );
-
-  return {
-    coordinatorDocument: normalizedDocument,
-    facultyIds: [
-      ...new Set(
-        facultiesRes.rows
-          .map((row) => Number(row.facultad_id))
-          .filter((value) => Number.isInteger(value))
-      ),
-    ],
-  };
+  return resolveCoordinatorScope(client, normalizedDocument);
 }
 
 async function fetchCoordinatorOptions(client) {
@@ -240,8 +216,10 @@ async function buildRegisterLabsViewContext(sessionUser, options = {}) {
     ).rows;
     const uals = (
       await pool.query(
-        'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-        [scope.facultyIds]
+        scope.scopeType === 'uales'
+          ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[]) ORDER BY nombre ASC'
+          : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        [scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds]
       )
     ).rows;
 
@@ -272,8 +250,10 @@ async function buildRegisterLabsViewContext(sessionUser, options = {}) {
         ).rows;
         uals = (
           await pool.query(
-            'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
-            [scope.facultyIds]
+            scope.scopeType === 'uales'
+              ? 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[]) ORDER BY nombre ASC'
+              : 'SELECT ual_id, nombre, codigo_abreviacion, descripcion, sal_id_espacio, sal_ocupantes, facultad_id, activo FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+            [scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds]
           )
         ).rows;
       }
@@ -503,6 +483,7 @@ router.post(
       const selectedFacultyId = Number(usuario.facultad_id);
       const selectedUalIds = normalizeSelectedUalIds(usuario.ual_ids);
       const selectedCoordinatorDocument = resolveSelectedCoordinatorDocument(usuario);
+      let coordinatorScope = null;
 
       if (!selectedFacultyId || selectedUalIds.length === 0) {
         return renderRegisterLabsWithError(
@@ -522,6 +503,7 @@ router.post(
         }
 
         const scope = await resolveCoordinatorScopeByDocument(pool, selectedCoordinatorDocument);
+        coordinatorScope = scope;
 
         if (!scope.coordinatorDocument || !scope.facultyIds.includes(selectedFacultyId)) {
           return renderRegisterLabsWithError(
@@ -532,6 +514,7 @@ router.post(
         }
       } else if (req.session.user.tipo === 'coordinador') {
         const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
+        coordinatorScope = scope;
 
         if (!scope.coordinatorDocument || !scope.facultyIds.includes(selectedFacultyId)) {
           return renderRegisterLabsWithError(
@@ -552,6 +535,18 @@ router.post(
           req,
           res,
           'Todos los laboratorios seleccionados deben pertenecer a la facultad indicada.'
+        );
+      }
+      if (
+        coordinatorScope?.scopeType === 'uales' &&
+        selectedUalIds.some(
+          (ualId) => !coordinatorScopeAllowsUal(coordinatorScope, ualId, selectedFacultyId)
+        )
+      ) {
+        return renderRegisterLabsWithError(
+          req,
+          res,
+          'Una o más UALs seleccionadas están fuera del alcance del coordinador responsable.'
         );
       }
 

@@ -438,10 +438,19 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id,
-       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
+       ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids,
+       COALESCE(coordinator_uals.ual_ids, ARRAY[]::int[]) AS ual_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf
        ON cf.coordinador_documento_id = c.documento
+      AND cf.activo = TRUE
+     LEFT JOIN LATERAL (
+       SELECT ARRAY_AGG(DISTINCT a.ual_id::int) AS ual_ids
+       FROM usuario_ual_rol_operativo a
+       JOIN rol r ON r.id = a.rol_id AND r.nombre = 'coordinador'
+       JOIN ual assigned_ual ON assigned_ual.ual_id = a.ual_id AND assigned_ual.activo = TRUE
+       WHERE a.usuario_id = c.usuario_id AND a.activo = TRUE
+     ) coordinator_uals ON TRUE
      GROUP BY
        c.fecha_creacion,
        c.nombre,
@@ -450,7 +459,8 @@ async function fetchCoordinatorRows() {
        c.numero_resolucion_coordinador,
        c.soporte_resolucion,
        c.nombre_u,
-       c.usuario_id
+       c.usuario_id,
+       coordinator_uals.ual_ids
      ORDER BY c.fecha_creacion DESC NULLS LAST`
   );
   return result.rows;
@@ -468,6 +478,12 @@ async function fetchUsuarioRows() {
          u.codigo::text AS codigo,
          u.correo,
          u.carrera,
+         ARRAY[]::int[] AS faculty_ids,
+         COALESCE((
+           SELECT ARRAY_AGG(DISTINCT m.ual_id::int)
+           FROM multa m
+           WHERE m.usuario_sancionado_id = u.id
+         ), ARRAY[]::int[]) AS ual_ids,
          COALESCE(NULLIF(TRIM(u.estado), ''), 'ACTIVO') AS estado
        FROM usuario u
        WHERE EXISTS (
@@ -494,13 +510,15 @@ async function fetchUsuarioRows() {
          c.correo,
          NULL::text AS carrera,
          ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids,
-         ARRAY[]::int[] AS ual_ids,
+         COALESCE(coordinator_uals.ual_ids, ARRAY[]::int[]) AS ual_ids,
          CASE
            WHEN COALESCE(role_state.activo, FALSE) THEN 'ACTIVO'
            ELSE 'INACTIVO'
          END AS estado
        FROM coordinador c
-       JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+       LEFT JOIN coordinador_facultad cf
+         ON cf.coordinador_documento_id = c.documento
+        AND cf.activo = TRUE
        LEFT JOIN usuario u
          ON u.id = c.usuario_id
          OR u.documento = c.documento
@@ -514,6 +532,16 @@ async function fetchUsuarioRows() {
            AND r.nombre = 'coordinador'
          LIMIT 1
        ) role_state ON true
+       LEFT JOIN LATERAL (
+         SELECT ARRAY_AGG(DISTINCT a.ual_id::int) AS ual_ids
+         FROM usuario_ual_rol_operativo a
+         JOIN rol assigned_role ON assigned_role.id = a.rol_id
+                               AND assigned_role.nombre = 'coordinador'
+         JOIN ual assigned_ual ON assigned_ual.ual_id = a.ual_id
+                              AND assigned_ual.activo = TRUE
+         WHERE a.usuario_id = COALESCE(c.usuario_id, u.id)
+           AND a.activo = TRUE
+       ) coordinator_uals ON TRUE
        GROUP BY
          c.usuario_id,
          c.fecha_creacion,
@@ -521,7 +549,8 @@ async function fetchUsuarioRows() {
          c.documento,
          c.correo,
          c.nombre_u,
-         role_state.activo
+         role_state.activo,
+         coordinator_uals.ual_ids
      ),
      laboratoristas_base AS (
        SELECT
@@ -570,8 +599,8 @@ async function fetchUsuarioRows() {
          codigo,
          correo,
          carrera,
-         ARRAY[]::int[] AS faculty_ids,
-         ARRAY[]::int[] AS ual_ids,
+         faculty_ids,
+         ual_ids,
          estado
        FROM usuarios_base
        UNION ALL
@@ -720,8 +749,9 @@ function filterLaboratoristaRowsByScope(rows, role, scope) {
   }
 
   if (role === 'coordinador') {
-    const facultyIds = toNumericSet(scope.facultyIds);
-    return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+    const scopeIds = toNumericSet(scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds);
+    const field = scope.scopeType === 'uales' ? 'ual_ids' : 'faculty_ids';
+    return rows.filter((row) => hasIntersection(row[field], scopeIds));
   }
 
   if (role === 'laboratorista') {
@@ -741,8 +771,9 @@ function filterCoordinatorRowsByScope(rows, role, scope) {
     return [];
   }
 
-  const facultyIds = toNumericSet(scope.facultyIds);
-  return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  const scopeIds = toNumericSet(scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds);
+  const field = scope.scopeType === 'uales' ? 'ual_ids' : 'faculty_ids';
+  return rows.filter((row) => hasIntersection(row[field], scopeIds));
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
@@ -751,6 +782,10 @@ function filterUsuarioRowsByScope(rows, role, scope) {
   }
 
   if (role === 'coordinador') {
+    if (scope.scopeType === 'uales') {
+      const ualIds = toNumericSet(scope.ualIds);
+      return rows.filter((row) => hasIntersection(row.ual_ids, ualIds));
+    }
     const facultyIds = toNumericSet(scope.facultyIds);
     return rows.filter(
       (row) =>
@@ -776,7 +811,9 @@ function buildSanctionScopeFilter(role, scope) {
   }
 
   if (role === 'coordinador') {
-    return { condition: 'u.facultad_id = ANY($1::int[])', params: [scope.facultyIds || []] };
+    return scope.scopeType === 'uales'
+      ? { condition: 'm.ual_id = ANY($1::int[])', params: [scope.ualIds || []] }
+      : { condition: 'u.facultad_id = ANY($1::int[])', params: [scope.facultyIds || []] };
   }
 
   return { condition: 'm.ual_id = ANY($1::int[])', params: [scope.ualIds || []] };
@@ -2474,6 +2511,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       facultyNames: [],
       facultyKeys: [],
       ualIds: [],
+      scopeType: null,
       ualNames: [],
     };
 
@@ -2481,8 +2519,14 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       const coordinatorScope = await resolveCoordinatorScope(client, req.session.user.documento);
       scope.coordinatorDocument = coordinatorScope.coordinatorDocument || null;
       scope.facultyIds = coordinatorScope.facultyIds || [];
+      scope.ualIds = coordinatorScope.ualIds || [];
+      scope.scopeType = coordinatorScope.scopeType;
 
-      if (!coordinatorScope.coordinatorDocument || scope.facultyIds.length === 0) {
+      if (
+        !coordinatorScope.coordinatorDocument ||
+        scope.facultyIds.length === 0 ||
+        (scope.scopeType === 'uales' && scope.ualIds.length === 0)
+      ) {
         return res.render('home/message_error', {
           message: 'No tienes alcance para monitoreo.',
           message2: 'El coordinador no tiene facultades asociadas.',

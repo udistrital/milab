@@ -6,6 +6,7 @@ const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
 const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
+const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 
 require('dotenv').config();
 
@@ -52,6 +53,7 @@ router.get('/get', requireTeacherFineInfoView, async function (req, res) {
 router.post('/', requireTeacherFineInfoView, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
+  let coordinatorScope = null;
   const requestBody = req.body || {};
   const { numero_documento_identificacion } = requestBody;
   let con_estado;
@@ -59,6 +61,24 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
   let con_nombre;
 
   try {
+    if (req.session.user.tipo === 'coordinador') {
+      coordinatorScope = await resolveCoordinatorScope(
+        pool,
+        req.session.user.documento_real || req.session.user.documento
+      );
+      if (
+        !coordinatorScope.coordinatorDocument ||
+        coordinatorScope.facultyIds.length === 0 ||
+        (coordinatorScope.scopeType === 'uales' && coordinatorScope.ualIds.length === 0)
+      ) {
+        return res.render('home/message_error', {
+          message: 'No tienes alcance para gestionar sanciones.',
+          message2: 'El coordinador no tiene facultades o UALs activas asociadas.',
+          limit: null,
+        });
+      }
+    }
+
     const dato1 = await requestOati(
       getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
     );
@@ -99,17 +119,29 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
       });
     }
 
-    const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1';
-    const values = [usuarioId];
+    const coordinatorSanctionFilter = coordinatorScope
+      ? coordinatorScope.scopeType === 'uales'
+        ? 'AND m.ual_id = ANY($2::int[])'
+        : `AND EXISTS (
+             SELECT 1 FROM ual scope_ual
+             WHERE scope_ual.ual_id = m.ual_id
+               AND scope_ual.facultad_id = ANY($2::int[])
+           )`
+      : '';
+    const coordinatorSanctionScope =
+      coordinatorScope?.scopeType === 'uales'
+        ? coordinatorScope.ualIds
+        : coordinatorScope?.facultyIds;
+    const query = `SELECT COUNT(*) AS multado FROM multa m WHERE m.usuario_sancionado_id = $1 ${coordinatorSanctionFilter}`;
+    const values = coordinatorScope ? [usuarioId, coordinatorSanctionScope] : [usuarioId];
     let con_multado = false;
     const result = await pool.query(query, values);
     con_multado = result.rows[0].multado > 0;
 
     let multaInfo = null;
     if (con_multado) {
-      const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1';
-      const valuesMultaInfo = [usuarioId];
+      const queryMultaInfo = `SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 ${coordinatorSanctionFilter}`;
+      const valuesMultaInfo = values;
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
       console.log(`Cantidad de registros de multas: ${multaInfo.length}`);
@@ -147,13 +179,18 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
       uals = resultAdminUals.rows;
     } else if (req.session.user.tipo === 'coordinador') {
       const query = 'SELECT * FROM coordinador WHERE documento = $1';
-      const values = [req.session.user.documento];
+      const values = [coordinatorScope.coordinatorDocument];
       const result = await pool.query(query, values);
 
-      const facultadId = result.rows[0].facultad_id;
       const queryUals =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
-      const resultUals = await pool.query(queryUals, [facultadId]);
+        coordinatorScope.scopeType === 'uales'
+          ? 'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[]) ORDER BY nombre ASC'
+          : 'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = ANY($1::int[]) ORDER BY nombre ASC';
+      const resultUals = await pool.query(queryUals, [
+        coordinatorScope.scopeType === 'uales'
+          ? coordinatorScope.ualIds
+          : coordinatorScope.facultyIds,
+      ]);
 
       nombre_lab = result.rows[0].nombre;
       cc_lab = result.rows[0].documento;

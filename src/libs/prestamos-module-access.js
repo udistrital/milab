@@ -65,6 +65,8 @@ async function resolvePrestamosRestrictedRoleScope(user, client = pool) {
     return {
       role: 'coordinador',
       facultyIds: (scope.facultyIds || []).map((item) => Number(item)).filter(Number.isInteger),
+      scopeType: scope.scopeType,
+      ualIds: scope.ualIds || [],
     };
   }
 
@@ -156,6 +158,8 @@ async function getPrestamosModuleAccess(user, client = pool) {
       role: 'admin',
       facultyIds: [],
       allowedFacultyIds: [],
+      ualIds: [],
+      allowedUalIds: [],
       blockedFacultyIds: [],
       blocked: false,
     };
@@ -169,6 +173,8 @@ async function getPrestamosModuleAccess(user, client = pool) {
       role,
       facultyIds: [],
       allowedFacultyIds: [],
+      ualIds: [],
+      allowedUalIds: [],
       blockedFacultyIds: [],
       blocked: !hasEnabledFaculty,
     };
@@ -180,6 +186,8 @@ async function getPrestamosModuleAccess(user, client = pool) {
       role: null,
       facultyIds: [],
       allowedFacultyIds: [],
+      ualIds: [],
+      allowedUalIds: [],
       blockedFacultyIds: [],
       blocked: false,
     };
@@ -194,11 +202,28 @@ async function getPrestamosModuleAccess(user, client = pool) {
   const blockedFacultyIds = restrictedScope.facultyIds.filter(
     (facultyId) => !allowedFacultyIds.includes(facultyId)
   );
+  const coordinatorUalAssignments =
+    restrictedScope.scopeType === 'uales'
+      ? await client.query(
+          `SELECT ual_id, facultad_id
+           FROM ual
+           WHERE activo = TRUE
+             AND ual_id = ANY($1::int[])`,
+          [restrictedScope.ualIds || []]
+        )
+      : null;
+  const permittedUalIds = coordinatorUalAssignments
+    ? coordinatorUalAssignments.rows
+        .filter((row) => allowedFacultyIds.includes(Number(row.facultad_id)))
+        .map((row) => Number(row.ual_id))
+    : [];
 
   return {
     role: restrictedScope.role,
     facultyIds: restrictedScope.facultyIds,
     allowedFacultyIds,
+    ualIds: restrictedScope.ualIds || [],
+    allowedUalIds: permittedUalIds,
     blockedFacultyIds,
     blocked: restrictedScope.facultyIds.length > 0 && allowedFacultyIds.length === 0,
   };

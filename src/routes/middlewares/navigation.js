@@ -491,13 +491,16 @@ async function getPendingSanctionsCount(user, role) {
     return 0;
   }
 
+  const scopeCondition =
+    scope.scopeType === 'uales' ? 'm.ual_id = ANY($1::int[])' : 'u.facultad_id = ANY($1::int[])';
+  const scopeIds = scope.scopeType === 'uales' ? scope.ualIds : scope.facultyIds;
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
     FROM multa m
      INNER JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-       AND u.facultad_id = ANY($1::int[])`,
-    [scope.facultyIds]
+       AND ${scopeCondition}`,
+    [scopeIds]
   );
 
   return result.rows[0]?.total || 0;

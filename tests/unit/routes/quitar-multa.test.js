@@ -68,6 +68,10 @@ function loadRoute({ queryImpl, resolveScopeImpl } = {}) {
       {
         resolveCoordinatorScope:
           resolveScopeImpl || (async () => ({ coordinatorDocument: '9001', facultyIds: [7] })),
+        coordinatorScopeAllowsUal: (scope, ualId, facultyId) =>
+          scope?.scopeType === 'uales'
+            ? scope.ualIds?.includes(Number(ualId)) || false
+            : scope?.facultyIds?.includes(Number(facultyId)) || false,
       },
     ],
     [

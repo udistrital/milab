@@ -80,6 +80,8 @@ test('getPrestamosModuleAccess bypasses faculty checks for admin', async () => {
       role: 'admin',
       facultyIds: [],
       allowedFacultyIds: [],
+      ualIds: [],
+      allowedUalIds: [],
       blockedFacultyIds: [],
       blocked: false,
     });
@@ -126,6 +128,8 @@ test('getPrestamosModuleAccess blocks coordinador when all faculties are explici
       role: 'coordinador',
       facultyIds: [2, 4],
       allowedFacultyIds: [],
+      ualIds: [],
+      allowedUalIds: [],
       blockedFacultyIds: [2, 4],
       blocked: true,
     });

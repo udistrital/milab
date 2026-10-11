@@ -4,38 +4,15 @@ const { normalizeRoles } = require('./roles');
 let operationalRoleAssignmentSchemaEnsured = false;
 
 async function ensureOperationalRoleAssignmentsSchema(executor = pool) {
-  if (operationalRoleAssignmentSchemaEnsured) {
-    return;
+  if (operationalRoleAssignmentSchemaEnsured) return;
+  const result = await executor.query(
+    `SELECT to_regclass('milab.usuario_ual_rol_operativo') AS table_name`
+  );
+  if (!result.rows[0]?.table_name) {
+    throw new Error(
+      'No existe milab.usuario_ual_rol_operativo. La tabla debe aprovisionarse con un usuario administrador de base de datos.'
+    );
   }
-
-  await executor.query(`
-    CREATE TABLE IF NOT EXISTS usuario_ual_rol_operativo (
-      id SERIAL NOT NULL,
-      usuario_id BIGINT NOT NULL,
-      rol_id INT NOT NULL,
-      ual_id INT NOT NULL,
-      creado_por_id BIGINT,
-      activo BOOLEAN NOT NULL DEFAULT TRUE,
-      fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT pk_usuario_ual_rol_operativo PRIMARY KEY (id),
-      CONSTRAINT uq_usuario_ual_rol_operativo UNIQUE (usuario_id, rol_id, ual_id),
-      CONSTRAINT fk_usuario_ual_rol_operativo_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
-      CONSTRAINT fk_usuario_ual_rol_operativo_rol FOREIGN KEY (rol_id) REFERENCES rol(id) ON DELETE CASCADE,
-      CONSTRAINT fk_usuario_ual_rol_operativo_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
-      CONSTRAINT fk_usuario_ual_rol_operativo_creado_por FOREIGN KEY (creado_por_id) REFERENCES usuario(id) ON DELETE SET NULL
-    )
-  `);
-  await executor.query(
-    `CREATE INDEX IF NOT EXISTS idx_usuario_ual_rol_operativo_usuario ON usuario_ual_rol_operativo(usuario_id)`
-  );
-  await executor.query(
-    `CREATE INDEX IF NOT EXISTS idx_usuario_ual_rol_operativo_rol ON usuario_ual_rol_operativo(rol_id)`
-  );
-  await executor.query(
-    `CREATE INDEX IF NOT EXISTS idx_usuario_ual_rol_operativo_ual ON usuario_ual_rol_operativo(ual_id)`
-  );
-
   operationalRoleAssignmentSchemaEnsured = true;
 }
 
@@ -131,6 +108,7 @@ async function replaceOperationalRoleAssignments({
   ualIds,
   facultyId = null,
   createdByUserId = null,
+  purgeWhenEmpty = false,
   client = pool,
 }) {
   await ensureOperationalRoleAssignmentsSchema(client);
@@ -150,6 +128,16 @@ async function replaceOperationalRoleAssignments({
   );
 
   if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0 || !normalizedRoleName) {
+    return;
+  }
+
+  if (!normalizedUalIds.length && purgeWhenEmpty) {
+    await client.query(
+      `DELETE FROM usuario_ual_rol_operativo
+       WHERE usuario_id = $1
+         AND rol_id = (SELECT id FROM rol WHERE nombre = $2 LIMIT 1)`,
+      [normalizedUserId, normalizedRoleName]
+    );
     return;
   }
 

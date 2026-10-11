@@ -46,6 +46,9 @@ function loadRoute({
       dbPath,
       {
         query: async (sql, params = []) => {
+          if (sql.includes('SELECT m.ual_id, u.facultad_id')) {
+            return { rows: [{ ual_id: 10, facultad_id: 10 }] };
+          }
           if (typeof queryImpl === 'function') {
             return queryImpl(sql, params);
           }
@@ -99,6 +102,10 @@ function loadRoute({
       {
         resolveCoordinatorScope:
           scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
+        coordinatorScopeAllowsUal: (scope, ualId, facultyId) =>
+          scope?.scopeType === 'uales'
+            ? scope.ualIds?.includes(Number(ualId)) || false
+            : scope?.facultyIds?.includes(Number(facultyId)) || false,
       },
     ],
     [

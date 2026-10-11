@@ -101,6 +101,10 @@
           <input class="form-check-input" type="radio" id="alcance_dependencias" name="alcance" value="dependencias">
           <label class="form-check-label" for="alcance_dependencias">Solo dependencias específicas</label>
         </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="alcance_uales" name="alcance" value="uales">
+          <label class="form-check-label" for="alcance_uales">Solo UALs específicas</label>
+        </div>
       </div>
 
       <div id="dependenciasSection" class="d-none">
@@ -134,6 +138,39 @@
           <p class="text-muted mb-0" id="dependenciasEmpty" hidden>No hay dependencias que coincidan con la facultad y búsqueda seleccionadas.</p>
         </div>
         <small class="form-text text-muted">Puedes seleccionar una o varias dependencias de la facultad elegida.</small>
+      </div>
+
+      <div id="ualesSection" class="d-none">
+        <label class="form-label" for="ualesSearch">UALs autorizadas</label>
+        <input
+          type="search"
+          class="form-control mb-2"
+          id="ualesSearch"
+          placeholder="Filtrar UALs..."
+          autocomplete="off"
+        >
+        <div class="coordinator-dependency-list" id="ualesOptions">
+          <% (uals || []).forEach(function(ual) { %>
+            <label
+              class="form-check coordinator-dependency-option"
+              data-ual-option="true"
+              data-facultad="<%= ual.facultad_id %>"
+              data-search="<%= `${ual.nombre} ${ual.codigo_abreviacion || ''}`.toLowerCase() %>"
+              hidden
+            >
+              <input
+                class="form-check-input me-2"
+                type="checkbox"
+                name="ual_ids"
+                value="<%= ual.ual_id %>"
+                data-ual-checkbox="true"
+              >
+              <span class="form-check-label"><%= ual.nombre %><% if (ual.codigo_abreviacion) { %> (<%= ual.codigo_abreviacion %>)<% } %></span>
+            </label>
+          <% }); %>
+          <p class="text-muted mb-0" id="ualesEmpty" hidden>No hay UALs activas que coincidan con la facultad y búsqueda seleccionadas.</p>
+        </div>
+        <small class="form-text text-muted">El coordinador solo tendrá acceso a las UALs seleccionadas.</small>
       </div>
     </fieldset>
 
@@ -219,6 +256,11 @@
         mensajeError.innerHTML += "<p>Debe seleccionar al menos una dependencia.</p>";
         return false;
       }
+      if (scope === 'uales' && document.querySelectorAll('input[name="ual_ids"]:checked').length === 0) {
+        mensajeError.classList.remove("d-none");
+        mensajeError.innerHTML += "<p>Debe seleccionar al menos una UAL.</p>";
+        return false;
+      }
     }
 
     return true;
@@ -240,6 +282,9 @@
       checks.forEach(function (check) {
         check.checked = false;
       });
+      document.querySelectorAll('input[name="ual_ids"]').forEach(function (check) {
+        check.checked = false;
+      });
       document.getElementById('facultad_id').value = '';
     }
   }
@@ -251,8 +296,13 @@
     var filter = document.getElementById('dependenciasSearch').value.trim().toLocaleLowerCase();
     var options = document.querySelectorAll('[data-dependencia-option="true"]');
     var visibleCount = 0;
+    var ualSection = document.getElementById('ualesSection');
+    var ualFilter = document.getElementById('ualesSearch').value.trim().toLocaleLowerCase();
+    var ualOptions = document.querySelectorAll('[data-ual-option="true"]');
+    var visibleUalCount = 0;
 
     section.classList.toggle('d-none', scope !== 'dependencias');
+    ualSection.classList.toggle('d-none', scope !== 'uales');
     options.forEach(function (option) {
       var matchesFaculty = option.getAttribute('data-facultad') === facultyId;
       var matchesFilter = option.getAttribute('data-search').includes(filter);
@@ -263,6 +313,14 @@
       }
     });
     document.getElementById('dependenciasEmpty').hidden = !facultyId || visibleCount > 0;
+    ualOptions.forEach(function (option) {
+      var matchesFaculty = option.getAttribute('data-facultad') === facultyId;
+      var matchesFilter = option.getAttribute('data-search').includes(ualFilter);
+      option.hidden = !matchesFaculty || !matchesFilter;
+      if (!option.hidden) visibleUalCount++;
+      if (!matchesFaculty) option.querySelector('input').checked = false;
+    });
+    document.getElementById('ualesEmpty').hidden = !facultyId || visibleUalCount > 0;
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -275,6 +333,7 @@
       radio.addEventListener('change', updateDependencyOptions);
     });
     document.getElementById('dependenciasSearch').addEventListener('input', updateDependencyOptions);
+    document.getElementById('ualesSearch').addEventListener('input', updateDependencyOptions);
     syncFacultySection();
     updateDependencyOptions();
   });

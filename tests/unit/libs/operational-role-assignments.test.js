@@ -15,20 +15,24 @@ function createExecutor(results = []) {
     calls,
     async query(sql, params) {
       calls.push({ sql, params });
+      if (sql.includes('to_regclass')) {
+        return { rows: [{ table_name: 'milab.usuario_ual_rol_operativo' }] };
+      }
       return results.shift() || { rows: [] };
     },
   };
 }
 
-test('ensureOperationalRoleAssignmentsSchema creates table and indexes once per process', async () => {
+test('ensureOperationalRoleAssignmentsSchema verifies the existing table without running DDL', async () => {
   const executor = createExecutor();
 
   await ensureOperationalRoleAssignmentsSchema(executor);
   const callCountAfterFirstRun = executor.calls.length;
   await ensureOperationalRoleAssignmentsSchema(executor);
 
-  assert.equal(callCountAfterFirstRun, 4);
-  assert.equal(executor.calls.length, 4);
+  assert.equal(callCountAfterFirstRun, 1);
+  assert.equal(executor.calls.length, 1);
+  assert.match(executor.calls[0].sql, /to_regclass/);
 });
 
 test('fetchOperationalRoleAssignmentsByUserId returns empty for invalid inputs', async () => {

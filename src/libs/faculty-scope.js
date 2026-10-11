@@ -1,3 +1,5 @@
+const { ensureOperationalRoleAssignmentsSchema } = require('./operational-role-assignments');
+
 function normalizeAcademicText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -126,29 +128,99 @@ function resolveAcademicFacultyName(programName) {
 }
 
 async function resolveCoordinatorScope(client, authDocument) {
-  const coordInfoRes = await client.query('SELECT documento FROM coordinador WHERE nombre_u = $1', [
-    authDocument,
-  ]);
+  const coordInfoRes = await client.query(
+    `SELECT documento, nombre_u, usuario_id
+     FROM coordinador
+     WHERE nombre_u = $1 OR documento = $1
+     LIMIT 1`,
+    [authDocument]
+  );
 
   if (coordInfoRes.rows.length === 0) {
     return {
       coordinatorDocument: null,
+      scopeType: null,
       facultyIds: [],
+      ualIds: [],
     };
   }
 
-  const coordinatorDocument = coordInfoRes.rows[0].documento;
+  const coordinator = coordInfoRes.rows[0];
+  const coordinatorDocument = coordinator.documento;
+  let userId = Number(coordinator.usuario_id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    const userResult = await client.query(
+      `SELECT id
+       FROM usuario
+       WHERE documento = $1 OR documento = $2
+       LIMIT 1`,
+      [coordinatorDocument, coordinator.nombre_u || authDocument]
+    );
+    userId = Number(userResult.rows[0]?.id);
+  }
+
+  if (Number.isInteger(userId) && userId > 0) {
+    await ensureOperationalRoleAssignmentsSchema(client);
+    const ualAssignments = await client.query(
+      `SELECT a.ual_id, a.activo AS assignment_active,
+              u.facultad_id, u.activo AS ual_activo
+       FROM usuario_ual_rol_operativo a
+       JOIN rol r ON r.id = a.rol_id
+       JOIN ual u ON u.ual_id = a.ual_id
+       WHERE a.usuario_id = $1
+         AND r.nombre = 'coordinador'`,
+      [userId]
+    );
+
+    if (ualAssignments.rows.length) {
+      return {
+        coordinatorDocument,
+        scopeType: 'uales',
+        facultyIds: [
+          ...new Set(
+            ualAssignments.rows
+              .filter((row) => row.assignment_active && row.ual_activo)
+              .map((row) => Number(row.facultad_id))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          ),
+        ],
+        ualIds: [
+          ...new Set(
+            ualAssignments.rows
+              .filter((row) => row.assignment_active && row.ual_activo)
+              .map((row) => Number(row.ual_id))
+              .filter((value) => Number.isInteger(value) && value > 0)
+          ),
+        ],
+      };
+    }
+  }
+
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
+    `SELECT DISTINCT facultad_id
+     FROM coordinador_facultad_alcance
+     WHERE coordinador_documento_id = $1
+       AND activo = TRUE`,
     [coordinatorDocument]
   );
 
-  const facultyIds = facultiesRes.rows.map((row) => Number(row.facultad_id)).filter(Boolean);
+  const facultyIds = facultiesRes.rows
+    .map((row) => Number(row.facultad_id))
+    .filter((value) => Number.isInteger(value) && value > 0);
 
   return {
     coordinatorDocument,
+    scopeType: 'institucional',
     facultyIds: [...new Set(facultyIds)],
+    ualIds: [],
   };
+}
+
+function coordinatorScopeAllowsUal(scope, ualId, facultyId) {
+  if (scope?.scopeType === 'uales') {
+    return scope.ualIds?.includes(Number(ualId)) || false;
+  }
+  return scope?.facultyIds?.includes(Number(facultyId)) || false;
 }
 
 async function resolveCoordinatorFacultyNames(client, authDocument) {
@@ -173,4 +245,5 @@ module.exports = {
   resolveAcademicFacultyName,
   resolveCoordinatorFacultyNames,
   resolveCoordinatorScope,
+  coordinatorScopeAllowsUal,
 };

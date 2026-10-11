@@ -15,32 +15,37 @@
         <div class="alert alert-success" role="alert"><%= successMessage %></div>
       <% } %>
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid table-laboratoristas" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped table-hover app-table-compact js-data-grid table-laboratoristas" data-grid-page-length="25" data-grid-scroll-x="true">
           <thead class="thead-dark text-center">
             <tr>
               <th>Nombres y Apellidos</th>
               <th>Cédula</th>
               <th>Correo</th>
-              <th>Laboratorio</th> <!-- cambiado de UAL a Laboratorio -->
               <th>Facultad</th>
+              <th>Dependencias</th>
+              <th>UALs</th>
               <th>Estado actual</th>
               <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
           <tbody class="text-center text-light">
             <% laboratoristas.forEach(laboratorista => { %>
-              <% const laboratorioTexto = String(laboratorista.con_ual || ''); %>
-              <% const mostrarToggleLaboratorio = laboratorioTexto.length > 140; %>
+              <% const facultadTexto = String(laboratorista.con_facultad || '—'); %>
+              <% const dependenciaTexto = String(laboratorista.con_dependencia || '—'); %>
+              <% const ualTexto = String(laboratorista.con_ual || '—'); %>
+              <% const mostrarToggleFacultad = facultadTexto.length > 140; %>
+              <% const mostrarToggleDependencia = dependenciaTexto.length > 140; %>
+              <% const mostrarToggleUal = ualTexto.length > 140; %>
               <tr>
                 <td><%= laboratorista.con_nombre %></td>
                 <td><%= laboratorista.con_documento %></td>
                 <td data-email-cell="true"><%= laboratorista.con_correo %></td>
                 <td>
                   <span
-                    class="app-labs-cell-text <%= mostrarToggleLaboratorio ? 'is-collapsed' : '' %>"
+                    class="app-labs-cell-text <%= mostrarToggleFacultad ? 'is-collapsed' : '' %>"
                     data-labs-text="true"
-                  ><%= laboratorioTexto %></span>
-                  <% if (mostrarToggleLaboratorio) { %>
+                  ><%= facultadTexto %></span>
+                  <% if (mostrarToggleFacultad) { %>
                     <button
                       type="button"
                       class="app-labs-toggle"
@@ -50,8 +55,25 @@
                       Ver más
                     </button>
                   <% } %>
-                </td> <!-- nombre del laboratorio -->
-                <td><%= laboratorista.con_facultad %></td> <!-- nombre de la facultad -->
+                </td>
+                <td>
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleDependencia ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= dependenciaTexto %></span>
+                  <% if (mostrarToggleDependencia) { %>
+                    <button type="button" class="app-labs-toggle" data-labs-toggle="true" aria-expanded="false">Ver más</button>
+                  <% } %>
+                </td>
+                <td>
+                  <span
+                    class="app-labs-cell-text <%= mostrarToggleUal ? 'is-collapsed' : '' %>"
+                    data-labs-text="true"
+                  ><%= ualTexto %></span>
+                  <% if (mostrarToggleUal) { %>
+                    <button type="button" class="app-labs-toggle" data-labs-toggle="true" aria-expanded="false">Ver más</button>
+                  <% } %>
+                </td>
                 <td>
                   <span class="badge <%= laboratorista.activo ? 'text-bg-success' : 'text-bg-secondary' %>">
                     <%= laboratorista.activo ? 'Activo' : 'Inactivo' %>

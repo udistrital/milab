@@ -69,9 +69,12 @@ router.get('/', requireAdminOrCoordinatorMonitorAccess, async function (req, res
       );
     } else {
       const scope = await resolveCoordinatorScope(pool, req.session.user.documento);
-      const facultyIds = (scope.facultyIds || []).map(Number).filter(Number.isInteger);
+      const scopeIds =
+        scope.scopeType === 'uales'
+          ? scope.ualIds
+          : (scope.facultyIds || []).map(Number).filter(Number.isInteger);
 
-      if (!facultyIds.length) {
+      if (!scopeIds.length) {
         return res.render('home/monitores_registrados', {
           monitores: [],
           successMessage: null,
@@ -80,12 +83,16 @@ router.get('/', requireAdminOrCoordinatorMonitorAccess, async function (req, res
 
       result = await pool.query(
         `${baseQuery}
-           AND ua.facultad_id = ANY($1::int[])
+           AND ${
+             scope.scopeType === 'uales'
+               ? 'ua.ual_id = ANY($1::int[])'
+               : 'ua.facultad_id = ANY($1::int[])'
+           }
          GROUP BY u.id, u.nombre, u.documento, u.correo, pe.codigo,
                   m.nombre, m.documento, m.correo, m.numero_contrato, m.tipo_vinculacion,
                   m.fecha_inicio, m.fecha_fin, m.soporte_contrato
          ORDER BY u.nombre ASC`,
-        [facultyIds]
+        [scopeIds]
       );
     }
 
