@@ -217,6 +217,53 @@ function loadRoute({
   };
 }
 
+test('laboratoristas_registrados lists faculty, dependencies and assigned labs', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM laboratorista l')) {
+        return {
+          rows: [
+            {
+              con_nombre: 'Laboratorista Demo',
+              con_documento: '12345',
+              con_correo: 'lab.demo@udistrital.edu.co',
+              con_facultad: 'Facultad de Ingeniería',
+              con_dependencia: 'Laboratorio de Sistemas',
+              con_ual: 'Sala 1',
+              activo: true,
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, loaded.sessionUser);
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.laboratoristas[0], {
+      con_nombre: 'Laboratorista Demo',
+      con_documento: '12345',
+      con_correo: 'lab.demo@udistrital.edu.co',
+      con_facultad: 'Facultad de Ingeniería',
+      con_dependencia: 'Laboratorio de Sistemas',
+      con_ual: 'Sala 1',
+      activo: true,
+    });
+    const listQuery = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('FROM laboratorista l'))?.sql;
+    assert.match(listQuery, /AS con_dependencia/);
+    assert.match(listQuery, /LEFT JOIN dependencia_facultad facultad/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('laboratoristas_registrados /editar allows admin edit and updates assigned UALs', async () => {
   const loaded = loadRoute({ sessionRole: 'admin' });
 

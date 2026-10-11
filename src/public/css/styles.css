@@ -2592,6 +2592,19 @@ body.app-shell .dashboard-detail-table-wrap .table .dashboard-actions-cell {
   background-color: var(--app-bg, #fff);
 }
 
+body.app-shell .app-grid-sticky-action {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  border-left: 1px solid rgba(23, 23, 23, 0.08);
+  background-color: var(--app-bg, #fff);
+  box-shadow: -0.25rem 0 0.4rem rgba(23, 23, 23, 0.08);
+}
+
+body.app-shell thead .app-grid-sticky-action {
+  z-index: 3;
+}
+
 body.app-shell .dashboard-detail-table-wrap thead .dashboard-actions-cell {
   z-index: 2;
 }
@@ -3059,15 +3072,19 @@ body.app-shell .table-multas td:nth-child(7) {
 body.app-shell .table-laboratoristas th:nth-child(4),
 body.app-shell .table-laboratoristas td:nth-child(4),
 body.app-shell .table-laboratoristas th:nth-child(5),
-body.app-shell .table-laboratoristas td:nth-child(5) {
+body.app-shell .table-laboratoristas td:nth-child(5),
+body.app-shell .table-laboratoristas th:nth-child(6),
+body.app-shell .table-laboratoristas td:nth-child(6) {
   white-space: normal;
-  min-width: 220px;
-  max-width: 340px;
+  min-width: 170px;
+  max-width: 280px;
   word-break: normal;
   overflow-wrap: anywhere;
 }
 
-body.app-shell .table-laboratoristas td:nth-child(4) {
+body.app-shell .table-laboratoristas td:nth-child(4),
+body.app-shell .table-laboratoristas td:nth-child(5),
+body.app-shell .table-laboratoristas td:nth-child(6) {
   line-height: 1.35;
 }
 
@@ -3102,11 +3119,13 @@ body.app-shell .table-laboratoristas .app-labs-toggle:focus {
 
 body.app-shell .table-coordinadores th:nth-child(4),
 body.app-shell .table-coordinadores td:nth-child(4),
-body.app-shell .table-coordinadores th:nth-child(6),
-body.app-shell .table-coordinadores td:nth-child(6) {
+body.app-shell .table-coordinadores th:nth-child(5),
+body.app-shell .table-coordinadores td:nth-child(5),
+body.app-shell .table-coordinadores th:nth-child(7),
+body.app-shell .table-coordinadores td:nth-child(7) {
   white-space: normal;
-  min-width: 220px;
-  max-width: 340px;
+  min-width: 170px;
+  max-width: 280px;
   word-break: normal;
   overflow-wrap: anywhere;
   line-height: 1.35;
@@ -3141,8 +3160,6 @@ body.app-shell .table-coordinadores .app-labs-toggle:focus {
   color: var(--app-accent-deep);
 }
 
-body.app-shell .table-coordinadores th:nth-child(7),
-body.app-shell .table-coordinadores td:nth-child(7),
 body.app-shell .table-coordinadores th:nth-child(8),
 body.app-shell .table-coordinadores td:nth-child(8),
 body.app-shell .table-coordinadores th:nth-child(9),
@@ -3150,8 +3167,6 @@ body.app-shell .table-coordinadores td:nth-child(9) {
   width: 1%;
 }
 
-body.app-shell .table-laboratoristas th:nth-child(6),
-body.app-shell .table-laboratoristas td:nth-child(6),
 body.app-shell .table-laboratoristas th:nth-child(7),
 body.app-shell .table-laboratoristas td:nth-child(7),
 body.app-shell .table-laboratoristas th:nth-child(8),

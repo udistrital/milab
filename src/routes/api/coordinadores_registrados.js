@@ -79,7 +79,16 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.correo AS con_correo,
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
-             STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
+             STRING_AGG(
+               DISTINCT COALESCE(facultad.nombre, f.nombre),
+               ', '
+               ORDER BY COALESCE(facultad.nombre, f.nombre)
+             ) AS facultad_nombre,
+             STRING_AGG(
+               DISTINCT CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END,
+               ', '
+               ORDER BY CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END
+             ) AS dependencia_nombre,
              ARRAY_AGG(DISTINCT f.dependencia_facultad_id ORDER BY f.dependencia_facultad_id) FILTER (WHERE f.dependencia_facultad_id IS NOT NULL) AS facultad_ids,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
@@ -88,6 +97,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       FROM coordinador c
       JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
       JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = f.padre_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
         OR u.documento = c.documento
@@ -208,7 +218,8 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     ...new Set(dependencyIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0)),
   ];
   let assignmentIds = legacyFacultyIds;
-  let assignmentLabels = [];
+  let assignmentFacultyNames = [];
+  let assignmentDependencyNames = [];
 
   if (!documento) {
     return res.status(400).json({
@@ -307,7 +318,8 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
 
         if (assignmentScope === 'facultad') {
           assignmentIds = [facultyId];
-          assignmentLabels = [facultyResult.rows[0].nombre];
+          assignmentFacultyNames = [facultyResult.rows[0].nombre];
+          assignmentDependencyNames = ['Toda la facultad'];
         } else {
           if (!dependencyIds.length) {
             client.release();
@@ -332,14 +344,21 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
             });
           }
           assignmentIds = dependencyResult.rows.map((dependency) => dependency.dependencia_id);
-          assignmentLabels = dependencyResult.rows.map((dependency) => dependency.nombre);
+          assignmentFacultyNames = [facultyResult.rows[0].nombre];
+          assignmentDependencyNames = dependencyResult.rows.map((dependency) => dependency.nombre);
         }
       } else {
+        const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
         const validFaculties = await client.query(
-          `SELECT ${validFacultyColumn} AS facultad_id, nombre
-           FROM dependencia_facultad
-           WHERE ${validFacultyColumn} = ANY($1::int[])
-           ORDER BY nombre ASC`,
+          `SELECT f.${validFacultyColumn} AS facultad_id,
+                  f.nombre,
+                  f.${parentIdColumn} AS padre_id,
+                  COALESCE(parent.nombre, f.nombre) AS facultad_nombre
+           FROM dependencia_facultad f
+           LEFT JOIN dependencia_facultad parent
+             ON parent.${validFacultyColumn} = f.${parentIdColumn}
+           WHERE f.${validFacultyColumn} = ANY($1::int[])
+           ORDER BY COALESCE(parent.nombre, f.nombre) ASC, f.nombre ASC`,
           [legacyFacultyIds]
         );
         if (validFaculties.rows.length !== legacyFacultyIds.length) {
@@ -349,7 +368,16 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
             message: 'Una o más facultades seleccionadas no existen.',
           });
         }
-        assignmentLabels = validFaculties.rows.map((faculty) => faculty.nombre);
+        assignmentFacultyNames = [
+          ...new Set(validFaculties.rows.map((faculty) => faculty.facultad_nombre)),
+        ];
+        assignmentDependencyNames = [
+          ...new Set(
+            validFaculties.rows.map((faculty) =>
+              faculty.padre_id === null ? 'Toda la facultad' : faculty.nombre
+            )
+          ),
+        ];
       }
     }
 
@@ -451,7 +479,8 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       ...(assignmentProvided
         ? {
             facultad_ids: assignmentIds,
-            facultad_nombre: assignmentLabels.join(', '),
+            facultad_nombre: assignmentFacultyNames.join(', '),
+            dependencia_nombre: assignmentDependencyNames.join(', '),
           }
         : {}),
     });
