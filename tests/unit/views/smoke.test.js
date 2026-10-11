@@ -111,6 +111,30 @@ test('prestamos practicas configuracion view renders with minimal configuration 
   assert.match(html, /Esquema Dinamico Del Laboratorio/i);
 });
 
+test('capacitacion management view renders scoped report filters and JSON export wiring', async () => {
+  const html = await renderView(
+    'src/views/home/capacitacion-gestion.ejs',
+    buildBaseViewLocals({
+      tipo: 'laboratorista',
+      navigation: { role: 'laboratorista' },
+      sessionRoleLabel: 'Laboratorista',
+    })
+  );
+
+  assert.match(html, /id="report-codigo-curso"/);
+  assert.match(html, /id="report-ual"/);
+  assert.match(html, /id="report-facultad"/);
+  assert.match(html, /id="btn-exportar-json"/);
+  assert.match(html, /reporteJson:\s*BASE_PATH \+ '\/gestion\/reporte\.json'/);
+  assert.match(html, /qs\.push\('codigo_curso='/);
+  assert.match(html, /qs\.push\('ual_id='/);
+  assert.match(html, /qs\.push\('facultad_id='/);
+  assert.match(
+    html,
+    /getElementById\('btn-exportar-json'\)\?\.addEventListener\('click', onExportarJson\)/
+  );
+});
+
 test('profile view renders the active program selector during registration', async () => {
   const html = await renderView(
     'src/views/home/profile.ejs',
