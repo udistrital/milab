@@ -7847,6 +7847,26 @@ async function replaceEquipmentSchedules(client, equipmentId, schedules) {
   }
 }
 
+router.all(
+  [
+    '/inventario',
+    '/inventario/crear',
+    '/inventario/:id/editar',
+    '/inventario/:id/eliminar',
+    '/equipos/crear',
+    '/equipos/:id/editar',
+    '/equipos/:id/estado',
+    '/equipos/:id/eliminar',
+  ],
+  function (req, res) {
+    return res.redirect('/milab/inventarios/gestion_inventario');
+  }
+);
+
+router.get('/equipos', function (req, res) {
+  return res.redirect('/milab/inventarios/gestion_inventario?tipo_inventario=equipo_arka');
+});
+
 router.get('/inventario', requireInventarioAuthorized, async function (req, res) {
   try {
     const result = await pool.query(

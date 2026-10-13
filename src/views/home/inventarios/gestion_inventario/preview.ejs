@@ -1,0 +1,161 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Revisión de carga</h1>
+    <p class="app-page-subtitle">
+      <%= inventoryLabels[batch.tipo_inventario] || batch.tipo_inventario %> —
+      <%= batch.laboratorio_nombre || `Laboratorio ${batch.ual_id}` %>
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="status"><%= successMessage %></div>
+  <% } %>
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Archivo</dt>
+        <dd class="col-sm-9"><%= batch.archivo_nombre %></dd>
+        <dt class="col-sm-3">Estado</dt>
+        <dd class="col-sm-9"><%= batch.estado.replaceAll('_', ' ') %></dd>
+        <dt class="col-sm-3">Filas revisadas</dt>
+        <dd class="col-sm-9"><%= batch.total_filas %></dd>
+        <dt class="col-sm-3">Exitosas</dt>
+        <dd class="col-sm-9"><%= batch.filas_exitosas %></dd>
+        <dt class="col-sm-3">Fallidas</dt>
+        <dd class="col-sm-9"><%= batch.filas_fallidas %></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Resultado por fila</h2>
+    </div>
+    <div class="card-body">
+      <% if (rows.length) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact">
+            <thead class="text-light">
+              <tr>
+                <th>Fila</th>
+                <th>Estado</th>
+                <th>Descripción</th>
+                <th>Placa / serial</th>
+                <th>Identificadores</th>
+                <th>Existencias</th>
+                <th>Errores</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach(function(row) { %>
+                <tr>
+                  <td><%= row.numeroFila %></td>
+                  <td>
+                    <span class="badge <%= row.estado === 'fallida' ? 'bg-danger' : 'bg-success' %>">
+                      <%= row.estado.replaceAll('_', ' ') %>
+                    </span>
+                  </td>
+                  <td><%= row.payload.descripcion || '-' %></td>
+                  <td><%= row.payload.placa || '-' %><%= row.payload.serie ? ` / ${row.payload.serie}` : '' %></td>
+                  <td>
+                    <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
+                      <%= row.payload.identificadores.map(function(identifier) { return `${identifier.tipo}: ${identifier.valor}`; }).join(', ') %>
+                    <% } else { %>
+                      -
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (row.payload.existencias && row.payload.existencias.length) { %>
+                      <%= row.payload.existencias.map(function(balance) { return `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`; }).join(', ') %>
+                    <% } else { %>
+                      <%= row.payload.modoControl === 'cantidad' ? 'Cantidad no informada' : 'Individual' %>
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (row.errores && row.errores.length) { %>
+                      <ul class="mb-0 ps-3">
+                        <% row.errores.forEach(function(error) { %>
+                          <li><%= error %></li>
+                        <% }) %>
+                      </ul>
+                    <% } else { %>
+                      -
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else if (batch.declaracion_sin_inventario) { %>
+        <div class="alert alert-info mb-0">
+          Declaración de inventario complementario vacío; queda pendiente de aprobación.
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">Esta carga no tiene filas almacenadas.</div>
+      <% } %>
+    </div>
+  </section>
+
+  <% if (batch.estado === 'previsualizada') { %>
+    <% if (batch.filas_exitosas > 0 && coordinators.length) { %>
+      <section class="card app-form-panel text-light mb-4">
+        <div class="card-body">
+          <h2 class="h5">Enviar registros exitosos a aprobación</h2>
+          <p>
+            Las filas fallidas quedarán en el registro de auditoría, pero no se crearán como
+            inventario. El coordinador podrá aprobar o rechazar el lote completo.
+          </p>
+          <form
+            action="/milab/inventarios/cargas/<%= batch.id %>/confirmar"
+            method="post"
+            class="row g-3 align-items-end"
+            onsubmit="return confirm('¿Confirmas el envío de las filas exitosas a aprobación?');"
+          >
+            <div class="col-md-8">
+              <label for="coordinador_documento" class="form-label">Coordinador aprobador</label>
+              <select id="coordinador_documento" name="coordinador_documento" class="form-select" required>
+                <option value="">Selecciona un coordinador autorizado</option>
+                <% coordinators.forEach(function(coordinator) { %>
+                  <option value="<%= coordinator.documento %>">
+                    <%= coordinator.nombre %>
+                  </option>
+                <% }) %>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-perso" type="submit" data-submit-lock="true">
+                Confirmar y enviar
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+    <% } else if (batch.filas_exitosas > 0) { %>
+      <div class="alert alert-warning">
+        No hay coordinadores activos autorizados para aprobar inventarios de este laboratorio.
+      </div>
+    <% } else { %>
+      <div class="alert alert-warning">
+        No hay filas exitosas para enviar. Corrige el archivo y realiza una nueva carga.
+      </div>
+    <% } %>
+  <% } %>
+
+  <div class="d-flex justify-content-end">
+    <a
+      class="btn btn-outline-secondary"
+      href="/milab/inventarios/gestion_inventario?ual_id=<%= batch.ual_id %>"
+    >
+      Volver al inventario
+    </a>
+  </div>
+</main>
+
+<%- include('../../../partials/footer'); -%>
