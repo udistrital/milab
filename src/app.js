@@ -65,11 +65,7 @@ const {
   renderApplicationError,
   wantsJson,
 } = require('./routes/middlewares/error-handler');
-const {
-  csrfTokenMiddleware,
-  verifyCsrfToken,
-  createCsrfVerifier,
-} = require('./routes/middlewares/csrf');
+const { csrfTokenMiddleware, createCsrfVerifier } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 const { requireApiSessionUnlessPublic } = require('./routes/middlewares/api-session-gate');
 const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
@@ -90,6 +86,10 @@ const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const apiCsrfExemptPaths = [];
 const verifyApiCsrfToken = createCsrfVerifier({ skipPaths: apiCsrfExemptPaths });
+// Multer parses this multipart form before its route-level CSRF verification.
+const verifyCsrfToken = createCsrfVerifier({
+  skipPaths: ['/inventarios/cargas/previsualizar'],
+});
 const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
 const isProduction = normalizedNodeEnv === 'production';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(

@@ -71,6 +71,7 @@ function createCsrfVerifier(options = {}) {
       }
 
       return res.status(403).render('home/message_error', {
+        status: 403,
         message: 'Solicitud no válida',
         message2:
           'El token de seguridad expiró o es inválido. Recarga la página e inténtalo de nuevo.',

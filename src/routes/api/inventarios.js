@@ -4,6 +4,7 @@ const path = require('node:path');
 const pool = require('../../libs/db');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
+const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
 const {
   INVENTORY_TYPES,
   InventoryImportError,
@@ -341,13 +342,12 @@ async function flagExistingIdentifiers(client, rows, ualId) {
 }
 
 async function getManagementContext(client, req, selectedUalId) {
+  // TODO: Move historical inventory and unlinked equipment to Conciliaciones ARKA.
   const laboratories = await getAccessibleLaboratories(client, req);
   const selectedLaboratory =
     laboratories.find((laboratory) => laboratory.ual_id === selectedUalId) || null;
   let coordinators = [];
   let inventoryItems = [];
-  let legacyInventoryItems = [];
-  let unlinkedEquipmentItems = [];
   let statuses = INVENTORY_ALL_TYPES.map((type) => ({
     tipo_inventario: type,
     etiqueta: INVENTORY_LABELS[type],
@@ -356,33 +356,6 @@ async function getManagementContext(client, req, selectedUalId) {
     elementos_aprobados: 0,
   }));
   let recentLoads = [];
-
-  if (isGlobalInventoryViewer(req)) {
-    [legacyInventoryItems, unlinkedEquipmentItems] = await Promise.all([
-      client
-        .query(
-          `
-          SELECT id, serie, placa, nombre_bien, dependencia, espacio_fisico
-          FROM inventario
-          WHERE tipo_inventario = 'legado'
-          ORDER BY fecha_creacion DESC NULLS LAST, id DESC
-          LIMIT 100
-        `
-        )
-        .then((result) => result.rows),
-      client
-        .query(
-          `
-          SELECT id, codigo, nombre, categoria, estado, laboratorio, facultad
-          FROM equipo
-          WHERE inventario_id IS NULL
-          ORDER BY fecha_creacion DESC NULLS LAST, id DESC
-          LIMIT 100
-        `
-        )
-        .then((result) => result.rows),
-    ]);
-  }
 
   if (selectedLaboratory) {
     const filterType = INVENTORY_ALL_TYPES.includes(String(req.query.tipo_inventario || ''))
@@ -506,8 +479,6 @@ async function getManagementContext(client, req, selectedUalId) {
     selectedLaboratory,
     coordinators,
     inventoryItems,
-    legacyInventoryItems,
-    unlinkedEquipmentItems,
     statuses,
     recentLoads,
   };
@@ -530,7 +501,9 @@ function managementViewData(req, context, messages = {}) {
 
 function renderWorkflowError(res, error) {
   if (error instanceof InventoryWorkflowError || error instanceof InventoryImportError) {
-    return res.status(error.status || 400).render('home/message_error', {
+    const status = error.status || 400;
+    return res.status(status).render('home/message_error', {
+      status,
       message: 'No fue posible completar la operación',
       message2: error.message,
       limit: 'loginOnly',
@@ -602,6 +575,7 @@ function handleSpreadsheetUpload(req, res, next) {
         ? 'El archivo supera el límite de 10 MB.'
         : 'No fue posible recibir el archivo; selecciona un solo archivo Excel.';
     return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).render('home/message_error', {
+      status: error.code === 'LIMIT_FILE_SIZE' ? 413 : 400,
       message: 'Archivo no válido',
       message2: message,
       limit: 'loginOnly',
@@ -646,6 +620,7 @@ router.post(
   '/cargas/previsualizar',
   requireInventoryEditor,
   handleSpreadsheetUpload,
+  verifyUploadCsrfToken,
   async function (req, res, next) {
     const ualId = parsePositiveId(req.body.ual_id);
     const inventoryType = String(req.body.tipo_inventario || '');
