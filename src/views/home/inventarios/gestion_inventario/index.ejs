@@ -17,7 +17,9 @@
     <div class="card-body">
       <form method="get" action="/milab/inventarios/gestion_inventario" class="row g-3 align-items-end">
         <div class="col-md-8">
-          <label for="ual_id" class="form-label">Laboratorio asignado</label>
+          <label for="ual_id" class="form-label">
+            <%= isGlobalInventoryViewer ? 'Laboratorio' : 'Laboratorio asignado' %>
+          </label>
           <select id="ual_id" name="ual_id" class="form-select" required>
             <option value="">Selecciona un laboratorio</option>
             <% laboratories.forEach(function(laboratory) { %>
@@ -25,7 +27,7 @@
                 value="<%= laboratory.ual_id %>"
                 <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : '' %>
               >
-                <%= laboratory.nombre %> — <%= laboratory.dependencia %>
+                <%= laboratory.nombre %> — <%= [laboratory.facultad, laboratory.dependencia].filter(Boolean).join(' / ') %>
               </option>
             <% }) %>
           </select>
@@ -39,7 +41,9 @@
       </form>
       <% if (!laboratories.length) { %>
         <div class="alert alert-info mt-3 mb-0">
-          No tienes laboratorios asignados para gestionar inventarios.
+          <%= isGlobalInventoryViewer
+            ? 'No hay laboratorios activos disponibles para consulta.'
+            : 'No tienes laboratorios asignados para gestionar inventarios.' %>
         </div>
       <% } %>
     </div>
@@ -264,7 +268,7 @@
     </section>
   <% } %>
 
-  <% if (isAdmin) { %>
+  <% if (isGlobalInventoryViewer) { %>
     <section class="card app-table-panel text-light mt-4">
       <div class="card-header">
         <h2 class="h5 mb-0">Registros históricos por reconciliar</h2>

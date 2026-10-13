@@ -135,7 +135,9 @@ jobs:
             "$base_dir/db_structure_prestamos.sql" \
             "$base_dir/db_seed_prestamos.sql" \
             "$base_dir/db_structure_certificacion.sql" \
-            "$base_dir/db_seed_certificacion.sql"
+            "$base_dir/db_seed_certificacion.sql" \
+            "$base_dir/db_structure_inventarios.sql" \
+            "$base_dir/db_seed_inventarios.sql"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido: $required_file" >&2
@@ -150,6 +152,8 @@ jobs:
           echo "4) $base_dir/db_seed_prestamos.sql"
           echo "5) $base_dir/db_structure_certificacion.sql"
           echo "6) $base_dir/db_seed_certificacion.sql"
+          echo "7) $base_dir/db_structure_inventarios.sql"
+          echo "8) $base_dir/db_seed_inventarios.sql"
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
@@ -266,6 +270,8 @@ jobs:
           db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
           db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
           db_seed_certificacion_script="$sql_run_dir/db_seed_certificacion.sql"
+          db_structure_inventarios_script="$sql_run_dir/db_structure_inventarios.sql"
+          db_seed_inventarios_script="$sql_run_dir/db_seed_inventarios.sql"
 
           for required_file in \
             "$db_structure_script" \
@@ -273,7 +279,9 @@ jobs:
             "$db_structure_prestamos_script" \
             "$db_seed_prestamos_script" \
             "$db_structure_certificacion_script" \
-            "$db_seed_certificacion_script"
+            "$db_seed_certificacion_script" \
+            "$db_structure_inventarios_script" \
+            "$db_seed_inventarios_script"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido para reset de BD: $required_file" >&2
@@ -324,6 +332,8 @@ jobs:
           echo "4) $db_seed_prestamos_script"
           echo "5) $db_structure_certificacion_script"
           echo "6) $db_seed_certificacion_script"
+          echo "7) $db_structure_inventarios_script"
+          echo "8) $db_seed_inventarios_script"
 
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
@@ -331,10 +341,24 @@ jobs:
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_prestamos_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_certificacion_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_certificacion_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_inventarios_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_inventarios_script"
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
             echo 'ERROR: el seed de prestamos no dejo creado el menu principal.' >&2
+            exit 1
+          fi
+
+          inventory_menu_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE route IN ('/milab/inventarios/gestion_inventario', '/milab/inventarios/aprobaciones') AND activo = TRUE;")
+          if [ "$inventory_menu_count" != '2' ]; then
+            echo 'ERROR: el seed de inventarios no dejo creadas ambas opciones del menu.' >&2
+            exit 1
+          fi
+
+          general_coordinator_inventory_permissions=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.rol_permiso rp JOIN milab.rol r ON r.id = rp.rol_id JOIN milab.menu_item mi ON mi.id = rp.menu_item_id WHERE r.nombre = 'coordinador_general' AND mi.route IN ('/milab/inventarios/gestion_inventario', '/milab/inventarios/aprobaciones') AND mi.activo = TRUE AND rp.can_view = TRUE AND rp.can_use = FALSE AND rp.activo = TRUE;")
+          if [ "$general_coordinator_inventory_permissions" != '2' ]; then
+            echo 'ERROR: el coordinador general no tiene permisos de solo lectura para ambas opciones de inventarios.' >&2
             exit 1
           fi
 

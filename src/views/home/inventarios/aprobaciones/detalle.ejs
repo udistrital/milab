@@ -84,7 +84,7 @@
     </div>
   </section>
 
-  <% if (batch.estado === 'pendiente_aprobacion') { %>
+  <% if (batch.estado === 'pendiente_aprobacion' && canResolve) { %>
     <section class="card app-form-panel text-light mb-4">
       <div class="card-body">
         <h2 class="h5">Decisión del coordinador</h2>
