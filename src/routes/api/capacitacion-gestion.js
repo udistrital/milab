@@ -604,7 +604,7 @@ router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async fun
                 )
                 SELECT DISTINCT ON (dt.documento)
                        dt.documento,
-                       COALESCE(NULLIF(dt.nombre_snapshot,''), u.nombre, u.nombres || ' ' || u.apellidos, 'Usuario MiLab') AS usuario_nombre,
+                       COALESCE(NULLIF(dt.nombre_snapshot,''), u.nombre, 'Usuario MiLab') AS usuario_nombre,
                        u.correo AS correo
                 FROM documentos_target dt
                 LEFT JOIN usuario u ON u.documento = dt.documento OR CAST(u.id AS TEXT) = dt.documento
