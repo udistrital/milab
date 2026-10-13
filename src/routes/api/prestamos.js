@@ -148,6 +148,16 @@ const PRESTAMOS_MODULE_CARD_META = {
       fallback: 'Consulta el catalogo general de equipos y elementos.',
     },
   },
+  '/milab/prestamos/hojas-vida': {
+    icon: 'bi-journal-medical',
+    tone: 'indigo',
+    descriptions: {
+      admin: 'Gestiona hojas de vida, mantenimientos e historial de equipos.',
+      coordinador: 'Consulta y actualiza hojas de vida de los equipos de tu facultad.',
+      laboratorista: 'Consulta hojas de vida y registra mantenimientos de equipos.',
+      fallback: 'Gestiona hojas de vida y mantenimientos de equipos.',
+    },
+  },
   '/milab/prestamos/equipos': {
     icon: 'bi-cpu',
     tone: 'sand',
@@ -307,6 +317,7 @@ const PRESTAMOS_QUICK_LINK_ALIASES = {
   '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
   '/milab/prestamos/salas': 'Salas disponibles',
   '/milab/prestamos/inventario': 'Inventario',
+  '/milab/prestamos/hojas-vida': 'Hojas de Vida y Mantenimientos',
   '/milab/prestamos/equipos': 'Equipos',
   '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
   '/milab/prestamos/entrega-equipos': 'Entrega y devolucion',
@@ -317,6 +328,7 @@ const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
   ['/milab/prestamos/gestion-solicitudes', 1],
   ['/milab/prestamos/entrega-equipos', 2],
   ['/milab/prestamos/inventario', 3],
+  ['/milab/prestamos/hojas-vida', 3.5],
   ['/milab/prestamos/equipos', 4],
   ['/milab/prestamos/reportes', 5],
   ['/milab/prestamos/solicitar', 6],
@@ -7885,6 +7897,13 @@ router.get('/inventario', requireInventarioAuthorized, async function (req, res)
       errorMessage: resolveDbErrorMessage(error, 'No fue posible cargar el inventario.'),
     });
   }
+});
+
+router.get('/hojas-vida', requireInventarioAuthorized, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/index', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
 });
 
 router.get('/inventario/crear', requireInventarioAuthorized, function (req, res) {
