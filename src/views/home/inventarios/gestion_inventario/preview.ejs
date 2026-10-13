@@ -118,6 +118,7 @@
             class="row g-3 align-items-end"
             onsubmit="return confirm('¿Confirmas el envío de las filas exitosas a aprobación?');"
           >
+            <%- include('../../../partials/csrf_field') %>
             <div class="col-md-8">
               <label for="coordinador_documento" class="form-label">Coordinador aprobador</label>
               <select id="coordinador_documento" name="coordinador_documento" class="form-select" required>

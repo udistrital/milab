@@ -25,6 +25,7 @@ function createWorkbookBuffer(rows) {
 
 function loadInventoryRoute({ pool, user } = {}) {
   const sessionHarness = createSessionHarness({
+    csrfToken: 'test-csrf-token',
     user: createUser({
       tipo: 'laboratorista',
       roles: ['laboratorista'],
@@ -117,6 +118,7 @@ test('inventory upload rejects a laboratory outside the laboratorista assignment
   try {
     const response = await request(loaded.app)
       .post('/cargas/previsualizar')
+      .field('_csrf', 'test-csrf-token')
       .field('ual_id', '99')
       .field('tipo_inventario', 'equipo_arka')
       .attach(
@@ -130,6 +132,79 @@ test('inventory upload rejects a laboratory outside the laboratorista assignment
 
     assert.equal(response.status, 403);
     assert.match(response.body.locals.message2, /laboratorio no está asignado/i);
+    assert.equal(transactionCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory upload rejects missing CSRF tokens before database access', async () => {
+  let queryCalls = 0;
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query() {
+        queryCalls += 1;
+        return { rows: [] };
+      },
+      async connect() {
+        throw new Error('Database should not be reached');
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/previsualizar')
+      .field('ual_id', '1')
+      .field('tipo_inventario', 'equipo_arka')
+      .attach(
+        'archivo',
+        createWorkbookBuffer([
+          ['PLACA', 'DESCRIPCIÓN'],
+          ['ARKA-001', 'Microscopio'],
+        ]),
+        'inventario.xlsx'
+      );
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.locals.status, 403);
+    assert.match(response.body.locals.message2, /token de seguridad expiró o es inválido/i);
+    assert.equal(queryCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('invalid inventory spreadsheet structure reaches validation with a valid CSRF token', async () => {
+  let transactionCalls = 0;
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query(sql) {
+        if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+        return { rows: [] };
+      },
+      async connect() {
+        transactionCalls += 1;
+        throw new Error('Invalid workbook should fail before transaction');
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/previsualizar')
+      .field('_csrf', 'test-csrf-token')
+      .field('ual_id', '1')
+      .field('tipo_inventario', 'equipo_arka')
+      .attach(
+        'archivo',
+        createWorkbookBuffer([['COLUMNA DESCONOCIDA'], ['Microscopio']]),
+        'inventario.xlsx'
+      );
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.locals.status, 400);
+    assert.match(response.body.locals.message2, /faltan columnas obligatorias: PLACA/i);
     assert.equal(transactionCalls, 0);
   } finally {
     loaded.restore();
@@ -184,6 +259,7 @@ test('inventory preview records successful and duplicate rows with a specialized
   try {
     const response = await request(loaded.app)
       .post('/cargas/previsualizar')
+      .field('_csrf', 'test-csrf-token')
       .field('ual_id', '1')
       .field('tipo_inventario', 'equipo_arka')
       .attach(
@@ -525,4 +601,15 @@ test('inventory module views compile as EJS templates', () => {
       ejs.compile(fs.readFileSync(resolveRepoPath(viewPath), 'utf8'));
     }, viewPath);
   });
+});
+
+test('main inventory management view defers ARKA reconciliation records', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(view, /Registros históricos por reconciliar/);
+  assert.doesNotMatch(view, /Inventario histórico/);
+  assert.doesNotMatch(view, /Equipos técnicos sin vínculo con inventario/);
 });

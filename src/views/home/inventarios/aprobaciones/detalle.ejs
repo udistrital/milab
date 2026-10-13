@@ -95,6 +95,7 @@
           class="row g-3"
           onsubmit="return confirm('¿Confirmas esta decisión sobre la carga completa?');"
         >
+          <%- include('../../../partials/csrf_field') %>
           <div class="col-12">
             <label for="comentario" class="form-label">Comentario (opcional)</label>
             <textarea id="comentario" name="comentario" class="form-control" rows="3" maxlength="2000"></textarea>
