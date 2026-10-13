@@ -12,6 +12,9 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 
 - db_structure.sql: estructura completa, ajustes idempotentes, constraints e indices.
 - db_seed_system.sql: catalogos base y bootstrap del modelo RBAC.
+- db_structure_prestamos.sql / db_seed_prestamos.sql: estructura y menus del modulo de prestamos.
+- db_structure_certificacion.sql / db_seed_certificacion.sql: estructura y catalogos de certificacion.
+- db_structure_inventarios.sql / db_seed_inventarios.sql: estructura y menus/permisos del modulo de inventarios.
 - db_seed_pruebas_local.sql: precarga local de pruebas (NO usar en produccion).
 
 ## Orden de ejecucion
@@ -20,12 +23,18 @@ Ejecutar en este orden:
 
 1. db_structure.sql
 2. db_seed_system.sql
+3. db_structure_prestamos.sql
+4. db_seed_prestamos.sql
+5. db_structure_certificacion.sql
+6. db_seed_certificacion.sql
+7. db_structure_inventarios.sql
+8. db_seed_inventarios.sql
 
 ## Comandos recomendados (psql)
 
 Reemplazar variables de conexion segun el ambiente.
 
-1. Estructura:
+1. Estructura base y permisos:
 
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure.sql
 
@@ -33,10 +42,21 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_structure.sql
 
 psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
 
+3. Modulos:
+
+psql -h <host> -p <port> -U <user> -d <db> -f db_structure_prestamos.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_seed_prestamos.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_structure_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_seed_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_structure_inventarios.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
+
 ## Consideraciones
 
 - db_seed_system.sql crea roles, menus, permisos y dos usuarios admin por defecto.
   Se recomienda cambiar las credenciales y correos en produccion.
+- Respete el orden indicado: cada seed se ejecuta despues de su estructura y el seed
+  de inventarios necesita los roles y menus base creados por db_seed_system.sql.
 - Los scripts son idempotentes en la mayoria de operaciones, pero no sustituyen una
   migracion formal si hay cambios mayores.
 - Si no se permite CREATE EXTENSION pgcrypto, ejecutar la extension como superusuario
@@ -60,5 +80,5 @@ Consultas sugeridas despues de ejecutar los scripts:
 
 ## Alcance
 
-Este flujo instala la base limpia con catalogos base. No incluye datos piloto ni
-precargas locales (db_seed_pruebas_local.sql).
+Este flujo instala la base limpia con catalogos y menus de los modulos descritos. No
+incluye datos piloto ni precargas locales (db_seed_pruebas_local.sql).

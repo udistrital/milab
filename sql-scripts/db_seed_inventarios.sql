@@ -35,13 +35,13 @@ WHERE parent.section = 'secondary'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
-SELECT r.id, mi.id, TRUE, TRUE, TRUE
+SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general', TRUE
 FROM rol r
 JOIN menu_item mi
   ON mi.section = 'secondary'
  AND mi.parent_id IS NULL
  AND mi.label = 'Inventarios'
-WHERE r.nombre IN ('admin', 'laboratorista', 'coordinador')
+WHERE r.nombre IN ('admin', 'coordinador_general', 'laboratorista', 'coordinador')
 ON CONFLICT (rol_id, menu_item_id)
 DO UPDATE SET can_view = EXCLUDED.can_view,
               can_use = EXCLUDED.can_use,
@@ -56,11 +56,11 @@ WHERE route IN (
 );
 
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
-SELECT r.id, mi.id, TRUE, TRUE, TRUE
+SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general', TRUE
 FROM rol r
 JOIN menu_item mi
   ON mi.route = '/milab/inventarios/gestion_inventario'
-WHERE r.nombre IN ('admin', 'laboratorista', 'coordinador')
+WHERE r.nombre IN ('admin', 'coordinador_general', 'laboratorista', 'coordinador')
 ON CONFLICT (rol_id, menu_item_id)
 DO UPDATE SET can_view = EXCLUDED.can_view,
               can_use = EXCLUDED.can_use,
@@ -68,11 +68,11 @@ DO UPDATE SET can_view = EXCLUDED.can_view,
               fecha_modificacion = CURRENT_TIMESTAMP;
 
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
-SELECT r.id, mi.id, TRUE, TRUE, TRUE
+SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general', TRUE
 FROM rol r
 JOIN menu_item mi
   ON mi.route = '/milab/inventarios/aprobaciones'
-WHERE r.nombre IN ('admin', 'coordinador')
+WHERE r.nombre IN ('admin', 'coordinador_general', 'coordinador')
 ON CONFLICT (rol_id, menu_item_id)
 DO UPDATE SET can_view = EXCLUDED.can_view,
               can_use = EXCLUDED.can_use,

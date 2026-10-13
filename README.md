@@ -272,15 +272,12 @@ La inicialización de base para recreación completa del entorno de pruebas usa 
 2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
-
-La recreación en CI y en reset manual de pruebas aplica los cuatro scripts base de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
-
-Adicionalmente, cuando la rama es `modulo_capacitacion_certificacion`, se aplican estos dos scripts opcionales (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
-
 5. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
 6. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
+7. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
+8. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
 
-El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los ocho scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. El esquema y seed de inventarios se ejecutan al final porque dependen de las tablas base y de los roles/menús creados en los pasos anteriores. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 ## Reset completo en EC2 (pruebas)
 
@@ -290,8 +287,8 @@ Puntos operativos aplicados en el flujo actual:
 
 1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
 2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
-3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 4 scripts SQL en secuencia y luego se reconstruye `milabud`.
-4. La validación mínima post-seed comprueba que exista el menú principal de préstamos.
+3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 8 scripts SQL en secuencia y luego se reconstruye `milabud`.
+4. La validación post-seed comprueba el menú principal de préstamos, las opciones de inventarios y los permisos de solo lectura del coordinador general.
 
 Script de apoyo:
 

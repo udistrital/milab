@@ -26,17 +26,20 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
 });
 
-const requireInventoryAccess = requireRoles(['admin', 'laboratorista', 'coordinador'], {
-  message: 'Acceso denegado',
-  message2: 'No tienes permisos para consultar el módulo de inventarios.',
-  limit: 'loginOnly',
-});
+const requireInventoryAccess = requireRoles(
+  ['admin', 'coordinador_general', 'laboratorista', 'coordinador'],
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para consultar el módulo de inventarios.',
+    limit: 'loginOnly',
+  }
+);
 const requireInventoryEditor = requireRoles(['admin', 'laboratorista'], {
   message: 'Acceso denegado',
   message2: 'Solo el laboratorista asignado puede cargar el inventario.',
   limit: 'loginOnly',
 });
-const requireInventoryApprover = requireRoles(['admin', 'coordinador'], {
+const requireInventoryApprover = requireRoles(['admin', 'coordinador_general', 'coordinador'], {
   message: 'Acceso denegado',
   message2: 'Solo un coordinador autorizado puede aprobar inventarios.',
   limit: 'loginOnly',
@@ -64,6 +67,16 @@ function getUserName(req) {
 
 function isAdmin(req) {
   return getUserRoles(req).some((role) => role === 'admin' || role === 'administrador');
+}
+
+function isGlobalInventoryViewer(req) {
+  return getUserRoles(req).some(
+    (role) =>
+      role === 'admin' ||
+      role === 'administrador' ||
+      role === 'coordinador_general' ||
+      role === 'coordinador general'
+  );
 }
 
 function isLaboratorista(req) {
@@ -180,7 +193,7 @@ async function addGeneralLog(client, req, action, person) {
 }
 
 async function hasLaboratoryAccess(client, req, ualId, { editorsOnly = false } = {}) {
-  const admin = isAdmin(req);
+  const globalViewer = isGlobalInventoryViewer(req);
   const laboratorista = isLaboratorista(req);
   const coordinator = isCoordinator(req) && !editorsOnly;
   const result = await client.query(
@@ -218,7 +231,7 @@ async function hasLaboratoryAccess(client, req, ualId, { editorsOnly = false } =
           )
       ) AS permitido
     `,
-    [ualId, admin, laboratorista, getUserDocument(req), coordinator]
+    [ualId, globalViewer, laboratorista, getUserDocument(req), coordinator]
   );
   return Boolean(result.rows[0]?.permitido);
 }
@@ -229,11 +242,13 @@ async function getAccessibleLaboratories(client, req) {
       SELECT DISTINCT
         u.ual_id,
         u.nombre,
-        u.facultad_id,
-        df.nombre AS dependencia
+        facultad.nombre AS facultad,
+        CASE WHEN df.padre_id IS NOT NULL THEN df.nombre END AS dependencia
       FROM ual u
       JOIN dependencia_facultad df
         ON df.dependencia_facultad_id = u.facultad_id
+      JOIN dependencia_facultad facultad
+        ON facultad.dependencia_facultad_id = COALESCE(df.padre_id, df.dependencia_facultad_id)
       WHERE u.activo = TRUE
         AND (
           $1::boolean
@@ -263,7 +278,7 @@ async function getAccessibleLaboratories(client, req) {
         )
       ORDER BY u.nombre
     `,
-    [isAdmin(req), isLaboratorista(req), getUserDocument(req), isCoordinator(req)]
+    [isGlobalInventoryViewer(req), isLaboratorista(req), getUserDocument(req), isCoordinator(req)]
   );
   return result.rows;
 }
@@ -342,7 +357,7 @@ async function getManagementContext(client, req, selectedUalId) {
   }));
   let recentLoads = [];
 
-  if (isAdmin(req)) {
+  if (isGlobalInventoryViewer(req)) {
     [legacyInventoryItems, unlinkedEquipmentItems] = await Promise.all([
       client
         .query(
@@ -509,6 +524,7 @@ function managementViewData(req, context, messages = {}) {
     inventoryLabels: INVENTORY_LABELS,
     isEditor: isAdmin(req) || isLaboratorista(req),
     isAdmin: isAdmin(req),
+    isGlobalInventoryViewer: isGlobalInventoryViewer(req),
   };
 }
 
@@ -535,7 +551,7 @@ async function fetchBatchForEditor(client, req, cargaId) {
   );
   const batch = result.rows[0];
   if (!batch) throw new InventoryWorkflowError('La carga no existe.', 404);
-  if (!isAdmin(req) && batch.creada_por_documento !== getUserDocument(req)) {
+  if (!isGlobalInventoryViewer(req) && batch.creada_por_documento !== getUserDocument(req)) {
     throw new InventoryWorkflowError('No tienes acceso a esta carga.', 403);
   }
   if (!(await hasLaboratoryAccess(client, req, batch.ual_id, { editorsOnly: true }))) {
@@ -1183,7 +1199,7 @@ router.get('/aprobaciones', requireInventoryApprover, async function (req, res, 
           )
         ORDER BY c.fecha_creacion ASC
       `,
-      [isAdmin(req), getUserDocument(req)]
+      [isGlobalInventoryViewer(req), getUserDocument(req)]
     );
     return res.render('home/inventarios/aprobaciones/index', {
       batches: result.rows,
@@ -1237,7 +1253,7 @@ router.get('/aprobaciones/:id', requireInventoryApprover, async function (req, r
             )
           )
       `,
-      [cargaId, isAdmin(req), getUserDocument(req)]
+      [cargaId, isGlobalInventoryViewer(req), getUserDocument(req)]
     );
     const batch = result.rows[0];
     if (!batch) {
@@ -1252,6 +1268,7 @@ router.get('/aprobaciones/:id', requireInventoryApprover, async function (req, r
       batch,
       rows,
       inventoryLabels: INVENTORY_LABELS,
+      canResolve: isAdmin(req) || isCoordinator(req),
       errorMessage: String(req.query.error || ''),
     });
   } catch (error) {
