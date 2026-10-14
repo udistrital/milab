@@ -164,7 +164,10 @@ function parseWorkbook(buffer, fileName) {
     raw: false,
   });
   if (!matrix.length || !matrix[0].some((value) => toCellText(value))) {
-    throw new InventoryImportError('La primera fila debe contener encabezados.', 'missing_headers');
+    throw new InventoryImportError(
+      'La primera fila debe contener los encabezados de columnas del inventario seleccionado.',
+      'missing_headers'
+    );
   }
 
   const { headers, headerRowCount } = normalizeSpreadsheetHeaders(matrix);

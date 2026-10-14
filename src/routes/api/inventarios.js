@@ -17,7 +17,7 @@ const router = express.Router();
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 5000;
 const INVENTORY_LABELS = Object.freeze({
-  [INVENTORY_TYPES.ARKA_EQUIPMENT]: 'Equipo oficial ARKA',
+  [INVENTORY_TYPES.ARKA_EQUIPMENT]: 'Inventario de Equipos',
   [INVENTORY_TYPES.COMPLEMENTARY]: 'Inventario complementario',
   [INVENTORY_TYPES.REAGENT]: 'Reactivos',
 });
@@ -47,10 +47,11 @@ const requireInventoryApprover = requireRoles(['admin', 'coordinador_general', '
 });
 
 class InventoryWorkflowError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, code = '') {
     super(message);
     this.name = 'InventoryWorkflowError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -341,6 +342,189 @@ async function flagExistingIdentifiers(client, rows, ualId) {
   });
 }
 
+async function getInventoryTypeLock(client, ualId, inventoryType, excludeCargaId = null) {
+  const result = await client.query(
+    `
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM inventario_estado_laboratorio
+          WHERE ual_id = $1
+            AND tipo_inventario = $2
+            AND estado = 'aprobado'
+        ) AS inventario_aprobado,
+        EXISTS (
+          SELECT 1
+          FROM inventario_carga
+          WHERE ual_id = $1
+            AND tipo_inventario = $2
+            AND estado = 'pendiente_aprobacion'
+            AND ($3::bigint IS NULL OR id <> $3)
+        ) AS carga_pendiente
+    `,
+    [ualId, inventoryType, excludeCargaId]
+  );
+  const lock = result.rows[0] || {};
+  return {
+    inventarioAprobado: Boolean(lock.inventario_aprobado),
+    cargaPendiente: Boolean(lock.carga_pendiente),
+    bloqueado: Boolean(lock.inventario_aprobado || lock.carga_pendiente),
+  };
+}
+
+function getManualText(body, field, label, maxLength = 255) {
+  const rawValue = body[field];
+  if (rawValue === undefined || rawValue === null || rawValue === '') return '';
+  if (typeof rawValue !== 'string') {
+    throw new InventoryWorkflowError(
+      `${label} no tiene un formato válido.`,
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  const value = rawValue.trim();
+  if (value.length > maxLength) {
+    throw new InventoryWorkflowError(
+      `${label} no puede superar ${maxLength} caracteres.`,
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  return value;
+}
+
+function parseManualBalance(body, quantityField, unitField, grade, location, label) {
+  const rawQuantity = getManualText(body, quantityField, `La cantidad de ${label}`, 32);
+  const unit = getManualText(body, unitField, `La unidad de ${label}`, 50);
+  if (!rawQuantity) {
+    if (unit) {
+      throw new InventoryWorkflowError(
+        `Indica la cantidad de ${label} junto con su unidad.`,
+        400,
+        'invalid_individual_entry'
+      );
+    }
+    return null;
+  }
+  if (!/^\d+(?:\.\d{1,3})?$/.test(rawQuantity) || Number(rawQuantity) > 99999999999.999) {
+    throw new InventoryWorkflowError(
+      `La cantidad de ${label} debe ser un número no negativo con máximo tres decimales.`,
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  if (!unit) {
+    throw new InventoryWorkflowError(
+      `Indica la unidad de medida de ${label}.`,
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  return { grado: grade, ubicacion: location, cantidad: Number(rawQuantity), unidad: unit };
+}
+
+function parseIndividualInventory(body, inventoryType) {
+  const descripcion = getManualText(body, 'descripcion', 'La descripción');
+  const placa = getManualText(body, 'placa', 'La placa ARKA', 50);
+  const serie = getManualText(body, 'serie', 'El serial', 100);
+  const marca = getManualText(body, 'marca', 'La marca');
+  const modelo = getManualText(body, 'modelo', 'El modelo');
+  const proveedor = getManualText(body, 'proveedor', 'El proveedor');
+  const observaciones = getManualText(body, 'observaciones', 'Las observaciones', 2000);
+  const referencia = getManualText(body, 'referencia', 'La referencia');
+  const codigoInterno = getManualText(body, 'codigo_interno', 'El código interno');
+  const espacioFisico = getManualText(body, 'espacio_fisico', 'La ubicación', 100);
+  if (!descripcion) {
+    throw new InventoryWorkflowError(
+      'La descripción es obligatoria.',
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT && !placa) {
+    throw new InventoryWorkflowError(
+      'La placa oficial de ARKA es obligatoria.',
+      400,
+      'invalid_individual_entry'
+    );
+  }
+  if (inventoryType === INVENTORY_TYPES.REAGENT && !referencia) {
+    throw new InventoryWorkflowError(
+      'La referencia del reactivo es obligatoria.',
+      400,
+      'invalid_individual_entry'
+    );
+  }
+
+  const identificadores = [];
+  if (serie) identificadores.push({ tipo: 'serie', valor: serie });
+  [
+    ['codigo_interno', codigoInterno],
+    ['identificador_id', getManualText(body, 'identificador_id', 'El identificador ID')],
+    ['codigo_barras', getManualText(body, 'codigo_barras', 'El código de barras')],
+    ['qr', getManualText(body, 'qr', 'El código QR')],
+    ['placa_local', getManualText(body, 'placa_local', 'La placa local')],
+    ['etiquetado', getManualText(body, 'etiquetado', 'El etiquetado')],
+  ].forEach(([tipo, valor]) => {
+    if (valor) identificadores.push({ tipo, valor });
+  });
+
+  const normalIdentifiers = [
+    ...(placa && inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT ? [placa] : []),
+    ...identificadores.map((identifier) => identifier.valor),
+  ].map(normalizeIdentifier);
+  if (new Set(normalIdentifiers).size !== normalIdentifiers.length) {
+    throw new InventoryWorkflowError(
+      'No repitas el mismo valor en los identificadores del registro.',
+      400,
+      'invalid_individual_entry'
+    );
+  }
+
+  const existencias = [];
+  if (inventoryType === INVENTORY_TYPES.COMPLEMENTARY) {
+    const balance = parseManualBalance(
+      body,
+      'cantidad',
+      'unidad',
+      'NA',
+      'EXISTENCIA',
+      'inventario complementario'
+    );
+    if (balance) existencias.push(balance);
+  } else if (inventoryType === INVENTORY_TYPES.REAGENT) {
+    [
+      ['stock_gt', 'unidad_stock_gt', 'GT', 'STOCK', 'stock G.T'],
+      ['stock_ra', 'unidad_stock_ra', 'RA', 'STOCK', 'stock R.A'],
+      ['circulacion_gt', 'unidad_circulacion_gt', 'GT', 'CIRCULACION', 'circulación G.T'],
+      ['circulacion_ra', 'unidad_circulacion_ra', 'RA', 'CIRCULACION', 'circulación R.A'],
+    ].forEach(([quantityField, unitField, grade, location, label]) => {
+      const balance = parseManualBalance(body, quantityField, unitField, grade, location, label);
+      if (balance) existencias.push(balance);
+    });
+  }
+
+  return {
+    descripcion,
+    placa: inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT ? placa : '',
+    serie,
+    espacioFisico,
+    marca,
+    modelo,
+    proveedor,
+    observaciones,
+    referencia,
+    codigoInterno,
+    identificadores,
+    existencias,
+    modoControl:
+      inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT ||
+      (inventoryType === INVENTORY_TYPES.COMPLEMENTARY && !existencias.length && codigoInterno)
+        ? 'individual'
+        : 'cantidad',
+  };
+}
+
 async function getManagementContext(client, req, selectedUalId) {
   // TODO: Move historical inventory and unlinked equipment to Conciliaciones ARKA.
   const laboratories = await getAccessibleLaboratories(client, req);
@@ -358,9 +542,8 @@ async function getManagementContext(client, req, selectedUalId) {
   let recentLoads = [];
 
   if (selectedLaboratory) {
-    const filterType = INVENTORY_ALL_TYPES.includes(String(req.query.tipo_inventario || ''))
-      ? String(req.query.tipo_inventario)
-      : null;
+    const panel = String(req.query.panel || '');
+    const filterType = INVENTORY_ALL_TYPES.includes(panel) ? panel : null;
     coordinators = await getCoordinatorsForLaboratory(client, selectedLaboratory.ual_id);
     const [statusResult, pendingResult, countResult, itemResult, loadResult] = await Promise.all([
       client.query(
@@ -392,8 +575,9 @@ async function getManagementContext(client, req, selectedUalId) {
         `,
         [selectedLaboratory.ual_id]
       ),
-      client.query(
-        `
+      filterType
+        ? client.query(
+            `
           SELECT
             i.id,
             i.tipo_inventario,
@@ -428,8 +612,9 @@ async function getManagementContext(client, req, selectedUalId) {
           ORDER BY i.fecha_creacion DESC NULLS LAST, i.id DESC
           LIMIT 500
         `,
-        [selectedLaboratory.ual_id, filterType]
-      ),
+            [selectedLaboratory.ual_id, filterType]
+          )
+        : Promise.resolve({ rows: [] }),
       client.query(
         `
           SELECT
@@ -460,14 +645,15 @@ async function getManagementContext(client, req, selectedUalId) {
     );
     statuses = statuses.map((status) => {
       const savedStatus = statusByType.get(status.tipo_inventario);
+      const hasPendingLoad =
+        pendingByType.get(status.tipo_inventario) > 0 ||
+        savedStatus?.estado === 'pendiente_aprobacion';
       return {
         ...status,
-        estado:
-          pendingByType.get(status.tipo_inventario) > 0
-            ? 'pendiente_aprobacion'
-            : savedStatus?.estado || status.estado,
+        estado: hasPendingLoad ? 'pendiente_aprobacion' : savedStatus?.estado || status.estado,
         sin_inventario: savedStatus?.sin_inventario || false,
         elementos_aprobados: countByType.get(status.tipo_inventario) || 0,
+        bloqueado: hasPendingLoad || savedStatus?.estado === 'aprobado',
       };
     });
     inventoryItems = itemResult.rows;
@@ -485,15 +671,21 @@ async function getManagementContext(client, req, selectedUalId) {
 }
 
 function managementViewData(req, context, messages = {}) {
+  const requestedPanel = String(req.query.panel || '');
+  const panel =
+    INVENTORY_ALL_TYPES.includes(requestedPanel) || requestedPanel === 'recent'
+      ? requestedPanel
+      : '';
+  const selectedType = INVENTORY_ALL_TYPES.includes(panel) ? panel : '';
   return {
     ...context,
-    selectedType: INVENTORY_ALL_TYPES.includes(String(req.query.tipo_inventario || ''))
-      ? String(req.query.tipo_inventario)
-      : '',
+    panel,
+    selectedType,
     successMessage: messages.success || String(req.query.success || ''),
     errorMessage: messages.error || String(req.query.error || ''),
     inventoryLabels: INVENTORY_LABELS,
     isEditor: isAdmin(req) || isLaboratorista(req),
+    isInventoryMaintainer: isAdmin(req) || isCoordinator(req),
     isAdmin: isAdmin(req),
     isGlobalInventoryViewer: isGlobalInventoryViewer(req),
   };
@@ -512,7 +704,7 @@ function renderWorkflowError(res, error) {
   return null;
 }
 
-async function fetchBatchForEditor(client, req, cargaId) {
+async function fetchBatchForViewer(client, req, cargaId) {
   const result = await client.query(
     `
       SELECT c.*, u.nombre AS laboratorio_nombre
@@ -524,10 +716,7 @@ async function fetchBatchForEditor(client, req, cargaId) {
   );
   const batch = result.rows[0];
   if (!batch) throw new InventoryWorkflowError('La carga no existe.', 404);
-  if (!isGlobalInventoryViewer(req) && batch.creada_por_documento !== getUserDocument(req)) {
-    throw new InventoryWorkflowError('No tienes acceso a esta carga.', 403);
-  }
-  if (!(await hasLaboratoryAccess(client, req, batch.ual_id, { editorsOnly: true }))) {
+  if (!(await hasLaboratoryAccess(client, req, batch.ual_id))) {
     throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
   }
   return batch;
@@ -564,6 +753,9 @@ async function renderPreviewPage(req, res, batch, rows, messages = {}) {
     successMessage: messages.success || '',
     errorMessage: messages.error || '',
     inventoryLabels: INVENTORY_LABELS,
+    canConfirm:
+      (isAdmin(req) || isLaboratorista(req)) &&
+      (isAdmin(req) || batch.creada_por_documento === getUserDocument(req)),
   });
 }
 
@@ -635,6 +827,7 @@ router.post(
       return res.redirect(
         getRedirectUrl('/milab/inventarios/gestion_inventario', {
           ual_id: ualId,
+          panel: inventoryType,
           error: 'Selecciona un archivo .xls o .xlsx.',
         })
       );
@@ -649,6 +842,13 @@ router.post(
       }
       if (!(await hasLaboratoryAccess(pool, req, ualId, { editorsOnly: true }))) {
         throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
+      }
+      if ((await getInventoryTypeLock(pool, ualId, inventoryType)).bloqueado) {
+        throw new InventoryWorkflowError(
+          'Este inventario ya fue enviado al coordinador o está aprobado. No se permiten más cargas de este tipo.',
+          409,
+          'inventory_type_locked'
+        );
       }
       const parsed = parseWorkbook(req.file.buffer, req.file.originalname);
       let rows = validateInventoryRows(parsed, inventoryType);
@@ -665,6 +865,14 @@ router.post(
       const successfulCount = rows.filter((row) => row.estado === 'exitosa').length;
       const failedCount = rows.length - successfulCount;
       const batch = await withTransaction(async (client) => {
+        await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [ualId]);
+        if ((await getInventoryTypeLock(client, ualId, inventoryType)).bloqueado) {
+          throw new InventoryWorkflowError(
+            'Este inventario ya fue enviado al coordinador o está aprobado. No se permiten más cargas de este tipo.',
+            409,
+            'inventory_type_locked'
+          );
+        }
         const insertedBatch = await client.query(
           `
             INSERT INTO inventario_carga (
@@ -731,6 +939,24 @@ router.post(
 
       return renderPreviewPage(req, res, batch, rows);
     } catch (error) {
+      if (error.code === 'inventory_type_locked') {
+        return res.redirect(
+          getRedirectUrl('/milab/inventarios/gestion_inventario', {
+            ual_id: ualId,
+            panel: inventoryType,
+            error: error.message,
+          })
+        );
+      }
+      if (error instanceof InventoryImportError) {
+        return res.redirect(
+          getRedirectUrl('/milab/inventarios/gestion_inventario', {
+            ual_id: ualId,
+            panel: inventoryType,
+            error: error.message,
+          })
+        );
+      }
       const handled = renderWorkflowError(res, error);
       if (handled) return handled;
       if (error.code === '23505') {
@@ -747,7 +973,368 @@ router.post(
   }
 );
 
-router.get('/cargas/:id', requireInventoryEditor, async function (req, res, next) {
+router.get('/individual/nuevo', requireInventoryApprover, async function (req, res, next) {
+  const ualId = parsePositiveId(req.query.ual_id);
+  const inventoryType = String(req.query.tipo_inventario || '');
+  if (!isAdmin(req) && !isCoordinator(req)) {
+    return res.status(403).render('home/message_error', {
+      message: 'Acceso denegado',
+      message2:
+        'Solo un coordinador autorizado o administrador puede crear registros individuales.',
+      limit: 'loginOnly',
+    });
+  }
+  if (!ualId || !INVENTORY_ALL_TYPES.includes(inventoryType)) {
+    return res.status(400).render('home/message_error', {
+      message: 'Datos inválidos',
+      message2: 'Selecciona un laboratorio y un tipo de inventario válidos.',
+      limit: 'loginOnly',
+    });
+  }
+
+  try {
+    if (!(await hasLaboratoryAccess(pool, req, ualId))) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+    const [statusResult, laboratoryResult] = await Promise.all([
+      pool.query(
+        `
+            SELECT estado, sin_inventario
+            FROM inventario_estado_laboratorio
+            WHERE ual_id = $1
+              AND tipo_inventario = $2
+          `,
+        [ualId, inventoryType]
+      ),
+      pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [ualId]),
+    ]);
+    const inventoryStatus = statusResult.rows[0];
+    if (
+      inventoryStatus?.estado !== 'aprobado' ||
+      inventoryStatus.sin_inventario ||
+      !laboratoryResult.rows[0]
+    ) {
+      return res.status(409).render('home/message_error', {
+        message: 'Inventario no disponible para edición',
+        message2:
+          'La creación individual se habilita después de aprobar el inventario del laboratorio.',
+        limit: 'loginOnly',
+      });
+    }
+    return res.render('home/inventarios/gestion_inventario/individual', {
+      ualId,
+      laboratoryName: laboratoryResult.rows[0].nombre,
+      inventoryType,
+      inventoryLabel: INVENTORY_LABELS[inventoryType],
+      errorMessage: String(req.query.error || ''),
+    });
+  } catch (error) {
+    console.error('Error cargando el formulario de inventario individual:', error);
+    return next(error);
+  }
+});
+
+router.post('/individual', requireInventoryApprover, async function (req, res, next) {
+  const ualId = parsePositiveId(req.body.ual_id);
+  const inventoryType = String(req.body.tipo_inventario || '');
+  const returnToCreate = (error) =>
+    res.redirect(
+      getRedirectUrl('/milab/inventarios/individual/nuevo', {
+        ual_id: ualId,
+        tipo_inventario: inventoryType,
+        error,
+      })
+    );
+  if (!isAdmin(req) && !isCoordinator(req)) {
+    return res.status(403).render('home/message_error', {
+      message: 'Acceso denegado',
+      message2:
+        'Solo un coordinador autorizado o administrador puede crear registros individuales.',
+      limit: 'loginOnly',
+    });
+  }
+  if (!ualId || !INVENTORY_ALL_TYPES.includes(inventoryType)) {
+    return res.status(400).render('home/message_error', {
+      message: 'Datos inválidos',
+      message2: 'Selecciona un laboratorio y un tipo de inventario válidos.',
+      limit: 'loginOnly',
+    });
+  }
+
+  try {
+    if (!getUserDocument(req)) {
+      throw new InventoryWorkflowError(
+        'Tu sesión no tiene un documento de usuario válido para registrar el inventario.',
+        400
+      );
+    }
+    const inventory = parseIndividualInventory(req.body, inventoryType);
+    await withTransaction(async (client) => {
+      await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [ualId]);
+      if (!(await hasLaboratoryAccess(client, req, ualId))) {
+        throw new InventoryWorkflowError('No tienes acceso al laboratorio seleccionado.', 403);
+      }
+      const statusResult = await client.query(
+        `
+            SELECT estado, sin_inventario
+            FROM inventario_estado_laboratorio
+            WHERE ual_id = $1
+              AND tipo_inventario = $2
+            FOR UPDATE
+          `,
+        [ualId, inventoryType]
+      );
+      const status = statusResult.rows[0];
+      if (status?.estado !== 'aprobado' || status.sin_inventario) {
+        throw new InventoryWorkflowError(
+          'La creación individual se habilita después de aprobar el inventario del laboratorio.',
+          409,
+          'inventory_not_approved'
+        );
+      }
+
+      const validationRow = {
+        estado: 'exitosa',
+        payload: {
+          placa: inventory.placa,
+          identificadores: inventory.identificadores,
+        },
+        errores: [],
+      };
+      await flagExistingIdentifiers(client, [validationRow], ualId);
+      if (validationRow.estado !== 'exitosa') {
+        throw new InventoryWorkflowError(
+          'Uno o más identificadores ya están registrados en el inventario.',
+          409,
+          'invalid_individual_entry'
+        );
+      }
+
+      const laboratoryResult = await client.query(
+        `
+            SELECT u.nombre AS laboratorio, df.nombre AS dependencia, df.nombre AS facultad
+            FROM ual u
+            JOIN dependencia_facultad df
+              ON df.dependencia_facultad_id = u.facultad_id
+            WHERE u.ual_id = $1
+          `,
+        [ualId]
+      );
+      const laboratory = laboratoryResult.rows[0];
+      if (!laboratory) {
+        throw new InventoryWorkflowError('El laboratorio seleccionado ya no está disponible.', 404);
+      }
+
+      const inventoryResult = await client.query(
+        `
+            INSERT INTO inventario (
+              serie,
+              placa,
+              nombre_bien,
+              funcionario_doc,
+              nombre_funcionario,
+              sede,
+              dependencia,
+              espacio_fisico,
+              disponible_prestamo,
+              tipo_inventario,
+              laboratorio_ual_id,
+              estado_aprobacion,
+              modo_control,
+              atributos,
+              carga_id
+            )
+            VALUES (
+              NULLIF($1, ''),
+              NULLIF($2, ''),
+              $3,
+              $4,
+              $5,
+              NULL,
+              $6,
+              NULLIF($7, ''),
+              $8,
+              $9,
+              $10,
+              'aprobado',
+              $11,
+              $12::jsonb,
+              NULL
+            )
+            RETURNING id
+          `,
+        [
+          inventory.serie,
+          inventory.placa,
+          inventory.descripcion,
+          getUserDocument(req),
+          getUserName(req) || null,
+          laboratory.dependencia,
+          inventory.espacioFisico,
+          inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT,
+          inventoryType,
+          ualId,
+          inventory.modoControl,
+          JSON.stringify({
+            marca: inventory.marca,
+            modelo: inventory.modelo,
+            proveedor: inventory.proveedor,
+            observaciones: inventory.observaciones,
+            referencia: inventory.referencia,
+            codigoInterno: inventory.codigoInterno,
+          }),
+        ]
+      );
+      const newInventoryId = inventoryResult.rows[0]?.id;
+      if (!newInventoryId) {
+        throw new InventoryWorkflowError('No fue posible guardar el registro de inventario.', 409);
+      }
+      const identifiers = [
+        ...(inventory.placa ? [{ tipo: 'placa_arka', valor: inventory.placa }] : []),
+        ...inventory.identificadores,
+      ];
+      for (const identifier of identifiers) {
+        const normalized = normalizeIdentifier(identifier.valor);
+        await client.query(
+          `
+              INSERT INTO inventario_identificador (
+                inventario_id, ual_id, tipo, valor, valor_normalizado
+              )
+              VALUES ($1, $2, $3, $4, $5)
+            `,
+          [newInventoryId, ualId, identifier.tipo, identifier.valor, normalized]
+        );
+      }
+      for (const balance of inventory.existencias) {
+        await client.query(
+          `
+              INSERT INTO inventario_existencia (
+                inventario_id, grado, ubicacion, cantidad, unidad
+              )
+              VALUES ($1, $2, $3, $4, $5)
+            `,
+          [newInventoryId, balance.grado, balance.ubicacion, balance.cantidad, balance.unidad]
+        );
+      }
+      if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT) {
+        const equipmentResult = await client.query(
+          `
+              INSERT INTO equipo (
+                codigo,
+                nombre,
+                descripcion,
+                especificaciones,
+                categoria,
+                laboratorio,
+                facultad,
+                estado,
+                ubicacion,
+                inventario_id
+              )
+              VALUES (
+                $1,
+                $2,
+                NULLIF(BTRIM(CONCAT_WS(' ', NULLIF($3, ''), NULLIF($4, ''))), ''),
+                $5::jsonb,
+                'Equipo oficial ARKA',
+                $6,
+                $7,
+                'disponible',
+                $8,
+                $9
+              )
+              RETURNING id
+            `,
+          [
+            inventory.placa,
+            inventory.descripcion,
+            inventory.marca,
+            inventory.modelo,
+            JSON.stringify({
+              marca: inventory.marca,
+              modelo: inventory.modelo,
+              proveedor: inventory.proveedor,
+              observaciones: inventory.observaciones,
+            }),
+            laboratory.laboratorio,
+            laboratory.facultad,
+            inventory.espacioFisico,
+            newInventoryId,
+          ]
+        );
+        if (!equipmentResult.rows[0]?.id) {
+          throw new InventoryWorkflowError(
+            'No fue posible crear la extensión técnica del equipo.',
+            409
+          );
+        }
+      }
+      await client.query(
+        `
+            UPDATE inventario_estado_laboratorio
+            SET sin_inventario = FALSE,
+                aprobado_por_documento = $3,
+                fecha_aprobacion = CURRENT_TIMESTAMP,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE ual_id = $1
+              AND tipo_inventario = $2
+          `,
+        [ualId, inventoryType, getUserDocument(req)]
+      );
+      await addInventoryAudit(client, req, {
+        inventarioId: newInventoryId,
+        ualId,
+        action: 'registro_individual_creado_y_aprobado',
+        detail: {
+          tipoInventario: inventoryType,
+          descripcion: inventory.descripcion,
+          identificadores: identifiers,
+          existencias: inventory.existencias,
+        },
+      });
+      await addGeneralLog(
+        client,
+        req,
+        `Creó un registro individual aprobado de ${INVENTORY_LABELS[inventoryType]}.`,
+        `Laboratorio ${ualId}`
+      );
+      return newInventoryId;
+    });
+    return res.redirect(
+      getRedirectUrl('/milab/inventarios/gestion_inventario', {
+        ual_id: ualId,
+        panel: inventoryType,
+        success: 'El registro fue creado y aprobado correctamente.',
+      })
+    );
+  } catch (error) {
+    if (error.code === 'invalid_individual_entry') {
+      return returnToCreate(error.message);
+    }
+    if (error.code === 'inventory_not_approved') {
+      return res.redirect(
+        getRedirectUrl('/milab/inventarios/gestion_inventario', {
+          ual_id: ualId,
+          panel: inventoryType,
+          error: error.message,
+        })
+      );
+    }
+    if (error.code === '23505') {
+      return returnToCreate('Uno o más identificadores ya están registrados en el inventario.');
+    }
+    const handled = renderWorkflowError(res, error);
+    if (handled) return handled;
+    console.error('Error creando un registro individual de inventario:', error);
+    return next(error);
+  }
+});
+
+router.get('/cargas/:id', requireInventoryAccess, async function (req, res, next) {
   const cargaId = parsePositiveId(req.params.id);
   if (!cargaId) {
     return res.status(404).render('home/message_error', {
@@ -757,9 +1344,12 @@ router.get('/cargas/:id', requireInventoryEditor, async function (req, res, next
     });
   }
   try {
-    const batch = await fetchBatchForEditor(pool, req, cargaId);
+    const batch = await fetchBatchForViewer(pool, req, cargaId);
     const rows = await fetchBatchRows(pool, cargaId);
-    return renderPreviewPage(req, res, batch, rows);
+    return renderPreviewPage(req, res, batch, rows, {
+      error: String(req.query.error || ''),
+      success: String(req.query.success || ''),
+    });
   } catch (error) {
     const handled = renderWorkflowError(res, error);
     if (handled) return handled;
@@ -778,6 +1368,13 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
       limit: 'loginOnly',
     });
   }
+  if (req.body.confirmar_revision !== 'confirmo') {
+    return res.redirect(
+      getRedirectUrl(`/milab/inventarios/cargas/${cargaId}`, {
+        error: 'Confirma que revisaste el reporte leído antes de enviarlo al coordinador.',
+      })
+    );
+  }
 
   try {
     const result = await withTransaction(async (client) => {
@@ -795,6 +1392,17 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
       }
       if (batch.estado !== 'previsualizada') {
         throw new InventoryWorkflowError('Esta carga ya fue confirmada o resuelta.', 409);
+      }
+      await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [batch.ual_id]);
+      if (
+        (await getInventoryTypeLock(client, batch.ual_id, batch.tipo_inventario, batch.id))
+          .bloqueado
+      ) {
+        throw new InventoryWorkflowError(
+          'Este inventario ya fue enviado al coordinador o está aprobado. No se permiten más cargas de este tipo.',
+          409,
+          'inventory_type_locked'
+        );
       }
       const coordinatorResult = await client.query(
         `
@@ -899,6 +1507,7 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
             payload.modoControl,
             JSON.stringify({
               ...payload.atributos,
+              codigoInterno: payload.codigoInterno,
               marca: payload.marca,
               modelo: payload.modelo,
               proveedor: payload.proveedor,
@@ -1006,6 +1615,13 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
       })
     );
   } catch (error) {
+    if (error.code === 'inventory_type_locked') {
+      return res.redirect(
+        getRedirectUrl(`/milab/inventarios/cargas/${cargaId}`, {
+          error: error.message,
+        })
+      );
+    }
     const handled = renderWorkflowError(res, error);
     if (handled) return handled;
     if (error.code === '23505') {
@@ -1030,7 +1646,19 @@ router.post(
     if (!ualId || !coordinatorDocument) {
       return res.redirect(
         getRedirectUrl('/milab/inventarios/gestion_inventario', {
+          ual_id: ualId,
+          panel: INVENTORY_TYPES.COMPLEMENTARY,
           error: 'Selecciona un coordinador autorizado para enviar la declaración.',
+        })
+      );
+    }
+    if (req.body.confirmacion_sin_inventario !== 'confirmo') {
+      return res.redirect(
+        getRedirectUrl('/milab/inventarios/gestion_inventario', {
+          ual_id: ualId,
+          panel: INVENTORY_TYPES.COMPLEMENTARY,
+          error:
+            'Marca la casilla para confirmar que el laboratorio no tiene inventario complementario.',
         })
       );
     }
@@ -1046,6 +1674,14 @@ router.post(
         throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
       }
       await withTransaction(async (client) => {
+        await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [ualId]);
+        if ((await getInventoryTypeLock(client, ualId, INVENTORY_TYPES.COMPLEMENTARY)).bloqueado) {
+          throw new InventoryWorkflowError(
+            'El inventario complementario ya fue enviado al coordinador o está aprobado.',
+            409,
+            'inventory_type_locked'
+          );
+        }
         const coordinatorResult = await client.query(
           `
             SELECT 1
@@ -1067,23 +1703,6 @@ router.post(
           throw new InventoryWorkflowError(
             'El coordinador seleccionado no está autorizado para este laboratorio.',
             400
-          );
-        }
-        const pendingDeclaration = await client.query(
-          `
-            SELECT 1
-            FROM inventario_carga
-            WHERE ual_id = $1
-              AND tipo_inventario = $2
-              AND estado = 'pendiente_aprobacion'
-            LIMIT 1
-          `,
-          [ualId, INVENTORY_TYPES.COMPLEMENTARY]
-        );
-        if (pendingDeclaration.rows.length) {
-          throw new InventoryWorkflowError(
-            'Ya existe una carga complementaria pendiente de aprobación.',
-            409
           );
         }
         const batchResult = await client.query(
@@ -1125,6 +1744,15 @@ router.post(
         })
       );
     } catch (error) {
+      if (error.code === 'inventory_type_locked') {
+        return res.redirect(
+          getRedirectUrl('/milab/inventarios/gestion_inventario', {
+            ual_id: ualId,
+            panel: INVENTORY_TYPES.COMPLEMENTARY,
+            error: error.message,
+          })
+        );
+      }
       const handled = renderWorkflowError(res, error);
       if (handled) return handled;
       console.error('Error creando declaración de inventario complementario:', error);

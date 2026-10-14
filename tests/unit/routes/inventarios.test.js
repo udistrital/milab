@@ -175,7 +175,146 @@ test('inventory upload rejects missing CSRF tokens before database access', asyn
   }
 });
 
-test('invalid inventory spreadsheet structure reaches validation with a valid CSRF token', async () => {
+test('inventory upload is blocked while that inventory type awaits approval', async () => {
+  let transactionCalls = 0;
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query(sql) {
+        if (sql.includes('inventario_estado_laboratorio')) {
+          return { rows: [{ inventario_aprobado: false, carga_pendiente: true }] };
+        }
+        if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+        return { rows: [] };
+      },
+      async connect() {
+        transactionCalls += 1;
+        throw new Error('A locked inventory must not start a transaction');
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/previsualizar')
+      .field('_csrf', 'test-csrf-token')
+      .field('ual_id', '1')
+      .field('tipo_inventario', 'equipo_arka')
+      .attach(
+        'archivo',
+        createWorkbookBuffer([
+          ['PLACA', 'DESCRIPCIÓN'],
+          ['ARKA-001', 'Microscopio'],
+        ]),
+        'inventario.xlsx'
+      );
+
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.equal(redirectUrl.searchParams.get('panel'), 'equipo_arka');
+    assert.match(redirectUrl.searchParams.get('error'), /no se permiten más cargas/i);
+    assert.equal(transactionCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('complementary declaration requires explicit checkbox confirmation', async () => {
+  let queryCalls = 0;
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query() {
+        queryCalls += 1;
+        return { rows: [] };
+      },
+      async connect() {
+        throw new Error('A missing declaration checkbox must not reach the database');
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/declarar-sin-complementarios')
+      .type('form')
+      .send({ ual_id: '1', coordinador_documento: 'coord-1' });
+
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.equal(redirectUrl.searchParams.get('panel'), 'complementario');
+    assert.match(redirectUrl.searchParams.get('error'), /marca la casilla/i);
+    assert.equal(queryCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('batch confirmation redirects until the laboratorista acknowledges the report', async () => {
+  let transactionCalls = 0;
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query() {
+        throw new Error('An incomplete confirmation must not query the database');
+      },
+      async connect() {
+        transactionCalls += 1;
+        throw new Error('An incomplete confirmation must not start a transaction');
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/18/confirmar')
+      .type('form')
+      .send({ coordinador_documento: 'coord-1' });
+
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.match(redirectUrl.searchParams.get('error'), /revisaste el reporte/i);
+    assert.equal(transactionCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('complementary declaration is sent after the checkbox is confirmed', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('coordinador_facultad_alcance')) return { rows: [{ ok: 1 }] };
+    if (sql.includes('INSERT INTO inventario_carga (')) return { rows: [{ id: 77 }] };
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query(sql) {
+        if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+        throw new Error(`Unexpected query: ${sql}`);
+      },
+      async connect() {
+        return clientHarness.client;
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/declarar-sin-complementarios')
+      .type('form')
+      .send({
+        ual_id: '1',
+        coordinador_documento: 'coord-1',
+        confirmacion_sin_inventario: 'confirmo',
+      });
+
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.match(redirectUrl.searchParams.get('success'), /declaración fue enviada/i);
+    assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('declaracion_sin_inventario')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('invalid inventory spreadsheet structure redirects with a validation message', async () => {
   let transactionCalls = 0;
   const loaded = loadInventoryRoute({
     pool: {
@@ -202,13 +341,30 @@ test('invalid inventory spreadsheet structure reaches validation with a valid CS
         'inventario.xlsx'
       );
 
-    assert.equal(response.status, 400);
-    assert.equal(response.body.locals.status, 400);
-    assert.match(response.body.locals.message2, /faltan columnas obligatorias: PLACA/i);
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.equal(redirectUrl.pathname, '/milab/inventarios/gestion_inventario');
+    assert.equal(redirectUrl.searchParams.get('ual_id'), '1');
+    assert.equal(redirectUrl.searchParams.get('panel'), 'equipo_arka');
+    assert.match(redirectUrl.searchParams.get('error'), /faltan columnas obligatorias: PLACA/i);
     assert.equal(transactionCalls, 0);
   } finally {
     loaded.restore();
   }
+});
+
+test('inventory upload view includes animated examples for all inventory types', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+    'utf8'
+  );
+
+  assert.match(view, /data-bs-target="#inventoryExcelExampleModal"/);
+  assert.match(view, /@keyframes inventoryExampleColumnIn/);
+  assert.match(view, /PLACA/);
+  assert.match(view, /NOMBRE DEL MATERIAL/);
+  assert.match(view, /STOCK G\.T/);
+  assert.match(view, /CIRCULACIÓN R\.A/);
 });
 
 test('inventory preview records successful and duplicate rows with a specialized audit', async () => {
@@ -242,6 +398,9 @@ test('inventory preview records successful and duplicate rows with a specialized
   });
   const pool = {
     async query(sql) {
+      if (sql.includes('inventario_estado_laboratorio')) {
+        return { rows: [{ inventario_aprobado: false, carga_pendiente: false }] };
+      }
       if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
       if (sql.includes('SELECT normalized')) return { rows: [{ normalized: 'ARKA-OLD' }] };
       if (sql.includes('SELECT DISTINCT c.documento')) {
@@ -352,7 +511,7 @@ test('confirmation creates only the successful preview rows and records both aud
     const response = await request(loaded.app)
       .post('/cargas/18/confirmar')
       .type('form')
-      .send({ coordinador_documento: 'coord-1' });
+      .send({ coordinador_documento: 'coord-1', confirmar_revision: 'confirmo' });
 
     assert.equal(response.status, 302);
     assert.equal(insertedInventories.length, 1);
@@ -363,6 +522,66 @@ test('confirmation creates only the successful preview rows and records both aud
     );
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO log')));
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('COMMIT')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinator can consult recent load reports but cannot confirm them as the laboratorista', async () => {
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query(sql) {
+        if (sql.includes('SELECT c.*, u.nombre AS laboratorio_nombre')) {
+          return {
+            rows: [
+              {
+                id: 18,
+                ual_id: 4,
+                tipo_inventario: 'equipo_arka',
+                archivo_nombre: 'inventario.xlsx',
+                estado: 'pendiente_aprobacion',
+                creada_por_documento: 'lab-1',
+                total_filas: 1,
+                filas_exitosas: 1,
+                filas_fallidas: 0,
+              },
+            ],
+          };
+        }
+        if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+        if (sql.includes('SELECT numero_fila, estado, payload')) {
+          return {
+            rows: [
+              {
+                numero_fila: 2,
+                estado: 'pendiente_aprobacion',
+                payload: { tipo: 'equipo_arka', descripcion: 'Microscopio' },
+                errores: [],
+              },
+            ],
+          };
+        }
+        if (sql.includes('SELECT DISTINCT c.documento')) {
+          return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+        }
+        if (sql.includes('SELECT nombre FROM ual')) return { rows: [{ nombre: 'Laboratorio A' }] };
+        throw new Error(`Unexpected query: ${sql}`);
+      },
+    },
+    user: {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/cargas/18');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.batch.archivo_nombre, 'inventario.xlsx');
+    assert.equal(response.body.locals.rows[0].payload.descripcion, 'Microscopio');
+    assert.equal(response.body.locals.canConfirm, false);
   } finally {
     loaded.restore();
   }
@@ -588,9 +807,104 @@ test('coordinator cannot approve a batch assigned to another coordinator', async
   }
 });
 
+test('coordinator can create individual records for every approved inventory type', async () => {
+  const cases = [
+    {
+      inventoryType: 'equipo_arka',
+      body: {
+        descripcion: 'Microscopio',
+        placa: 'ARKA-IND-001',
+        serie: 'SER-IND-001',
+        marca: 'Acme',
+      },
+    },
+    {
+      inventoryType: 'complementario',
+      body: {
+        descripcion: 'Flexómetro',
+        cantidad: '2',
+        unidad: 'unidad',
+      },
+    },
+    {
+      inventoryType: 'reactivo',
+      body: {
+        descripcion: 'Acetamida',
+        referencia: 'REA-001',
+      },
+    },
+  ];
+
+  for (const inventoryCase of cases) {
+    const clientHarness = createTransactionClient((sql) => {
+      if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+      if (sql.includes('SELECT estado, sin_inventario')) {
+        return { rows: [{ estado: 'aprobado', sin_inventario: false }] };
+      }
+      if (sql.includes('SELECT normalized')) return { rows: [] };
+      if (sql.includes('SELECT u.nombre AS laboratorio')) {
+        return {
+          rows: [
+            { laboratorio: 'Laboratorio A', dependencia: 'Facultad A', facultad: 'Facultad A' },
+          ],
+        };
+      }
+      if (sql.includes('INSERT INTO inventario (')) return { rows: [{ id: 91 }] };
+      if (sql.includes('INSERT INTO equipo')) return { rows: [{ id: 55 }] };
+      return { rows: [] };
+    });
+    const loaded = loadInventoryRoute({
+      pool: {
+        async query(sql) {
+          if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+          throw new Error(`Unexpected pool query: ${sql}`);
+        },
+        async connect() {
+          return clientHarness.client;
+        },
+      },
+      user: {
+        tipo: 'coordinador',
+        roles: ['coordinador'],
+        documento: 'coord-1',
+        nombre: 'Coordinador Uno',
+      },
+    });
+
+    try {
+      const response = await request(loaded.app)
+        .post('/individual')
+        .type('form')
+        .send({
+          ual_id: '4',
+          tipo_inventario: inventoryCase.inventoryType,
+          ...inventoryCase.body,
+        });
+
+      assert.equal(response.status, 302);
+      assert.match(response.headers.location, /panel=/);
+      assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario (')));
+      assert.ok(
+        clientHarness.calls.some(({ sql }) => sql.includes('UPDATE inventario_estado_laboratorio'))
+      );
+      if (inventoryCase.inventoryType === 'equipo_arka') {
+        assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO equipo')));
+      }
+      if (inventoryCase.inventoryType === 'complementario') {
+        assert.ok(
+          clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario_existencia'))
+        );
+      }
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
 test('inventory module views compile as EJS templates', () => {
   const views = [
     'src/views/home/inventarios/gestion_inventario/index.ejs',
+    'src/views/home/inventarios/gestion_inventario/individual.ejs',
     'src/views/home/inventarios/gestion_inventario/preview.ejs',
     'src/views/home/inventarios/aprobaciones/index.ejs',
     'src/views/home/inventarios/aprobaciones/detalle.ejs',
