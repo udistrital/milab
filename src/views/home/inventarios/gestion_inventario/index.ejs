@@ -192,6 +192,8 @@
                   <p class="mb-0">Opcional — este laboratorio no ha declarado reactivos.</p>
                 <% } else if (status.sin_inventario && status.estado === 'aprobado') { %>
                   <p class="mb-0">Declaración de inventario complementario aprobada.</p>
+                <% } else if (status.estado === 'previsualizada') { %>
+                  <p class="mb-0">Hay una carga leída pendiente de envío al coordinador.</p>
                 <% } else if (status.bloqueado && status.estado === 'pendiente_aprobacion') { %>
                   <p class="mb-0">Carga enviada; pendiente de aprobación.</p>
                 <% } else { %>
@@ -254,7 +256,7 @@
                   <th>Filas leídas</th>
                   <th>Exitosas</th>
                   <th>Fallidas</th>
-                  <th>Reporte</th>
+                  <th>Reporte y envío</th>
                 </tr>
               </thead>
               <tbody>
@@ -269,6 +271,88 @@
                     <td><%= load.filas_fallidas %></td>
                     <td>
                       <a href="/milab/inventarios/cargas/<%= load.id %>">Consultar reporte</a>
+                      <% if (load.puedeConfirmar && Number(load.filas_exitosas) > 0 && coordinators.length) { %>
+                        <details class="mt-2">
+                          <summary class="btn btn-outline-primary btn-sm">
+                            Confirmar y enviar
+                          </summary>
+                          <form
+                            action="/milab/inventarios/cargas/<%= load.id %>/confirmar"
+                            method="post"
+                            class="border rounded p-3 mt-2"
+                          >
+                            <%- include('../../../partials/csrf_field') %>
+                            <% if (load.tipo_inventario === 'equipo_arka') { %>
+                              <div class="mb-3">
+                                <label
+                                  for="recent_identifier_<%= load.id %>"
+                                  class="form-label"
+                                >Columna de nomenclatura adicional (opcional)</label>
+                                <select
+                                  id="recent_identifier_<%= load.id %>"
+                                  name="nomenclatura_adicional_columna"
+                                  class="form-select"
+                                >
+                                  <option value="">No usar código adicional</option>
+                                  <% load.additionalIdentifierHeaders.forEach(function(header) { %>
+                                    <option value="<%= header %>"><%= header.toLocaleUpperCase('es-CO') %></option>
+                                  <% }) %>
+                                </select>
+                                <div class="form-text">
+                                  La nomenclatura adicional nunca sustituye la placa oficial ARKA.
+                                </div>
+                              </div>
+                            <% } %>
+                            <div class="mb-3">
+                              <label
+                                for="recent_coordinator_<%= load.id %>"
+                                class="form-label"
+                              >Coordinador aprobador</label>
+                              <select
+                                id="recent_coordinator_<%= load.id %>"
+                                name="coordinador_documento"
+                                class="form-select"
+                                required
+                              >
+                                <option value="">Selecciona un coordinador autorizado</option>
+                                <% coordinators.forEach(function(coordinator) { %>
+                                  <option value="<%= coordinator.documento %>"><%= coordinator.nombre %></option>
+                                <% }) %>
+                              </select>
+                            </div>
+                            <div class="form-check mb-3">
+                              <input
+                                id="recent_review_<%= load.id %>"
+                                class="form-check-input"
+                                type="checkbox"
+                                name="confirmar_revision"
+                                value="confirmo"
+                                required
+                              >
+                              <label
+                                class="form-check-label"
+                                for="recent_review_<%= load.id %>"
+                              >
+                                Confirmo que revisé el reporte y que las filas exitosas pueden
+                                enviarse al coordinador.
+                              </label>
+                            </div>
+                            <button
+                              class="btn btn-perso"
+                              type="submit"
+                              data-submit-lock="true"
+                            >Enviar al coordinador</button>
+                          </form>
+                        </details>
+                      <% } else if (load.puedeConfirmar && Number(load.filas_exitosas) > 0) { %>
+                        <p class="small mt-2 mb-0">
+                          No hay coordinadores activos autorizados para aprobar esta carga.
+                        </p>
+                      <% } else if (load.puedeConfirmar && Number(load.filas_exitosas) === 0) { %>
+                        <p class="small mt-2 mb-0">
+                          No hay filas listas para enviar. Consulta el reporte para revisar los errores.
+                        </p>
+                      <% } %>
                     </td>
                   </tr>
                 <% }) %>
@@ -325,7 +409,16 @@
         <div class="card-body">
           <% if (currentStatus.bloqueado) { %>
             <div class="alert alert-info mb-0">
-              <% if (currentStatus.estado === 'pendiente_aprobacion') { %>
+              <% if (currentStatus.estado === 'previsualizada') { %>
+                Ya existe una carga leída pendiente de envío. No podrás cargar más archivos hasta
+                enviarla o cancelarla.
+                <% if (currentStatus.carga_previsualizada_id) { %>
+                  <a
+                    class="alert-link d-inline-block ms-1"
+                    href="/milab/inventarios/cargas/<%= currentStatus.carga_previsualizada_id %>"
+                  >Revisar o cancelar la carga</a>
+                <% } %>
+              <% } else if (currentStatus.estado === 'pendiente_aprobacion') { %>
                 Ya se envió una carga de este tipo al coordinador. No podrás cargar más información hasta
                 que la rechace.
               <% } else { %>
