@@ -49,6 +49,14 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 - Se conserva la dirección de envío actual; no se modifica la autenticación SMTP ni se configura una dirección `Reply-To`. El nombre visible y la advertencia no bloquean las respuestas: para impedir que lleguen al buzón se necesita una dirección institucional no-reply autorizada y reglas de recepción en el servidor de correo.
 - Las notificaciones de activación de sanciones remiten al estudiante al laboratorio que reportó la sanción para aclarar su situación.
 
+## Identificación durante el registro
+
+- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Solo ofrece perfiles de estudiante en estado `A`; el estado `B` (`PRUEBA AC Y ACTIVO`) no habilita un perfil de estudiante.
+- Si no hay perfil académico activo ni roles habilitados en MILab, el registro explica que no puede usar MILab y muestra los estados reportados por OATI (estudiante o docente), incluyendo prueba académica, inactividad y egreso. Si OATI no devuelve registros, se indica que no reporta un perfil activo, sin inventar un estado.
+- El mensaje remite a los laboratorios del proyecto académico para que un laboratorista genere el paz y salvo a través de MILab. Para solicitar acceso como coordinador o laboratorista, indica escribir a `milab@udistrital.edu.co` detallando la solicitud.
+- Las consultas OATI del registro comparten un límite total de 20 segundos, incluyendo token y reintentos. Si OATI falla, se muestra un error recuperable sin cerrar la sesión de identificación. Esta regla no modifica el flujo de consulta de paz y salvo.
+- Los errores de las consultas de roles y de la finalización del registro se propagan al manejador de errores de Express: se registran en el servidor y se responde con una página de error, en lugar de dejar la solicitud pendiente.
+
 ## Grillas de facultades y UAL
 
 Las tablas de administración de facultades y UAL mantienen el desplazamiento horizontal dentro de la tabla, sin desplazar los filtros, el contador de registros ni la paginación. Los controles se distribuyen en varias filas en pantallas pequeñas y los paneles conservan el ancho disponible incluso con columnas extensas.

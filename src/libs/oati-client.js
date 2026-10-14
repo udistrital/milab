@@ -62,11 +62,12 @@ async function withOatiTlsFallback(operation) {
   }
 }
 
-async function withOatiRetry(operation) {
+async function withOatiRetry(operation, signal) {
   let lastError;
 
   for (let attempt = 0; attempt <= oatiRetryDelaysMs.length; attempt += 1) {
     try {
+      signal?.throwIfAborted();
       return await operation();
     } catch (error) {
       lastError = error;
@@ -75,14 +76,14 @@ async function withOatiRetry(operation) {
         throw error;
       }
 
-      await delay(oatiRetryDelaysMs[attempt]);
+      await delay(oatiRetryDelaysMs[attempt], undefined, { signal });
     }
   }
 
   throw lastError;
 }
 
-async function fetchAccessToken() {
+async function fetchAccessToken(signal) {
   ensureOatiCredentials();
 
   const now = Date.now();
@@ -90,24 +91,27 @@ async function fetchAccessToken() {
     return cachedToken;
   }
 
-  const tokenResponse = await withOatiRetry(() =>
-    withOatiTlsFallback((agent) =>
-      axios.post(
-        config.oatiTokenUrl,
-        new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-        {
-          auth: {
-            username: config.oatiClientId,
-            password: config.oatiSecret,
-          },
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          httpsAgent: agent,
-          timeout: config.oatiTokenTimeoutMs,
-        }
-      )
-    )
+  const tokenResponse = await withOatiRetry(
+    () =>
+      withOatiTlsFallback((agent) =>
+        axios.post(
+          config.oatiTokenUrl,
+          new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+          {
+            auth: {
+              username: config.oatiClientId,
+              password: config.oatiSecret,
+            },
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            httpsAgent: agent,
+            timeout: config.oatiTokenTimeoutMs,
+            signal,
+          }
+        )
+      ),
+    signal
   );
 
   cachedToken = tokenResponse.data.access_token;
@@ -117,35 +121,39 @@ async function fetchAccessToken() {
   return cachedToken;
 }
 
-async function requestOatiPublic(pathname) {
+async function requestOatiPublic(pathname, signal) {
   const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
   const response = await withOatiTlsFallback((agent) =>
     axios.get(url, {
       httpsAgent: agent,
       timeout: config.oatiRequestTimeoutMs,
+      signal,
     })
   );
   return response.data;
 }
 
-async function requestOati(pathname) {
+async function requestOati(pathname, { signal } = {}) {
   if (config.oatiUsePublic) {
-    return requestOatiPublic(pathname);
+    return requestOatiPublic(pathname, signal);
   }
 
-  const accessToken = await fetchAccessToken();
+  const accessToken = await fetchAccessToken(signal);
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
 
-  const response = await withOatiRetry(() =>
-    withOatiTlsFallback((agent) =>
-      axios.get(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        httpsAgent: agent,
-        timeout: config.oatiRequestTimeoutMs,
-      })
-    )
+  const response = await withOatiRetry(
+    () =>
+      withOatiTlsFallback((agent) =>
+        axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          httpsAgent: agent,
+          timeout: config.oatiRequestTimeoutMs,
+          signal,
+        })
+      ),
+    signal
   );
 
   return response.data;
