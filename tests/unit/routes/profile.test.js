@@ -496,9 +496,12 @@ for (const failedQuery of [
         .send({ documento: DOC })
         .timeout({ response: 1000, deadline: 2000 });
 
-      assert.equal(response.status, 500);
+      assert.equal(response.status, 503);
       assert.equal(response.body.view, 'home/message_error');
-      assert.match(response.body.locals.message, /No pudimos completar tu solicitud/);
+      assert.match(response.body.locals.message, /No fue posible completar tu registro/);
+      assert.match(response.body.locals.message2, /PRUEBA AC Y ACTIVO \(B\)/);
+      assert.match(response.body.locals.message2, /No fue posible verificar tus roles en MILab/);
+      assert.equal(response.body.locals.registrationDenied, true);
       assert.equal(JSON.stringify(response.body).includes('Database lookup failed'), false);
       assert.equal(roleWrites(stubs.executed).length, 0);
     } finally {
