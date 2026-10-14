@@ -175,12 +175,14 @@ test('inventory upload rejects missing CSRF tokens before database access', asyn
   }
 });
 
-test('inventory upload is blocked while that inventory type awaits approval', async () => {
+test('inventory upload is blocked while that inventory type has an active preview or approval', async () => {
   let transactionCalls = 0;
+  let lockQuery = '';
   const loaded = loadInventoryRoute({
     pool: {
       async query(sql) {
         if (sql.includes('inventario_estado_laboratorio')) {
+          lockQuery = sql;
           return { rows: [{ inventario_aprobado: false, carga_pendiente: true }] };
         }
         if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
@@ -212,7 +214,110 @@ test('inventory upload is blocked while that inventory type awaits approval', as
     const redirectUrl = new URL(response.headers.location, 'http://localhost');
     assert.equal(redirectUrl.searchParams.get('panel'), 'equipo_arka');
     assert.match(redirectUrl.searchParams.get('error'), /no se permiten más cargas/i);
+    assert.ok(lockQuery.includes("'previsualizada', 'pendiente_aprobacion'"));
     assert.equal(transactionCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory preview cancellation unlocks the type and preserves its audit trail', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('SELECT * FROM inventario_carga WHERE id = $1 FOR UPDATE')) {
+      return {
+        rows: [
+          {
+            id: 18,
+            ual_id: 4,
+            tipo_inventario: 'complementario',
+            creada_por_documento: 'lab-1',
+            estado: 'previsualizada',
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+    if (sql.includes("SET estado = 'cancelada'")) return { rows: [{ id: 18 }] };
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query() {
+        return { rows: [] };
+      },
+      async connect() {
+        return clientHarness.client;
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/18/cancelar')
+      .type('form')
+      .send({ _csrf: 'test-csrf-token' });
+
+    assert.equal(response.status, 302);
+    const redirectUrl = new URL(response.headers.location, 'http://localhost');
+    assert.equal(redirectUrl.searchParams.get('panel'), 'complementario');
+    assert.match(redirectUrl.searchParams.get('success'), /previsualización fue cancelada/i);
+    assert.ok(
+      clientHarness.calls.some(({ sql, params }) => {
+        return sql.includes("SET estado = 'cancelada'") && params[0] === 18;
+      })
+    );
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql, params }) =>
+          sql.includes('INSERT INTO inventario_auditoria') && params[5] === 'carga_cancelada'
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory preview cancellation is unavailable after sending to approval', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('SELECT * FROM inventario_carga WHERE id = $1 FOR UPDATE')) {
+      return {
+        rows: [
+          {
+            id: 19,
+            ual_id: 4,
+            tipo_inventario: 'reactivo',
+            creada_por_documento: 'lab-1',
+            estado: 'pendiente_aprobacion',
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: {
+      async query() {
+        return { rows: [] };
+      },
+      async connect() {
+        return clientHarness.client;
+      },
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cargas/19/cancelar')
+      .type('form')
+      .send({ _csrf: 'test-csrf-token' });
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.locals.message2, /aún no se ha enviado/i);
+    assert.equal(
+      clientHarness.calls.some(({ sql }) => sql.includes("SET estado = 'cancelada'")),
+      false
+    );
   } finally {
     loaded.restore();
   }
@@ -381,6 +486,39 @@ test('ARKA preview offers an optional additional-nomenclature column without rep
   assert.match(view, /name="nomenclatura_adicional_columna"/);
   assert.match(view, /El valor de cada fila se guardará como un identificador separado/);
   assert.match(view, /Nunca sustituye la placa oficial ARKA/);
+});
+
+test('inventory preview exposes row filters, ordered fields, cancellation, and navigation controls', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/preview.ejs'),
+    'utf8'
+  );
+  const script = fs.readFileSync(resolveRepoPath('src/public/js/inventory-preview.js'), 'utf8');
+
+  assert.match(view, /data-row-filter="all"/);
+  assert.match(view, /data-row-filter="ready"/);
+  assert.match(view, /data-row-filter="observations"/);
+  assert.match(view, /Campos obligatorios/);
+  assert.match(view, /Opcionales y validación/);
+  assert.match(view, /data-description-toggle/);
+  assert.match(view, /\/cancelar/);
+  assert.match(view, />Volver<\/a>/);
+  assert.match(view, /id="inventoryPreviewScrollTop"/);
+  assert.match(script, /applyRowFilter/);
+  assert.match(script, /scrollTo/);
+});
+
+test('recent inventory loads expose a protected confirmation form', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+    'utf8'
+  );
+
+  assert.match(view, /load\.puedeConfirmar/);
+  assert.match(view, /name="coordinador_documento"/);
+  assert.match(view, /name="confirmar_revision"/);
+  assert.match(view, /name="nomenclatura_adicional_columna"/);
+  assert.match(view, /Confirmo que revisé el reporte/);
 });
 
 test('inventory preview records successful and duplicate rows with a specialized audit', async () => {

@@ -72,6 +72,114 @@ test('inventory access scopes laboratoristas to assigned laboratories', async ()
   }
 });
 
+test('an unconfirmed preview blocks the selected inventory panel and links to its report', async () => {
+  const loaded = loadInventoryApp(
+    createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
+    async (sql) => {
+      if (sql.includes('JOIN dependencia_facultad df')) {
+        return {
+          rows: [
+            {
+              ual_id: 4,
+              nombre: 'Laboratorio de prueba',
+              facultad: 'Facultad de prueba',
+              dependencia: 'Dependencia de prueba',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM inventario_carga') && sql.includes('estado IN')) {
+        return {
+          rows: [
+            {
+              id: 42,
+              tipo_inventario: 'equipo_arka',
+              estado: 'previsualizada',
+              creada_por_documento: 'lab-1',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+  );
+
+  try {
+    const response = await request(loaded.app).get(
+      '/gestion_inventario?ual_id=4&panel=equipo_arka'
+    );
+    const equipmentStatus = response.body.locals.statuses.find(
+      (status) => status.tipo_inventario === 'equipo_arka'
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(equipmentStatus.estado, 'previsualizada');
+    assert.equal(equipmentStatus.bloqueado, true);
+    assert.equal(equipmentStatus.carga_previsualizada_id, 42);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('the laboratorista who created a preview can confirm it from recent loads', async () => {
+  const loaded = loadInventoryApp(
+    createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
+    async (sql) => {
+      if (sql.includes('JOIN dependencia_facultad df')) {
+        return {
+          rows: [
+            {
+              ual_id: 4,
+              nombre: 'Laboratorio de prueba',
+              facultad: 'Facultad de prueba',
+              dependencia: 'Dependencia de prueba',
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        return { rows: [{ documento: 'coord-1', nombre: 'Coordinador de prueba' }] };
+      }
+      if (sql.includes('FROM inventario_carga c') && sql.includes('ORDER BY c.fecha_creacion')) {
+        return {
+          rows: [
+            {
+              id: 43,
+              tipo_inventario: 'equipo_arka',
+              estado: 'previsualizada',
+              archivo_nombre: 'inventario.xlsx',
+              creada_por_documento: 'lab-1',
+              fecha_creacion: '2026-10-13T21:00:00-05:00',
+              total_filas: 1,
+              filas_exitosas: 1,
+              filas_fallidas: 0,
+              declaracion_sin_inventario: false,
+              primera_fila_original: {
+                placa: 'ARKA-001',
+                descripcion: 'Microscopio',
+                'codigo catalogo': 'CAT-001',
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+  );
+
+  try {
+    const response = await request(loaded.app).get('/gestion_inventario?ual_id=4&panel=recent');
+    const [preview] = response.body.locals.recentLoads;
+
+    assert.equal(response.status, 200);
+    assert.equal(preview.puedeConfirmar, true);
+    assert.deepEqual(preview.additionalIdentifierHeaders, ['codigo catalogo']);
+    assert.equal(response.body.locals.coordinators[0].documento, 'coord-1');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('coordinador_general can view all inventory and approvals without resolving them', async () => {
   const loaded = loadInventoryApp(
     createUser({

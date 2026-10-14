@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS inventario_carga (
     creada_por_documento VARCHAR(50) NOT NULL,
     coordinador_documento VARCHAR(50) REFERENCES coordinador(documento) ON DELETE RESTRICT,
     estado VARCHAR(30) NOT NULL DEFAULT 'previsualizada'
-        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada')),
+        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada')),
     declaracion_sin_inventario BOOLEAN NOT NULL DEFAULT FALSE,
     total_filas INT NOT NULL DEFAULT 0 CHECK (total_filas >= 0),
     filas_exitosas INT NOT NULL DEFAULT 0 CHECK (filas_exitosas >= 0),
@@ -20,6 +20,13 @@ CREATE TABLE IF NOT EXISTS inventario_carga (
     fecha_confirmacion TIMESTAMPTZ,
     fecha_resolucion TIMESTAMPTZ
 );
+
+ALTER TABLE inventario_carga
+    DROP CONSTRAINT IF EXISTS inventario_carga_estado_check;
+
+ALTER TABLE inventario_carga
+    ADD CONSTRAINT inventario_carga_estado_check
+    CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada'));
 
 ALTER TABLE inventario
     ADD COLUMN IF NOT EXISTS tipo_inventario VARCHAR(30) NOT NULL DEFAULT 'legado',

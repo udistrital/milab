@@ -421,7 +421,7 @@ async function getInventoryTypeLock(client, ualId, inventoryType, excludeCargaId
           FROM inventario_carga
           WHERE ual_id = $1
             AND tipo_inventario = $2
-            AND estado = 'pendiente_aprobacion'
+            AND estado IN ('previsualizada', 'pendiente_aprobacion')
             AND ($3::bigint IS NULL OR id <> $3)
         ) AS carga_pendiente
     `,
@@ -601,6 +601,7 @@ async function getManagementContext(client, req, selectedUalId) {
     estado: type === INVENTORY_TYPES.REAGENT ? 'opcional' : 'pendiente',
     sin_inventario: false,
     elementos_aprobados: 0,
+    carga_previsualizada_id: null,
   }));
   let recentLoads = [];
 
@@ -619,11 +620,12 @@ async function getManagementContext(client, req, selectedUalId) {
       ),
       client.query(
         `
-          SELECT tipo_inventario, COUNT(*)::int AS cargas_pendientes
+          SELECT DISTINCT ON (tipo_inventario, estado)
+            id, tipo_inventario, estado, creada_por_documento
           FROM inventario_carga
           WHERE ual_id = $1
-            AND estado = 'pendiente_aprobacion'
-          GROUP BY tipo_inventario
+            AND estado IN ('previsualizada', 'pendiente_aprobacion')
+          ORDER BY tipo_inventario, estado, fecha_creacion DESC, id DESC
         `,
         [selectedLaboratory.ual_id]
       ),
@@ -689,10 +691,19 @@ async function getManagementContext(client, req, selectedUalId) {
             c.tipo_inventario,
             c.estado,
             c.archivo_nombre,
+            c.creada_por_documento,
             c.fecha_creacion,
             c.total_filas,
             c.filas_exitosas,
-            c.filas_fallidas
+            c.filas_fallidas,
+            c.declaracion_sin_inventario,
+            (
+              SELECT f.datos_originales
+              FROM inventario_carga_fila f
+              WHERE f.carga_id = c.id
+              ORDER BY f.numero_fila
+              LIMIT 1
+            ) AS primera_fila_original
           FROM inventario_carga c
           WHERE c.ual_id = $1
           ORDER BY c.fecha_creacion DESC
@@ -704,27 +715,57 @@ async function getManagementContext(client, req, selectedUalId) {
     const statusByType = new Map(
       statusResult.rows.map((status) => [status.tipo_inventario, status])
     );
-    const pendingByType = new Map(
-      pendingResult.rows.map((status) => [status.tipo_inventario, status.cargas_pendientes])
-    );
+    const activeLoadsByType = new Map();
+    pendingResult.rows.forEach((load) => {
+      const activeLoads = activeLoadsByType.get(load.tipo_inventario) || {
+        cargasPendientes: 0,
+        cargaPrevisualizada: null,
+      };
+      if (load.estado === 'pendiente_aprobacion') {
+        activeLoads.cargasPendientes += 1;
+      } else if (!activeLoads.cargaPrevisualizada) {
+        activeLoads.cargaPrevisualizada = load;
+      }
+      activeLoadsByType.set(load.tipo_inventario, activeLoads);
+    });
     const countByType = new Map(
       countResult.rows.map((status) => [status.tipo_inventario, status.elementos_aprobados])
     );
     statuses = statuses.map((status) => {
       const savedStatus = statusByType.get(status.tipo_inventario);
-      const hasPendingLoad =
-        pendingByType.get(status.tipo_inventario) > 0 ||
-        savedStatus?.estado === 'pendiente_aprobacion';
+      const activeLoads = activeLoadsByType.get(status.tipo_inventario) || {};
+      const hasPendingApproval =
+        activeLoads.cargasPendientes > 0 || savedStatus?.estado === 'pendiente_aprobacion';
+      const hasPendingPreview = Boolean(activeLoads.cargaPrevisualizada);
       return {
         ...status,
-        estado: hasPendingLoad ? 'pendiente_aprobacion' : savedStatus?.estado || status.estado,
+        estado: hasPendingApproval
+          ? 'pendiente_aprobacion'
+          : hasPendingPreview
+            ? 'previsualizada'
+            : savedStatus?.estado || status.estado,
         sin_inventario: savedStatus?.sin_inventario || false,
         elementos_aprobados: countByType.get(status.tipo_inventario) || 0,
-        bloqueado: hasPendingLoad || savedStatus?.estado === 'aprobado',
+        carga_previsualizada_id: activeLoads.cargaPrevisualizada?.id || null,
+        bloqueado: hasPendingPreview || hasPendingApproval || savedStatus?.estado === 'aprobado',
       };
     });
     inventoryItems = itemResult.rows;
-    recentLoads = loadResult.rows;
+    recentLoads = loadResult.rows.map((load) => {
+      const firstRowOriginal = load.primera_fila_original || {};
+      return {
+        ...load,
+        puedeConfirmar:
+          load.estado === 'previsualizada' &&
+          !load.declaracion_sin_inventario &&
+          (isAdmin(req) ||
+            (isLaboratorista(req) && load.creada_por_documento === getUserDocument(req))),
+        additionalIdentifierHeaders:
+          load.tipo_inventario === INVENTORY_TYPES.ARKA_EQUIPMENT
+            ? getAdditionalIdentifierHeaders(Object.keys(firstRowOriginal))
+            : [],
+      };
+    });
   }
 
   return {
@@ -917,7 +958,7 @@ router.post(
       }
       if ((await getInventoryTypeLock(pool, ualId, inventoryType)).bloqueado) {
         throw new InventoryWorkflowError(
-          'Este inventario ya fue enviado al coordinador o está aprobado. No se permiten más cargas de este tipo.',
+          'Ya existe una carga pendiente para este inventario o el inventario está aprobado; no se permiten más cargas hasta que se resuelva.',
           409,
           'inventory_type_locked'
         );
@@ -940,7 +981,7 @@ router.post(
         await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [ualId]);
         if ((await getInventoryTypeLock(client, ualId, inventoryType)).bloqueado) {
           throw new InventoryWorkflowError(
-            'Este inventario ya fue enviado al coordinador o está aprobado. No se permiten más cargas de este tipo.',
+            'Ya existe una carga pendiente para este inventario o el inventario está aprobado; no se permiten más cargas hasta que se resuelva.',
             409,
             'inventory_type_locked'
           );
@@ -1389,6 +1430,85 @@ router.get('/cargas/:id', requireInventoryAccess, async function (req, res, next
     const handled = renderWorkflowError(res, error);
     if (handled) return handled;
     console.error('Error consultando una carga de inventario:', error);
+    return next(error);
+  }
+});
+
+router.post('/cargas/:id/cancelar', requireInventoryEditor, async function (req, res, next) {
+  const cargaId = parsePositiveId(req.params.id);
+  if (!cargaId) {
+    return res.status(404).render('home/message_error', {
+      message: 'Carga no encontrada',
+      message2: 'El identificador de la carga no es válido.',
+      limit: 'loginOnly',
+    });
+  }
+
+  try {
+    const batch = await withTransaction(async (client) => {
+      const batchResult = await client.query(
+        'SELECT * FROM inventario_carga WHERE id = $1 FOR UPDATE',
+        [cargaId]
+      );
+      const currentBatch = batchResult.rows[0];
+      if (!currentBatch) throw new InventoryWorkflowError('La carga no existe.', 404);
+      if (!isAdmin(req) && currentBatch.creada_por_documento !== getUserDocument(req)) {
+        throw new InventoryWorkflowError('No tienes acceso para cancelar esta carga.', 403);
+      }
+      if (!(await hasLaboratoryAccess(client, req, currentBatch.ual_id, { editorsOnly: true }))) {
+        throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
+      }
+      if (currentBatch.estado !== 'previsualizada') {
+        throw new InventoryWorkflowError(
+          'Solo puedes cancelar una carga que aún no se ha enviado al coordinador.',
+          409
+        );
+      }
+
+      await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [
+        currentBatch.ual_id,
+      ]);
+      const updateResult = await client.query(
+        `
+          UPDATE inventario_carga
+          SET estado = 'cancelada',
+              fecha_resolucion = CURRENT_TIMESTAMP
+          WHERE id = $1
+            AND estado = 'previsualizada'
+          RETURNING id
+        `,
+        [cargaId]
+      );
+      if (!updateResult.rows.length) {
+        throw new InventoryWorkflowError('La carga ya no está disponible para cancelación.', 409);
+      }
+
+      await addInventoryAudit(client, req, {
+        cargaId,
+        ualId: currentBatch.ual_id,
+        action: 'carga_cancelada',
+        detail: { tipoInventario: currentBatch.tipo_inventario },
+      });
+      await addGeneralLog(
+        client,
+        req,
+        `Canceló la previsualización de ${INVENTORY_LABELS[currentBatch.tipo_inventario]}.`,
+        `Laboratorio ${currentBatch.ual_id}`
+      );
+      return currentBatch;
+    });
+
+    return res.redirect(
+      getRedirectUrl('/milab/inventarios/gestion_inventario', {
+        ual_id: batch.ual_id,
+        panel: batch.tipo_inventario,
+        success: 'La previsualización fue cancelada. Ya puedes cargar un archivo nuevo.',
+      })
+    );
+  } catch (error) {
+    const handled = renderWorkflowError(res, error);
+    if (handled) return handled;
+    console.error('Error cancelando una previsualización de inventario:', error);
     return next(error);
   }
 });
