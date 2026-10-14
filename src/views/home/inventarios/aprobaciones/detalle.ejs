@@ -60,7 +60,12 @@
                     <td><%= row.payload.placa || '-' %><%= row.payload.serie ? ` / ${row.payload.serie}` : '' %></td>
                     <td>
                       <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
-                        <%= row.payload.identificadores.map(function(identifier) { return `${identifier.tipo}: ${identifier.valor}`; }).join(', ') %>
+                        <%= row.payload.identificadores.map(function(identifier) {
+                          const label = identifier.tipo === 'nomenclatura_adicional'
+                            ? `Nomenclatura adicional (${identifier.etiqueta})`
+                            : identifier.tipo;
+                          return `${label}: ${identifier.valor}`;
+                        }).join(', ') %>
                       <% } else { %>
                         -
                       <% } %>

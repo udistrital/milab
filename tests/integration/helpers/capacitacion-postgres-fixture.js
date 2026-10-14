@@ -56,6 +56,25 @@ async function createPostgresFixture(
         activo BOOLEAN NOT NULL DEFAULT TRUE
       );
       CREATE TABLE equipo (id INT PRIMARY KEY);
+      CREATE VIEW equipo_catalogo AS
+      SELECT
+        id,
+        NULL::VARCHAR(50) AS codigo,
+        NULL::TEXT AS nombre,
+        NULL::TEXT AS descripcion,
+        NULL::JSONB AS especificaciones,
+        NULL::TEXT AS categoria,
+        NULL::TEXT AS laboratorio,
+        NULL::TEXT AS facultad,
+        NULL::TEXT AS area_conocimiento,
+        NULL::TEXT AS estado,
+        NULL::TEXT AS ubicacion,
+        NULL::JSONB AS ubicacion_prestamo,
+        TRUE AS activo,
+        CURRENT_TIMESTAMP AS fecha_creacion,
+        CURRENT_TIMESTAMP AS fecha_modificacion,
+        NULL::INT AS inventario_id
+      FROM equipo;
       CREATE TABLE usuario (
         id INT PRIMARY KEY,
         documento VARCHAR(50) NOT NULL UNIQUE,

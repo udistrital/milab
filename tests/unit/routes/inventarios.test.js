@@ -361,10 +361,26 @@ test('inventory upload view includes animated examples for all inventory types',
 
   assert.match(view, /data-bs-target="#inventoryExcelExampleModal"/);
   assert.match(view, /@keyframes inventoryExampleColumnIn/);
+  assert.match(view, /otra nomenclatura asociada al equipo/);
+  assert.match(view, /Columnas obligatorias y opcionales/);
+  assert.match(view, /Otros encabezados opcionales aceptados/);
+  assert.match(view, /column\.required \? 'Obligatoria' : 'Opcional'/);
+  assert.match(view, /EQUIPO<\/strong> como encabezado de/);
   assert.match(view, /PLACA/);
   assert.match(view, /NOMBRE DEL MATERIAL/);
   assert.match(view, /STOCK G\.T/);
   assert.match(view, /CIRCULACIÓN R\.A/);
+});
+
+test('ARKA preview offers an optional additional-nomenclature column without replacing its plate', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/preview.ejs'),
+    'utf8'
+  );
+
+  assert.match(view, /name="nomenclatura_adicional_columna"/);
+  assert.match(view, /El valor de cada fila se guardará como un identificador separado/);
+  assert.match(view, /Nunca sustituye la placa oficial ARKA/);
 });
 
 test('inventory preview records successful and duplicate rows with a specialized audit', async () => {
@@ -424,9 +440,9 @@ test('inventory preview records successful and duplicate rows with a specialized
       .attach(
         'archivo',
         createWorkbookBuffer([
-          ['PLACA', 'DESCRIPCIÓN'],
-          ['ARKA-OLD', 'Microscopio antiguo'],
-          ['ARKA-NEW', 'Microscopio nuevo'],
+          ['PLACA', 'DESCRIPCIÓN', 'CÓDIGO CATÁLOGO'],
+          ['ARKA-OLD', 'Microscopio antiguo', 'CAT-OLD'],
+          ['ARKA-NEW', 'Microscopio nuevo', 'CAT-NEW'],
         ]),
         'inventario.xlsx'
       );
@@ -435,6 +451,7 @@ test('inventory preview records successful and duplicate rows with a specialized
     assert.equal(response.body.view, 'home/inventarios/gestion_inventario/preview');
     assert.equal(response.body.locals.batch.filas_exitosas, 1);
     assert.equal(response.body.locals.batch.filas_fallidas, 1);
+    assert.deepEqual(response.body.locals.additionalIdentifierHeaders, ['codigo catalogo']);
     assert.deepEqual(
       insertedRows.map((row) => row.estado),
       ['fallida', 'exitosa']
@@ -449,7 +466,7 @@ test('inventory preview records successful and duplicate rows with a specialized
   }
 });
 
-test('confirmation creates only the successful preview rows and records both audits', async () => {
+test('confirmation saves selected nomenclature separately and rejects duplicate row values', async () => {
   const insertedInventories = [];
   const clientHarness = createTransactionClient((sql, params) => {
     if (sql.includes('SELECT * FROM inventario_carga WHERE id')) {
@@ -468,12 +485,17 @@ test('confirmation creates only the successful preview rows and records both aud
     }
     if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
     if (sql.includes('coordinador_facultad_alcance ca')) return { rows: [{ ok: 1 }] };
-    if (sql.includes("AND estado = 'exitosa'")) {
+    if (
+      sql.includes('SELECT *') &&
+      sql.includes('FROM inventario_carga_fila') &&
+      sql.includes('FOR UPDATE')
+    ) {
       return {
         rows: [
           {
             id: 28,
             numero_fila: 3,
+            estado: 'exitosa',
             payload: {
               descripcion: 'Microscopio',
               placa: 'ARKA-001',
@@ -483,6 +505,23 @@ test('confirmation creates only the successful preview rows and records both aud
               atributos: {},
               modoControl: 'individual',
             },
+            datos_originales: { 'codigo catalogo': 'CAT-001' },
+            errores: [],
+          },
+          {
+            id: 30,
+            numero_fila: 4,
+            estado: 'exitosa',
+            payload: {
+              descripcion: 'Balanza',
+              placa: 'ARKA-002',
+              identificadores: [],
+              existencias: [],
+              atributos: {},
+              modoControl: 'individual',
+            },
+            datos_originales: { 'codigo catalogo': 'CAT-001' },
+            errores: [],
           },
         ],
       };
@@ -508,20 +547,145 @@ test('confirmation creates only the successful preview rows and records both aud
   const loaded = loadInventoryRoute({ pool });
 
   try {
-    const response = await request(loaded.app)
-      .post('/cargas/18/confirmar')
-      .type('form')
-      .send({ coordinador_documento: 'coord-1', confirmar_revision: 'confirmo' });
+    const response = await request(loaded.app).post('/cargas/18/confirmar').type('form').send({
+      coordinador_documento: 'coord-1',
+      confirmar_revision: 'confirmo',
+      nomenclatura_adicional_columna: 'codigo catalogo',
+    });
 
     assert.equal(response.status, 302);
     assert.equal(insertedInventories.length, 1);
     assert.equal(insertedInventories[0][2], 'Microscopio');
+    const additionalIdentifierInsert = clientHarness.calls.find(
+      ({ sql, params }) =>
+        sql.includes('INSERT INTO inventario_identificador') &&
+        params[2] === 'nomenclatura_adicional'
+    );
+    assert.deepEqual(additionalIdentifierInsert.params, [
+      91,
+      1,
+      'nomenclatura_adicional',
+      'CAT-001',
+      'CAT-001',
+      'codigo catalogo',
+    ]);
+    const duplicateRowUpdate = clientHarness.calls.find(
+      ({ sql, params }) =>
+        sql.includes('UPDATE inventario_carga_fila') &&
+        sql.includes('SET estado = $2') &&
+        params[0] === 30
+    );
+    assert.equal(duplicateRowUpdate.params[1], 'fallida');
+    assert.match(JSON.parse(duplicateRowUpdate.params[3]).join(' '), /repetida en otra fila/i);
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('UPDATE inventario_carga_fila')));
     assert.ok(
       clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario_auditoria'))
     );
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO log')));
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('COMMIT')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('a custom identifier that exceeds its database limit is shown as a row error', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('SELECT * FROM inventario_carga WHERE id')) {
+      return {
+        rows: [
+          {
+            id: 19,
+            ual_id: 1,
+            tipo_inventario: 'equipo_arka',
+            estado: 'previsualizada',
+            creada_por_documento: 'lab-1',
+            total_filas: 2,
+            declaracion_sin_inventario: false,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+    if (sql.includes('coordinador_facultad_alcance ca')) return { rows: [{ ok: 1 }] };
+    if (
+      sql.includes('SELECT *') &&
+      sql.includes('FROM inventario_carga_fila') &&
+      sql.includes('FOR UPDATE')
+    ) {
+      return {
+        rows: [
+          {
+            id: 29,
+            numero_fila: 4,
+            estado: 'exitosa',
+            payload: {
+              descripcion: 'Microscopio',
+              placa: 'ARKA-002',
+              identificadores: [],
+              existencias: [],
+              atributos: {},
+              modoControl: 'individual',
+            },
+            datos_originales: { 'codigo catalogo': 'C'.repeat(256) },
+            errores: [],
+          },
+          {
+            id: 31,
+            numero_fila: 5,
+            estado: 'exitosa',
+            payload: {
+              descripcion: 'Balanza',
+              placa: 'ARKA-003',
+              identificadores: [],
+              existencias: [],
+              atributos: {},
+              modoControl: 'individual',
+            },
+            datos_originales: { 'codigo catalogo': 'ß'.repeat(128) },
+            errores: [],
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
+  const pool = {
+    async query(sql) {
+      if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+      if (sql.includes('SELECT DISTINCT c.documento')) {
+        return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+      }
+      if (sql.includes('SELECT nombre FROM ual')) return { rows: [{ nombre: 'Laboratorio A' }] };
+      throw new Error(`Unexpected pool query: ${sql}`);
+    },
+    async connect() {
+      return clientHarness.client;
+    },
+  };
+  const loaded = loadInventoryRoute({ pool });
+
+  try {
+    const response = await request(loaded.app).post('/cargas/19/confirmar').type('form').send({
+      coordinador_documento: 'coord-1',
+      confirmar_revision: 'confirmo',
+      nomenclatura_adicional_columna: 'codigo catalogo',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.rows[0].estado, 'fallida');
+    assert.match(
+      response.body.locals.rows[0].errores.join(' '),
+      /nomenclatura adicional.*256 caracteres.*255/i
+    );
+    assert.equal(response.body.locals.rows[1].estado, 'fallida');
+    assert.match(
+      response.body.locals.rows[1].errores.join(' '),
+      /256 caracteres al normalizarse.*255/i
+    );
+    assert.equal(
+      clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario (')),
+      false
+    );
   } finally {
     loaded.restore();
   }
@@ -634,7 +798,7 @@ test('coordinator approval authorizes by laboratory scope and creates the legacy
         ],
       };
     }
-    if (sql.includes('SELECT id, inventario_id FROM equipo')) return { rows: [] };
+    if (sql.includes('SELECT id FROM equipo WHERE inventario_id')) return { rows: [] };
     if (sql.includes('INSERT INTO equipo')) return { rows: [{ id: 55 }] };
     return { rows: [] };
   });
@@ -751,7 +915,8 @@ test('coordinator approval also activates complementary records without creating
     assert.equal(approvedInventoryUpdate.params[1], 'equipo_arka');
     assert.equal(
       clientHarness.calls.some(
-        ({ sql }) => sql.includes('INSERT INTO equipo') || sql.includes('FROM equipo WHERE codigo')
+        ({ sql }) =>
+          sql.includes('INSERT INTO equipo') || sql.includes('FROM equipo WHERE inventario_id')
       ),
       false
     );
@@ -831,6 +996,9 @@ test('coordinator can create individual records for every approved inventory typ
       body: {
         descripcion: 'Acetamida',
         referencia: 'REA-001',
+        marca: 'Marca de reactivo',
+        modelo: 'R-1',
+        proveedor: 'Proveedor de reactivos',
       },
     },
   ];
@@ -894,6 +1062,19 @@ test('coordinator can create individual records for every approved inventory typ
         assert.ok(
           clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario_existencia'))
         );
+      }
+      if (inventoryCase.inventoryType === 'reactivo') {
+        const inventoryInsert = clientHarness.calls.find(({ sql }) =>
+          sql.includes('INSERT INTO inventario (')
+        );
+        assert.deepEqual(JSON.parse(inventoryInsert.params[11]), {
+          marca: 'Marca de reactivo',
+          modelo: 'R-1',
+          proveedor: 'Proveedor de reactivos',
+          observaciones: '',
+          referencia: 'REA-001',
+          codigoInterno: '',
+        });
       }
     } finally {
       loaded.restore();

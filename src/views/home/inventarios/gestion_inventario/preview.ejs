@@ -104,9 +104,14 @@
               <td><%= row.payload.referencia || '-' %></td>
               <td><%= row.payload.codigoInterno || '-' %></td>
               <td>
-                <% if (row.payload.identificadores && row.payload.identificadores.length) { %> <%=
-                row.payload.identificadores.map(function(identifier) { return `${identifier.tipo}:
-                ${identifier.valor}`; }).join(', ') %> <% } else { %> - <% } %>
+                <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
+                  <%= row.payload.identificadores.map(function(identifier) {
+                    const label = identifier.tipo === 'nomenclatura_adicional'
+                      ? `Nomenclatura adicional (${identifier.etiqueta})`
+                      : identifier.tipo;
+                    return `${label}: ${identifier.valor}`;
+                  }).join(', ') %>
+                <% } else { %> - <% } %>
               </td>
               <td>
                 <% if (row.payload.existencias && row.payload.existencias.length) { %> <%=
@@ -157,6 +162,33 @@
         onsubmit="return confirm('¿Confirmas el envío de las filas exitosas a aprobación?');"
       >
         <%- include('../../../partials/csrf_field') %>
+        <% if (batch.tipo_inventario === 'equipo_arka') { %>
+        <div class="col-12">
+          <label for="nomenclatura_adicional_columna" class="form-label">
+            Columna de nomenclatura adicional (opcional)
+          </label>
+          <select
+            id="nomenclatura_adicional_columna"
+            name="nomenclatura_adicional_columna"
+            class="form-select"
+          >
+            <option value="">No usar código adicional</option>
+            <% additionalIdentifierHeaders.forEach(function(header) { %>
+            <option value="<%= header %>"><%= header.toLocaleUpperCase('es-CO') %></option>
+            <% }) %>
+          </select>
+          <% if (additionalIdentifierHeaders.length) { %>
+          <div class="form-text text-light-emphasis">
+            El valor de cada fila se guardará como un identificador separado con el encabezado
+            seleccionado. Nunca sustituye la placa oficial ARKA.
+          </div>
+          <% } else { %>
+          <div class="form-text text-light-emphasis">
+            No se detectaron encabezados adicionales sin mapear en este Excel.
+          </div>
+          <% } %>
+        </div>
+        <% } %>
         <div class="col-12">
           <div class="form-check">
             <input

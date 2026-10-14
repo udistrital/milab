@@ -50,7 +50,7 @@
           <label for="serie" class="form-label">Serial (opcional)</label>
           <input id="serie" name="serie" class="form-control" maxlength="100" />
         </div>
-        <% } %> <% if (inventoryType !== 'reactivo') { %>
+        <% } %>
         <div class="col-md-4">
           <label for="marca" class="form-label">Marca</label>
           <input id="marca" name="marca" class="form-control" maxlength="255" />
@@ -63,7 +63,7 @@
           <label for="proveedor" class="form-label">Proveedor</label>
           <input id="proveedor" name="proveedor" class="form-control" maxlength="255" />
         </div>
-        <% } %> <% if (inventoryType === 'reactivo') { %>
+        <% if (inventoryType === 'reactivo') { %>
         <div class="col-12">
           <label for="referencia" class="form-label"
             >Referencia <span aria-hidden="true">*</span></label

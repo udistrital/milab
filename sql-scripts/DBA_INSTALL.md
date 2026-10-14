@@ -25,10 +25,10 @@ Ejecutar en este orden:
 2. db_seed_system.sql
 3. db_structure_prestamos.sql
 4. db_seed_prestamos.sql
-5. db_structure_certificacion.sql
-6. db_seed_certificacion.sql
-7. db_structure_inventarios.sql
-8. db_seed_inventarios.sql
+5. db_structure_inventarios.sql
+6. db_seed_inventarios.sql
+7. db_structure_certificacion.sql
+8. db_seed_certificacion.sql
 
 ## Comandos recomendados (psql)
 
@@ -46,10 +46,10 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
 
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure_prestamos.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_seed_prestamos.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_structure_certificacion.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_certificacion.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure_inventarios.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_structure_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_seed_certificacion.sql
 
 ## Consideraciones
 
@@ -57,6 +57,12 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
   Se recomienda cambiar las credenciales y correos en produccion.
 - Respete el orden indicado: cada seed se ejecuta despues de su estructura y el seed
   de inventarios necesita los roles y menus base creados por db_seed_system.sql.
+- db_structure_inventarios.sql migra los campos descriptivos antiguos de equipo a
+  inventario y crea equipo_catalogo. Debe ejecutarse antes de db_seed_certificacion.sql.
+- equipo conserva su id y solo los datos operativos; consultas descriptivas deben usar
+  la vista equipo_catalogo, que proyecta la informacion canonica de inventario.
+- En una base existente, detenga la aplicacion antes de ejecutar db_structure_inventarios.sql;
+  el script conserva los ids y migrará los equipos sin vínculo a registros tipo legado.
 - Los scripts son idempotentes en la mayoria de operaciones, pero no sustituyen una
   migracion formal si hay cambios mayores.
 - Si no se permite CREATE EXTENSION pgcrypto, ejecutar la extension como superusuario

@@ -337,6 +337,12 @@
               Puedes cargar un archivo <code>.xls</code> o <code>.xlsx</code>. Revisa el reporte leído
               antes de confirmar su envío al coordinador.
             </p>
+            <% if (selectedType === 'equipo_arka') { %>
+              <p class="small">
+                Si el Excel incluye otra nomenclatura asociada al equipo, podrás elegir su columna
+                en la revisión antes de confirmar el envío.
+              </p>
+            <% } %>
             <form
               action="/milab/inventarios/cargas/previsualizar"
               method="post"
@@ -387,31 +393,66 @@
               ? {
                   title: 'Inventario de Equipos',
                   headers: [
-                    { name: 'PLACA', value: 'ARKA-001', color: 'bg-primary' },
-                    { name: 'DESCRIPCIÓN', value: 'Microscopio', color: 'bg-info text-dark' },
-                    { name: 'MARCA', value: 'Acme', color: 'bg-success' },
-                    { name: 'MODELO', value: 'M1', color: 'bg-warning text-dark' },
-                    { name: 'SERIE', value: 'SER-001', color: 'bg-danger' },
+                    { name: 'PLACA', value: 'ARKA-001', color: 'bg-primary', required: true },
+                    { name: 'DESCRIPCIÓN', value: 'Microscopio', color: 'bg-info text-dark', required: true },
+                    { name: 'MARCA', value: 'Acme', color: 'bg-success', required: false },
+                    { name: 'MODELO', value: 'M1', color: 'bg-warning text-dark', required: false },
+                    { name: 'SERIE', value: 'SER-001', color: 'bg-danger', required: false },
+                  ],
+                  additionalOptional: [
+                    'PROVEEDOR',
+                    'OBSERVACIONES',
+                    'CÓDIGO INTERNO',
+                    'ID',
+                    'CÓDIGO DE BARRAS',
+                    'QR',
+                    'PLACA LOCAL',
+                    'ETIQUETADO',
                   ],
                 }
               : selectedType === 'complementario'
                 ? {
                     title: 'Inventario complementario',
                     headers: [
-                      { name: 'NOMBRE DEL MATERIAL', value: 'Flexómetro', color: 'bg-primary' },
-                      { name: 'CANTIDAD', value: '20', color: 'bg-success' },
-                      { name: 'MARCA', value: 'Genérica', color: 'bg-warning text-dark' },
+                      { name: 'NOMBRE DEL MATERIAL', value: 'Flexómetro', color: 'bg-primary', required: true },
+                      { name: 'CANTIDAD', value: '20', color: 'bg-success', required: false },
+                      { name: 'MARCA', value: 'Genérica', color: 'bg-warning text-dark', required: false },
+                    ],
+                    additionalOptional: [
+                      'MODELO',
+                      'SERIE',
+                      'PROVEEDOR',
+                      'OBSERVACIONES',
+                      'CÓDIGO INTERNO',
+                      'ID',
+                      'CÓDIGO DE BARRAS',
+                      'QR',
+                      'PLACA LOCAL',
+                      'ETIQUETADO',
                     ],
                   }
                 : {
                     title: 'Reactivos',
                     headers: [
-                      { name: 'REFERENCIA', value: 'A-01', color: 'bg-primary' },
-                      { name: 'REACTIVO', value: 'Acetamida', color: 'bg-info text-dark' },
-                      { name: 'STOCK G.T', value: '0 g', color: 'bg-success' },
-                      { name: 'STOCK R.A', value: '2000 g', color: 'bg-warning text-dark' },
-                      { name: 'CIRCULACIÓN G.T', value: '0 g', color: 'bg-danger' },
-                      { name: 'CIRCULACIÓN R.A', value: '400 g', color: 'bg-secondary' },
+                      { name: 'REFERENCIA', value: 'A-01', color: 'bg-primary', required: true },
+                      { name: 'REACTIVO', value: 'Acetamida', color: 'bg-info text-dark', required: true },
+                      { name: 'STOCK G.T', value: '0 g', color: 'bg-success', required: false },
+                      { name: 'STOCK R.A', value: '2000 g', color: 'bg-warning text-dark', required: false },
+                      { name: 'CIRCULACIÓN G.T', value: '0 g', color: 'bg-danger', required: false },
+                      { name: 'CIRCULACIÓN R.A', value: '400 g', color: 'bg-secondary', required: false },
+                    ],
+                    additionalOptional: [
+                      'MARCA',
+                      'MODELO',
+                      'PROVEEDOR',
+                      'OBSERVACIONES',
+                      'SERIE',
+                      'CÓDIGO INTERNO',
+                      'ID',
+                      'CÓDIGO DE BARRAS',
+                      'QR',
+                      'PLACA LOCAL',
+                      'ETIQUETADO',
                     ],
                   };
           %>
@@ -436,13 +477,15 @@
                 </div>
                 <div class="modal-body p-4">
                   <p>
-                    La <strong>fila 1</strong> debe contener estos encabezados, en el mismo orden.
-                    La <strong>fila 2</strong> muestra un registro de ejemplo.
+                    La <strong>fila 1</strong> debe contener los encabezados obligatorios; puedes
+                    cambiar su orden. La <strong>fila 2</strong> muestra un registro de ejemplo.
+                    Para equipos ARKA también se acepta <strong>EQUIPO</strong> como encabezado de
+                    descripción.
                   </p>
                   <div class="inventory-example-sheet">
                     <div class="inventory-example-sheet__bar d-flex justify-content-between align-items-center gap-2 flex-wrap">
                       <strong>Hoja: Inventario</strong>
-                      <span class="small">Columnas requeridas para esta carga</span>
+                      <span class="small">Columnas obligatorias y opcionales</span>
                     </div>
                     <div class="table-responsive">
                       <table class="table table-bordered inventory-example-table">
@@ -451,6 +494,9 @@
                             <% inventoryExample.headers.forEach(function(column) { %>
                               <th class="<%= column.color %> inventory-example-column" scope="col">
                                 <%= column.name %>
+                                <span class="badge text-bg-light text-dark d-block mt-1">
+                                  <%= column.required ? 'Obligatoria' : 'Opcional' %>
+                                </span>
                               </th>
                             <% }) %>
                           </tr>
@@ -465,9 +511,18 @@
                       </table>
                     </div>
                   </div>
+                  <div class="mt-3">
+                    <strong class="d-block mb-2">Otros encabezados opcionales aceptados</strong>
+                    <div class="d-flex flex-wrap gap-2">
+                      <% inventoryExample.additionalOptional.forEach(function(header) { %>
+                        <span class="badge rounded-pill text-bg-secondary"><%= header %></span>
+                      <% }) %>
+                    </div>
+                  </div>
                   <div class="alert alert-warning mt-3 mb-0">
-                    Cada fila posterior debe contener un registro. Si faltan columnas obligatorias,
-                    el sistema mostrará la validación para corregir el archivo.
+                    Cada fila posterior debe contener un registro. Las existencias son opcionales;
+                    si incluyes cantidades, respeta los límites indicados y agrega su unidad cuando
+                    corresponda.
                   </div>
                 </div>
                 <div class="modal-footer">
@@ -573,7 +628,12 @@
                     <td><%= item.atributos?.codigoInterno || '-' %></td>
                     <td>
                       <% if (item.identificadores && item.identificadores.length) { %>
-                        <%= item.identificadores.map(function(identifier) { return `${identifier.tipo}: ${identifier.valor}`; }).join(', ') %>
+                        <%= item.identificadores.map(function(identifier) {
+                          const label = identifier.tipo === 'nomenclatura_adicional'
+                            ? `Nomenclatura adicional (${identifier.etiqueta})`
+                            : identifier.tipo;
+                          return `${label}: ${identifier.valor}`;
+                        }).join(', ') %>
                       <% } else { %>-<% } %>
                     </td>
                     <td>

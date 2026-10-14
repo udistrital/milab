@@ -8,6 +8,7 @@ const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf'
 const {
   INVENTORY_TYPES,
   InventoryImportError,
+  getAdditionalIdentifierHeaders,
   normalizeIdentifier,
   parseWorkbook,
   validateInventoryRows,
@@ -22,6 +23,7 @@ const INVENTORY_LABELS = Object.freeze({
   [INVENTORY_TYPES.REAGENT]: 'Reactivos',
 });
 const INVENTORY_ALL_TYPES = Object.values(INVENTORY_TYPES);
+const ADDITIONAL_IDENTIFIER_TYPE = 'nomenclatura_adicional';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
@@ -342,6 +344,67 @@ async function flagExistingIdentifiers(client, rows, ualId) {
   });
 }
 
+function addAdditionalIdentifierToRows(rows, columnHeader) {
+  const successfulRows = rows.filter((row) => row.estado === 'exitosa');
+  const modifiedRows = new Set();
+  const fileIdentifiers = new Map();
+
+  successfulRows.forEach((row) => {
+    getRowIdentifiers(row).forEach((identifier) => {
+      if (!fileIdentifiers.has(identifier)) {
+        fileIdentifiers.set(identifier, row.id ?? row.numero_fila);
+      }
+    });
+  });
+
+  successfulRows.forEach((row) => {
+    const value = String(row.datos_originales?.[columnHeader] ?? '').trim();
+    if (!value) return;
+
+    const valueLength = Array.from(value).length;
+    if (valueLength > 255) {
+      addRowError(
+        row,
+        `La nomenclatura adicional de "${columnHeader}" tiene ${valueLength} caracteres; el máximo permitido es 255.`
+      );
+      modifiedRows.add(row);
+      return;
+    }
+
+    const normalizedValue = normalizeIdentifier(value);
+    const normalizedLength = Array.from(normalizedValue).length;
+    if (normalizedLength > 255) {
+      addRowError(
+        row,
+        `La nomenclatura adicional de "${columnHeader}" tiene ${normalizedLength} caracteres al normalizarse; el máximo de inventario_identificador.valor_normalizado es 255.`
+      );
+      modifiedRows.add(row);
+      return;
+    }
+    if (fileIdentifiers.has(normalizedValue)) {
+      const error =
+        fileIdentifiers.get(normalizedValue) === (row.id ?? row.numero_fila)
+          ? `La nomenclatura adicional de "${columnHeader}" coincide con otro identificador de esta fila.`
+          : `La nomenclatura adicional de "${columnHeader}" está repetida en otra fila del archivo.`;
+      addRowError(row, error);
+      modifiedRows.add(row);
+      return;
+    }
+    fileIdentifiers.set(normalizedValue, row.id ?? row.numero_fila);
+    row.payload.identificadores = [
+      ...(row.payload.identificadores || []),
+      {
+        tipo: ADDITIONAL_IDENTIFIER_TYPE,
+        etiqueta: columnHeader,
+        valor: value,
+      },
+    ];
+    modifiedRows.add(row);
+  });
+
+  return modifiedRows;
+}
+
 async function getInventoryTypeLock(client, ualId, inventoryType, excludeCargaId = null) {
   const result = await client.query(
     `
@@ -588,7 +651,11 @@ async function getManagementContext(client, req, selectedUalId) {
             i.modo_control,
             i.atributos,
             COALESCE((
-              SELECT json_agg(json_build_object('tipo', ii.tipo, 'valor', ii.valor)
+              SELECT json_agg(json_build_object(
+                                'tipo', ii.tipo,
+                                'etiqueta', ii.etiqueta,
+                                'valor', ii.valor
+                              )
                               ORDER BY ii.tipo, ii.valor)
               FROM inventario_identificador ii
               WHERE ii.inventario_id = i.id
@@ -740,6 +807,7 @@ async function renderPreviewPage(req, res, batch, rows, messages = {}) {
     getCoordinatorsForLaboratory(pool, batch.ual_id),
     pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [batch.ual_id]),
   ]);
+  const originalHeaders = Object.keys(rows[0]?.datosOriginales || rows[0]?.datos_originales || {});
   const viewRows = rows.map((row) => ({
     numeroFila: row.numeroFila ?? row.numero_fila,
     estado: row.estado,
@@ -749,6 +817,10 @@ async function renderPreviewPage(req, res, batch, rows, messages = {}) {
   return res.render('home/inventarios/gestion_inventario/preview', {
     batch: { ...batch, laboratorio_nombre: laboratoryResult.rows[0]?.nombre },
     rows: viewRows,
+    additionalIdentifierHeaders:
+      batch.tipo_inventario === INVENTORY_TYPES.ARKA_EQUIPMENT
+        ? getAdditionalIdentifierHeaders(originalHeaders)
+        : [],
     coordinators,
     successMessage: messages.success || '',
     errorMessage: messages.error || '',
@@ -1223,48 +1295,11 @@ router.post('/individual', requireInventoryApprover, async function (req, res, n
       if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT) {
         const equipmentResult = await client.query(
           `
-              INSERT INTO equipo (
-                codigo,
-                nombre,
-                descripcion,
-                especificaciones,
-                categoria,
-                laboratorio,
-                facultad,
-                estado,
-                ubicacion,
-                inventario_id
-              )
-              VALUES (
-                $1,
-                $2,
-                NULLIF(BTRIM(CONCAT_WS(' ', NULLIF($3, ''), NULLIF($4, ''))), ''),
-                $5::jsonb,
-                'Equipo oficial ARKA',
-                $6,
-                $7,
-                'disponible',
-                $8,
-                $9
-              )
+              INSERT INTO equipo (inventario_id, estado)
+              VALUES ($1, 'disponible')
               RETURNING id
             `,
-          [
-            inventory.placa,
-            inventory.descripcion,
-            inventory.marca,
-            inventory.modelo,
-            JSON.stringify({
-              marca: inventory.marca,
-              modelo: inventory.modelo,
-              proveedor: inventory.proveedor,
-              observaciones: inventory.observaciones,
-            }),
-            laboratory.laboratorio,
-            laboratory.facultad,
-            inventory.espacioFisico,
-            newInventoryId,
-          ]
+          [newInventoryId]
         );
         if (!equipmentResult.rows[0]?.id) {
           throw new InventoryWorkflowError(
@@ -1361,6 +1396,7 @@ router.get('/cargas/:id', requireInventoryAccess, async function (req, res, next
 router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req, res, next) {
   const cargaId = parsePositiveId(req.params.id);
   const coordinatorDocument = String(req.body.coordinador_documento || '').trim();
+  const additionalIdentifierHeader = String(req.body.nomenclatura_adicional_columna || '').trim();
   if (!cargaId || !coordinatorDocument) {
     return res.status(400).render('home/message_error', {
       message: 'No fue posible confirmar la carga',
@@ -1428,17 +1464,87 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
         );
       }
 
-      const rowsResult = await client.query(
-        `
-            SELECT *
-            FROM inventario_carga_fila
-            WHERE carga_id = $1
-              AND estado = 'exitosa'
-            ORDER BY numero_fila
-            FOR UPDATE
-          `,
-        [cargaId]
-      );
+      let rowsResult;
+      let totalRows = Number(batch.total_filas) || 0;
+      if (additionalIdentifierHeader) {
+        if (batch.tipo_inventario !== INVENTORY_TYPES.ARKA_EQUIPMENT) {
+          throw new InventoryWorkflowError(
+            'La nomenclatura adicional solo está disponible para el Inventario de Equipos.',
+            400,
+            'invalid_additional_identifier_column'
+          );
+        }
+
+        const allRowsResult = await client.query(
+          `
+              SELECT *
+              FROM inventario_carga_fila
+              WHERE carga_id = $1
+              ORDER BY numero_fila
+              FOR UPDATE
+            `,
+          [cargaId]
+        );
+        const allRows = allRowsResult.rows;
+        const availableHeaders = getAdditionalIdentifierHeaders(
+          Object.keys(allRows[0]?.datos_originales || {})
+        );
+        if (!availableHeaders.includes(additionalIdentifierHeader)) {
+          throw new InventoryWorkflowError(
+            'La columna seleccionada no corresponde a un encabezado adicional del archivo.',
+            400,
+            'invalid_additional_identifier_column'
+          );
+        }
+
+        const modifiedRows = addAdditionalIdentifierToRows(allRows, additionalIdentifierHeader);
+        const rowsWithAdditionalIdentifier = allRows.filter(
+          (row) =>
+            row.estado === 'exitosa' &&
+            row.payload.identificadores?.some(
+              (identifier) => identifier.tipo === ADDITIONAL_IDENTIFIER_TYPE
+            )
+        );
+        if (rowsWithAdditionalIdentifier.length) {
+          await flagExistingIdentifiers(client, rowsWithAdditionalIdentifier, batch.ual_id);
+        }
+
+        const successfulRows = allRows.filter((row) => row.estado === 'exitosa');
+        if (!successfulRows.length && !batch.declaracion_sin_inventario) {
+          return { noSuccessfulRows: true, batch, rows: allRows };
+        }
+
+        for (const row of modifiedRows) {
+          await client.query(
+            `
+                UPDATE inventario_carga_fila
+                SET estado = $2,
+                    payload = $3::jsonb,
+                    errores = $4::jsonb
+                WHERE id = $1
+              `,
+            [row.id, row.estado, JSON.stringify(row.payload), JSON.stringify(row.errores)]
+          );
+        }
+        rowsResult = { rows: successfulRows };
+        totalRows = allRows.length;
+      } else {
+        rowsResult = await client.query(
+          `
+              SELECT *
+              FROM inventario_carga_fila
+              WHERE carga_id = $1
+                AND estado = 'exitosa'
+              ORDER BY numero_fila
+              FOR UPDATE
+            `,
+          [cargaId]
+        );
+        totalRows = Math.max(
+          totalRows,
+          rowsResult.rows.length + (Number(batch.filas_fallidas) || 0)
+        );
+      }
       if (!rowsResult.rows.length && !batch.declaracion_sin_inventario) {
         throw new InventoryWorkflowError('No hay filas exitosas para enviar a aprobación.', 400);
       }
@@ -1530,11 +1636,18 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
           await client.query(
             `
                 INSERT INTO inventario_identificador (
-                  inventario_id, ual_id, tipo, valor, valor_normalizado
+                  inventario_id, ual_id, tipo, valor, valor_normalizado, etiqueta
                 )
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES ($1, $2, $3, $4, $5, $6)
               `,
-            [inventarioId, batch.ual_id, identifier.tipo, identifier.valor, normalized]
+            [
+              inventarioId,
+              batch.ual_id,
+              identifier.tipo,
+              identifier.valor,
+              normalized,
+              identifier.etiqueta || null,
+            ]
           );
         }
         for (const balance of payload.existencias || []) {
@@ -1584,10 +1697,17 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
             UPDATE inventario_carga
             SET estado = 'pendiente_aprobacion',
                 coordinador_documento = $1,
+                filas_exitosas = $3,
+                filas_fallidas = $4,
                 fecha_confirmacion = CURRENT_TIMESTAMP
             WHERE id = $2
           `,
-        [coordinatorDocument, cargaId]
+        [
+          coordinatorDocument,
+          cargaId,
+          rowsResult.rows.length,
+          Math.max(totalRows - rowsResult.rows.length, 0),
+        ]
       );
       await addInventoryAudit(client, req, {
         cargaId,
@@ -1596,6 +1716,7 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
         detail: {
           coordinadorDocumento: coordinatorDocument,
           filasEnviadas: rowsResult.rows.length,
+          columnaNomenclaturaAdicional: additionalIdentifierHeader || null,
           declaracionSinInventario: batch.declaracion_sin_inventario,
         },
       });
@@ -1608,6 +1729,12 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
       return { ualId: batch.ual_id };
     });
 
+    if (result.noSuccessfulRows) {
+      return renderPreviewPage(req, res, result.batch, result.rows, {
+        error:
+          'La columna seleccionada produjo errores en todas las filas. Revisa los identificadores o selecciona otra columna.',
+      });
+    }
     return res.redirect(
       getRedirectUrl('/milab/inventarios/gestion_inventario', {
         ual_id: result.ualId,
@@ -1615,6 +1742,13 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
       })
     );
   } catch (error) {
+    if (error.code === 'invalid_additional_identifier_column') {
+      return res.redirect(
+        getRedirectUrl(`/milab/inventarios/cargas/${cargaId}`, {
+          error: error.message,
+        })
+      );
+    }
     if (error.code === 'inventory_type_locked') {
       return res.redirect(
         getRedirectUrl(`/milab/inventarios/cargas/${cargaId}`, {
@@ -1993,89 +2127,21 @@ router.post(
               );
             }
             if (inventory.tipo_inventario === INVENTORY_TYPES.ARKA_EQUIPMENT) {
-              const equipmentDescription = [inventory.atributos?.marca, inventory.atributos?.modelo]
-                .filter(Boolean)
-                .join(' ');
               const equipmentResult = await client.query(
-                'SELECT id, inventario_id FROM equipo WHERE codigo = $1 FOR UPDATE',
-                [inventory.placa]
+                'SELECT id FROM equipo WHERE inventario_id = $1 FOR UPDATE',
+                [inventory.id]
               );
               let equipmentId;
               if (equipmentResult.rows.length) {
-                const equipment = equipmentResult.rows[0];
-                if (equipment.inventario_id && equipment.inventario_id !== inventory.id) {
-                  throw new InventoryWorkflowError(
-                    `La placa ${inventory.placa} ya está asociada a otro registro de equipo.`,
-                    409
-                  );
-                }
-                equipmentId = equipment.id;
-                await client.query(
-                  `
-                    UPDATE equipo
-                    SET inventario_id = $1,
-                        nombre = $2,
-                        descripcion = NULLIF($3, ''),
-                        especificaciones = $4::jsonb,
-                        categoria = 'Equipo oficial ARKA',
-                        laboratorio = $5,
-                        facultad = $6,
-                        ubicacion = $7
-                    WHERE id = $8
-                  `,
-                  [
-                    inventory.id,
-                    inventory.nombre_bien,
-                    equipmentDescription,
-                    JSON.stringify(inventory.atributos || {}),
-                    batch.laboratorio,
-                    batch.facultad,
-                    inventory.espacio_fisico || '',
-                    equipment.id,
-                  ]
-                );
+                equipmentId = equipmentResult.rows[0].id;
               } else {
                 const insertedEquipment = await client.query(
                   `
-                    INSERT INTO equipo (
-                      codigo,
-                      nombre,
-                      descripcion,
-                      especificaciones,
-                      categoria,
-                      laboratorio,
-                      facultad,
-                      estado,
-                      ubicacion,
-                      inventario_id
-                    )
-                    SELECT
-                      $1,
-                      $2,
-                      NULLIF(BTRIM(CONCAT_WS(' ', NULLIF($3, ''), NULLIF($4, ''))), ''),
-                      $5::jsonb,
-                      'Equipo oficial ARKA',
-                      u.nombre,
-                      df.nombre,
-                      'disponible',
-                      $6,
-                      $7
-                    FROM ual u
-                    JOIN dependencia_facultad df
-                      ON df.dependencia_facultad_id = u.facultad_id
-                    WHERE u.ual_id = $8
+                    INSERT INTO equipo (inventario_id, estado)
+                    VALUES ($1, 'disponible')
                     RETURNING id
                   `,
-                  [
-                    inventory.placa,
-                    inventory.nombre_bien,
-                    inventory.atributos?.marca || '',
-                    inventory.atributos?.modelo || '',
-                    JSON.stringify(inventory.atributos || {}),
-                    inventory.espacio_fisico || '',
-                    inventory.id,
-                    batch.ual_id,
-                  ]
+                  [inventory.id]
                 );
                 equipmentId = insertedEquipment.rows[0]?.id;
                 if (!equipmentId) {
