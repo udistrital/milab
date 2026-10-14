@@ -236,6 +236,8 @@ CREATE TABLE IF NOT EXISTS inventario_auditoria (
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+DROP VIEW IF EXISTS equipo_catalogo;
+
 ALTER TABLE inventario
     ALTER COLUMN espacio_fisico TYPE VARCHAR(255);
 
