@@ -900,10 +900,29 @@ async function identifyProfile(req, res) {
         'No fue posible completar la consulta en OATI. Por favor intenta nuevamente. Si el problema persiste, contacta a los laboratorios de tu programa académico.',
     });
   }
-  const { roles: milabRoles, identity: milabIdentity } = await findMilabRolesByDocumento(
-    documento,
-    correo
-  );
+  let milabRoles;
+  let milabIdentity;
+  try {
+    const roleLookup = await findMilabRolesByDocumento(documento, correo);
+    milabRoles = roleLookup.roles;
+    milabIdentity = roleLookup.identity;
+  } catch (error) {
+    console.error('Error verificando roles de MILab durante el registro:', {
+      code: error.code,
+      message: error.message,
+      requestId: req.id,
+    });
+    return res.status(503).render('home/message_error', {
+      message: 'No fue posible completar tu registro',
+      message2: `${
+        states.length
+          ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
+          : 'OATI no reporta un perfil académico activo.'
+      } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
+      limit: 'loginOnly',
+      registrationDenied: true,
+    });
+  }
 
   if (!estudiantes.length && !docente && !milabRoles.length) {
     return denyAccess(
