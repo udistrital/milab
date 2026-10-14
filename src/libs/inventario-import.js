@@ -343,9 +343,9 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
       identifiers.find((identifier) => identifier.tipo === 'codigo_interno')?.valor || '';
 
     if (!description) errors.push('La descripción es obligatoria.');
-    if (characterLength(description) > 255) {
+    if (characterLength(description) > 1000) {
       errors.push(
-        `La descripción tiene ${characterLength(description)} caracteres; el máximo de inventario.nombre_bien es 255.`
+        `La descripción tiene ${characterLength(description)} caracteres; el máximo de inventario.nombre_bien es 1000.`
       );
     }
     if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT && !plate) {

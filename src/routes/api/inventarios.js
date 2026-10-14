@@ -487,7 +487,7 @@ function parseManualBalance(body, quantityField, unitField, grade, location, lab
 }
 
 function parseIndividualInventory(body, inventoryType) {
-  const descripcion = getManualText(body, 'descripcion', 'La descripción');
+  const descripcion = getManualText(body, 'descripcion', 'La descripción', 1000);
   const placa = getManualText(body, 'placa', 'La placa ARKA', 50);
   const serie = getManualText(body, 'serie', 'El serial', 100);
   const marca = getManualText(body, 'marca', 'La marca');

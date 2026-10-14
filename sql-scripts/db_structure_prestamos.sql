@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS inventario (
     id SERIAL NOT NULL,
     serie VARCHAR(100),
     placa VARCHAR(100),
-    nombre_bien VARCHAR(255) NOT NULL,
+    nombre_bien VARCHAR(1000) NOT NULL,
     grupo_inventario VARCHAR(100),
     nivel_inventario VARCHAR(50),
     funcionario_doc VARCHAR(50),

@@ -2130,8 +2130,8 @@ function validateEquipmentPayload(payload) {
     return 'El nombre del equipo es obligatorio.';
   }
 
-  if (payload.nombre.length > 255) {
-    return 'El nombre del equipo no puede superar 255 caracteres.';
+  if (payload.nombre.length > 1000) {
+    return 'El nombre del equipo no puede superar 1000 caracteres.';
   }
 
   if (payload.codigo && payload.codigo.length > 50) {

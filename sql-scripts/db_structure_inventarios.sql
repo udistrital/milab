@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS inventario_auditoria (
 DROP VIEW IF EXISTS equipo_catalogo;
 
 ALTER TABLE inventario
+    ALTER COLUMN nombre_bien TYPE VARCHAR(1000),
     ALTER COLUMN espacio_fisico TYPE VARCHAR(255);
 
 ALTER TABLE equipo
