@@ -845,7 +845,7 @@ router.get('/identify', async (req, res) => {
   });
 });
 
-router.post('/identify', async (req, res) => {
+async function identifyProfile(req, res) {
   if (!req.session.microsoftProfile?.correo) {
     return res.redirect('/milab/auth/login');
   }
@@ -992,6 +992,10 @@ router.post('/identify', async (req, res) => {
     tipo_usuario: estudiantes.length ? 'estudiante' : 'docente',
     opcionesCodigo: estudiantes.length > 1 ? estudiantes : [],
   });
+}
+
+router.post('/identify', (req, res, next) => {
+  identifyProfile(req, res).catch(next);
 });
 
 router.post('/', async (req, res) => {
