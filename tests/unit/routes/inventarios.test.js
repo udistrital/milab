@@ -1252,11 +1252,17 @@ test('inventory migration drops the compatibility view before altering its sourc
     resolveRepoPath('sql-scripts/db_structure_inventarios.sql'),
     'utf8'
   );
+  const baseStructure = fs.readFileSync(
+    resolveRepoPath('sql-scripts/db_structure_prestamos.sql'),
+    'utf8'
+  );
   const dropViewIndex = migration.indexOf('DROP VIEW IF EXISTS equipo_catalogo');
-  const alterColumnIndex = migration.indexOf('ALTER COLUMN espacio_fisico TYPE VARCHAR(255)');
+  const alterColumnIndex = migration.indexOf('ALTER COLUMN nombre_bien TYPE VARCHAR(1000)');
   const recreateViewIndex = migration.indexOf('CREATE OR REPLACE VIEW equipo_catalogo');
 
   assert.notEqual(dropViewIndex, -1);
   assert.ok(dropViewIndex < alterColumnIndex);
   assert.ok(alterColumnIndex < recreateViewIndex);
+  assert.match(baseStructure, /nombre_bien VARCHAR\(1000\) NOT NULL/);
+  assert.match(migration, /ALTER COLUMN espacio_fisico TYPE VARCHAR\(255\)/);
 });

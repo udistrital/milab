@@ -154,6 +154,35 @@ test('supports a complementary group without an assigned identifier', () => {
   ]);
 });
 
+test('accepts equipment and complementary descriptions up to 1000 characters', () => {
+  const descriptions = [462, 1000, 1001].map((length) => 'D'.repeat(length));
+  const equipmentRows = validateInventoryRows(
+    parseWorkbook(
+      createWorkbookBuffer([
+        ['PLACA', 'DESCRIPCIÓN'],
+        ...descriptions.map((description, index) => [`ARKA-${index + 1}`, description]),
+      ]),
+      'equipos.xlsx'
+    ),
+    INVENTORY_TYPES.ARKA_EQUIPMENT
+  );
+  const complementaryRows = validateInventoryRows(
+    parseWorkbook(
+      createWorkbookBuffer([['DESCRIPCIÓN'], ...descriptions.map((description) => [description])]),
+      'complementarios.xlsx'
+    ),
+    INVENTORY_TYPES.COMPLEMENTARY
+  );
+
+  [equipmentRows, complementaryRows].forEach((rows) => {
+    assert.deepEqual(
+      rows.map((row) => row.estado),
+      ['exitosa', 'exitosa', 'fallida']
+    );
+    assert.match(rows[2].errores.join(' '), /descripción tiene 1001 caracteres.*1000/i);
+  });
+});
+
 test('does not treat a material issue quantity as current stock', () => {
   const parsed = parseWorkbook(
     createWorkbookBuffer([
@@ -249,7 +278,7 @@ test('marks fields over database and form lengths as row errors with the field a
       ],
       [
         'P'.repeat(51),
-        'D'.repeat(256),
+        'D'.repeat(1001),
         'S'.repeat(101),
         'I'.repeat(256),
         'M'.repeat(256),
@@ -264,7 +293,7 @@ test('marks fields over database and form lengths as row errors with the field a
   const [row] = validateInventoryRows(parsed, INVENTORY_TYPES.ARKA_EQUIPMENT);
   const errors = row.errores.join(' ');
   assert.equal(row.estado, 'fallida');
-  assert.match(errors, /descripción tiene 256 caracteres.*255/i);
+  assert.match(errors, /descripción tiene 1001 caracteres.*1000/i);
   assert.match(errors, /placa oficial tiene 51 caracteres.*50/i);
   assert.match(errors, /serial tiene 101 caracteres.*100/i);
   assert.match(errors, /codigo_interno tiene 256 caracteres.*255/i);
@@ -301,8 +330,8 @@ test('counts Unicode characters like PostgreSQL when enforcing column lengths', 
   const parsed = parseWorkbook(
     createWorkbookBuffer([
       ['PLACA', 'DESCRIPCIÓN'],
-      ['ARKA-001', '\u{1f4bb}'.repeat(255)],
-      ['ARKA-002', '\u{1f4bb}'.repeat(256)],
+      ['ARKA-001', '\u{1f4bb}'.repeat(1000)],
+      ['ARKA-002', '\u{1f4bb}'.repeat(1001)],
     ]),
     'inventario.xlsx'
   );
@@ -310,5 +339,5 @@ test('counts Unicode characters like PostgreSQL when enforcing column lengths', 
   const rows = validateInventoryRows(parsed, INVENTORY_TYPES.ARKA_EQUIPMENT);
   assert.equal(rows[0].estado, 'exitosa');
   assert.equal(rows[1].estado, 'fallida');
-  assert.match(rows[1].errores.join(' '), /descripción tiene 256 caracteres.*255/i);
+  assert.match(rows[1].errores.join(' '), /descripción tiene 1001 caracteres.*1000/i);
 });
