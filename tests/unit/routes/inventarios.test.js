@@ -1246,3 +1246,17 @@ test('main inventory management view defers ARKA reconciliation records', () => 
   assert.doesNotMatch(view, /Inventario histórico/);
   assert.doesNotMatch(view, /Equipos técnicos sin vínculo con inventario/);
 });
+
+test('inventory migration drops the compatibility view before altering its source column', () => {
+  const migration = fs.readFileSync(
+    resolveRepoPath('sql-scripts/db_structure_inventarios.sql'),
+    'utf8'
+  );
+  const dropViewIndex = migration.indexOf('DROP VIEW IF EXISTS equipo_catalogo');
+  const alterColumnIndex = migration.indexOf('ALTER COLUMN espacio_fisico TYPE VARCHAR(255)');
+  const recreateViewIndex = migration.indexOf('CREATE OR REPLACE VIEW equipo_catalogo');
+
+  assert.notEqual(dropViewIndex, -1);
+  assert.ok(dropViewIndex < alterColumnIndex);
+  assert.ok(alterColumnIndex < recreateViewIndex);
+});
