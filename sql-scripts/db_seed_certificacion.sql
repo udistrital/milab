@@ -73,7 +73,7 @@ SELECT
 FROM cursos
 CROSS JOIN LATERAL (
     SELECT id
-    FROM equipo
+    FROM equipo_catalogo
     WHERE activo = TRUE
     ORDER BY id
     LIMIT 1

@@ -272,12 +272,14 @@ La inicialización de base para recreación completa del entorno de pruebas usa 
 2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
-5. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
-6. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
-7. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
-8. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
+5. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
+6. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
+7. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
+8. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
 
-La recreación en CI aplica los ocho scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. El esquema y seed de inventarios se ejecutan al final porque dependen de las tablas base y de los roles/menús creados en los pasos anteriores. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los ocho scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+
+El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 
 ## Reset completo en EC2 (pruebas)
 

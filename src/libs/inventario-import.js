@@ -58,6 +58,18 @@ function normalizeHeader(value) {
     .replace(/\s+/g, ' ');
 }
 
+function getAdditionalIdentifierHeaders(headers) {
+  const recognizedHeaders = new Set(Object.values(HEADER_ALIASES).flat().map(normalizeHeader));
+  const seenHeaders = new Set();
+
+  return headers.map(normalizeHeader).filter((header) => {
+    if (!header || /^columna_\d+$/.test(header) || recognizedHeaders.has(header)) return false;
+    if (seenHeaders.has(header)) return false;
+    seenHeaders.add(header);
+    return true;
+  });
+}
+
 function normalizeIdentifier(value) {
   return String(value || '')
     .trim()
@@ -70,6 +82,10 @@ function toCellText(value) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === 'object' && 'text' in value) return String(value.text || '').trim();
   return String(value).trim();
+}
+
+function characterLength(value) {
+  return Array.from(value).length;
 }
 
 function normalizeSpreadsheetHeaders(matrix) {
@@ -120,14 +136,33 @@ function parseQuantity(value) {
   const match = text.match(/^(-?\d+(?:[.,]\d+)?)\s*([a-zA-ZÁÉÍÓÚÜáéíóúü]+)?$/);
   if (!match) return { error: 'La cantidad debe ser un número y puede incluir unidad.' };
 
-  const quantity = Number(match[1].replace(',', '.'));
+  const normalizedNumber = match[1].replace(',', '.');
+  const [integerPart, decimalPart = ''] = normalizedNumber.replace(/^-/, '').split('.');
+  const significantIntegerPart = integerPart.replace(/^0+/, '') || '0';
+  if (decimalPart.length > 3) {
+    return { error: 'La cantidad no puede superar 3 decimales según la base de datos.' };
+  }
+  if (significantIntegerPart.length > 11) {
+    return {
+      error: 'La cantidad excede el máximo de 11 dígitos enteros permitido por la base de datos.',
+    };
+  }
+
+  const unit = match[2] ? match[2].toLocaleLowerCase('es-CO') : null;
+  if (unit && characterLength(unit) > 50) {
+    return {
+      error: `La unidad tiene ${characterLength(unit)} caracteres; el máximo permitido es 50.`,
+    };
+  }
+
+  const quantity = Number(normalizedNumber);
   if (!Number.isFinite(quantity) || quantity < 0) {
     return { error: 'La cantidad debe ser un número mayor o igual a cero.' };
   }
 
   return {
     quantity,
-    unit: match[2] ? match[2].toLocaleLowerCase('es-CO') : null,
+    unit,
   };
 }
 
@@ -164,7 +199,10 @@ function parseWorkbook(buffer, fileName) {
     raw: false,
   });
   if (!matrix.length || !matrix[0].some((value) => toCellText(value))) {
-    throw new InventoryImportError('La primera fila debe contener encabezados.', 'missing_headers');
+    throw new InventoryImportError(
+      'La primera fila debe contener los encabezados de columnas del inventario seleccionado.',
+      'missing_headers'
+    );
   }
 
   const { headers, headerRowCount } = normalizeSpreadsheetHeaders(matrix);
@@ -227,20 +265,6 @@ function readIdentifiers(row, headers) {
   return identifiers;
 }
 
-function readOfficialPlate(row, headers) {
-  const officialPlateIndex = findColumnIndexes(headers, 'plate').find((index) =>
-    toCellText(row.cells[index])
-  );
-  if (officialPlateIndex !== undefined) {
-    return toCellText(row.cells[officialPlateIndex]);
-  }
-
-  const alternatePlateIndex = findColumnIndexes(headers, 'localPlate').find((index) =>
-    toCellText(row.cells[index])
-  );
-  return alternatePlateIndex === undefined ? '' : toCellText(row.cells[alternatePlateIndex]);
-}
-
 function validateInventoryRows(parsedWorkbook, inventoryType) {
   const supportedTypes = new Set(Object.values(INVENTORY_TYPES));
   if (!supportedTypes.has(inventoryType)) {
@@ -259,10 +283,7 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
         : ['description'];
   const missingColumns = requiredFields.filter((field) => {
     if (field === 'plate') {
-      return (
-        findColumnIndexes(headers, 'plate').length === 0 &&
-        findColumnIndexes(headers, 'localPlate').length === 0
-      );
+      return findColumnIndexes(headers, 'plate').length === 0;
     }
     if (field === 'description') {
       return (
@@ -290,7 +311,7 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
     const descriptionField = readField(row, headers, 'description');
     const equipmentNameField = readField(row, headers, 'equipmentName');
     const plateField = readField(row, headers, 'plate');
-    const plate = plateField.value || readOfficialPlate(row, headers);
+    const plate = plateField.value;
     const identifiers = readIdentifiers(row, headers);
     const brandField = readField(row, headers, 'brand');
     const modelField = readField(row, headers, 'model');
@@ -322,18 +343,43 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
       identifiers.find((identifier) => identifier.tipo === 'codigo_interno')?.valor || '';
 
     if (!description) errors.push('La descripción es obligatoria.');
+    if (characterLength(description) > 255) {
+      errors.push(
+        `La descripción tiene ${characterLength(description)} caracteres; el máximo de inventario.nombre_bien es 255.`
+      );
+    }
     if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT && !plate) {
       errors.push('La placa oficial de ARKA es obligatoria.');
     }
-    if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT && plate.length > 50) {
-      errors.push('La placa oficial no puede superar 50 caracteres.');
+    if (inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT && characterLength(plate) > 50) {
+      errors.push(
+        `La placa oficial tiene ${characterLength(plate)} caracteres; el máximo permitido es 50.`
+      );
     }
-    if (serialField.value.length > 100) {
-      errors.push('El serial no puede superar 100 caracteres.');
+    if (characterLength(serialField.value) > 100) {
+      errors.push(
+        `El serial tiene ${characterLength(serialField.value)} caracteres; el máximo permitido es 100.`
+      );
     }
-    if (identifiers.some((identifier) => identifier.valor.length > 255)) {
-      errors.push('Los identificadores adicionales no pueden superar 255 caracteres.');
-    }
+    identifiers.forEach((identifier) => {
+      if (characterLength(identifier.valor) > 255) {
+        errors.push(
+          `El identificador ${identifier.tipo} tiene ${characterLength(identifier.valor)} caracteres; el máximo permitido es 255.`
+        );
+      }
+    });
+
+    [
+      ['La marca', brandField.value, 255],
+      ['El modelo', modelField.value, 255],
+      ['El proveedor', providerField.value, 255],
+      ['Las observaciones', observationsField.value, 2000],
+    ].forEach(([label, value, maxLength]) => {
+      const length = characterLength(value);
+      if (length > maxLength) {
+        errors.push(`${label} tiene ${length} caracteres; el máximo permitido es ${maxLength}.`);
+      }
+    });
 
     const rowIdentifiers = [
       ...(inventoryType === INVENTORY_TYPES.ARKA_EQUIPMENT
@@ -396,6 +442,11 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
       if (referenceField.error) errors.push(referenceField.error);
       payload.referencia = referenceField.value;
       if (!payload.referencia) errors.push('La referencia del reactivo es obligatoria.');
+      if (characterLength(payload.referencia) > 255) {
+        errors.push(
+          `La referencia tiene ${characterLength(payload.referencia)} caracteres; el máximo permitido es 255.`
+        );
+      }
       payload.modoControl = 'cantidad';
 
       const balances = [
@@ -439,6 +490,7 @@ function validateInventoryRows(parsedWorkbook, inventoryType) {
 module.exports = {
   INVENTORY_TYPES,
   InventoryImportError,
+  getAdditionalIdentifierHeaders,
   normalizeHeader,
   normalizeIdentifier,
   parseQuantity,

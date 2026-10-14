@@ -71,6 +71,53 @@ BEGIN
             ADD CONSTRAINT ck_inventario_modo_control
             CHECK (modo_control IN ('individual', 'cantidad'));
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_inventario_requisitos_por_tipo'
+          AND conrelid = 'milab.inventario'::regclass
+    ) THEN
+        ALTER TABLE inventario
+            ADD CONSTRAINT ck_inventario_requisitos_por_tipo
+            CHECK (
+                tipo_inventario = 'legado'
+                OR (
+                    BTRIM(nombre_bien) <> ''
+                    AND (
+                        tipo_inventario <> 'equipo_arka'
+                        OR (
+                            BTRIM(COALESCE(placa, '')) <> ''
+                            AND CHAR_LENGTH(placa) <= 50
+                        )
+                    )
+                    AND (
+                        tipo_inventario <> 'reactivo'
+                        OR BTRIM(COALESCE(atributos->>'referencia', '')) <> ''
+                    )
+                )
+            ) NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_inventario_atributos_longitudes'
+          AND conrelid = 'milab.inventario'::regclass
+    ) THEN
+        ALTER TABLE inventario
+            ADD CONSTRAINT ck_inventario_atributos_longitudes
+            CHECK (
+                tipo_inventario = 'legado'
+                OR (
+                    CHAR_LENGTH(COALESCE(atributos->>'marca', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'modelo', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'proveedor', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'referencia', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'codigoInterno', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'observaciones', '')) <= 2000
+                )
+            ) NOT VALID;
+    END IF;
+
 END
 $$;
 
@@ -95,11 +142,34 @@ CREATE TABLE IF NOT EXISTS inventario_identificador (
     tipo VARCHAR(40) NOT NULL,
     valor VARCHAR(255) NOT NULL,
     valor_normalizado VARCHAR(255) NOT NULL,
+    etiqueta TEXT,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
-    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT ck_inventario_identificador_tipo
-        CHECK (tipo IN ('placa_arka', 'codigo_interno', 'identificador_id', 'codigo_barras', 'qr', 'placa_local', 'etiquetado', 'serie'))
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE inventario_identificador
+    ADD COLUMN IF NOT EXISTS etiqueta TEXT;
+
+ALTER TABLE inventario_identificador
+    DROP CONSTRAINT IF EXISTS ck_inventario_identificador_tipo,
+    ADD CONSTRAINT ck_inventario_identificador_tipo
+        CHECK (
+            tipo IN (
+                'placa_arka',
+                'codigo_interno',
+                'identificador_id',
+                'codigo_barras',
+                'qr',
+                'placa_local',
+                'etiquetado',
+                'serie',
+                'nomenclatura_adicional'
+            )
+            AND (
+                tipo <> 'nomenclatura_adicional'
+                OR NULLIF(BTRIM(etiqueta), '') IS NOT NULL
+            )
+        ) NOT VALID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inventario_identificador_ual_valor
     ON inventario_identificador(ual_id, valor_normalizado)
@@ -118,6 +188,20 @@ CREATE TABLE IF NOT EXISTS inventario_existencia (
     CONSTRAINT ck_inventario_existencia_ubicacion
         CHECK (ubicacion IN ('STOCK', 'CIRCULACION', 'EXISTENCIA'))
 );
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_inventario_existencia_unidad_no_vacia'
+          AND conrelid = 'milab.inventario_existencia'::regclass
+    ) THEN
+        ALTER TABLE inventario_existencia
+            ADD CONSTRAINT ck_inventario_existencia_unidad_no_vacia
+            CHECK (BTRIM(unidad) <> '') NOT VALID;
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS inventario_estado_laboratorio (
     ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE CASCADE,
@@ -145,16 +229,308 @@ CREATE TABLE IF NOT EXISTS inventario_auditoria (
     fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE equipo
-    ADD COLUMN IF NOT EXISTS inventario_id INT REFERENCES inventario(id) ON DELETE SET NULL;
+ALTER TABLE inventario
+    ALTER COLUMN espacio_fisico TYPE VARCHAR(255);
 
 ALTER TABLE equipo
-    ALTER COLUMN laboratorio TYPE VARCHAR(255),
-    ALTER COLUMN facultad TYPE VARCHAR(255);
+    ADD COLUMN IF NOT EXISTS inventario_id INT;
+
+ALTER TABLE equipo
+    DROP CONSTRAINT IF EXISTS equipo_inventario_id_fkey,
+    DROP CONSTRAINT IF EXISTS fk_equipo_inventario;
+
+ALTER TABLE equipo
+    ADD CONSTRAINT fk_equipo_inventario
+    FOREIGN KEY (inventario_id) REFERENCES inventario(id) ON DELETE CASCADE;
+
+DO $$
+DECLARE
+    has_legacy_equipment_columns BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'equipo'
+          AND column_name = 'codigo'
+    ) INTO has_legacy_equipment_columns;
+
+    IF has_legacy_equipment_columns THEN
+        IF EXISTS (
+            SELECT e.id
+            FROM equipo e
+            JOIN inventario i
+              ON UPPER(REGEXP_REPLACE(BTRIM(CASE
+                    WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+                    ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+                 END), '[[:space:]]', '', 'g'))
+               = UPPER(REGEXP_REPLACE(BTRIM(e.codigo), '[[:space:]]', '', 'g'))
+             AND i.tipo_inventario IN ('legado', 'equipo_arka')
+             AND i.estado_aprobacion <> 'rechazado'
+            WHERE e.inventario_id IS NULL
+            GROUP BY e.id
+            HAVING COUNT(*) > 1
+        ) THEN
+            RAISE EXCEPTION
+                'No se puede normalizar equipo: hay códigos asociados a varios registros de inventario.';
+        END IF;
+
+        IF EXISTS (
+            SELECT i.id
+            FROM equipo e
+            JOIN inventario i
+              ON UPPER(REGEXP_REPLACE(BTRIM(CASE
+                    WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+                    ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+                 END), '[[:space:]]', '', 'g'))
+               = UPPER(REGEXP_REPLACE(BTRIM(e.codigo), '[[:space:]]', '', 'g'))
+             AND i.tipo_inventario IN ('legado', 'equipo_arka')
+             AND i.estado_aprobacion <> 'rechazado'
+            WHERE e.inventario_id IS NULL
+            GROUP BY i.id
+            HAVING COUNT(*) > 1
+        ) THEN
+            RAISE EXCEPTION
+                'No se puede normalizar equipo: un registro de inventario coincide con varios equipos.';
+        END IF;
+
+        WITH matches AS (
+            SELECT e.id AS equipo_id, MIN(i.id) AS inventario_id
+            FROM equipo e
+            JOIN inventario i
+              ON UPPER(REGEXP_REPLACE(BTRIM(CASE
+                    WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+                    ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+                 END), '[[:space:]]', '', 'g'))
+               = UPPER(REGEXP_REPLACE(BTRIM(e.codigo), '[[:space:]]', '', 'g'))
+             AND i.tipo_inventario IN ('legado', 'equipo_arka')
+             AND i.estado_aprobacion <> 'rechazado'
+            WHERE e.inventario_id IS NULL
+            GROUP BY e.id
+            HAVING COUNT(*) = 1
+        )
+        UPDATE equipo e
+        SET inventario_id = matches.inventario_id
+        FROM matches
+        WHERE e.id = matches.equipo_id;
+
+        UPDATE inventario i
+        SET espacio_fisico = COALESCE(i.espacio_fisico, e.ubicacion),
+            laboratorio_ual_id = COALESCE(i.laboratorio_ual_id, laboratorio.laboratorio_ual_id),
+            activo = i.activo AND e.activo,
+            atributos = (
+                CASE
+                    WHEN i.tipo_inventario = 'equipo_arka'
+                    THEN COALESCE(i.atributos, '{}'::jsonb) - 'codigoEquipo'
+                    ELSE COALESCE(i.atributos, '{}'::jsonb)
+                END
+            )
+            || jsonb_strip_nulls(jsonb_build_object(
+                'codigoEquipo',
+                    CASE
+                        WHEN i.tipo_inventario <> 'equipo_arka'
+                        THEN COALESCE(i.atributos->'codigoEquipo', to_jsonb(e.codigo))
+                    END,
+                'descripcionEquipo',
+                    COALESCE(i.atributos->'descripcionEquipo', to_jsonb(e.descripcion)),
+                'especificaciones',
+                    COALESCE(
+                        i.atributos->'especificaciones',
+                        NULLIF(COALESCE(e.especificaciones, '{}'::jsonb)
+                            - ARRAY['marca', 'modelo', 'proveedor', 'observaciones'], '{}'::jsonb)
+                    ),
+                'categoria', COALESCE(i.atributos->'categoria', to_jsonb(e.categoria)),
+                'laboratorioLegacy',
+                    COALESCE(i.atributos->'laboratorioLegacy', to_jsonb(e.laboratorio)),
+                'facultadLegacy',
+                    COALESCE(i.atributos->'facultadLegacy', to_jsonb(e.facultad)),
+                'area_conocimiento',
+                    COALESCE(i.atributos->'area_conocimiento', to_jsonb(e.area_conocimiento)),
+                'marca', COALESCE(i.atributos->'marca', e.especificaciones->'marca'),
+                'modelo', COALESCE(i.atributos->'modelo', e.especificaciones->'modelo'),
+                'proveedor', COALESCE(i.atributos->'proveedor', e.especificaciones->'proveedor'),
+                'observaciones',
+                    COALESCE(i.atributos->'observaciones', e.especificaciones->'observaciones')
+            ))
+        FROM equipo e
+        LEFT JOIN LATERAL (
+            SELECT MIN(u.ual_id) AS laboratorio_ual_id
+            FROM ual u
+            WHERE UPPER(BTRIM(u.nombre)) = UPPER(BTRIM(e.laboratorio))
+            HAVING COUNT(*) = 1
+        ) laboratorio ON TRUE
+        WHERE e.inventario_id = i.id;
+
+        WITH legacy_inventory AS (
+            INSERT INTO inventario (
+                serie,
+                placa,
+                nombre_bien,
+                fecha_registro,
+                dependencia,
+                espacio_fisico,
+                disponible_prestamo,
+                activo,
+                fecha_creacion,
+                fecha_modificacion,
+                tipo_inventario,
+                laboratorio_ual_id,
+                estado_aprobacion,
+                modo_control,
+                atributos
+            )
+            SELECT
+                NULL,
+                NULL,
+                e.nombre,
+                COALESCE(e.fecha_creacion::date, CURRENT_DATE),
+                NULL,
+                e.ubicacion,
+                e.estado IN ('disponible', 'prestado'),
+                e.activo,
+                COALESCE(e.fecha_creacion, CURRENT_TIMESTAMP),
+                COALESCE(e.fecha_modificacion, e.fecha_creacion, CURRENT_TIMESTAMP),
+                'legado',
+                laboratorio.laboratorio_ual_id,
+                'aprobado',
+                'individual',
+                jsonb_strip_nulls(jsonb_build_object(
+                    'codigoEquipo', e.codigo,
+                    'descripcionEquipo', e.descripcion,
+                    'especificaciones',
+                        NULLIF(COALESCE(e.especificaciones, '{}'::jsonb)
+                            - ARRAY['marca', 'modelo', 'proveedor', 'observaciones'], '{}'::jsonb),
+                    'categoria', e.categoria,
+                    'laboratorioLegacy', e.laboratorio,
+                    'facultadLegacy', e.facultad,
+                    'area_conocimiento', e.area_conocimiento,
+                    'marca', e.especificaciones->'marca',
+                    'modelo', e.especificaciones->'modelo',
+                    'proveedor', e.especificaciones->'proveedor',
+                    'observaciones', e.especificaciones->'observaciones'
+                ))
+            FROM equipo e
+            LEFT JOIN LATERAL (
+                SELECT MIN(u.ual_id) AS laboratorio_ual_id
+                FROM ual u
+                WHERE UPPER(BTRIM(u.nombre)) = UPPER(BTRIM(e.laboratorio))
+                HAVING COUNT(*) = 1
+            ) laboratorio ON TRUE
+            WHERE e.inventario_id IS NULL
+            RETURNING id, atributos->>'codigoEquipo' AS codigo_equipo
+        )
+        UPDATE equipo e
+        SET inventario_id = legacy_inventory.id
+        FROM legacy_inventory
+        WHERE e.codigo = legacy_inventory.codigo_equipo;
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM equipo WHERE inventario_id IS NULL) THEN
+        RAISE EXCEPTION
+            'No se puede normalizar equipo: hay extensiones operativas sin registro de inventario.';
+    END IF;
+END
+$$;
+
+ALTER TABLE equipo
+    ALTER COLUMN inventario_id SET NOT NULL,
+    DROP COLUMN IF EXISTS codigo,
+    DROP COLUMN IF EXISTS nombre,
+    DROP COLUMN IF EXISTS descripcion,
+    DROP COLUMN IF EXISTS especificaciones,
+    DROP COLUMN IF EXISTS categoria,
+    DROP COLUMN IF EXISTS laboratorio,
+    DROP COLUMN IF EXISTS facultad,
+    DROP COLUMN IF EXISTS area_conocimiento,
+    DROP COLUMN IF EXISTS ubicacion,
+    DROP COLUMN IF EXISTS activo;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_equipo_inventario_id
-    ON equipo(inventario_id)
-    WHERE inventario_id IS NOT NULL;
+    ON equipo(inventario_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventario_codigo_equipo_activo
+    ON inventario ((
+        CASE
+            WHEN tipo_inventario = 'equipo_arka' THEN placa
+            ELSE COALESCE(NULLIF(atributos->>'codigoEquipo', ''), placa)
+        END
+    ))
+    WHERE tipo_inventario IN ('legado', 'equipo_arka')
+      AND estado_aprobacion <> 'rechazado'
+      AND activo = TRUE
+      AND CASE
+            WHEN tipo_inventario = 'equipo_arka' THEN placa
+            ELSE COALESCE(NULLIF(atributos->>'codigoEquipo', ''), placa)
+          END IS NOT NULL;
+
+CREATE OR REPLACE VIEW equipo_catalogo AS
+SELECT
+    e.id,
+    CASE
+        WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+        ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+    END AS codigo,
+    i.nombre_bien AS nombre,
+    COALESCE(
+        NULLIF(i.atributos->>'descripcionEquipo', ''),
+        NULLIF(BTRIM(CONCAT_WS(
+            ' ',
+            NULLIF(i.atributos->>'marca', ''),
+            NULLIF(i.atributos->>'modelo', '')
+        )), '')
+    ) AS descripcion,
+    COALESCE(i.atributos->'especificaciones', '{}'::jsonb)
+        || jsonb_strip_nulls(jsonb_build_object(
+            'marca', i.atributos->'marca',
+            'modelo', i.atributos->'modelo',
+            'proveedor', i.atributos->'proveedor',
+            'observaciones', i.atributos->'observaciones'
+        )) AS especificaciones,
+    COALESCE(
+        i.atributos->>'categoria',
+        CASE WHEN i.tipo_inventario = 'equipo_arka' THEN 'Equipo oficial ARKA' ELSE 'Inventario' END
+    ) AS categoria,
+    COALESCE(u.nombre, i.atributos->>'laboratorioLegacy') AS laboratorio,
+    COALESCE(df.nombre, i.atributos->>'facultadLegacy') AS facultad,
+    i.atributos->>'area_conocimiento' AS area_conocimiento,
+    e.estado,
+    i.espacio_fisico AS ubicacion,
+    e.ubicacion_prestamo,
+    i.activo,
+    i.fecha_creacion,
+    GREATEST(i.fecha_modificacion, e.fecha_modificacion) AS fecha_modificacion,
+    e.inventario_id
+FROM equipo e
+JOIN inventario i ON i.id = e.inventario_id
+LEFT JOIN ual u ON u.ual_id = i.laboratorio_ual_id
+LEFT JOIN dependencia_facultad df ON df.dependencia_facultad_id = u.facultad_id;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_inventario_equipo_atributos_longitudes'
+          AND conrelid = 'milab.inventario'::regclass
+    ) THEN
+        ALTER TABLE inventario
+            ADD CONSTRAINT ck_inventario_equipo_atributos_longitudes
+            CHECK (
+                tipo_inventario <> 'legado'
+                OR (
+                    CHAR_LENGTH(COALESCE(atributos->>'codigoEquipo', '')) <= 50
+                    AND CHAR_LENGTH(COALESCE(atributos->>'categoria', '')) <= 100
+                    AND CHAR_LENGTH(COALESCE(atributos->>'area_conocimiento', '')) <= 100
+                    AND CHAR_LENGTH(COALESCE(atributos->>'laboratorioLegacy', '')) <= 255
+                    AND CHAR_LENGTH(COALESCE(atributos->>'facultadLegacy', '')) <= 255
+                )
+            ) NOT VALID;
+    END IF;
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_inventario_laboratorio_estado
     ON inventario(laboratorio_ual_id, tipo_inventario, estado_aprobacion);
@@ -172,6 +548,10 @@ CREATE INDEX IF NOT EXISTS idx_inventario_auditoria_laboratorio_fecha
 COMMENT ON TABLE inventario_auditoria IS
     'Auditoría detallada de cargas, cambios y aprobaciones del módulo de inventarios.';
 COMMENT ON COLUMN equipo.inventario_id IS
-    'Vínculo opcional 1:1 con el registro maestro de inventario; conserva el ID técnico de equipo para los flujos existentes.';
+    'Vínculo obligatorio 1:1 con inventario; equipo conserva únicamente identidad y estado operativo.';
+COMMENT ON VIEW equipo_catalogo IS
+    'Proyección de compatibilidad de equipos; los datos descriptivos provienen exclusivamente de inventario.';
+COMMENT ON COLUMN inventario_identificador.etiqueta IS
+    'Encabezado de Excel asociado a un identificador de nomenclatura adicional, cuando aplica.';
 
 COMMIT;

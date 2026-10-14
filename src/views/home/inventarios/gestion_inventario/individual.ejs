@@ -1,0 +1,197 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Crear registro individual</h1>
+    <p class="app-page-subtitle"><%= inventoryLabel %> — <%= laboratoryName %></p>
+  </section>
+
+  <% if (errorMessage) { %>
+  <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-form-panel text-light">
+    <div class="card-body">
+      <p>
+        Este registro quedará aprobado y aparecerá en el inventario del laboratorio. Los
+        identificadores deben ser únicos.
+      </p>
+      <form action="/milab/inventarios/individual" method="post" class="row g-3">
+        <%- include('../../../partials/csrf_field') %>
+        <input type="hidden" name="ual_id" value="<%= ualId %>" />
+        <input type="hidden" name="tipo_inventario" value="<%= inventoryType %>" />
+
+        <div class="col-12">
+          <label for="descripcion" class="form-label"
+            >Descripción <span aria-hidden="true">*</span></label
+          >
+          <input
+            id="descripcion"
+            name="descripcion"
+            class="form-control"
+            maxlength="255"
+            required
+          />
+        </div>
+
+        <% if (inventoryType === 'equipo_arka') { %>
+        <div class="col-md-6">
+          <label for="placa" class="form-label"
+            >Placa oficial ARKA <span aria-hidden="true">*</span></label
+          >
+          <input id="placa" name="placa" class="form-control" maxlength="50" required />
+        </div>
+        <div class="col-md-6">
+          <label for="serie" class="form-label">Serial</label>
+          <input id="serie" name="serie" class="form-control" maxlength="100" />
+        </div>
+        <% } else { %>
+        <div class="col-md-6">
+          <label for="serie" class="form-label">Serial (opcional)</label>
+          <input id="serie" name="serie" class="form-control" maxlength="100" />
+        </div>
+        <% } %>
+        <div class="col-md-4">
+          <label for="marca" class="form-label">Marca</label>
+          <input id="marca" name="marca" class="form-control" maxlength="255" />
+        </div>
+        <div class="col-md-4">
+          <label for="modelo" class="form-label">Modelo</label>
+          <input id="modelo" name="modelo" class="form-control" maxlength="255" />
+        </div>
+        <div class="col-md-4">
+          <label for="proveedor" class="form-label">Proveedor</label>
+          <input id="proveedor" name="proveedor" class="form-control" maxlength="255" />
+        </div>
+        <% if (inventoryType === 'reactivo') { %>
+        <div class="col-12">
+          <label for="referencia" class="form-label"
+            >Referencia <span aria-hidden="true">*</span></label
+          >
+          <input id="referencia" name="referencia" class="form-control" maxlength="255" required />
+        </div>
+        <fieldset class="col-12">
+          <legend class="h6">Existencias por ubicación y grado</legend>
+          <div class="row g-3">
+            <% [ ['stock_gt', 'unidad_stock_gt', 'Stock G.T'], ['stock_ra', 'unidad_stock_ra',
+            'Stock R.A'], ['circulacion_gt', 'unidad_circulacion_gt', 'Circulación G.T'],
+            ['circulacion_ra', 'unidad_circulacion_ra', 'Circulación R.A'],
+            ].forEach(function(balance) { %>
+            <div class="col-md-6">
+              <label for="<%= balance[0] %>" class="form-label"><%= balance[2] %></label>
+              <div class="input-group">
+                <input
+                  id="<%= balance[0] %>"
+                  name="<%= balance[0] %>"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  class="form-control"
+                />
+                <input
+                  name="<%= balance[1] %>"
+                  class="form-control"
+                  maxlength="50"
+                  aria-label="Unidad de <%= balance[2] %>"
+                  placeholder="Unidad"
+                />
+              </div>
+            </div>
+            <% }) %>
+          </div>
+        </fieldset>
+        <% } else if (inventoryType === 'complementario') { %>
+        <div class="col-md-6">
+          <label for="cantidad" class="form-label">Cantidad</label>
+          <input
+            id="cantidad"
+            name="cantidad"
+            type="number"
+            min="0"
+            step="0.001"
+            class="form-control"
+          />
+        </div>
+        <div class="col-md-6">
+          <label for="unidad" class="form-label">Unidad</label>
+          <input
+            id="unidad"
+            name="unidad"
+            class="form-control"
+            maxlength="50"
+            placeholder="unidad, caja, metro..."
+          />
+        </div>
+        <% } %>
+
+        <fieldset class="col-12">
+          <legend class="h6">Otros identificadores (opcionales)</legend>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label for="codigo_interno" class="form-label">Código interno</label>
+              <input
+                id="codigo_interno"
+                name="codigo_interno"
+                class="form-control"
+                maxlength="255"
+              />
+            </div>
+            <div class="col-md-4">
+              <label for="identificador_id" class="form-label">Identificador ID</label>
+              <input
+                id="identificador_id"
+                name="identificador_id"
+                class="form-control"
+                maxlength="255"
+              />
+            </div>
+            <div class="col-md-4">
+              <label for="codigo_barras" class="form-label">Código de barras</label>
+              <input id="codigo_barras" name="codigo_barras" class="form-control" maxlength="255" />
+            </div>
+            <div class="col-md-4">
+              <label for="qr" class="form-label">Código QR</label>
+              <input id="qr" name="qr" class="form-control" maxlength="255" />
+            </div>
+            <div class="col-md-4">
+              <label for="placa_local" class="form-label">Placa local</label>
+              <input id="placa_local" name="placa_local" class="form-control" maxlength="255" />
+            </div>
+            <div class="col-md-4">
+              <label for="etiquetado" class="form-label">Etiquetado</label>
+              <input id="etiquetado" name="etiquetado" class="form-control" maxlength="255" />
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="col-md-6">
+          <label for="espacio_fisico" class="form-label">Ubicación en el laboratorio</label>
+          <input id="espacio_fisico" name="espacio_fisico" class="form-control" maxlength="100" />
+        </div>
+        <div class="col-12">
+          <label for="observaciones" class="form-label">Observaciones</label>
+          <textarea
+            id="observaciones"
+            name="observaciones"
+            class="form-control"
+            rows="3"
+            maxlength="2000"
+          ></textarea>
+        </div>
+
+        <div class="col-12 d-flex justify-content-between flex-wrap gap-2">
+          <a
+            class="btn btn-outline-secondary"
+            href="/milab/inventarios/gestion_inventario?ual_id=<%= ualId %>&panel=<%= inventoryType %>"
+            >Cancelar y volver</a
+          >
+          <button class="btn btn-perso" type="submit" data-submit-lock="true">
+            Crear registro aprobado
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<%- include('../../../partials/footer'); -%>
