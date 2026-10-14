@@ -55,6 +55,7 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 - Si no hay perfil académico activo ni roles habilitados en MILab, el registro explica que no puede usar MILab y muestra los estados reportados por OATI (estudiante o docente), incluyendo prueba académica, inactividad y egreso. Si OATI no devuelve registros, se indica que no reporta un perfil activo, sin inventar un estado.
 - El mensaje remite a los laboratorios del proyecto académico para que un laboratorista genere el paz y salvo a través de MILab. Para solicitar acceso como coordinador o laboratorista, indica escribir a `milab@udistrital.edu.co` detallando la solicitud.
 - Las consultas OATI del registro comparten un límite total de 20 segundos, incluyendo token y reintentos. Si OATI falla, se muestra un error recuperable sin cerrar la sesión de identificación. Esta regla no modifica el flujo de consulta de paz y salvo.
+- Los errores de las consultas de roles y de la finalización del registro se propagan al manejador de errores de Express: se registran en el servidor y se responde con una página de error, en lugar de dejar la solicitud pendiente.
 
 ## Grillas de facultades y UAL
 

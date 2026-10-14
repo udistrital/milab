@@ -9,6 +9,7 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const studentRecordPath = path.resolve(__dirname, '../../../src/libs/oati-student-record.js');
+const { createApplicationErrorHandler } = require('../../../src/routes/middlewares/error-handler');
 
 function buildApp(route, sessionData) {
   const app = express();
@@ -42,6 +43,7 @@ function buildApp(route, sessionData) {
     next();
   });
   app.use('/', route);
+  app.use(createApplicationErrorHandler({ error() {} }));
 
   return app;
 }
@@ -464,6 +466,46 @@ test('registro sin resultados informa ausencia de perfil sin inventar un estado'
   assert.match(response.body.locals.message2, /OATI no reporta un perfil académico activo/);
   assert.equal(response.body.locals.registrationDenied, true);
 });
+
+for (const failedQuery of [
+  'FROM laboratorista',
+  'FROM coordinador',
+  'FROM monitor',
+  'JOIN usuario_rol ur',
+]) {
+  test(`registro responde con error si PostgreSQL falla en ${failedQuery}`, async () => {
+    const stubs = buildRegistrationStubs({
+      records: [record('20240000001', 'B', '673')],
+    });
+    const originalQuery = stubs.options.poolQueryImpl;
+    stubs.options.poolQueryImpl = async (sql, params) => {
+      if (sql.includes(failedQuery)) {
+        const error = new Error('Database lookup failed');
+        error.code = '42703';
+        throw error;
+      }
+      return originalQuery(sql, params);
+    };
+    const loaded = loadRoute(stubs.options);
+    try {
+      const response = await request(
+        buildApp(loaded.route, { microsoftProfile: { correo: CORREO, nombre: NOMBRE } })
+      )
+        .post('/identify')
+        .type('form')
+        .send({ documento: DOC })
+        .timeout({ response: 1000, deadline: 2000 });
+
+      assert.equal(response.status, 500);
+      assert.equal(response.body.view, 'home/message_error');
+      assert.match(response.body.locals.message, /No pudimos completar tu solicitud/);
+      assert.equal(JSON.stringify(response.body).includes('Database lookup failed'), false);
+      assert.equal(roleWrites(stubs.executed).length, 0);
+    } finally {
+      loaded.restore();
+    }
+  });
+}
 
 test('mensaje de registro muestra instrucciones y escapa los estados de OATI', () => {
   const fs = require('node:fs');
