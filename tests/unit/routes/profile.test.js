@@ -280,7 +280,7 @@ const NOMBRE = 'ESTUDIANTE PRUEBA';
 function buildRegistrationStubs({
   records = [],
   docentes = [],
-  estadoNames = { A: 'ACTIVO', E: 'EGRESADO' },
+  estadoNames = { A: 'ACTIVO', B: 'PRUEBA AC Y ACTIVO', E: 'EGRESADO', I: 'INACTIVO' },
   milabTables = {},
   assignedRoles = [],
   assignedRolesCorreo = `no-email+${DOC}@placeholder.milab.local`,
@@ -401,7 +401,8 @@ test('registro descarta un registro con estado A que OATI resuelve como EGRESADO
   const response = await postIdentify(stubs);
 
   assert.equal(response.body.view, 'home/message_error');
-  assert.match(response.body.locals.message2, /no esta asociado para ingresar/i);
+  assert.match(response.body.locals.message2, /No puedes usar MILab/);
+  assert.match(response.body.locals.message2, /EGRESADO \(A\)/);
 });
 
 test('registro niega acceso a egresado sin docencia activa ni roles en MILab', async () => {
@@ -414,6 +415,171 @@ test('registro niega acceso a egresado sin docencia activa ni roles en MILab', a
 
   assert.equal(response.body.view, 'home/message_error');
   assert.equal(roleWrites(stubs.executed).length, 0);
+});
+
+test('registro explica el bloqueo por prueba academica y remite al laboratorio', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'B', '673')],
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.view, 'home/message_error');
+  assert.match(response.body.locals.message2, /PRUEBA AC Y ACTIVO \(B\)/);
+  assert.match(response.body.locals.message2, /No puedes usar MILab/);
+  assert.equal(response.body.locals.registrationDenied, true);
+  assert.equal(roleWrites(stubs.executed).length, 0);
+});
+
+for (const [state, label] of [
+  ['E', 'EGRESADO'],
+  ['I', 'INACTIVO'],
+]) {
+  test(`registro muestra el estado del estudiante ${label}`, async () => {
+    const stubs = buildRegistrationStubs({ records: [record('20240000001', state, '673')] });
+    const response = await postIdentify(stubs);
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message2, new RegExp(`Estudiante: ${label} \\(${state}\\)`));
+    assert.equal(response.body.locals.registrationDenied, true);
+    assert.equal(roleWrites(stubs.executed).length, 0);
+  });
+}
+
+test('registro muestra los estados de estudiante y docente no activos', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'E', '673')],
+    docentes: [{ nombre: NOMBRE, estado_docente: 'INACTIVO' }],
+  });
+  const response = await postIdentify(stubs);
+
+  assert.match(response.body.locals.message2, /Estudiante: EGRESADO \(E\)/);
+  assert.match(response.body.locals.message2, /Docente: INACTIVO/);
+  assert.equal(roleWrites(stubs.executed).length, 0);
+});
+
+test('registro sin resultados informa ausencia de perfil sin inventar un estado', async () => {
+  const response = await postIdentify(buildRegistrationStubs());
+  assert.match(response.body.locals.message2, /OATI no reporta un perfil académico activo/);
+  assert.equal(response.body.locals.registrationDenied, true);
+});
+
+test('mensaje de registro muestra instrucciones y escapa los estados de OATI', () => {
+  const fs = require('node:fs');
+  const ejs = require('ejs');
+  const template = fs.readFileSync(
+    path.resolve(__dirname, '../../../src/views/home/message_error.ejs'),
+    'utf8'
+  );
+  const html = ejs.render(
+    template,
+    {
+      message: 'Acceso denegado',
+      message2: 'Estudiante: <script>alert(1)</script>',
+      registrationDenied: true,
+      limit: 'loginOnly',
+      cspNonce: 'test',
+    },
+    { includer: () => ({ template: ' ' }) }
+  );
+
+  assert.match(html, /laboratorios de tu proyecto académico/);
+  assert.match(html, /un laboratorista lo genere a través de MILab/);
+  assert.match(html, /coordinador o laboratorista/);
+  assert.match(html, /mailto:milab@udistrital\.edu\.co/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.equal(html.includes('<script>alert(1)</script>'), false);
+});
+
+test('registro conserva el acceso de un programa activo aunque otro este en prueba', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'B', '673'), record('20240000002', 'A', '383')],
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.body.view, 'home/profile');
+  assert.equal(response.body.locals.codigo, '20240000002');
+});
+
+test('registro en prueba conserva el acceso con docencia activa', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'B', '673')],
+    docentes: [{ nombre: NOMBRE, estado_docente: 'A' }],
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.body.view, 'home/profile');
+  assert.equal(response.body.locals.tipo_usuario, 'docente');
+});
+
+for (const failedService of ['datos_basicos_activos_cedula', 'consultar_estado_docente']) {
+  test(`registro muestra error recuperable si falla ${failedService}`, async () => {
+    const calls = [];
+    const session = { microsoftProfile: { correo: CORREO, nombre: NOMBRE } };
+    const loaded = loadRoute({
+      requestOatiImpl: async (servicePath, { signal }) => {
+        calls.push(signal);
+        assert.equal(signal instanceof AbortSignal, true);
+        if (servicePath.includes(failedService)) {
+          const error = new Error('OATI timeout');
+          error.code = 'ECONNABORTED';
+          throw error;
+        }
+        return {};
+      },
+    });
+
+    try {
+      const response = await request(buildApp(loaded.route, session))
+        .post('/identify')
+        .type('form')
+        .send({ documento: DOC });
+
+      assert.equal(response.status, 503);
+      assert.equal(response.body.view, 'home/profile_identify');
+      assert.match(response.body.locals.error, /No fue posible completar la consulta en OATI/);
+      assert.equal(session.microsoftProfile.correo, CORREO);
+      assert.equal(
+        calls.every((signal) => signal === calls[0]),
+        true
+      );
+    } finally {
+      loaded.restore();
+    }
+  });
+}
+
+test('registro cancela una consulta pendiente con un presupuesto total de 20 segundos', async (t) => {
+  const createTimeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', (milliseconds) => {
+    assert.equal(milliseconds, 20000);
+    return createTimeout(30);
+  });
+  const loaded = loadRoute({
+    requestOatiImpl: (servicePath, { signal }) =>
+      new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }),
+  });
+
+  try {
+    const started = Date.now();
+    const response = await request(
+      buildApp(loaded.route, { microsoftProfile: { correo: CORREO, nombre: NOMBRE } })
+    )
+      .post('/identify')
+      .type('form')
+      .send({ documento: DOC });
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.view, 'home/profile_identify');
+    assert.ok(Date.now() - started < 1000, 'the pending request must finish after cancellation');
+  } finally {
+    loaded.restore();
+  }
 });
 
 test('registro de egresado con docencia activa se presenta como docente', async () => {
