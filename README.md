@@ -276,8 +276,9 @@ La inicialización de base para recreación completa del entorno de pruebas usa 
 6. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
 7. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
 8. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
+9. [sql-scripts/db_seed_pruebas_ofuscado.sql](sql-scripts/db_seed_pruebas_ofuscado.sql)
 
-La recreación en CI aplica los ocho scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los nueve scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. El seed ofuscado queda al final y se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 
@@ -289,7 +290,7 @@ Puntos operativos aplicados en el flujo actual:
 
 1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
 2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
-3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 8 scripts SQL en secuencia y luego se reconstruye `milabud`.
+3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 9 scripts SQL en secuencia (el seed ofuscado al final) y luego se reconstruye `milabud`.
 4. La validación post-seed comprueba el menú principal de préstamos, las opciones de inventarios y los permisos de solo lectura del coordinador general.
 
 Script de apoyo:
