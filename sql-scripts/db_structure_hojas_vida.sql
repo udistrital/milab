@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     codigo_inventario       VARCHAR(100),
     codigo_interno          VARCHAR(100),
     fecha_adquisicion       DATE,
+    anio                    VARCHAR(10),
     numero_factura_compra   VARCHAR(100),
     frecuencia_mantenimiento VARCHAR(50),
     tipo_uso                VARCHAR(50),
@@ -27,6 +28,15 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     tiempo_garantia         VARCHAR(50),
     tiempo_vida_util        VARCHAR(50),
     potencia_electrica      VARCHAR(50),
+    cantidad                INT,
+    responsable             VARCHAR(150),
+    supervisor              VARCHAR(150),
+    funcion                 TEXT,
+    descripcion_fisica      TEXT,
+    especificaciones_tecnicas TEXT,
+    instrucciones_uso       TEXT,
+    condiciones_seguridad   TEXT,
+    protocolo_limpieza      TEXT,
     cuenta_manual           TEXT,
     accesorios              TEXT,
     estado                  VARCHAR(30),
@@ -37,6 +47,9 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     usuario_modificacion    VARCHAR(50),
     CONSTRAINT pk_hoja_vida PRIMARY KEY (id),
     CONSTRAINT uq_equipo_id_hoja_vida UNIQUE (equipo_id),
+    CONSTRAINT ck_estado_hoja_vida CHECK (
+        estado IN ('PENDIENTE_CONFIRMACION','CONFIRMADA')
+    ),
     CONSTRAINT fk_hoja_vida_equipo FOREIGN KEY (equipo_id)
         REFERENCES equipo(id) ON DELETE RESTRICT
 );
@@ -134,6 +147,9 @@ CREATE TABLE IF NOT EXISTS hoja_vida_config_campos (
 );
 CREATE INDEX IF NOT EXISTS idx_hoja_vida_equipo_id
     ON hoja_vida (equipo_id);
+
+CREATE INDEX IF NOT EXISTS idx_hoja_vida_estado
+    ON hoja_vida (estado);
 
 CREATE INDEX IF NOT EXISTS idx_mantenimiento_hoja_vida_id
     ON mantenimiento (hoja_vida_id);

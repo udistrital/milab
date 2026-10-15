@@ -7906,6 +7906,70 @@ router.get('/hojas-vida', requireInventarioAuthorized, function (req, res) {
   });
 });
 
+router.get(
+  '/hojas-vida/:equipoId/cargar',
+  requireInventarioAuthorized,
+  async function cargarHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const equipoResult = await pool.query(
+        `
+          SELECT e.id, e.codigo, e.nombre, e.estado, e.ubicacion, e.facultad, e.laboratorio,
+                 inv.placa AS codigo_inventario, inv.serie AS numero_serie, inv.nombre_bien
+          FROM equipo e
+          LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
+          WHERE e.id = $1 AND e.activo = TRUE
+        `,
+        [equipoId]
+      );
+
+      if (equipoResult.rows.length === 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=El%20equipo%20no%20existe');
+      }
+
+      const equipo = equipoResult.rows[0];
+
+      const hvExistente = await pool.query(
+        `
+          SELECT id, estado
+          FROM hoja_vida
+          WHERE equipo_id = $1 AND activo = TRUE
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [equipoId]
+      );
+
+      if (hvExistente.rows.length > 0) {
+        const hv = hvExistente.rows[0];
+        const mensaje = encodeURIComponent(
+          hv.estado === 'PENDIENTE_CONFIRMACION'
+            ? 'El equipo ya tiene una hoja de vida pendiente de confirmación.'
+            : 'El equipo ya tiene una hoja de vida registrada.'
+        );
+        return res.redirect(`/milab/prestamos/hojas-vida?error=${mensaje}`);
+      }
+
+      return res.render('home/prestamos/hojas-vida/cargar', {
+        equipo,
+        maxSizeMB: 10,
+        allowedFormats: '.xlsx, .xls, .pdf',
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de carga HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20vista'
+      );
+    }
+  }
+);
+
 router.get('/inventario/crear', requireInventarioAuthorized, function (req, res) {
   return res.render('home/prestamos/inventario/form', {
     item: {},
