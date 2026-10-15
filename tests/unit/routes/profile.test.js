@@ -374,7 +374,7 @@ async function postIdentify(stubs, session = {}) {
   }
 }
 
-test('registro solo ofrece registros de estudiante activos y descarta egresados', async () => {
+test('registro ofrece estudiantes habilitados y descarta egresados', async () => {
   const stubs = buildRegistrationStubs({
     records: [
       record('20242583011', 'A', '383'),
@@ -419,7 +419,7 @@ test('registro niega acceso a egresado sin docencia activa ni roles en MILab', a
   assert.equal(roleWrites(stubs.executed).length, 0);
 });
 
-test('registro explica el bloqueo por prueba academica y remite al laboratorio', async () => {
+test('registro permite el acceso a estudiantes en prueba academica', async () => {
   const stubs = buildRegistrationStubs({
     records: [record('20240000001', 'B', '673')],
   });
@@ -427,11 +427,32 @@ test('registro explica el bloqueo por prueba academica y remite al laboratorio',
   const response = await postIdentify(stubs);
 
   assert.equal(response.status, 200);
-  assert.equal(response.body.view, 'home/message_error');
-  assert.match(response.body.locals.message2, /PRUEBA AC Y ACTIVO \(B\)/);
-  assert.match(response.body.locals.message2, /No puedes usar MILab/);
-  assert.equal(response.body.locals.registrationDenied, true);
-  assert.equal(roleWrites(stubs.executed).length, 0);
+  assert.equal(response.body.view, 'home/profile');
+  assert.equal(response.body.locals.tipo_usuario, 'estudiante');
+  assert.equal(response.body.locals.codigo, '20240000001');
+  assert.equal(response.body.locals.estado, 'PRUEBA AC Y ACTIVO');
+  assert.equal(response.body.locals.profileLocked, true);
+});
+
+test('registro en prueba academica crea perfil estudiante y concede acceso', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'B', '673')],
+    usuarioRow: {
+      id: 25,
+      documento: DOC,
+      correo: `no-email+${DOC}@placeholder.milab.local`,
+    },
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/inicio');
+  assert.equal(roleWrites(stubs.executed).includes('estudiante'), true);
+  assert.equal(
+    stubs.executed.some(({ sql }) => sql.includes('INSERT INTO perfil_estudiante')),
+    true
+  );
 });
 
 for (const [state, label] of [
@@ -463,7 +484,7 @@ test('registro muestra los estados de estudiante y docente no activos', async ()
 
 test('registro sin resultados informa ausencia de perfil sin inventar un estado', async () => {
   const response = await postIdentify(buildRegistrationStubs());
-  assert.match(response.body.locals.message2, /OATI no reporta un perfil académico activo/);
+  assert.match(response.body.locals.message2, /OATI no reporta un perfil académico habilitado/);
   assert.equal(response.body.locals.registrationDenied, true);
 });
 
@@ -537,7 +558,7 @@ test('mensaje de registro muestra instrucciones y escapa los estados de OATI', (
   assert.equal(html.includes('<script>alert(1)</script>'), false);
 });
 
-test('registro conserva el acceso de un programa activo aunque otro este en prueba', async () => {
+test('registro ofrece programas activos y en prueba academica para elegir', async () => {
   const stubs = buildRegistrationStubs({
     records: [record('20240000001', 'B', '673'), record('20240000002', 'A', '383')],
   });
@@ -545,10 +566,13 @@ test('registro conserva el acceso de un programa activo aunque otro este en prue
   const response = await postIdentify(stubs);
 
   assert.equal(response.body.view, 'home/profile');
-  assert.equal(response.body.locals.codigo, '20240000002');
+  assert.deepEqual(
+    response.body.locals.opcionesCodigo.map((item) => item.codigo),
+    ['20240000001', '20240000002']
+  );
 });
 
-test('registro en prueba conserva el acceso con docencia activa', async () => {
+test('registro permite prueba academica aunque tambien tenga docencia activa', async () => {
   const stubs = buildRegistrationStubs({
     records: [record('20240000001', 'B', '673')],
     docentes: [{ nombre: NOMBRE, estado_docente: 'A' }],
@@ -557,7 +581,9 @@ test('registro en prueba conserva el acceso con docencia activa', async () => {
   const response = await postIdentify(stubs);
 
   assert.equal(response.body.view, 'home/profile');
-  assert.equal(response.body.locals.tipo_usuario, 'docente');
+  assert.equal(response.body.locals.tipo_usuario, 'estudiante');
+  assert.equal(response.body.locals.codigo, '20240000001');
+  assert.equal(response.body.locals.estado, 'PRUEBA AC Y ACTIVO');
 });
 
 for (const failedService of ['datos_basicos_activos_cedula', 'consultar_estado_docente']) {
@@ -702,7 +728,7 @@ const pendienteDosProgramas = {
   milabRoles: ['monitor'],
 };
 
-test('registro rechaza un código que no está entre los registros activos validados', async () => {
+test('registro rechaza un código que no está entre los registros habilitados validados', async () => {
   const stubs = buildRegistrationStubs();
 
   const response = await postRegistro(stubs, pendienteDosProgramas, {
