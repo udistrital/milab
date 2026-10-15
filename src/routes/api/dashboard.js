@@ -2636,13 +2636,11 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
         aprobados: totals.aprobados + Number(row.aprobados || 0),
         activos: totals.activos + Number(row.activos || 0),
         inactivos: totals.inactivos + Number(row.inactivos || 0),
-        disponiblesPrestamo:
-          totals.disponiblesPrestamo + Number(row.disponibles_prestamo || 0),
+        disponiblesPrestamo: totals.disponiblesPrestamo + Number(row.disponibles_prestamo || 0),
         prestados: totals.prestados + Number(row.prestados || 0),
         enMantenimiento: totals.enMantenimiento + Number(row.en_mantenimiento || 0),
         fueraServicio: totals.fueraServicio + Number(row.fuera_servicio || 0),
-        descripciones:
-          totals.descripciones + Number(row.descripciones_agrupadas || 0),
+        descripciones: totals.descripciones + Number(row.descripciones_agrupadas || 0),
       }),
       {
         aprobados: 0,

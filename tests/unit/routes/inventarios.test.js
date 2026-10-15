@@ -265,7 +265,7 @@ test('inventory preview cancellation unlocks the type and preserves its audit tr
     assert.match(redirectUrl.searchParams.get('success'), /previsualización fue cancelada/i);
     assert.ok(
       clientHarness.calls.some(({ sql, params }) => {
-        return         sql.includes('SET estado = $2') && params[0] === 18 && params[1] === 'cancelada';
+        return sql.includes('SET estado = $2') && params[0] === 18 && params[1] === 'cancelada';
       })
     );
     assert.ok(
@@ -999,20 +999,29 @@ test('coordinator return requires a comment and preserves the load rows for corr
       new URL(response.headers.location, 'http://localhost').searchParams.get('success'),
       /devuelta al laboratorista/i
     );
-    assert.ok(clientHarness.calls.some(({ sql, params }) =>
-      sql.includes('UPDATE inventario_carga') && params.includes('devuelta')
-    ));
-    assert.ok(clientHarness.calls.some(({ sql, params }) =>
-      sql.includes('INSERT INTO inventario_estado_laboratorio') && params.includes('devuelta')
-    ));
-    assert.ok(clientHarness.calls.some(({ sql, params }) =>
-      sql.includes('INSERT INTO inventario_auditoria') &&
-      params.includes('carga_devuelta') &&
-      JSON.stringify(params).includes('Corrige la descripción')
-    ));
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql, params }) => sql.includes('UPDATE inventario_carga') && params.includes('devuelta')
+      )
+    );
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql, params }) =>
+          sql.includes('INSERT INTO inventario_estado_laboratorio') && params.includes('devuelta')
+      )
+    );
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql, params }) =>
+          sql.includes('INSERT INTO inventario_auditoria') &&
+          params.includes('carga_devuelta') &&
+          JSON.stringify(params).includes('Corrige la descripción')
+      )
+    );
     assert.equal(
-      clientHarness.calls.some(({ sql }) =>
-        sql.includes('UPDATE inventario') && sql.includes("estado_aprobacion = 'rechazado'")
+      clientHarness.calls.some(
+        ({ sql }) =>
+          sql.includes('UPDATE inventario') && sql.includes("estado_aprobacion = 'rechazado'")
       ),
       false
     );
@@ -1085,10 +1094,15 @@ test('laboratorista replacement reuses the returned batch and replaces its store
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/inventarios/gestion_inventario/preview');
-    assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('DELETE FROM inventario_carga_fila')));
-    assert.ok(clientHarness.calls.some(({ sql }) =>
-      sql.includes("SET estado = 'previsualizada'") && sql.includes('UPDATE inventario_carga')
-    ));
+    assert.ok(
+      clientHarness.calls.some(({ sql }) => sql.includes('DELETE FROM inventario_carga_fila'))
+    );
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql }) =>
+          sql.includes("SET estado = 'previsualizada'") && sql.includes('UPDATE inventario_carga')
+      )
+    );
     const insertedRow = clientHarness.calls.find(({ sql }) =>
       sql.includes('INSERT INTO inventario_carga_fila')
     );
@@ -1183,9 +1197,7 @@ test('inventory deactivation blocks currently borrowed equipment', async () => {
   });
 
   try {
-    const response = await request(loaded.app)
-      .post('/registros/41/baja')
-      .send({ ual_id: '4' });
+    const response = await request(loaded.app).post('/registros/41/baja').send({ ual_id: '4' });
 
     assert.equal(response.status, 409);
     assert.match(response.body.locals.message2, /mientras está prestado/i);
@@ -1227,30 +1239,33 @@ test('assigned laboratorista can edit a record from an approved inventory', asyn
   });
 
   try {
-    const response = await request(loaded.app)
-      .post('/registros/41/editar')
-      .send({
-        ual_id: '4',
-        tipo_inventario: 'equipo_arka',
-        descripcion: 'Microscopio actualizado',
-        placa: 'ARKA-041',
-        serie: 'SER-041',
-        marca: 'Marca',
-      });
+    const response = await request(loaded.app).post('/registros/41/editar').send({
+      ual_id: '4',
+      tipo_inventario: 'equipo_arka',
+      descripcion: 'Microscopio actualizado',
+      placa: 'ARKA-041',
+      serie: 'SER-041',
+      marca: 'Marca',
+    });
 
     assert.equal(response.status, 302);
     assert.match(
       new URL(response.headers.location, 'http://localhost').searchParams.get('success'),
       /registro fue actualizado correctamente/
     );
-    assert.ok(clientHarness.calls.some(({ sql, params }) =>
-      sql.includes('UPDATE inventario') &&
-      sql.includes('nombre_bien = $4') &&
-      params.includes('Microscopio actualizado')
-    ));
-    assert.ok(clientHarness.calls.some(({ sql }) =>
-      sql.includes('UPDATE inventario_identificador SET activo = FALSE')
-    ));
+    assert.ok(
+      clientHarness.calls.some(
+        ({ sql, params }) =>
+          sql.includes('UPDATE inventario') &&
+          sql.includes('nombre_bien = $4') &&
+          params.includes('Microscopio actualizado')
+      )
+    );
+    assert.ok(
+      clientHarness.calls.some(({ sql }) =>
+        sql.includes('UPDATE inventario_identificador SET activo = FALSE')
+      )
+    );
     assert.ok(clientHarness.calls.some(({ sql }) => sql === 'COMMIT'));
   } finally {
     loaded.restore();

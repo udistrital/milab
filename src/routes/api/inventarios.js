@@ -1313,10 +1313,7 @@ router.post(
       if (!(await hasLaboratoryAccess(pool, req, ualId, { editorsOnly: true }))) {
         throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
       }
-      if (
-        !retryLoadId &&
-        (await getInventoryTypeLock(pool, ualId, inventoryType)).bloqueado
-      ) {
+      if (!retryLoadId && (await getInventoryTypeLock(pool, ualId, inventoryType)).bloqueado) {
         throw new InventoryWorkflowError(
           'Ya existe una carga pendiente para este inventario o el inventario está aprobado; no se permiten más cargas hasta que se resuelva.',
           409,
@@ -1338,13 +1335,12 @@ router.post(
       const successfulCount = rows.filter((row) => row.estado === 'exitosa').length;
       const failedCount = rows.length - successfulCount;
       const batch = await withTransaction(async (client) => {
-        let currentBatch = null;
         if (retryLoadId) {
           const retryResult = await client.query(
             'SELECT * FROM inventario_carga WHERE id = $1 FOR UPDATE',
             [retryLoadId]
           );
-          currentBatch = retryResult.rows[0];
+          const currentBatch = retryResult.rows[0];
           if (!currentBatch) throw new InventoryWorkflowError('La carga devuelta no existe.', 404);
           if (
             currentBatch.estado !== 'devuelta' ||
@@ -1592,7 +1588,10 @@ router.get('/exportar', requireInventoryAccess, async function (req, res, next) 
 
     const formatBalances = (item) =>
       (item.existencias || [])
-        .map((balance) => `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`)
+        .map(
+          (balance) =>
+            `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`
+        )
         .join('; ');
     const formatIdentifiers = (item) =>
       (item.identificadores || [])
@@ -2405,7 +2404,7 @@ router.post('/registros/:id/baja', requireInventoryAccess, async function (req, 
         [inventoryId]
       );
       await addInventoryAudit(client, req, {
-        inventarioId,
+        inventarioId: inventoryId,
         ualId,
         action: 'registro_aprobado_dado_de_baja',
         detail: { tipoInventario: currentItem.tipo_inventario },

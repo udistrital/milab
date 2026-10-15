@@ -1572,8 +1572,8 @@ test('inventory dashboard scopes coordinator queries to assigned faculties', asy
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard/inventarios');
     assert.deepEqual(response.body.locals.scopeChips, ['Facultad A', 'Facultad B']);
-    const scopedQueries = queries.filter(({ sql }) =>
-      sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')
+    const scopedQueries = queries.filter(
+      ({ sql }) => sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')
     );
     assert.equal(scopedQueries.length, 3);
     scopedQueries.forEach(({ sql, params }) => {
