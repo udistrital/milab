@@ -301,8 +301,8 @@ function toArray(value) {
   return value ? [value] : [];
 }
 
-function isActiveStudentRecord(record) {
-  return normalizeEstadoCodigo(record?.estado) === 'A';
+function isEligibleStudentRecord(record) {
+  return ['A', 'B'].includes(normalizeEstadoCodigo(record?.estado));
 }
 
 function isActiveTeacherRecord(record) {
@@ -312,8 +312,8 @@ function isActiveTeacherRecord(record) {
   return estado === 'A' || estado === 'ACTIVO';
 }
 
-// Solo registros de estudiante con estado A (activo) que no resuelvan a EGRESADO.
-async function lookupActiveStudentRecords(documento, signal) {
+// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso.
+async function lookupEligibleStudentRecords(documento, signal) {
   let studentData;
   try {
     studentData = await requestOati(
@@ -322,7 +322,7 @@ async function lookupActiveStudentRecords(documento, signal) {
     );
   } catch (error) {
     if (error.response?.status === 404) {
-      return { activeRecords: [], states: [] };
+      return { eligibleRecords: [], states: [] };
     }
     throw error;
   }
@@ -331,7 +331,7 @@ async function lookupActiveStudentRecords(documento, signal) {
   const states = [];
   const stateNames = new Map();
   const seenCodigos = new Set();
-  const activeRecords = [];
+  const eligibleRecords = [];
 
   for (const record of collection) {
     const codigo = (record?.codigo || '').toString().trim();
@@ -340,7 +340,7 @@ async function lookupActiveStudentRecords(documento, signal) {
     const stateCode = normalizeEstadoCodigo(record.estado);
     let estado = stateNames.get(stateCode);
     if (!estado) {
-      estado = isActiveStudentRecord(record) ? 'ACTIVO' : stateCode || 'NO INFORMADO';
+      estado = isEligibleStudentRecord(record) ? 'ACTIVO' : stateCode || 'NO INFORMADO';
       if (stateCode) {
         try {
           const estadoData = await requestOati(
@@ -357,7 +357,7 @@ async function lookupActiveStudentRecords(documento, signal) {
     }
     const stateLabel = `Estudiante: ${estado}${stateCode ? ` (${stateCode})` : ''}`;
     if (!states.includes(stateLabel)) states.push(stateLabel);
-    if (!isActiveStudentRecord(record) || normalizeEstadoCodigo(estado) === 'EGRESADO') continue;
+    if (!isEligibleStudentRecord(record) || normalizeEstadoCodigo(estado) === 'EGRESADO') continue;
 
     let carrera = '';
     try {
@@ -373,7 +373,7 @@ async function lookupActiveStudentRecords(documento, signal) {
     }
 
     seenCodigos.add(codigo);
-    activeRecords.push({
+    eligibleRecords.push({
       tipo_usuario: 'estudiante',
       documento,
       codigo,
@@ -384,7 +384,7 @@ async function lookupActiveStudentRecords(documento, signal) {
     });
   }
 
-  return { activeRecords, states };
+  return { eligibleRecords, states };
 }
 
 async function lookupTeacherByDocumento(documento, signal) {
@@ -883,8 +883,8 @@ async function identifyProfile(req, res) {
   let docente;
   let states;
   try {
-    const studentLookup = await lookupActiveStudentRecords(documento, signal);
-    estudiantes = studentLookup.activeRecords;
+    const studentLookup = await lookupEligibleStudentRecords(documento, signal);
+    estudiantes = studentLookup.eligibleRecords;
     const teacherLookup = await lookupTeacherByDocumento(documento, signal);
     docente = teacherLookup.docente;
     states = [...studentLookup.states, ...teacherLookup.states];
@@ -917,7 +917,7 @@ async function identifyProfile(req, res) {
       message2: `${
         states.length
           ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
-          : 'OATI no reporta un perfil académico activo.'
+          : 'OATI no reporta un perfil académico habilitado.'
       } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
       limit: 'loginOnly',
       registrationDenied: true,
@@ -928,7 +928,7 @@ async function identifyProfile(req, res) {
     return denyAccess(
       states.length
         ? `No puedes usar MILab porque tu estado en OATI no está habilitado para el acceso. ${states.join('; ')}.`
-        : 'No puedes usar MILab porque OATI no reporta un perfil académico activo y no tienes un rol habilitado en MILab.',
+        : 'No puedes usar MILab porque OATI no reporta un perfil académico habilitado y no tienes un rol habilitado en MILab.',
       true
     );
   }
@@ -1090,7 +1090,7 @@ router.post('/', async (req, res) => {
           codigo: '',
           estado: '',
           carrera: '',
-          error: 'Seleccione el código de estudiante activo con el que desea registrarse.',
+          error: 'Seleccione el código de estudiante habilitado con el que desea registrarse.',
         });
       }
 
