@@ -1003,7 +1003,11 @@
       }
 
       showOverlay(form.getAttribute('data-oati-loading-message'));
-      form.querySelectorAll('button[type="submit"]').forEach(function (button) {
+      const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+      if (submitButtons.includes(event.submitter) && !event.submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, event.submitter);
+      }
+      submitButtons.forEach(function (button) {
         button.disabled = true;
       });
     });
@@ -1031,6 +1035,9 @@
       const submitter =
         event.submitter && submitButtons.includes(event.submitter) ? event.submitter : null;
 
+      if (submitter && !submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, submitter);
+      }
       submitButtons.forEach(function (button) {
         button.disabled = true;
       });

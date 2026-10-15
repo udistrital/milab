@@ -889,6 +889,48 @@ test('coordinator can consult recent load reports but cannot confirm them as the
   }
 });
 
+test('approval resolution accepts both form-encoded decisions and rejects missing or invalid decisions', async () => {
+  for (const decision of ['aprobar', 'rechazar', '', 'otra']) {
+    const clientHarness = createTransactionClient((sql) => {
+      if (sql.includes('FOR UPDATE OF c')) {
+        return {
+          rows: [
+            {
+              id: 8,
+              ual_id: 4,
+              tipo_inventario: 'complementario',
+              estado: 'pendiente_aprobacion',
+              declaracion_sin_inventario: true,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const loaded = loadInventoryRoute({
+      pool: { connect: async () => clientHarness.client },
+      user: { tipo: 'admin', roles: ['admin'] },
+    });
+    try {
+      const response = await request(loaded.app)
+        .post('/aprobaciones/8/resolver')
+        .type('form')
+        .send({ _csrf: 'test-csrf-token', decision });
+      if (['aprobar', 'rechazar'].includes(decision)) {
+        assert.equal(response.status, 302);
+        assert.match(response.headers.location, decision === 'aprobar' ? /aprobada/ : /rechazada/);
+        assert.ok(clientHarness.calls.some(({ sql }) => sql === 'COMMIT'));
+      } else {
+        assert.equal(response.status, 400);
+        assert.equal(response.body.locals.message, 'Decisión inválida');
+        assert.equal(clientHarness.calls.length, 0);
+      }
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
 test('coordinator approval authorizes by laboratory scope and creates the legacy equipment extension', async () => {
   const clientHarness = createTransactionClient((sql) => {
     if (sql.includes('SELECT') && sql.includes('FOR UPDATE OF c')) {

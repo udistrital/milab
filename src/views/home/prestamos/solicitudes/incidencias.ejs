@@ -360,7 +360,7 @@
       button.addEventListener('click', async function() {
         var incidentId = button.getAttribute('data-incident-id') || '';
         if (!incidentId) return;
-        if (!window.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?')) return;
+        if (!(await window.MiLabDialogs.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(button, 'Marcando incidencia como pendiente por cerrar...');

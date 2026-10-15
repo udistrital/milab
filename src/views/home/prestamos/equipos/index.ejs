@@ -81,7 +81,7 @@
                         <i class="bi bi-arrow-repeat"></i>
                         <span>Estado</span>
                       </button>
-                      <form action="/milab/prestamos/equipos/<%= item.id %>/eliminar" method="post" onsubmit="return confirm('¿Deseas eliminar este equipo?');">
+                      <form action="/milab/prestamos/equipos/<%= item.id %>/eliminar" method="post" data-confirm-submit="¿Deseas eliminar este equipo?">
                         <button class="btn btn-outline-danger btn-sm" type="submit">
                           <i class="bi bi-trash"></i>
                           <span>Eliminar</span>

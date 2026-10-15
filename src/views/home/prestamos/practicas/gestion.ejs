@@ -825,8 +825,8 @@
     document.querySelectorAll('.js-approve-practice').forEach(function(button) {
       button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
-        if (!reservationId || !window.confirm('¿Deseas aprobar esta practica?')) return;
         var btn = event.currentTarget;
+        if (!reservationId || !(await window.MiLabDialogs.confirm('¿Deseas aprobar esta practica?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(btn, 'Aprobando reserva...');
@@ -846,8 +846,8 @@
     document.querySelectorAll('.js-start-practice').forEach(function(button) {
       button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
-        if (!reservationId || !window.confirm('¿Deseas iniciar esta practica?')) return;
         var btn = event.currentTarget;
+        if (!reservationId || !(await window.MiLabDialogs.confirm('¿Deseas iniciar esta practica?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(btn, 'Iniciando practica...');
@@ -869,8 +869,8 @@
         var reservationId = button.getAttribute('data-reservation-id');
         if (!reservationId) return;
 
-        if (!window.confirm('¿Deseas completar esta practica?')) return;
         var btn = event.currentTarget;
+        if (!(await window.MiLabDialogs.confirm('¿Deseas completar esta practica?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(btn, 'Completando practica...');
@@ -915,7 +915,7 @@
       var descripcionIncidencia = String(incidenciaDescripcionInput.value || '').trim();
 
       if (!reservationId) return;
-      if (!window.confirm('Â¿Deseas registrar la incidencia y bloquear esta practica hasta su solucion?')) return;
+      if (!(await window.MiLabDialogs.confirm('¿Deseas registrar la incidencia y bloquear esta practica hasta su solucion?'))) return;
 
       if (!tipoIncidencia || !descripcionIncidencia) {
         showAlert('danger', 'Para registrar la incidencia debes diligenciar tipo y descripcion.');
@@ -971,8 +971,8 @@
     document.querySelectorAll('.js-no-show-practice').forEach(function(button) {
       button.addEventListener('click', async function(event) {
         var reservationId = button.getAttribute('data-reservation-id');
-        if (!reservationId || !window.confirm('¿Deseas marcar esta practica como no asistio?')) return;
         var btn = event.currentTarget;
+        if (!reservationId || !(await window.MiLabDialogs.confirm('¿Deseas marcar esta practica como no asistio?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(btn, 'Registrando inasistencia...');
@@ -1059,8 +1059,8 @@
     document.querySelectorAll('.js-cancel-practice-queue').forEach(function(button) {
       button.addEventListener('click', async function(event) {
         var queueId = button.getAttribute('data-queue-id');
-        if (!queueId || !window.confirm('¿Deseas cancelar esta solicitud en cola?')) return;
         var btn = event.currentTarget;
+        if (!queueId || !(await window.MiLabDialogs.confirm('¿Deseas cancelar esta solicitud en cola?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(btn, 'Cancelando solicitud en cola...');

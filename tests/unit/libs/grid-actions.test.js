@@ -156,6 +156,8 @@ test('grid actions cover loan, incident, course and dashboard operations', () =>
   const cases = [
     ['Solicitar', 'bi-calendar-plus'],
     ['Aprobar', 'bi-check-circle'],
+    ['Revisar', 'bi-clipboard-check'],
+    ['Revisar aprobar', 'bi-clipboard-check'],
     ['Rechazar', 'bi-x-circle'],
     ['No asistió', 'bi-x-circle'],
     ['Iniciar', 'bi-play-circle'],

@@ -1,6 +1,7 @@
 <%- include('../../../partials/header'); -%>
+<link rel="stylesheet" href="/milab/public/css/inventory-review.css">
 
-<main class="container app-page-shell">
+<main id="inventoryReviewStart" class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Revisar carga de inventario</h1>
     <p class="app-page-subtitle">
@@ -8,6 +9,12 @@
       <%= batch.laboratorio %> / <%= batch.dependencia %>
     </p>
   </section>
+
+  <nav class="d-flex justify-content-end gap-2 mb-3" aria-label="Navegación de la revisión">
+    <a class="btn btn-outline-secondary" href="#inventoryReviewEnd">
+      <i class="bi bi-arrow-down" aria-hidden="true"></i> Ir al final
+    </a>
+  </nav>
 
   <% if (errorMessage) { %>
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
@@ -19,7 +26,7 @@
         <dt class="col-sm-3">Archivo / declaración</dt>
         <dd class="col-sm-9"><%= batch.archivo_nombre %></dd>
         <dt class="col-sm-3">Solicitante</dt>
-        <dd class="col-sm-9"><%= batch.creada_por_documento %></dd>
+        <dd class="col-sm-9"><%= batch.solicitante_nombre || 'Nombre no disponible' %> — <%= batch.creada_por_documento %></dd>
         <dt class="col-sm-3">Fecha de envío</dt>
         <dd class="col-sm-9"><%= new Date(batch.fecha_confirmacion || batch.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></dd>
         <dt class="col-sm-3">Filas</dt>
@@ -56,7 +63,13 @@
                 <% if (row.estado === 'pendiente_aprobacion') { %>
                   <tr>
                     <td><%= row.numero_fila %></td>
-                    <td><%= row.payload.descripcion || '-' %></td>
+                    <td class="inventory-review-description-cell">
+                      <% const description = String(row.payload.descripcion || '-'); %>
+                      <span class="inventory-review-description" data-description-text><%= description %></span>
+                      <% if (Array.from(description).length > 80) { %>
+                        <button type="button" class="btn btn-link btn-sm p-0" data-description-toggle data-grid-action-ignore aria-expanded="false">Ver más</button>
+                      <% } %>
+                    </td>
                     <td><%= row.payload.placa || '-' %><%= row.payload.serie ? ` / ${row.payload.serie}` : '' %></td>
                     <td>
                       <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
@@ -98,7 +111,7 @@
           action="/milab/inventarios/aprobaciones/<%= batch.id %>/resolver"
           method="post"
           class="row g-3"
-          onsubmit="return confirm('¿Confirmas esta decisión sobre la carga completa?');"
+          data-confirm-submit="¿Confirmas esta decisión sobre la carga completa?"
         >
           <%- include('../../../partials/csrf_field') %>
           <div class="col-12">
@@ -130,9 +143,13 @@
     </section>
   <% } %>
 
-  <div class="d-flex justify-content-end">
+  <div id="inventoryReviewEnd" class="d-flex justify-content-end flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="#inventoryReviewStart">
+      <i class="bi bi-arrow-up" aria-hidden="true"></i> Ir al inicio
+    </a>
     <a class="btn btn-outline-secondary" href="/milab/inventarios/aprobaciones">Volver a aprobaciones</a>
   </div>
 </main>
 
+<script src="/milab/public/js/inventory-preview.js" defer></script>
 <%- include('../../../partials/footer'); -%>

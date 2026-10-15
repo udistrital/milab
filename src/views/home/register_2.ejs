@@ -755,12 +755,13 @@
             const recaptchaResponse = grecaptcha.getResponse(recaptchaElement);
             if (recaptchaResponse.length === 0) {
               event.preventDefault();
-              alert('Por favor, complete el reCAPTCHA para continuar.');
+              window.MiLabDialogs.alert('Por favor, complete el reCAPTCHA para continuar.');
             }
           });
         }
       });
     </script>
   <% } %>
+  <%- include('../partials/app-dialogs') %>
 </body>
 </html>

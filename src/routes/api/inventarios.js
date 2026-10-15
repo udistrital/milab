@@ -246,6 +246,8 @@ async function getAccessibleLaboratories(client, req) {
       SELECT DISTINCT
         u.ual_id,
         u.nombre,
+        facultad.dependencia_facultad_id AS facultad_id,
+        CASE WHEN df.padre_id IS NOT NULL THEN df.dependencia_facultad_id END AS dependencia_id,
         facultad.nombre AS facultad,
         CASE WHEN df.padre_id IS NOT NULL THEN df.nombre END AS dependencia
       FROM ual u
@@ -254,6 +256,24 @@ async function getAccessibleLaboratories(client, req) {
       JOIN dependencia_facultad facultad
         ON facultad.dependencia_facultad_id = COALESCE(df.padre_id, df.dependencia_facultad_id)
       WHERE u.activo = TRUE
+        AND EXISTS (
+          SELECT 1
+          FROM laboratorista_ual assigned_lab
+          JOIN laboratorista lab
+            ON lab.documento = assigned_lab.laboratorista_documento_id
+           AND lab.activo = TRUE
+          WHERE assigned_lab.ual_id = u.ual_id
+            AND assigned_lab.activo = TRUE
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM coordinador_facultad_alcance assigned_scope
+          JOIN coordinador assigned_coordinator
+            ON assigned_coordinator.documento = assigned_scope.coordinador_documento_id
+           AND assigned_coordinator.activo = TRUE
+          WHERE assigned_scope.facultad_id = u.facultad_id
+            AND assigned_scope.activo = TRUE
+        )
         AND (
           $1::boolean
           OR (
@@ -283,6 +303,37 @@ async function getAccessibleLaboratories(client, req) {
       ORDER BY u.nombre
     `,
     [isGlobalInventoryViewer(req), isLaboratorista(req), getUserDocument(req), isCoordinator(req)]
+  );
+  return result.rows;
+}
+
+async function getAccessibleInventoryUnits(client, req) {
+  if (!isGlobalInventoryViewer(req) && !isCoordinator(req)) return [];
+
+  const result = await client.query(
+    `
+      SELECT DISTINCT
+        df.dependencia_facultad_id AS id,
+        df.nombre,
+        df.padre_id AS facultad_id
+      FROM dependencia_facultad df
+      WHERE $1::boolean
+        OR (
+          $2::boolean
+          AND EXISTS (
+            SELECT 1
+            FROM coordinador_facultad_alcance ca
+            JOIN coordinador c
+              ON c.documento = ca.coordinador_documento_id
+             AND c.activo = TRUE
+            WHERE ca.facultad_id = df.dependencia_facultad_id
+              AND ca.coordinador_documento_id = $3
+              AND ca.activo = TRUE
+          )
+        )
+      ORDER BY df.nombre
+    `,
+    [isGlobalInventoryViewer(req), isCoordinator(req), getUserDocument(req)]
   );
   return result.rows;
 }
@@ -591,6 +642,7 @@ function parseIndividualInventory(body, inventoryType) {
 async function getManagementContext(client, req, selectedUalId) {
   // TODO: Move historical inventory and unlinked equipment to Conciliaciones ARKA.
   const laboratories = await getAccessibleLaboratories(client, req);
+  const inventoryUnits = await getAccessibleInventoryUnits(client, req);
   const selectedLaboratory =
     laboratories.find((laboratory) => laboratory.ual_id === selectedUalId) || null;
   let coordinators = [];
@@ -770,6 +822,7 @@ async function getManagementContext(client, req, selectedUalId) {
 
   return {
     laboratories,
+    inventoryUnits,
     selectedLaboratory,
     coordinators,
     inventoryItems,
@@ -796,6 +849,7 @@ function managementViewData(req, context, messages = {}) {
     isInventoryMaintainer: isAdmin(req) || isCoordinator(req),
     isAdmin: isAdmin(req),
     isGlobalInventoryViewer: isGlobalInventoryViewer(req),
+    showDependencyFilter: isGlobalInventoryViewer(req) || isCoordinator(req),
   };
 }
 
@@ -2032,11 +2086,14 @@ router.get('/aprobaciones', requireInventoryApprover, async function (req, res, 
           c.filas_exitosas,
           c.filas_fallidas,
           c.declaracion_sin_inventario,
+          c.creada_por_documento,
+          solicitante.nombre AS solicitante_nombre,
           c.coordinador_documento
         FROM inventario_carga c
         JOIN ual u ON u.ual_id = c.ual_id
         JOIN dependencia_facultad df
           ON df.dependencia_facultad_id = u.facultad_id
+        LEFT JOIN laboratorista solicitante ON solicitante.documento = c.creada_por_documento
         WHERE c.estado = 'pendiente_aprobacion'
           AND (
             $1::boolean
@@ -2086,12 +2143,14 @@ router.get('/aprobaciones/:id', requireInventoryApprover, async function (req, r
           c.*,
           u.nombre AS laboratorio,
           df.nombre AS dependencia,
+          solicitante.nombre AS solicitante_nombre,
           co.nombre AS coordinador_nombre
         FROM inventario_carga c
         JOIN ual u ON u.ual_id = c.ual_id
         JOIN dependencia_facultad df
           ON df.dependencia_facultad_id = u.facultad_id
         LEFT JOIN coordinador co ON co.documento = c.coordinador_documento
+        LEFT JOIN laboratorista solicitante ON solicitante.documento = c.creada_por_documento
         WHERE c.id = $1
           AND (
             $2::boolean

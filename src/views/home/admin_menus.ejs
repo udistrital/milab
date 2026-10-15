@@ -479,7 +479,7 @@
           throw new Error(data.message || 'Error al actualizar permisos.');
         }
       } catch (error) {
-        alert(error.message || 'Error al actualizar permisos.');
+        window.MiLabDialogs.alert(error.message || 'Error al actualizar permisos.');
         event.target.checked = !enabled;
       } finally {
         window.MiLabSubmitLock.release(btnElement);
@@ -514,7 +514,7 @@
           throw new Error(data.message || 'Error al actualizar acceso a prestamos.');
         }
       } catch (error) {
-        alert(error.message || 'Error al actualizar acceso a prestamos.');
+        window.MiLabDialogs.alert(error.message || 'Error al actualizar acceso a prestamos.');
         event.target.checked = !enabled;
       } finally {
         window.MiLabSubmitLock.release(btnElement);

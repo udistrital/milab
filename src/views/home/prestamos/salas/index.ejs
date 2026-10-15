@@ -541,7 +541,7 @@
       button.addEventListener('click', async function() {
         var salaId = button.getAttribute('data-sala-id');
         var salaNombre = button.getAttribute('data-sala-nombre') || 'esta sala';
-        if (!salaId || !window.confirm('¿Deseas eliminar ' + salaNombre + '?')) return;
+        if (!salaId || !(await window.MiLabDialogs.confirm('¿Deseas eliminar ' + salaNombre + '?'))) return;
 
         var btn = button;
 

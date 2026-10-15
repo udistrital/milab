@@ -33,6 +33,7 @@
                 <th>Dependencia</th>
                 <th>Tipo</th>
                 <th>Archivo / declaración</th>
+                <th>Laboratorista solicitante</th>
                 <th>Fecha</th>
                 <th>Filas exitosas</th>
                 <th>Acción</th>
@@ -45,6 +46,10 @@
                   <td><%= batch.dependencia %></td>
                   <td><%= inventoryLabels[batch.tipo_inventario] || batch.tipo_inventario %></td>
                   <td><%= batch.archivo_nombre %></td>
+                  <td>
+                    <%= batch.solicitante_nombre || 'Nombre no disponible' %>
+                    <small class="d-block text-muted"><%= batch.creada_por_documento %></small>
+                  </td>
                   <td><%= new Date(batch.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></td>
                   <td><%= batch.filas_exitosas %></td>
                   <td>

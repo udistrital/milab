@@ -37,19 +37,6 @@
     });
   });
 
-  document.querySelectorAll('form[data-confirm-submit]').forEach((form) => {
-    form.addEventListener(
-      'submit',
-      (event) => {
-        if (!window.confirm(form.dataset.confirmSubmit)) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-        }
-      },
-      true
-    );
-  });
-
   const scrollTopButton = document.getElementById('inventoryPreviewScrollTop');
   if (scrollTopButton) {
     const updateScrollTopButton = () => {

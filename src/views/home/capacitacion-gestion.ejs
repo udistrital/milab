@@ -1179,7 +1179,7 @@
     }
   }
 
-  function onCambiarEstadoSesion(ev) {
+  async function onCambiarEstadoSesion(ev) {
     var btn = ev.currentTarget;
     var id = btn?.getAttribute('data-id-sesion');
     var est = btn?.getAttribute('data-estado');
@@ -1187,7 +1187,7 @@
     var okMsg = est === 'cancelada'
       ? '¿Seguro deseas CANCELAR esta sesión? No podrá revertirse (mejor marca Realizada si solo deseas cerrarla).'
       : '¿Cambiar estado de la sesión #' + id + ' a: ' + est.toUpperCase() + '?';
-    if (!window.confirm(okMsg)) return;
+    if (!(await window.MiLabDialogs.confirm(okMsg))) return;
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Cambiando…');
       var xhr = new XMLHttpRequest();
@@ -1260,12 +1260,13 @@
     onMarcarAsistenciaClick(null);
   }
 
-  function onCertificarBtn(ev) {
+  async function onCertificarBtn(ev) {
+    var btn = ev?.currentTarget;
     var id = ev?.currentTarget?.getAttribute('data-id-sesion') || state.selectedSesionId;
     if (!id) { setGlobalAlert('Selecciona la sesión primero.', 'warning'); return; }
-    if (!window.confirm('¿CERTIFICAR a TODOS los asistentes de la sesión #' + id + '?\nEsto generará certificaciones locales vigentes para los usuarios que asistieron (asistio=TRUE) y marcará la sesión como "Realizada" por defecto.')) return;
+    if (!(await window.MiLabDialogs.confirm('¿CERTIFICAR a TODOS los asistentes de la sesión #' + id + '?\nEsto generará certificaciones locales vigentes para los usuarios que asistieron (asistio=TRUE) y marcará la sesión como "Realizada" por defecto.'))) return;
     try {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(ev?.currentTarget, 'Certificando…');
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Certificando…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.certificar(id), true);
       setJsonPostHeaders(xhr);
@@ -1285,7 +1286,7 @@
       xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
       xhr.send(JSON.stringify({ finalizar_sesion: true }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(ev?.currentTarget);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -1358,14 +1359,15 @@
   function onAplicarFiltrosReporte() { setGlobalAlert('Reporte detallado = Task 7 (CSV y filtros avanzados).', 'info', 'alert-reporte'); }
   function onDescargarCsv() { setGlobalAlert('Exportación CSV = Task 7. Descarga directa desde GET ' + escapeHtml(api.reporteCsv) + ' (cuando esté habilitado).', 'info', 'alert-reporte'); }
   function onBtnEvidenciaSesion() { onEvidenciaBtn(null); }
-  function onBtnFinalizarSesion() {
+  async function onBtnFinalizarSesion() {
     if (!state.selectedSesionId) return setGlobalAlert('Selecciona una sesión primero.', 'warning', 'alert-asistencia');
-    if (!window.confirm('¿Marcar sesión #' + state.selectedSesionId + ' como REALIZADA (sin certificar aún)?')) return;
+    var sesionId = state.selectedSesionId;
+    if (!(await window.MiLabDialogs.confirm('¿Marcar sesión #' + sesionId + ' como REALIZADA (sin certificar aún)?'))) return;
     var btn = document.getElementById('btn-finalizar-sesion');
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Finalizando…');
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', api.cambiarEstado(state.selectedSesionId), true);
+      xhr.open('POST', api.cambiarEstado(sesionId), true);
       setJsonPostHeaders(xhr);
       xhr.onload = function () {
         var data = safeParseJsonXhr(xhr, 'finalizar-sesion', 'Error finalizando. ');
@@ -1377,7 +1379,7 @@
           setGlobalAlert('❌ No se pudo finalizar: ' + (data.message || 'Error desconocido.'), 'danger', 'alert-asistencia');
         }
       };
-      xhr.send(JSON.stringify({ sesion_id: state.selectedSesionId, estado: 'realizada' }));
+      xhr.send(JSON.stringify({ sesion_id: sesionId, estado: 'realizada' }));
     } finally {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }

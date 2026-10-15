@@ -246,7 +246,7 @@
       const response = grecaptcha.getResponse();
       if (!response) {
         e.preventDefault();
-        alert("Por favor completa el reCAPTCHA.");
+        window.MiLabDialogs.alert("Por favor completa el reCAPTCHA.");
       }
     });
   });

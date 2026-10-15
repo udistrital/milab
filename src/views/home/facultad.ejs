@@ -1138,15 +1138,6 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
     updateUalSelection();
   });
 
-  document.addEventListener('submit', function (event) {
-    var form = event.target.closest('form[data-fac-confirm]');
-    if (!form) return;
-    if (!window.confirm('¿Está seguro que desea eliminar ' + form.dataset.facConfirm + '?')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-  }, true);
-
   /* ── Estado inicial (después de cargar jQuery/DataTables) ── */
   function boot() {
     if (data.selectedFacultad) {

@@ -7,6 +7,7 @@
     [/^enviar reclamacion/i, 'bi-chat-left-text', 'primary'],
     [/^responder/i, 'bi-reply', 'primary'],
     [/^(ver detalle|detalle)$/i, 'bi-eye', 'info'],
+    [/^revisar(\s|$)/i, 'bi-clipboard-check', 'info'],
     [/^ver dependencias$/i, 'bi-diagram-3', 'info'],
     [/^asignar a dependencia$/i, 'bi-diagram-3', 'info'],
     [/^ver uals$/i, 'bi-grid-3x3-gap', 'info'],
