@@ -1274,8 +1274,22 @@
         if (!data) return;
         if (data.ok || data.success) {
           var n = Number(data.certificados_emitidos || data.count || (Array.isArray(data.certificados) ? data.certificados.length : 0)) || 0;
-          var omit = Number(data.ya_certificados_omitidos?.length || data.omitidos?.length || 0);
-          setGlobalAlert('✅ Certificación completada. ' + n + ' NUEVOS certificados. ' + omit + ' omitidos (ya tenían activa).', 'success');
+          var omitidos = Array.isArray(data.ya_certificados_omitidos) ? data.ya_certificados_omitidos : [];
+          var omit = omitidos.length;
+          var hayErrores = omitidos.some(function (o) {
+            return o && o.motivo && !/ya ten[ií]a/i.test(o.motivo);
+          });
+          var msg = '✅ Certificación completada. ' + n + ' NUEVO(S) certificado(s). ' + omit + ' omitido(s).';
+          if (hayErrores) {
+            var detalles = omitidos.filter(function (o) { return o && o.motivo && !/ya ten[ií]a/i.test(o.motivo); })
+              .map(function (o) { return (o.usuario_nombre || o.usuario_documento || '?') + ': ' + o.motivo; })
+              .slice(0, 3).join(' | ');
+            setGlobalAlert('⚠️ Certificación con errores. ' + n + ' certificado(s) OK, ' + omit + ' omitido(s). Errores: ' + detalles, 'warning');
+          } else if (n === 0 && omit > 0) {
+            setGlobalAlert('ℹ️ ' + omit + ' asistente(s) ya contaban con certificación vigente (no se duplicó).', 'info');
+          } else {
+            setGlobalAlert(msg, 'success');
+          }
           loadSesiones();
           if (state.selectedSesionId === id) loadAsistenciasSesion(id);
         } else {
