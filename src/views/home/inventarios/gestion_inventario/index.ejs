@@ -224,7 +224,7 @@
               <div class="card-body d-flex flex-column gap-3">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                   <h3 class="h5 mb-0"><%= status.etiqueta %></h3>
-                  <span class="badge <%= status.estado === 'aprobado' ? 'bg-success' : status.bloqueado ? 'bg-warning text-dark' : 'bg-secondary' %>">
+                  <span class="badge <%= status.estado === 'aprobado' ? 'bg-success' : status.bloqueado || status.estado === 'devuelta' ? 'bg-warning text-dark' : 'bg-secondary' %>">
                     <%= status.estado.replaceAll('_', ' ') %>
                   </span>
                 </div>
@@ -236,6 +236,8 @@
                   <p class="mb-0">Hay una carga leída pendiente de envío al coordinador.</p>
                 <% } else if (status.bloqueado && status.estado === 'pendiente_aprobacion') { %>
                   <p class="mb-0">Carga enviada; pendiente de aprobación.</p>
+                <% } else if (status.estado === 'devuelta') { %>
+                  <p class="mb-0">El coordinador la devolvió para corrección; puedes reemplazar el archivo.</p>
                 <% } else { %>
                   <p class="mb-0">Estado: <strong><%= status.estado.replaceAll('_', ' ') %></strong></p>
                 <% } %>
@@ -286,7 +288,7 @@
       <div class="card-body">
         <% if (recentLoads.length) { %>
           <div class="table-responsive">
-            <table class="table table-bordered table-striped app-table-compact align-middle">
+            <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
               <thead class="text-light">
                 <tr>
                   <th>Fecha</th>
@@ -438,6 +440,15 @@
             href="/milab/inventarios/individual/nuevo?ual_id=<%= selectedLaboratory.ual_id %>&tipo_inventario=<%= selectedType %>"
           >Crear registro uno a uno</a>
         <% } %>
+        <% if (currentStatus.estado === 'aprobado' && !currentStatus.sin_inventario) { %>
+          <a
+            class="btn btn-outline-primary"
+            href="/milab/inventarios/exportar?ual_id=<%= selectedLaboratory.ual_id %>&tipo_inventario=<%= selectedType %>"
+          >
+            <i class="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>
+            Descargar Excel aprobado
+          </a>
+        <% } %>
       </div>
     </section>
 
@@ -460,7 +471,15 @@
                 <% } %>
               <% } else if (currentStatus.estado === 'pendiente_aprobacion') { %>
                 Ya se envió una carga de este tipo al coordinador. No podrás cargar más información hasta
-                que la rechace.
+                que la resuelva.
+              <% } else if (currentStatus.estado === 'devuelta') { %>
+                <% if (currentStatus.carga_devuelta_id) { %>
+                El coordinador devolvió la carga para corrección. Sube el Excel corregido para reemplazar
+                la versión devuelta y volver a enviarla.
+                <% } else { %>
+                El coordinador devolvió la carga. Solo quien la envió o un administrador puede
+                reemplazar el archivo desde el reporte de la carga.
+                <% } %>
               <% } else { %>
                 Este inventario ya fue aprobado. No se permiten nuevas cargas masivas de este tipo.
               <% } %>
@@ -485,6 +504,9 @@
               <%- include('../../../partials/csrf_field') %>
               <input type="hidden" name="ual_id" value="<%= selectedLaboratory.ual_id %>">
               <input type="hidden" name="tipo_inventario" value="<%= selectedType %>">
+              <% if (currentStatus.estado === 'devuelta' && currentStatus.carga_devuelta_id) { %>
+                <input type="hidden" name="carga_devuelta_id" value="<%= currentStatus.carga_devuelta_id %>">
+              <% } %>
               <div class="col-md-8">
                 <label for="archivo" class="form-label">Archivo Excel</label>
                 <input
@@ -498,7 +520,7 @@
               </div>
               <div class="col-md-4">
                 <button class="btn btn-perso" type="submit" data-submit-lock="true">
-                  Leer y revisar archivo
+                  <%= currentStatus.estado === 'devuelta' ? 'Reemplazar y revisar' : 'Leer y revisar archivo' %>
                 </button>
               </div>
             </form>
@@ -727,9 +749,69 @@
         <h3 class="h5 mb-0">Registros de <%= inventoryLabels[selectedType] %></h3>
       </div>
       <div class="card-body">
+        <% if (currentStatus.estado === 'aprobado' && inventorySummary) { %>
+          <section class="mb-4" aria-labelledby="inventorySummaryTitle">
+            <h3 id="inventorySummaryTitle" class="h5">Resumen del inventario aprobado</h3>
+            <div class="row g-3 mb-3">
+              <div class="col-sm-6 col-xl-3">
+                <div class="card app-table-panel h-100"><div class="card-body">
+                  <small>Registros aprobados</small>
+                  <div class="fs-4 fw-bold"><%= inventorySummary.total_registros %></div>
+                </div></div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card app-table-panel h-100"><div class="card-body">
+                  <small>Descripciones agrupadas</small>
+                  <div class="fs-4 fw-bold"><%= inventorySummary.descripciones_unicas %></div>
+                </div></div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card app-table-panel h-100"><div class="card-body">
+                  <small>Registros inactivos</small>
+                  <div class="fs-4 fw-bold"><%= inventorySummary.registros_inactivos %></div>
+                </div></div>
+              </div>
+              <% if (selectedType === 'equipo_arka') { %>
+                <div class="col-sm-6 col-xl-3">
+                  <div class="card app-table-panel h-100"><div class="card-body">
+                    <small>Equipos disponibles para préstamo</small>
+                    <div class="fs-4 fw-bold"><%= inventorySummary.disponibles_prestamo %></div>
+                  </div></div>
+                </div>
+              <% } %>
+            </div>
+            <% if (groupedInventory.length) { %>
+              <div class="table-responsive">
+                <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+                  <thead class="text-light">
+                    <tr><th>Descripción agrupada</th><th>Registros</th><th>Existencias por grado, ubicación y unidad</th></tr>
+                  </thead>
+                  <tbody>
+                    <% groupedInventory.forEach(function(group) { %>
+                      <tr>
+                        <td><%= group.descripcion %></td>
+                        <td><%= group.total_registros %></td>
+                        <td>
+                          <% if (group.existencias && group.existencias.length) { %>
+                            <%= group.existencias.map(function(balance) {
+                              return `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`;
+                            }).join(', ') %>
+                          <% } else { %>
+                            Sin cantidades registradas
+                          <% } %>
+                        </td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+              <p class="small mb-0">Las cantidades se mantienen separadas por grado, ubicación y unidad para evitar sumar magnitudes incompatibles.</p>
+            <% } %>
+          </section>
+        <% } %>
         <% if (inventoryItems.length) { %>
           <div class="table-responsive">
-            <table class="table table-bordered table-striped app-table-compact align-middle">
+            <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
               <thead class="text-light">
                 <tr>
                   <th>ID</th>
@@ -745,6 +827,11 @@
                   <th>Existencias</th>
                   <th>Modo de control</th>
                   <th>Aprobación</th>
+                  <th>Equipo</th>
+                  <th>Activo</th>
+                  <% if (isInventoryMaintainer && currentStatus.estado === 'aprobado') { %>
+                    <th data-grid-filter="false">Acciones</th>
+                  <% } %>
                 </tr>
               </thead>
               <tbody>
@@ -776,12 +863,39 @@
                     </td>
                     <td><%= item.modo_control === 'cantidad' ? 'Por cantidad' : 'Individual' %></td>
                     <td><%= item.estado_aprobacion.replaceAll('_', ' ') %></td>
+                    <td><%= item.equipo_estado || '-' %></td>
+                    <td><%= item.activo ? 'Sí' : 'No' %></td>
+                    <% if (isInventoryMaintainer && currentStatus.estado === 'aprobado') { %>
+                      <td>
+                        <div class="d-flex flex-wrap gap-2">
+                          <% if (item.estado_aprobacion === 'aprobado' && item.activo) { %>
+                            <a
+                              class="btn btn-outline-primary btn-sm"
+                              href="/milab/inventarios/registros/<%= item.id %>/editar?ual_id=<%= selectedLaboratory.ual_id %>"
+                            >Editar</a>
+                            <form
+                              action="/milab/inventarios/registros/<%= item.id %>/baja"
+                              method="post"
+                              data-confirm-submit="¿Dar de baja este registro del inventario?"
+                            >
+                              <%- include('../../../partials/csrf_field') %>
+                              <input type="hidden" name="ual_id" value="<%= selectedLaboratory.ual_id %>">
+                              <button class="btn btn-outline-danger btn-sm" type="submit">Dar de baja</button>
+                            </form>
+                          <% } else if (item.estado_aprobacion === 'aprobado') { %>
+                            <span class="text-muted">Inactivo</span>
+                          <% } else { %>
+                            <span class="text-muted">Sin acciones</span>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
                   </tr>
                 <% }) %>
               </tbody>
             </table>
           </div>
-          <p class="small mb-0">Se muestran hasta 500 registros del inventario seleccionado.</p>
+          <p class="small mb-0">Usa los filtros por columna y la paginación para consultar los registros del inventario.</p>
         <% } else { %>
           <div class="alert alert-info mb-0">
             No hay registros para este inventario. Los registros aprobados aparecerán aquí.

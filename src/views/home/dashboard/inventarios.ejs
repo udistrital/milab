@@ -1,0 +1,140 @@
+<%- include('../../partials/header'); -%>
+
+<main class="container py-4 dashboard-page dashboard-page--simplified dashboard-page--compact">
+  <section class="dashboard-topbar dashboard-topbar--compact">
+    <div class="dashboard-topbar-copy">
+      <span class="dashboard-panel-badge dashboard-panel-badge--scope"><%= scopeTitle %></span>
+      <h1 class="dashboard-simple-title">Dashboard de inventario</h1>
+      <p class="dashboard-simple-subtitle"><%= scopeDescription %></p>
+      <% if (scopeChips.length) { %>
+        <div class="dashboard-scope-chip-row">
+          <% scopeChips.forEach(function(chip) { %>
+            <span class="dashboard-scope-chip"><%= chip %></span>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <a class="btn btn-outline-secondary" href="/milab/api/dashboard">Volver al monitoreo</a>
+  </section>
+
+  <section class="row g-3 mb-4" aria-label="Indicadores principales de inventario">
+    <% [
+      ['Registros aprobados', metrics.aprobados],
+      ['Descripciones agrupadas', metrics.descripciones],
+      ['Laboratorios con inventario', metrics.laboratorios],
+      ['Equipos disponibles para préstamo', metrics.disponiblesPrestamo],
+      ['Equipos prestados', metrics.prestados],
+      ['Equipos en mantenimiento', metrics.enMantenimiento],
+      ['Equipos fuera de servicio', metrics.fueraServicio],
+      ['Registros activos', metrics.activos],
+      ['Registros inactivos', metrics.inactivos],
+      ['Aprobaciones pendientes', loadMetrics.pendientes_aprobacion],
+      ['Cargas devueltas para corrección', loadMetrics.devueltas_correccion],
+    ].forEach(function(kpi) { %>
+      <div class="col-sm-6 col-xl-3">
+        <article class="card app-table-panel h-100">
+          <div class="card-body">
+            <small><%= kpi[0] %></small>
+            <div class="fs-3 fw-bold"><%= Number(kpi[1] || 0).toLocaleString('es-CO') %></div>
+          </div>
+        </article>
+      </div>
+    <% }) %>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Resumen por tipo de inventario</h2>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="10">
+          <thead class="text-light">
+            <tr>
+              <th>Tipo de inventario</th>
+              <th>Registros aprobados</th>
+              <th>Activos</th>
+              <th>Inactivos</th>
+              <th>Laboratorios aprobados</th>
+              <th>Descripciones agrupadas</th>
+              <th>Disponibles para préstamo</th>
+              <th>Prestados</th>
+              <th>En mantenimiento</th>
+              <th>Fuera de servicio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% typeRows.forEach(function(row) { %>
+              <tr>
+                <td><%= inventoryLabels[row.tipo_inventario] || row.tipo_inventario %></td>
+                <td><%= Number(row.aprobados || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.activos || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.inactivos || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.laboratorios_aprobados || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.descripciones_agrupadas || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.disponibles_prestamo || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.prestados || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.en_mantenimiento || 0).toLocaleString('es-CO') %></td>
+                <td><%= Number(row.fuera_servicio || 0).toLocaleString('es-CO') %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Detalle por laboratorio y tipo</h2>
+      <p class="small mb-0 mt-1">
+        Las descripciones se agrupan normalizando mayúsculas, tildes, puntuación y espacios; no se
+        combinan cantidades de unidades distintas.
+      </p>
+    </div>
+    <div class="card-body">
+      <% if (laboratoryRows.length) { %>
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+            <thead class="text-light">
+              <tr>
+                <th>Facultad</th>
+                <th>Laboratorio</th>
+                <th>Tipo de inventario</th>
+                <th>Registros aprobados</th>
+                <th>Descripciones agrupadas</th>
+                <th>Inactivos</th>
+                <th>Disponibles para préstamo</th>
+                <th>Prestados</th>
+                <th>En mantenimiento</th>
+                <th>Fuera de servicio</th>
+                <th>Líneas de existencias</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% laboratoryRows.forEach(function(row) { %>
+                <tr>
+                  <td><%= row.facultad || '-' %></td>
+                  <td><%= row.laboratorio %></td>
+                  <td><%= inventoryLabels[row.tipo_inventario] || row.tipo_inventario %></td>
+                  <td><%= Number(row.aprobados || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.descripciones_agrupadas || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.inactivos || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.disponibles_prestamo || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.prestados || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.en_mantenimiento || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.fuera_servicio || 0).toLocaleString('es-CO') %></td>
+                  <td><%= Number(row.lineas_existencia || 0).toLocaleString('es-CO') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-info mb-0">No hay registros de inventario en el alcance consultado.</div>
+      <% } %>
+    </div>
+  </section>
+</main>
+
+<%- include('../../partials/footer'); -%>

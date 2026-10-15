@@ -1546,3 +1546,41 @@ test('dashboard platform activity summarizes the audit log', async () => {
   assert.deepEqual(activity.semana.data, [6, 0, 0, 0, 0, 0, 2]);
   assert.deepEqual(activity.actores, [{ nombre: 'Ana', total: 9 }]);
 });
+
+test('inventory dashboard scopes coordinator queries to assigned faculties', async () => {
+  const queries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10, 12],
+      facultyNames: ['Facultad A', 'Facultad B'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      queries.push({ sql, params });
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard/inventarios');
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A', 'Facultad B']);
+    const scopedQueries = queries.filter(({ sql }) =>
+      sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')
+    );
+    assert.equal(scopedQueries.length, 3);
+    scopedQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.deepEqual(params, [[10, 12]]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS inventario_carga (
     creada_por_documento VARCHAR(50) NOT NULL,
     coordinador_documento VARCHAR(50) REFERENCES coordinador(documento) ON DELETE RESTRICT,
     estado VARCHAR(30) NOT NULL DEFAULT 'previsualizada'
-        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada')),
+        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta', 'aprobada', 'rechazada', 'cancelada')),
     declaracion_sin_inventario BOOLEAN NOT NULL DEFAULT FALSE,
     total_filas INT NOT NULL DEFAULT 0 CHECK (total_filas >= 0),
     filas_exitosas INT NOT NULL DEFAULT 0 CHECK (filas_exitosas >= 0),
@@ -56,7 +56,7 @@ ALTER TABLE inventario_carga
 
 ALTER TABLE inventario_carga
     ADD CONSTRAINT inventario_carga_estado_check
-    CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada'));
+    CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta', 'aprobada', 'rechazada', 'cancelada'));
 
 ALTER TABLE inventario
     ADD COLUMN IF NOT EXISTS tipo_inventario VARCHAR(30) NOT NULL DEFAULT 'legado',
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS inventario_estado_laboratorio (
     tipo_inventario VARCHAR(30) NOT NULL
         CHECK (tipo_inventario IN ('equipo_arka', 'complementario', 'reactivo')),
     estado VARCHAR(30) NOT NULL DEFAULT 'pendiente'
-        CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'aprobado', 'rechazado')),
+        CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'devuelta', 'aprobado', 'rechazado')),
     sin_inventario BOOLEAN NOT NULL DEFAULT FALSE,
     carga_id BIGINT REFERENCES inventario_carga(id) ON DELETE SET NULL,
     aprobado_por_documento VARCHAR(50) REFERENCES coordinador(documento) ON DELETE SET NULL,
@@ -253,6 +253,14 @@ CREATE TABLE IF NOT EXISTS inventario_estado_laboratorio (
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ual_id, tipo_inventario)
 );
+
+ALTER TABLE inventario_estado_laboratorio
+    DROP CONSTRAINT IF EXISTS inventario_estado_laboratorio_estado_check,
+    DROP CONSTRAINT IF EXISTS ck_inventario_estado_laboratorio_estado;
+
+ALTER TABLE inventario_estado_laboratorio
+    ADD CONSTRAINT ck_inventario_estado_laboratorio_estado
+    CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'devuelta', 'aprobado', 'rechazado'));
 
 CREATE TABLE IF NOT EXISTS inventario_auditoria (
     id BIGSERIAL PRIMARY KEY,

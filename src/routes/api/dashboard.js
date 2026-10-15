@@ -2454,6 +2454,255 @@ router.post(
   }
 );
 
+router.get('/inventarios', requireDashboardAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const role = getDashboardRole(req.session?.user);
+  const document = String(req.session?.user?.documento || '');
+  let client;
+
+  try {
+    client = await pool.connect();
+    let scopeIds = [];
+    let scopeFilter = '';
+    let scopeTitle = 'Vista global';
+    let scopeDescription = 'Indicadores agregados de todos los inventarios institucionales.';
+    let scopeChips = ['Toda la plataforma'];
+
+    if (role === 'coordinador') {
+      const coordinatorScope = await resolveCoordinatorScope(client, document);
+      scopeIds = [...new Set((coordinatorScope.facultyIds || []).map(Number).filter(Boolean))];
+      scopeFilter = 'AND u.facultad_id = ANY($1::int[])';
+      scopeTitle = 'Vista por facultad';
+      scopeDescription = 'Los indicadores se limitan a las facultades asignadas al coordinador.';
+      let facultyNames = coordinatorScope.facultyNames || [];
+      if (!facultyNames.length && scopeIds.length) {
+        const facultyResult = await client.query(
+          `
+            SELECT nombre
+            FROM dependencia_facultad
+            WHERE dependencia_facultad_id = ANY($1::int[])
+            ORDER BY nombre
+          `,
+          [scopeIds]
+        );
+        facultyNames = facultyResult.rows.map((row) => row.nombre).filter(Boolean);
+      }
+      scopeChips = facultyNames.length
+        ? facultyNames
+        : scopeIds.length
+          ? scopeIds.map(String)
+          : ['Sin facultades asignadas'];
+    } else if (role === 'laboratorista') {
+      const laboratoristaScope = await resolveLaboratoristaScope(client, document);
+      scopeIds = [...new Set((laboratoristaScope.ualIds || []).map(Number).filter(Boolean))];
+      scopeFilter = 'AND u.ual_id = ANY($1::int[])';
+      scopeTitle = 'Vista por laboratorio';
+      scopeDescription =
+        'Los indicadores se limitan a los laboratorios asignados al laboratorista.';
+      scopeChips = laboratoristaScope.ualNames.length
+        ? laboratoristaScope.ualNames
+        : ['Sin laboratorios asignados'];
+    } else if (role === 'coordinador_general') {
+      scopeTitle = 'Vista institucional';
+      scopeDescription =
+        'Indicadores agregados de todos los inventarios institucionales, en modo de consulta.';
+    }
+
+    const queryParams = scopeFilter ? [scopeIds] : [];
+    const descriptionKey = (column) =>
+      `BTRIM(REGEXP_REPLACE(TRANSLATE(LOWER(BTRIM(${column})), 'áéíóúüñ', 'aeiouun'), '[[:space:][:punct:]]+', ' ', 'g'))`;
+    const [typeResult, laboratoryResult, loadResult] = await Promise.all([
+      client.query(
+        `
+          SELECT
+            i.tipo_inventario,
+            COUNT(*) FILTER (WHERE i.estado_aprobacion = 'aprobado')::int AS aprobados,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado' AND i.activo = TRUE
+            )::int AS activos,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado' AND i.activo = FALSE
+            )::int AS inactivos,
+            COUNT(*) FILTER (
+              WHERE i.tipo_inventario = 'equipo_arka'
+                AND i.estado_aprobacion = 'aprobado'
+                AND i.activo = TRUE
+                AND i.disponible_prestamo = TRUE
+                AND eq.activo = TRUE
+                AND eq.estado = 'disponible'
+            )::int AS disponibles_prestamo,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.activo = TRUE
+                AND eq.estado = 'prestado'
+            )::int AS prestados,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.activo = TRUE
+                AND eq.estado = 'mantenimiento'
+            )::int AS en_mantenimiento,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.estado = 'fuera_servicio'
+            )::int AS fuera_servicio,
+            COUNT(DISTINCT u.ual_id) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+            )::int AS laboratorios_aprobados,
+            COUNT(DISTINCT ${descriptionKey('i.nombre_bien')}) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+            )::int AS descripciones_agrupadas
+          FROM inventario i
+          JOIN ual u ON u.ual_id = i.laboratorio_ual_id
+          LEFT JOIN equipo eq ON eq.inventario_id = i.id
+          WHERE i.tipo_inventario IN ('equipo_arka', 'complementario', 'reactivo')
+            ${scopeFilter}
+          GROUP BY i.tipo_inventario
+          ORDER BY i.tipo_inventario
+        `,
+        queryParams
+      ),
+      client.query(
+        `
+          WITH balance_lines AS (
+            SELECT inventario_id, COUNT(*)::int AS lineas_existencia
+            FROM inventario_existencia
+            GROUP BY inventario_id
+          )
+          SELECT
+            u.ual_id,
+            u.nombre AS laboratorio,
+            df.nombre AS facultad,
+            i.tipo_inventario,
+            COUNT(*) FILTER (WHERE i.estado_aprobacion = 'aprobado')::int AS aprobados,
+            COUNT(DISTINCT ${descriptionKey('i.nombre_bien')}) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+            )::int AS descripciones_agrupadas,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado' AND i.activo = FALSE
+            )::int AS inactivos,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND i.tipo_inventario = 'equipo_arka'
+                AND i.activo = TRUE
+                AND i.disponible_prestamo = TRUE
+                AND eq.activo = TRUE
+                AND eq.estado = 'disponible'
+            )::int AS disponibles_prestamo,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.activo = TRUE
+                AND eq.estado = 'prestado'
+            )::int AS prestados,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.activo = TRUE
+                AND eq.estado = 'mantenimiento'
+            )::int AS en_mantenimiento,
+            COUNT(*) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+                AND eq.estado = 'fuera_servicio'
+            )::int AS fuera_servicio,
+            COALESCE(SUM(balance_lines.lineas_existencia) FILTER (
+              WHERE i.estado_aprobacion = 'aprobado'
+            ), 0)::int AS lineas_existencia
+          FROM inventario i
+          JOIN ual u ON u.ual_id = i.laboratorio_ual_id
+          LEFT JOIN dependencia_facultad df ON df.dependencia_facultad_id = u.facultad_id
+          LEFT JOIN balance_lines ON balance_lines.inventario_id = i.id
+          LEFT JOIN equipo eq ON eq.inventario_id = i.id
+          WHERE i.tipo_inventario IN ('equipo_arka', 'complementario', 'reactivo')
+            ${scopeFilter}
+          GROUP BY u.ual_id, u.nombre, df.nombre, i.tipo_inventario
+          ORDER BY u.nombre, i.tipo_inventario
+        `,
+        queryParams
+      ),
+      client.query(
+        `
+          SELECT
+            COUNT(*) FILTER (WHERE c.estado = 'pendiente_aprobacion')::int AS pendientes_aprobacion,
+            COUNT(*) FILTER (WHERE c.estado = 'devuelta')::int AS devueltas_correccion
+          FROM inventario_carga c
+          JOIN ual u ON u.ual_id = c.ual_id
+          WHERE c.estado IN ('pendiente_aprobacion', 'devuelta')
+            ${scopeFilter}
+        `,
+        queryParams
+      ),
+    ]);
+    const typeRows = typeResult.rows;
+    const metrics = typeRows.reduce(
+      (totals, row) => ({
+        aprobados: totals.aprobados + Number(row.aprobados || 0),
+        activos: totals.activos + Number(row.activos || 0),
+        inactivos: totals.inactivos + Number(row.inactivos || 0),
+        disponiblesPrestamo:
+          totals.disponiblesPrestamo + Number(row.disponibles_prestamo || 0),
+        prestados: totals.prestados + Number(row.prestados || 0),
+        enMantenimiento: totals.enMantenimiento + Number(row.en_mantenimiento || 0),
+        fueraServicio: totals.fueraServicio + Number(row.fuera_servicio || 0),
+        descripciones:
+          totals.descripciones + Number(row.descripciones_agrupadas || 0),
+      }),
+      {
+        aprobados: 0,
+        activos: 0,
+        inactivos: 0,
+        disponiblesPrestamo: 0,
+        prestados: 0,
+        enMantenimiento: 0,
+        fueraServicio: 0,
+        laboratorios: 0,
+        descripciones: 0,
+      }
+    );
+    metrics.laboratorios = new Set(
+      laboratoryResult.rows
+        .filter((row) => Number(row.aprobados || 0) > 0)
+        .map((row) => Number(row.ual_id))
+    ).size;
+
+    return res.render('home/dashboard/inventarios', {
+      scopeTitle,
+      scopeDescription,
+      scopeChips,
+      metrics,
+      typeRows,
+      laboratoryRows: laboratoryResult.rows,
+      loadMetrics: loadResult.rows[0] || {
+        pendientes_aprobacion: 0,
+        devueltas_correccion: 0,
+      },
+      inventoryLabels: {
+        equipo_arka: 'Equipos ARKA',
+        complementario: 'Inventario complementario',
+        reactivo: 'Reactivos',
+      },
+    });
+  } catch (error) {
+    if (error.code === '42P01' || error.code === '42703') {
+      return renderApplicationError(res, {
+        status: 503,
+        message: 'Dashboard de inventario no disponible',
+        message2: 'Verifica que el esquema del módulo de inventarios esté actualizado.',
+        limit: null,
+        error,
+      });
+    }
+    console.error('Error cargando el dashboard de inventario:', error);
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible cargar el dashboard de inventario.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+      error,
+      adminErrorDetail: '',
+    });
+  } finally {
+    client?.release();
+  }
+});
+
 router.get('/', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 

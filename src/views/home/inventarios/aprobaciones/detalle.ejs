@@ -20,6 +20,26 @@
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
+  <% if (reviewHistory.length) { %>
+    <section class="card app-table-panel text-light mb-4">
+      <div class="card-header"><h2 class="h5 mb-0">Historial de revisión</h2></div>
+      <div class="card-body">
+        <ol class="mb-0">
+          <% reviewHistory.forEach(function(entry) { %>
+            <li class="mb-2">
+              <strong><%= entry.accion.replaceAll('carga_', '').replaceAll('_', ' ') %></strong>
+              — <%= entry.actor_rol %> <%= entry.actor_documento ? `(${entry.actor_documento})` : '' %>,
+              <%= new Date(entry.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %>
+              <% if (entry.detalle && entry.detalle.comentario) { %>
+                <div class="small">Comentario: <%= entry.detalle.comentario %></div>
+              <% } %>
+            </li>
+          <% }) %>
+        </ol>
+      </div>
+    </section>
+  <% } %>
+
   <section class="card app-table-panel text-light mb-4">
     <div class="card-body">
       <dl class="row mb-0">
@@ -118,10 +138,23 @@
         >
           <%- include('../../../partials/csrf_field') %>
           <div class="col-12">
-            <label for="comentario" class="form-label">Comentario (opcional)</label>
+            <label for="comentario" class="form-label">
+              Comentario (opcional al aprobar o rechazar; obligatorio al devolver)
+            </label>
             <textarea id="comentario" name="comentario" class="form-control" rows="3" maxlength="2000"></textarea>
           </div>
           <div class="col-12 d-flex justify-content-end gap-2">
+            <% if (!batch.declaracion_sin_inventario) { %>
+              <button
+                class="btn btn-outline-warning"
+                type="submit"
+                name="decision"
+                value="devolver"
+                data-submit-lock="true"
+              >
+                Devolver para corrección
+              </button>
+            <% } %>
             <button
               class="btn btn-outline-danger"
               type="submit"
