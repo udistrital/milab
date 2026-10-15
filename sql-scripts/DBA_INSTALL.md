@@ -88,6 +88,10 @@ asignaciones oficiales. No crea UALs nuevos.
   la vista equipo_catalogo, que proyecta la informacion canonica de inventario.
 - En una base existente, detenga la aplicacion antes de ejecutar db_structure_inventarios.sql;
   el script conserva los ids y migrará los equipos sin vínculo a registros tipo legado.
+- Este mismo script crea coordinador_ual_encargado, requerido por inventarios, facultades,
+  coordinadores registrados y dashboard. Recupera el encargado de la primera carga aprobada
+  de cada UAL (fecha de resolucion e ID), conserva relaciones existentes y dirige las cargas
+  pendientes al encargado. Debe ejecutarse antes de iniciar la nueva version de la aplicacion.
 - Los scripts son idempotentes en la mayoria de operaciones, pero no sustituyen una
   migracion formal si hay cambios mayores.
 - Si no se permite CREATE EXTENSION pgcrypto, ejecutar la extension como superusuario

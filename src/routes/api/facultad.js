@@ -87,7 +87,15 @@ async function fetchUalsByFacultyId(facultadId) {
     existingColumns.has(column) ? column : OPTIONAL_UAL_FALLBACKS[column]
   ).join(', ');
 
-  const query = `SELECT ual_id, nombre, ${selectOptionalColumns} FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
+  const query = `SELECT ual_id, nombre, ${selectOptionalColumns},
+      (SELECT json_build_object(
+         'documento', c.documento, 'nombre', c.nombre, 'correo', c.correo,
+         'activo', c.activo, 'fecha_asignacion', e.fecha_asignacion, 'carga_id', e.carga_id
+       )
+       FROM coordinador_ual_encargado e
+       JOIN coordinador c ON c.documento = e.coordinador_documento
+       WHERE e.ual_id = ual.ual_id) AS coordinador_encargado
+    FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
   return pool.query(query, [facultadId]);
 }
 
@@ -118,6 +126,11 @@ function fetchUnitCoordinadores(facultadId) {
               c.correo,
               c.activo,
               cfa.activo AS asignacion_activa,
+              (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+               FROM coordinador_ual_encargado e
+               JOIN ual u ON u.ual_id = e.ual_id
+               WHERE e.coordinador_documento = c.documento
+                 AND u.facultad_id = $1) AS laboratorios_encargados,
               (cfa.facultad_asignada_id <> cfa.facultad_id) AS heredado,
               fa.nombre AS asignado_en
        FROM coordinador_facultad_alcance cfa

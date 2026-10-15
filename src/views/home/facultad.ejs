@@ -310,6 +310,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
                 <th>ID espacio</th>
                 <th>Ocupantes</th>
                 <th>Laboratoristas</th>
+                <th>Coordinador encargado</th>
                 <th>Estado</th>
                 <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
               </tr>
@@ -781,7 +782,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
     var tableEl = document.getElementById('tbl-ual');
     destroyGrid(tableEl);
     if (!uals || uals.length === 0) {
-      ualTbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Esta dependencia no tiene UALs registradas.</td></tr>';
+      ualTbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Esta dependencia no tiene UALs registradas.</td></tr>';
       return;
     }
     ualTbody.innerHTML = uals.map(function (u) {
@@ -831,6 +832,11 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
         '<td><code>' + esc(u.sal_id_espacio || '–') + '</code></td>' +
         '<td>' + esc(u.sal_ocupantes || '–') + '</td>' +
         '<td data-order="' + activeLabs + '">' + labsCell + '</td>' +
+        '<td>' + (u.coordinador_encargado
+          ? esc(u.coordinador_encargado.nombre) +
+            '<small class="d-block text-muted">' + esc(u.coordinador_encargado.documento) + '</small>' +
+            (u.coordinador_encargado.activo === false ? '<span class="badge badge-inactiva">Inactivo</span>' : '')
+          : '<span class="small text-muted">Pendiente de primera aprobación</span>') + '</td>' +
         '<td>' + badge + '</td>' +
         '<td>' + actions + '</td>' +
         '</tr>';
@@ -892,8 +898,9 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
   function openCoordinadores() {
     openPeople('Coordinadores de ' + nameOf(state.unitId),
       'Incluye los coordinadores asignados a la facultad padre, que también gestionan esta dependencia.',
-      'Asignado en', currentCoordinadores, function (c) {
-        return esc(c.asignado_en) + (c.heredado ? ' <span class="small text-muted">(heredado)</span>' : '');
+      'Asignación y laboratorios encargados', currentCoordinadores, function (c) {
+        return esc(c.asignado_en) + (c.heredado ? ' <span class="small text-muted">(heredado)</span>' : '') +
+          (c.laboratorios_encargados ? '<small class="d-block">Encargado de: ' + esc(c.laboratorios_encargados) + '</small>' : '');
       });
   }
 
@@ -946,7 +953,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
       .catch(function (err) {
         if (seq !== ualRequestSeq) return;
         console.error('Error cargando UALs:', err);
-        ualTbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error al cargar UALs</td></tr>';
+        ualTbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Error al cargar UALs</td></tr>';
         level.classList.remove('loading');
       });
   }

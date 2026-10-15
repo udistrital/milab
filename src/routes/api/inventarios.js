@@ -24,6 +24,13 @@ const INVENTORY_LABELS = Object.freeze({
 });
 const INVENTORY_ALL_TYPES = Object.values(INVENTORY_TYPES);
 const ADDITIONAL_IDENTIFIER_TYPE = 'nomenclatura_adicional';
+const COORDINATOR_OWNER_CONDITION = `
+  NOT EXISTS (
+    SELECT 1 FROM coordinador_ual_encargado encargado
+    WHERE encargado.ual_id = u.ual_id
+      AND encargado.coordinador_documento <> c.documento
+  )
+`;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
@@ -249,12 +256,17 @@ async function getAccessibleLaboratories(client, req) {
         facultad.dependencia_facultad_id AS facultad_id,
         CASE WHEN df.padre_id IS NOT NULL THEN df.dependencia_facultad_id END AS dependencia_id,
         facultad.nombre AS facultad,
+        encargado.coordinador_documento AS coordinador_encargado_documento,
+        encargado_persona.nombre AS coordinador_encargado_nombre,
         CASE WHEN df.padre_id IS NOT NULL THEN df.nombre END AS dependencia
       FROM ual u
       JOIN dependencia_facultad df
         ON df.dependencia_facultad_id = u.facultad_id
       JOIN dependencia_facultad facultad
         ON facultad.dependencia_facultad_id = COALESCE(df.padre_id, df.dependencia_facultad_id)
+      LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = u.ual_id
+      LEFT JOIN coordinador encargado_persona
+        ON encargado_persona.documento = encargado.coordinador_documento
       WHERE u.activo = TRUE
         AND EXISTS (
           SELECT 1
@@ -273,6 +285,9 @@ async function getAccessibleLaboratories(client, req) {
            AND assigned_coordinator.activo = TRUE
           WHERE assigned_scope.facultad_id = u.facultad_id
             AND assigned_scope.activo = TRUE
+            AND assigned_coordinator.documento = COALESCE(
+              encargado.coordinador_documento, assigned_coordinator.documento
+            )
         )
         AND (
           $1::boolean
@@ -341,7 +356,12 @@ async function getAccessibleInventoryUnits(client, req) {
 async function getCoordinatorsForLaboratory(client, ualId) {
   const result = await client.query(
     `
-      SELECT DISTINCT c.documento, c.nombre
+      SELECT DISTINCT c.documento, c.nombre,
+        EXISTS (
+          SELECT 1 FROM coordinador_ual_encargado encargado
+          WHERE encargado.ual_id = u.ual_id
+            AND encargado.coordinador_documento = c.documento
+        ) AS encargado
       FROM ual u
       JOIN coordinador_facultad_alcance ca
         ON ca.facultad_id = u.facultad_id
@@ -351,11 +371,39 @@ async function getCoordinatorsForLaboratory(client, ualId) {
        AND c.activo = TRUE
       WHERE u.ual_id = $1
         AND u.activo = TRUE
+        AND ${COORDINATOR_OWNER_CONDITION}
       ORDER BY c.nombre
     `,
     [ualId]
   );
   return result.rows;
+}
+
+async function assignLaboratoryCoordinator(client, req, batch, current) {
+  const document = batch.coordinador_documento;
+  if (current.rows.length) {
+    if (current.rows[0].coordinador_documento !== document) {
+      throw new InventoryWorkflowError(
+        'Este laboratorio ya tiene otro coordinador encargado. La carga debe enviarse al encargado.',
+        409
+      );
+    }
+    return;
+  }
+
+  await client.query(
+    `INSERT INTO coordinador_ual_encargado (ual_id, coordinador_documento, carga_id)
+     VALUES ($1, $2, $3)`,
+    [batch.ual_id, document, batch.id]
+  );
+  await addInventoryAudit(client, req, {
+    cargaId: batch.id,
+    ualId: batch.ual_id,
+    action: 'coordinador_encargado_asignado',
+    detail: {
+      coordinadorDocumento: document,
+    },
+  });
 }
 
 async function flagExistingIdentifiers(client, rows, ualId) {
@@ -1627,13 +1675,14 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
              AND c.activo = TRUE
             WHERE u.ual_id = $1
               AND u.activo = TRUE
+              AND ${COORDINATOR_OWNER_CONDITION}
             LIMIT 1
           `,
         [batch.ual_id, coordinatorDocument]
       );
       if (!coordinatorResult.rows.length) {
         throw new InventoryWorkflowError(
-          'El coordinador seleccionado no está autorizado para este laboratorio.',
+          'El coordinador seleccionado no está autorizado o no es el encargado de este laboratorio.',
           400
         );
       }
@@ -2003,13 +2052,14 @@ router.post(
              AND c.activo = TRUE
             WHERE u.ual_id = $1
               AND u.activo = TRUE
+              AND ${COORDINATOR_OWNER_CONDITION}
             LIMIT 1
           `,
           [ualId, coordinatorDocument]
         );
         if (!coordinatorResult.rows.length) {
           throw new InventoryWorkflowError(
-            'El coordinador seleccionado no está autorizado para este laboratorio.',
+            'El coordinador seleccionado no está autorizado o no es el encargado de este laboratorio.',
             400
           );
         }
@@ -2088,17 +2138,18 @@ router.get('/aprobaciones', requireInventoryApprover, async function (req, res, 
           c.declaracion_sin_inventario,
           c.creada_por_documento,
           solicitante.nombre AS solicitante_nombre,
-          c.coordinador_documento
+          COALESCE(encargado.coordinador_documento, c.coordinador_documento) AS coordinador_documento
         FROM inventario_carga c
         JOIN ual u ON u.ual_id = c.ual_id
         JOIN dependencia_facultad df
           ON df.dependencia_facultad_id = u.facultad_id
         LEFT JOIN laboratorista solicitante ON solicitante.documento = c.creada_por_documento
+        LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id
         WHERE c.estado = 'pendiente_aprobacion'
           AND (
             $1::boolean
             OR (
-              c.coordinador_documento = $2
+              COALESCE(encargado.coordinador_documento, c.coordinador_documento) = $2
               AND EXISTS (
                 SELECT 1
                 FROM coordinador_facultad_alcance ca
@@ -2141,6 +2192,10 @@ router.get('/aprobaciones/:id', requireInventoryApprover, async function (req, r
       `
         SELECT
           c.*,
+          COALESCE(
+            CASE WHEN c.estado = 'pendiente_aprobacion' THEN encargado.coordinador_documento END,
+            c.coordinador_documento
+          ) AS coordinador_documento,
           u.nombre AS laboratorio,
           df.nombre AS dependencia,
           solicitante.nombre AS solicitante_nombre,
@@ -2149,13 +2204,21 @@ router.get('/aprobaciones/:id', requireInventoryApprover, async function (req, r
         JOIN ual u ON u.ual_id = c.ual_id
         JOIN dependencia_facultad df
           ON df.dependencia_facultad_id = u.facultad_id
-        LEFT JOIN coordinador co ON co.documento = c.coordinador_documento
+        LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id
+        LEFT JOIN coordinador co
+          ON co.documento = COALESCE(
+            CASE WHEN c.estado = 'pendiente_aprobacion' THEN encargado.coordinador_documento END,
+            c.coordinador_documento
+          )
         LEFT JOIN laboratorista solicitante ON solicitante.documento = c.creada_por_documento
         WHERE c.id = $1
           AND (
             $2::boolean
             OR (
-              c.coordinador_documento = $3
+              COALESCE(
+                CASE WHEN c.estado = 'pendiente_aprobacion' THEN encargado.coordinador_documento END,
+                c.coordinador_documento
+              ) = $3
               AND EXISTS (
                 SELECT 1
                 FROM coordinador_facultad_alcance ca
@@ -2233,6 +2296,14 @@ router.post(
         if (batch.estado !== 'pendiente_aprobacion') {
           throw new InventoryWorkflowError('Esta carga ya fue resuelta.', 409);
         }
+        await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [batch.ual_id]);
+        const currentOwner = await client.query(
+          'SELECT coordinador_documento FROM coordinador_ual_encargado WHERE ual_id = $1',
+          [batch.ual_id]
+        );
+        if (currentOwner.rows.length) {
+          batch.coordinador_documento = currentOwner.rows[0].coordinador_documento;
+        }
         if (!isAdmin(req)) {
           if (batch.coordinador_documento !== getUserDocument(req)) {
             throw new InventoryWorkflowError('La carga está asignada a otro coordinador.', 403);
@@ -2263,6 +2334,20 @@ router.post(
         }
 
         const approved = decision === 'aprobar';
+        if (approved) {
+          const coordinators = await getCoordinatorsForLaboratory(client, batch.ual_id);
+          if (
+            !coordinators.some(
+              (coordinator) => coordinator.documento === batch.coordinador_documento
+            )
+          ) {
+            throw new InventoryWorkflowError(
+              'El coordinador de la carga no está activo, no tiene alcance o no es el encargado del laboratorio.',
+              409
+            );
+          }
+          await assignLaboratoryCoordinator(client, req, batch, currentOwner);
+        }
         const rowsResult = await client.query(
           `
             SELECT
@@ -2404,10 +2489,11 @@ router.post(
           `
             UPDATE inventario_carga
             SET estado = $1,
+                coordinador_documento = $3,
                 fecha_resolucion = CURRENT_TIMESTAMP
             WHERE id = $2
           `,
-          [approved ? 'aprobada' : 'rechazada', cargaId]
+          [approved ? 'aprobada' : 'rechazada', cargaId, batch.coordinador_documento]
         );
         await client.query(
           `

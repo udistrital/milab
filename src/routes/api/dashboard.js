@@ -438,6 +438,10 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id,
+       (SELECT STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre)
+        FROM coordinador_ual_encargado encargado
+        JOIN ual ON ual.ual_id = encargado.ual_id
+        WHERE encargado.coordinador_documento = c.documento) AS laboratorios_encargados,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf

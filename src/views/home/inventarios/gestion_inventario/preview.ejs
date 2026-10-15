@@ -359,7 +359,7 @@
           >
             <option value="">Selecciona un coordinador autorizado</option>
             <% coordinators.forEach(function(coordinator) { %>
-            <option value="<%= coordinator.documento %>"><%= coordinator.nombre %></option>
+            <option value="<%= coordinator.documento %>" <%= coordinator.encargado ? 'selected' : '' %>><%= coordinator.nombre %><%= coordinator.encargado ? ' (encargado)' : '' %></option>
             <% }) %>
           </select>
         </div>

@@ -320,6 +320,71 @@ test('the laboratorista who created a preview can confirm it from recent loads',
   }
 });
 
+test('inventory management shows and preselects only the laboratory coordinator once assigned', async () => {
+  const loaded = loadInventoryApp(
+    createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
+    async (sql) => {
+      if (sql.includes('JOIN dependencia_facultad df')) {
+        return {
+          rows: [
+            {
+              ual_id: 4,
+              nombre: 'Laboratorio Uno',
+              facultad_id: 1,
+              facultad: 'Facultad Uno',
+              dependencia: 'Dependencia Uno',
+              coordinador_encargado_documento: 'coord-owner',
+              coordinador_encargado_nombre: 'Coordinador Encargado',
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
+        assert.match(sql, /encargado\.coordinador_documento <> c.documento/);
+        return {
+          rows: [{ documento: 'coord-owner', nombre: 'Coordinador Encargado', encargado: true }],
+        };
+      }
+      if (sql.includes('FROM inventario_carga c')) {
+        return {
+          rows: [
+            {
+              id: 43,
+              tipo_inventario: 'complementario',
+              estado: 'previsualizada',
+              archivo_nombre: 'inventario.xlsx',
+              creada_por_documento: 'lab-1',
+              total_filas: 1,
+              filas_exitosas: 1,
+              filas_fallidas: 0,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+  );
+  try {
+    const response = await request(loaded.app).get('/gestion_inventario?ual_id=4&panel=recent');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.coordinators.length, 1);
+    const html = ejs.render(
+      fs.readFileSync(
+        resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+        'utf8'
+      ),
+      { ...response.body.locals, include: () => '' }
+    );
+    assert.match(html, /Coordinador encargado:/);
+    assert.match(html, /Coordinador Encargado/);
+    assert.match(html, /value="coord-owner"\s+selected/);
+    assert.match(html, /Las siguientes cargas solo se envían a este coordinador/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('coordinador_general can view all inventory and approvals without resolving them', async () => {
   const loaded = loadInventoryApp(
     createUser({

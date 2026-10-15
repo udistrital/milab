@@ -186,6 +186,18 @@
           <button class="btn btn-perso" type="submit">Consultar laboratorio</button>
         </div>
       </form>
+      <% if (selectedLaboratory) { %>
+        <div class="alert alert-info mt-3 mb-0">
+          <% if (selectedLaboratory.coordinador_encargado_documento) { %>
+            <strong>Coordinador encargado:</strong>
+            <%= selectedLaboratory.coordinador_encargado_nombre %>
+            (<%= selectedLaboratory.coordinador_encargado_documento %>).
+            Las siguientes cargas solo se envían a este coordinador.
+          <% } else { %>
+            El coordinador que apruebe la primera carga quedará registrado como encargado del laboratorio.
+          <% } %>
+        </div>
+      <% } %>
       <% if (!laboratories.length) { %>
         <div class="alert alert-info mt-3 mb-0">
           <%= isGlobalInventoryViewer
@@ -344,7 +356,7 @@
                               >
                                 <option value="">Selecciona un coordinador autorizado</option>
                                 <% coordinators.forEach(function(coordinator) { %>
-                                  <option value="<%= coordinator.documento %>"><%= coordinator.nombre %></option>
+                                  <option value="<%= coordinator.documento %>" <%= coordinator.encargado ? 'selected' : '' %>><%= coordinator.nombre %><%= coordinator.encargado ? ' (encargado)' : '' %></option>
                                 <% }) %>
                               </select>
                             </div>
@@ -690,7 +702,7 @@
                   <select id="coordinador_declaracion" name="coordinador_documento" class="form-select" required>
                     <option value="">Selecciona un coordinador autorizado</option>
                     <% coordinators.forEach(function(coordinator) { %>
-                      <option value="<%= coordinator.documento %>"><%= coordinator.nombre %></option>
+                      <option value="<%= coordinator.documento %>" <%= coordinator.encargado ? 'selected' : '' %>><%= coordinator.nombre %><%= coordinator.encargado ? ' (encargado)' : '' %></option>
                     <% }) %>
                   </select>
                 </div>

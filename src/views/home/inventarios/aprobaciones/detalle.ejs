@@ -33,6 +33,8 @@
         <dd class="col-sm-9">
           <%= batch.filas_exitosas %> exitosas y <%= batch.filas_fallidas %> fallidas
         </dd>
+        <dt class="col-sm-3">Coordinador responsable</dt>
+        <dd class="col-sm-9"><%= batch.coordinador_nombre || batch.coordinador_documento || '-' %></dd>
       </dl>
     </div>
   </section>
@@ -107,6 +109,7 @@
       <div class="card-body">
         <h2 class="h5">Decisión del coordinador</h2>
         <p>Al aprobar, los equipos ARKA se vincularán al catálogo técnico usado por los demás módulos.</p>
+        <p>La primera aprobación registra al coordinador responsable de esta carga como encargado del laboratorio. Las siguientes cargas se dirigirán únicamente a ese encargado.</p>
         <form
           action="/milab/inventarios/aprobaciones/<%= batch.id %>/resolver"
           method="post"

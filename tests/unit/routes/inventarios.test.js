@@ -892,6 +892,9 @@ test('coordinator can consult recent load reports but cannot confirm them as the
 test('approval resolution accepts both form-encoded decisions and rejects missing or invalid decisions', async () => {
   for (const decision of ['aprobar', 'rechazar', '', 'otra']) {
     const clientHarness = createTransactionClient((sql) => {
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+      }
       if (sql.includes('FOR UPDATE OF c')) {
         return {
           rows: [
@@ -899,6 +902,7 @@ test('approval resolution accepts both form-encoded decisions and rejects missin
               id: 8,
               ual_id: 4,
               tipo_inventario: 'complementario',
+              coordinador_documento: 'coord-1',
               estado: 'pendiente_aprobacion',
               declaracion_sin_inventario: true,
             },
@@ -933,6 +937,9 @@ test('approval resolution accepts both form-encoded decisions and rejects missin
 
 test('coordinator approval authorizes by laboratory scope and creates the legacy equipment extension', async () => {
   const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+      return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+    }
     if (sql.includes('SELECT') && sql.includes('FOR UPDATE OF c')) {
       return {
         rows: [
@@ -1023,6 +1030,9 @@ test('coordinator approval authorizes by laboratory scope and creates the legacy
 
 test('coordinator approval also activates complementary records without creating a loanable equipment row', async () => {
   const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+      return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+    }
     if (sql.includes('FOR UPDATE OF c')) {
       return {
         rows: [
@@ -1147,6 +1157,311 @@ test('coordinator cannot approve a batch assigned to another coordinator', async
       false
     );
     assert.ok(clientHarness.calls.some(({ sql }) => sql === 'ROLLBACK'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('first approval fixes the laboratory coordinator atomically and later approvals preserve that owner', async () => {
+  for (const scenario of [
+    { actor: 'coordinador', decision: 'aprobar', owner: null, expectedOwner: 'coord-1' },
+    { actor: 'admin', decision: 'aprobar', owner: null, expectedOwner: 'coord-1' },
+    { actor: 'coordinador', decision: 'rechazar', owner: null, expectedOwner: null },
+    { actor: 'coordinador', decision: 'aprobar', owner: 'coord-1', expectedOwner: 'coord-1' },
+    { actor: 'admin', decision: 'aprobar', owner: 'coord-owner', expectedOwner: 'coord-owner' },
+  ]) {
+    const batch = {
+      id: 8,
+      ual_id: 4,
+      facultad_id: 12,
+      tipo_inventario: 'complementario',
+      estado: 'pendiente_aprobacion',
+      declaracion_sin_inventario: true,
+      coordinador_documento: 'coord-1',
+    };
+    const clientHarness = createTransactionClient((sql) => {
+      if (sql.includes('FOR UPDATE OF c')) return { rows: [{ ...batch }] };
+      if (sql.startsWith('SELECT coordinador_documento FROM coordinador_ual_encargado')) {
+        return { rows: scenario.owner ? [{ coordinador_documento: scenario.owner }] : [] };
+      }
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
+        return { rows: [{ documento: scenario.owner || batch.coordinador_documento }] };
+      }
+      if (sql.includes('FROM coordinador_facultad_alcance')) return { rows: [{ ok: 1 }] };
+      return { rows: [] };
+    });
+    const loaded = loadInventoryRoute({
+      pool: { connect: async () => clientHarness.client },
+      user: { tipo: scenario.actor, roles: [scenario.actor], documento: 'coord-1' },
+    });
+    try {
+      const response = await request(loaded.app)
+        .post('/aprobaciones/8/resolver')
+        .type('form')
+        .send({ decision: scenario.decision });
+      assert.equal(response.status, 302, JSON.stringify(scenario));
+      const assignment = clientHarness.calls.find(({ sql }) =>
+        sql.includes('INSERT INTO coordinador_ual_encargado')
+      );
+      if (!scenario.owner && scenario.decision === 'aprobar') {
+        assert.deepEqual(assignment.params, [4, 'coord-1', 8]);
+        const lockIndex = clientHarness.calls.findIndex(({ sql }) =>
+          sql.includes('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE')
+        );
+        const assignmentIndex = clientHarness.calls.indexOf(assignment);
+        assert.ok(lockIndex > 0 && lockIndex < assignmentIndex);
+        const ownerReadIndex = clientHarness.calls.findIndex(({ sql }) =>
+          sql.startsWith('SELECT coordinador_documento FROM coordinador_ual_encargado')
+        );
+        assert.ok(lockIndex < ownerReadIndex && ownerReadIndex < assignmentIndex);
+        const audit = clientHarness.calls.find(({ params }) =>
+          params?.includes('coordinador_encargado_asignado')
+        );
+        assert.ok(audit);
+        assert.equal(JSON.parse(audit.params[6]).coordinadorDocumento, 'coord-1');
+      } else {
+        assert.equal(assignment, undefined);
+      }
+      const resolved = clientHarness.calls.find(
+        ({ sql }) => sql.includes('SET estado = $1,') && sql.includes('coordinador_documento = $3')
+      );
+      assert.equal(resolved.params[2], scenario.expectedOwner || 'coord-1');
+      assert.equal(clientHarness.calls.at(-1).sql, 'COMMIT');
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('a stale approval by another coordinator cannot replace the owner fixed by a concurrent approval', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('FOR UPDATE OF c')) {
+      return {
+        rows: [
+          {
+            id: 8,
+            ual_id: 4,
+            facultad_id: 12,
+            coordinador_documento: 'coord-1',
+            estado: 'pendiente_aprobacion',
+            tipo_inventario: 'complementario',
+          },
+        ],
+      };
+    }
+    if (sql.startsWith('SELECT coordinador_documento FROM coordinador_ual_encargado')) {
+      return { rows: [{ coordinador_documento: 'coord-owner' }] };
+    }
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: { connect: async () => clientHarness.client },
+    user: { tipo: 'coordinador', roles: ['coordinador'], documento: 'coord-1' },
+  });
+  try {
+    const response = await request(loaded.app)
+      .post('/aprobaciones/8/resolver')
+      .send({ decision: 'aprobar' });
+    assert.equal(response.status, 403);
+    assert.match(response.body.locals.message2, /asignada a otro coordinador/);
+    assert.equal(clientHarness.calls.at(-1).sql, 'ROLLBACK');
+    assert.equal(
+      clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO coordinador_ual_encargado')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('an inactive or out-of-scope coordinator cannot become the owner even when admin approves', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('FOR UPDATE OF c')) {
+      return {
+        rows: [
+          {
+            id: 8,
+            ual_id: 4,
+            coordinador_documento: 'inactive',
+            estado: 'pendiente_aprobacion',
+            tipo_inventario: 'complementario',
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: { connect: async () => clientHarness.client },
+    user: { tipo: 'admin', roles: ['admin'] },
+  });
+  try {
+    const response = await request(loaded.app)
+      .post('/aprobaciones/8/resolver')
+      .send({ decision: 'aprobar' });
+    assert.equal(response.status, 409);
+    assert.match(response.body.locals.message2, /no está activo/);
+    assert.equal(clientHarness.calls.at(-1).sql, 'ROLLBACK');
+    assert.equal(
+      clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO coordinador_ual_encargado')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('approval failure rolls back both inventory changes and the first coordinator assignment', async () => {
+  const clientHarness = createTransactionClient((sql) => {
+    if (sql.includes('FOR UPDATE OF c')) {
+      return {
+        rows: [
+          {
+            id: 8,
+            ual_id: 4,
+            coordinador_documento: 'coord-1',
+            estado: 'pendiente_aprobacion',
+            tipo_inventario: 'equipo_arka',
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre'))
+      return { rows: [{ documento: 'coord-1' }] };
+    if (sql.includes('FROM inventario_carga_fila f')) return { rows: [{ inventario_id: 50 }] };
+    return { rows: [] };
+  });
+  const loaded = loadInventoryRoute({
+    pool: { connect: async () => clientHarness.client },
+    user: { tipo: 'admin', roles: ['admin'] },
+  });
+  try {
+    const response = await request(loaded.app)
+      .post('/aprobaciones/8/resolver')
+      .send({ decision: 'aprobar' });
+    assert.equal(response.status, 409);
+    assert.ok(
+      clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO coordinador_ual_encargado'))
+    );
+    assert.equal(clientHarness.calls.at(-1).sql, 'ROLLBACK');
+    assert.equal(
+      clientHarness.calls.some(({ sql }) => sql === 'COMMIT'),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('subsequent inventory confirmations and declarations reject a forged non-owner coordinator', async () => {
+  for (const endpoint of ['/cargas/8/confirmar', '/declarar-sin-complementarios']) {
+    const clientHarness = createTransactionClient((sql, params) => {
+      if (sql.includes('SELECT * FROM inventario_carga WHERE id')) {
+        return {
+          rows: [
+            {
+              id: 8,
+              ual_id: 4,
+              creada_por_documento: 'lab-1',
+              tipo_inventario: 'complementario',
+              estado: 'previsualizada',
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+      if (sql.includes('JOIN coordinador_facultad_alcance ca')) {
+        assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
+        assert.match(sql, /encargado\.coordinador_documento <> c\.documento/);
+        assert.equal(params[1], 'coord-other');
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    const loaded = loadInventoryRoute({
+      pool: { query: clientHarness.client.query, connect: async () => clientHarness.client },
+    });
+    try {
+      const response = await request(loaded.app).post(endpoint).type('form').send({
+        ual_id: '4',
+        coordinador_documento: 'coord-other',
+        confirmar_revision: 'confirmo',
+        confirmacion_sin_inventario: 'confirmo',
+      });
+      assert.equal(response.status, 400, endpoint);
+      assert.match(response.body.locals.message2, /no es el encargado/);
+      assert.equal(clientHarness.calls.at(-1).sql, 'ROLLBACK');
+      assert.equal(
+        clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario_carga (')),
+        false
+      );
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('coordinator ownership migration is unique, preserves existing owners and backfills the first approval', () => {
+  const sql = fs.readFileSync(resolveRepoPath('sql-scripts/db_structure_inventarios.sql'), 'utf8');
+  assert.match(
+    sql,
+    /CREATE TABLE IF NOT EXISTS coordinador_ual_encargado \(\s+ual_id INT PRIMARY KEY REFERENCES ual/
+  );
+  assert.match(sql, /coordinador_documento VARCHAR\(50\) NOT NULL REFERENCES coordinador/);
+  assert.match(sql, /carga_id BIGINT NOT NULL REFERENCES inventario_carga/);
+  assert.match(sql, /SELECT DISTINCT ON \(ual_id\)[\s\S]*WHERE estado = 'aprobada'/);
+  assert.match(
+    sql,
+    /ORDER BY ual_id, COALESCE\(fecha_resolucion, fecha_confirmacion, fecha_creacion\), id\s+ON CONFLICT \(ual_id\) DO NOTHING/
+  );
+});
+
+test('pending approval lists and details route to the owner while resolved details retain the historical coordinator', async () => {
+  const queries = [];
+  const loaded = loadInventoryRoute({
+    user: { tipo: 'coordinador', roles: ['coordinador'], documento: 'coord-owner' },
+    pool: {
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (sql.includes('FROM inventario_carga c')) {
+          assert.match(
+            sql,
+            /LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id/
+          );
+          assert.equal(params.at(-1), 'coord-owner');
+          return {
+            rows: [
+              {
+                id: 8,
+                ual_id: 4,
+                estado: 'pendiente_aprobacion',
+                coordinador_documento: 'coord-owner',
+                coordinador_nombre: 'Encargado Actual',
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    },
+  });
+  try {
+    const list = await request(loaded.app).get('/aprobaciones');
+    assert.equal(list.status, 200);
+    assert.equal(list.body.locals.batches[0].coordinador_documento, 'coord-owner');
+    assert.match(
+      queries[0].sql,
+      /COALESCE\(encargado.coordinador_documento, c.coordinador_documento\) = \$2/
+    );
+    const detail = await request(loaded.app).get('/aprobaciones/8');
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.locals.batch.coordinador_nombre, 'Encargado Actual');
+    const detailQuery = queries.find(({ sql }) => sql.includes('WHERE c.id = $1'));
+    assert.match(
+      detailQuery.sql,
+      /CASE WHEN c.estado = 'pendiente_aprobacion' THEN encargado.coordinador_documento END/
+    );
   } finally {
     loaded.restore();
   }

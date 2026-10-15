@@ -61,6 +61,12 @@ Para todos los perfiles, el selector solo incluye UAL activas con al menos un la
 
 ## Aprobaciones y confirmaciones
 
+La primera aprobación de cualquier tipo de inventario (incluida la declaración sin complementarios) fija un único coordinador encargado por UAL en `coordinador_ual_encargado`, junto con la carga de origen y la fecha. Si aprueba un administrador, el encargado es el coordinador destinatario de la carga, no el administrador. Rechazar no crea esta relación. Las aprobaciones y asignaciones se guardan en una misma transacción y se serializan por UAL; las siguientes aprobaciones no reemplazan al encargado.
+
+Los próximos envíos y declaraciones solo permiten al encargado, que aparece preseleccionado. Las cargas aún pendientes se consultan y resuelven con ese encargado, aunque se hubieran enviado a otro coordinador antes de fijar la relación. Debe continuar activo y conservar alcance sobre la UAL; si deja de cumplirlo, el envío se bloquea y no se elige otro coordinador automáticamente. El alcance general de consulta por facultad no cambia.
+
+La relación se identifica en Gestión del inventario, en las UAL y la consulta de coordinadores de facultades/dependencias, en Coordinadores registrados y en el detalle de coordinadores del dashboard. La migración [db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql) debe aplicarse antes de desplegar: recupera al destinatario de la primera carga aprobada de cada UAL, ordenada por fecha de resolución e ID, sin sobrescribir encargados ya guardados.
+
 Las cargas pendientes muestran nombre y documento del laboratorista solicitante. La revisión permite expandir descripciones largas con “Ver más” y navegar al inicio o al final de la página. La acción Revisar utiliza el icono estándar de las grillas.
 
 Las confirmaciones y avisos usan el diálogo HTML compartido con el estilo Bootstrap del sistema en [app-dialogs.ejs](src/views/partials/app-dialogs.ejs), no los mensajes `confirm`/`alert` del navegador. Los formularios usan `data-confirm-submit` y las operaciones AJAX esperan `await window.MiLabDialogs.confirm(mensaje)`; los avisos usan `window.MiLabDialogs.alert(mensaje)`. Cancelar, cerrar o pulsar Escape no ejecuta la acción. El diálogo mantiene el foco y no cierra ni reinicia otros modales abiertos. Al confirmar se conserva el botón pulsado, incluyendo su nombre y valor, antes de bloquear envíos duplicados; así llegan correctamente las decisiones `aprobar` y `rechazar`.

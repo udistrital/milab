@@ -1389,6 +1389,41 @@ test('dashboard general overview builds platform charts without sanctions or cer
   ]);
 });
 
+test('dashboard coordinator details identify laboratories assigned by inventory approval', async () => {
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('AS laboratorios_encargados')) {
+        assert.match(sql, /FROM coordinador_ual_encargado encargado/);
+        assert.match(sql, /WHERE encargado.coordinador_documento = c.documento/);
+        return {
+          rows: [
+            {
+              documento: 'coord-owner',
+              nombre: 'Encargado Actual',
+              laboratorios_encargados: 'Laboratorio Uno, Laboratorio Dos',
+              faculty_ids: [10],
+              fecha_creacion: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+  try {
+    const response = await request(buildApp(loaded.route, { tipo: 'admin', roles: ['admin'] })).get(
+      '/'
+    );
+    assert.equal(response.status, 200);
+    assert.equal(
+      response.body.locals.tablesData.coordinadores[0].laboratorios_encargados,
+      'Laboratorio Uno, Laboratorio Dos'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard operational coverage groups UAL and staff by root faculty', async () => {
   const { fetchOperationalCoverage } = require(routePath).__private;
   const client = {
