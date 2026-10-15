@@ -87,6 +87,7 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
   try {
     const req = {
+      path: '/milab/api/dashboard',
       session: {
         user: {
           tipo: 'coordinador',
@@ -103,6 +104,7 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
     assert.equal(nextCalled, true);
     assert.equal(res.locals.tipo, 'coordinador');
+    assert.equal(res.locals.navigationCurrentPath, '/milab/api/dashboard');
     assert.deepEqual(res.locals.roles, ['coordinador']);
     assert.equal(res.locals.appNavigation.primaryLinks[0].href, '/custom/panel');
     assert.equal(res.locals.pendingSanctionsCount, 0);

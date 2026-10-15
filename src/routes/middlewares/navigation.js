@@ -659,6 +659,7 @@ async function navigationMiddleware(req, res, next) {
     res.locals.user = sessionUser;
     res.locals.roles = roles;
     res.locals.tipo = primaryRole;
+    res.locals.navigationCurrentPath = req.path || '';
     res.locals.documento = sessionUser?.documento || '';
     res.locals.appNavigation = navigation;
     res.locals.isAuthenticated = navigation.isAuthenticated;
