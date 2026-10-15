@@ -22,6 +22,7 @@
               class="form-control"
               id="documento_lookup"
               name="documento"
+              maxlength="50"
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
@@ -50,7 +51,7 @@
 
     <div class="col-md-6">
       <label for="nombre" class="form-label">Nombre Completo</label>
-      <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" required>
+      <input type="text" class="form-control" id="nombre" name="nombre" maxlength="255" value="<%= lookupData?.nombre || '' %>" required>
     </div>
 
     <div class="col-md-6">
@@ -61,6 +62,7 @@
         class="form-control"
         id="documento"
         name="documento"
+        maxlength="50"
         value="<%= lookupData?.documento || '' %>"
         required
       >
@@ -68,7 +70,7 @@
 
     <div class="col-md-12">
       <label for="correo" class="form-label">Correo electrónico</label>
-      <input type="email" class="form-control" id="correo" name="correo" value="<%= lookupData?.correo || '' %>" required>
+      <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= lookupData?.correo || '' %>" required>
     </div>
 
     <div class="col-md-12">
@@ -109,6 +111,7 @@
           type="search"
           class="form-control mb-2"
           id="dependenciasSearch"
+          maxlength="255"
           placeholder="Filtrar dependencias..."
           autocomplete="off"
         >
@@ -140,12 +143,12 @@
     <!-- NUEVOS CAMPOS -->
     <div class="col-md-6">
       <label for="numero_resolucion_coordinador" class="form-label">Número y año de Resolución del encargo de coordinación</label>
-      <input type="text" class="form-control" id="numero_resolucion_coordinador" name="numero_resolucion_coordinador" required>
+      <input type="text" class="form-control" id="numero_resolucion_coordinador" name="numero_resolucion_coordinador" maxlength="100" required>
     </div>
 
     <div class="col-md-6">
       <label for="soporte_resolucion" class="form-label">Soporte Resolución (URL) del sistema sgral </label>
-      <input type="url" class="form-control" id="soporte_resolucion" name="soporte_resolucion" required>
+      <input type="url" class="form-control" id="soporte_resolucion" name="soporte_resolucion" maxlength="1000" required>
     </div>
 
     <div id="mensajeError" class="col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>

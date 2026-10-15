@@ -6,6 +6,7 @@ const pool = require('../../libs/db');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
+const { validateFormTextLengths } = require('../middlewares/form-text-limits');
 const {
   INVENTORY_TYPES,
   InventoryImportError,
@@ -1229,7 +1230,7 @@ async function renderPreviewPage(req, res, batch, rows, messages = {}) {
 
 function handleSpreadsheetUpload(req, res, next) {
   upload.single('archivo')(req, res, (error) => {
-    if (!error) return next();
+    if (!error) return validateFormTextLengths(req, res, next);
     const message =
       error.code === 'LIMIT_FILE_SIZE'
         ? 'El archivo supera el límite de 10 MB.'

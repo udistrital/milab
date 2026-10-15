@@ -349,6 +349,7 @@
                 type="text"
                 id="dashboardUsuariosFiltroValor"
                 class="form-control form-control-sm"
+                maxlength="255"
                 placeholder="Valor exacto"
                 autocomplete="off"
               >
@@ -509,17 +510,17 @@
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorName">Nombre</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorName" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorName" maxlength="200" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorDocument">Documento</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorDocument" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorDocument" maxlength="50" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorCurrent">Correo actual</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" maxlength="255" readonly>
           </div>
 
           <div class="mb-3">
@@ -528,6 +529,7 @@
               type="email"
               class="form-control"
               id="dashboardEmailEditorInput"
+              maxlength="255"
               required
               autocomplete="off"
               pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"

@@ -87,23 +87,23 @@
 
             <div class="col-md-6">
               <label for="nombre" class="form-label">Nombre</label>
-              <input type="text" class="form-control" id="nombre" name="nombre" value="<%= nombre || '' %>" <%= profileLocked ? 'readonly' : (readonly ? 'readonly' : '') %> required>
+              <input type="text" class="form-control" id="nombre" name="nombre" maxlength="200" value="<%= nombre || '' %>" <%= profileLocked ? 'readonly' : (readonly ? 'readonly' : '') %> required>
             </div>
 
             <div class="col-md-6">
               <label for="correo" class="form-label">Correo institucional</label>
-              <input type="email" class="form-control" id="correo" name="correo" value="<%= correo || '' %>" readonly required>
+              <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= correo || '' %>" readonly required>
             </div>
 
             <div class="col-md-6">
               <label for="tipo_usuario" class="form-label">Tipo de usuario</label>
-              <input type="text" class="form-control text-capitalize" value="<%= tipo_usuario || '' %>" readonly>
+              <input type="text" class="form-control text-capitalize" value="<%= tipo_usuario || '' %>" maxlength="40" readonly>
               <input type="hidden" id="tipo_usuario" name="tipo_usuario" value="<%= tipo_usuario || '' %>">
             </div>
 
             <div class="col-md-6">
               <label for="documento" class="form-label">Documento</label>
-              <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
+              <input type="text" class="form-control" id="documento" name="documento" maxlength="50" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
             </div>
 
             <% const opcionesCodigo = Array.isArray(locals.opcionesCodigo) ? locals.opcionesCodigo : []; %>
@@ -126,18 +126,18 @@
             <% } else { %>
               <div class="col-md-6 student-only">
                 <label for="codigo" class="form-label">Código</label>
-                <input type="text" class="form-control" id="codigo" name="codigo" value="<%= codigo || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+                <input type="text" class="form-control" id="codigo" name="codigo" maxlength="19" value="<%= codigo || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
               </div>
             <% } %>
 
             <div class="col-md-6">
               <label for="estado" class="form-label">Estado</label>
-              <input type="text" class="form-control" id="estado" name="estado" value="<%= estado || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %> required>
+              <input type="text" class="form-control" id="estado" name="estado" maxlength="20" value="<%= estado || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %> required>
             </div>
 
             <div class="col-12 student-only">
               <label for="carrera" class="form-label">Carrera</label>
-              <input type="text" class="form-control" id="carrera" name="carrera" value="<%= carrera || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+              <input type="text" class="form-control" id="carrera" name="carrera" maxlength="100" value="<%= carrera || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
             </div>
 
             <div class="col-12 d-flex justify-content-center gap-2 pt-2">

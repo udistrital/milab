@@ -81,7 +81,7 @@
             <div class="d-flex gap-2 flex-wrap align-items-center">
               <div class="input-group input-group-sm" style="max-width:260px;">
                 <span class="input-group-text">Curso</span>
-                <input type="text" class="form-control" id="filter-curso-solicitudes" placeholder="Buscar por código o nombre" />
+                <input type="text" class="form-control" id="filter-curso-solicitudes" maxlength="255" placeholder="Buscar por código o nombre" />
               </div>
               <select class="form-select form-select-sm" id="filter-estado-solicitudes" style="max-width:200px;">
                 <option value="">Todos los estados</option>
@@ -203,7 +203,7 @@
             <div class="row g-3 align-items-end mb-4">
               <div class="col-md-6">
                 <label for="filter-asistidos-search" class="form-label">Buscar inscrito</label>
-                <input type="text" id="filter-asistidos-search" class="form-control" placeholder="Filtrar tabla por nombre o documento" />
+                <input type="text" id="filter-asistidos-search" class="form-control" maxlength="255" placeholder="Filtrar tabla por nombre o documento" />
               </div>
               <div class="col-md-6 text-end">
                 <button type="button" id="btn-certificar-asistentes-sesion" class="btn btn-outline-success me-2">
@@ -292,7 +292,7 @@
               </div>
               <div class="col-md-3">
                 <label for="report-codigo-curso" class="form-label">Código curso</label>
-                <input type="text" class="form-control" id="report-codigo-curso" placeholder="Ej. MOCK-COURSE-055" />
+                <input type="text" class="form-control" id="report-codigo-curso" maxlength="100" placeholder="Ej. MOCK-COURSE-055" />
               </div>
               <div class="col-md-3">
                 <label for="report-ual" class="form-label">Laboratorio / UAL</label>

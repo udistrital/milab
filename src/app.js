@@ -59,6 +59,7 @@ require('./routes/middlewares/microsoft');
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
+const { validateFormTextLengths } = require('./routes/middlewares/form-text-limits');
 const {
   createApplicationErrorHandler,
   enrichErrorPayloadForAdmin,
@@ -361,8 +362,20 @@ app.set('host', process.env.HOST || '0.0.0.0');
 app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
-app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
-app.use('/milab/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
+app.use(
+  '/api',
+  requireApiSessionUnlessPublic,
+  verifyApiCsrfToken,
+  validateFormTextLengths,
+  require('./routes/api')
+);
+app.use(
+  '/milab/api',
+  requireApiSessionUnlessPublic,
+  verifyApiCsrfToken,
+  validateFormTextLengths,
+  require('./routes/api')
+);
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';
@@ -374,8 +387,20 @@ app.use(legacyBasePath, (req, res, next) => {
   next();
 });
 
-app.use(canonicalBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
-app.use(legacyBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
+app.use(
+  canonicalBasePath,
+  sessionGateMiddleware,
+  verifyCsrfToken,
+  validateFormTextLengths,
+  require('./milab_routes')
+);
+app.use(
+  legacyBasePath,
+  sessionGateMiddleware,
+  verifyCsrfToken,
+  validateFormTextLengths,
+  require('./milab_routes')
+);
 
 // Redirección desde la raíz del dominio hacia la aplicación milab
 // Garantiza que https://laboratorios.udistrital.edu.co/ lleve a /milab/

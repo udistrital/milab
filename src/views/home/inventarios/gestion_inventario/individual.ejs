@@ -73,7 +73,7 @@
           <label for="placa" class="form-label"
             >Placa oficial ARKA <span aria-hidden="true">*</span></label
           >
-          <input id="placa" name="placa" class="form-control" maxlength="50" value="<%= formItem.placa || '' %>" required />
+          <input id="placa" name="placa" class="form-control" maxlength="100" value="<%= formItem.placa || '' %>" required />
         </div>
         <div class="col-md-6">
           <label for="serie" class="form-label">Serial</label>
@@ -234,7 +234,7 @@
 
         <div class="col-md-6">
           <label for="espacio_fisico" class="form-label">Ubicación en el laboratorio</label>
-          <input id="espacio_fisico" name="espacio_fisico" class="form-control" maxlength="100" value="<%= formItem.espacio_fisico || '' %>" />
+          <input id="espacio_fisico" name="espacio_fisico" class="form-control" maxlength="255" value="<%= formItem.espacio_fisico || '' %>" />
         </div>
         <div class="col-12">
           <label for="observaciones" class="form-label">Observaciones</label>

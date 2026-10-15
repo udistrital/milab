@@ -458,7 +458,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
           <div class="row g-3">
             <div class="col-12">
               <label for="edit_ual_nombre" class="form-label">Nombre</label>
-              <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" required>
+              <input type="text" class="form-control" name="nombre" id="edit_ual_nombre" maxlength="255" required>
             </div>
             <div class="col-md-6">
               <label for="edit_ual_codigo" class="form-label">Código abreviado</label>
@@ -640,7 +640,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
         nonSearchable.push(index);
         $cell.append('<span class="app-grid-filter-placeholder">Sin filtro</span>');
       } else {
-        var $input = jq('<input type="text" class="app-grid-filter-input" autocomplete="off" />');
+        var $input = jq('<input type="text" class="app-grid-filter-input" maxlength="255" autocomplete="off" />');
         $input.attr('placeholder', 'Filtrar ' + title);
         $input.attr('aria-label', 'Filtrar ' + title);
         $cell.append($input);

@@ -32,15 +32,15 @@
             </div>
             <div class="col-md-3">
               <label class="form-label">Etiqueta</label>
-              <input class="form-control" name="label" required />
+              <input class="form-control" name="label" maxlength="200" required />
             </div>
             <div class="col-md-3">
               <label class="form-label">Ruta</label>
-              <input class="form-control" name="route" placeholder="/milab/api/..." />
+              <input class="form-control" name="route" maxlength="200" placeholder="/milab/api/..." />
             </div>
             <div class="col-md-3">
               <label class="form-label">Icono</label>
-              <input class="form-control" name="icon" placeholder="bi-..." />
+              <input class="form-control" name="icon" maxlength="100" placeholder="bi-..." />
             </div>
             <div class="col-md-3">
               <label class="form-label">Padre</label>
@@ -243,15 +243,15 @@
                                 <input type="hidden" name="parent_id" value="">
                                 <div class="col-12">
                                   <label class="form-label small mb-1">Nombre</label>
-                                  <input class="form-control form-control-sm" name="label" value="<%= parent.label %>" required>
+                                  <input class="form-control form-control-sm" name="label" maxlength="200" value="<%= parent.label %>" required>
                                 </div>
                                 <div class="col-12">
                                   <label class="form-label small mb-1">Ruta</label>
-                                  <input class="form-control form-control-sm" name="route" value="<%= parent.route || '' %>">
+                                  <input class="form-control form-control-sm" name="route" maxlength="200" value="<%= parent.route || '' %>">
                                 </div>
                                 <div class="col-6">
                                   <label class="form-label small mb-1">Icono</label>
-                                  <input class="form-control form-control-sm" name="icon" value="<%= parent.icon || '' %>">
+                                  <input class="form-control form-control-sm" name="icon" maxlength="100" value="<%= parent.icon || '' %>">
                                 </div>
                                 <div class="col-6">
                                   <label class="form-label small mb-1">Orden</label>
@@ -300,11 +300,11 @@
                                   <input type="hidden" name="section" value="secondary">
                                   <div class="col-12">
                                     <label class="form-label small mb-1">Nombre</label>
-                                    <input class="form-control form-control-sm" name="label" value="<%= item.label %>" required>
+                                    <input class="form-control form-control-sm" name="label" maxlength="200" value="<%= item.label %>" required>
                                   </div>
                                   <div class="col-12">
                                     <label class="form-label small mb-1">Ruta</label>
-                                    <input class="form-control form-control-sm" name="route" value="<%= item.route || '' %>">
+                                    <input class="form-control form-control-sm" name="route" maxlength="200" value="<%= item.route || '' %>">
                                   </div>
                                   <div class="col-12">
                                     <label class="form-label small mb-1">Módulo primario</label>
@@ -318,7 +318,7 @@
                                   </div>
                                   <div class="col-6">
                                     <label class="form-label small mb-1">Icono</label>
-                                    <input class="form-control form-control-sm" name="icon" value="<%= item.icon || '' %>">
+                                    <input class="form-control form-control-sm" name="icon" maxlength="100" value="<%= item.icon || '' %>">
                                   </div>
                                   <div class="col-6">
                                     <label class="form-label small mb-1">Orden</label>
@@ -404,15 +404,15 @@
                         <input type="hidden" name="parent_id" value="">
                         <div class="col-12">
                           <label class="form-label small mb-1">Nombre</label>
-                          <input class="form-control form-control-sm" name="label" value="<%= item.label %>" required>
+                          <input class="form-control form-control-sm" name="label" maxlength="200" value="<%= item.label %>" required>
                         </div>
                         <div class="col-12">
                           <label class="form-label small mb-1">Ruta</label>
-                          <input class="form-control form-control-sm" name="route" value="<%= item.route || '' %>">
+                          <input class="form-control form-control-sm" name="route" maxlength="200" value="<%= item.route || '' %>">
                         </div>
                         <div class="col-6">
                           <label class="form-label small mb-1">Icono</label>
-                          <input class="form-control form-control-sm" name="icon" value="<%= item.icon || '' %>">
+                          <input class="form-control form-control-sm" name="icon" maxlength="100" value="<%= item.icon || '' %>">
                         </div>
                         <div class="col-6">
                           <label class="form-label small mb-1">Orden</label>

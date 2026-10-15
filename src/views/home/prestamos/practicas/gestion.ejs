@@ -630,6 +630,7 @@
               type="text"
               class="form-control"
               id="ultimaHoraPracticaDocumento"
+              maxlength="50"
               required
               placeholder="Ingresa el documento o codigo institucional"
             >
@@ -936,7 +937,10 @@
           '/milab/prestamos/practicas/' + encodeURIComponent(reservationId) + '/completar',
           {
             method: 'POST',
-            headers: { 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
+            headers: {
+              Accept: 'application/json',
+              'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %>,
+            },
             body: formData,
           }
         );

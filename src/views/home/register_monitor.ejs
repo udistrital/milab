@@ -27,6 +27,7 @@
                 class="form-control"
                 type="search"
                 id="coordinador_documento_lookup"
+                maxlength="255"
                 data-coordinator-search
                 placeholder="Busca por nombre o documento..."
                 autocomplete="off"
@@ -63,6 +64,7 @@
               class="form-control"
               id="documento_lookup"
               name="documento"
+              maxlength="50"
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
@@ -107,6 +109,7 @@
               class="form-control"
               type="text"
               id="coordinador_documento_display"
+              maxlength="255"
               value="<%= selectedCoordinator ? selectedCoordinator.nombre + (selectedCoordinator.facultades ? ' · ' + selectedCoordinator.facultades : '') : '' %>"
               placeholder="Selecciona un coordinador arriba"
               readonly
@@ -117,7 +120,7 @@
 
         <div class="col-md-6">
           <label for="nombre" class="form-label">Nombre completo</label>
-          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required readonly>
+          <input type="text" class="form-control" id="nombre" name="nombre" maxlength="255" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required readonly>
         </div>
 
         <div class="col-md-6">
@@ -127,6 +130,7 @@
             class="form-control"
             id="documento"
             name="documento"
+            maxlength="50"
             inputmode="numeric"
             value="<%= lookupData?.documento || lookupDocumento || '' %>"
             required
@@ -136,17 +140,17 @@
 
         <div class="col-md-6">
           <label for="codigo" class="form-label">Código estudiantil</label>
-          <input type="text" class="form-control" id="codigo" value="<%= lookupData?.codigo || '' %>" readonly>
+          <input type="text" class="form-control" id="codigo" maxlength="19" value="<%= lookupData?.codigo || '' %>" readonly>
         </div>
 
         <div class="col-md-6">
           <label for="programa" class="form-label">Programa</label>
-          <input type="text" class="form-control" id="programa" value="<%= lookupData?.programa || '' %>" readonly>
+          <input type="text" class="form-control" id="programa" maxlength="255" value="<%= lookupData?.programa || '' %>" readonly>
         </div>
 
         <div class="col-md-12">
           <label for="correo" class="form-label">Correo electrónico institucional</label>
-          <input type="email" class="form-control" id="correo" name="correo" value="<%= monitorForm.correo || '' %>" autocomplete="email" required>
+          <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= monitorForm.correo || '' %>" autocomplete="email" required>
         </div>
 
         <div class="col-md-6">
@@ -156,6 +160,7 @@
             class="form-control"
             id="numero_contrato"
             name="numero_contrato"
+            maxlength="100"
             value="<%= monitorForm.numero_contrato || '' %>"
             required
           >
@@ -168,6 +173,7 @@
             class="form-control"
             id="tipo_vinculacion"
             name="tipo_vinculacion"
+            maxlength="100"
             value="<%= monitorForm.tipo_vinculacion || '' %>"
             placeholder="Ej: Monitoria academica"
           >
@@ -202,6 +208,7 @@
             class="form-control"
             id="soporte_contrato"
             name="soporte_contrato"
+            maxlength="1000"
             value="<%= monitorForm.soporte_contrato || '' %>"
             placeholder="Ej: radicado, resolución o enlace interno"
           >
