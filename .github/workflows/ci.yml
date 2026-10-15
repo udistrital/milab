@@ -137,7 +137,8 @@ jobs:
             "$base_dir/db_structure_inventarios.sql" \
             "$base_dir/db_seed_inventarios.sql" \
             "$base_dir/db_structure_certificacion.sql" \
-            "$base_dir/db_seed_certificacion.sql"
+            "$base_dir/db_seed_certificacion.sql" \
+            "$base_dir/db_seed_pruebas_ofuscado.sql"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido: $required_file" >&2
@@ -154,6 +155,7 @@ jobs:
           echo "6) $base_dir/db_seed_inventarios.sql"
           echo "7) $base_dir/db_structure_certificacion.sql"
           echo "8) $base_dir/db_seed_certificacion.sql"
+          echo "9) $base_dir/db_seed_pruebas_ofuscado.sql (solo al recrear pruebas)"
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
@@ -270,6 +272,7 @@ jobs:
           db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
           db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
           db_seed_certificacion_script="$sql_run_dir/db_seed_certificacion.sql"
+          db_seed_pruebas_ofuscado_script="$sql_run_dir/db_seed_pruebas_ofuscado.sql"
           db_structure_inventarios_script="$sql_run_dir/db_structure_inventarios.sql"
           db_seed_inventarios_script="$sql_run_dir/db_seed_inventarios.sql"
 
@@ -281,7 +284,8 @@ jobs:
             "$db_structure_inventarios_script" \
             "$db_seed_inventarios_script" \
             "$db_structure_certificacion_script" \
-            "$db_seed_certificacion_script"
+            "$db_seed_certificacion_script" \
+            "$db_seed_pruebas_ofuscado_script"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido para reset de BD: $required_file" >&2
@@ -334,6 +338,7 @@ jobs:
           echo "6) $db_seed_inventarios_script"
           echo "7) $db_structure_certificacion_script"
           echo "8) $db_seed_certificacion_script"
+          echo "9) $db_seed_pruebas_ofuscado_script"
 
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
@@ -354,6 +359,7 @@ jobs:
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_inventarios_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_certificacion_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_certificacion_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_pruebas_ofuscado_script"
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
