@@ -681,7 +681,14 @@ test('prestamos releases the rejection connection when a request was already pro
   }
 });
 
-function createPracticeReservationDatabase({ roomAvailable = true, failOnInsert = false } = {}) {
+function createPracticeReservationDatabase({
+  roomAvailable = true,
+  failOnInsert = false,
+  managedReservation = null,
+  cancelableReservation = null,
+  roomOverlapCount = 0,
+  updateReservationSucceeded = true,
+} = {}) {
   const poolCalls = [];
   const transactionCalls = [];
   let releaseCount = 0;
@@ -705,6 +712,9 @@ function createPracticeReservationDatabase({ roomAvailable = true, failOnInsert 
             },
           ],
         };
+      }
+      if (sql.includes('FROM reserva_practica rp') && sql.includes('JOIN usuario u')) {
+        return { rows: managedReservation ? [managedReservation] : [] };
       }
       if (sql.includes('FROM ual u')) {
         return {
@@ -759,6 +769,9 @@ function createPracticeReservationDatabase({ roomAvailable = true, failOnInsert 
           rows: [{ max_horas_mes_practica_libre: 0, max_horas_mes_prestamos: 0 }],
         };
       }
+      if (sql.includes('SELECT COUNT(*)::int AS total') && sql.includes('WHERE id <> $1')) {
+        return { rows: [{ total: roomOverlapCount }] };
+      }
       if (sql.includes('SELECT COUNT(*)::int AS total')) {
         return { rows: [{ total: 0 }] };
       }
@@ -772,6 +785,14 @@ function createPracticeReservationDatabase({ roomAvailable = true, failOnInsert 
         if (sql.includes('INSERT INTO reserva_practica')) {
           if (failOnInsert) throw new Error('Practice reservation insert failed');
           return { rows: [{ id: 901 }] };
+        }
+        if (sql.includes('FROM reserva_practica rp') && sql.includes('AND rp.usuario_id = $2')) {
+          return { rows: cancelableReservation ? [cancelableReservation] : [] };
+        }
+        if (sql.includes("SET estado = 'aprobada'")) {
+          return {
+            rows: updateReservationSucceeded ? [{ id: managedReservation?.id || 901 }] : [],
+          };
         }
 
         return { rows: [] };
@@ -797,6 +818,30 @@ function buildPracticeReservationPayload(overrides = {}) {
     modalidad_libre: 'uno_a_uno',
     ...overrides,
   };
+}
+
+function buildManagedPracticeReservation(overrides = {}) {
+  return {
+    id: 901,
+    usuario_id: 22,
+    sala_id: 8,
+    fecha_inicio: '2999-12-31T10:00:00.000Z',
+    fecha_fin: '2999-12-31T11:00:00.000Z',
+    laboratorio: 'Lab. Ciencias',
+    facultad: 'Facultad de Ciencias',
+    tipo_practica: 'libre',
+    categoria_practica: 'otra',
+    estado: 'pendiente',
+    sala_nombre: 'Sala 8',
+    sala_capacidad: 5,
+    usuario_nombre: 'Estudiante Demo',
+    usuario_correo: 'estudiante@udistrital.edu.co',
+    ...overrides,
+  };
+}
+
+function buildCancelablePracticeReservation(overrides = {}) {
+  return buildManagedPracticeReservation(overrides);
 }
 
 test('prestamos registers an available free practice reservation transactionally', async () => {
@@ -906,6 +951,206 @@ test('prestamos rolls back and releases a failed free practice reservation', asy
       'a failed reservation insert rolls back its transaction'
     );
     assert.ok(!database.transactionCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos approves a pending practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const update = database.transactionCalls.find(({ sql }) =>
+      sql.includes("SET estado = 'aprobada'")
+    );
+    assert.ok(update);
+    assert.deepEqual(update.params, [901]);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos marks a queued practice request as attended when approving it', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation({ estado: 'en_cola' }),
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const queueUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes('UPDATE cola_solicitud')
+    );
+    assert.ok(queueUpdate);
+    assert.deepEqual(queueUpdate.params, [901, 'atendida', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos prevents practice approval when the room is at capacity', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+    roomOverlapCount: 5,
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /capacidad disponible/i);
+    assert.equal(database.transactionCalls.length, 0);
+    assert.equal(database.getReleaseCount(), 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rolls back and releases when a practice is processed concurrently during approval', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+    updateReservationSucceeded: false,
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /procesada por otro usuario/i);
+    assert.ok(database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.ok(!database.transactionCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos allows a student to cancel their own practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation(),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const reservationLookup = database.transactionCalls.find(({ sql }) =>
+      sql.includes('FROM reserva_practica rp')
+    );
+    assert.deepEqual(reservationLookup.params, ['901', 22]);
+    const reservationUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes("SET estado = 'cancelada'")
+    );
+    assert.deepEqual(reservationUpdate.params, [901, 22]);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos cancels the matching wait-queue entry with a queued practice reservation', async () => {
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation({ estado: 'en_cola' }),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const queueUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes('UPDATE cola_solicitud')
+    );
+    assert.ok(queueUpdate);
+    assert.deepEqual(queueUpdate.params, [901, 'cancelada', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos does not let a student cancel a practice reservation outside their account', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 404);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /no existe o ya no se puede cancelar/i);
+    const reservationLookup = database.transactionCalls.find(({ sql }) =>
+      sql.includes('FROM reserva_practica rp')
+    );
+    assert.deepEqual(reservationLookup.params, ['901', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'ROLLBACK');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos enforces the minimum notice period when cancelling a practice', async () => {
+  const startsSoon = new Date(Date.now() + 30 * 60 * 1000);
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation({
+      fecha_inicio: startsSoon.toISOString(),
+      fecha_fin: new Date(startsSoon.getTime() + 60 * 60 * 1000).toISOString(),
+    }),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /al menos 1 hora/i);
+    assert.ok(database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.ok(
+      !database.transactionCalls.some(({ sql }) => sql.includes("SET estado = 'cancelada'"))
+    );
     assert.equal(database.getReleaseCount(), 1);
   } finally {
     loaded.restore();
