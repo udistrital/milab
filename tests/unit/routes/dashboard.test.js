@@ -1576,10 +1576,44 @@ test('inventory dashboard scopes coordinator queries to assigned faculties', asy
       ({ sql }) => sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')
     );
     assert.equal(scopedQueries.length, 3);
+    assert.ok(
+      scopedQueries.some(({ sql }) => sql.includes('i.activo = TRUE')),
+      'inventory dashboard queries must use inventario.activo as the canonical active state'
+    );
+    scopedQueries.forEach(({ sql }) => {
+      assert.doesNotMatch(sql, /\beq\.activo\b/);
+    });
     scopedQueries.forEach(({ sql, params }) => {
       assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
       assert.deepEqual(params, [[10, 12]]);
     });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory dashboard exposes schema failures to admins for diagnosis', async () => {
+  const schemaError = Object.assign(new Error('column eq.activo does not exist'), {
+    code: '42703',
+  });
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async () => {
+      throw schemaError;
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'admin',
+      roles: ['admin'],
+      documento: 'admin-1',
+    });
+    const response = await request(app).get('/inventarios');
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.adminErrorDetail, /42703/);
+    assert.match(response.body.locals.adminErrorDetail, /column eq\.activo does not exist/);
   } finally {
     loaded.restore();
   }
