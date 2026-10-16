@@ -1,8 +1,15 @@
-const test = require('node:test');
+const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const scriptPath = path.resolve(__dirname, '../../../src/public/js/coordinator-autocomplete.js');
+const hadDocument = Object.hasOwn(globalThis, 'document');
+const originalDocument = globalThis.document;
+
+afterEach(() => {
+  if (hadDocument) globalThis.document = originalDocument;
+  else delete globalThis.document;
+});
 
 function createElement(dataset = {}) {
   const listeners = new Map();

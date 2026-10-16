@@ -1,8 +1,19 @@
-const test = require('node:test');
+const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const scriptPath = path.resolve(__dirname, '../../../src/public/js/inventory-preview.js');
+const hadDocument = Object.hasOwn(globalThis, 'document');
+const originalDocument = globalThis.document;
+const hadWindow = Object.hasOwn(globalThis, 'window');
+const originalWindow = globalThis.window;
+
+afterEach(() => {
+  if (hadDocument) globalThis.document = originalDocument;
+  else delete globalThis.document;
+  if (hadWindow) globalThis.window = originalWindow;
+  else delete globalThis.window;
+});
 
 function createFilterButton(filter) {
   const attributes = new Map();

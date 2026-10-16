@@ -5,7 +5,8 @@
   "main": "src/app.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:coverage": "node --experimental-test-coverage --test --test-concurrency=1 $(find tests/unit -type f -name '*.test.js' | sort) && node --experimental-test-coverage --test --test-concurrency=1 $(find tests/integration -type f -name '*.test.js' | sort)",
+    "test:coverage": "node --experimental-test-coverage --test --test-concurrency=1 $(find tests/unit -type f -name '*.test.js' | sort) && node --experimental-test-coverage --test --test-concurrency=1 $(find tests/integration -type f -name '*.test.js' | sort) && npm run test:coverage:thresholds",
+    "test:coverage:thresholds": "node scripts/ci/check-coverage-targets.js",
     "test:unit": "node --test --test-concurrency=1 $(find tests/unit -type f -name '*.test.js' | sort)",
     "test:integration": "node --test --test-concurrency=1 $(find tests/integration -type f -name '*.test.js' | sort)",
     "test:integration:postgres": "node scripts/ci/require-capacitacion-test-database.js && node --test --test-concurrency=1 $(find tests/integration -type f -name '*-postgres-regression.test.js' | sort)",
