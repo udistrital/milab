@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const request = require('supertest');
 
 const { buildApp, resolveRepoPath } = require('./helpers/build-test-app');
@@ -9,6 +10,7 @@ const routePath = resolveRepoPath('src/routes/api/dashboard.js');
 const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
 const facultyScopePath = resolveRepoPath('src/libs/faculty-scope.js');
+const dashboardViewPath = resolveRepoPath('src/views/home/dashboard.ejs');
 
 function createDashboardClient(scopeRows = {}) {
   return {
@@ -91,6 +93,23 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
     purgePaths: [routePath],
   });
 }
+
+test('inventory dashboard link appears beside the monitor tabs', () => {
+  const template = fs.readFileSync(dashboardViewPath, 'utf8');
+  const tabsStart = template.indexOf('<nav class="dashboard-section-tabs"');
+  const tabsEnd = template.indexOf('</nav>', tabsStart);
+
+  assert.notEqual(tabsStart, -1);
+  assert.notEqual(tabsEnd, -1);
+
+  const tabs = template.slice(tabsStart, tabsEnd);
+  assert.match(tabs, /class="dashboard-section-tablist" role="tablist"/);
+  assert.match(
+    tabs,
+    /<a class="dashboard-section-tab dashboard-section-tab-link" href="\/milab\/api\/dashboard\/inventarios">/
+  );
+  assert.doesNotMatch(template.slice(0, tabsStart), /href="\/milab\/api\/dashboard\/inventarios"/);
+});
 
 test('dashboard flow renders admin summary from mounted HTTP handler', async () => {
   const loaded = loadDashboardApp({
