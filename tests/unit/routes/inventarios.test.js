@@ -2022,6 +2022,17 @@ test('main inventory management view defers ARKA reconciliation records', () => 
   assert.doesNotMatch(view, /Equipos técnicos sin vínculo con inventario/);
 });
 
+test('approved inventory management keeps only the detailed inventory grid', () => {
+  const view = fs.readFileSync(
+    resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(view, /<th>Descripción agrupada<\/th>/);
+  assert.doesNotMatch(view, /Existencias por grado, ubicación y unidad/);
+  assert.match(view, /<th>ID<\/th>[\s\S]*<th>Modo de control<\/th>/);
+});
+
 test('inventory migration drops the compatibility view before altering its source column', () => {
   const migration = fs.readFileSync(
     resolveRepoPath('sql-scripts/db_structure_inventarios.sql'),

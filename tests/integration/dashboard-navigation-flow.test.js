@@ -12,6 +12,7 @@ const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
 const facultyScopePath = resolveRepoPath('src/libs/faculty-scope.js');
 const dashboardViewPath = resolveRepoPath('src/views/home/dashboard.ejs');
+const dashboardStylesPath = resolveRepoPath('src/public/css/styles.css');
 
 function createDashboardClient(scopeRows = {}) {
   return {
@@ -117,6 +118,19 @@ test('inventory dashboard is an in-page tab beside platform and peace-and-cleara
   assert.doesNotMatch(tabs, /href="\/milab\/api\/dashboard\/inventarios"/);
   assert.doesNotMatch(template, /dashboard-section-tab-link/);
   assert.doesNotThrow(() => ejs.compile(template, { filename: dashboardViewPath }));
+});
+
+test('inventory dashboard tab constrains its content to the available width', () => {
+  const styles = fs.readFileSync(dashboardStylesPath, 'utf8');
+
+  assert.match(
+    styles,
+    /body\.app-shell \.dashboard-section-panel\[data-dashboard-inventory-panel\]\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*min-width:\s*0;/s
+  );
+  assert.match(
+    styles,
+    /body\.app-shell \.dashboard-inventory-content\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s
+  );
 });
 
 test('inventory dashboard page route returns to its tab in the shared dashboard', async () => {

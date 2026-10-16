@@ -883,33 +883,6 @@
                 </div>
               <% } %>
             </div>
-            <% if (groupedInventory.length) { %>
-              <div class="table-responsive">
-                <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
-                  <thead class="text-light">
-                    <tr><th>Descripción agrupada</th><th>Registros</th><th>Existencias por grado, ubicación y unidad</th></tr>
-                  </thead>
-                  <tbody>
-                    <% groupedInventory.forEach(function(group) { %>
-                      <tr>
-                        <td><%= group.descripcion %></td>
-                        <td><%= group.total_registros %></td>
-                        <td>
-                          <% if (group.existencias && group.existencias.length) { %>
-                            <%= group.existencias.map(function(balance) {
-                              return `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`;
-                            }).join(', ') %>
-                          <% } else { %>
-                            Sin cantidades registradas
-                          <% } %>
-                        </td>
-                      </tr>
-                    <% }) %>
-                  </tbody>
-                </table>
-              </div>
-              <p class="small mb-0">Las cantidades se mantienen separadas por grado, ubicación y unidad para evitar sumar magnitudes incompatibles.</p>
-            <% } %>
           </section>
         <% } %>
         <% if (inventoryItems.length) { %>

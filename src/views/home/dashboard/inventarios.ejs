@@ -1,120 +1,308 @@
-<div class="dashboard-inventory-content">
-  <section class="row g-3 mb-4" aria-label="Indicadores principales de inventario">
-    <% [
-      ['Registros aprobados', metrics.aprobados],
-      ['Descripciones agrupadas', metrics.descripciones],
-      ['Laboratorios con inventario', metrics.laboratorios],
-      ['Equipos disponibles para préstamo', metrics.disponiblesPrestamo],
-      ['Equipos prestados', metrics.prestados],
-      ['Equipos en mantenimiento', metrics.enMantenimiento],
-      ['Equipos fuera de servicio', metrics.fueraServicio],
-      ['Registros activos', metrics.activos],
-      ['Registros inactivos', metrics.inactivos],
-      ['Aprobaciones pendientes', loadMetrics.pendientes_aprobacion],
-      ['Cargas devueltas para corrección', loadMetrics.devueltas_correccion],
-    ].forEach(function(kpi) { %>
-      <div class="col-sm-6 col-xl-3">
-        <article class="card app-table-panel h-100">
-          <div class="card-body">
-            <small><%= kpi[0] %></small>
-            <div class="fs-3 fw-bold"><%= Number(kpi[1] || 0).toLocaleString('es-CO') %></div>
-          </div>
-        </article>
-      </div>
+<%
+  const inventoryTypeKeys = ['equipo_arka', 'complementario', 'reactivo'];
+  const inventoryNumber = (value) => Number(value || 0);
+  const laboratoryById = new Map();
+
+  laboratoryRows.forEach(function(row) {
+    const laboratoryId = String(row.ual_id || row.laboratorio);
+    let laboratory = laboratoryById.get(laboratoryId);
+    if (!laboratory) {
+      laboratory = {
+        label: `${row.laboratorio}${row.facultad ? ` · ${row.facultad}` : ''}`,
+        approved: 0,
+        approvedByType: Object.fromEntries(inventoryTypeKeys.map((type) => [type, 0])),
+        descriptions: 0,
+        inactive: 0,
+        available: 0,
+        loaned: 0,
+        maintenance: 0,
+        outOfService: 0,
+        stockLines: 0,
+      };
+      laboratoryById.set(laboratoryId, laboratory);
+    }
+
+    const approved = inventoryNumber(row.aprobados);
+    if (inventoryTypeKeys.includes(row.tipo_inventario)) {
+      laboratory.approvedByType[row.tipo_inventario] += approved;
+    }
+    laboratory.approved += approved;
+    laboratory.descriptions += inventoryNumber(row.descripciones_agrupadas);
+    laboratory.inactive += inventoryNumber(row.inactivos);
+    laboratory.available += inventoryNumber(row.disponibles_prestamo);
+    laboratory.loaned += inventoryNumber(row.prestados);
+    laboratory.maintenance += inventoryNumber(row.en_mantenimiento);
+    laboratory.outOfService += inventoryNumber(row.fuera_servicio);
+    laboratory.stockLines += inventoryNumber(row.lineas_existencia);
+  });
+
+  const rankedLaboratories = Array.from(laboratoryById.values()).sort(
+    (left, right) => right.approved - left.approved || left.label.localeCompare(right.label, 'es')
+  );
+  const topLaboratories = rankedLaboratories.filter((row) => row.approved > 0).slice(0, 12);
+  const equipmentLaboratories = rankedLaboratories
+    .filter((row) => row.available + row.loaned + row.maintenance + row.outOfService > 0)
+    .sort(
+      (left, right) =>
+        right.available +
+        right.loaned +
+        right.maintenance +
+        right.outOfService -
+        (left.available + left.loaned + left.maintenance + left.outOfService)
+    )
+    .slice(0, 10);
+  const topLaboratoryLabels = topLaboratories.map((row) => row.label);
+  const dashboardInventoryChartData = {
+    typeSummary: {
+      labels: typeRows.map(
+        (row) => inventoryLabels[row.tipo_inventario] || row.tipo_inventario
+      ),
+      datasets: [
+        {
+          label: 'Registros aprobados',
+          values: typeRows.map((row) => inventoryNumber(row.aprobados)),
+        },
+        {
+          label: 'Activos',
+          values: typeRows.map((row) => inventoryNumber(row.activos)),
+        },
+        {
+          label: 'Inactivos',
+          values: typeRows.map((row) => inventoryNumber(row.inactivos)),
+        },
+        {
+          label: 'Descripciones agrupadas',
+          values: typeRows.map((row) => inventoryNumber(row.descripciones_agrupadas)),
+        },
+        {
+          label: 'Laboratorios aprobados',
+          values: typeRows.map((row) => inventoryNumber(row.laboratorios_aprobados)),
+        },
+      ],
+    },
+    equipmentStatus: {
+      labels: ['Disponibles', 'Prestados', 'En mantenimiento', 'Fuera de servicio'],
+      values: [
+        inventoryNumber(metrics.disponiblesPrestamo),
+        inventoryNumber(metrics.prestados),
+        inventoryNumber(metrics.enMantenimiento),
+        inventoryNumber(metrics.fueraServicio),
+      ],
+    },
+    laboratoryInventory: {
+      labels: topLaboratoryLabels,
+      datasets: inventoryTypeKeys
+        .map((type) => ({
+          label: inventoryLabels[type] || type,
+          values: topLaboratories.map((row) => row.approvedByType[type]),
+        }))
+        .filter((dataset) => dataset.values.some((value) => value > 0)),
+    },
+    laboratoryDetails: {
+      labels: topLaboratoryLabels,
+      datasets: [
+        {
+          label: 'Descripciones agrupadas',
+          values: topLaboratories.map((row) => row.descriptions),
+        },
+        {
+          label: 'Registros inactivos',
+          values: topLaboratories.map((row) => row.inactive),
+        },
+        {
+          label: 'Líneas de existencias',
+          values: topLaboratories.map((row) => row.stockLines),
+        },
+      ].filter((dataset) => dataset.values.some((value) => value > 0)),
+    },
+    laboratoryEquipment: {
+      labels: equipmentLaboratories.map((row) => row.label),
+      datasets: [
+        {
+          label: 'Disponibles',
+          values: equipmentLaboratories.map((row) => row.available),
+        },
+        {
+          label: 'Prestados',
+          values: equipmentLaboratories.map((row) => row.loaned),
+        },
+        {
+          label: 'En mantenimiento',
+          values: equipmentLaboratories.map((row) => row.maintenance),
+        },
+        {
+          label: 'Fuera de servicio',
+          values: equipmentLaboratories.map((row) => row.outOfService),
+        },
+      ].filter((dataset) => dataset.values.some((value) => value > 0)),
+    },
+  };
+  const equipmentStatusTotal = dashboardInventoryChartData.equipmentStatus.values.reduce(
+    (total, value) => total + value,
+    0
+  );
+  const inventoryCards = [
+    {
+      label: 'Registros aprobados',
+      value: metrics.aprobados,
+      hint: 'Elementos incluidos en el inventario',
+      tone: 'info',
+    },
+    {
+      label: 'Descripciones agrupadas',
+      value: metrics.descripciones,
+      hint: 'Referencias consolidadas',
+      tone: 'info',
+    },
+    {
+      label: 'Laboratorios con inventario',
+      value: metrics.laboratorios,
+      hint: 'Con registros aprobados',
+      tone: 'info',
+    },
+    {
+      label: 'Registros activos',
+      value: metrics.activos,
+      hint: 'Disponibles en el inventario',
+      tone: 'ok',
+    },
+    {
+      label: 'Registros inactivos',
+      value: metrics.inactivos,
+      hint: 'No disponibles en el inventario',
+      tone: 'warn',
+    },
+    {
+      label: 'Equipos disponibles',
+      value: metrics.disponiblesPrestamo,
+      hint: 'Disponibles para préstamo',
+      tone: 'ok',
+    },
+    {
+      label: 'Equipos prestados',
+      value: metrics.prestados,
+      hint: 'Actualmente en préstamo',
+      tone: 'info',
+    },
+    {
+      label: 'Equipos en mantenimiento',
+      value: metrics.enMantenimiento,
+      hint: 'En proceso de mantenimiento',
+      tone: 'warn',
+    },
+    {
+      label: 'Equipos fuera de servicio',
+      value: metrics.fueraServicio,
+      hint: 'Requieren atención',
+      tone: 'danger',
+    },
+    {
+      label: 'Aprobaciones pendientes',
+      value: loadMetrics.pendientes_aprobacion,
+      hint: 'Cargas por revisar',
+      tone: 'warn',
+    },
+    {
+      label: 'Cargas devueltas',
+      value: loadMetrics.devueltas_correccion,
+      hint: 'Pendientes de corrección',
+      tone: 'danger',
+    },
+  ];
+%>
+
+<script type="application/json" data-dashboard-inventory-chart-data><%- JSON.stringify(dashboardInventoryChartData).replace(/</g, '\\u003c') %></script>
+<div class="dashboard-inventory-content dashboard-pys">
+  <div class="dashboard-pys-header">
+    <p class="dashboard-pys-note mb-0"><%= scopeDescription %></p>
+  </div>
+
+  <section class="dashboard-pys-cards" aria-label="Indicadores principales de inventario">
+    <% inventoryCards.forEach(function(card) { %>
+      <article class="dashboard-pys-card pys-tone-<%= card.tone %>">
+        <span class="dashboard-pys-card-label"><%= card.label %></span>
+        <strong class="dashboard-pys-card-value"><%= inventoryNumber(card.value).toLocaleString('es-CO') %></strong>
+        <span class="dashboard-pys-card-hint"><%= card.hint %></span>
+      </article>
     <% }) %>
   </section>
 
-  <section class="card app-table-panel text-light mb-4">
-    <div class="card-header">
-      <h2 class="h5 mb-0">Resumen por tipo de inventario</h2>
-    </div>
-    <div class="card-body">
-      <div class="table-responsive">
-        <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="10">
-          <thead class="text-light">
-            <tr>
-              <th>Tipo de inventario</th>
-              <th>Registros aprobados</th>
-              <th>Activos</th>
-              <th>Inactivos</th>
-              <th>Laboratorios aprobados</th>
-              <th>Descripciones agrupadas</th>
-              <th>Disponibles para préstamo</th>
-              <th>Prestados</th>
-              <th>En mantenimiento</th>
-              <th>Fuera de servicio</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% typeRows.forEach(function(row) { %>
-              <tr>
-                <td><%= inventoryLabels[row.tipo_inventario] || row.tipo_inventario %></td>
-                <td><%= Number(row.aprobados || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.activos || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.inactivos || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.laboratorios_aprobados || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.descripciones_agrupadas || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.disponibles_prestamo || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.prestados || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.en_mantenimiento || 0).toLocaleString('es-CO') %></td>
-                <td><%= Number(row.fuera_servicio || 0).toLocaleString('es-CO') %></td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <section class="card app-table-panel text-light">
-    <div class="card-header">
-      <h2 class="h5 mb-0">Detalle por laboratorio y tipo</h2>
-      <p class="small mb-0 mt-1">
-        Las descripciones se agrupan normalizando mayúsculas, tildes, puntuación y espacios; no se
-        combinan cantidades de unidades distintas.
-      </p>
-    </div>
-    <div class="card-body">
-      <% if (laboratoryRows.length) { %>
-        <div class="table-responsive">
-          <table class="table table-bordered table-striped app-table-compact align-middle js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
-            <thead class="text-light">
-              <tr>
-                <th>Facultad</th>
-                <th>Laboratorio</th>
-                <th>Tipo de inventario</th>
-                <th>Registros aprobados</th>
-                <th>Descripciones agrupadas</th>
-                <th>Inactivos</th>
-                <th>Disponibles para préstamo</th>
-                <th>Prestados</th>
-                <th>En mantenimiento</th>
-                <th>Fuera de servicio</th>
-                <th>Líneas de existencias</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% laboratoryRows.forEach(function(row) { %>
-                <tr>
-                  <td><%= row.facultad || '-' %></td>
-                  <td><%= row.laboratorio %></td>
-                  <td><%= inventoryLabels[row.tipo_inventario] || row.tipo_inventario %></td>
-                  <td><%= Number(row.aprobados || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.descripciones_agrupadas || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.inactivos || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.disponibles_prestamo || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.prestados || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.en_mantenimiento || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.fuera_servicio || 0).toLocaleString('es-CO') %></td>
-                  <td><%= Number(row.lineas_existencia || 0).toLocaleString('es-CO') %></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
+  <section class="dashboard-pys-panels dashboard-inventory-charts" aria-label="Gráficos de inventario">
+    <article class="dashboard-pys-panel">
+      <h3>Resumen por tipo de inventario</h3>
+      <% if (dashboardInventoryChartData.typeSummary.labels.length) { %>
+        <div class="dashboard-pys-chart dashboard-inventory-chart">
+          <canvas
+            data-dashboard-inventory-chart="type-summary"
+            role="img"
+            aria-label="Registros aprobados, activos, inactivos y descripciones agrupadas por tipo de inventario"
+          ></canvas>
         </div>
       <% } else { %>
-        <div class="alert alert-info mb-0">No hay registros de inventario en el alcance consultado.</div>
+        <p class="dashboard-pys-empty">No hay registros de inventario en el alcance consultado.</p>
       <% } %>
-    </div>
+    </article>
+
+    <article class="dashboard-pys-panel">
+      <h3>Estado de los equipos</h3>
+      <% if (equipmentStatusTotal) { %>
+        <div class="dashboard-pys-chart dashboard-inventory-chart dashboard-inventory-chart--doughnut">
+          <canvas
+            data-dashboard-inventory-chart="equipment-status"
+            role="img"
+            aria-label="Equipos disponibles, prestados, en mantenimiento y fuera de servicio"
+          ></canvas>
+        </div>
+      <% } else { %>
+        <p class="dashboard-pys-empty">No hay equipos aprobados con estados de préstamo en este alcance.</p>
+      <% } %>
+    </article>
+
+    <article class="dashboard-pys-panel">
+      <h3>Registros aprobados por laboratorio y tipo</h3>
+      <% if (dashboardInventoryChartData.laboratoryInventory.labels.length) { %>
+        <div class="dashboard-pys-chart dashboard-inventory-chart dashboard-inventory-chart--tall">
+          <canvas
+            data-dashboard-inventory-chart="laboratory-inventory"
+            role="img"
+            aria-label="Registros aprobados por tipo en los doce laboratorios con más inventario"
+          ></canvas>
+        </div>
+        <p class="dashboard-pys-empty">Se muestran hasta 12 laboratorios con más registros aprobados.</p>
+      <% } else { %>
+        <p class="dashboard-pys-empty">No hay laboratorios con inventarios aprobados.</p>
+      <% } %>
+    </article>
+
+    <article class="dashboard-pys-panel">
+      <h3>Descripciones y existencias por laboratorio</h3>
+      <% if (dashboardInventoryChartData.laboratoryDetails.labels.length && dashboardInventoryChartData.laboratoryDetails.datasets.length) { %>
+        <div class="dashboard-pys-chart dashboard-inventory-chart dashboard-inventory-chart--tall">
+          <canvas
+            data-dashboard-inventory-chart="laboratory-details"
+            role="img"
+            aria-label="Descripciones agrupadas, registros inactivos y líneas de existencias de los laboratorios principales"
+          ></canvas>
+        </div>
+      <% } else { %>
+        <p class="dashboard-pys-empty">No hay detalle de existencias en este alcance.</p>
+      <% } %>
+    </article>
+
+    <article class="dashboard-pys-panel">
+      <h3>Estado de equipos ARKA por laboratorio</h3>
+      <% if (dashboardInventoryChartData.laboratoryEquipment.labels.length) { %>
+        <div class="dashboard-pys-chart dashboard-inventory-chart dashboard-inventory-chart--tall">
+          <canvas
+            data-dashboard-inventory-chart="laboratory-equipment"
+            role="img"
+            aria-label="Estado de los equipos ARKA por laboratorio"
+          ></canvas>
+        </div>
+        <p class="dashboard-pys-empty">Se muestran hasta 10 laboratorios con equipos ARKA en algún estado.</p>
+      <% } else { %>
+        <p class="dashboard-pys-empty">No hay equipos ARKA en este alcance.</p>
+      <% } %>
+    </article>
   </section>
 </div>
