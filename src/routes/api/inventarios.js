@@ -405,26 +405,39 @@ async function getAccessibleInventoryUnits(client, req) {
 
   const result = await client.query(
     `
-      SELECT DISTINCT
-        df.dependencia_facultad_id AS id,
-        df.nombre,
-        df.padre_id AS facultad_id
-      FROM dependencia_facultad df
-      WHERE $1::boolean
-        OR (
-          $2::boolean
-          AND EXISTS (
-            SELECT 1
-            FROM coordinador_facultad_alcance ca
-            JOIN coordinador c
-              ON c.documento = ca.coordinador_documento_id
-             AND c.activo = TRUE
-            WHERE ca.facultad_id = df.dependencia_facultad_id
-              AND ca.coordinador_documento_id = $3
-              AND ca.activo = TRUE
+      WITH accessible_units AS (
+        SELECT DISTINCT
+          df.dependencia_facultad_id AS id,
+          df.nombre,
+          df.padre_id AS facultad_id
+        FROM dependencia_facultad df
+        WHERE $1::boolean
+          OR (
+            $2::boolean
+            AND EXISTS (
+              SELECT 1
+              FROM coordinador_facultad_alcance ca
+              JOIN coordinador c
+                ON c.documento = ca.coordinador_documento_id
+               AND c.activo = TRUE
+              WHERE ca.facultad_id = df.dependencia_facultad_id
+                AND ca.coordinador_documento_id = $3
+                AND ca.activo = TRUE
+            )
           )
-        )
-      ORDER BY df.nombre
+      )
+      SELECT id, nombre, facultad_id
+      FROM accessible_units
+      UNION
+      SELECT
+        faculty.dependencia_facultad_id AS id,
+        faculty.nombre,
+        NULL::int AS facultad_id
+      FROM accessible_units scoped_unit
+      JOIN dependencia_facultad faculty
+        ON faculty.dependencia_facultad_id = COALESCE(scoped_unit.facultad_id, scoped_unit.id)
+      WHERE faculty.padre_id IS NULL
+      ORDER BY nombre
     `,
     [isGlobalInventoryViewer(req), isCoordinator(req), getUserDocument(req)]
   );
@@ -967,6 +980,14 @@ async function getManagementContext(client, req, selectedUalId) {
             c.filas_exitosas,
             c.filas_fallidas,
             c.declaracion_sin_inventario,
+            (
+              SELECT auditoria.detalle->>'comentario'
+              FROM inventario_auditoria auditoria
+              WHERE auditoria.carga_id = c.id
+                AND auditoria.accion = 'carga_devuelta'
+              ORDER BY auditoria.fecha_creacion DESC, auditoria.id DESC
+              LIMIT 1
+            ) AS comentario_devolucion,
             (
               SELECT f.datos_originales
               FROM inventario_carga_fila f
@@ -2117,13 +2138,11 @@ router.post('/individual', requireInventoryAccess, async function (req, res, nex
         `
             UPDATE inventario_estado_laboratorio
             SET sin_inventario = FALSE,
-                aprobado_por_documento = $3,
-                fecha_aprobacion = CURRENT_TIMESTAMP,
                 fecha_modificacion = CURRENT_TIMESTAMP
             WHERE ual_id = $1
               AND tipo_inventario = $2
           `,
-        [ualId, inventoryType, getUserDocument(req)]
+        [ualId, inventoryType]
       );
       await addInventoryAudit(client, req, {
         inventarioId: newInventoryId,
@@ -3587,7 +3606,7 @@ router.post(
             laboratoryState,
             approved && batch.declaracion_sin_inventario,
             cargaId,
-            approved ? getUserDocument(req) : null,
+            approved ? batch.coordinador_documento : null,
             approved ? new Date() : null,
           ]
         );
@@ -3603,7 +3622,7 @@ router.post(
           detail: {
             comentario,
             filasResueltas: rowsResult.rows.length,
-            coordinadorDocumento: getUserDocument(req),
+            coordinadorDocumento: batch.coordinador_documento,
           },
         });
         await addGeneralLog(

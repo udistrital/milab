@@ -2456,6 +2456,10 @@ router.post(
 
 router.get('/inventarios', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  if (req.query.fragment !== '1') {
+    return res.redirect('/milab/api/dashboard#inventarios');
+  }
+
   const role = getDashboardRole(req.session?.user);
   const document = String(req.session?.user?.documento || '');
   let client;

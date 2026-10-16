@@ -1086,6 +1086,16 @@
     initializeSingleSubmitGuard();
   });
 
+  document.addEventListener('milab:initialize-data-grids', function (event) {
+    const root = event.detail?.root || document;
+    const tables = root.matches?.(GRID_SELECTOR)
+      ? [root]
+      : Array.from(root.querySelectorAll(GRID_SELECTOR));
+
+    tables.forEach(initializeDataGrid);
+    initializeStickyActionColumns();
+  });
+
   document.addEventListener('shown.bs.tab', adjustTablesInTab);
   window.addEventListener('pageshow', function (event) {
     if (event.persisted && document.querySelector('table[data-grid-refresh-on-restore="true"]')) {

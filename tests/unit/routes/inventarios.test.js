@@ -568,6 +568,10 @@ test('recent inventory loads expose a protected confirmation form', () => {
 
   assert.match(view, /load\.puedeConfirmar/);
   assert.match(view, /bi-file-earmark-text/);
+  assert.match(view, /Novedad \/ siguiente paso/);
+  assert.match(view, /Comentario del coordinador/);
+  assert.match(view, /Devuelta para corrección/);
+  assert.match(view, /getInventoryStatusVisual/);
   assert.match(view, /bi-send me-1/);
   assert.match(view, /bi-send-fill me-1/);
   assert.match(view, /data-bs-toggle="modal"/);
@@ -1590,7 +1594,11 @@ test('first approval fixes the laboratory coordinator atomically and later appro
     });
     const loaded = loadInventoryRoute({
       pool: { connect: async () => clientHarness.client },
-      user: { tipo: scenario.actor, roles: [scenario.actor], documento: 'coord-1' },
+      user: {
+        tipo: scenario.actor,
+        roles: [scenario.actor],
+        documento: scenario.actor === 'admin' ? 'admin-1' : 'coord-1',
+      },
     });
     try {
       const response = await request(loaded.app)
@@ -1624,6 +1632,14 @@ test('first approval fixes the laboratory coordinator atomically and later appro
         ({ sql }) => sql.includes('SET estado = $1,') && sql.includes('coordinador_documento = $3')
       );
       assert.equal(resolved.params[2], scenario.expectedOwner || 'coord-1');
+      const laboratoryState = clientHarness.calls.find(({ sql }) =>
+        sql.includes('INSERT INTO inventario_estado_laboratorio')
+      );
+      assert.ok(laboratoryState);
+      assert.equal(
+        laboratoryState.params[5],
+        scenario.decision === 'aprobar' ? scenario.expectedOwner || 'coord-1' : null
+      );
       assert.equal(clientHarness.calls.at(-1).sql, 'COMMIT');
     } finally {
       loaded.restore();
@@ -1946,9 +1962,12 @@ test('coordinator can create individual records for every approved inventory typ
       assert.equal(response.status, 302);
       assert.match(response.headers.location, /panel=/);
       assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO inventario (')));
-      assert.ok(
-        clientHarness.calls.some(({ sql }) => sql.includes('UPDATE inventario_estado_laboratorio'))
+      const laboratoryStateUpdate = clientHarness.calls.find(({ sql }) =>
+        sql.includes('UPDATE inventario_estado_laboratorio')
       );
+      assert.ok(laboratoryStateUpdate);
+      assert.doesNotMatch(laboratoryStateUpdate.sql, /aprobado_por_documento/);
+      assert.deepEqual(laboratoryStateUpdate.params, [4, inventoryCase.inventoryType]);
       if (inventoryCase.inventoryType === 'equipo_arka') {
         assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('INSERT INTO equipo')));
       }

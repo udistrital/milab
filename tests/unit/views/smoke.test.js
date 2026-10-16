@@ -5,11 +5,12 @@ const ejs = require('ejs');
 
 const workspaceRoot = path.resolve(__dirname, '../../../');
 
-function renderView(relativePath, data) {
+function renderView(relativePath, data, options = {}) {
   const filePath = path.join(workspaceRoot, relativePath);
   return ejs.renderFile(filePath, data, {
     async: true,
     views: [path.join(workspaceRoot, 'src/views')],
+    ...options,
   });
 }
 
@@ -30,11 +31,83 @@ function buildBaseViewLocals(overrides = {}) {
     nombre: 'Usuario Prueba',
     documento: '100',
     pendingSanctionsCount: 0,
+    pendingInventoryApprovalsCount: 0,
     environmentName: 'test',
     isNonProductionEnvironment: true,
     ...overrides,
   };
 }
+
+test('inventory approval navigation shows a pending-count badge only when needed', async () => {
+  const appNavigation = {
+    primaryLinks: [],
+    secondaryGroups: [
+      {
+        title: 'Inventarios',
+        icon: 'bi-boxes',
+        items: [
+          {
+            label: 'Aprobaciones de inventario',
+            href: '/milab/inventarios/aprobaciones',
+            icon: 'bi-clipboard-check',
+          },
+        ],
+      },
+    ],
+    accountLinks: [],
+    role: 'coordinador',
+    roleLabel: 'Coordinador',
+  };
+  const pageData = {
+    batches: [],
+    inventoryLabels: {},
+    errorMessage: '',
+    successMessage: '',
+  };
+  const pendingHtml = await renderView(
+    'src/views/home/inventarios/aprobaciones/index.ejs',
+    buildBaseViewLocals({
+      ...pageData,
+      appNavigation,
+      pendingInventoryApprovalsCount: 4,
+      tipo: 'coordinador',
+    }),
+    { async: false }
+  );
+  const emptyHtml = await renderView(
+    'src/views/home/inventarios/aprobaciones/index.ejs',
+    buildBaseViewLocals({ ...pageData, appNavigation, tipo: 'coordinador' }),
+    { async: false }
+  );
+
+  assert.match(pendingHtml, /aria-label="4 aprobaciones de inventario pendientes">4<\/span>/);
+  assert.doesNotMatch(emptyHtml, /aprobaciones de inventario pendientes/);
+});
+
+test('inventory dashboard renders as content for the shared dashboard tab', async () => {
+  const html = await renderView('src/views/home/dashboard/inventarios.ejs', {
+    metrics: {
+      aprobados: 12,
+      descripciones: 8,
+      laboratorios: 2,
+      disponiblesPrestamo: 4,
+      prestados: 1,
+      enMantenimiento: 1,
+      fueraServicio: 0,
+      activos: 10,
+      inactivos: 2,
+    },
+    loadMetrics: { pendientes_aprobacion: 3, devueltas_correccion: 1 },
+    typeRows: [],
+    laboratoryRows: [],
+    inventoryLabels: {},
+  });
+
+  assert.match(html, /Registros aprobados/);
+  assert.match(html, /Aprobaciones pendientes/);
+  assert.match(html, /Detalle por laboratorio y tipo/);
+  assert.doesNotMatch(html, /<main|<header|<footer|Volver al monitoreo/);
+});
 
 test('register_monitor view renders with minimal monitor registration context', async () => {
   const html = await renderView(

@@ -1567,7 +1567,7 @@ test('inventory dashboard scopes coordinator queries to assigned faculties', asy
       roles: ['coordinador'],
       documento: 'coord-1',
     });
-    const response = await request(app).get('/inventarios');
+    const response = await request(app).get('/inventarios?fragment=1');
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/dashboard/inventarios');
@@ -1608,7 +1608,7 @@ test('inventory dashboard exposes schema failures to admins for diagnosis', asyn
       roles: ['admin'],
       documento: 'admin-1',
     });
-    const response = await request(app).get('/inventarios');
+    const response = await request(app).get('/inventarios?fragment=1');
 
     assert.equal(response.status, 503);
     assert.equal(response.body.view, 'home/message_error');

@@ -1,22 +1,4 @@
-<%- include('../../partials/header'); -%>
-
-<main class="container py-4 dashboard-page dashboard-page--simplified dashboard-page--compact">
-  <section class="dashboard-topbar dashboard-topbar--compact">
-    <div class="dashboard-topbar-copy">
-      <span class="dashboard-panel-badge dashboard-panel-badge--scope"><%= scopeTitle %></span>
-      <h1 class="dashboard-simple-title">Dashboard de inventario</h1>
-      <p class="dashboard-simple-subtitle"><%= scopeDescription %></p>
-      <% if (scopeChips.length) { %>
-        <div class="dashboard-scope-chip-row">
-          <% scopeChips.forEach(function(chip) { %>
-            <span class="dashboard-scope-chip"><%= chip %></span>
-          <% }) %>
-        </div>
-      <% } %>
-    </div>
-    <a class="btn btn-outline-secondary" href="/milab/api/dashboard">Volver al monitoreo</a>
-  </section>
-
+<div class="dashboard-inventory-content">
   <section class="row g-3 mb-4" aria-label="Indicadores principales de inventario">
     <% [
       ['Registros aprobados', metrics.aprobados],
@@ -135,6 +117,4 @@
       <% } %>
     </div>
   </section>
-</main>
-
-<%- include('../../partials/footer'); -%>
+</div>

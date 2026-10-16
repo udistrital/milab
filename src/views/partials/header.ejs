@@ -31,8 +31,11 @@
   const sessionName = locals.nombre || '';
   const sessionDocument = locals.documento || '';
   const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  const pendingInventoryApprovalsCount = Number(locals.pendingInventoryApprovalsCount || 0);
   const shouldShowSanctionsBadge = (link) =>
     pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  const shouldShowInventoryApprovalsBadge = (link) =>
+    pendingInventoryApprovalsCount > 0 && link && link.href === '/milab/inventarios/aprobaciones';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
   const navigationPrimaryLinks = primaryLinks.filter(
@@ -645,6 +648,9 @@
                     <% if (shouldShowSanctionsBadge(link)) { %>
                       <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
                     <% } %>
+                    <% if (shouldShowInventoryApprovalsBadge(link)) { %>
+                      <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
+                    <% } %>
                   </a>
                 </li>
               <% }) %>
@@ -688,6 +694,9 @@
                                 <span><%= item.label %></span>
                                 <% if (shouldShowSanctionsBadge(item)) { %>
                                   <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
+                                <% } %>
+                                <% if (shouldShowInventoryApprovalsBadge(item)) { %>
+                                  <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                                 <% } %>
                               </a>
                             </li>
