@@ -239,7 +239,10 @@
         %>
         <table
           id="previewRowsTable"
-          class="table table-bordered table-striped app-table-compact align-middle"
+          class="table table-bordered table-striped app-table-compact align-middle js-data-grid"
+          data-grid-page-length="25"
+          data-grid-scroll-x="true"
+          data-grid-column-filters="false"
         >
           <thead class="text-light">
             <tr>
@@ -339,7 +342,7 @@
         </table>
       </div>
       <p id="previewNoMatchingRows" class="alert alert-info" hidden>
-        No hay filas en esta categoría.
+        No hay filas que coincidan con el filtro.
       </p>
       <% } else if (batch.declaracion_sin_inventario) { %>
       <div class="alert alert-info mb-0">

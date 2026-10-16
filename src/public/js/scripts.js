@@ -39,6 +39,10 @@
   }
 
   function buildFilterRow($table) {
+    if ($table.data('gridColumnFilters') === false) {
+      return;
+    }
+
     const $thead = $table.find('thead');
     const $headerRow = $thead.find('tr').first();
 

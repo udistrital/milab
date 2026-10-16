@@ -496,10 +496,14 @@ test('inventory preview exposes row filters, ordered fields, cancellation, and n
     'utf8'
   );
   const script = fs.readFileSync(resolveRepoPath('src/public/js/inventory-preview.js'), 'utf8');
+  const sharedGridScript = fs.readFileSync(resolveRepoPath('src/public/js/scripts.js'), 'utf8');
 
   assert.match(view, /data-row-filter="all"/);
   assert.match(view, /data-row-filter="ready"/);
   assert.match(view, /data-row-filter="observations"/);
+  assert.match(view, /class="[^"]*js-data-grid"/);
+  assert.match(view, /data-grid-page-length="25"/);
+  assert.match(view, /data-grid-column-filters="false"/);
   assert.match(view, /Campos obligatorios/);
   assert.match(view, /Opcionales y validación/);
   assert.match(view, /data-description-toggle/);
@@ -507,7 +511,10 @@ test('inventory preview exposes row filters, ordered fields, cancellation, and n
   assert.match(view, />Volver<\/a>/);
   assert.match(view, /id="inventoryPreviewScrollTop"/);
   assert.match(script, /applyRowFilter/);
+  assert.match(script, /dataTable\.draw\(\)/);
+  assert.match(script, /rows\(\{ search: 'applied' \}\)\.count\(\)/);
   assert.match(script, /scrollTo/);
+  assert.match(sharedGridScript, /gridColumnFilters/);
 });
 
 test('recent inventory loads expose a protected confirmation form', () => {

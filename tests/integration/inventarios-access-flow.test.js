@@ -580,6 +580,8 @@ test('approval review bounds long descriptions, escapes content and exposes navi
     );
     const html = ejs.render(template, { ...response.body.locals, include: () => '' });
     assert.match(html, /Laboratorista Uno/);
+    assert.match(html, /class="[^"]*js-data-grid"/);
+    assert.match(html, /data-grid-page-length="25"/);
     assert.match(html, /inventory-review-description-cell/);
     assert.equal((html.match(/data-description-toggle/g) || []).length, 1);
     assert.match(html, /data-grid-action-ignore aria-expanded="false">Ver más/);
