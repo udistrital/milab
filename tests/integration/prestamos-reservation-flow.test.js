@@ -680,3 +680,234 @@ test('prestamos releases the rejection connection when a request was already pro
     loaded.restore();
   }
 });
+
+function createPracticeReservationDatabase({ roomAvailable = true, failOnInsert = false } = {}) {
+  const poolCalls = [];
+  const transactionCalls = [];
+  let releaseCount = 0;
+
+  return {
+    poolCalls,
+    transactionCalls,
+    getReleaseCount: () => releaseCount,
+    queryImpl: async (sql, params = []) => {
+      poolCalls.push({ sql, params });
+
+      if (sql.includes('FROM usuario u')) {
+        return {
+          rows: [
+            {
+              id: 22,
+              documento: '20241001',
+              nombre: 'Estudiante Demo',
+              correo: 'estudiante@udistrital.edu.co',
+              roles: ['estudiante'],
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM ual u')) {
+        return {
+          rows: [
+            {
+              ual_id: 10,
+              laboratorio: 'Lab. Ciencias',
+              facultad: 'Facultad de Ciencias',
+              facultad_id: 1,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM sala s')) {
+        return {
+          rows: roomAvailable
+            ? [
+                {
+                  id: 8,
+                  nombre: 'Sala 8',
+                  tipo_espacio: 'laboratorio',
+                  capacidad: 5,
+                  permite_practica_libre: true,
+                  permite_practica_docente: true,
+                  formato_practica_libre: 'PL_REGLAMENTO_GENERAL',
+                  formato_practica_docente: 'DOC_PRACTICA_DOCENTE',
+                  modalidad_libre: 'uno_a_uno',
+                  total_reservas: 0,
+                },
+              ]
+            : [],
+        };
+      }
+      if (sql.includes('FROM dependencia_facultad f')) {
+        return { rows: [{ facultad_id: 1 }] };
+      }
+      if (sql.includes('FROM parametro_practica_facultad')) {
+        return {
+          rows: [
+            {
+              min_cancel_hours: 1,
+              min_reserva_hours: 2,
+              min_docente_reserva_days: 0,
+              max_activas_estudiante: 2,
+              dias_sancion_no_asistencia: 0,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM parametrizacion')) {
+        return {
+          rows: [{ max_horas_mes_practica_libre: 0, max_horas_mes_prestamos: 0 }],
+        };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total')) {
+        return { rows: [{ total: 0 }] };
+      }
+
+      return { rows: [] };
+    },
+    transactionClient: {
+      async query(sql, params = []) {
+        transactionCalls.push({ sql, params });
+
+        if (sql.includes('INSERT INTO reserva_practica')) {
+          if (failOnInsert) throw new Error('Practice reservation insert failed');
+          return { rows: [{ id: 901 }] };
+        }
+
+        return { rows: [] };
+      },
+      release() {
+        releaseCount += 1;
+      },
+    },
+  };
+}
+
+function buildPracticeReservationPayload(overrides = {}) {
+  return {
+    facultad: 'Facultad de Ciencias',
+    laboratorio: 'Lab. Ciencias',
+    sala_id: '8',
+    fecha_inicio: '2999-12-31T10:00',
+    fecha_fin: '2999-12-31T11:00',
+    tipo_practica: 'libre',
+    categoria_practica: 'otra',
+    justificacion: 'Practica libre para evaluar instrumentos',
+    firma_digital: 'Acepto el reglamento',
+    modalidad_libre: 'uno_a_uno',
+    ...overrides,
+  };
+}
+
+test('prestamos registers an available free practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, false);
+    assert.equal(response.body.reservationId, 901);
+
+    const insert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO reserva_practica')
+    );
+    assert.ok(insert);
+    assert.equal(insert.params[0], 22);
+    assert.equal(insert.params[1], 8);
+    assert.equal(insert.params[6], 'libre');
+    assert.equal(insert.params[8], 'uno_a_uno');
+    assert.equal(insert.params[9], 'pendiente');
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos queues a free practice reservation when its room has no available capacity', async () => {
+  const database = createPracticeReservationDatabase({ roomAvailable: false });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, true);
+    assert.match(response.body.message, /cola de espera/i);
+
+    const reservationInsert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO reserva_practica')
+    );
+    assert.equal(reservationInsert.params[9], 'en_cola');
+    const queueInsert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO cola_solicitud')
+    );
+    assert.ok(queueInsert);
+    assert.equal(queueInsert.params[5], 901);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rejects student accounts from requesting a docente practice', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(
+        buildPracticeReservationPayload({
+          tipo_practica: 'docente',
+          categoria_practica: 'academica',
+          practica_id: '15',
+          asignatura_codigo: 'BIO101',
+        })
+      );
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /solo los docentes/i);
+    assert.equal(database.transactionCalls.length, 0);
+    assert.equal(
+      database.poolCalls.some(({ sql }) => sql.includes('FROM sala s')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rolls back and releases a failed free practice reservation', async () => {
+  const database = createPracticeReservationDatabase({ failOnInsert: true });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.success, false);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.ok(
+      database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'),
+      'a failed reservation insert rolls back its transaction'
+    );
+    assert.ok(!database.transactionCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
