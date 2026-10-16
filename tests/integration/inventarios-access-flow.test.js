@@ -363,7 +363,7 @@ test('the laboratorista who created a preview can confirm it from recent loads',
 test('inventory management shows and preselects only the laboratory coordinator once assigned', async () => {
   const loaded = loadInventoryApp(
     createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
-    async (sql) => {
+    async (sql, params) => {
       if (sql.includes('JOIN dependencia_facultad df')) {
         return {
           rows: [
@@ -380,8 +380,12 @@ test('inventory management shows and preselects only the laboratory coordinator 
         };
       }
       if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        assert.match(sql, /ON ca\.facultad_id = u\.facultad_id\s+AND ca\.activo = TRUE/);
+        assert.match(sql, /WHERE u\.ual_id = \$1\s+AND u\.activo = TRUE/);
+        assert.match(sql, /JOIN coordinador c[\s\S]*c\.activo = TRUE/);
         assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
         assert.match(sql, /encargado\.coordinador_documento <> c.documento/);
+        assert.deepEqual(params, [4]);
         return {
           rows: [{ documento: 'coord-owner', nombre: 'Coordinador Encargado', encargado: true }],
         };

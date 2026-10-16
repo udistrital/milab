@@ -25,6 +25,77 @@ const INVENTORY_LABELS = Object.freeze({
   [INVENTORY_TYPES.COMPLEMENTARY]: 'Inventario complementario',
   [INVENTORY_TYPES.REAGENT]: 'Reactivos',
 });
+const INVENTORY_TEMPLATE_EXAMPLES = Object.freeze({
+  [INVENTORY_TYPES.ARKA_EQUIPMENT]: {
+    title: 'Inventario de Equipos',
+    headers: [
+      { name: 'PLACA', value: 'ARKA-001', color: 'bg-primary', required: true },
+      { name: 'DESCRIPCIÓN', value: 'Microscopio', color: 'bg-info text-dark', required: true },
+      { name: 'MARCA', value: 'Acme', color: 'bg-success', required: false },
+      { name: 'MODELO', value: 'M1', color: 'bg-warning text-dark', required: false },
+      { name: 'SERIE', value: 'SER-001', color: 'bg-danger', required: false },
+    ],
+    additionalOptional: [
+      'PROVEEDOR',
+      'OBSERVACIONES',
+      'CÓDIGO INTERNO',
+      'ID',
+      'CÓDIGO DE BARRAS',
+      'QR',
+      'PLACA LOCAL',
+      'ETIQUETADO',
+    ],
+  },
+  [INVENTORY_TYPES.COMPLEMENTARY]: {
+    title: 'Inventario complementario',
+    headers: [
+      {
+        name: 'NOMBRE DEL MATERIAL',
+        value: 'Flexómetro',
+        color: 'bg-primary',
+        required: true,
+      },
+      { name: 'CANTIDAD', value: '20', color: 'bg-success', required: false },
+      { name: 'MARCA', value: 'Genérica', color: 'bg-warning text-dark', required: false },
+    ],
+    additionalOptional: [
+      'MODELO',
+      'SERIE',
+      'PROVEEDOR',
+      'OBSERVACIONES',
+      'CÓDIGO INTERNO',
+      'ID',
+      'CÓDIGO DE BARRAS',
+      'QR',
+      'PLACA LOCAL',
+      'ETIQUETADO',
+    ],
+  },
+  [INVENTORY_TYPES.REAGENT]: {
+    title: 'Reactivos',
+    headers: [
+      { name: 'REFERENCIA', value: 'A-01', color: 'bg-primary', required: true },
+      { name: 'REACTIVO', value: 'Acetamida', color: 'bg-info text-dark', required: true },
+      { name: 'STOCK G.T', value: '0 g', color: 'bg-success', required: false },
+      { name: 'STOCK R.A', value: '2000 g', color: 'bg-warning text-dark', required: false },
+      { name: 'CIRCULACIÓN G.T', value: '0 g', color: 'bg-danger', required: false },
+      { name: 'CIRCULACIÓN R.A', value: '400 g', color: 'bg-secondary', required: false },
+    ],
+    additionalOptional: [
+      'MARCA',
+      'MODELO',
+      'PROVEEDOR',
+      'OBSERVACIONES',
+      'SERIE',
+      'CÓDIGO INTERNO',
+      'ID',
+      'CÓDIGO DE BARRAS',
+      'QR',
+      'PLACA LOCAL',
+      'ETIQUETADO',
+    ],
+  },
+});
 const INVENTORY_ALL_TYPES = Object.values(INVENTORY_TYPES);
 const ADDITIONAL_IDENTIFIER_TYPE = 'nomenclatura_adicional';
 const COORDINATOR_OWNER_CONDITION = `
@@ -1121,6 +1192,7 @@ function managementViewData(req, context, messages = {}) {
     successMessage: messages.success || String(req.query.success || ''),
     errorMessage: messages.error || String(req.query.error || ''),
     inventoryLabels: INVENTORY_LABELS,
+    inventoryExamples: INVENTORY_TEMPLATE_EXAMPLES,
     isEditor: isAdmin(req) || isLaboratorista(req),
     isInventoryMaintainer: canManageApprovedInventory(req),
     isAdmin: isAdmin(req),
@@ -1246,6 +1318,52 @@ function handleSpreadsheetUpload(req, res, next) {
 
 router.get('/', requireInventoryAccess, function (req, res) {
   return res.redirect('/milab/inventarios/gestion_inventario');
+});
+
+router.get('/plantillas/:tipo', requireInventoryEditor, function (req, res) {
+  const inventoryType = String(req.params.tipo || '');
+  if (!INVENTORY_ALL_TYPES.includes(inventoryType)) {
+    return res.status(404).render('home/message_error', {
+      message: 'Plantilla de inventario no encontrada',
+      message2: 'Selecciona un tipo de inventario válido.',
+      limit: 'loginOnly',
+    });
+  }
+
+  const example = INVENTORY_TEMPLATE_EXAMPLES[inventoryType];
+  const headers = [...example.headers.map((header) => header.name), ...example.additionalOptional];
+  const exampleRow = [
+    ...example.headers.map((header) => header.value),
+    ...example.additionalOptional.map(() => ''),
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+  worksheet['!cols'] = headers.map((header) => ({
+    wch: Math.min(Math.max(header.length + 2, 16), 32),
+  }));
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventario');
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ['Instrucciones'],
+      ['La segunda fila de la hoja Inventario contiene datos de ejemplo.'],
+      ['Reemplaza o elimina esa fila antes de cargar el archivo.'],
+      ['Conserva los encabezados obligatorios y agrega una fila por registro.'],
+    ]),
+    'Instrucciones'
+  );
+
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="plantilla_ejemplo_${inventoryType}.xlsx"`
+  );
+  return res.send(buffer);
 });
 
 router.get('/gestion_inventario', requireInventoryAccess, async function (req, res, next) {
@@ -2600,25 +2718,8 @@ router.post('/cargas/:id/confirmar', requireInventoryEditor, async function (req
           'inventory_type_locked'
         );
       }
-      const coordinatorResult = await client.query(
-        `
-            SELECT 1
-            FROM ual u
-            JOIN coordinador_facultad_alcance ca
-              ON ca.facultad_id = u.facultad_id
-             AND ca.coordinador_documento_id = $2
-             AND ca.activo = TRUE
-            JOIN coordinador c
-              ON c.documento = ca.coordinador_documento_id
-             AND c.activo = TRUE
-            WHERE u.ual_id = $1
-              AND u.activo = TRUE
-              AND ${COORDINATOR_OWNER_CONDITION}
-            LIMIT 1
-          `,
-        [batch.ual_id, coordinatorDocument]
-      );
-      if (!coordinatorResult.rows.length) {
+      const coordinators = await getCoordinatorsForLaboratory(client, batch.ual_id);
+      if (!coordinators.some((coordinator) => coordinator.documento === coordinatorDocument)) {
         throw new InventoryWorkflowError(
           'El coordinador seleccionado no está autorizado o no es el encargado de este laboratorio.',
           400
@@ -2977,25 +3078,8 @@ router.post(
             'inventory_type_locked'
           );
         }
-        const coordinatorResult = await client.query(
-          `
-            SELECT 1
-            FROM ual u
-            JOIN coordinador_facultad_alcance ca
-              ON ca.facultad_id = u.facultad_id
-             AND ca.coordinador_documento_id = $2
-             AND ca.activo = TRUE
-            JOIN coordinador c
-              ON c.documento = ca.coordinador_documento_id
-             AND c.activo = TRUE
-            WHERE u.ual_id = $1
-              AND u.activo = TRUE
-              AND ${COORDINATOR_OWNER_CONDITION}
-            LIMIT 1
-          `,
-          [ualId, coordinatorDocument]
-        );
-        if (!coordinatorResult.rows.length) {
+        const coordinators = await getCoordinatorsForLaboratory(client, ualId);
+        if (!coordinators.some((coordinator) => coordinator.documento === coordinatorDocument)) {
           throw new InventoryWorkflowError(
             'El coordinador seleccionado no está autorizado o no es el encargado de este laboratorio.',
             400

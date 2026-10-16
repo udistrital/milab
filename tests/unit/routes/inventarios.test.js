@@ -10,6 +10,9 @@ const {
   resolveRepoPath,
 } = require('../../integration/helpers/build-test-app');
 const { createSessionHarness, createUser } = require('../../integration/helpers/session-fixtures');
+const { INVENTORY_TYPES, parseWorkbook, validateInventoryRows } = require(
+  resolveRepoPath('src/libs/inventario-import.js')
+);
 
 const routePath = resolveRepoPath('src/routes/api/inventarios.js');
 const dbPath = resolveRepoPath('src/libs/db.js');
@@ -74,6 +77,46 @@ function createTransactionClient(onQuery = () => ({ rows: [] })) {
     },
   };
 }
+
+test('inventory example templates download importable workbooks for every type', async () => {
+  const loaded = loadInventoryRoute();
+
+  try {
+    for (const inventoryType of Object.values(INVENTORY_TYPES)) {
+      const response = await request(loaded.app)
+        .get(`/plantillas/${inventoryType}`)
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      assert.equal(response.status, 200);
+      assert.match(
+        response.headers['content-type'],
+        /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/
+      );
+      assert.match(
+        response.headers['content-disposition'],
+        new RegExp(`plantilla_ejemplo_${inventoryType}\\.xlsx`)
+      );
+
+      const parsedWorkbook = parseWorkbook(response.body, `plantilla_${inventoryType}.xlsx`);
+      const rows = validateInventoryRows(parsedWorkbook, inventoryType);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].estado, 'exitosa');
+
+      const workbook = XLSX.read(response.body, { type: 'buffer' });
+      assert.deepEqual(workbook.SheetNames, ['Inventario', 'Instrucciones']);
+    }
+
+    const invalidTypeResponse = await request(loaded.app).get('/plantillas/invalid');
+    assert.equal(invalidTypeResponse.status, 404);
+  } finally {
+    loaded.restore();
+  }
+});
 
 test('inventory upload is denied for roles without inventory permissions', async () => {
   let queryCalls = 0;
@@ -386,7 +429,9 @@ test('batch confirmation redirects until the laboratorista acknowledges the repo
 
 test('complementary declaration is sent after the checkbox is confirmed', async () => {
   const clientHarness = createTransactionClient((sql) => {
-    if (sql.includes('coordinador_facultad_alcance')) return { rows: [{ ok: 1 }] };
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+      return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+    }
     if (sql.includes('INSERT INTO inventario_carga (')) return { rows: [{ id: 77 }] };
     return { rows: [] };
   });
@@ -460,23 +505,21 @@ test('invalid inventory spreadsheet structure redirects with a validation messag
   }
 });
 
-test('inventory upload view includes animated examples for all inventory types', () => {
+test('inventory upload view links downloadable examples and retains its visual modal', () => {
   const view = fs.readFileSync(
     resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
     'utf8'
   );
 
   assert.match(view, /data-bs-target="#inventoryExcelExampleModal"/);
+  assert.match(view, /href="\/milab\/inventarios\/plantillas\/<%= selectedType %>"/);
+  assert.match(view, /const inventoryExample = inventoryExamples\[selectedType\]/);
   assert.match(view, /@keyframes inventoryExampleColumnIn/);
   assert.match(view, /otra nomenclatura asociada al equipo/);
   assert.match(view, /Columnas obligatorias y opcionales/);
   assert.match(view, /Otros encabezados opcionales aceptados/);
   assert.match(view, /column\.required \? 'Obligatoria' : 'Opcional'/);
   assert.match(view, /EQUIPO<\/strong> como encabezado de/);
-  assert.match(view, /PLACA/);
-  assert.match(view, /NOMBRE DEL MATERIAL/);
-  assert.match(view, /STOCK G\.T/);
-  assert.match(view, /CIRCULACIÓN R\.A/);
 });
 
 test('ARKA preview offers an optional additional-nomenclature column without replacing its plate', () => {
@@ -639,7 +682,9 @@ test('confirmation saves selected nomenclature separately and rejects duplicate 
       };
     }
     if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
-    if (sql.includes('coordinador_facultad_alcance ca')) return { rows: [{ ok: 1 }] };
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+      return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+    }
     if (
       sql.includes('SELECT *') &&
       sql.includes('FROM inventario_carga_fila') &&
@@ -761,7 +806,9 @@ test('a custom identifier that exceeds its database limit is shown as a row erro
       };
     }
     if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
-    if (sql.includes('coordinador_facultad_alcance ca')) return { rows: [{ ok: 1 }] };
+    if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+      return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+    }
     if (
       sql.includes('SELECT *') &&
       sql.includes('FROM inventario_carga_fila') &&
@@ -1721,10 +1768,12 @@ test('subsequent inventory confirmations and declarations reject a forged non-ow
         };
       }
       if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
-      if (sql.includes('JOIN coordinador_facultad_alcance ca')) {
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        assert.match(sql, /ON ca\.facultad_id = u\.facultad_id\s+AND ca\.activo = TRUE/);
+        assert.match(sql, /WHERE u\.ual_id = \$1\s+AND u\.activo = TRUE/);
         assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
         assert.match(sql, /encargado\.coordinador_documento <> c\.documento/);
-        assert.equal(params[1], 'coord-other');
+        assert.deepEqual(params, [4]);
         return { rows: [] };
       }
       return { rows: [] };

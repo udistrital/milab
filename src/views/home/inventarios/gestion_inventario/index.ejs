@@ -585,88 +585,30 @@
           <div class="alert alert-info mt-3 mb-0 d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div>
               <h4 class="h6 mb-1">¿Necesitas ver el formato de la plantilla?</h4>
-              <p class="mb-0">Abre un ejemplo visual de las columnas para este inventario.</p>
+              <p class="mb-0">Consulta el ejemplo visual o descarga el Excel para este inventario.</p>
             </div>
-            <button
-              type="button"
-              class="btn btn-outline-primary"
-              data-bs-toggle="modal"
-              data-bs-target="#inventoryExcelExampleModal"
-              aria-haspopup="dialog"
-            >
-              <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>
-              Ver ejemplo del Excel
-            </button>
+            <div class="d-flex gap-2 flex-wrap">
+              <a
+                class="btn btn-outline-primary"
+                href="/milab/inventarios/plantillas/<%= selectedType %>"
+              >
+                <i class="bi bi-download me-1" aria-hidden="true"></i>
+                Descargar plantilla de ejemplo
+              </a>
+              <button
+                type="button"
+                class="btn btn-outline-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#inventoryExcelExampleModal"
+                aria-haspopup="dialog"
+              >
+                <i class="bi bi-file-earmark-spreadsheet me-1" aria-hidden="true"></i>
+                Ver ejemplo del Excel
+              </button>
+            </div>
           </div>
 
-          <%
-            const inventoryExample = selectedType === 'equipo_arka'
-              ? {
-                  title: 'Inventario de Equipos',
-                  headers: [
-                    { name: 'PLACA', value: 'ARKA-001', color: 'bg-primary', required: true },
-                    { name: 'DESCRIPCIÓN', value: 'Microscopio', color: 'bg-info text-dark', required: true },
-                    { name: 'MARCA', value: 'Acme', color: 'bg-success', required: false },
-                    { name: 'MODELO', value: 'M1', color: 'bg-warning text-dark', required: false },
-                    { name: 'SERIE', value: 'SER-001', color: 'bg-danger', required: false },
-                  ],
-                  additionalOptional: [
-                    'PROVEEDOR',
-                    'OBSERVACIONES',
-                    'CÓDIGO INTERNO',
-                    'ID',
-                    'CÓDIGO DE BARRAS',
-                    'QR',
-                    'PLACA LOCAL',
-                    'ETIQUETADO',
-                  ],
-                }
-              : selectedType === 'complementario'
-                ? {
-                    title: 'Inventario complementario',
-                    headers: [
-                      { name: 'NOMBRE DEL MATERIAL', value: 'Flexómetro', color: 'bg-primary', required: true },
-                      { name: 'CANTIDAD', value: '20', color: 'bg-success', required: false },
-                      { name: 'MARCA', value: 'Genérica', color: 'bg-warning text-dark', required: false },
-                    ],
-                    additionalOptional: [
-                      'MODELO',
-                      'SERIE',
-                      'PROVEEDOR',
-                      'OBSERVACIONES',
-                      'CÓDIGO INTERNO',
-                      'ID',
-                      'CÓDIGO DE BARRAS',
-                      'QR',
-                      'PLACA LOCAL',
-                      'ETIQUETADO',
-                    ],
-                  }
-                : {
-                    title: 'Reactivos',
-                    headers: [
-                      { name: 'REFERENCIA', value: 'A-01', color: 'bg-primary', required: true },
-                      { name: 'REACTIVO', value: 'Acetamida', color: 'bg-info text-dark', required: true },
-                      { name: 'STOCK G.T', value: '0 g', color: 'bg-success', required: false },
-                      { name: 'STOCK R.A', value: '2000 g', color: 'bg-warning text-dark', required: false },
-                      { name: 'CIRCULACIÓN G.T', value: '0 g', color: 'bg-danger', required: false },
-                      { name: 'CIRCULACIÓN R.A', value: '400 g', color: 'bg-secondary', required: false },
-                    ],
-                    additionalOptional: [
-                      'MARCA',
-                      'MODELO',
-                      'PROVEEDOR',
-                      'OBSERVACIONES',
-                      'SERIE',
-                      'CÓDIGO INTERNO',
-                      'ID',
-                      'CÓDIGO DE BARRAS',
-                      'QR',
-                      'PLACA LOCAL',
-                      'ETIQUETADO',
-                    ],
-                  };
-          %>
+          <% const inventoryExample = inventoryExamples[selectedType]; %>
           <div
             class="modal fade inventory-example-modal"
             id="inventoryExcelExampleModal"
