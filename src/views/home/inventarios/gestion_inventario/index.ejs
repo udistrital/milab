@@ -1,5 +1,39 @@
 <%- include('../../../partials/header'); -%>
 
+<%
+  const inventoryStatusVisuals = {
+    pendiente: { label: 'Pendiente', badge: 'text-bg-secondary', icon: 'bi-hourglass' },
+    previsualizada: {
+      label: 'Pendiente de envío',
+      badge: 'text-bg-warning',
+      icon: 'bi-send-exclamation',
+    },
+    pendiente_aprobacion: {
+      label: 'Pendiente de aprobación',
+      badge: 'text-bg-info',
+      icon: 'bi-hourglass-split',
+    },
+    devuelta: {
+      label: 'Devuelta para corrección',
+      badge: 'text-bg-warning',
+      icon: 'bi-exclamation-triangle-fill',
+    },
+    aprobado: { label: 'Aprobado', badge: 'text-bg-success', icon: 'bi-check-circle-fill' },
+    aprobada: { label: 'Aprobada', badge: 'text-bg-success', icon: 'bi-check-circle-fill' },
+    rechazado: { label: 'Rechazado', badge: 'text-bg-danger', icon: 'bi-x-circle-fill' },
+    rechazada: { label: 'Rechazada', badge: 'text-bg-danger', icon: 'bi-x-circle-fill' },
+    cancelada: { label: 'Cancelada', badge: 'text-bg-secondary', icon: 'bi-slash-circle' },
+    opcional: { label: 'Opcional', badge: 'text-bg-secondary', icon: 'bi-dash-circle' },
+  };
+  function getInventoryStatusVisual(state) {
+    return inventoryStatusVisuals[state] || {
+      label: String(state || 'Pendiente').replaceAll('_', ' '),
+      badge: 'text-bg-secondary',
+      icon: 'bi-info-circle',
+    };
+  }
+%>
+
 <style>
   .inventory-menu-card {
     color: inherit;
@@ -135,11 +169,11 @@
   <section class="card app-form-panel text-light mb-4">
     <div class="card-body">
       <form id="inventory-location-filters" method="get" action="/milab/inventarios/gestion_inventario" class="row g-3 align-items-end">
-        <% if (isGlobalInventoryViewer) { %>
+        <% if (showDependencyFilter) { %>
           <div class="col-md-4">
             <label for="inventory-faculty" class="form-label">Facultad</label>
-            <select id="inventory-faculty" class="form-select">
-              <option value="">Todas las facultades</option>
+            <select id="inventory-faculty" class="form-select" required>
+              <option value="">Selecciona una facultad</option>
               <% inventoryUnits.filter(function(unit) { return unit.facultad_id === null; }).forEach(function(unit) { %>
                 <option value="<%= unit.id %>" <%= selectedLaboratory && selectedLaboratory.facultad_id === unit.id ? 'selected' : '' %>><%= unit.nombre %></option>
               <% }) %>
@@ -149,14 +183,26 @@
         <% if (showDependencyFilter) { %>
           <div class="col-md-4">
             <label for="inventory-dependency" class="form-label">Dependencia</label>
-            <select id="inventory-dependency" class="form-select">
-              <option value="">Todas las dependencias</option>
+            <select id="inventory-dependency" class="form-select" required disabled>
+              <option value="">Selecciona primero una facultad</option>
               <% inventoryUnits.filter(function(unit) { return unit.facultad_id !== null; }).forEach(function(unit) { %>
                 <option
                   value="<%= unit.id %>"
                   data-faculty-id="<%= unit.facultad_id %>"
-                  <%= selectedLaboratory && selectedLaboratory.dependencia_id === unit.id ? 'selected' : '' %>
+                  <%= selectedLaboratory && selectedLaboratory.dependencia_id === unit.id ? 'selected' : 'hidden disabled' %>
                 ><%= unit.nombre %></option>
+              <% }) %>
+              <% inventoryUnits.filter(function(unit) {
+                return unit.facultad_id === null && laboratories.some(function(laboratory) {
+                  return laboratory.facultad_id === unit.id && !laboratory.dependencia_id;
+                });
+              }).forEach(function(unit) { %>
+                <option
+                  value="direct-<%= unit.id %>"
+                  data-faculty-id="<%= unit.id %>"
+                  data-direct-labs="true"
+                  <%= selectedLaboratory && !selectedLaboratory.dependencia_id && selectedLaboratory.facultad_id === unit.id ? 'selected' : 'hidden disabled' %>
+                >Sin dependencia (laboratorios directos de la facultad)</option>
               <% }) %>
             </select>
           </div>
@@ -165,14 +211,14 @@
           <label for="ual_id" class="form-label">
             <%= isGlobalInventoryViewer ? 'Laboratorio' : 'Laboratorio asignado' %>
           </label>
-          <select id="ual_id" name="ual_id" class="form-select" required>
-            <option value="">Selecciona un laboratorio</option>
+          <select id="ual_id" name="ual_id" class="form-select" required disabled>
+            <option value="">Selecciona primero una dependencia</option>
             <% laboratories.forEach(function(laboratory) { %>
               <option
                 value="<%= laboratory.ual_id %>"
                 data-faculty-id="<%= laboratory.facultad_id %>"
                 data-dependency-id="<%= laboratory.dependencia_id || '' %>"
-                <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : '' %>
+                <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : 'hidden disabled' %>
               >
                 <%= laboratory.nombre %> — <%= [laboratory.facultad, laboratory.dependencia].filter(Boolean).join(' / ') %>
               </option>
@@ -183,7 +229,7 @@
           <input type="hidden" name="panel" value="<%= panel %>">
         <% } %>
         <div class="col-md-4">
-          <button class="btn btn-perso" type="submit">Consultar laboratorio</button>
+          <button class="btn btn-perso" type="submit" disabled>Consultar laboratorio</button>
         </div>
       </form>
       <% if (selectedLaboratory) { %>
@@ -216,6 +262,7 @@
       </div>
       <div class="row g-3">
         <% statuses.forEach(function(status) { %>
+          <% const statusVisual = getInventoryStatusVisual(status.estado); %>
           <div class="col-md-6 col-xl-3">
             <a
               class="card app-table-panel h-100 inventory-menu-card"
@@ -224,8 +271,9 @@
               <div class="card-body d-flex flex-column gap-3">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                   <h3 class="h5 mb-0"><%= status.etiqueta %></h3>
-                  <span class="badge <%= status.estado === 'aprobado' ? 'bg-success' : status.bloqueado || status.estado === 'devuelta' ? 'bg-warning text-dark' : 'bg-secondary' %>">
-                    <%= status.estado.replaceAll('_', ' ') %>
+                  <span class="badge rounded-pill <%= statusVisual.badge %>">
+                    <i class="bi <%= statusVisual.icon %> me-1" aria-hidden="true"></i>
+                    <%= statusVisual.label %>
                   </span>
                 </div>
                 <% if (status.tipo_inventario === 'reactivo' && status.estado === 'opcional') { %>
@@ -251,6 +299,9 @@
           </div>
         <% }) %>
         <div class="col-md-6 col-xl-3">
+          <% const attentionLoadCount = recentLoads.filter(function(load) {
+            return ['previsualizada', 'devuelta'].includes(load.estado);
+          }).length; %>
           <a
             class="card app-table-panel h-100 inventory-menu-card"
             href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=recent"
@@ -258,7 +309,12 @@
             <div class="card-body d-flex flex-column gap-3">
               <div class="d-flex justify-content-between align-items-start gap-2">
                 <h3 class="h5 mb-0">Cargas recientes</h3>
-                <span class="badge bg-info text-dark">Historial</span>
+                <span class="badge rounded-pill <%= attentionLoadCount ? 'text-bg-warning' : 'text-bg-info' %>">
+                  <i class="bi <%= attentionLoadCount ? 'bi-exclamation-triangle-fill' : 'bi-clock-history' %> me-1" aria-hidden="true"></i>
+                  <%= attentionLoadCount
+                    ? `${attentionLoadCount} ${attentionLoadCount === 1 ? 'requiere' : 'requieren'} atención`
+                    : 'Historial' %>
+                </span>
               </div>
               <p class="mb-0">Consulta los archivos y declaraciones enviados para este laboratorio.</p>
               <div class="mt-auto">
@@ -274,6 +330,8 @@
   <% } %>
 
   <% if (selectedLaboratory && panel === 'recent') { %>
+    <% const returnedLoads = recentLoads.filter(function(load) { return load.estado === 'devuelta'; }); %>
+    <% const previewLoads = recentLoads.filter(function(load) { return load.estado === 'previsualizada'; }); %>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
       <div>
         <h2 class="h4 mb-1">Cargas recientes</h2>
@@ -284,6 +342,23 @@
         href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>"
       >Volver a las fichas</a>
     </div>
+    <% if (returnedLoads.length) { %>
+      <div class="alert alert-warning d-flex align-items-start gap-2" role="status">
+        <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+        <div>
+          <strong><%= returnedLoads.length %> carga<%= returnedLoads.length === 1 ? '' : 's' %> devuelta<%= returnedLoads.length === 1 ? '' : 's' %> para corrección.</strong>
+          Revisa el comentario del coordinador en la columna «Novedad / siguiente paso».
+        </div>
+      </div>
+    <% } else if (previewLoads.length) { %>
+      <div class="alert alert-info d-flex align-items-start gap-2" role="status">
+        <i class="bi bi-send-exclamation mt-1" aria-hidden="true"></i>
+        <div>
+          Hay <strong><%= previewLoads.length %> carga<%= previewLoads.length === 1 ? '' : 's' %></strong>
+          pendiente<%= previewLoads.length === 1 ? '' : 's' %> de confirmar y enviar al coordinador.
+        </div>
+      </div>
+    <% } %>
     <section class="card app-table-panel text-light">
       <div class="card-body">
         <% if (recentLoads.length) { %>
@@ -295,6 +370,7 @@
                   <th>Tipo</th>
                   <th>Archivo o declaración</th>
                   <th>Estado</th>
+                  <th>Novedad / siguiente paso</th>
                   <th>Filas leídas</th>
                   <th>Exitosas</th>
                   <th>Fallidas</th>
@@ -303,11 +379,40 @@
               </thead>
               <tbody>
                 <% recentLoads.forEach(function(load) { %>
+                  <% const loadStatusVisual = getInventoryStatusVisual(load.estado); %>
                   <tr>
                     <td><%= new Date(load.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></td>
                     <td><%= inventoryLabels[load.tipo_inventario] || load.tipo_inventario %></td>
                     <td><%= load.archivo_nombre %></td>
-                    <td><%= load.estado.replaceAll('_', ' ') %></td>
+                    <td>
+                      <span class="badge rounded-pill <%= loadStatusVisual.badge %>">
+                        <i class="bi <%= loadStatusVisual.icon %> me-1" aria-hidden="true"></i>
+                        <%= loadStatusVisual.label %>
+                      </span>
+                    </td>
+                    <td>
+                      <% if (load.estado === 'devuelta') { %>
+                        <div class="alert alert-warning py-2 px-3 mb-0" role="status">
+                          <strong>Debes corregir y volver a enviar esta carga.</strong>
+                          <% if (load.comentario_devolucion) { %>
+                            <div class="small mt-1">
+                              <strong>Comentario del coordinador:</strong>
+                              <%= load.comentario_devolucion %>
+                            </div>
+                          <% } %>
+                        </div>
+                      <% } else if (load.estado === 'previsualizada') { %>
+                        <span><i class="bi bi-send-exclamation me-1 text-warning" aria-hidden="true"></i>Revisa el reporte y confirma el envío.</span>
+                      <% } else if (load.estado === 'pendiente_aprobacion') { %>
+                        <span><i class="bi bi-hourglass-split me-1 text-info" aria-hidden="true"></i>En espera de revisión del coordinador.</span>
+                      <% } else if (load.estado === 'aprobada') { %>
+                        <span><i class="bi bi-check-circle-fill me-1 text-success" aria-hidden="true"></i>Inventario aprobado.</span>
+                      <% } else if (load.estado === 'rechazada') { %>
+                        <span><i class="bi bi-x-circle-fill me-1 text-danger" aria-hidden="true"></i>Consulta el reporte antes de volver a cargar.</span>
+                      <% } else { %>
+                        <span class="text-muted">Consulta el reporte para ver el detalle.</span>
+                      <% } %>
+                    </td>
                     <td><%= load.total_filas %></td>
                     <td><%= load.filas_exitosas %></td>
                     <td><%= load.filas_fallidas %></td>
@@ -860,7 +965,13 @@
                       <% } else { %>-<% } %>
                     </td>
                     <td><%= item.modo_control === 'cantidad' ? 'Por cantidad' : 'Individual' %></td>
-                    <td><%= item.estado_aprobacion.replaceAll('_', ' ') %></td>
+                    <% const itemStatusVisual = getInventoryStatusVisual(item.estado_aprobacion); %>
+                    <td>
+                      <span class="badge rounded-pill <%= itemStatusVisual.badge %>">
+                        <i class="bi <%= itemStatusVisual.icon %> me-1" aria-hidden="true"></i>
+                        <%= itemStatusVisual.label %>
+                      </span>
+                    </td>
                     <td><%= item.equipo_estado || '-' %></td>
                     <td><%= item.activo ? 'Sí' : 'No' %></td>
                     <% if (isInventoryMaintainer && currentStatus.estado === 'aprobado') { %>

@@ -19,25 +19,25 @@
 
   <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
   <nav class="dashboard-section-tabs" aria-label="Navegación del dashboard">
-  <% if (hasPazYSalvo) { %>
     <div class="dashboard-section-tablist" role="tablist" aria-label="Secciones de monitoreo">
       <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
         <i class="bi bi-grid-1x2" aria-hidden="true"></i>
         <span>Toda la plataforma</span>
       </button>
-      <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
-        <i class="bi bi-patch-check" aria-hidden="true"></i>
-        <span>Paz y salvos</span>
+      <% if (hasPazYSalvo) { %>
+        <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
+          <i class="bi bi-patch-check" aria-hidden="true"></i>
+          <span>Paz y salvos</span>
+        </button>
+      <% } %>
+      <button type="button" class="dashboard-section-tab" id="dashboardTabInventarios" role="tab" aria-selected="false" aria-controls="dashboardSectionInventarios" data-dashboard-section="inventarios" tabindex="-1">
+        <i class="bi bi-box-seam" aria-hidden="true"></i>
+        <span>Dashboard de inventarios</span>
       </button>
     </div>
-  <% } %>
-    <a class="dashboard-section-tab dashboard-section-tab-link" href="/milab/api/dashboard/inventarios">
-      <i class="bi bi-box-seam" aria-hidden="true"></i>
-      <span>Dashboard de inventarios</span>
-    </a>
   </nav>
 
-  <div id="dashboardSectionGeneral" class="dashboard-section-panel" <%- hasPazYSalvo ? 'role="tabpanel" aria-labelledby="dashboardTabGeneral"' : '' %>>
+  <div id="dashboardSectionGeneral" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabGeneral">
     <% const overview = typeof generalOverview !== 'undefined' && generalOverview ? generalOverview : null; %>
     <% const overviewHints = overview ? overview.hints : {}; %>
     <% const kpiIcons = {
@@ -494,6 +494,19 @@
       </section>
     </div>
   <% } %>
+  <div
+    id="dashboardSectionInventarios"
+    class="dashboard-section-panel"
+    role="tabpanel"
+    aria-labelledby="dashboardTabInventarios"
+    data-dashboard-inventory-panel
+    data-dashboard-inventory-url="/milab/api/dashboard/inventarios?fragment=1"
+    hidden
+  >
+    <div class="alert alert-info mb-0" role="status">
+      El dashboard de inventarios se cargará al abrir esta pestaña.
+    </div>
+  </div>
 </main>
 
 <div class="modal fade" id="dashboardEmailEditorModal" tabindex="-1" aria-hidden="true">
@@ -2370,6 +2383,38 @@
     generalOverviewChartsRendered = true;
   }
 
+  async function loadDashboardInventoryPanel() {
+    const panel = document.getElementById('dashboardSectionInventarios');
+    if (!panel || panel.dataset.loaded === 'true' || panel.dataset.loading === 'true') return;
+
+    panel.dataset.loading = 'true';
+    panel.innerHTML = '<div class="alert alert-info mb-0" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Cargando dashboard de inventarios...</div>';
+    try {
+      const response = await fetch(panel.dataset.dashboardInventoryUrl, {
+        headers: { Accept: 'text/html' },
+      });
+      if (!response.ok) {
+        throw new Error(`La solicitud respondió ${response.status}.`);
+      }
+
+      panel.innerHTML = await response.text();
+      panel.dataset.loaded = 'true';
+      document.dispatchEvent(
+        new CustomEvent('milab:initialize-data-grids', { detail: { root: panel } })
+      );
+    } catch (error) {
+      console.error('No fue posible cargar el dashboard de inventarios:', error);
+      panel.innerHTML = '<div class="alert alert-danger mb-0" role="alert">No fue posible cargar el dashboard de inventarios. Intenta nuevamente. <button type="button" class="btn btn-sm btn-outline-danger ms-2" data-dashboard-inventory-retry>Reintentar</button></div>';
+      panel
+        .querySelector('[data-dashboard-inventory-retry]')
+        ?.addEventListener('click', () => {
+          void loadDashboardInventoryPanel();
+        });
+    } finally {
+      panel.dataset.loading = 'false';
+    }
+  }
+
   function initDashboardSectionTabs() {
     const tabs = Array.from(document.querySelectorAll('[data-dashboard-section]'));
     if (!tabs.length) return;
@@ -2395,6 +2440,9 @@
       }
       if (target.dataset.dashboardSection === 'paz-y-salvos' && !pazYSalvoChartsRendered) {
         renderPazYSalvoCharts();
+      }
+      if (target.dataset.dashboardSection === 'inventarios') {
+        void loadDashboardInventoryPanel();
       }
     }
 

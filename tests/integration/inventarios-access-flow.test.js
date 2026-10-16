@@ -187,7 +187,9 @@ test('inventory location selectors match each role and restore the selected UAL 
       createUser({ tipo: role, roles: [role], documento: 'user-1' }),
       async (sql) => {
         if (sql.includes('FROM dependencia_facultad df')) {
-          return { rows: globalViewer ? units : units.filter((unit) => unit.facultad_id) };
+          return {
+            rows: globalViewer ? units : units.filter((unit) => unit.id === 1 || unit.id === 10),
+          };
         }
         if (sql.includes('JOIN dependencia_facultad df')) return { rows: [laboratory] };
         return { rows: [] };
@@ -198,8 +200,9 @@ test('inventory location selectors match each role and restore the selected UAL 
       const response = await request(loaded.app).get('/gestion_inventario?ual_id=4');
       assert.equal(response.status, 200, role);
       const html = ejs.render(template, { ...response.body.locals, include: () => '' });
-      assert.equal(html.includes('id="inventory-faculty"'), globalViewer, role);
+      assert.equal(html.includes('id="inventory-faculty"'), role !== 'laboratorista', role);
       assert.equal(html.includes('id="inventory-dependency"'), role !== 'laboratorista', role);
+      assert.doesNotMatch(html, /Todas las (facultades|dependencias)/);
       assert.match(html, /data-faculty-id="1"/);
       assert.match(html, /data-dependency-id="10"/);
       assert.match(html, /value="4"[\s\S]*?selected/);
@@ -213,10 +216,16 @@ test('inventory location selectors match each role and restore the selected UAL 
         assert.deepEqual(unitsQuery.params, [globalViewer, role === 'coordinador', 'user-1']);
         assert.match(unitsQuery.sql, /ca\.facultad_id = df\.dependencia_facultad_id/);
         assert.match(unitsQuery.sql, /ca\.activo = TRUE/);
-        assert.match(html, /Dependencia sin UAL/);
+        assert.match(unitsQuery.sql, /UNION\s+SELECT/);
+        assert.match(unitsQuery.sql, /ORDER BY nombre/);
+        if (globalViewer) {
+          assert.match(html, /Dependencia sin UAL/);
+        } else {
+          assert.doesNotMatch(html, /Dependencia sin UAL/);
+        }
         assert.match(html, /value="10"[\s\S]*?selected/);
       }
-      if (globalViewer) assert.match(html, /value="1"\s+selected/);
+      if (role !== 'laboratorista') assert.match(html, /value="1"\s+selected/);
     } finally {
       loaded.restore();
     }
@@ -355,6 +364,70 @@ test('the laboratorista who created a preview can confirm it from recent loads',
     assert.match(html, /action="\/milab\/inventarios\/cargas\/43\/confirmar"/);
     assert.ok(html.indexOf('id="recentLoadConfirmModal-43"') > html.indexOf('</table>'));
     assert.doesNotMatch(html, /<details class="mt-2">/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('returned recent loads show the coordinator comment and correction warning', async () => {
+  const comment = 'Corrige la descripción <script>alert(1)</script>.';
+  const loaded = loadInventoryApp(
+    createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
+    async (sql) => {
+      if (sql.includes('JOIN dependencia_facultad df')) {
+        return {
+          rows: [
+            {
+              ual_id: 4,
+              nombre: 'Laboratorio de prueba',
+              facultad: 'Facultad de prueba',
+              dependencia: 'Dependencia de prueba',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM inventario_carga c') && sql.includes('ORDER BY c.fecha_creacion')) {
+        assert.match(sql, /auditoria\.detalle->>'comentario'/);
+        assert.match(sql, /auditoria\.accion = 'carga_devuelta'/);
+        return {
+          rows: [
+            {
+              id: 44,
+              tipo_inventario: 'equipo_arka',
+              estado: 'devuelta',
+              archivo_nombre: 'inventario-devuelto.xlsx',
+              creada_por_documento: 'lab-1',
+              fecha_creacion: '2026-10-14T10:00:00-05:00',
+              total_filas: 1,
+              filas_exitosas: 1,
+              filas_fallidas: 0,
+              declaracion_sin_inventario: false,
+              comentario_devolucion: comment,
+              primera_fila_original: {},
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+  );
+
+  try {
+    const response = await request(loaded.app).get('/gestion_inventario?ual_id=4&panel=recent');
+    const html = ejs.render(
+      fs.readFileSync(
+        resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+        'utf8'
+      ),
+      { ...response.body.locals, include: () => '' }
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(html, /Devuelta para corrección/);
+    assert.match(html, /Comentario del coordinador/);
+    assert.match(html, /Corrige la descripción &lt;script&gt;alert\(1\)&lt;\/script&gt;\./);
+    assert.match(html, /class="alert alert-warning[^"]*" role="status"/);
+    assert.match(html, /columna «Novedad \/ siguiente paso»/);
   } finally {
     loaded.restore();
   }
