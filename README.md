@@ -62,6 +62,30 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 Las tablas de administración de facultades y UAL mantienen el desplazamiento horizontal dentro de la tabla, sin desplazar los filtros, el contador de registros ni la paginación. Los controles se distribuyen en varias filas en pantallas pequeñas y los paneles conservan el ancho disponible incluso con columnas extensas.
 
+## Filtros de gestión del inventario
+
+En `/milab/inventarios/gestion_inventario`, admin y coordinador general pueden filtrar por facultad, dependencia y UAL. Las dependencias se actualizan según la facultad y las UAL según ambos filtros. El coordinador de facultad dispone de dependencias y UAL dentro de su alcance asignado; el laboratorista únicamente ve sus laboratorios activos asignados. Cambiar un filtro superior limpia la selección de los inferiores. Al consultar una UAL o regresar desde sus inventarios se recuperan su facultad y dependencia. Los filtros no modifican los permisos de consulta, edición ni aprobación.
+
+Para todos los perfiles, el selector solo incluye UAL activas con al menos un laboratorista activo con asignación activa y un coordinador activo con alcance activo sobre su facultad o dependencia. Si falta cualquiera de las dos asignaciones, el laboratorio no aparece ni puede seleccionarse mediante un enlace directo a esta página. Las facultades y dependencias permanecen disponibles como filtros, aunque no tengan UAL listas.
+
+## Aprobaciones y confirmaciones
+
+La primera aprobación de cualquier tipo de inventario (incluida la declaración sin complementarios) fija un único coordinador encargado por UAL en `coordinador_ual_encargado`, junto con la carga de origen y la fecha. Si aprueba un administrador, el encargado es el coordinador destinatario de la carga, no el administrador. Rechazar no crea esta relación. Las aprobaciones y asignaciones se guardan en una misma transacción y se serializan por UAL; las siguientes aprobaciones no reemplazan al encargado.
+
+Los próximos envíos y declaraciones solo permiten al encargado, que aparece preseleccionado. Las cargas aún pendientes se consultan y resuelven con ese encargado, aunque se hubieran enviado a otro coordinador antes de fijar la relación. Debe continuar activo y conservar alcance sobre la UAL; si deja de cumplirlo, el envío se bloquea y no se elige otro coordinador automáticamente. El alcance general de consulta por facultad no cambia.
+
+La relación se identifica en Gestión del inventario, en las UAL y la consulta de coordinadores de facultades/dependencias, en Coordinadores registrados y en el detalle de coordinadores del dashboard. La migración [db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql) debe aplicarse antes de desplegar: recupera al destinatario de la primera carga aprobada de cada UAL, ordenada por fecha de resolución e ID, sin sobrescribir encargados ya guardados.
+
+Las cargas pendientes muestran nombre y documento del laboratorista solicitante. La revisión permite expandir descripciones largas con “Ver más” y navegar al inicio o al final de la página. La acción Revisar utiliza el icono estándar de las grillas.
+
+El coordinador puede aprobar, rechazar o devolver una carga con un comentario obligatorio. La devolución conserva la auditoría y habilita al laboratorista que la envió para subir un Excel corregido que reemplaza la versión devuelta y vuelve al flujo de revisión. Los listados de registros, cargas y aprobaciones tienen paginación y filtros por columna.
+
+Después de aprobar un tipo de inventario, el laboratorista asignado, los coordinadores dentro de su alcance y el administrador pueden crear, editar o dar de baja registros individuales. La baja conserva el registro histórico; los equipos prestados no se pueden dar de baja y los equipos dados de baja quedan deshabilitados para préstamos. El detalle aprobado agrupa descripciones normalizadas y mantiene separadas las cantidades por grado, ubicación y unidad. También permite descargar el inventario aprobado en Excel.
+
+El dashboard de inventario está disponible desde el dashboard de monitoreo o en `/milab/api/dashboard/inventarios`. Admin y coordinador general ven la institución completa, coordinadores ven las facultades de su alcance y laboratoristas ven únicamente sus UAL asignadas. La documentación de estados operativos y de aprobación está en [estados-equipo-inventarios.md](docs/estados-equipo-inventarios.md).
+
+Las confirmaciones y avisos usan el diálogo HTML compartido con el estilo Bootstrap del sistema en [app-dialogs.ejs](src/views/partials/app-dialogs.ejs), no los mensajes `confirm`/`alert` del navegador. Los formularios usan `data-confirm-submit` y las operaciones AJAX esperan `await window.MiLabDialogs.confirm(mensaje)`; los avisos usan `window.MiLabDialogs.alert(mensaje)`. Cancelar, cerrar o pulsar Escape no ejecuta la acción. El diálogo mantiene el foco y no cierra ni reinicia otros modales abiertos. Al confirmar se conserva el botón pulsado, incluyendo su nombre y valor, antes de bloquear envíos duplicados; así llegan correctamente las decisiones `aprobar`, `rechazar` y `devolver`.
+
 ## Reporte de sanciones
 
 El listado de sanciones aprovecha un ancho de hasta 1800 px y muestra código y documento en una misma columna, nombre de la persona, laboratorio, fecha y estado destacado. Las pestañas de estudiantes y docentes conservan sus acciones y muestran el número de sanciones del resultado actual. El identificador de sanción se muestra debajo del laboratorio; los nombres ausentes se indican explícitamente, sin consultar servicios externos al cargar el listado. El detalle y la exportación Excel conservan su información y permisos.

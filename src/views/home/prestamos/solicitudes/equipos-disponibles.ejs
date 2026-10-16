@@ -131,7 +131,7 @@
 
           <div class="mb-3">
             <label for="solicitudJustificacion" class="form-label">Justificacion academica *</label>
-            <textarea class="form-control" id="solicitudJustificacion" name="justificacion" rows="3" minlength="10" required></textarea>
+            <textarea class="form-control" id="solicitudJustificacion" name="justificacion" maxlength="2000" rows="3" minlength="10" required></textarea>
             <div class="invalid-feedback">La justificacion es obligatoria y debe tener al menos 10 caracteres.</div>
           </div>
 
@@ -232,6 +232,7 @@
                       type="text"
                       class="form-control"
                       id="solicitudSignatureText"
+                      maxlength="255"
                       placeholder="Escribe tu nombre aqui"
                       autocomplete="off"
                     >

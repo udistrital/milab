@@ -226,7 +226,7 @@ router.post('/solicitar', requireEstudianteODocente, async function (req, res) {
     if (!doc) return badRequest(res, 'No se pudo identificar el documento del usuario.');
     if (!uid) return badRequest(res, 'Usuario de sesión inválido (falta id).');
 
-    const codigoCurso = truncate(req.body?.codigo_curso, 80);
+    const codigoCurso = truncate(req.body?.codigo_curso, 100);
     const motivo = truncate(req.body?.motivo, 500);
     const mensajeSolicitante = truncate(req.body?.mensaje || req.body?.mensaje_solicitante, 1000);
     const ualIdRaw = req.body?.ual_id_solicitud;
@@ -433,7 +433,7 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
 router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async function (req, res) {
   try {
     const scope = await resolveLaboratoristaScope(req);
-    const cursoCodigo = truncate(req.body?.codigo_curso, 80);
+    const cursoCodigo = truncate(req.body?.codigo_curso, 100);
     const ualIdRaw = req.body?.ual_id;
     const fechaInicioRaw = req.body?.fecha_inicio || req.body?.fechaInicio;
     const fechaFinRaw = req.body?.fecha_fin || req.body?.fechaFin;
@@ -1171,7 +1171,7 @@ router.post('/gestion/asistencia/marcar', requireLaboratoristaOAdmin, async func
   try {
     const scope = await resolveLaboratoristaScope(req);
     const sesionId = parsePosInt(req.body?.sesion_id, 'sesion_id');
-    const documento = truncate(req.body?.usuario_documento || req.body?.documento || '', 30);
+    const documento = truncate(req.body?.usuario_documento || req.body?.documento || '', 50);
     if (!documento) return badRequest(res, 'El documento de usuario es obligatorio.');
     const asistio =
       req.body?.asistio == null ? true : req.body.asistio !== false && req.body.asistio !== 'false';

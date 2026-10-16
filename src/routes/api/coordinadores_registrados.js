@@ -79,6 +79,10 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.correo AS con_correo,
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
+             (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+              FROM coordinador_ual_encargado e
+              JOIN ual u ON u.ual_id = e.ual_id
+              WHERE e.coordinador_documento = c.documento) AS laboratorios_encargados,
              STRING_AGG(
                DISTINCT COALESCE(facultad.nombre, f.nombre),
                ', '

@@ -14,6 +14,10 @@
           <% }) %>
         </div>
       <% } %>
+      <a class="btn btn-outline-primary mt-3" href="/milab/api/dashboard/inventarios">
+        <i class="bi bi-box-seam me-1" aria-hidden="true"></i>
+        Dashboard de inventario
+      </a>
     </div>
   </section>
 
@@ -345,6 +349,7 @@
                 type="text"
                 id="dashboardUsuariosFiltroValor"
                 class="form-control form-control-sm"
+                maxlength="255"
                 placeholder="Valor exacto"
                 autocomplete="off"
               >
@@ -505,17 +510,17 @@
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorName">Nombre</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorName" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorName" maxlength="200" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorDocument">Documento</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorDocument" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorDocument" maxlength="50" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorCurrent">Correo actual</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" maxlength="255" readonly>
           </div>
 
           <div class="mb-3">
@@ -524,6 +529,7 @@
               type="email"
               class="form-control"
               id="dashboardEmailEditorInput"
+              maxlength="255"
               required
               autocomplete="off"
               pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"
@@ -738,6 +744,7 @@
       { key: 'documento', label: 'Documento' },
       { key: 'correo', label: 'Correo' },
       { key: 'numero_resolucion_coordinador', label: 'Resolución' },
+      { key: 'laboratorios_encargados', label: 'Laboratorios a cargo' },
       { key: 'soporte_resolucion', label: 'Soporte URL' },
       { key: 'nombre_u', label: 'Universidad' },
       { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },

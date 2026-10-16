@@ -24,6 +24,7 @@ const {
   validarCertificacionesParaReserva,
 } = require('../../libs/capacitacion-cert-validation');
 const { requirePermissions, requireRoles, renderAuthError } = require('../middlewares/auth');
+const { validateFormTextLengths } = require('../middlewares/form-text-limits');
 
 const router = express.Router();
 
@@ -59,7 +60,7 @@ function parseIncidentEvidenceUpload(req, res, next) {
       });
     }
 
-    return next();
+    return validateFormTextLengths(req, res, next);
   });
 }
 
@@ -2073,6 +2074,26 @@ function buildInventoryPayload(body = {}) {
 }
 
 function validateInventoryPayload(payload) {
+  const textLimits = [
+    ['serie', payload.serie, 100],
+    ['placa', payload.placa, 100],
+    ['nombre_bien', payload.nombre_bien, 1000],
+    ['grupo_inventario', payload.grupo_inventario, 100],
+    ['nivel_inventario', payload.nivel_inventario, 50],
+    ['funcionario_doc', payload.funcionario_doc, 50],
+    ['nombre_funcionario', payload.nombre_funcionario, 255],
+    ['sede', payload.sede, 100],
+    ['dependencia', payload.dependencia, 100],
+    ['espacio_fisico', payload.espacio_fisico, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre_bien) {
     return 'El nombre del bien es obligatorio.';
   }
@@ -2126,36 +2147,36 @@ function buildEquipmentPayload(body = {}) {
 }
 
 function validateEquipmentPayload(payload) {
+  const textLimits = [
+    ['codigo', payload.codigo, 50],
+    ['nombre', payload.nombre, 255],
+    ['descripcion', payload.descripcion, 2000],
+    ['categoria', payload.categoria, 100],
+    ['laboratorio', payload.laboratorio, 100],
+    ['facultad', payload.facultad, 100],
+    ['area_conocimiento', payload.area_conocimiento, 100],
+    ['estado', payload.estado, 50],
+    ['ubicacion', payload.ubicacion, 255],
+    ['marca', payload.especificaciones.marca, 2000],
+    ['modelo', payload.especificaciones.modelo, 2000],
+    ['serie_equipo', payload.especificaciones.serie, 2000],
+    ['detalles_tecnicos', payload.especificaciones.detalles, 2000],
+    ['codigo_curso_asociado', payload.codigo_curso_asociado, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre) {
     return 'El nombre del equipo es obligatorio.';
   }
 
-  if (payload.nombre.length > 1000) {
-    return 'El nombre del equipo no puede superar 1000 caracteres.';
-  }
-
-  if (payload.codigo && payload.codigo.length > 50) {
-    return 'El código del equipo no puede superar 50 caracteres.';
-  }
-
   if (!payload.categoria) {
     return 'La categoria del equipo es obligatoria.';
-  }
-
-  if (payload.categoria.length > 100) {
-    return 'La categoria no puede superar 100 caracteres.';
-  }
-
-  if (payload.area_conocimiento.length > 100) {
-    return 'El área de conocimiento no puede superar 100 caracteres.';
-  }
-
-  if (payload.laboratorio.length > 255 || payload.facultad.length > 255) {
-    return 'El laboratorio y la facultad no pueden superar 255 caracteres.';
-  }
-
-  if (payload.ubicacion.length > 255) {
-    return 'La ubicación no puede superar 255 caracteres.';
   }
 
   if (!payload.estado) {
@@ -2317,6 +2338,14 @@ function validateLoanRequestPayload(payload) {
 
   if (fechaFin <= fechaInicio) {
     return 'La fecha de fin debe ser posterior a la fecha de inicio.';
+  }
+
+  if (payload.justificacion_academica.length > 2000) {
+    return 'La justificacion academica no puede superar 2000 caracteres.';
+  }
+
+  if (payload.categoria_practica.length > 20) {
+    return 'La categoria de la practica no puede superar 20 caracteres.';
   }
 
   if (!payload.justificacion_academica || payload.justificacion_academica.length < 10) {
@@ -3083,6 +3112,22 @@ function buildSalaPayload(body = {}) {
 }
 
 function validateSalaPayload(payload) {
+  const textLimits = [
+    ['nombre', payload.nombre, 150],
+    ['tipo_espacio', payload.tipo_espacio, 30],
+    ['formato_practica_libre', payload.formato_practica_libre, 80],
+    ['formato_practica_docente', payload.formato_practica_docente, 80],
+    ['descripcion', payload.descripcion, 2000],
+    ['equipos_nombres', payload.equipos_nombres, 2500],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.facultad || !payload.laboratorio) {
     return 'La facultad y el laboratorio son obligatorios.';
   }
@@ -3098,10 +3143,6 @@ function validateSalaPayload(payload) {
   const capacidad = Number(payload.capacidad);
   if (!Number.isInteger(capacidad) || capacidad <= 0) {
     return 'La capacidad de la sala debe ser un numero entero mayor que cero.';
-  }
-
-  if (payload.equipos_nombres && payload.equipos_nombres.length > 2500) {
-    return 'La lista de equipos excede el maximo permitido.';
   }
 
   return '';

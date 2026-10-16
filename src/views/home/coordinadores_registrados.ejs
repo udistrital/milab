@@ -20,6 +20,7 @@
               <th>Correo</th>
               <th>Facultad</th>
               <th>Dependencia</th>
+              <th>Laboratorios a cargo</th>
               <th>Resoluci&oacute;n</th>
               <th>Soporte Resoluci&oacute;n</th>
               <th>Estado actual</th>
@@ -40,6 +41,9 @@
                 </td>
                 <td data-dependencias-cell="true">
                   <%- include('../partials/compact-list-cell', { text: dependenciaTexto }) %>
+                </td>
+                <td>
+                  <%- include('../partials/compact-list-cell', { text: coordinador.laboratorios_encargados || 'Sin laboratorios a cargo' }) %>
                 </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
                 <td data-soporte-resolucion-cell="true">

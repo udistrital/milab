@@ -33,7 +33,7 @@
         <% if (isEdit) { %>
           <div class="col-md-6">
             <label for="codigo" class="form-label">Codigo</label>
-            <input type="text" class="form-control" id="codigo" name="codigo" value="<%= formItem.codigo || '' %>" readonly>
+            <input type="text" class="form-control" id="codigo" name="codigo" value="<%= formItem.codigo || '' %>" maxlength="50" readonly>
           </div>
         <% } %>
 
@@ -45,7 +45,7 @@
             id="nombre"
             name="nombre"
             value="<%= formItem.nombre || '' %>"
-            maxlength="1000"
+            maxlength="255"
             required
             aria-describedby="nombre_help nombre_error"
           >
@@ -88,7 +88,7 @@
 
         <div class="col-md-6">
           <label for="area_conocimiento" class="form-label">Area de conocimiento</label>
-          <input type="text" class="form-control" id="area_conocimiento" name="area_conocimiento" value="<%= formItem.area_conocimiento || '' %>">
+          <input type="text" class="form-control" id="area_conocimiento" name="area_conocimiento" maxlength="100" value="<%= formItem.area_conocimiento || '' %>">
         </div>
 
         <div class="col-md-6">
@@ -105,32 +105,32 @@
 
         <div class="col-md-6">
           <label for="ubicacion" class="form-label">Ubicacion fisica</label>
-          <input type="text" class="form-control" id="ubicacion" name="ubicacion" value="<%= formItem.ubicacion || '' %>">
+          <input type="text" class="form-control" id="ubicacion" name="ubicacion" maxlength="255" value="<%= formItem.ubicacion || '' %>">
         </div>
 
         <div class="col-md-6">
           <label for="marca" class="form-label">Marca</label>
-          <input type="text" class="form-control" id="marca" name="marca" value="<%= formItem.especificaciones?.marca || '' %>">
+          <input type="text" class="form-control" id="marca" name="marca" maxlength="2000" value="<%= formItem.especificaciones?.marca || '' %>">
         </div>
 
         <div class="col-md-6">
           <label for="modelo" class="form-label">Modelo</label>
-          <input type="text" class="form-control" id="modelo" name="modelo" value="<%= formItem.especificaciones?.modelo || '' %>">
+          <input type="text" class="form-control" id="modelo" name="modelo" maxlength="2000" value="<%= formItem.especificaciones?.modelo || '' %>">
         </div>
 
         <div class="col-md-6">
           <label for="serie_equipo" class="form-label">Serie</label>
-          <input type="text" class="form-control" id="serie_equipo" name="serie_equipo" value="<%= formItem.especificaciones?.serie || '' %>">
+          <input type="text" class="form-control" id="serie_equipo" name="serie_equipo" maxlength="2000" value="<%= formItem.especificaciones?.serie || '' %>">
         </div>
 
         <div class="col-12">
           <label for="descripcion" class="form-label">Descripcion</label>
-          <textarea class="form-control" id="descripcion" name="descripcion" rows="2"><%= formItem.descripcion || '' %></textarea>
+          <textarea class="form-control" id="descripcion" name="descripcion" maxlength="2000" rows="2"><%= formItem.descripcion || '' %></textarea>
         </div>
 
         <div class="col-12">
           <label for="detalles_tecnicos" class="form-label">Detalles tecnicos</label>
-          <textarea class="form-control" id="detalles_tecnicos" name="detalles_tecnicos" rows="3"><%= formItem.especificaciones?.detalles || '' %></textarea>
+          <textarea class="form-control" id="detalles_tecnicos" name="detalles_tecnicos" maxlength="2000" rows="3"><%= formItem.especificaciones?.detalles || '' %></textarea>
         </div>
 
         <div class="col-md-6">

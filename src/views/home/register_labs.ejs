@@ -24,6 +24,7 @@
                 class="form-control"
                 type="search"
                 id="coordinador_documento_lookup"
+                maxlength="255"
                 data-coordinator-search
                 placeholder="Busca por nombre o documento..."
                 autocomplete="off"
@@ -59,6 +60,7 @@
               class="form-control"
               id="documento_lookup"
               name="documento"
+              maxlength="50"
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
@@ -98,6 +100,7 @@
               class="form-control"
               type="text"
               id="coordinador_documento_display"
+              maxlength="255"
               value="<%= selectedCoordinator ? selectedCoordinator.nombre + (selectedCoordinator.facultades ? ' · ' + selectedCoordinator.facultades : '') : '' %>"
               placeholder="Selecciona un coordinador arriba"
               readonly
@@ -109,7 +112,7 @@
 
         <div class="col-md-6">
           <label for="nombre" class="form-label">Nombre completo</label>
-          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required>
+          <input type="text" class="form-control" id="nombre" name="nombre" maxlength="100" value="<%= lookupData?.nombre || '' %>" autocomplete="name" required>
         </div>
 
         <div class="col-md-6">
@@ -119,6 +122,7 @@
             class="form-control"
             id="documento"
             name="documento"
+            maxlength="50"
             inputmode="numeric"
             value="<%= lookupData?.documento || '' %>"
             required
@@ -127,12 +131,12 @@
 
         <div class="col-md-12">
           <label for="contrato" class="form-label">Número de contrato y vigencia</label>
-          <input type="text" class="form-control" id="contrato" name="contrato" placeholder="Ej: 8151-2025" required>
+          <input type="text" class="form-control" id="contrato" name="contrato" maxlength="50" placeholder="Ej: 8151-2025" required>
         </div>
 
         <div class="col-md-12">
           <label for="correo" class="form-label">Correo electrónico institucional</label>
-          <input type="email" class="form-control" id="correo" name="correo" value="<%= lookupData?.correo || '' %>" autocomplete="email" required>
+          <input type="email" class="form-control" id="correo" name="correo" maxlength="50" value="<%= lookupData?.correo || '' %>" autocomplete="email" required>
         </div>
 
         <div class="col-md-12">
@@ -159,6 +163,7 @@
               type="search"
               class="form-control"
               id="ualSearch"
+              maxlength="255"
               placeholder="Filtrar por nombre, código o descripción..."
               autocomplete="off"
               aria-label="Filtrar laboratorios por nombre, código o descripción"

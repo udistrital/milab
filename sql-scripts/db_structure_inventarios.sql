@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS inventario_carga (
     creada_por_documento VARCHAR(50) NOT NULL,
     coordinador_documento VARCHAR(50) REFERENCES coordinador(documento) ON DELETE RESTRICT,
     estado VARCHAR(30) NOT NULL DEFAULT 'previsualizada'
-        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada')),
+        CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta', 'aprobada', 'rechazada', 'cancelada')),
     declaracion_sin_inventario BOOLEAN NOT NULL DEFAULT FALSE,
     total_filas INT NOT NULL DEFAULT 0 CHECK (total_filas >= 0),
     filas_exitosas INT NOT NULL DEFAULT 0 CHECK (filas_exitosas >= 0),
@@ -21,12 +21,42 @@ CREATE TABLE IF NOT EXISTS inventario_carga (
     fecha_resolucion TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS coordinador_ual_encargado (
+    ual_id INT PRIMARY KEY REFERENCES ual(ual_id) ON DELETE RESTRICT,
+    coordinador_documento VARCHAR(50) NOT NULL REFERENCES coordinador(documento) ON DELETE RESTRICT,
+    carga_id BIGINT NOT NULL REFERENCES inventario_carga(id) ON DELETE RESTRICT,
+    fecha_asignacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_coordinador_ual_encargado_documento
+    ON coordinador_ual_encargado(coordinador_documento);
+
+COMMENT ON TABLE coordinador_ual_encargado IS
+    'Encargado único de cada UAL, fijado por su primera carga de inventario aprobada.';
+
+INSERT INTO coordinador_ual_encargado (ual_id, coordinador_documento, carga_id, fecha_asignacion)
+SELECT DISTINCT ON (ual_id)
+       ual_id, coordinador_documento, id,
+       COALESCE(fecha_resolucion, fecha_confirmacion, fecha_creacion)
+FROM inventario_carga
+WHERE estado = 'aprobada'
+  AND coordinador_documento IS NOT NULL
+ORDER BY ual_id, COALESCE(fecha_resolucion, fecha_confirmacion, fecha_creacion), id
+ON CONFLICT (ual_id) DO NOTHING;
+
+UPDATE inventario_carga carga
+SET coordinador_documento = encargado.coordinador_documento
+FROM coordinador_ual_encargado encargado
+WHERE carga.ual_id = encargado.ual_id
+  AND carga.estado = 'pendiente_aprobacion'
+  AND carga.coordinador_documento IS DISTINCT FROM encargado.coordinador_documento;
+
 ALTER TABLE inventario_carga
     DROP CONSTRAINT IF EXISTS inventario_carga_estado_check;
 
 ALTER TABLE inventario_carga
     ADD CONSTRAINT inventario_carga_estado_check
-    CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'aprobada', 'rechazada', 'cancelada'));
+    CHECK (estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta', 'aprobada', 'rechazada', 'cancelada'));
 
 ALTER TABLE inventario
     ADD COLUMN IF NOT EXISTS tipo_inventario VARCHAR(30) NOT NULL DEFAULT 'legado',
@@ -215,7 +245,7 @@ CREATE TABLE IF NOT EXISTS inventario_estado_laboratorio (
     tipo_inventario VARCHAR(30) NOT NULL
         CHECK (tipo_inventario IN ('equipo_arka', 'complementario', 'reactivo')),
     estado VARCHAR(30) NOT NULL DEFAULT 'pendiente'
-        CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'aprobado', 'rechazado')),
+        CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'devuelta', 'aprobado', 'rechazado')),
     sin_inventario BOOLEAN NOT NULL DEFAULT FALSE,
     carga_id BIGINT REFERENCES inventario_carga(id) ON DELETE SET NULL,
     aprobado_por_documento VARCHAR(50) REFERENCES coordinador(documento) ON DELETE SET NULL,
@@ -223,6 +253,14 @@ CREATE TABLE IF NOT EXISTS inventario_estado_laboratorio (
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (ual_id, tipo_inventario)
 );
+
+ALTER TABLE inventario_estado_laboratorio
+    DROP CONSTRAINT IF EXISTS inventario_estado_laboratorio_estado_check,
+    DROP CONSTRAINT IF EXISTS ck_inventario_estado_laboratorio_estado;
+
+ALTER TABLE inventario_estado_laboratorio
+    ADD CONSTRAINT ck_inventario_estado_laboratorio_estado
+    CHECK (estado IN ('pendiente', 'pendiente_aprobacion', 'devuelta', 'aprobado', 'rechazado'));
 
 CREATE TABLE IF NOT EXISTS inventario_auditoria (
     id BIGSERIAL PRIMARY KEY,

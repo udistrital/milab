@@ -156,6 +156,8 @@ test('grid actions cover loan, incident, course and dashboard operations', () =>
   const cases = [
     ['Solicitar', 'bi-calendar-plus'],
     ['Aprobar', 'bi-check-circle'],
+    ['Revisar', 'bi-clipboard-check'],
+    ['Revisar aprobar', 'bi-clipboard-check'],
     ['Rechazar', 'bi-x-circle'],
     ['No asistió', 'bi-x-circle'],
     ['Iniciar', 'bi-play-circle'],
@@ -236,7 +238,7 @@ test('merged action columns preserve table structure and state in registered-use
   };
   for (const [view, variables, expectedColumns] of [
     ['laboratoristas_registrados', { laboratoristas: [person] }, 8],
-    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 9],
+    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 10],
     [
       'facultad',
       {

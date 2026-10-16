@@ -542,39 +542,46 @@
         dropdowns: [],
       };
 
-      document.querySelectorAll('.app-navbar .collapse').forEach(function (collapse) {
+      document.querySelectorAll('.app-sidebar .collapse').forEach(function (collapse) {
+        const toggle = collapse.id
+          ? document.querySelector(`[data-bs-target="#${collapse.id}"]`)
+          : null;
         expandedState.collapses.push({
           element: collapse,
           wasShown: collapse.classList.contains('show'),
+          toggle,
+          previousExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
         });
 
         if (!collapse.classList.contains('show')) {
           collapse.classList.add('show');
         }
+
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', 'true');
+        }
       });
 
-      document
-        .querySelectorAll('.app-navbar .nav-item.dropdown, .app-user-tools .dropdown')
-        .forEach(function (dropdown) {
-          const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
-          const menu = dropdown.querySelector('.dropdown-menu');
+      document.querySelectorAll('.app-user-tools .dropdown').forEach(function (dropdown) {
+        const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
+        const menu = dropdown.querySelector('.dropdown-menu');
 
-          if (!toggle || !menu) {
-            return;
-          }
+        if (!toggle || !menu) {
+          return;
+        }
 
-          expandedState.dropdowns.push({
-            toggle,
-            menu,
-            toggleWasShown: toggle.classList.contains('show'),
-            menuWasShown: menu.classList.contains('show'),
-            previousExpanded: toggle.getAttribute('aria-expanded'),
-          });
-
-          toggle.classList.add('show');
-          toggle.setAttribute('aria-expanded', 'true');
-          menu.classList.add('show');
+        expandedState.dropdowns.push({
+          toggle,
+          menu,
+          toggleWasShown: toggle.classList.contains('show'),
+          menuWasShown: menu.classList.contains('show'),
+          previousExpanded: toggle.getAttribute('aria-expanded'),
         });
+
+        toggle.classList.add('show');
+        toggle.setAttribute('aria-expanded', 'true');
+        menu.classList.add('show');
+      });
 
       return expandedState;
     }
@@ -587,6 +594,14 @@
       expandedState.collapses.forEach(function (entry) {
         if (!entry.wasShown) {
           entry.element.classList.remove('show');
+        }
+
+        if (entry.toggle) {
+          if (entry.previousExpanded === null) {
+            entry.toggle.removeAttribute('aria-expanded');
+          } else {
+            entry.toggle.setAttribute('aria-expanded', entry.previousExpanded);
+          }
         }
       });
 
@@ -1003,7 +1018,11 @@
       }
 
       showOverlay(form.getAttribute('data-oati-loading-message'));
-      form.querySelectorAll('button[type="submit"]').forEach(function (button) {
+      const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+      if (submitButtons.includes(event.submitter) && !event.submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, event.submitter);
+      }
+      submitButtons.forEach(function (button) {
         button.disabled = true;
       });
     });
@@ -1031,6 +1050,9 @@
       const submitter =
         event.submitter && submitButtons.includes(event.submitter) ? event.submitter : null;
 
+      if (submitter && !submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, submitter);
+      }
       submitButtons.forEach(function (button) {
         button.disabled = true;
       });

@@ -27,17 +27,17 @@
 
           <div class="mb-3">
             <label class="form-label" for="emailEditorName">Nombre</label>
-            <input type="text" class="form-control" id="emailEditorName" readonly data-email-editor-name="true">
+            <input type="text" class="form-control" id="emailEditorName" maxlength="200" readonly data-email-editor-name="true">
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="emailEditorDocument">Documento</label>
-            <input type="text" class="form-control" id="emailEditorDocument" readonly data-email-editor-document="true">
+            <input type="text" class="form-control" id="emailEditorDocument" maxlength="50" readonly data-email-editor-document="true">
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="emailEditorCurrent">Correo actual</label>
-            <input type="text" class="form-control" id="emailEditorCurrent" readonly data-email-editor-current="true">
+            <input type="text" class="form-control" id="emailEditorCurrent" maxlength="255" readonly data-email-editor-current="true">
           </div>
 
           <div>
@@ -47,6 +47,7 @@
               class="form-control"
               id="emailEditorInput"
               name="correo"
+              maxlength="255"
               required
               autocomplete="off"
               pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"

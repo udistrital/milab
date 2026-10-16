@@ -1389,6 +1389,41 @@ test('dashboard general overview builds platform charts without sanctions or cer
   ]);
 });
 
+test('dashboard coordinator details identify laboratories assigned by inventory approval', async () => {
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('AS laboratorios_encargados')) {
+        assert.match(sql, /FROM coordinador_ual_encargado encargado/);
+        assert.match(sql, /WHERE encargado.coordinador_documento = c.documento/);
+        return {
+          rows: [
+            {
+              documento: 'coord-owner',
+              nombre: 'Encargado Actual',
+              laboratorios_encargados: 'Laboratorio Uno, Laboratorio Dos',
+              faculty_ids: [10],
+              fecha_creacion: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+  try {
+    const response = await request(buildApp(loaded.route, { tipo: 'admin', roles: ['admin'] })).get(
+      '/'
+    );
+    assert.equal(response.status, 200);
+    assert.equal(
+      response.body.locals.tablesData.coordinadores[0].laboratorios_encargados,
+      'Laboratorio Uno, Laboratorio Dos'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard operational coverage groups UAL and staff by root faculty', async () => {
   const { fetchOperationalCoverage } = require(routePath).__private;
   const client = {
@@ -1510,4 +1545,42 @@ test('dashboard platform activity summarizes the audit log', async () => {
   ]);
   assert.deepEqual(activity.semana.data, [6, 0, 0, 0, 0, 0, 2]);
   assert.deepEqual(activity.actores, [{ nombre: 'Ana', total: 9 }]);
+});
+
+test('inventory dashboard scopes coordinator queries to assigned faculties', async () => {
+  const queries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10, 12],
+      facultyNames: ['Facultad A', 'Facultad B'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      queries.push({ sql, params });
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard/inventarios');
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A', 'Facultad B']);
+    const scopedQueries = queries.filter(
+      ({ sql }) => sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')
+    );
+    assert.equal(scopedQueries.length, 3);
+    scopedQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.deepEqual(params, [[10, 12]]);
+    });
+  } finally {
+    loaded.restore();
+  }
 });

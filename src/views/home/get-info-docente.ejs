@@ -24,17 +24,17 @@
     <%- include('../partials/csrf_field') %>
     <div class="col-md-6">
       <label for="con_nombre" class="form-label">Nombre</label>
-      <input type="text" value="<%= locals.nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>
+      <input type="text" value="<%= locals.nombre %>" class="form-control" id="con_nombre" name="con_nombre" maxlength="500" readonly>
     </div>
   
     <div class="col-md-6">
       <label for="con_documento" class="form-label">Número de Documento</label>
-      <input type="text" value="<%= locals.documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" readonly>
+      <input type="text" value="<%= locals.documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" maxlength="50" readonly>
     </div>
   
     <div class="col-md-6">
       <label for="con_estado" class="form-label">Estado del docente</label>
-      <input type="text" value="<%= locals.estado %>" class="form-control" id="con_estado" name="con_estado" readonly>
+      <input type="text" value="<%= locals.estado %>" class="form-control" id="con_estado" name="con_estado" maxlength="50" readonly>
     </div>
 
     <% if (isStaffRequester) { %>
@@ -42,7 +42,7 @@
     <% } else { %>
       <div class="col-md-6">
         <label for="correo" class="form-label">Correo electrónico</label>
-        <input type="email" value="<%= locals.correo || '' %>" class="form-control" id="correo" name="correo" placeholder="usuario@udistrital.edu.co" required>
+        <input type="email" value="<%= locals.correo || '' %>" class="form-control" id="correo" name="correo" maxlength="255" placeholder="usuario@udistrital.edu.co" required>
       </div>
     <% } %>
 

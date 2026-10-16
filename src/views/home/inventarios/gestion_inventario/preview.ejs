@@ -93,6 +93,45 @@
   <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
+  <% if (batch.estado === 'devuelta' && canRetry) { %>
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <h2 class="h5">Corregir y reemplazar archivo</h2>
+      <p>
+        La carga fue devuelta por el coordinador. Revisa los comentarios del historial, corrige el
+        Excel y súbelo aquí; reemplazará esta versión y conservará la trazabilidad de la revisión.
+      </p>
+      <form
+        action="/milab/inventarios/cargas/previsualizar"
+        method="post"
+        enctype="multipart/form-data"
+        class="row g-3 align-items-end"
+      >
+        <%- include('../../../partials/csrf_field') %>
+        <input type="hidden" name="ual_id" value="<%= batch.ual_id %>" />
+        <input type="hidden" name="tipo_inventario" value="<%= batch.tipo_inventario %>" />
+        <input type="hidden" name="carga_devuelta_id" value="<%= batch.id %>" />
+        <div class="col-md-8">
+          <label for="archivo_corregido" class="form-label">Excel corregido</label>
+          <input
+            id="archivo_corregido"
+            name="archivo"
+            type="file"
+            class="form-control"
+            accept=".xls,.xlsx"
+            required
+          />
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-perso" type="submit" data-submit-lock="true">
+            Reemplazar y revisar
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+  <% } %>
+
   <section class="card app-table-panel text-light mb-4">
     <div class="card-body">
       <h2 class="h5">Reporte de lectura</h2>
@@ -155,6 +194,28 @@
       </div>
     </div>
   </section>
+
+  <% if (reviewHistory.length) { %>
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Historial de revisión</h2>
+    </div>
+    <div class="card-body">
+      <ol class="mb-0">
+        <% reviewHistory.forEach(function(entry) { %>
+        <li class="mb-2">
+          <strong><%= entry.accion.replaceAll('carga_', '').replaceAll('_', ' ') %></strong>
+          — <%= entry.actor_rol %> <%= entry.actor_documento ? `(${entry.actor_documento})` : '' %>,
+          <%= new Date(entry.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %>
+          <% if (entry.detalle && entry.detalle.comentario) { %>
+          <div class="small">Comentario: <%= entry.detalle.comentario %></div>
+          <% } %>
+        </li>
+        <% }) %>
+      </ol>
+    </div>
+  </section>
+  <% } %>
 
   <section class="card app-table-panel text-light mb-4">
     <div class="card-header">
@@ -359,7 +420,7 @@
           >
             <option value="">Selecciona un coordinador autorizado</option>
             <% coordinators.forEach(function(coordinator) { %>
-            <option value="<%= coordinator.documento %>"><%= coordinator.nombre %></option>
+            <option value="<%= coordinator.documento %>" <%= coordinator.encargado ? 'selected' : '' %>><%= coordinator.nombre %><%= coordinator.encargado ? ' (encargado)' : '' %></option>
             <% }) %>
           </select>
         </div>
