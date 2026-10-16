@@ -54,3 +54,20 @@ test('coverage targets fail when line or branch coverage drops below the minimum
     /coverage is 94\.99% lines and 89\.99% branches; required minimum is 95% lines and 90% branches/
   );
 });
+
+test('coverage targets can enforce line coverage without a branch threshold', () => {
+  const output = '# src/libs/user-identity.js | 80.00 | 46.67 | 100.00 |';
+
+  assert.equal(
+    verifyCoverageTargets(output, [{ file: 'src/libs/user-identity.js', lines: 80 }])[0].actual
+      .lines,
+    80
+  );
+  assert.throws(
+    () =>
+      verifyCoverageTargets('# src/libs/user-identity.js | 79.99 | 46.67 | 100.00 |', [
+        { file: 'src/libs/user-identity.js', lines: 80 },
+      ]),
+    /coverage is 79\.99% lines; required minimum is 80% lines/
+  );
+});

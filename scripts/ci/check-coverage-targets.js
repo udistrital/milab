@@ -6,12 +6,18 @@ const repositoryRoot = path.resolve(__dirname, '../..');
 const testFiles = [
   'tests/unit/libs/coordinator-autocomplete.test.js',
   'tests/unit/libs/inventory-preview.test.js',
+  'tests/unit/libs/multa-config.test.js',
+  'tests/unit/libs/prestamos-module-access.test.js',
+  'tests/unit/libs/user-identity.test.js',
   'tests/integration/app-route-composition.test.js',
 ];
 const coverageTargets = [
   { file: 'src/public/js/coordinator-autocomplete.js', lines: 95, branches: 90 },
   { file: 'src/public/js/inventory-preview.js', lines: 95, branches: 90 },
   { file: 'src/milab_routes.js', lines: 95, branches: 90 },
+  { file: 'src/libs/prestamos-module-access.js', lines: 80 },
+  { file: 'src/libs/user-identity.js', lines: 80 },
+  { file: 'src/libs/multa-config.js', lines: 80 },
 ];
 
 function parseCoverageRow(output, file) {
@@ -38,11 +44,19 @@ function parseCoverageRow(output, file) {
 function verifyCoverageTargets(output, targets = coverageTargets) {
   return targets.map((target) => {
     const actual = parseCoverageRow(output, target.file);
-    if (actual.lines < target.lines || actual.branches < target.branches) {
+    const requiresBranchCoverage = Number.isFinite(target.branches);
+    if (
+      actual.lines < target.lines ||
+      (requiresBranchCoverage && actual.branches < target.branches)
+    ) {
+      const actualCoverage = `${actual.lines.toFixed(2)}% lines${
+        requiresBranchCoverage ? ` and ${actual.branches.toFixed(2)}% branches` : ''
+      }`;
+      const requiredCoverage = `${target.lines}% lines${
+        requiresBranchCoverage ? ` and ${target.branches}% branches` : ''
+      }`;
       throw new Error(
-        `${target.file} coverage is ${actual.lines.toFixed(2)}% lines and ` +
-          `${actual.branches.toFixed(2)}% branches; required minimum is ` +
-          `${target.lines}% lines and ${target.branches}% branches.`
+        `${target.file} coverage is ${actualCoverage}; required minimum is ${requiredCoverage}.`
       );
     }
     return { ...target, actual };
@@ -69,11 +83,14 @@ function run() {
   }
 
   for (const target of verifyCoverageTargets(result.stdout)) {
-    console.log(
-      `Coverage target met: ${target.file} has ${target.actual.lines.toFixed(2)}% line ` +
-        `coverage (minimum ${target.lines}%) and ${target.actual.branches.toFixed(2)}% ` +
-        `branch coverage (minimum ${target.branches}%).`
-    );
+    const lineSummary =
+      `${target.file} has ${target.actual.lines.toFixed(2)}% line coverage ` +
+      `(minimum ${target.lines}%)`;
+    const branchSummary = Number.isFinite(target.branches)
+      ? ` and ${target.actual.branches.toFixed(2)}% branch coverage ` +
+        `(minimum ${target.branches}%)`
+      : '';
+    console.log(`Coverage target met: ${lineSummary}${branchSummary}.`);
   }
 }
 

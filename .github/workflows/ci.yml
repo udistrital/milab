@@ -78,8 +78,8 @@ jobs:
           node-version: '25.x'
       - name: Instalar dependencias
         run: npm ci
-      - name: Ejecutar pruebas unitarias e integración
-        run: npm test
+      - name: Ejecutar pruebas unitarias e integración con cobertura
+        run: npm run test:coverage
 
   despliegue_pruebas:
     name: Despliegue a pruebas
