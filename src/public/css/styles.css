@@ -2536,16 +2536,23 @@ body.app-shell .dashboard-page--compact .dashboard-scope-chip {
 
 body.app-shell .dashboard-section-tabs {
   display: flex;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 0.35rem;
   border-bottom: 1px solid var(--app-border, rgba(23, 23, 23, 0.12));
+}
+
+body.app-shell .dashboard-section-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: -1px;
 }
 
 body.app-shell .dashboard-section-tab {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin-bottom: -1px;
   padding: 0.5rem 0.9rem;
   border: 1px solid transparent;
   border-radius: 10px 10px 0 0;
@@ -2553,6 +2560,11 @@ body.app-shell .dashboard-section-tab {
   color: var(--app-text-muted);
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+body.app-shell .dashboard-section-tab-link {
+  margin-bottom: -1px;
+  text-decoration: none;
 }
 
 body.app-shell .dashboard-section-tab:hover {

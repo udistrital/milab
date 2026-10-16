@@ -70,7 +70,11 @@
         </div>
       <% } else if (rows.length) { %>
         <div class="table-responsive">
-          <table class="table table-bordered table-striped app-table-compact">
+          <table
+            class="table table-bordered table-striped app-table-compact js-data-grid"
+            data-grid-page-length="25"
+            data-grid-scroll-x="true"
+          >
             <thead class="text-light">
               <tr>
                 <th>Fila</th>

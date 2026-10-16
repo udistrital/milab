@@ -203,7 +203,7 @@ test('inventory location selectors match each role and restore the selected UAL 
       assert.match(html, /data-faculty-id="1"/);
       assert.match(html, /data-dependency-id="10"/);
       assert.match(html, /value="4"[\s\S]*?selected/);
-      assert.match(html, /\/milab\/js\/inventory-location-filters.js/);
+      assert.match(html, /\/milab\/public\/js\/inventory-location-filters\.js/);
       const unitsQuery = loaded.queries.find(({ sql }) =>
         sql.includes('FROM dependencia_facultad df')
       );
@@ -340,11 +340,21 @@ test('the laboratorista who created a preview can confirm it from recent loads',
   try {
     const response = await request(loaded.app).get('/gestion_inventario?ual_id=4&panel=recent');
     const [preview] = response.body.locals.recentLoads;
+    const template = fs.readFileSync(
+      resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+      'utf8'
+    );
+    const html = ejs.render(template, { ...response.body.locals, include: () => '' });
 
     assert.equal(response.status, 200);
     assert.equal(preview.puedeConfirmar, true);
     assert.deepEqual(preview.additionalIdentifierHeaders, ['codigo catalogo']);
     assert.equal(response.body.locals.coordinators[0].documento, 'coord-1');
+    assert.match(html, /data-bs-target="#recentLoadConfirmModal-43"/);
+    assert.match(html, /id="recentLoadConfirmModal-43"/);
+    assert.match(html, /action="\/milab\/inventarios\/cargas\/43\/confirmar"/);
+    assert.ok(html.indexOf('id="recentLoadConfirmModal-43"') > html.indexOf('</table>'));
+    assert.doesNotMatch(html, /<details class="mt-2">/);
   } finally {
     loaded.restore();
   }
@@ -353,7 +363,7 @@ test('the laboratorista who created a preview can confirm it from recent loads',
 test('inventory management shows and preselects only the laboratory coordinator once assigned', async () => {
   const loaded = loadInventoryApp(
     createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
-    async (sql) => {
+    async (sql, params) => {
       if (sql.includes('JOIN dependencia_facultad df')) {
         return {
           rows: [
@@ -370,8 +380,12 @@ test('inventory management shows and preselects only the laboratory coordinator 
         };
       }
       if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        assert.match(sql, /ON ca\.facultad_id = u\.facultad_id\s+AND ca\.activo = TRUE/);
+        assert.match(sql, /WHERE u\.ual_id = \$1\s+AND u\.activo = TRUE/);
+        assert.match(sql, /JOIN coordinador c[\s\S]*c\.activo = TRUE/);
         assert.match(sql, /NOT EXISTS \(\s+SELECT 1 FROM coordinador_ual_encargado/);
         assert.match(sql, /encargado\.coordinador_documento <> c.documento/);
+        assert.deepEqual(params, [4]);
         return {
           rows: [{ documento: 'coord-owner', nombre: 'Coordinador Encargado', encargado: true }],
         };
@@ -580,6 +594,8 @@ test('approval review bounds long descriptions, escapes content and exposes navi
     );
     const html = ejs.render(template, { ...response.body.locals, include: () => '' });
     assert.match(html, /Laboratorista Uno/);
+    assert.match(html, /class="[^"]*js-data-grid"/);
+    assert.match(html, /data-grid-page-length="25"/);
     assert.match(html, /inventory-review-description-cell/);
     assert.equal((html.match(/data-description-toggle/g) || []).length, 1);
     assert.match(html, /data-grid-action-ignore aria-expanded="false">Ver más/);

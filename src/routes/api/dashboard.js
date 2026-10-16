@@ -2528,17 +2528,16 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
                 AND i.estado_aprobacion = 'aprobado'
                 AND i.activo = TRUE
                 AND i.disponible_prestamo = TRUE
-                AND eq.activo = TRUE
                 AND eq.estado = 'disponible'
             )::int AS disponibles_prestamo,
             COUNT(*) FILTER (
               WHERE i.estado_aprobacion = 'aprobado'
-                AND eq.activo = TRUE
+                AND i.activo = TRUE
                 AND eq.estado = 'prestado'
             )::int AS prestados,
             COUNT(*) FILTER (
               WHERE i.estado_aprobacion = 'aprobado'
-                AND eq.activo = TRUE
+                AND i.activo = TRUE
                 AND eq.estado = 'mantenimiento'
             )::int AS en_mantenimiento,
             COUNT(*) FILTER (
@@ -2585,17 +2584,16 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
                 AND i.tipo_inventario = 'equipo_arka'
                 AND i.activo = TRUE
                 AND i.disponible_prestamo = TRUE
-                AND eq.activo = TRUE
                 AND eq.estado = 'disponible'
             )::int AS disponibles_prestamo,
             COUNT(*) FILTER (
               WHERE i.estado_aprobacion = 'aprobado'
-                AND eq.activo = TRUE
+                AND i.activo = TRUE
                 AND eq.estado = 'prestado'
             )::int AS prestados,
             COUNT(*) FILTER (
               WHERE i.estado_aprobacion = 'aprobado'
-                AND eq.activo = TRUE
+                AND i.activo = TRUE
                 AND eq.estado = 'mantenimiento'
             )::int AS en_mantenimiento,
             COUNT(*) FILTER (
@@ -2679,23 +2677,31 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
     });
   } catch (error) {
     if (error.code === '42P01' || error.code === '42703') {
-      return renderApplicationError(res, {
-        status: 503,
-        message: 'Dashboard de inventario no disponible',
-        message2: 'Verifica que el esquema del módulo de inventarios esté actualizado.',
-        limit: null,
-        error,
-      });
+      return renderApplicationError(
+        res,
+        {
+          status: 503,
+          message: 'Dashboard de inventario no disponible',
+          message2: 'Verifica que el esquema del módulo de inventarios esté actualizado.',
+          limit: null,
+        },
+        req,
+        error
+      );
     }
     console.error('Error cargando el dashboard de inventario:', error);
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar el dashboard de inventario.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-      error,
-      adminErrorDetail: '',
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar el dashboard de inventario.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+        adminErrorDetail: '',
+      },
+      req,
+      error
+    );
   } finally {
     client?.release();
   }
