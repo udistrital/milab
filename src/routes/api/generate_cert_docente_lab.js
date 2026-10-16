@@ -49,8 +49,6 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
   let uniqueId1;
   const actorRole = req.session?.user?.tipo || 'personal autorizado';
 
-  console.log(motivo_exp);
-
   // Determinar origen de la descarga (L: Laboratorista/Admin)
   // Como esta ruta es específica para laboratoristas, forzamos 'L'
   let origen_descarga = actorRole;
