@@ -57,6 +57,36 @@ test('inventory access scopes coordinators to assigned faculty and dependencies'
   }
 });
 
+test('missing inventory schema exposes PostgreSQL details only to administrators', async () => {
+  const databaseError = new Error('relation inventario_estado_laboratorio does not exist');
+  databaseError.code = '42P01';
+
+  for (const role of ['admin', 'laboratorista']) {
+    const loaded = loadInventoryApp(createUser({ tipo: role, roles: [role] }), async () => {
+      throw databaseError;
+    });
+
+    try {
+      const response = await request(loaded.app).get('/gestion_inventario');
+
+      assert.equal(response.status, 503, role);
+      if (role === 'admin') {
+        assert.match(response.body.locals.adminErrorDetail, /Codigo: 42P01/);
+        assert.match(
+          response.body.locals.adminErrorDetail,
+          /relation inventario_estado_laboratorio does not exist/
+        );
+        assert.doesNotMatch(response.body.locals.adminErrorDetail, /sin objeto Error adjunto/);
+      } else {
+        assert.equal(response.body.locals.adminErrorDetail, undefined);
+        assert.doesNotMatch(JSON.stringify(response.body.locals), /inventario_estado_laboratorio/);
+      }
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
 test('inventory access scopes laboratoristas to assigned laboratories', async () => {
   const loaded = loadInventoryApp(
     createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' })
@@ -380,6 +410,43 @@ test('inventory management shows and preselects only the laboratory coordinator 
     assert.match(html, /Coordinador Encargado/);
     assert.match(html, /value="coord-owner"\s+selected/);
     assert.match(html, /Las siguientes cargas solo se envían a este coordinador/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('approved equipment availability uses inventory active state, not equipo activo', async () => {
+  const loaded = loadInventoryApp(
+    createUser({ tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' }),
+    async (sql) => {
+      if (sql.includes('JOIN dependencia_facultad df')) {
+        return {
+          rows: [
+            {
+              ual_id: 4,
+              nombre: 'Laboratorio Uno',
+              facultad_id: 1,
+              facultad: 'Facultad Uno',
+              dependencia: 'Dependencia Uno',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    }
+  );
+
+  try {
+    const response = await request(loaded.app).get(
+      '/gestion_inventario?ual_id=4&panel=equipo_arka'
+    );
+    const summaryQuery = loaded.queries.find(({ sql }) => sql.includes('AS disponibles_prestamo'));
+
+    assert.equal(response.status, 200);
+    assert.ok(summaryQuery);
+    assert.match(summaryQuery.sql, /AND activo = TRUE/);
+    assert.match(summaryQuery.sql, /AND disponible_prestamo = TRUE/);
+    assert.doesNotMatch(summaryQuery.sql, /eq\.activo/);
   } finally {
     loaded.restore();
   }

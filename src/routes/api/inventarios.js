@@ -6,6 +6,7 @@ const pool = require('../../libs/db');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
+const { renderApplicationError } = require('../middlewares/error-handler');
 const { validateFormTextLengths } = require('../middlewares/form-text-limits');
 const {
   INVENTORY_TYPES,
@@ -930,7 +931,6 @@ async function getManagementContext(client, req, selectedUalId) {
                       SELECT 1
                       FROM equipo eq
                       WHERE eq.inventario_id = inventario.id
-                        AND eq.activo = TRUE
                         AND eq.estado = 'disponible'
                     )
                 )::int AS disponibles_prestamo
@@ -1264,13 +1264,19 @@ router.get('/gestion_inventario', requireInventoryAccess, async function (req, r
       managementViewData(req, context)
     );
   } catch (error) {
-    if (error.code === '42P01' || error.code === '42703') {
-      return res.status(503).render('home/message_error', {
-        message: 'Módulo de inventarios sin instalar',
-        message2:
-          'Ejecuta sql-scripts/db_structure_inventarios.sql y sql-scripts/db_seed_inventarios.sql para habilitar el módulo.',
-        limit: 'loginOnly',
-      });
+    if (error?.code === '42P01' || error?.code === '42703') {
+      return renderApplicationError(
+        res,
+        {
+          status: 503,
+          message: 'Módulo de inventarios sin instalar',
+          message2:
+            'Ejecuta sql-scripts/db_structure_inventarios.sql y sql-scripts/db_seed_inventarios.sql para habilitar el módulo.',
+          limit: 'loginOnly',
+        },
+        req,
+        error
+      );
     }
     console.error('Error cargando gestión de inventarios:', error);
     return next(error);
