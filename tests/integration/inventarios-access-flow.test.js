@@ -483,6 +483,19 @@ test('approval review bounds long descriptions, escapes content and exposes navi
           ],
         };
       }
+      if (sql.includes('FROM inventario_auditoria')) {
+        return {
+          rows: [
+            {
+              accion: 'carga_previsualizada',
+              actor_documento: 'lab-1',
+              actor_rol: 'laboratorista',
+              detalle: {},
+              fecha_creacion: '2026-10-15T12:00:00.000Z',
+            },
+          ],
+        };
+      }
       return {
         rows: [
           { estado: 'pendiente_aprobacion', numero_fila: 2, payload: { descripcion: description } },
