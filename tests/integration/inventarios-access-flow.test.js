@@ -340,11 +340,21 @@ test('the laboratorista who created a preview can confirm it from recent loads',
   try {
     const response = await request(loaded.app).get('/gestion_inventario?ual_id=4&panel=recent');
     const [preview] = response.body.locals.recentLoads;
+    const template = fs.readFileSync(
+      resolveRepoPath('src/views/home/inventarios/gestion_inventario/index.ejs'),
+      'utf8'
+    );
+    const html = ejs.render(template, { ...response.body.locals, include: () => '' });
 
     assert.equal(response.status, 200);
     assert.equal(preview.puedeConfirmar, true);
     assert.deepEqual(preview.additionalIdentifierHeaders, ['codigo catalogo']);
     assert.equal(response.body.locals.coordinators[0].documento, 'coord-1');
+    assert.match(html, /data-bs-target="#recentLoadConfirmModal-43"/);
+    assert.match(html, /id="recentLoadConfirmModal-43"/);
+    assert.match(html, /action="\/milab\/inventarios\/cargas\/43\/confirmar"/);
+    assert.ok(html.indexOf('id="recentLoadConfirmModal-43"') > html.indexOf('</table>'));
+    assert.doesNotMatch(html, /<details class="mt-2">/);
   } finally {
     loaded.restore();
   }

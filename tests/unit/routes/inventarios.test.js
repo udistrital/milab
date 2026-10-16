@@ -527,6 +527,9 @@ test('recent inventory loads expose a protected confirmation form', () => {
   assert.match(view, /bi-file-earmark-text/);
   assert.match(view, /bi-send me-1/);
   assert.match(view, /bi-send-fill me-1/);
+  assert.match(view, /data-bs-toggle="modal"/);
+  assert.match(view, /recentLoadConfirmModal-<%= load\.id %>/);
+  assert.doesNotMatch(view, /<details class="mt-2">/);
   assert.match(view, /name="coordinador_documento"/);
   assert.match(view, /name="confirmar_revision"/);
   assert.match(view, /name="nomenclatura_adicional_columna"/);
