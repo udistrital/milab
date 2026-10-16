@@ -866,7 +866,6 @@ async function getManagementContext(client, req, selectedUalId) {
   let coordinators = [];
   let inventoryItems = [];
   let inventorySummary = null;
-  let groupedInventory = [];
   let statuses = INVENTORY_ALL_TYPES.map((type) => ({
     tipo_inventario: type,
     etiqueta: INVENTORY_LABELS[type],
@@ -888,7 +887,6 @@ async function getManagementContext(client, req, selectedUalId) {
       itemResult,
       loadResult,
       inventorySummaryResult,
-      groupedInventoryResult,
     ] = await Promise.all([
       client.query(
         `
@@ -1034,76 +1032,6 @@ async function getManagementContext(client, req, selectedUalId) {
             [selectedLaboratory.ual_id, filterType]
           )
         : Promise.resolve({ rows: [] }),
-      filterType
-        ? client.query(
-            `
-              WITH approved_inventory AS (
-                SELECT id, nombre_bien
-                FROM inventario
-                WHERE laboratorio_ual_id = $1
-                  AND tipo_inventario = $2
-                  AND estado_aprobacion = 'aprobado'
-              ),
-              description_groups AS (
-                SELECT
-                  BTRIM(REGEXP_REPLACE(
-                    TRANSLATE(LOWER(BTRIM(nombre_bien)), 'áéíóúüñ', 'aeiouun'),
-                    '[[:space:][:punct:]]+',
-                    ' ',
-                    'g'
-                  )) AS descripcion_key,
-                  MIN(nombre_bien) AS descripcion,
-                  COUNT(*)::int AS total_registros
-                FROM approved_inventory
-                GROUP BY BTRIM(REGEXP_REPLACE(
-                  TRANSLATE(LOWER(BTRIM(nombre_bien)), 'áéíóúüñ', 'aeiouun'),
-                  '[[:space:][:punct:]]+',
-                  ' ',
-                  'g'
-                ))
-              ),
-              balance_groups AS (
-                SELECT
-                  BTRIM(REGEXP_REPLACE(
-                    TRANSLATE(LOWER(BTRIM(ai.nombre_bien)), 'áéíóúüñ', 'aeiouun'),
-                    '[[:space:][:punct:]]+',
-                    ' ',
-                    'g'
-                  )) AS descripcion_key,
-                  ie.grado,
-                  ie.ubicacion,
-                  ie.unidad,
-                  SUM(ie.cantidad) AS cantidad
-                FROM approved_inventory ai
-                JOIN inventario_existencia ie ON ie.inventario_id = ai.id
-                GROUP BY BTRIM(REGEXP_REPLACE(
-                  TRANSLATE(LOWER(BTRIM(ai.nombre_bien)), 'áéíóúüñ', 'aeiouun'),
-                  '[[:space:][:punct:]]+',
-                  ' ',
-                  'g'
-                )), ie.grado, ie.ubicacion, ie.unidad
-              )
-              SELECT
-                d.descripcion,
-                d.total_registros,
-                COALESCE(
-                  json_agg(json_build_object(
-                    'grado', b.grado,
-                    'ubicacion', b.ubicacion,
-                    'unidad', b.unidad,
-                    'cantidad', b.cantidad
-                  ) ORDER BY b.grado, b.ubicacion, b.unidad)
-                    FILTER (WHERE b.descripcion_key IS NOT NULL),
-                  '[]'::json
-                ) AS existencias
-              FROM description_groups d
-              LEFT JOIN balance_groups b USING (descripcion_key)
-              GROUP BY d.descripcion_key, d.descripcion, d.total_registros
-              ORDER BY d.total_registros DESC, d.descripcion
-            `,
-            [selectedLaboratory.ual_id, filterType]
-          )
-        : Promise.resolve({ rows: [] }),
     ]);
     const statusByType = new Map(
       statusResult.rows.map((status) => [status.tipo_inventario, status])
@@ -1164,7 +1092,6 @@ async function getManagementContext(client, req, selectedUalId) {
     });
     inventoryItems = itemResult.rows;
     inventorySummary = inventorySummaryResult.rows[0] || null;
-    groupedInventory = groupedInventoryResult.rows;
     recentLoads = loadResult.rows.map((load) => {
       const firstRowOriginal = load.primera_fila_original || {};
       return {
@@ -1193,7 +1120,6 @@ async function getManagementContext(client, req, selectedUalId) {
     coordinators,
     inventoryItems,
     inventorySummary,
-    groupedInventory,
     statuses,
     recentLoads,
   };

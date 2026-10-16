@@ -2026,6 +2026,110 @@
     pazYSalvoChartsRendered = true;
   }
 
+  const dashboardInventoryCharts = [];
+  let dashboardInventoryChartsRendered = false;
+
+  function buildDashboardInventoryBarConfig(chartData, theme, stacked = false) {
+    const colors = [
+      GEN_COLORS.blue,
+      GEN_COLORS.green,
+      GEN_COLORS.amber,
+      GEN_COLORS.red,
+      GEN_COLORS.purple,
+      GEN_COLORS.teal,
+    ];
+
+    return {
+      type: 'bar',
+      data: {
+        labels: chartData.labels,
+        datasets: chartData.datasets.map((dataset, index) => {
+          const color = colors[index % colors.length];
+          return {
+            label: dataset.label,
+            data: dataset.values,
+            backgroundColor: hexToRgba(color, 0.82),
+            hoverBackgroundColor: color,
+            borderRadius: 5,
+            maxBarThickness: 18,
+          };
+        }),
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: chartData.datasets.length > 1,
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) =>
+                `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString('es-CO')}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            stacked,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: {
+            stacked,
+            ticks: { color: theme.text, font: { size: 11 } },
+            grid: { display: false },
+          },
+        },
+      },
+    };
+  }
+
+  function buildDashboardInventoryChartConfig(canvas, data, theme) {
+    const chartType = canvas.dataset.dashboardInventoryChart;
+    if (chartType === 'equipment-status') {
+      return buildPysDoughnutConfig(
+        data.equipmentStatus.labels,
+        data.equipmentStatus.values,
+        [
+          PYS_TONE_COLORS.ok,
+          PYS_TONE_COLORS.info,
+          PYS_TONE_COLORS.warn,
+          PYS_TONE_COLORS.danger,
+        ],
+        theme
+      );
+    }
+
+    const chartDataByType = {
+      'type-summary': data.typeSummary,
+      'laboratory-inventory': data.laboratoryInventory,
+      'laboratory-details': data.laboratoryDetails,
+      'laboratory-equipment': data.laboratoryEquipment,
+    };
+    const chartData = chartDataByType[chartType];
+    if (!chartData || !chartData.labels.length || !chartData.datasets.length) return null;
+    return buildDashboardInventoryBarConfig(chartData, theme, chartType === 'laboratory-equipment');
+  }
+
+  function renderDashboardInventoryCharts(root) {
+    if (!root || typeof Chart === 'undefined') return;
+    const dataElement = root.querySelector('[data-dashboard-inventory-chart-data]');
+    if (!dataElement) return;
+
+    const data = JSON.parse(dataElement.textContent);
+    dashboardInventoryCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    root.querySelectorAll('[data-dashboard-inventory-chart]').forEach((canvas) => {
+      const config = buildDashboardInventoryChartConfig(canvas, data, theme);
+      if (config) dashboardInventoryCharts.push(new Chart(canvas, config));
+    });
+    dashboardInventoryChartsRendered = true;
+  }
+
   const GEN_USER_COLORS = {
     estudiantes: GEN_COLORS.blue,
     docentes: GEN_COLORS.green,
@@ -2398,10 +2502,8 @@
       }
 
       panel.innerHTML = await response.text();
+      renderDashboardInventoryCharts(panel);
       panel.dataset.loaded = 'true';
-      document.dispatchEvent(
-        new CustomEvent('milab:initialize-data-grids', { detail: { root: panel } })
-      );
     } catch (error) {
       console.error('No fue posible cargar el dashboard de inventarios:', error);
       panel.innerHTML = '<div class="alert alert-danger mb-0" role="alert">No fue posible cargar el dashboard de inventarios. Intenta nuevamente. <button type="button" class="btn btn-sm btn-outline-danger ms-2" data-dashboard-inventory-retry>Reintentar</button></div>';
@@ -2443,6 +2545,7 @@
       }
       if (target.dataset.dashboardSection === 'inventarios') {
         void loadDashboardInventoryPanel();
+        dashboardInventoryCharts.forEach((chart) => chart.resize());
       }
     }
 
@@ -2656,6 +2759,9 @@
       renderChart(currentChartType, { renderDetail: detailEnabled });
       if (generalOverviewChartsRendered) renderGeneralOverviewCharts();
       if (pazYSalvoChartsRendered) renderPazYSalvoCharts();
+      if (dashboardInventoryChartsRendered) {
+        renderDashboardInventoryCharts(document.getElementById('dashboardSectionInventarios'));
+      }
     });
 
     themeObserver.observe(document.documentElement, {

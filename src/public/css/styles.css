@@ -2128,6 +2128,18 @@ body.app-shell .dashboard-pys-chart {
   min-width: 0;
 }
 
+body.app-shell .dashboard-inventory-chart {
+  height: 280px;
+}
+
+body.app-shell .dashboard-inventory-chart--doughnut {
+  height: 250px;
+}
+
+body.app-shell .dashboard-inventory-chart--tall {
+  height: 360px;
+}
+
 body.app-shell .dashboard-pys-kpis {
   display: flex;
   flex-wrap: wrap;
@@ -2586,6 +2598,16 @@ body.app-shell .dashboard-section-tab:focus-visible {
 body.app-shell .dashboard-section-panel {
   display: grid;
   gap: 0.9rem;
+}
+
+body.app-shell .dashboard-section-panel[data-dashboard-inventory-panel] {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+body.app-shell .dashboard-inventory-content {
+  min-width: 0;
+  max-width: 100%;
 }
 
 body.app-shell .dashboard-section-panel[hidden] {
