@@ -312,10 +312,17 @@
                     <td><%= load.filas_exitosas %></td>
                     <td><%= load.filas_fallidas %></td>
                     <td>
-                      <a href="/milab/inventarios/cargas/<%= load.id %>">Consultar reporte</a>
+                      <a
+                        class="btn btn-outline-info btn-sm"
+                        href="/milab/inventarios/cargas/<%= load.id %>"
+                      >
+                        <i class="bi bi-file-earmark-text me-1" aria-hidden="true"></i>
+                        Consultar reporte
+                      </a>
                       <% if (load.puedeConfirmar && Number(load.filas_exitosas) > 0 && coordinators.length) { %>
                         <details class="mt-2">
                           <summary class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-send me-1" aria-hidden="true"></i>
                             Confirmar y enviar
                           </summary>
                           <form
@@ -383,7 +390,10 @@
                               class="btn btn-perso"
                               type="submit"
                               data-submit-lock="true"
-                            >Enviar al coordinador</button>
+                            >
+                              <i class="bi bi-send-fill me-1" aria-hidden="true"></i>
+                              Enviar al coordinador
+                            </button>
                           </form>
                         </details>
                       <% } else if (load.puedeConfirmar && Number(load.filas_exitosas) > 0) { %>
