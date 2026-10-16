@@ -1336,7 +1336,7 @@ test('assigned laboratorista can edit a record from an approved inventory', asyn
   }
 });
 
-test('coordinator approval authorizes by laboratory scope and creates the legacy equipment extension', async () => {
+test('coordinator approval records the authorized actor and creates the legacy equipment extension', async () => {
   const clientHarness = createTransactionClient((sql) => {
     if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
       return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
@@ -1423,6 +1423,11 @@ test('coordinator approval authorizes by laboratory scope and creates the legacy
     assert.match(approvedInventoryUpdate.sql, /disponible_prestamo\s*=\s*CASE/);
     assert.equal(approvedInventoryUpdate.params[1], 'equipo_arka');
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('UPDATE inventario_carga_fila')));
+    const laboratoryApproval = clientHarness.calls.find(({ sql }) =>
+      sql.includes('INSERT INTO inventario_estado_laboratorio')
+    );
+    assert.ok(laboratoryApproval);
+    assert.equal(laboratoryApproval.params[5], 'coord-1');
     assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('COMMIT')));
   } finally {
     loaded.restore();

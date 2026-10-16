@@ -95,6 +95,14 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       con_documento = numero_documento_identificacion;
       con_nombre = docenteData.nombre;
 
+      if (con_estado !== 'Activo') {
+        return res.render('home/message_error', {
+          message: 'No fue posible generar el certificado',
+          message2: 'Intentelo nuevamente.',
+          limit: null,
+        });
+      }
+
       console.log('con_estado ' + con_estado);
       console.log('con_documento ' + con_documento);
       console.log('con_nombre ' + con_nombre);
@@ -152,7 +160,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
         motivo_exp: motivo_exp,
         origen_descarga: origen_descarga,
       };
-      submit_data(data_to_submit);
+      await submit_data(data_to_submit);
 
       if (con_estado === 'Activo') {
         // Ahora el QR ya está generado, podemos crear el PDF
@@ -547,7 +555,7 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
   }
 
   // Función para subir data a la base de datos - certificados solicitadas
-  function submit_data(req) {
+  async function submit_data(req) {
     // Usar pool centralizado
 
     const {
@@ -559,14 +567,9 @@ router.post('/', requireStaffTeacherCertificateAccess, function (req, res) {
       motivo_exp,
       origen_descarga,
     } = req;
-    pool.query(
+    return pool.query(
       'INSERT INTO certificado_docente (usuario_id, fecha_creacion, certificado_id, correo, multa, motivo_exp, origen_descarga) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [usuario_id, fecha_creacion, certificado_id, correo, multa, motivo_exp, origen_descarga],
-      (error) => {
-        if (error) {
-          throw error;
-        }
-      }
+      [usuario_id, fecha_creacion, certificado_id, correo, multa, motivo_exp, origen_descarga]
     );
   }
 });

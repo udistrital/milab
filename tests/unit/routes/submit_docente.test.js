@@ -112,6 +112,7 @@ test('submit_docente rejects inactive or removed catalog categories before inser
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
     });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
     assert.equal(response.body.view, 'home/message_error');
     assert.match(response.body.locals.message, /Categoría.*no disponible/);
     assert.ok(!loaded.getExecutedQueries().some((call) => call.sql.includes('INSERT INTO multa')));

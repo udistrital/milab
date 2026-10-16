@@ -5,6 +5,8 @@ const { Pool } = require('pg');
 
 const { buildApp, resolveRepoPath } = require('./build-test-app');
 const { createSessionHarness, createUser } = require('./session-fixtures');
+const { config } = require('../../../src/config/config');
+const { resolveDatabaseCredentials } = require('../../../src/libs/db-credentials');
 
 const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
@@ -29,11 +31,31 @@ function migrationForSchema(schema) {
 async function createPostgresFixture(
   databaseUrl = process.env.MILAB_CAPACITACION_TEST_DATABASE_URL
 ) {
-  if (!databaseUrl) {
-    throw new Error('MILAB_CAPACITACION_TEST_DATABASE_URL is required for PostgreSQL regressions.');
+  const useApplicationDatabase = process.env.MILAB_CAPACITACION_TEST_USE_APP_DB === 'true';
+  if (!databaseUrl && !useApplicationDatabase) {
+    throw new Error(
+      'Set MILAB_CAPACITACION_TEST_DATABASE_URL or explicitly enable the dedicated application test database.'
+    );
   }
 
-  const pool = new Pool({ connectionString: databaseUrl, max: 8 });
+  let pool;
+  if (databaseUrl) {
+    pool = new Pool({ connectionString: databaseUrl, max: 8 });
+  } else {
+    const { user, password } = await resolveDatabaseCredentials();
+    if (!config.dbHost || !config.dbPort || !config.dbName) {
+      throw new Error('DB_HOST, DB_PORT, and DB_NAME are required for PostgreSQL regressions.');
+    }
+    pool = new Pool({
+      host: config.dbHost,
+      port: config.dbPort,
+      user,
+      password,
+      database: config.dbName,
+      options: config.options,
+      max: 8,
+    });
+  }
   const schema = 'capacitacion_regression_' + randomBytes(6).toString('hex');
   let setupClient;
   let setupClientReleased = false;
