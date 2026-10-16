@@ -12,10 +12,17 @@ const permissionsPath = resolveRepoPath('src/libs/permissions.js');
 const prestamosModuleAccessPath = resolveRepoPath('src/libs/prestamos-module-access.js');
 const operationalRolesPath = resolveRepoPath('src/libs/operational-role-assignments.js');
 const emailNotificationsPath = resolveRepoPath('src/libs/email-notifications.js');
+const certificationValidationPath = resolveRepoPath('src/libs/capacitacion-cert-validation.js');
 
-function loadReservationApp(queryImpl) {
+function loadReservationApp({ queryImpl, transactionClient, user, validateCertificates } = {}) {
   const sessionHarness = createSessionHarness({
-    user: createUser({ tipo: 'estudiante', roles: ['estudiante'], id: 22, documento: '20241001' }),
+    user: createUser({
+      tipo: 'estudiante',
+      roles: ['estudiante'],
+      id: 22,
+      documento: '20241001',
+      ...user,
+    }),
   });
 
   return buildApp({
@@ -35,7 +42,8 @@ function loadReservationApp(queryImpl) {
         {
           query: async (sql, params = []) => {
             if (typeof queryImpl === 'function') {
-              return queryImpl(sql, params);
+              const result = await queryImpl(sql, params);
+              if (result !== undefined) return result;
             }
 
             if (sql.includes('FROM usuario u')) {
@@ -58,7 +66,8 @@ function loadReservationApp(queryImpl) {
 
             return { rows: [] };
           },
-          connect: async () => ({ query: async () => ({ rows: [] }), release() {} }),
+          connect: async () =>
+            transactionClient || { query: async () => ({ rows: [] }), release() {} },
         },
       ],
       [
@@ -70,16 +79,255 @@ function loadReservationApp(queryImpl) {
       ],
       [
         prestamosModuleAccessPath,
-        { getPrestamosModuleAccess: async () => ({ blocked: false, role: 'estudiante' }) },
+        {
+          getPrestamosModuleAccess: async () => ({
+            blocked: false,
+            role: user?.roles?.[0] || user?.tipo || 'estudiante',
+          }),
+        },
       ],
       [
         operationalRolesPath,
         { fetchOperationalRoleScopeByUser: async () => ({ facultyIds: [], ualIds: [] }) },
       ],
       [emailNotificationsPath, { sendEmailNotification: async () => {} }],
+      [
+        certificationValidationPath,
+        {
+          getCursosActivosDeEquipo: async () => [],
+          validarCertificacionesParaReserva: async (...args) => validateCertificates?.(...args),
+        },
+      ],
     ],
     purgePaths: [routePath],
   });
+}
+
+function createLoanReservationDatabase({
+  failOnInsert = false,
+  slotBusy = false,
+  activeSanctions = 0,
+  maxMonthlyHours = 0,
+  usedMonthlyHours = 0,
+  scheduleStartTime = '10:00',
+  scheduleEndTime = '11:00',
+} = {}) {
+  const poolCalls = [];
+  const transactionCalls = [];
+  let released = false;
+
+  return {
+    poolCalls,
+    transactionCalls,
+    isReleased: () => released,
+    queryImpl: async (sql) => {
+      poolCalls.push(sql);
+      if (sql.includes('FROM usuario u')) {
+        return {
+          rows: [
+            {
+              id: 22,
+              documento: '20241001',
+              nombre: 'Estudiante Demo',
+              correo: 'estudiante@udistrital.edu.co',
+              roles: ['estudiante'],
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM multa')) return { rows: [{ total: activeSanctions }] };
+      if (sql.includes('FROM equipo_catalogo')) {
+        return {
+          rows: [
+            {
+              id: 5,
+              codigo: 'EQ-5',
+              nombre: 'Microscopio',
+              laboratorio: 'Lab. Ciencias',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM horario_equipo')) {
+        return {
+          rows: [
+            {
+              fecha: '2999-12-31',
+              hora_inicio: scheduleStartTime,
+              hora_fin: scheduleEndTime,
+              activo: true,
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT fecha_inicio, fecha_fin, estado')) {
+        return {
+          rows: slotBusy
+            ? [
+                {
+                  fecha_inicio: '2999-12-31T15:30:00Z',
+                  fecha_fin: '2999-12-31T16:30:00Z',
+                  estado: 'aprobado',
+                },
+              ]
+            : [],
+        };
+      }
+      if (sql.includes('SUM(EXTRACT(EPOCH') && sql.includes('FROM solicitud_prestamo')) {
+        return { rows: [{ horas: usedMonthlyHours }] };
+      }
+      if (sql.includes('FROM parametrizacion')) {
+        return { rows: [{ max_horas_mes_prestamos: maxMonthlyHours }] };
+      }
+      return undefined;
+    },
+    transactionClient: {
+      async query(sql, params) {
+        transactionCalls.push({ sql, params });
+        if (sql.includes('FROM equipo_catalogo')) {
+          return {
+            rows: [
+              {
+                id: 5,
+                codigo: 'EQ-5',
+                nombre: 'Microscopio',
+                laboratorio: 'Lab. Ciencias',
+              },
+            ],
+          };
+        }
+        if (sql.includes('INSERT INTO solicitud_prestamo')) {
+          if (failOnInsert) throw new Error('Database insert failed');
+          return { rows: [{ id: 901, fecha_creacion: '2999-01-01T00:00:00Z' }] };
+        }
+        return { rows: [] };
+      },
+      release() {
+        released = true;
+      },
+    },
+  };
+}
+
+function createLoanLifecycleDatabase({
+  initialLoanState = 'pendiente',
+  initialEquipmentState = 'disponible',
+  activeIncident = false,
+  overlappingRequest = false,
+} = {}) {
+  const events = [];
+  let loanState = initialLoanState;
+  let equipmentState = initialEquipmentState;
+  let releaseCount = 0;
+
+  function requestRow(includeDeliveryFields = false) {
+    return {
+      id: 901,
+      usuario_id: 22,
+      equipo_id: 5,
+      fecha_inicio: '2999-12-31T15:00:00Z',
+      fecha_fin: '2999-12-31T16:00:00Z',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      estado: loanState,
+      tipo_aprobacion: 'manual',
+      firma_digital: 'Acepto el reglamento',
+      equipo_codigo: 'EQ-5',
+      equipo_nombre: 'Microscopio',
+      laboratorio: 'Lab. Ciencias',
+      facultad: 'Facultad de Ciencias',
+      facultad_id: 1,
+      ...(includeDeliveryFields
+        ? {
+            equipo_estado: equipmentState,
+            incidencia_activa: activeIncident,
+            entrega_id: 501,
+            fecha_entrega: '2999-12-31T15:00:00Z',
+            fecha_devolucion_esperada: '2999-12-31T16:00:00Z',
+            condicion_entrega: 'Equipo en buen estado',
+          }
+        : {}),
+    };
+  }
+
+  const queryImpl = async (sql) => {
+    const normalizedSql = sql.replace(/\s+/g, ' ').trim().toLowerCase();
+    events.push({ source: 'pool', sql: normalizedSql });
+
+    if (normalizedSql.includes('from usuario u')) {
+      return {
+        rows: [
+          {
+            id: 22,
+            documento: '20241001',
+            nombre: 'Estudiante Demo',
+            correo: 'estudiante@udistrital.edu.co',
+            roles: ['estudiante'],
+          },
+        ],
+      };
+    }
+    if (normalizedSql.includes('from usuario where id = $1')) {
+      return {
+        rows: [
+          {
+            id: 22,
+            documento: '20241001',
+            nombre: 'Estudiante Demo',
+            correo: 'estudiante@udistrital.edu.co',
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  };
+
+  const transactionClient = {
+    async query(sql) {
+      const normalizedSql = sql.replace(/\s+/g, ' ').trim().toLowerCase();
+      events.push({ source: 'transaction', sql: normalizedSql });
+
+      if (normalizedSql === 'begin' || normalizedSql === 'commit' || normalizedSql === 'rollback') {
+        return { rows: [] };
+      }
+      if (normalizedSql.startsWith('select 1 from solicitud_prestamo')) {
+        return { rows: overlappingRequest ? [{ exists: 1 }] : [] };
+      }
+      if (normalizedSql.includes('from solicitud_prestamo sp')) {
+        return {
+          rows: [requestRow(normalizedSql.includes('from incidencia i'))],
+        };
+      }
+      if (normalizedSql.includes('update solicitud_prestamo')) {
+        if (normalizedSql.includes("set estado = 'aprobado'")) loanState = 'aprobado';
+        if (normalizedSql.includes("set estado = 'activo'")) loanState = 'activo';
+        if (normalizedSql.includes("set estado = 'finalizado'")) loanState = 'finalizado';
+        return { rows: [{ id: 901 }] };
+      }
+      if (normalizedSql.includes('insert into entrega_equipo')) {
+        return { rows: [{ id: 501, solicitud_prestamo_id: 901 }] };
+      }
+      if (normalizedSql.includes('update equipo')) {
+        equipmentState = normalizedSql.includes("set estado = 'prestado'")
+          ? 'prestado'
+          : 'disponible';
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+    release() {
+      releaseCount += 1;
+    },
+  };
+
+  return {
+    events,
+    getLoanState: () => loanState,
+    getEquipmentState: () => equipmentState,
+    getReleaseCount: () => releaseCount,
+    queryImpl,
+    transactionClient,
+  };
 }
 
 test('prestamos reservation form loads visible sanctions count for the current student', async () => {
@@ -107,6 +355,803 @@ test('prestamos reservation lookup redirects when faculty or lab filters are mis
       response.headers.location,
       /Debes%20seleccionar%20una%20facultad%20y%20un%20laboratorio/
     );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos creates an available equipment reservation transactionally', async () => {
+  const database = createLoanReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, false);
+    assert.equal(response.body.solicitud.id, 901);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.ok(
+      database.transactionCalls.some(({ sql }) => sql.includes('INSERT INTO solicitud_prestamo'))
+    );
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.isReleased(), true);
+    assert.ok(database.poolCalls.some((sql) => sql.includes('FROM horario_equipo')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rolls back a reservation when its database insert fails', async () => {
+  const database = createLoanReservationDatabase({ failOnInsert: true });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.success, false);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.ok(
+      database.transactionCalls.some(({ sql }) => sql.includes('ROLLBACK')),
+      'a failed insert rolls back the request transaction'
+    );
+    assert.ok(!database.transactionCalls.some(({ sql }) => sql.includes('COMMIT')));
+    assert.equal(database.isReleased(), true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos queues a reservation when the selected equipment slot is occupied', async () => {
+  const database = createLoanReservationDatabase({ slotBusy: true });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, true);
+    assert.match(response.body.message, /cola de espera/i);
+    assert.ok(
+      database.transactionCalls.some(({ sql }) => sql.includes('INSERT INTO cola_solicitud'))
+    );
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.isReleased(), true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos completes the approval, delivery, and return lifecycle transactionally', async () => {
+  const database = createLoanLifecycleDatabase();
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], documento: 'admin-1' },
+  });
+
+  try {
+    const approval = await request(loaded.app).post('/gestion-solicitudes/901/aprobar').send({});
+    assert.equal(approval.status, 200);
+    assert.equal(approval.body.success, true);
+    assert.equal(database.getLoanState(), 'aprobado');
+
+    const delivery = await request(loaded.app)
+      .post('/entrega-equipos/901/marcar-prestado')
+      .send({ condicion_entrega: 'Equipo entregado en buen estado' });
+    assert.equal(delivery.status, 200);
+    assert.equal(delivery.body.success, true);
+    assert.equal(database.getLoanState(), 'activo');
+    assert.equal(database.getEquipmentState(), 'prestado');
+
+    const returned = await request(loaded.app)
+      .post('/entrega-equipos/901/recibir')
+      .send({
+        condicion_devolucion: 'Equipo recibido en buen estado',
+        lista_componentes: ['Cable de poder', 'Manual'],
+      });
+    assert.equal(returned.status, 200);
+    assert.equal(returned.body.success, true);
+    assert.equal(database.getLoanState(), 'finalizado');
+    assert.equal(database.getEquipmentState(), 'disponible');
+
+    const transactions = database.events
+      .filter(
+        ({ source, sql }) => source === 'transaction' && (sql === 'begin' || sql === 'commit')
+      )
+      .map(({ sql }) => sql);
+    assert.deepEqual(transactions, ['begin', 'commit', 'begin', 'commit', 'begin', 'commit']);
+    assert.equal(database.getReleaseCount(), 3);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos denies a reservation request when the student has active sanctions', async () => {
+  const database = createLoanReservationDatabase({ activeSanctions: 1 });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /sanciones activas/i);
+    assert.ok(!database.poolCalls.some((sql) => sql.includes('FROM equipo_catalogo')));
+    assert.equal(database.transactionCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos blocks a reservation when required training certifications are pending', async () => {
+  const database = createLoanReservationDatabase();
+  const loaded = loadReservationApp({
+    ...database,
+    validateCertificates: async () => {
+      const error = new Error('Training is incomplete');
+      error.bloqueoCert = {
+        tipo: 'pendientes',
+        mensaje: 'Debes completar los cursos requeridos.',
+        cursos: [{ codigo_curso: 'COURSE-1', nombre_curso: 'Seguridad de laboratorio' }],
+        cursos_todos: [{ codigo_curso: 'COURSE-1', nombre_curso: 'Seguridad de laboratorio' }],
+      };
+      throw error;
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.success, false);
+    assert.equal(response.body.bloqueo_cert.tipo, 'pendientes');
+    assert.equal(response.body.bloqueo_cert.cursos_pendientes.length, 1);
+    assert.equal(database.transactionCalls.length, 0);
+    assert.ok(!database.poolCalls.some((sql) => sql.includes('FROM equipo_catalogo')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rejects a reservation that exceeds the monthly loan-hour limit', async () => {
+  const database = createLoanReservationDatabase({
+    maxMonthlyHours: 2,
+    usedMonthlyHours: 2,
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 400);
+    assert.match(response.body.message, /limite mensual/i);
+    assert.ok(database.poolCalls.some((sql) => sql.includes('SUM(EXTRACT(EPOCH')));
+    assert.equal(database.transactionCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rejects a valid date that does not match an available equipment slot', async () => {
+  const database = createLoanReservationDatabase({
+    scheduleStartTime: '11:00',
+    scheduleEndTime: '12:00',
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/solicitudes/crear').send({
+      equipo_id: '5',
+      fecha_inicio: '2999-12-31T10:00',
+      fecha_fin: '2999-12-31T11:00',
+      justificacion_academica: 'Practica de laboratorio de ciencias',
+      categoria_practica: 'academica',
+      firma_digital: 'Acepto el reglamento',
+    });
+
+    assert.equal(response.status, 400);
+    assert.match(response.body.message, /horario seleccionado no coincide/i);
+    assert.ok(database.poolCalls.some((sql) => sql.includes('FROM horario_equipo')));
+    assert.equal(database.transactionCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos cannot receive a return while an equipment incident is active', async () => {
+  const database = createLoanLifecycleDatabase({
+    initialLoanState: 'activo',
+    initialEquipmentState: 'mantenimiento',
+    activeIncident: true,
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/entrega-equipos/901/recibir')
+      .send({ condicion_devolucion: 'Equipo recibido' });
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /incidencia activa/i);
+    assert.equal(database.getLoanState(), 'activo');
+    assert.equal(database.getEquipmentState(), 'mantenimiento');
+    assert.ok(database.events.some(({ sql }) => sql === 'rollback'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos releases the approval connection when an overlapping request blocks approval', async () => {
+  const database = createLoanLifecycleDatabase({ overlappingRequest: true });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/gestion-solicitudes/901/aprobar').send({});
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /otra solicitud aprobada o activa/i);
+    assert.equal(database.getReleaseCount(), 1);
+    assert.equal(
+      database.events.some(({ source, sql }) => source === 'transaction' && sql === 'begin'),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos releases the rejection connection when a request was already processed', async () => {
+  const database = createLoanLifecycleDatabase({ initialLoanState: 'finalizado' });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/gestion-solicitudes/901/rechazar')
+      .send({ motivo_rechazo: 'Ya se resolvió' });
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /ya fue procesada/i);
+    assert.equal(database.getReleaseCount(), 1);
+    assert.equal(
+      database.events.some(({ source, sql }) => source === 'transaction' && sql === 'begin'),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+function createPracticeReservationDatabase({
+  roomAvailable = true,
+  failOnInsert = false,
+  managedReservation = null,
+  cancelableReservation = null,
+  roomOverlapCount = 0,
+  updateReservationSucceeded = true,
+} = {}) {
+  const poolCalls = [];
+  const transactionCalls = [];
+  let releaseCount = 0;
+
+  return {
+    poolCalls,
+    transactionCalls,
+    getReleaseCount: () => releaseCount,
+    queryImpl: async (sql, params = []) => {
+      poolCalls.push({ sql, params });
+
+      if (sql.includes('FROM usuario u')) {
+        return {
+          rows: [
+            {
+              id: 22,
+              documento: '20241001',
+              nombre: 'Estudiante Demo',
+              correo: 'estudiante@udistrital.edu.co',
+              roles: ['estudiante'],
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM reserva_practica rp') && sql.includes('JOIN usuario u')) {
+        return { rows: managedReservation ? [managedReservation] : [] };
+      }
+      if (sql.includes('FROM ual u')) {
+        return {
+          rows: [
+            {
+              ual_id: 10,
+              laboratorio: 'Lab. Ciencias',
+              facultad: 'Facultad de Ciencias',
+              facultad_id: 1,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM sala s')) {
+        return {
+          rows: roomAvailable
+            ? [
+                {
+                  id: 8,
+                  nombre: 'Sala 8',
+                  tipo_espacio: 'laboratorio',
+                  capacidad: 5,
+                  permite_practica_libre: true,
+                  permite_practica_docente: true,
+                  formato_practica_libre: 'PL_REGLAMENTO_GENERAL',
+                  formato_practica_docente: 'DOC_PRACTICA_DOCENTE',
+                  modalidad_libre: 'uno_a_uno',
+                  total_reservas: 0,
+                },
+              ]
+            : [],
+        };
+      }
+      if (sql.includes('FROM dependencia_facultad f')) {
+        return { rows: [{ facultad_id: 1 }] };
+      }
+      if (sql.includes('FROM parametro_practica_facultad')) {
+        return {
+          rows: [
+            {
+              min_cancel_hours: 1,
+              min_reserva_hours: 2,
+              min_docente_reserva_days: 0,
+              max_activas_estudiante: 2,
+              dias_sancion_no_asistencia: 0,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM parametrizacion')) {
+        return {
+          rows: [{ max_horas_mes_practica_libre: 0, max_horas_mes_prestamos: 0 }],
+        };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total') && sql.includes('WHERE id <> $1')) {
+        return { rows: [{ total: roomOverlapCount }] };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total')) {
+        return { rows: [{ total: 0 }] };
+      }
+
+      return { rows: [] };
+    },
+    transactionClient: {
+      async query(sql, params = []) {
+        transactionCalls.push({ sql, params });
+
+        if (sql.includes('INSERT INTO reserva_practica')) {
+          if (failOnInsert) throw new Error('Practice reservation insert failed');
+          return { rows: [{ id: 901 }] };
+        }
+        if (sql.includes('FROM reserva_practica rp') && sql.includes('AND rp.usuario_id = $2')) {
+          return { rows: cancelableReservation ? [cancelableReservation] : [] };
+        }
+        if (sql.includes("SET estado = 'aprobada'")) {
+          return {
+            rows: updateReservationSucceeded ? [{ id: managedReservation?.id || 901 }] : [],
+          };
+        }
+
+        return { rows: [] };
+      },
+      release() {
+        releaseCount += 1;
+      },
+    },
+  };
+}
+
+function buildPracticeReservationPayload(overrides = {}) {
+  return {
+    facultad: 'Facultad de Ciencias',
+    laboratorio: 'Lab. Ciencias',
+    sala_id: '8',
+    fecha_inicio: '2999-12-31T10:00',
+    fecha_fin: '2999-12-31T11:00',
+    tipo_practica: 'libre',
+    categoria_practica: 'otra',
+    justificacion: 'Practica libre para evaluar instrumentos',
+    firma_digital: 'Acepto el reglamento',
+    modalidad_libre: 'uno_a_uno',
+    ...overrides,
+  };
+}
+
+function buildManagedPracticeReservation(overrides = {}) {
+  return {
+    id: 901,
+    usuario_id: 22,
+    sala_id: 8,
+    fecha_inicio: '2999-12-31T10:00:00.000Z',
+    fecha_fin: '2999-12-31T11:00:00.000Z',
+    laboratorio: 'Lab. Ciencias',
+    facultad: 'Facultad de Ciencias',
+    tipo_practica: 'libre',
+    categoria_practica: 'otra',
+    estado: 'pendiente',
+    sala_nombre: 'Sala 8',
+    sala_capacidad: 5,
+    usuario_nombre: 'Estudiante Demo',
+    usuario_correo: 'estudiante@udistrital.edu.co',
+    ...overrides,
+  };
+}
+
+function buildCancelablePracticeReservation(overrides = {}) {
+  return buildManagedPracticeReservation(overrides);
+}
+
+test('prestamos registers an available free practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, false);
+    assert.equal(response.body.reservationId, 901);
+
+    const insert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO reserva_practica')
+    );
+    assert.ok(insert);
+    assert.equal(insert.params[0], 22);
+    assert.equal(insert.params[1], 8);
+    assert.equal(insert.params[6], 'libre');
+    assert.equal(insert.params[8], 'uno_a_uno');
+    assert.equal(insert.params[9], 'pendiente');
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos queues a free practice reservation when its room has no available capacity', async () => {
+  const database = createPracticeReservationDatabase({ roomAvailable: false });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.en_cola, true);
+    assert.match(response.body.message, /cola de espera/i);
+
+    const reservationInsert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO reserva_practica')
+    );
+    assert.equal(reservationInsert.params[9], 'en_cola');
+    const queueInsert = database.transactionCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO cola_solicitud')
+    );
+    assert.ok(queueInsert);
+    assert.equal(queueInsert.params[5], 901);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rejects student accounts from requesting a docente practice', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(
+        buildPracticeReservationPayload({
+          tipo_practica: 'docente',
+          categoria_practica: 'academica',
+          practica_id: '15',
+          asignatura_codigo: 'BIO101',
+        })
+      );
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /solo los docentes/i);
+    assert.equal(database.transactionCalls.length, 0);
+    assert.equal(
+      database.poolCalls.some(({ sql }) => sql.includes('FROM sala s')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rolls back and releases a failed free practice reservation', async () => {
+  const database = createPracticeReservationDatabase({ failOnInsert: true });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app)
+      .post('/practicas/reservar')
+      .send(buildPracticeReservationPayload());
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.success, false);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.ok(
+      database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'),
+      'a failed reservation insert rolls back its transaction'
+    );
+    assert.ok(!database.transactionCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos approves a pending practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const update = database.transactionCalls.find(({ sql }) =>
+      sql.includes("SET estado = 'aprobada'")
+    );
+    assert.ok(update);
+    assert.deepEqual(update.params, [901]);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos marks a queued practice request as attended when approving it', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation({ estado: 'en_cola' }),
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const queueUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes('UPDATE cola_solicitud')
+    );
+    assert.ok(queueUpdate);
+    assert.deepEqual(queueUpdate.params, [901, 'atendida', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos prevents practice approval when the room is at capacity', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+    roomOverlapCount: 5,
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 409);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /capacidad disponible/i);
+    assert.equal(database.transactionCalls.length, 0);
+    assert.equal(database.getReleaseCount(), 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos rolls back and releases when a practice is processed concurrently during approval', async () => {
+  const database = createPracticeReservationDatabase({
+    managedReservation: buildManagedPracticeReservation(),
+    updateReservationSucceeded: false,
+  });
+  const loaded = loadReservationApp({
+    queryImpl: database.queryImpl,
+    transactionClient: database.transactionClient,
+    user: { tipo: 'admin', roles: ['admin'], id: 1, documento: 'admin-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/aprobar').send({});
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /procesada por otro usuario/i);
+    assert.ok(database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.ok(!database.transactionCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos allows a student to cancel their own practice reservation transactionally', async () => {
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation(),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const reservationLookup = database.transactionCalls.find(({ sql }) =>
+      sql.includes('FROM reserva_practica rp')
+    );
+    assert.deepEqual(reservationLookup.params, ['901', 22]);
+    const reservationUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes("SET estado = 'cancelada'")
+    );
+    assert.deepEqual(reservationUpdate.params, [901, 22]);
+    assert.equal(database.transactionCalls[0].sql, 'BEGIN');
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos cancels the matching wait-queue entry with a queued practice reservation', async () => {
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation({ estado: 'en_cola' }),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    const queueUpdate = database.transactionCalls.find(({ sql }) =>
+      sql.includes('UPDATE cola_solicitud')
+    );
+    assert.ok(queueUpdate);
+    assert.deepEqual(queueUpdate.params, [901, 'cancelada', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'COMMIT');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos does not let a student cancel a practice reservation outside their account', async () => {
+  const database = createPracticeReservationDatabase();
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 404);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /no existe o ya no se puede cancelar/i);
+    const reservationLookup = database.transactionCalls.find(({ sql }) =>
+      sql.includes('FROM reserva_practica rp')
+    );
+    assert.deepEqual(reservationLookup.params, ['901', 22]);
+    assert.equal(database.transactionCalls.at(-1).sql, 'ROLLBACK');
+    assert.equal(database.getReleaseCount(), 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos enforces the minimum notice period when cancelling a practice', async () => {
+  const startsSoon = new Date(Date.now() + 30 * 60 * 1000);
+  const database = createPracticeReservationDatabase({
+    cancelableReservation: buildCancelablePracticeReservation({
+      fecha_inicio: startsSoon.toISOString(),
+      fecha_fin: new Date(startsSoon.getTime() + 60 * 60 * 1000).toISOString(),
+    }),
+  });
+  const loaded = loadReservationApp(database);
+
+  try {
+    const response = await request(loaded.app).post('/practicas/901/cancelar').send({});
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.success, false);
+    assert.match(response.body.message, /al menos 1 hora/i);
+    assert.ok(database.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.ok(
+      !database.transactionCalls.some(({ sql }) => sql.includes("SET estado = 'cancelada'"))
+    );
+    assert.equal(database.getReleaseCount(), 1);
   } finally {
     loaded.restore();
   }

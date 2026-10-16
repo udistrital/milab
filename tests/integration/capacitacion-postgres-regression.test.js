@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const databaseUrl = process.env.MILAB_CAPACITACION_TEST_DATABASE_URL;
+const useApplicationDatabase = process.env.MILAB_CAPACITACION_TEST_USE_APP_DB === 'true';
+const testDatabaseConfigured = Boolean(databaseUrl || useApplicationDatabase);
 const {
   buildManagementApp,
   createPostgresFixture,
@@ -15,9 +17,9 @@ const {
 test(
   'PostgreSQL prevents concurrent enrollment overbooking and enforces active-record uniqueness',
   {
-    skip: databaseUrl
+    skip: testDatabaseConfigured
       ? false
-      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL to run PostgreSQL regressions',
+      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL or MILAB_CAPACITACION_TEST_USE_APP_DB=true to run PostgreSQL regressions',
   },
   async () => {
     const fixture = await createPostgresFixture();
@@ -139,9 +141,9 @@ test(
 test(
   'PostgreSQL regressions cover sanctions, enrollment lifecycle and management scope',
   {
-    skip: databaseUrl
+    skip: testDatabaseConfigured
       ? false
-      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL to run PostgreSQL regressions',
+      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL or MILAB_CAPACITACION_TEST_USE_APP_DB=true to run PostgreSQL regressions',
   },
   async () => {
     const fixture = await createPostgresFixture();
@@ -303,9 +305,9 @@ test(
 test(
   'PostgreSQL preserves attendance and renews certificates only for eligible attendees',
   {
-    skip: databaseUrl
+    skip: testDatabaseConfigured
       ? false
-      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL to run PostgreSQL regressions',
+      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL or MILAB_CAPACITACION_TEST_USE_APP_DB=true to run PostgreSQL regressions',
   },
   async () => {
     const fixture = await createPostgresFixture();
@@ -465,9 +467,9 @@ test(
 test(
   'PostgreSQL migration is repeatable and rejects cross-faculty course-laboratory links',
   {
-    skip: databaseUrl
+    skip: testDatabaseConfigured
       ? false
-      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL to run PostgreSQL regressions',
+      : 'Set MILAB_CAPACITACION_TEST_DATABASE_URL or MILAB_CAPACITACION_TEST_USE_APP_DB=true to run PostgreSQL regressions',
   },
   async () => {
     const fixture = await createPostgresFixture();

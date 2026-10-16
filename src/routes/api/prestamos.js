@@ -9408,8 +9408,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -9510,8 +9511,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error aprobando solicitud MiLab:', error);
@@ -9519,6 +9518,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );
@@ -9539,8 +9540,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -9622,8 +9624,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error rechazando solicitud MiLab:', error);
@@ -9631,6 +9631,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible rechazar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );

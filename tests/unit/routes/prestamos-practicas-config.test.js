@@ -434,3 +434,29 @@ test('prestamos blocks disabled module access with json response for POST reques
     loaded.restore();
   }
 });
+
+test('prestamos rejects a loan request without an equipment selection', async () => {
+  const loaded = loadRouteWithAccess({
+    blocked: false,
+    role: 'estudiante',
+    allowedFacultyIds: [],
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'estudiante',
+      roles: ['estudiante'],
+      id: 22,
+      documento: '20241001',
+    });
+    const response = await request(app).post('/solicitudes/crear').send({});
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(response.body, {
+      success: false,
+      message: 'El equipo seleccionado no es valido.',
+    });
+  } finally {
+    loaded.restore();
+  }
+});
