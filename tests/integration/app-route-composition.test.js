@@ -29,7 +29,7 @@ const testLogger = {
   fatal() {},
 };
 
-test('full app mounts the public MILab home route beneath /milab', async () => {
+test('full app composes the public home, browser scripts, session endpoint and legacy redirect', async () => {
   const previousEnv = new Map(
     ['NODE_ENV', 'SESSION_SECRET', 'SESSION_SECURE', 'ENABLE_DEV_LOGIN'].map((key) => [
       key,
@@ -101,6 +101,22 @@ test('full app mounts the public MILab home route beneath /milab', async () => {
 
     assert.equal(response.status, 200, JSON.stringify(loggedErrors));
     assert.match(response.headers['content-type'], /html/);
+
+    const script = await request(loaded.loaded).get('/milab/public/js/coordinator-autocomplete.js');
+    assert.equal(script.status, 200);
+    assert.match(script.headers['content-type'], /javascript/);
+    assert.match(script.text, /data-coordinator-autocomplete/);
+
+    const sessionStatus = await request(loaded.loaded)
+      .get('/milab/auth/session/status')
+      .set('Accept', 'application/json');
+    assert.equal(sessionStatus.status, 401);
+    assert.equal(sessionStatus.headers['x-session-expired'], '1');
+    assert.equal(sessionStatus.body.code, 'SESSION_EXPIRED');
+
+    const legacy = await request(loaded.loaded).get('/pazysalvos/');
+    assert.equal(legacy.status, 301);
+    assert.equal(legacy.headers.location, '/milab/');
   } finally {
     loaded?.restore();
     for (const [key, previousValue] of previousEnv) {
