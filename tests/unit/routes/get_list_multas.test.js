@@ -301,12 +301,14 @@ test('get_list_multas applies laboratorista UAL assignment scope in query', asyn
       if (sql.includes('SELECT documento FROM laboratorista')) {
         return { rows: [{ documento: '12345' }] };
       }
-
-      capturedSql = sql;
-      capturedParams = params;
-      return {
-        rows: [{ id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA' }],
-      };
+      if (sql.includes('FROM multa m')) {
+        capturedSql = sql;
+        capturedParams = params;
+        return {
+          rows: [{ id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA' }],
+        };
+      }
+      return { rows: [] };
     },
   });
 

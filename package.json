@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:coverage": "npm test",
+    "test:coverage": "node --experimental-test-coverage --test $(find tests/unit -type f -name '*.test.js' | sort) && node --experimental-test-coverage --test $(find tests/integration -type f -name '*.test.js' | sort)",
     "test:unit": "node --test $(find tests/unit -type f -name '*.test.js' | sort)",
     "test:integration": "node --test $(find tests/integration -type f -name '*.test.js' | sort)",
     "sonar:local": "sh scripts/run-local-sonar.sh",
