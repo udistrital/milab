@@ -203,7 +203,7 @@ test('inventory location selectors match each role and restore the selected UAL 
       assert.match(html, /data-faculty-id="1"/);
       assert.match(html, /data-dependency-id="10"/);
       assert.match(html, /value="4"[\s\S]*?selected/);
-      assert.match(html, /\/milab\/js\/inventory-location-filters.js/);
+      assert.match(html, /\/milab\/public\/js\/inventory-location-filters\.js/);
       const unitsQuery = loaded.queries.find(({ sql }) =>
         sql.includes('FROM dependencia_facultad df')
       );
