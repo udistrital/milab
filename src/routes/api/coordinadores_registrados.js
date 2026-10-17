@@ -8,7 +8,10 @@ const {
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
 const { resolveCoordinatorUserId } = require('../../libs/faculty-scope');
-const { replaceOperationalRoleAssignments } = require('../../libs/operational-role-assignments');
+const {
+  fetchActiveUalOptions,
+  replaceOperationalRoleAssignments,
+} = require('../../libs/operational-role-assignments');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
@@ -136,17 +139,11 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
          WHERE ${parentIdColumn} IS NOT NULL
          ORDER BY nombre ASC`
       ),
-      client.query(
-        `SELECT ual.ual_id, ual.nombre, ual.facultad_id, f.nombre AS facultad_nombre
-         FROM ual
-         LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual.facultad_id
-         WHERE ual.activo = TRUE
-         ORDER BY f.nombre ASC NULLS LAST, ual.nombre ASC`
-      ),
+      fetchActiveUalOptions(client),
     ]);
     const facultadesDisponibles = facultadesResult.rows;
     const dependenciasDisponibles = dependenciasResult.rows;
-    const ualesDisponibles = ualesResult.rows;
+    const ualesDisponibles = ualesResult;
 
     return res.render('home/coordinadores_registrados', {
       coordinadores,
