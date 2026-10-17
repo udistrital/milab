@@ -736,6 +736,16 @@ body.app-shell .app-navbar-actions {
   flex: 0 0 auto;
 }
 
+@media (min-width: 1200px) and (max-width: 1599.98px) {
+  body.app-shell .app-nav-inline {
+    justify-content: space-between;
+  }
+
+  body.app-shell .app-nav-inline .nav-link {
+    white-space: nowrap;
+  }
+}
+
 body.app-shell .app-user-tools {
   display: flex;
   align-items: center;
