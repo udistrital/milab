@@ -174,12 +174,13 @@
     <div class="alert alert-info text-center">No hay sanciones pendientes asociadas a tu facultad.</div>
   <% } else { %>
     <div class="table-responsive">
-      <table class="table table-bordered table-hover table-light app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+      <table class="table table-bordered table-hover table-light app-table-compact table-aprobacion-multas app-grid-contained js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
         <thead class="table-light text-center">
           <tr>
             <th>ID</th>
             <th>Documento sancionado</th>
             <th>Fecha de la sanción</th>
+            <th class="app-aprobacion-obs">Observación</th>
             <th>Estado</th>
             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
           </tr>
@@ -190,6 +191,7 @@
               <td><%= multa.id %></td>
               <td><%= multa.documento_sancionado %></td>
               <td><%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %></td>
+              <td class="app-aprobacion-obs"><%- include('../partials/compact-list-cell', { text: multa.obs_multa || 'Sin observaciones' }) %></td>
               <td><%= multa.con_estado_multa %></td>
               <td class="text-center">
                 <button
