@@ -161,7 +161,7 @@
                   <p class="text-muted mb-0">No hay UALs activas disponibles.</p>
                 <% } %>
               </div>
-              <small class="form-text text-muted">Si asignas UALs, el coordinador solo ver&aacute; las multas de esas UALs y no tendr&aacute; el panel de configuraci&oacute;n de facultades. La facultad es opcional cuando hay UALs seleccionadas.</small>
+              <small class="form-text text-muted">Todo coordinador debe tener facultad. Si asignas UALs, el coordinador solo ver&aacute; las multas de esas UALs (pueden ser de distintas dependencias o facultades) y no tendr&aacute; el panel de configuraci&oacute;n de facultades.</small>
             </div>
 
             <div class="col-12 alert alert-info d-none mb-0" role="status" data-coordinador-editor-legacy-assignment="true">
@@ -525,8 +525,8 @@
           ? dependenciesContainer.querySelectorAll('[data-coordinador-editor-dependency="true"]:checked')
           : [];
         var selectedUals = selectedUalIds();
-        if (assignmentChanged && !facultySelect.value && selectedUals.length === 0) {
-          showFeedback(feedback, 'warning', 'Debes seleccionar una facultad o al menos una UAL.');
+        if (assignmentChanged && !facultySelect.value) {
+          showFeedback(feedback, 'warning', 'Debes seleccionar una facultad.');
           return;
         }
         if (assignmentChanged && facultySelect.value && selectedScope() === 'dependencias' && selectedDependencies.length === 0) {

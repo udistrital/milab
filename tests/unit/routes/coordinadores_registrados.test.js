@@ -540,3 +540,99 @@ test('coordinadores_registrados actualizar preserves assignments when assignment
     loaded.restore();
   }
 });
+
+test('coordinadores_registrados actualizar rejects UALs without a faculty assigned', async () => {
+  const loaded = loadRoute({
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT ual_id, nombre FROM ual')) {
+        return { rows: [{ ual_id: 5, nombre: 'UAL 5' }] };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total FROM coordinador_facultad')) {
+        return { rows: [{ total: 0 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app)
+      .post('/actualizar')
+      .send({
+        documento: '900',
+        correo: 'coord@udistrital.edu.co',
+        ual_ids: ['5'],
+      });
+
+    assert.equal(response.status, 400);
+    assert.match(response.body.message, /facultad asignada/i);
+    assert.equal(
+      loaded.getClientCalls().some((call) => call.sql === 'BEGIN'),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinadores_registrados actualizar saves UALs and keeps the existing faculty', async () => {
+  const loaded = loadRoute({
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord Demo',
+              correo: 'coord@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('SELECT ual_id, nombre FROM ual')) {
+        return { rows: [{ ual_id: 5, nombre: 'UAL 5' }] };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total FROM coordinador_facultad')) {
+        return { rows: [{ total: 2 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app)
+      .post('/actualizar')
+      .send({
+        documento: '900',
+        correo: 'coord@udistrital.edu.co',
+        ual_ids: ['5'],
+      });
+
+    assert.equal(response.status, 200);
+    const calls = loaded.getClientCalls();
+    assert.equal(
+      calls.some((call) => call.sql.includes('DELETE FROM coordinador_facultad')),
+      false
+    );
+    assert.equal(
+      calls.some((call) => call.sql.includes('INSERT INTO usuario_ual_rol_operativo')),
+      true
+    );
+  } finally {
+    loaded.restore();
+  }
+});
