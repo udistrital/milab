@@ -397,6 +397,7 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
         return {
           rows: [
             {
+              requested_id: 5,
               facultad_id: 5,
               permite_crear_multas_activas_directas: true,
               permite_saldar_multas_directas: true,

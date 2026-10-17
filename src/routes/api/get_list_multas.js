@@ -465,11 +465,15 @@ async function addLaboratoristaActions(client, rows, req) {
   }
 
   const configResult = await client.query(
-    'SELECT * FROM config_facultad_multas WHERE facultad_id = ANY($1::int[])',
+    `SELECT unidad.dependencia_facultad_id AS requested_id, cfm.*
+     FROM dependencia_facultad unidad
+     LEFT JOIN config_facultad_multas cfm
+       ON cfm.facultad_id = COALESCE(unidad.padre_id, unidad.dependencia_facultad_id)
+     WHERE unidad.dependencia_facultad_id = ANY($1::int[])`,
     [facultyIds]
   );
   const configMap = new Map(
-    configResult.rows.map((config) => [Number(config.facultad_id), config])
+    configResult.rows.map((config) => [Number(config.requested_id), config])
   );
 
   return rows.map((row) => {

@@ -401,7 +401,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     const multasPendientes = result.rows;
 
     const facultadesResult = await pool.query(
-      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) AND padre_id IS NULL ORDER BY nombre ASC',
       [scope.facultyIds]
     );
     const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
@@ -820,6 +820,19 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
         };
         return req.accepts('json')
           ? res.status(403).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
+      }
+      const unidadResult = await pool.query(
+        'SELECT padre_id FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
+        [facultadIdParam]
+      );
+      if (unidadResult.rows[0]?.padre_id != null) {
+        const msg = {
+          message: 'Operación no válida',
+          message2: 'La configuración de autorizaciones se gestiona a nivel de facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(400).json({ ok: false, ...msg })
           : res.render('home/message_error', { ...msg, limit: null });
       }
       const currentCfg = scope.facultyIds?.length
