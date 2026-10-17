@@ -21,12 +21,12 @@
         <div class="col-12 col-md-5">
           <label for="fineSearchType" class="form-label">Tipo de búsqueda</label>
           <select class="form-select" id="fineSearchType" name="tipo_busqueda" required>
-            <option value="documento" selected>Documento de identidad</option>
-            <option value="codigo">Código institucional</option>
+            <option value="codigo" selected>Código institucional</option>
+            <option value="documento">Documento de identidad</option>
           </select>
         </div>
         <div class="col-12 col-md-7">
-          <label for="fineSearchValue" class="form-label" id="fineSearchLabel">Documento de identidad</label>
+          <label for="fineSearchValue" class="form-label" id="fineSearchLabel">Código institucional</label>
           <input
             type="text"
             class="form-control"
@@ -34,7 +34,7 @@
             name="valor_busqueda"
             inputmode="numeric"
             autocomplete="off"
-            placeholder="Ej: 1020304050"
+            placeholder="Ej: 20241001"
             required
           >
         </div>
