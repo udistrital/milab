@@ -51,6 +51,31 @@ function normalizeDateFilter(rawValue) {
   return ISO_DATE_PATTERN.test(value) ? value : 'INVALID';
 }
 
+function todayInBogota(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+}
+
+function validateFineEditDate(rawValue, today = todayInBogota()) {
+  const value = String(rawValue || '').trim();
+  const isRealDate =
+    ISO_DATE_PATTERN.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
+  if (!isRealDate) {
+    return {
+      ok: false,
+      message: 'Fecha de sanción inválida.',
+      message2: 'Selecciona una fecha válida antes de guardar.',
+    };
+  }
+  if (value > today) {
+    return {
+      ok: false,
+      message: 'La fecha de la sanción no puede ser futura.',
+      message2: 'Selecciona una fecha igual o anterior al día de hoy.',
+    };
+  }
+  return { ok: true, fecha: value };
+}
+
 function normalizeFineStateFilter(rawValue) {
   const value = String(rawValue || '').trim();
   if (!value) return null;
@@ -606,6 +631,15 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     });
   }
 
+  const fechaValidation = validateFineEditDate(req.body?.fecha_multa);
+  if (!fechaValidation.ok) {
+    return res.render('home/message_error', {
+      message: fechaValidation.message,
+      message2: fechaValidation.message2,
+      limit: null,
+    });
+  }
+
   let client;
   try {
     client = await pool.connect();
@@ -632,17 +666,18 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
       `UPDATE multa
        SET cat_multa = $1,
            tipo_sancion = $2,
+           fecha_multa = $3,
            fecha_modificacion = CURRENT_TIMESTAMP
-       WHERE id = $3
+       WHERE id = $4
          AND con_estado_multa = 'ACTIVA'`,
-      [categoria, tipoSancion, multaId]
+      [categoria, tipoSancion, fechaValidation.fecha, multaId]
     );
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         getSessionDocument(req),
-        'Editar categoría y tipo de sanción activa',
+        'Editar categoría, tipo y fecha de sanción activa',
         String(multaId),
       ]
     );
@@ -821,4 +856,5 @@ module.exports.listingHelpers = {
   buildMultasQueryContext,
   normalizeListSuccessFeedback,
   queryMultasRows,
+  validateFineEditDate,
 };

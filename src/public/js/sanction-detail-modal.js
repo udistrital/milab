@@ -6,6 +6,10 @@ let activeNameRetryTimer = null;
 let activeSgaRequestController = null;
 let activeSgaRequestId = 0;
 
+function todayInBogota() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+}
+
 function updateOatiStatus(message) {
   const statusTarget = document.querySelector('[data-oati-status]');
   if (!statusTarget) {
@@ -323,5 +327,11 @@ document.addEventListener('click', function (event) {
       categorySelect.value = currentCategory;
     }
     if (typeSelect) typeSelect.value = fields.tipo || '';
+
+    const dateInput = document.querySelector('#fecha_sancion_edicion_listado');
+    if (dateInput) {
+      dateInput.max = todayInBogota();
+      dateInput.value = /^\d{4}-\d{2}-\d{2}$/.test(fields.fecha || '') ? fields.fecha : '';
+    }
   }
 });

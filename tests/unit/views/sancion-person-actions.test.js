@@ -179,6 +179,15 @@ test('paso 2 renders the history with the listado grid and detail modal', async 
   assert.match(html, /name="lookup_token" value="a{64}"/);
 });
 
+test('paso 2 edit form includes a required sanction date field', async () => {
+  const html = await renderPaso2({ activeSanctionCount: 1, sanctionHistory: [] });
+
+  assert.match(
+    html,
+    /<input type="date" id="fecha_sancion_edicion_listado" name="fecha_multa" class="form-control" required>/
+  );
+});
+
 test('paso 2 shows the success alert from a completed action', async () => {
   const html = await renderPaso2({ successFeedback: 'aplazada' });
 

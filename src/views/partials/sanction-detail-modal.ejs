@@ -176,6 +176,10 @@
                         <input type="hidden" name="source" value="<%= returnSource %>">
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <div class="col-12">
+                            <label class="form-label" for="fecha_sancion_edicion_listado">Fecha de la sanción</label>
+                            <input type="date" id="fecha_sancion_edicion_listado" name="fecha_multa" class="form-control" required>
+                        </div>
+                        <div class="col-12">
                             <label class="form-label" for="categoria_sancion_listado">Categoría de sanción</label>
                             <select id="categoria_sancion_listado" name="cat_multa" class="form-select" required>
                                 <%- include('./multa-options'); %>
