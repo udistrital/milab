@@ -12,6 +12,7 @@ const { fetchSanctionClaimHistory } = require('../../libs/sanction-claims');
 const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
 const { sgaDebtService } = require('../../libs/oati-debts');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
   renderApplicationError,
   renderModuleError,
@@ -647,7 +648,11 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     );
     client.release();
 
-    return res.redirect('/milab/api/get_list_multas?success=editada');
+    const personaReturnPath =
+      String(req.body?.source || '').trim().toLowerCase() === 'get-info-multa-persona'
+        ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim(), 'editada')
+        : null;
+    return res.redirect(personaReturnPath || '/milab/api/get_list_multas?success=editada');
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
@@ -809,3 +814,9 @@ router.get('/export/excel', requireMultasAccess, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listingHelpers = {
+  addLaboratoristaActions,
+  buildMultasQueryContext,
+  normalizeListSuccessFeedback,
+  queryMultasRows,
+};

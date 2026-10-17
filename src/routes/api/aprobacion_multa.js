@@ -11,6 +11,7 @@ const {
   logConfigChangeToAuditoria,
 } = require('../../libs/multa-config');
 const { wantsJson } = require('../middlewares/error-handler');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
@@ -51,6 +52,13 @@ function resolvePostActionRedirectPath(req) {
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
+
+  if (source === 'get-info-multa-persona') {
+    return (
+      buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim()) ||
+      '/milab/api/get-info-multa/get'
+    );
+  }
 
   if (
     source === 'estudiante' ||
@@ -101,7 +109,9 @@ function resolvePostActionFeedbackValue(payload = {}) {
 }
 
 function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
-  if (redirectTo !== '/milab/api/get_list_multas') {
+  const isListRedirect = redirectTo === '/milab/api/get_list_multas';
+  const isPersonaRedirect = redirectTo.startsWith('/milab/api/get-info-multa/persona?');
+  if (!isListRedirect && !isPersonaRedirect) {
     return redirectTo;
   }
 
@@ -110,7 +120,8 @@ function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
     return redirectTo;
   }
 
-  return `${redirectTo}?success=${encodeURIComponent(feedback)}`;
+  const separator = redirectTo.includes('?') ? '&' : '?';
+  return `${redirectTo}${separator}success=${encodeURIComponent(feedback)}`;
 }
 
 function respondWithActionSuccess(req, res, payload = {}) {

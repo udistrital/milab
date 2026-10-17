@@ -54,6 +54,157 @@
       </div>
     </section>
 
+    <% if (!isTeacher) { %>
+      <%
+        const sanctionHistory = locals.sanctionHistory || [];
+        const sga = locals.sga || { configured: false, debts: [], failed: false };
+        const successFeedback = locals.successFeedback || null;
+      %>
+      <section class="mt-4" aria-labelledby="fineActionHeading">
+        <% if (successFeedback) { %>
+          <div class="alert alert-success mb-3" role="status" aria-live="polite">
+            <strong>Operación completada.</strong>
+            <%= successFeedback === 'saldada'
+                ? ' La sanción se marcó como saldada correctamente.'
+                : successFeedback === 'aplazada'
+                    ? ' La sanción se aplazó correctamente.'
+                    : successFeedback === 'reactivada'
+                        ? ' La sanción se reactivó correctamente.'
+                        : successFeedback === 'editada'
+                            ? ' La sanción se editó correctamente.'
+                            : ' La sanción se activó correctamente.' %>
+          </div>
+        <% } %>
+
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <form method="POST" action="<%= registrationUrl %>">
+            <%- include('../partials/csrf_field') %>
+            <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+            <button class="btn btn-perso" type="submit" data-submit-lock="true">
+              <i class="bi bi-plus-circle" aria-hidden="true"></i> Agregar sanción
+            </button>
+          </form>
+          <form method="POST" action="<%= removalUrl %>">
+            <%- include('../partials/csrf_field') %>
+            <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+            <button
+              class="btn btn-outline-secondary"
+              type="submit"
+              data-submit-lock="true"
+              <%= activeSanctionCount > 0 ? '' : 'disabled' %>
+            >
+              <i class="bi bi-dash-circle" aria-hidden="true"></i> Retirar sanción
+            </button>
+          </form>
+        </div>
+
+        <div class="mb-3">
+          <span class="badge rounded-pill text-bg-<%= activeSanctionCount > 0 ? 'warning' : 'light' %>">
+            <%= activeSanctionCount %> sanciones activas
+          </span>
+          <% if (sga.configured) { %>
+            <div class="mt-2">
+              <% if (sga.failed) { %>
+                <span class="badge rounded-pill text-bg-secondary">No fue posible consultar SGA</span>
+              <% } else if (sga.debts.length > 0) { %>
+                <button
+                  type="button"
+                  class="badge rounded-pill text-bg-danger border-0"
+                  data-bs-toggle="modal"
+                  data-bs-target="#sgaSancionesPersonaModal"
+                >
+                  <%= sga.debts.length %> sanciones en SGA · Ver detalle
+                </button>
+              <% } else { %>
+                <span class="badge rounded-pill text-bg-light">0 sanciones en SGA</span>
+              <% } %>
+            </div>
+          <% } %>
+        </div>
+
+        <% if (sanctionHistory.length) { %>
+          <section class="app-sanctions-report" aria-label="Historial de sanciones del estudiante">
+            <table id="tbl-sanciones-persona" class="table table-bordered table-striped table-hover app-table-compact app-sanctions-table js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
+              <thead class="text-light">
+                <tr>
+                  <th>Identificación</th>
+                  <th>Estudiante</th>
+                  <th>Laboratorio</th>
+                  <th class="app-sanction-info-column">Información de sanción</th>
+                  <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% sanctionHistory.forEach(function (data) { %>
+                  <tr>
+                    <%- include('../partials/sanction-report-cells', { sanction: data }) %>
+                    <%- include('../partials/sanction-info-cell', { sanction: data }) %>
+                    <%- include('../partials/sanction-actions-cell', { sanction: data, sgaConfigured: sga.configured }) %>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </section>
+        <% } else if (locals.sanctionHistoryError) { %>
+          <div class="alert alert-warning mb-3" role="status">
+            No fue posible mostrar el historial de sanciones: <%= sanctionHistoryError %>
+          </div>
+        <% } else { %>
+          <p class="text-muted mb-3">El estudiante no tiene sanciones registradas en MILab.</p>
+        <% } %>
+
+        <div class="mt-3">
+          <a class="btn btn-link px-0" href="<%= searchUrl %>">Buscar otra persona</a>
+        </div>
+      </section>
+
+      <%- include('../partials/sanction-detail-modal', { returnSource: 'get-info-multa-persona', lookupToken: lookupToken }); %>
+      <script src="/milab/public/js/sanction-detail-modal.js"></script>
+
+      <% if (sga.configured && sga.debts.length > 0) { %>
+        <div class="modal fade" id="sgaSancionesPersonaModal" tabindex="-1" aria-labelledby="sgaSancionesPersonaLabel" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2 class="modal-title h5" id="sgaSancionesPersonaLabel">Sanciones registradas en SGA</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+              </div>
+              <div class="modal-body">
+                <% sga.debts.forEach(function (debt) { %>
+                  <article class="card mb-3">
+                    <div class="card-body">
+                      <h3 class="h6 mb-3"><%= debt.DEU_MATERIAL || 'Sanción reportada por SGA' %></h3>
+                      <dl class="row g-2 mb-0">
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Valor</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.DEU_MULTA || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Fecha</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.DEU_FECHA || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Estado</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.DEU_ESTADO || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Periodo</dt>
+                          <dd class="mb-0 fw-semibold"><%= [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / ') || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Fecha de pago</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.DEU_FECHA_PAGO || 'Pendiente' %></dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </article>
+                <% }) %>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% } %>
+    <% } else { %>
     <section class="mt-4" aria-labelledby="fineActionHeading">
       <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
         <div>
@@ -112,6 +263,7 @@
         <a class="btn btn-link px-0" href="<%= searchUrl %>">Buscar otra persona</a>
       </div>
     </section>
+    <% } %>
   </main>
   <%- include('../partials/footer'); -%>
 <% } %>

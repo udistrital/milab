@@ -6,6 +6,7 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 const { renderModuleError } = require('../middlewares/error-handler');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 
 const router = express.Router();
 
@@ -48,13 +49,16 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
+  const personaReturnPath = source === 'get-info-multa-persona'
+    ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim())
+    : null;
   const returnToListFlow = source === 'listado';
   const returnToTeacherFlow = source === 'docente';
   const successReturnUrl = returnToListFlow
     ? '/milab/api/get_list_multas'
     : returnToTeacherFlow
       ? '/milab/api/get-info-multa-docente/get'
-      : '/milab/api/get-info-multa/get';
+      : personaReturnPath || '/milab/api/get-info-multa/get';
   const successReturnLabel = returnToListFlow
     ? 'Volver al listado de sanciones'
     : returnToTeacherFlow
@@ -180,9 +184,13 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       [req.session.user.tipo, documentoReal, accionLog, referenciaSancionado]
     );
 
-    if (returnToListFlow) {
-      const successParam = con_estado_saldado === 'SALDADA' ? '?success=saldada' : '';
-      return res.redirect(`${successReturnUrl}${successParam}`);
+    if (returnToListFlow || personaReturnPath) {
+      const successParam = con_estado_saldado === 'SALDADA' ? 'success=saldada' : '';
+      if (!successParam) {
+        return res.redirect(successReturnUrl);
+      }
+      const separator = successReturnUrl.includes('?') ? '&' : '?';
+      return res.redirect(`${successReturnUrl}${separator}${successParam}`);
     }
 
     return res.render('home/message_success', {
