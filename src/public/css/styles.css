@@ -3279,10 +3279,39 @@ body.app-shell .table-logs .btn {
 body.app-shell .table-aprobacion-multas th:nth-child(1),
 body.app-shell .table-aprobacion-multas td:nth-child(1),
 body.app-shell .table-aprobacion-multas th:nth-child(5),
-body.app-shell .table-aprobacion-multas td:nth-child(5),
-body.app-shell .table-aprobacion-multas th:nth-child(6),
-body.app-shell .table-aprobacion-multas td:nth-child(6) {
+body.app-shell .table-aprobacion-multas td:nth-child(5) {
   width: 1%;
+}
+
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-info,
+body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info {
+  white-space: normal;
+  min-width: 260px;
+  max-width: 340px;
+}
+
+body.app-shell .table-aprobacion-multas .app-aprobacion-info-list {
+  margin: 0;
+}
+
+body.app-shell .table-aprobacion-multas .app-aprobacion-info-list > div + div {
+  margin-top: 0.5rem;
+}
+
+body.app-shell .table-aprobacion-multas .app-aprobacion-info-list dt {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6c8b93;
+  margin: 0;
+}
+
+body.app-shell .table-aprobacion-multas .app-aprobacion-info-list dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #2c4b52;
+  overflow-wrap: anywhere;
 }
 
 body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-obs,

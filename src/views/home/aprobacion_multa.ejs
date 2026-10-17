@@ -179,20 +179,41 @@
           <tr>
             <th>ID</th>
             <th>Documento sancionado</th>
-            <th>Fecha de la sanción</th>
+            <th class="app-aprobacion-info">Información de sanción</th>
             <th class="app-aprobacion-obs">Observación</th>
-            <th>Estado</th>
             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
           </tr>
         </thead>
         <tbody>
           <% multas.forEach(multa => { %>
+            <%
+              const fechaSancion = new Date(multa.fecha_multa);
+              const fechaSancionIso = `${fechaSancion.getFullYear()}-${String(fechaSancion.getMonth() + 1).padStart(2, '0')}-${String(fechaSancion.getDate()).padStart(2, '0')}`;
+            %>
             <tr>
               <td><%= multa.id %></td>
               <td><%= multa.documento_sancionado %></td>
-              <td><%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %></td>
+              <td class="app-aprobacion-info">
+                <dl class="app-aprobacion-info-list">
+                  <div>
+                    <dt>Categoría</dt>
+                    <dd><%= multa.cat_multa %></dd>
+                  </div>
+                  <div>
+                    <dt>Tipo</dt>
+                    <dd><%= multa.tipo_sancion || 'Por definir' %></dd>
+                  </div>
+                  <div>
+                    <dt>Fecha</dt>
+                    <dd><%= fechaSancionIso %></dd>
+                  </div>
+                  <div>
+                    <dt>Laboratorista</dt>
+                    <dd><%= multa.nombre_laboratorista || 'No registrado' %></dd>
+                  </div>
+                </dl>
+              </td>
               <td class="app-aprobacion-obs"><%- include('../partials/compact-list-cell', { text: multa.obs_multa || 'Sin observaciones' }) %></td>
-              <td><%= multa.con_estado_multa %></td>
               <td class="text-center">
                 <button
                   type="button"
