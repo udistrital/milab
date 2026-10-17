@@ -2,6 +2,11 @@ const cron = require('node-cron');
 
 const pool = require('../libs/db');
 const { sendEmailNotification } = require('../libs/email-notifications');
+const {
+  buildMultaScopeFilter,
+  hasCoordinatorScope,
+  resolveCoordinatorScopeByRecord,
+} = require('../libs/faculty-scope');
 
 let coordinatorPendingNotificationsTask = null;
 
@@ -24,20 +29,61 @@ function buildCorrelationId(coordinatorDocument, now) {
   return `coordinador-pendientes-${coordinatorDocument}-${datePart}`;
 }
 
+async function fetchScopeFacultyNames(scope) {
+  const result = scope.ualIds.length
+    ? await pool.query(
+        `
+          SELECT DISTINCT f.nombre
+          FROM ual u
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
+          WHERE u.ual_id = ANY($1::int[])
+          ORDER BY f.nombre
+        `,
+        [scope.ualIds]
+      )
+    : await pool.query(
+        `
+          SELECT nombre
+          FROM dependencia_facultad
+          WHERE dependencia_facultad_id = ANY($1::int[])
+          ORDER BY nombre
+        `,
+        [scope.facultyIds]
+      );
+
+  return result.rows.map((row) => row.nombre).join(', ');
+}
+
+async function fetchScopedPendingCount(scope) {
+  const filter = buildMultaScopeFilter(scope, 1);
+  const result = await pool.query(
+    `
+      SELECT COUNT(DISTINCT m.id)::int AS pendientes
+      FROM multa m
+      JOIN ual u
+        ON u.ual_id = m.ual_id
+      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
+        AND ${filter.sql}
+    `,
+    [filter.value]
+  );
+
+  return result.rows[0]?.pendientes || 0;
+}
+
 async function fetchCoordinatorsWithPendingCounts() {
   const result = await pool.query(
     `
       SELECT
-        c.documento AS coordinador_documento,
+        c.documento,
+        c.nombre,
+        c.nombre_u,
+        c.correo,
+        c.usuario_id,
         COALESCE(NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(u.nombre), ''), 'Coordinador') AS coordinador_nombre,
-        LOWER(COALESCE(NULLIF(TRIM(c.correo), ''), NULLIF(TRIM(u.correo), ''))) AS coordinador_correo,
-        STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultades,
-        COUNT(DISTINCT m.id)::int AS pendientes
+        LOWER(COALESCE(NULLIF(TRIM(c.correo), ''), NULLIF(TRIM(u.correo), ''))) AS coordinador_correo
       FROM coordinador c
-      JOIN coordinador_facultad_alcance cf
-        ON cf.coordinador_documento_id = c.documento
-      JOIN dependencia_facultad f
-        ON f.dependencia_facultad_id = cf.facultad_asignada_id
       LEFT JOIN LATERAL (
         SELECT id, nombre, correo
         FROM usuario
@@ -63,20 +109,32 @@ async function fetchCoordinatorsWithPendingCounts() {
         ORDER BY ur.id DESC
         LIMIT 1
       ) role_state ON TRUE
-      LEFT JOIN ual ul
-        ON ul.facultad_id = cf.facultad_id
-      LEFT JOIN multa m
-        ON m.ual_id = ul.ual_id
-       AND m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
       WHERE COALESCE(NULLIF(TRIM(c.correo), ''), NULLIF(TRIM(u.correo), '')) IS NOT NULL
         AND COALESCE(role_state.activo, TRUE) = TRUE
-      GROUP BY c.documento, c.nombre, c.correo, u.nombre, u.correo
-      HAVING COUNT(DISTINCT m.id) > 0
       ORDER BY c.documento ASC
     `
   );
 
-  return result.rows;
+  const pendingByCoordinator = [];
+  for (const coordinator of result.rows) {
+    const scope = await resolveCoordinatorScopeByRecord(pool, coordinator);
+    if (!hasCoordinatorScope(scope)) {
+      continue;
+    }
+
+    const pendientes = await fetchScopedPendingCount(scope);
+    if (pendientes > 0) {
+      pendingByCoordinator.push({
+        coordinador_documento: coordinator.documento,
+        coordinador_nombre: coordinator.coordinador_nombre,
+        coordinador_correo: coordinator.coordinador_correo,
+        facultades: await fetchScopeFacultyNames(scope),
+        pendientes,
+      });
+    }
+  }
+
+  return pendingByCoordinator;
 }
 
 async function sendCoordinatorDigest(pendingInfo, now) {

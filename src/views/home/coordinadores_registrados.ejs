@@ -21,6 +21,7 @@
               <th>Facultad</th>
               <th>Dependencia</th>
               <th>Laboratorios a cargo</th>
+              <th>UALs</th>
               <th>Resoluci&oacute;n</th>
               <th>Soporte Resoluci&oacute;n</th>
               <th>Estado actual</th>
@@ -31,6 +32,7 @@
             <% coordinadores.forEach(coordinador => { %>
               <% const facultadTexto = String(coordinador.facultad_nombre || ''); %>
               <% const dependenciaTexto = String(coordinador.dependencia_nombre || ''); %>
+              <% const ualTexto = String(coordinador.ual_nombre || ''); %>
               <% const soporteResolucionTexto = String(coordinador.con_soporte_resolucion || ''); %>
               <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
@@ -44,6 +46,9 @@
                 </td>
                 <td>
                   <%- include('../partials/compact-list-cell', { text: coordinador.laboratorios_encargados || 'Sin laboratorios a cargo' }) %>
+                </td>
+                <td data-ual-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: ualTexto }) %>
                 </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
                 <td data-soporte-resolucion-cell="true">
@@ -66,6 +71,7 @@
                     data-coordinador-editor-numero-resolucion="<%= coordinador.con_numero_resolucion_coordinador || '' %>"
                     data-coordinador-editor-soporte-resolucion="<%= coordinador.con_soporte_resolucion || '' %>"
                     data-coordinador-editor-facultad-ids='<%= JSON.stringify(Array.isArray(coordinador.facultad_ids) ? coordinador.facultad_ids : []) %>'
+                    data-coordinador-editor-ual-ids='<%= JSON.stringify(Array.isArray(coordinador.ual_ids) ? coordinador.ual_ids : []) %>'
                   >
                     Editar
                   </button>
@@ -90,6 +96,7 @@
     facultadesDisponibles: facultadesDisponibles || [],
     dependenciasDisponibles:
       typeof dependenciasDisponibles !== 'undefined' ? dependenciasDisponibles : [],
+    ualesDisponibles: typeof ualesDisponibles !== 'undefined' ? ualesDisponibles : [],
   }) %>
 
 <div class="px-3">
