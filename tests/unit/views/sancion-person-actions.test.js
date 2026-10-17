@@ -68,6 +68,7 @@ test('paso 2 student view shows Agregar and Retirar as lookup-token forms', asyn
   assert.match(html, /Agregar sanción/);
   assert.match(html, /Retirar sanción/);
   assert.match(html, /name="lookup_token" value="a{64}"/);
+  assert.match(html, /<a class="btn btn-outline-secondary" href="\/milab\/api\/get-info-multa\/get">Buscar otra persona<\/a>/);
 });
 
 test('paso 2 disables Retirar when the student has no active sanctions', async () => {
