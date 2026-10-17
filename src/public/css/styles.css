@@ -3284,8 +3284,16 @@ body.app-shell .table-aprobacion-multas td:nth-child(5) {
 }
 
 body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-info,
-body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info {
+body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info,
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-estudiante,
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-lab,
+body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-lab {
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-info,
+body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info {
   min-width: 260px;
   max-width: 340px;
 }
@@ -3312,16 +3320,6 @@ body.app-shell .table-aprobacion-multas .app-aprobacion-info-list dd {
   line-height: 1.3;
   color: #2c4b52;
   overflow-wrap: anywhere;
-}
-
-body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-obs,
-body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-obs {
-  white-space: normal;
-  min-width: 240px;
-  max-width: 360px;
-  word-break: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.35;
 }
 
 body.app-shell .table-aprobacion-multas .btn {

@@ -178,9 +178,9 @@
         <thead class="table-light text-center">
           <tr>
             <th>ID</th>
-            <th>Documento sancionado</th>
+            <th>Estudiante</th>
+            <th>Laboratorio</th>
             <th class="app-aprobacion-info">Información de sanción</th>
-            <th class="app-aprobacion-obs">Observación</th>
             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
           </tr>
         </thead>
@@ -189,10 +189,35 @@
             <%
               const fechaSancion = new Date(multa.fecha_multa);
               const fechaSancionIso = `${fechaSancion.getFullYear()}-${String(fechaSancion.getMonth() + 1).padStart(2, '0')}-${String(fechaSancion.getDate()).padStart(2, '0')}`;
+            const estadoMulta = String(multa.con_estado_multa || '').trim();
+            const estadoStyle = {
+              ACTIVA: 'danger',
+              APLAZADA: 'secondary',
+              PENDIENTE: 'warning',
+              'POR SALDAR': 'info',
+              SALDADA: 'success',
+            }[estadoMulta.toUpperCase()] || 'secondary';
+            const accionTitulo = estadoMulta.toUpperCase() === 'POR SALDAR' ? 'Marcar como saldada' : 'Autorizar sanción';
             %>
             <tr>
               <td><%= multa.id %></td>
-              <td><%= multa.documento_sancionado %></td>
+              <td class="app-aprobacion-estudiante">
+                <strong class="app-sanction-person"><%= String(multa.nombre_sancionado || '').trim() || 'Nombre no registrado' %></strong>
+                <dl class="app-aprobacion-info-list">
+                  <div>
+                    <dt>Código</dt>
+                    <dd><%= multa.codigo_sancionado || 'Sin código' %></dd>
+                  </div>
+                  <div>
+                    <dt>Documento</dt>
+                    <dd><%= multa.documento_sancionado || 'Sin documento' %></dd>
+                  </div>
+                </dl>
+              </td>
+              <td class="app-aprobacion-lab">
+                <strong class="app-sanction-lab"><%= multa.ual || 'Laboratorio no registrado' %></strong>
+                <%- include('../partials/sanction-location', { sanction: multa }) %>
+              </td>
               <td class="app-aprobacion-info">
                 <dl class="app-aprobacion-info-list">
                   <div>
@@ -211,13 +236,18 @@
                     <dt>Laboratorista</dt>
                     <dd><%= multa.nombre_laboratorista || 'No registrado' %></dd>
                   </div>
+                  <div>
+                    <dt>Estado</dt>
+                    <dd><span class="badge rounded-pill text-bg-<%= estadoStyle %> app-sanction-state"><%= estadoMulta || 'Sin estado' %></span></dd>
+                  </div>
                 </dl>
               </td>
-              <td class="app-aprobacion-obs"><%- include('../partials/compact-list-cell', { text: multa.obs_multa || 'Sin observaciones' }) %></td>
               <td class="text-center">
                 <button
                   type="button"
-                  class="btn btn-outline-info btn-sm app-detail-button"
+                  class="btn btn-outline-success btn-sm app-detail-button"
+                  title="<%= accionTitulo %>"
+                  aria-label="<%= accionTitulo %>"
                   data-bs-toggle="modal"
                   data-bs-target="#detalleSancionModal"
                   data-sancion-id="<%= multa.id %>"
@@ -232,8 +262,7 @@
                   data-sancion-tipo="<%= multa.tipo_sancion || 'Por definir' %>"
                   data-sancion-observaciones="<%= multa.obs_multa || 'Sin observaciones' %>"
                 >
-                  <i class="bi bi-eye"></i>
-                  Ver detalle
+                  <i class="bi bi-check2-circle" aria-hidden="true"></i>
                 </button>
               </td>
             </tr>
