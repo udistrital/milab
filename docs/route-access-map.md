@@ -117,6 +117,7 @@ Base: `/milab/prestamos/`. Todas montadas en `src/routes/api/prestamos.js` y pro
 | `/reportes`, `/reportes/export/:dataset` | `requirePermissions('prestamos.reports.view')`               | `admin`, `coordinador`, `laboratorista`, `monitor`              |
 | `/auditoria`                   | `requirePermissions('prestamos.audit.view')`                            | `admin`, `coordinador`, `laboratorista`                        |
 | `/admin/parametrizaciones`     | `requirePermissions('prestamos.parameters.admin')`                      | `admin`                                                        |
+| `/admin/esquema-bd`            | `requireRoles('admin')` + verificación explícita de rol `admin` (solo lectura del esquema) | `admin`                                   |
 | `/coordinador/practicas/config` | `requirePermissions('prestamos.practices.config')`                    | `admin`, `coordinador`                                         |
 | `/coordinador/firma`           | `requirePermissions('prestamos.coordinator.signature')`                 | `admin`, `coordinador`                                         |
 

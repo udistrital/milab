@@ -238,6 +238,7 @@ function buildStaticNavigation(user) {
       createGroup('Configuración', 'bi-gear', [
         createLink('Roles', '/milab/api/admin/roles', 'bi-people'),
         createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
+        createLink('Esquema de base de datos', '/milab/api/admin/esquema-bd', 'bi-database'),
       ])
     );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
