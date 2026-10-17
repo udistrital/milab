@@ -597,6 +597,56 @@ test('coordinadores_registrados actualizar rejects UALs without a faculty assign
   }
 });
 
+test('coordinadores_registrados actualizar allows a coordinador general without faculty to save UALs', async () => {
+  const loaded = loadRoute({
+    connectQueryImpl: async (sql) => {
+      if (sql.includes('FROM coordinador WHERE documento = $1')) {
+        return {
+          rows: [
+            {
+              documento: '900',
+              nombre: 'Coord General',
+              correo: 'general@udistrital.edu.co',
+              usuario_id: 7,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM usuario_rol ur') && sql.includes("r.nombre = 'coordinador_general'")) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+      if (sql.includes('SELECT ual_id, nombre FROM ual')) {
+        return { rows: [{ ual_id: 5, nombre: 'UAL 5' }] };
+      }
+      if (sql.includes('SELECT COUNT(*)::int AS total FROM coordinador_facultad')) {
+        return { rows: [{ total: 0 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '100' });
+    const response = await request(app)
+      .post('/actualizar')
+      .send({
+        documento: '900',
+        correo: 'general@udistrital.edu.co',
+        ual_ids: ['5'],
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      loaded
+        .getClientCalls()
+        .some((call) => call.sql.includes('INSERT INTO usuario_ual_rol_operativo')),
+      true
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('coordinadores_registrados actualizar saves UALs and keeps the existing faculty', async () => {
   const loaded = loadRoute({
     connectQueryImpl: async (sql) => {

@@ -392,6 +392,20 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     }
 
     const coordinatorUserId = await resolveCoordinatorUserId(client, coordinador);
+    // El coordinador general no tiene facultad a cargo por diseño.
+    const isCoordinadorGeneral = coordinatorUserId
+      ? (
+          await client.query(
+            `SELECT 1
+             FROM usuario_rol ur
+             JOIN rol r ON r.id = ur.rol_id
+             WHERE ur.usuario_id = $1
+               AND r.nombre = 'coordinador_general'
+             LIMIT 1`,
+            [coordinatorUserId]
+          )
+        ).rows.length > 0
+      : false;
 
     let ualNames = [];
     if (ualIds.length > 0) {
@@ -429,7 +443,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
               )
             ).rows[0].total
           );
-      if (finalFacultyCount === 0) {
+      if (finalFacultyCount === 0 && !isCoordinadorGeneral) {
         client.release();
         return res.status(400).json({
           ok: false,
