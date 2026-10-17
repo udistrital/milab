@@ -8,10 +8,7 @@ const {
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
 const { resolveCoordinatorUserId } = require('../../libs/faculty-scope');
-const {
-  fetchOperationalRoleAssignmentsByUserId,
-  replaceOperationalRoleAssignments,
-} = require('../../libs/operational-role-assignments');
+const { replaceOperationalRoleAssignments } = require('../../libs/operational-role-assignments');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
@@ -233,10 +230,6 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
   const ualIds = ualProvided
     ? [...new Set(ualIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
     : [];
-  const clearFacultyAssignments =
-    assignmentFieldsProvided &&
-    ualIds.length > 0 &&
-    (!Number.isInteger(facultyId) || facultyId <= 0);
   let assignmentIds = legacyFacultyIds;
   let assignmentFacultyNames = [];
   let assignmentDependencyNames = [];
@@ -305,9 +298,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
         'id_facultad',
       ]);
 
-      if (clearFacultyAssignments) {
-        assignmentIds = [];
-      } else if (assignmentFieldsProvided) {
+      if (assignmentFieldsProvided) {
         const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
         if (!Number.isInteger(facultyId) || facultyId <= 0) {
           client.release();
@@ -431,17 +422,6 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
 
     const scopeChangeProvided = ualProvided || assignmentProvided;
     if (scopeChangeProvided) {
-      const finalUalCount = ualProvided
-        ? ualIds.length
-        : coordinatorUserId
-          ? (
-              await fetchOperationalRoleAssignmentsByUserId(
-                coordinatorUserId,
-                'coordinador',
-                client
-              )
-            ).length
-          : 0;
       const finalFacultyCount = assignmentProvided
         ? assignmentIds.length
         : Number(
@@ -452,11 +432,11 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
               )
             ).rows[0].total
           );
-      if (finalUalCount + finalFacultyCount === 0) {
+      if (finalFacultyCount === 0) {
         client.release();
         return res.status(400).json({
           ok: false,
-          message: 'Debes asignar al menos una UAL, dependencia o facultad al coordinador.',
+          message: 'Todo coordinador debe tener una facultad asignada.',
         });
       }
     }
