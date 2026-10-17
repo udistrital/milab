@@ -70,7 +70,11 @@ function loadRoute({
             return { rows: [{ total: activeSanctionTotal }] };
           }
 
-          if (sql.includes('SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
+          if (
+            sql.includes(
+              'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1'
+            )
+          ) {
             return { rows: [{ documento: '1024467835' }] };
           }
 
@@ -295,7 +299,13 @@ const oatiStudentResponse = async (servicePath) => {
     return {
       datosEstudianteCollection: {
         datosBasicosEstudiante: [
-          { codigo: '2024100001', nombre: 'Estudiante Prueba', carrera: '1', estado: 'A', documento: '79520182' },
+          {
+            codigo: '2024100001',
+            nombre: 'Estudiante Prueba',
+            carrera: '1',
+            estado: 'A',
+            documento: '79520182',
+          },
         ],
       },
     };
@@ -310,7 +320,9 @@ const oatiStudentResponse = async (servicePath) => {
 };
 
 test('get-info-multa /persona renders the student panel with active count and SGA debts', async () => {
-  const sgaDebts = [{ DEU_MATERIAL: 'Reposición de insumos', DEU_MULTA: '50000', DEU_ESTADO: 'PENDIENTE' }];
+  const sgaDebts = [
+    { DEU_MATERIAL: 'Reposición de insumos', DEU_MULTA: '50000', DEU_ESTADO: 'PENDIENTE' },
+  ];
   const loaded = loadRoute({
     activeSanctionTotal: '2',
     requestOatiImpl: oatiStudentResponse,
@@ -349,7 +361,9 @@ test('get-info-multa /persona rejects an unknown lookup token', async () => {
 
   try {
     const app = buildApp(loaded.route);
-    const response = await request(app).get('/persona').query({ lookup_token: 'a'.repeat(64) });
+    const response = await request(app)
+      .get('/persona')
+      .query({ lookup_token: 'a'.repeat(64) });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/error-consulta');
@@ -400,7 +414,10 @@ test('get-info-multa shows a history notice instead of failing when the user sco
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/sancion-person-actions');
-    assert.equal(response.body.locals.sanctionHistoryError, 'El coordinador no tiene facultades asociadas.');
+    assert.equal(
+      response.body.locals.sanctionHistoryError,
+      'El coordinador no tiene facultades asociadas.'
+    );
     assert.deepEqual(response.body.locals.sanctionHistory, []);
   } finally {
     loaded.restore();

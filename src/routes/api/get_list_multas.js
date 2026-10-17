@@ -649,7 +649,9 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     client.release();
 
     const personaReturnPath =
-      String(req.body?.source || '').trim().toLowerCase() === 'get-info-multa-persona'
+      String(req.body?.source || '')
+        .trim()
+        .toLowerCase() === 'get-info-multa-persona'
         ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim(), 'editada')
         : null;
     return res.redirect(personaReturnPath || '/milab/api/get_list_multas?success=editada');

@@ -49,9 +49,10 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
-  const personaReturnPath = source === 'get-info-multa-persona'
-    ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim())
-    : null;
+  const personaReturnPath =
+    source === 'get-info-multa-persona'
+      ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim())
+      : null;
   const returnToListFlow = source === 'listado';
   const returnToTeacherFlow = source === 'docente';
   const successReturnUrl = returnToListFlow

@@ -22,7 +22,9 @@ function renderStudentSearch() {
 
 test('fine person search lists código before documento in the search type select', async () => {
   const html = await renderStudentSearch();
-  const options = [...html.matchAll(/<option value="(codigo|documento)"/g)].map((match) => match[1]);
+  const options = [...html.matchAll(/<option value="(codigo|documento)"/g)].map(
+    (match) => match[1]
+  );
 
   assert.deepEqual(options, ['codigo', 'documento']);
 });

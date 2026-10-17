@@ -6,7 +6,10 @@ const ejs = require('ejs');
 const templatePath = path.resolve(__dirname, '../../../src/views/home/get_list_multas.ejs');
 const cellsPath = path.resolve(__dirname, '../../../src/views/partials/sanction-report-cells.ejs');
 const infoCellPath = path.resolve(__dirname, '../../../src/views/partials/sanction-info-cell.ejs');
-const actionsCellPath = path.resolve(__dirname, '../../../src/views/partials/sanction-actions-cell.ejs');
+const actionsCellPath = path.resolve(
+  __dirname,
+  '../../../src/views/partials/sanction-actions-cell.ejs'
+);
 
 test('sanction report renders identity, name, laboratory, date, state and existing actions', async () => {
   const sanction = {
@@ -37,7 +40,10 @@ test('sanction report renders identity, name, laboratory, date, state and existi
   assert.match(html, /<th>Docente<\/th>/);
   assert.equal((html.match(/<th>Identificación<\/th>/g) || []).length, 2);
   assert.equal((html.match(/<th>Laboratorio<\/th>/g) || []).length, 2);
-  assert.equal((html.match(/<th class="app-sanction-info-column">Información de sanción<\/th>/g) || []).length, 2);
+  assert.equal(
+    (html.match(/<th class="app-sanction-info-column">Información de sanción<\/th>/g) || []).length,
+    2
+  );
   assert.doesNotMatch(html, /<th>(?:ID|Documento|Código|Fecha|Estado)<\/th>/);
   assert.match(html, /Ana &lt;Prueba&gt;/);
   assert.match(html, /Química &amp; Materiales/);
@@ -70,7 +76,12 @@ test('sanction info cell shows category, type, date, laboratorista and state wit
     ['SALDADA', 'success'],
   ]) {
     const html = await ejs.renderFile(infoCellPath, {
-      sanction: { id: 1, con_estado_multa: state, cat_multa: 'Entrega tardía', fecha_multa_formateada: '2026-10-08' },
+      sanction: {
+        id: 1,
+        con_estado_multa: state,
+        cat_multa: 'Entrega tardía',
+        fecha_multa_formateada: '2026-10-08',
+      },
     });
     assert.match(html, /<td class="app-sanction-info-cell" data-order="2026-10-08">/);
     assert.match(html, /Entrega tardía/);
@@ -93,8 +104,20 @@ test('sanction info cell shows explicit missing date and state', async () => {
 
 test('sanction actions cell shows only icon actions allowed for each state', async () => {
   const cases = [
-    { state: 'PENDIENTE', flags: { canActivate: true }, primary: 'activate', title: 'Activar', extra: [] },
-    { state: 'POR SALDAR', flags: { canSaldar: true }, primary: 'saldar', title: 'Saldar', extra: [] },
+    {
+      state: 'PENDIENTE',
+      flags: { canActivate: true },
+      primary: 'activate',
+      title: 'Activar',
+      extra: [],
+    },
+    {
+      state: 'POR SALDAR',
+      flags: { canSaldar: true },
+      primary: 'saldar',
+      title: 'Saldar',
+      extra: [],
+    },
     {
       state: 'ACTIVA',
       flags: { canRemove: true, canAplazar: true, canEdit: true },
@@ -102,7 +125,13 @@ test('sanction actions cell shows only icon actions allowed for each state', asy
       title: 'Saldar',
       extra: ['Aplazar', 'Editar'],
     },
-    { state: 'APLAZADA', flags: { canReactivar: true }, primary: 'reactivate', title: 'Reactivar', extra: [] },
+    {
+      state: 'APLAZADA',
+      flags: { canReactivar: true },
+      primary: 'reactivate',
+      title: 'Reactivar',
+      extra: [],
+    },
   ];
 
   for (const { state, flags, primary, title, extra } of cases) {
@@ -131,5 +160,3 @@ test('sanction actions cell keeps only the detail icon when no state action is a
   assert.equal((html.match(/<button/g) || []).length, 1);
   assert.match(html, /app-detail-button/);
 });
-
-

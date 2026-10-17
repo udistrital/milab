@@ -41,7 +41,14 @@ function renderDocente() {
     csrfToken: 'csrf-token',
     cspNonce: 'test-nonce',
     personType: 'docente',
-    person: { codigo: '', documento: '1020304050', nombre: 'Docente Prueba', carrera: '', estado: 'ACTIVO', usuarioId: 2 },
+    person: {
+      codigo: '',
+      documento: '1020304050',
+      nombre: 'Docente Prueba',
+      carrera: '',
+      estado: 'ACTIVO',
+      usuarioId: 2,
+    },
     lookupToken,
     registrationUrl: '/milab/api/get-info-multa-docente',
     removalUrl: '/milab/api/get-info-erase-multa-docente',
@@ -68,7 +75,10 @@ test('paso 2 student view shows Agregar and Retirar as lookup-token forms', asyn
   assert.match(html, /Agregar sanción/);
   assert.match(html, /Retirar sanción/);
   assert.match(html, /name="lookup_token" value="a{64}"/);
-  assert.match(html, /<a class="btn btn-outline-secondary" href="\/milab\/api\/get-info-multa\/get">Buscar otra persona<\/a>/);
+  assert.match(
+    html,
+    /<a class="btn btn-outline-secondary" href="\/milab\/api\/get-info-multa\/get">Buscar otra persona<\/a>/
+  );
 });
 
 test('paso 2 disables Retirar when the student has no active sanctions', async () => {
@@ -127,7 +137,10 @@ test('paso 2 shows the history notice when the scope cannot load history', async
     sanctionHistoryError: 'El coordinador no tiene facultades asociadas.',
   });
 
-  assert.match(html, /No fue posible mostrar el historial de sanciones: El coordinador no tiene facultades asociadas\./);
+  assert.match(
+    html,
+    /No fue posible mostrar el historial de sanciones: El coordinador no tiene facultades asociadas\./
+  );
   assert.doesNotMatch(html, /no tiene sanciones registradas en MILab/);
 });
 
