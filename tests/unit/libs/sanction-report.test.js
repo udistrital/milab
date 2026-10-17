@@ -6,6 +6,7 @@ const ejs = require('ejs');
 const templatePath = path.resolve(__dirname, '../../../src/views/home/get_list_multas.ejs');
 const cellsPath = path.resolve(__dirname, '../../../src/views/partials/sanction-report-cells.ejs');
 const infoCellPath = path.resolve(__dirname, '../../../src/views/partials/sanction-info-cell.ejs');
+const actionsCellPath = path.resolve(__dirname, '../../../src/views/partials/sanction-actions-cell.ejs');
 
 test('sanction report renders identity, name, laboratory, date, state and existing actions', async () => {
   const sanction = {
@@ -89,4 +90,46 @@ test('sanction info cell shows explicit missing date and state', async () => {
   assert.match(html, /text-bg-secondary/);
   assert.match(html, /data-order=""/);
 });
+
+test('sanction actions cell shows only icon actions allowed for each state', async () => {
+  const cases = [
+    { state: 'PENDIENTE', flags: { canActivate: true }, primary: 'activate', title: 'Activar', extra: [] },
+    { state: 'POR SALDAR', flags: { canSaldar: true }, primary: 'saldar', title: 'Saldar', extra: [] },
+    {
+      state: 'ACTIVA',
+      flags: { canRemove: true, canAplazar: true, canEdit: true },
+      primary: 'remove',
+      title: 'Saldar',
+      extra: ['Aplazar', 'Editar'],
+    },
+    { state: 'APLAZADA', flags: { canReactivar: true }, primary: 'reactivate', title: 'Reactivar', extra: [] },
+  ];
+
+  for (const { state, flags, primary, title, extra } of cases) {
+    const html = await ejs.renderFile(actionsCellPath, {
+      sanction: { id: 7, con_estado_multa: state, ...flags },
+      sgaConfigured: false,
+    });
+    assert.match(html, /<td class="app-sanction-actions">/);
+    assert.match(html, /title="Ver detalle"\s+aria-label="Ver detalle"/);
+    assert.match(html, new RegExp(`data-sancion-action="${primary}"`));
+    assert.match(html, new RegExp(`title="${title}"\\s+aria-label="${title}"`));
+    assert.doesNotMatch(html, /class="[^"]*\bbtn\b/);
+    assert.doesNotMatch(html, />\s*(Ver detalle|Activar|Saldar|Reactivar|Aplazar|Editar)\s*</);
+    for (const label of ['Aplazar', 'Editar']) {
+      const present = html.includes(`aria-label="${label}"`);
+      assert.equal(present, extra.includes(label), `${state} ${label}`);
+    }
+  }
+});
+
+test('sanction actions cell keeps only the detail icon when no state action is allowed', async () => {
+  const html = await ejs.renderFile(actionsCellPath, {
+    sanction: { id: 8, con_estado_multa: 'SALDADA' },
+    sgaConfigured: false,
+  });
+  assert.equal((html.match(/<button/g) || []).length, 1);
+  assert.match(html, /app-detail-button/);
+});
+
 

@@ -190,74 +190,7 @@
                                                     <tr>
                                                         <%- include('../partials/sanction-report-cells', { sanction: data }) %>
                                                         <%- include('../partials/sanction-info-cell', { sanction: data }) %>
-                                                        <td class="app-sanction-actions">
-                                                            <button
-                                                                type="button"
-                                                                class="btn btn-outline-info btn-sm app-detail-button"
-                                                                data-bs-toggle="modal"
-                                                                data-bs-target="#detalleSancionModal"
-                                                                data-sancion-id="<%= data.id %>"
-                                                                data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
-                                                                data-sancion-documento="<%= data.documento_sancionado %>"
-                                                                data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
-                                                                data-sancion-tipo-persona="<%= data.tipo_sancionado %>"
-                                                                data-sga-configurado="<%= sgaConfigured ? 'true' : 'false' %>"
-                                                                data-sancion-fecha="<%= data.fecha_multa_formateada %>"
-                                                                data-sancion-estado="<%= data.con_estado_multa %>"
-                                                                data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
-                                                                data-sancion-ual="<%= data.ual %>"
-                                                                data-sancion-facultad="<%= data.laboratorio_facultad || '' %>"
-                                                                data-sancion-dependencia="<%= data.laboratorio_dependencia || '' %>"
-                                                                data-sancion-categoria="<%= data.cat_multa %>"
-                                                                data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
-                                                                data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
-                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : data.canAplazar ? 'defer' : data.canRemove ? 'remove' : '' %>"
-                                                            >
-                                                                <i class="bi bi-eye"></i>
-                                                                Ver detalle
-                                                            </button>
-                                                            <% if (data.canActivate || data.canSaldar || data.canRemove || data.canReactivar) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-success btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : 'remove' %>"
-                                                                >
-                                                                    <i class="bi bi-arrow-repeat"></i>
-                                                                    <%= data.canActivate ? 'Activar' : data.canSaldar ? 'Saldar' : data.canReactivar ? 'Reactivar' : 'Saldar' %>
-                                                                </button>
-                                                            <% } %>
-                                                            <% if (data.canAplazar) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline-secondary btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="defer"
-                                                                >
-                                                                    <i class="bi bi-pause-circle"></i>
-                                                                    Aplazar
-                                                                </button>
-                                                            <% } %>
-                                                            <% if (data.canEdit) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline-warning btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="edit"
-                                                                    data-sancion-categoria="<%= data.cat_multa %>"
-                                                                    data-sancion-tipo="<%= data.tipo_sancion || '' %>"
-                                                                >
-                                                                    <i class="bi bi-pencil"></i>
-                                                                    Editar
-                                                                </button>
-                                                            <% } %>
-                                                        </td>
+                                                        <%- include('../partials/sanction-actions-cell', { sanction: data, sgaConfigured: sgaConfigured }) %>
                                                     </tr>
                                                 <% }); %>
                                             </tbody>
@@ -286,74 +219,7 @@
                                                     <tr>
                                                         <%- include('../partials/sanction-report-cells', { sanction: data }) %>
                                                         <%- include('../partials/sanction-info-cell', { sanction: data }) %>
-                                                        <td class="app-sanction-actions">
-                                                            <button
-                                                                type="button"
-                                                                class="btn btn-outline-info btn-sm app-detail-button"
-                                                                data-bs-toggle="modal"
-                                                                data-bs-target="#detalleSancionModal"
-                                                                data-sancion-id="<%= data.id %>"
-                                                                data-sancion-nombre="<%= data.nombre_sancionado || '' %>"
-                                                                data-sancion-documento="<%= data.documento_sancionado %>"
-                                                                data-sancion-codigo="<%= data.codigo_sancionado || '' %>"
-                                                                data-sancion-tipo-persona="<%= data.tipo_sancionado %>"
-                                                                data-sga-configurado="<%= sgaConfigured ? 'true' : 'false' %>"
-                                                                data-sancion-fecha="<%= data.fecha_multa_formateada %>"
-                                                                data-sancion-estado="<%= data.con_estado_multa %>"
-                                                                data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
-                                                                data-sancion-ual="<%= data.ual %>"
-                                                                data-sancion-facultad="<%= data.laboratorio_facultad || '' %>"
-                                                                data-sancion-dependencia="<%= data.laboratorio_dependencia || '' %>"
-                                                                data-sancion-categoria="<%= data.cat_multa %>"
-                                                                data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
-                                                                data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
-                                                                data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : data.canAplazar ? 'defer' : data.canRemove ? 'remove' : '' %>"
-                                                            >
-                                                                <i class="bi bi-eye"></i>
-                                                                Ver detalle
-                                                            </button>
-                                                            <% if (data.canActivate || data.canSaldar || data.canRemove || data.canReactivar) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-success btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="<%= data.canActivate ? 'activate' : data.canSaldar ? 'saldar' : data.canReactivar ? 'reactivate' : 'remove' %>"
-                                                                >
-                                                                    <i class="bi bi-arrow-repeat"></i>
-                                                                    <%= data.canActivate ? 'Activar' : data.canSaldar ? 'Saldar' : data.canReactivar ? 'Reactivar' : 'Saldar' %>
-                                                                </button>
-                                                            <% } %>
-                                                            <% if (data.canAplazar) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline-secondary btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="defer"
-                                                                >
-                                                                    <i class="bi bi-pause-circle"></i>
-                                                                    Aplazar
-                                                                </button>
-                                                            <% } %>
-                                                            <% if (data.canEdit) { %>
-                                                                <button
-                                                                    type="button"
-                                                                    class="btn btn-outline-warning btn-sm app-sanction-action-button"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#detalleSancionModal"
-                                                                    data-sancion-id="<%= data.id %>"
-                                                                    data-sancion-action="edit"
-                                                                    data-sancion-categoria="<%= data.cat_multa %>"
-                                                                    data-sancion-tipo="<%= data.tipo_sancion || '' %>"
-                                                                >
-                                                                    <i class="bi bi-pencil"></i>
-                                                                    Editar
-                                                                </button>
-                                                            <% } %>
-                                                        </td>
+                                                        <%- include('../partials/sanction-actions-cell', { sanction: data, sgaConfigured: sgaConfigured }) %>
                                                     </tr>
                                                 <% }); %>
                                             </tbody>
