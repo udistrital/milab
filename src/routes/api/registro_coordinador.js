@@ -19,6 +19,11 @@ const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
 const { requireRoles } = require('../middlewares/auth');
+const {
+  ensureOperationalRoleAssignmentsSchema,
+  fetchActiveUalOptions,
+  replaceOperationalRoleAssignments,
+} = require('../../libs/operational-role-assignments');
 require('dotenv').config();
 
 const router = express.Router();
@@ -424,6 +429,7 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
       error: null,
       confirmacion: null,
       ...assignmentOptions,
+      ualesDisponibles: await fetchActiveUalOptions(),
       selectedRole: resolveCoordinatorRegistrationRole(req.query.role_name),
       lookupData,
       lookupMessage,
@@ -548,6 +554,8 @@ router.post(
     const facultyId = Number(req.body.facultad_id);
     const assignmentScope = (req.body.alcance || '').toString();
     const dependencyIds = parseIdList(req.body.dependencia_ids);
+    const ualIds = roleName === ROLE_COORDINADOR ? parseIdList(req.body.ual_ids) : [];
+    let ualNombres = [];
 
     if (
       !hasRequiredCoordinatorFields({
@@ -592,6 +600,23 @@ router.post(
           message2: selectedAssignments.errorPayload.message2,
           limit: null,
         });
+      }
+
+      // Se valida y prepara el esquema antes de escribir, para no dejar usuario o coordinador a medias.
+      if (ualIds.length) {
+        const ualResult = await pool.query(
+          'SELECT nombre FROM ual WHERE ual_id = ANY($1::int[]) AND activo = TRUE ORDER BY nombre ASC',
+          [ualIds]
+        );
+        if (ualResult.rows.length !== ualIds.length) {
+          return res.render('home/message_error', {
+            message: 'Una o más UALs seleccionadas no existen o están inactivas.',
+            message2: 'Verifica la selección de UALs.',
+            limit: null,
+          });
+        }
+        ualNombres = ualResult.rows.map((ual) => ual.nombre);
+        await ensureOperationalRoleAssignmentsSchema();
       }
 
       const usuarioId = await ensureUserIdentityForRole({
@@ -643,6 +668,16 @@ router.post(
         );
       }
 
+      if (ualIds.length) {
+        await replaceOperationalRoleAssignments({
+          userId: usuarioId,
+          roleName: ROLE_COORDINADOR,
+          ualIds,
+          facultyId: null,
+          createdByUserId: req.session.user?.id || null,
+        });
+      }
+
       await pool.query(
         'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
         [
@@ -661,6 +696,7 @@ router.post(
         role_name: roleName,
         role_label: roleDisplayName(roleName),
         faculty_ids: selectedAssignments.assignmentIds,
+        ual_nombres: ualNombres.join(', '),
         numero_resolucion_coordinador,
         soporte_resolucion,
         facultades_nombres:
@@ -695,6 +731,14 @@ async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
   const roleLabel = datosCoordinador.role_label || 'Coordinador';
   const facultiesLabel =
     datosCoordinador.facultades_nombres || 'Sin facultades asignadas (acceso general de lectura)';
+  const ualsLabel = datosCoordinador.ual_nombres || '';
+  const ualsTextLine = ualsLabel ? '\n    - UALs: ' + ualsLabel : '';
+  const ualsHtmlRow = ualsLabel
+    ? `<tr>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>UALs:</strong></td>
+                                                    <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(ualsLabel)}</td>
+                                                </tr>`
+    : '';
   const roleCapabilitiesMessage =
     datosCoordinador.role_name === ROLE_COORDINADOR_GENERAL
       ? 'usted tendrá acceso global de solo lectura sobre todos los módulos habilitados en MILab.'
@@ -722,7 +766,7 @@ async function enviarCorreoBienvenidaCoordinador(datosCoordinador) {
 - Nombre: ${datosCoordinador.nombre}
 - Documento: ${datosCoordinador.documento}
 - Correo: ${datosCoordinador.correo}
-    - Facultades: ${facultiesLabel}
+    - Facultades: ${facultiesLabel}${ualsTextLine}
 - Número de Resolución: ${datosCoordinador.numero_resolucion_coordinador}
 - Fecha de registro: ${fechaActual}
 
@@ -804,6 +848,7 @@ ${NO_REPLY_NOTICE}`,
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Facultades:</strong></td>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(facultiesLabel)}</td>
                                                 </tr>
+                                                ${ualsHtmlRow}
                                                 <tr>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #5f6368;"><strong>Resolución:</strong></td>
                                                     <td class="fallback-font" style="padding: 5px 0; font-size: 14px; color: #202124;">${escapeHtml(datosCoordinador.numero_resolucion_coordinador)}</td>
@@ -977,6 +1022,7 @@ router.get('/new', async function (req, res) {
     error: null,
     confirmacion: null,
     ...assignmentOptions,
+    ualesDisponibles: await fetchActiveUalOptions(),
     selectedRole: ROLE_COORDINADOR,
     lookupData: null,
     lookupMessage: null,

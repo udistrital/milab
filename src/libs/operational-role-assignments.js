@@ -223,8 +223,20 @@ async function replaceOperationalRoleAssignments({
   );
 }
 
+async function fetchActiveUalOptions(executor = pool) {
+  const result = await executor.query(
+    `SELECT ual.ual_id, ual.nombre, ual.facultad_id, f.nombre AS facultad_nombre
+     FROM ual
+     LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual.facultad_id
+     WHERE ual.activo = TRUE
+     ORDER BY f.nombre ASC NULLS LAST, ual.nombre ASC`
+  );
+  return result.rows;
+}
+
 module.exports = {
   ensureOperationalRoleAssignmentsSchema,
+  fetchActiveUalOptions,
   fetchOperationalRoleAssignmentsByUserId,
   fetchOperationalRoleScopeByUser,
   replaceOperationalRoleAssignments,
