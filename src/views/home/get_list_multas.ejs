@@ -181,8 +181,7 @@
                                                     <th>Identificación</th>
                                                     <th>Estudiante</th>
                                                     <th>Laboratorio</th>
-                                                    <th>Fecha</th>
-                                                    <th>Estado</th>
+                                                    <th class="app-sanction-info-column">Información de sanción</th>
                                                     <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                                                 </tr>
                                             </thead>
@@ -190,6 +189,7 @@
                                                 <% estudiantes.forEach(function(data) { %>
                                                     <tr>
                                                         <%- include('../partials/sanction-report-cells', { sanction: data }) %>
+                                                        <%- include('../partials/sanction-info-cell', { sanction: data }) %>
                                                         <td class="app-sanction-actions">
                                                             <button
                                                                 type="button"
@@ -277,8 +277,7 @@
                                                     <th>Identificación</th>
                                                     <th>Docente</th>
                                                     <th>Laboratorio</th>
-                                                    <th>Fecha</th>
-                                                    <th>Estado</th>
+                                                    <th class="app-sanction-info-column">Información de sanción</th>
                                                     <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                                                 </tr>
                                             </thead>
@@ -286,6 +285,7 @@
                                                 <% docentes.forEach(function(data) { %>
                                                     <tr>
                                                         <%- include('../partials/sanction-report-cells', { sanction: data }) %>
+                                                        <%- include('../partials/sanction-info-cell', { sanction: data }) %>
                                                         <td class="app-sanction-actions">
                                                             <button
                                                                 type="button"

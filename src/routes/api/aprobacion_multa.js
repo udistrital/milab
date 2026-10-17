@@ -369,7 +369,8 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         u.nombre AS ual,
         COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
         CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
-        m.fecha_multa, 
+        m.fecha_multa,
+        TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
         m.con_estado_multa, 
         m.obs_multa,
         m.tipo_sancion

@@ -3283,8 +3283,8 @@ body.app-shell .table-aprobacion-multas td:nth-child(5) {
   width: 1%;
 }
 
-body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-info,
-body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info,
+body.app-shell .app-table-panel .table td.app-sanction-info-cell,
+body.app-shell .app-table-panel .table th.app-sanction-info-column,
 body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-estudiante,
 body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-lab,
 body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-lab {
@@ -3292,28 +3292,28 @@ body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-lab {
   overflow-wrap: anywhere;
 }
 
-body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-info,
-body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-info {
+body.app-shell .app-table-panel .table td.app-sanction-info-cell,
+body.app-shell .app-table-panel .table th.app-sanction-info-column {
   min-width: 260px;
   max-width: 340px;
 }
 
-body.app-shell .table-aprobacion-multas .app-aprobacion-info-list {
+body.app-shell .app-sanction-info-list {
   margin: 0;
 }
 
-body.app-shell .table-aprobacion-multas .app-aprobacion-info-list > div + div {
+body.app-shell .app-sanction-info-list > div + div {
   margin-top: 0.5rem;
 }
 
-body.app-shell .table-aprobacion-multas .app-aprobacion-info-list dt {
+body.app-shell .app-sanction-info-list dt {
   font-size: 0.75rem;
   font-weight: 500;
   color: #6c8b93;
   margin: 0;
 }
 
-body.app-shell .table-aprobacion-multas .app-aprobacion-info-list dd {
+body.app-shell .app-sanction-info-list dd {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 700;

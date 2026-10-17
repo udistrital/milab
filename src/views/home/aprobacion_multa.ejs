@@ -180,30 +180,21 @@
             <th>ID</th>
             <th>Estudiante</th>
             <th>Laboratorio</th>
-            <th class="app-aprobacion-info">Información de sanción</th>
+            <th class="app-sanction-info-column">Información de sanción</th>
             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
           </tr>
         </thead>
         <tbody>
           <% multas.forEach(multa => { %>
             <%
-              const fechaSancion = new Date(multa.fecha_multa);
-              const fechaSancionIso = `${fechaSancion.getFullYear()}-${String(fechaSancion.getMonth() + 1).padStart(2, '0')}-${String(fechaSancion.getDate()).padStart(2, '0')}`;
             const estadoMulta = String(multa.con_estado_multa || '').trim();
-            const estadoStyle = {
-              ACTIVA: 'danger',
-              APLAZADA: 'secondary',
-              PENDIENTE: 'warning',
-              'POR SALDAR': 'info',
-              SALDADA: 'success',
-            }[estadoMulta.toUpperCase()] || 'secondary';
             const accionTitulo = estadoMulta.toUpperCase() === 'POR SALDAR' ? 'Marcar como saldada' : 'Autorizar sanción';
             %>
             <tr>
               <td><%= multa.id %></td>
               <td class="app-aprobacion-estudiante">
                 <strong class="app-sanction-person"><%= String(multa.nombre_sancionado || '').trim() || 'Nombre no registrado' %></strong>
-                <dl class="app-aprobacion-info-list">
+                <dl class="app-sanction-info-list">
                   <div>
                     <dt>Código</dt>
                     <dd><%= multa.codigo_sancionado || 'Sin código' %></dd>
@@ -218,30 +209,7 @@
                 <strong class="app-sanction-lab"><%= multa.ual || 'Laboratorio no registrado' %></strong>
                 <%- include('../partials/sanction-location', { sanction: multa }) %>
               </td>
-              <td class="app-aprobacion-info">
-                <dl class="app-aprobacion-info-list">
-                  <div>
-                    <dt>Categoría</dt>
-                    <dd><%= multa.cat_multa %></dd>
-                  </div>
-                  <div>
-                    <dt>Tipo</dt>
-                    <dd><%= multa.tipo_sancion || 'Por definir' %></dd>
-                  </div>
-                  <div>
-                    <dt>Fecha</dt>
-                    <dd><%= fechaSancionIso %></dd>
-                  </div>
-                  <div>
-                    <dt>Laboratorista</dt>
-                    <dd><%= multa.nombre_laboratorista || 'No registrado' %></dd>
-                  </div>
-                  <div>
-                    <dt>Estado</dt>
-                    <dd><span class="badge rounded-pill text-bg-<%= estadoStyle %> app-sanction-state"><%= estadoMulta || 'Sin estado' %></span></dd>
-                  </div>
-                </dl>
-              </td>
+              <%- include('../partials/sanction-info-cell', { sanction: multa }) %>
               <td class="text-center">
                 <button
                   type="button"

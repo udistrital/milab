@@ -5,6 +5,7 @@ const ejs = require('ejs');
 
 const templatePath = path.resolve(__dirname, '../../../src/views/home/get_list_multas.ejs');
 const cellsPath = path.resolve(__dirname, '../../../src/views/partials/sanction-report-cells.ejs');
+const infoCellPath = path.resolve(__dirname, '../../../src/views/partials/sanction-info-cell.ejs');
 
 test('sanction report renders identity, name, laboratory, date, state and existing actions', async () => {
   const sanction = {
@@ -35,7 +36,8 @@ test('sanction report renders identity, name, laboratory, date, state and existi
   assert.match(html, /<th>Docente<\/th>/);
   assert.equal((html.match(/<th>Identificación<\/th>/g) || []).length, 2);
   assert.equal((html.match(/<th>Laboratorio<\/th>/g) || []).length, 2);
-  assert.doesNotMatch(html, /<th>(?:ID|Documento|Código)<\/th>/);
+  assert.equal((html.match(/<th class="app-sanction-info-column">Información de sanción<\/th>/g) || []).length, 2);
+  assert.doesNotMatch(html, /<th>(?:ID|Documento|Código|Fecha|Estado)<\/th>/);
   assert.match(html, /Ana &lt;Prueba&gt;/);
   assert.match(html, /Química &amp; Materiales/);
   assert.match(html, /data-order="2026-10-08"/);
@@ -46,7 +48,19 @@ test('sanction report renders identity, name, laboratory, date, state and existi
   assert.equal((html.match(/js-data-grid app-grid-contained/g) || []).length, 2);
 });
 
-test('sanction report cells show explicit missing values and distinguish every state', async () => {
+test('sanction report cells show explicit missing identity and laboratory values', async () => {
+  const html = await ejs.renderFile(cellsPath, {
+    sanction: { id: 1, con_estado_multa: 'ACTIVA' },
+  });
+  assert.match(html, /Sin código/);
+  assert.match(html, /Sin documento/);
+  assert.match(html, /Nombre no registrado/);
+  assert.match(html, /Laboratorio no registrado/);
+  assert.equal((html.match(/<td(?:\s|>)/g) || []).length, 3);
+  assert.doesNotMatch(html, /Sin fecha|app-sanction-state/);
+});
+
+test('sanction info cell shows category, type, date, laboratorista and state with explicit fallbacks', async () => {
   for (const [state, style] of [
     ['ACTIVA', 'danger'],
     ['APLAZADA', 'secondary'],
@@ -54,16 +68,25 @@ test('sanction report cells show explicit missing values and distinguish every s
     ['POR SALDAR', 'info'],
     ['SALDADA', 'success'],
   ]) {
-    const html = await ejs.renderFile(cellsPath, {
-      sanction: { id: 1, con_estado_multa: state },
+    const html = await ejs.renderFile(infoCellPath, {
+      sanction: { id: 1, con_estado_multa: state, cat_multa: 'Entrega tardía', fecha_multa_formateada: '2026-10-08' },
     });
-    assert.match(html, /Sin código/);
-    assert.match(html, /Sin documento/);
-    assert.match(html, /Nombre no registrado/);
-    assert.match(html, /Laboratorio no registrado/);
-    assert.match(html, /Sin fecha/);
+    assert.match(html, /<td class="app-sanction-info-cell" data-order="2026-10-08">/);
+    assert.match(html, /Entrega tardía/);
+    assert.match(html, /Por definir/);
+    assert.match(html, /No registrado/);
+    assert.match(html, /<time datetime="2026-10-08">2026-10-08<\/time>/);
     assert.ok(html.includes(`text-bg-${style}`));
     assert.ok(html.includes(state));
-    assert.equal((html.match(/<td(?:\s|>)/g) || []).length, 5);
+    assert.equal((html.match(/<td(?:\s|>)/g) || []).length, 1);
   }
 });
+
+test('sanction info cell shows explicit missing date and state', async () => {
+  const html = await ejs.renderFile(infoCellPath, { sanction: { id: 1 } });
+  assert.match(html, /Sin fecha/);
+  assert.match(html, /Sin estado/);
+  assert.match(html, /text-bg-secondary/);
+  assert.match(html, /data-order=""/);
+});
+
