@@ -917,7 +917,7 @@ async function identifyProfile(req, res) {
       message2: `${
         states.length
           ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
-          : 'OATI no reporta un perfil académico activo.'
+          : 'OATI no reporta un perfil académico habilitado.'
       } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
       limit: 'loginOnly',
       registrationDenied: true,
