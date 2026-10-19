@@ -9,15 +9,11 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const oatiDebtsPath = path.resolve(__dirname, '../../../src/libs/oati-debts.js');
 
-function buildApp(route) {
+function buildApp(route, user = { tipo: 'laboratorista', documento: '1024467835' }) {
   const app = express();
-  const session = {
-    user: {
-      tipo: 'laboratorista',
-      documento: '1024467835',
-    },
-  };
+  const session = { user };
 
   app.use((req, res, next) => {
     req.session = session;
@@ -30,6 +26,8 @@ function buildApp(route) {
 }
 
 function loadRoute({
+  activeSanctionTotal = '0',
+  sgaService = { isConfigured: () => false, getActiveDebts: async () => [] },
   requestOatiImpl = async (servicePath) => {
     if (servicePath.includes('datos_basicos_activos_cedula')) {
       return {
@@ -68,6 +66,18 @@ function loadRoute({
             return { rows: [{ multado: '0' }] };
           }
 
+          if (sql.includes('SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id')) {
+            return { rows: [{ total: activeSanctionTotal }] };
+          }
+
+          if (
+            sql.includes(
+              'SELECT documento FROM laboratorista WHERE documento = $1 OR n_usuario = $1'
+            )
+          ) {
+            return { rows: [{ documento: '1024467835' }] };
+          }
+
           if (sql.includes('SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
             return { rows: [{ nombre: 'Lab Prueba', documento: '1024467835', facultad_id: 5 }] };
           }
@@ -101,6 +111,13 @@ function loadRoute({
       authPath,
       {
         requireRoles: () => (req, res, next) => next(),
+        requireJsonRoles: () => (req, res, next) => next(),
+      },
+    ],
+    [
+      oatiDebtsPath,
+      {
+        sgaDebtService: sgaService,
       },
     ],
   ];
@@ -272,6 +289,136 @@ test('get-info-multa loads only assigned laboratorista UALs after registration i
       (response.body.locals.uals || []).map(({ ual_id, nombre }) => ({ ual_id, nombre })),
       [{ ual_id: 21, nombre: 'Laboratorio 1' }]
     );
+  } finally {
+    loaded.restore();
+  }
+});
+
+const oatiStudentResponse = async (servicePath) => {
+  if (servicePath.includes('datos_basicos_activos_cedula')) {
+    return {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [
+          {
+            codigo: '2024100001',
+            nombre: 'Estudiante Prueba',
+            carrera: '1',
+            estado: 'A',
+            documento: '79520182',
+          },
+        ],
+      },
+    };
+  }
+  if (servicePath.includes('estados_codigo')) {
+    return { estado: { nombre: 'ACTIVO' } };
+  }
+  if (servicePath.includes('carrera')) {
+    return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria' }] } };
+  }
+  return {};
+};
+
+test('get-info-multa /persona renders the student panel with active count and SGA debts', async () => {
+  const sgaDebts = [
+    { DEU_MATERIAL: 'Reposición de insumos', DEU_MULTA: '50000', DEU_ESTADO: 'PENDIENTE' },
+  ];
+  const loaded = loadRoute({
+    activeSanctionTotal: '2',
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      getActiveDebts: async () => sgaDebts,
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const searchResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const response = await request(app)
+      .get('/persona')
+      .query({ lookup_token: searchResponse.body.locals.lookupToken, success: 'saldada' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/sancion-person-actions');
+    assert.equal(response.body.locals.personType, 'estudiante');
+    assert.equal(response.body.locals.activeSanctionCount, 2);
+    assert.equal(response.body.locals.sga.configured, true);
+    assert.equal(response.body.locals.sga.failed, false);
+    assert.deepEqual(response.body.locals.sga.debts, sgaDebts);
+    assert.equal(response.body.locals.successFeedback, 'saldada');
+    assert.equal(response.body.locals.sanctionHistoryError, '');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa /persona rejects an unknown lookup token', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app)
+      .get('/persona')
+      .query({ lookup_token: 'a'.repeat(64) });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/error-consulta');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa keeps the student panel when SGA is unavailable', async () => {
+  const loaded = loadRoute({
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      getActiveDebts: async () => {
+        throw new Error('SGA caído');
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const searchResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const response = await request(app)
+      .get('/persona')
+      .query({ lookup_token: searchResponse.body.locals.lookupToken });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/sancion-person-actions');
+    assert.equal(response.body.locals.sga.failed, true);
+    assert.deepEqual(response.body.locals.sga.debts, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa shows a history notice instead of failing when the user scope is empty', async () => {
+  const loaded = loadRoute({ requestOatiImpl: oatiStudentResponse });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '1020304050' });
+    const response = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/sancion-person-actions');
+    assert.equal(
+      response.body.locals.sanctionHistoryError,
+      'El coordinador no tiene facultades asociadas.'
+    );
+    assert.deepEqual(response.body.locals.sanctionHistory, []);
   } finally {
     loaded.restore();
   }

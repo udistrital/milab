@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const SESSION_KEY = 'sanctionPersonLookups';
 const LOOKUP_TTL_MS = 15 * 60 * 1000;
 const MAX_LOOKUPS_PER_SESSION = 5;
+const SANCTION_PERSON_ACTIONS_PATH = '/milab/api/get-info-multa/persona';
 
 function getActor(req) {
   const user = req.session?.user || {};
@@ -70,7 +71,17 @@ function resolveSanctionPersonLookup(req, token, expectedPersonType) {
   return { ...lookup.person };
 }
 
+function buildSanctionPersonReturnPath(token, feedback = '') {
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/i.test(token)) return null;
+
+  const params = new URLSearchParams({ lookup_token: token });
+  if (feedback) params.set('success', feedback);
+  return `${SANCTION_PERSON_ACTIONS_PATH}?${params.toString()}`;
+}
+
 module.exports = {
+  SANCTION_PERSON_ACTIONS_PATH,
+  buildSanctionPersonReturnPath,
   createSanctionPersonLookup,
   resolveSanctionPersonLookup,
 };
