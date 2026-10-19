@@ -1,5 +1,3 @@
-
-
 const SECCIONES_HOJA_VIDA = [
   'Información del equipo',
   'Adquisición y proveedor',

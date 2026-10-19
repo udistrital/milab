@@ -1,5 +1,3 @@
-
-
 const TIPOS_EVENTO_HOJA_VIDA = [
   {
     codigo: 'CREACION',

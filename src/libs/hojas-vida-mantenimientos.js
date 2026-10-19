@@ -1,4 +1,3 @@
-
 const TIPOS_MANTENIMIENTO = [
   { codigo: 'PREVENTIVO', etiqueta: 'Preventivo' },
   { codigo: 'CORRECTIVO', etiqueta: 'Correctivo' },
