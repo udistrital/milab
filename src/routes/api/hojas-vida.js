@@ -5,6 +5,14 @@ const path = require('path');
 const pool = require('../../libs/db');
 const { requireJsonRoles } = require('../middlewares/auth');
 const { parseSigudExcel } = require('../../libs/hojas-vida-excel');
+const { CAMPOS_HOJA_VIDA, NOMBRES_CAMPOS_HOJA_VIDA } = require('../../libs/hojas-vida-campos');
+const { esTipoEventoManual } = require('../../libs/hojas-vida-eventos');
+const {
+  esTipoMantenimientoValido,
+  esEstadoMantenimientoValido,
+  etiquetaTipoMantenimiento,
+  ESTADO_MANTENIMIENTO_DEFAULT,
+} = require('../../libs/hojas-vida-mantenimientos');
 
 const router = express.Router();
 
@@ -36,10 +44,121 @@ const uploadCarga = multer({
   },
 });
 
+const HV_FOTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const HV_FOTO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: HV_FOTO_MAX_BYTES, files: 1 },
+  fileFilter: function (_req, file, cb) {
+    if (HV_FOTO_MIMES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('La fotografía debe ser una imagen JPG, PNG o WEBP.'));
+    }
+  },
+});
+
+const CAMPOS_NUMERICOS_HOJA_VIDA = new Set(['cantidad', 'valor_compra']);
+const CAMPOS_HOJA_VIDA_PERMITIDOS = new Set(NOMBRES_CAMPOS_HOJA_VIDA);
+
+/**
+ * Normaliza los campos de la hoja de vida recibidos en el body, dejando solo
+ * los permitidos y convirtiendo vacios a null.
+ */
+function normalizarCamposHojaVida(body) {
+  const datos = {};
+  Object.keys(body || {}).forEach(function (nombre) {
+    if (!CAMPOS_HOJA_VIDA_PERMITIDOS.has(nombre)) return;
+    const valor = body[nombre];
+    if (valor == null) {
+      datos[nombre] = null;
+      return;
+    }
+    const texto = String(valor).trim();
+    if (texto === '') {
+      datos[nombre] = null;
+      return;
+    }
+    if (CAMPOS_NUMERICOS_HOJA_VIDA.has(nombre)) {
+      const num = Number(texto);
+      datos[nombre] = Number.isFinite(num) ? num : null;
+      return;
+    }
+    datos[nombre] = texto;
+  });
+  return datos;
+}
+
 function sanitizeLikeValue(value) {
   const str = String(value || '').trim();
   if (!str) return '';
   return str.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
+ * Devuelve el texto recortado o null si viene vacio/no definido.
+ */
+function normalizarTextoOpcional(valor) {
+  if (valor == null) return null;
+  const texto = String(valor).trim();
+  return texto === '' ? null : texto;
+}
+
+/**
+ * Convierte una fecha (YYYY-MM-DD o ISO) a ISO completo, o null si es invalida.
+ */
+function normalizarFechaOpcional(valor) {
+  if (valor == null) return null;
+  const texto = String(valor).trim();
+  if (texto === '') return null;
+  const fecha = new Date(texto);
+  if (Number.isNaN(fecha.getTime())) return null;
+  return fecha.toISOString();
+}
+
+/** Mapa nombre de campo -> definicion del catalogo. */
+const CAMPOS_HOJA_VIDA_POR_NOMBRE = new Map(CAMPOS_HOJA_VIDA.map((campo) => [campo.nombre, campo]));
+
+function pad2(valor) {
+  return String(valor).padStart(2, '0');
+}
+
+/**
+ * Devuelve una fecha en formato 'YYYY-MM-DD' apta para columnas DATE.
+ *
+ * Las columnas DATE son devueltas por pg como Date a medianoche local, por lo
+ * que se usan los getters locales; para cadenas se toma el prefijo de fecha
+ * (evitando el desfase de zona horaria de `new Date('YYYY-MM-DD')`).
+ */
+function normalizarFechaDiaOpcional(valor) {
+  if (valor == null) return null;
+  if (valor instanceof Date) {
+    if (Number.isNaN(valor.getTime())) return null;
+    return `${valor.getFullYear()}-${pad2(valor.getMonth() + 1)}-${pad2(valor.getDate())}`;
+  }
+  const texto = String(valor).trim();
+  if (texto === '') return null;
+  const soloFecha = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto);
+  if (soloFecha) return `${soloFecha[1]}-${soloFecha[2]}-${soloFecha[3]}`;
+  const fecha = new Date(texto);
+  if (Number.isNaN(fecha.getTime())) return null;
+  return `${fecha.getFullYear()}-${pad2(fecha.getMonth() + 1)}-${pad2(fecha.getDate())}`;
+}
+
+/**
+ * Normaliza un valor para comparar el estado previo con el nuevo y detectar
+ * cambios reales al editar la hoja de vida.
+ */
+function normalizarValorComparacion(valor, tipo) {
+  if (valor === null || valor === undefined) return null;
+  if (tipo === 'date') return normalizarFechaDiaOpcional(valor);
+  if (tipo === 'number') {
+    const num = Number(valor);
+    return Number.isFinite(num) ? String(num) : null;
+  }
+  const texto = String(valor).trim();
+  return texto === '' ? null : texto;
 }
 
 router.get('/equipos', async function buscarEquiposHV(req, res) {
@@ -114,6 +233,7 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
         inv.serie AS numero_serie,
         inv.nombre_bien AS nombre_bien_inventario,
         hv.id AS hoja_vida_id,
+        hv.estado AS hoja_vida_estado,
         COALESCE(hv.marca, NULL) AS marca,
         COALESCE(hv.referencia_modelo, NULL) AS referencia_modelo,
         EXISTS (
@@ -148,6 +268,7 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
       facultad: row.facultad || null,
       laboratorio: row.laboratorio || null,
       hoja_vida_id: row.hoja_vida_id ? Number(row.hoja_vida_id) : null,
+      hoja_vida_estado: row.hoja_vida_estado || null,
       tiene_hoja_vida: Boolean(row.tiene_hoja_vida),
       tiene_mantenimientos: Boolean(row.tiene_mantenimientos),
     }));
@@ -291,8 +412,8 @@ router.post(
           details: {
             hoja_vida_id: Number(hv.id),
             estado: hv.estado,
-            view_url: `/milab/prestamos/hojas-vida/${hv.id}`,
-            edit_url: `/milab/prestamos/hojas-vida/${hv.id}/editar`,
+            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+            edit_url: `/milab/prestamos/hojas-vida/${equipoId}/editar`,
           },
         });
       }
@@ -451,6 +572,20 @@ router.post(
           ]
         );
 
+        await cliente.query(
+          `
+            INSERT INTO hoja_vida_historial (
+              hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
+            ) VALUES ($1, $2, 'CREACION', $3, $4, $4)
+          `,
+          [
+            hojaVidaId,
+            equipoId,
+            `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
+            req.session?.user?.id || null,
+          ]
+        );
+
         await cliente.query('COMMIT');
 
         return res.status(201).json({
@@ -498,5 +633,665 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /:hojaVidaId/confirmar
+ * Confirma la hoja de vida: guarda los campos revisados, la fotografia
+ * opcional, cambia el estado a ACTIVA y registra la auditoria (usuario,
+ * fecha y evento en el historial).
+ */
+router.post(
+  '/:hojaVidaId/confirmar',
+  uploadFoto.single('foto'),
+  async function confirmarHojaVida(req, res) {
+    try {
+      const hojaVidaId = Number(req.params?.hojaVidaId);
+      if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+        return res.status(400).json({
+          ok: false,
+          message: 'El identificador de la hoja de vida es invalido.',
+        });
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT *
+          FROM hoja_vida
+          WHERE id = $1 AND activo = TRUE
+        `,
+        [hojaVidaId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.status(404).json({
+          ok: false,
+          message: 'La hoja de vida no existe.',
+        });
+      }
+
+      const hvActual = hvResult.rows[0];
+
+      if (hvActual.estado === 'ACTIVA') {
+        return res.status(409).json({
+          ok: false,
+          message: 'La hoja de vida ya está confirmada.',
+          details: { hoja_vida_id: hojaVidaId, estado: hvActual.estado },
+        });
+      }
+
+      const datos = normalizarCamposHojaVida(req.body || {});
+
+      // Validar campos obligatorios definidos en la parametrizacion
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE AND obligatorio = TRUE
+        `
+      );
+
+      const faltantes = [];
+      configResult.rows.forEach(function (row) {
+        const campo = row.nombre_campo;
+        const valor = Object.prototype.hasOwnProperty.call(datos, campo)
+          ? datos[campo]
+          : hvActual[campo];
+        if (valor == null || String(valor).trim() === '') {
+          faltantes.push(campo);
+        }
+      });
+
+      if (faltantes.length > 0) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Faltan campos obligatorios para confirmar la hoja de vida.',
+          details: { campos_faltantes: faltantes },
+        });
+      }
+
+      const usuario = req.session?.user?.id || null;
+      const equipoId = Number(hvActual.equipo_id);
+
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const setParts = [];
+        const values = [];
+        let idx = 1;
+        Object.keys(datos).forEach(function (campo) {
+          setParts.push(`${campo} = $${idx++}`);
+          values.push(datos[campo]);
+        });
+        setParts.push("estado = 'ACTIVA'");
+        setParts.push('fecha_modificacion = CURRENT_TIMESTAMP');
+        setParts.push(`usuario_modificacion = $${idx++}`);
+        values.push(usuario);
+        values.push(hojaVidaId);
+
+        const updateResult = await cliente.query(
+          `
+            UPDATE hoja_vida
+            SET ${setParts.join(', ')}
+            WHERE id = $${idx}
+            RETURNING id, estado
+          `,
+          values
+        );
+
+        if (req.file) {
+          await cliente.query(
+            `
+              INSERT INTO hoja_vida_documento (
+                hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
+                fecha_carga, usuario_carga
+              ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+            `,
+            [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
+          );
+        }
+
+        await cliente.query(
+          `
+            INSERT INTO hoja_vida_historial (
+              hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+              valor_anterior, valor_nuevo, descripcion, usuario
+            ) VALUES ($1, $2, 'CONFIRMACION', 'estado', $3, 'ACTIVA', $4, $5)
+          `,
+          [
+            hojaVidaId,
+            equipoId,
+            hvActual.estado,
+            'Confirmación de la hoja de vida (creación oficial).',
+            usuario,
+          ]
+        );
+
+        await cliente.query('COMMIT');
+
+        return res.status(200).json({
+          ok: true,
+          message: 'Hoja de vida confirmada correctamente.',
+          data: {
+            hoja_vida_id: Number(updateResult.rows[0].id),
+            estado: updateResult.rows[0].estado,
+            tiene_fotografia: Boolean(req.file),
+            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      if (error && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          ok: false,
+          message: `La fotografía excede el tamaño máximo permitido (${Math.round(
+            HV_FOTO_MAX_BYTES / (1024 * 1024)
+          )} MB).`,
+        });
+      }
+      if (error && error.message && error.message.includes('La fotografía debe ser')) {
+        return res.status(400).json({
+          ok: false,
+          message: error.message,
+        });
+      }
+      console.error('[hojas-vida] Error confirmando hoja de vida:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible confirmar la hoja de vida.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
+
+/**
+ * POST /:hojaVidaId/editar
+ * Actualiza los campos de una hoja de vida ACTIVA, reemplaza la fotografia si
+ * se envia una nueva y registra un evento EDICION por cada campo modificado
+ * (campo, valor anterior y valor nuevo) para mantener la trazabilidad.
+ */
+router.post(
+  '/:hojaVidaId/editar',
+  uploadFoto.single('foto'),
+  async function editarHojaVida(req, res) {
+    try {
+      const hojaVidaId = Number(req.params?.hojaVidaId);
+      if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+        return res.status(400).json({
+          ok: false,
+          message: 'El identificador de la hoja de vida es invalido.',
+        });
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT *
+          FROM hoja_vida
+          WHERE id = $1 AND activo = TRUE
+        `,
+        [hojaVidaId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.status(404).json({
+          ok: false,
+          message: 'La hoja de vida no existe.',
+        });
+      }
+
+      const hvActual = hvResult.rows[0];
+
+      if (hvActual.estado !== 'ACTIVA') {
+        return res.status(409).json({
+          ok: false,
+          message: 'Solo se puede editar una hoja de vida confirmada (estado Activa).',
+          details: { hoja_vida_id: hojaVidaId, estado: hvActual.estado },
+        });
+      }
+
+      const datos = normalizarCamposHojaVida(req.body || {});
+
+      // Validar campos obligatorios definidos en la parametrizacion
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE AND obligatorio = TRUE
+        `
+      );
+
+      const faltantes = [];
+      configResult.rows.forEach(function (row) {
+        const campo = row.nombre_campo;
+        const valor = Object.prototype.hasOwnProperty.call(datos, campo)
+          ? datos[campo]
+          : hvActual[campo];
+        if (valor == null || String(valor).trim() === '') {
+          faltantes.push(campo);
+        }
+      });
+
+      if (faltantes.length > 0) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Faltan campos obligatorios para guardar la hoja de vida.',
+          details: { campos_faltantes: faltantes },
+        });
+      }
+
+      // Detectar cambios reales comparando valor anterior y nuevo
+      const cambios = [];
+      Object.keys(datos).forEach(function (campo) {
+        const definicion = CAMPOS_HOJA_VIDA_POR_NOMBRE.get(campo) || {};
+        const anterior = normalizarValorComparacion(hvActual[campo], definicion.tipo);
+        const nuevo = normalizarValorComparacion(datos[campo], definicion.tipo);
+        if (anterior !== nuevo) {
+          cambios.push({ campo, anterior, nuevo });
+        }
+      });
+
+      const usuario = req.session?.user?.id || null;
+      const equipoId = Number(hvActual.equipo_id);
+      const tieneCambios = cambios.length > 0 || Boolean(req.file);
+
+      if (!tieneCambios) {
+        return res.status(200).json({
+          ok: true,
+          message: 'No se detectaron cambios en la hoja de vida.',
+          data: { hoja_vida_id: hojaVidaId, sin_cambios: true, cambios: [] },
+        });
+      }
+
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const setParts = [];
+        const values = [];
+        let idx = 1;
+        Object.keys(datos).forEach(function (campo) {
+          setParts.push(`${campo} = $${idx++}`);
+          values.push(datos[campo]);
+        });
+        setParts.push('fecha_modificacion = CURRENT_TIMESTAMP');
+        setParts.push(`usuario_modificacion = $${idx++}`);
+        values.push(usuario);
+        values.push(hojaVidaId);
+
+        await cliente.query(
+          `
+            UPDATE hoja_vida
+            SET ${setParts.join(', ')}
+            WHERE id = $${idx}
+          `,
+          values
+        );
+
+        if (req.file) {
+          await cliente.query(
+            `
+              UPDATE hoja_vida_documento
+              SET activo = FALSE,
+                  fecha_modificacion = CURRENT_TIMESTAMP,
+                  usuario_modificacion = $2
+              WHERE hoja_vida_id = $1
+                AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+                AND activo = TRUE
+            `,
+            [hojaVidaId, usuario]
+          );
+
+          await cliente.query(
+            `
+              INSERT INTO hoja_vida_documento (
+                hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
+                fecha_carga, usuario_carga
+              ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+            `,
+            [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
+          );
+
+          cambios.push({
+            campo: 'fotografia',
+            anterior: 'Anterior',
+            nuevo: req.file.originalname,
+          });
+        }
+
+        for (const cambio of cambios) {
+          const definicion = CAMPOS_HOJA_VIDA_POR_NOMBRE.get(cambio.campo) || {};
+          const etiqueta = definicion.etiqueta || cambio.campo;
+          await cliente.query(
+            `
+              INSERT INTO hoja_vida_historial (
+                hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion
+              ) VALUES ($1, $2, 'EDICION', $3, $4, $5, $6, $7, $7)
+            `,
+            [
+              hojaVidaId,
+              equipoId,
+              cambio.campo,
+              cambio.anterior,
+              cambio.nuevo,
+              `Edición de la hoja de vida: campo "${etiqueta}" actualizado.`,
+              usuario,
+            ]
+          );
+        }
+
+        await cliente.query('COMMIT');
+
+        return res.status(200).json({
+          ok: true,
+          message: `Hoja de vida actualizada correctamente (${cambios.length} cambio(s)).`,
+          data: {
+            hoja_vida_id: hojaVidaId,
+            cambios: cambios.map((cambio) => cambio.campo),
+            total_cambios: cambios.length,
+            tiene_fotografia: Boolean(req.file),
+            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      if (error && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({
+          ok: false,
+          message: `La fotografía excede el tamaño máximo permitido (${Math.round(
+            HV_FOTO_MAX_BYTES / (1024 * 1024)
+          )} MB).`,
+        });
+      }
+      if (error && error.message && error.message.includes('La fotografía debe ser')) {
+        return res.status(400).json({
+          ok: false,
+          message: error.message,
+        });
+      }
+      console.error('[hojas-vida] Error editando hoja de vida:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible actualizar la hoja de vida.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
+
+/**
+ * POST /:equipoId/mantenimientos
+ * Registra un mantenimiento asociado a la hoja de vida del equipo y genera el
+ * evento MANTENIMIENTO en el historial del ciclo de vida del activo.
+ */
+router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV(req, res) {
+  try {
+    const equipoId = Number(req.params?.equipoId);
+    if (!Number.isInteger(equipoId) || equipoId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El identificador del equipo es invalido.',
+      });
+    }
+
+    const hvResult = await pool.query(
+      `
+        SELECT id, equipo_id, estado
+        FROM hoja_vida
+        WHERE equipo_id = $1 AND activo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [equipoId]
+    );
+
+    if (hvResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'El equipo no tiene una hoja de vida registrada.',
+      });
+    }
+
+    const hojaVida = hvResult.rows[0];
+    const body = req.body || {};
+
+    const item = normalizarTextoOpcional(body.item);
+    if (!item) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El ítem o descripción del mantenimiento es obligatorio.',
+        details: { campos_faltantes: ['item'] },
+      });
+    }
+
+    const tipoMantenimiento = String(body.tipo_mantenimiento || '')
+      .trim()
+      .toUpperCase();
+    if (!esTipoMantenimientoValido(tipoMantenimiento)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El tipo de mantenimiento no es valido.',
+        details: { campos_faltantes: ['tipo_mantenimiento'] },
+      });
+    }
+
+    const estado = String(body.estado || ESTADO_MANTENIMIENTO_DEFAULT)
+      .trim()
+      .toUpperCase();
+    if (!esEstadoMantenimientoValido(estado)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El estado del mantenimiento no es valido.',
+        details: { campos_faltantes: ['estado'] },
+      });
+    }
+
+    const fechaRealizacion = normalizarFechaDiaOpcional(body.fecha_realizacion);
+    if (normalizarTextoOpcional(body.fecha_realizacion) && !fechaRealizacion) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La fecha de realización no es válida.',
+      });
+    }
+
+    const usuario = req.session?.user?.id || null;
+
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+
+      const insertResult = await cliente.query(
+        `
+          INSERT INTO mantenimiento (
+            hoja_vida_id, equipo_id, item, tipo_mantenimiento, fecha_realizacion,
+            datos_empresa_contratada, tiempo_garantia, especificaciones_mantenimiento,
+            responsable, observaciones_repuestos, estado, usuario_creacion
+          ) VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8,
+            $9, $10, $11, $12
+          )
+          RETURNING id, estado
+        `,
+        [
+          hojaVida.id,
+          equipoId,
+          item,
+          tipoMantenimiento,
+          fechaRealizacion,
+          normalizarTextoOpcional(body.datos_empresa_contratada),
+          normalizarTextoOpcional(body.tiempo_garantia),
+          normalizarTextoOpcional(body.especificaciones_mantenimiento),
+          normalizarTextoOpcional(body.responsable),
+          normalizarTextoOpcional(body.observaciones_repuestos),
+          estado,
+          usuario,
+        ]
+      );
+
+      const mantenimientoId = Number(insertResult.rows[0].id);
+
+      await cliente.query(
+        `
+          INSERT INTO hoja_vida_historial (
+            hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
+          ) VALUES ($1, $2, 'MANTENIMIENTO', $3, $4, $4)
+        `,
+        [
+          hojaVida.id,
+          equipoId,
+          `Mantenimiento ${etiquetaTipoMantenimiento(tipoMantenimiento)} registrado: "${item}".`,
+          usuario,
+        ]
+      );
+
+      await cliente.query('COMMIT');
+
+      return res.status(201).json({
+        ok: true,
+        message: 'Mantenimiento registrado correctamente.',
+        data: {
+          mantenimiento_id: mantenimientoId,
+          hoja_vida_id: Number(hojaVida.id),
+          estado: insertResult.rows[0].estado,
+          listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+        },
+      });
+    } catch (txError) {
+      await cliente.query('ROLLBACK');
+      throw txError;
+    } finally {
+      cliente.release();
+    }
+  } catch (error) {
+    console.error('[hojas-vida] Error registrando mantenimiento:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible registrar el mantenimiento.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+/**
+ * POST /:hojaVidaId/eventos
+ * Registra un evento manual en el historial del ciclo de vida del activo.
+ */
+router.post('/:hojaVidaId/eventos', async function registrarEventoHojaVida(req, res) {
+  try {
+    const hojaVidaId = Number(req.params?.hojaVidaId);
+    if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El identificador de la hoja de vida es invalido.',
+      });
+    }
+
+    const hvResult = await pool.query(
+      `
+        SELECT id, equipo_id, estado
+        FROM hoja_vida
+        WHERE id = $1 AND activo = TRUE
+      `,
+      [hojaVidaId]
+    );
+
+    if (hvResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'La hoja de vida no existe.',
+      });
+    }
+
+    const hojaVida = hvResult.rows[0];
+    const body = req.body || {};
+
+    const tipoEvento = String(body.tipo_evento || '')
+      .trim()
+      .toUpperCase();
+    if (!esTipoEventoManual(tipoEvento)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El tipo de evento no es valido.',
+        details: { campos_faltantes: ['tipo_evento'] },
+      });
+    }
+
+    const descripcion = normalizarTextoOpcional(body.descripcion);
+    if (!descripcion) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La descripción del evento es obligatoria.',
+        details: { campos_faltantes: ['descripcion'] },
+      });
+    }
+
+    const fecha = normalizarFechaOpcional(body.fecha);
+    if (normalizarTextoOpcional(body.fecha) && !fecha) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La fecha del evento no es válida.',
+      });
+    }
+
+    const campoModificado = normalizarTextoOpcional(body.campo_modificado);
+    const valorAnterior = normalizarTextoOpcional(body.valor_anterior);
+    const valorNuevo = normalizarTextoOpcional(body.valor_nuevo);
+    const usuario = normalizarTextoOpcional(body.usuario) || req.session?.user?.id || null;
+
+    const insertResult = await pool.query(
+      `
+        INSERT INTO hoja_vida_historial (
+          hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+          valor_anterior, valor_nuevo, descripcion, usuario, fecha, usuario_creacion
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          COALESCE($9::timestamptz, CURRENT_TIMESTAMP), $10
+        )
+        RETURNING id, tipo_evento, fecha
+      `,
+      [
+        hojaVidaId,
+        hojaVida.equipo_id,
+        tipoEvento,
+        campoModificado,
+        valorAnterior,
+        valorNuevo,
+        descripcion,
+        usuario,
+        fecha,
+        req.session?.user?.id || null,
+      ]
+    );
+
+    return res.status(201).json({
+      ok: true,
+      message: 'Evento registrado correctamente.',
+      data: {
+        evento_id: Number(insertResult.rows[0].id),
+        tipo_evento: insertResult.rows[0].tipo_evento,
+        fecha: insertResult.rows[0].fecha,
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error registrando evento:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible registrar el evento.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
 
 module.exports = router;

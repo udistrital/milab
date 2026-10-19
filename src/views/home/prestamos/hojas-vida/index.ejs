@@ -132,6 +132,9 @@
     }
 
     function estadoBadge(equipo) {
+      if (equipo.tiene_hoja_vida && equipo.hoja_vida_estado === 'PENDIENTE_CONFIRMACION') {
+        return '<span class="badge bg-warning text-dark" data-testid="estado-hv-pendiente">Pendiente de confirmación</span>';
+      }
       if (equipo.tiene_hoja_vida && equipo.tiene_mantenimientos) {
         return '<span class="badge bg-primary" data-testid="estado-con-hv-mto">Con HV y mantenimientos</span>';
       }
@@ -146,6 +149,8 @@
       var accionesHtml;
       if (!equipo.tiene_hoja_vida) {
         accionesHtml = '<a class="btn btn-success btn-sm" data-testid="action-cargar-hv" href="' + base + '/' + equipo.equipo_id + '/cargar"><i class="bi bi-upload"></i> <span>Cargar Hoja de Vida</span></a>';
+      } else if (equipo.hoja_vida_estado === 'PENDIENTE_CONFIRMACION') {
+        accionesHtml = '<a class="btn btn-success btn-sm" data-testid="action-confirmar-hv" href="' + base + '/' + equipo.hoja_vida_id + '/confirmar"><i class="bi bi-check-circle"></i> <span>Confirmar Hoja de Vida</span></a>';
       } else {
         accionesHtml = '<div class="d-flex gap-1 flex-wrap">' +
           '<a class="btn btn-outline-info btn-sm" href="' + base + '/' + equipo.equipo_id + '"><i class="bi bi-eye"></i> <span>Ver HV</span></a>' +

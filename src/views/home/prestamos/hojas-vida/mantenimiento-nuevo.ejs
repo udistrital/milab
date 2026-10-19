@@ -1,0 +1,198 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a
+        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
+        class="btn btn-outline-secondary btn-sm"
+      >
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Registrar Mantenimiento</h1>
+    <p class="app-page-subtitle">
+      Registra un mantenimiento para el activo. Quedara en el historial del ciclo de vida.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Equipo asociado</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Codigo interno</span>
+          <strong><%= equipo.codigo || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Nombre</span>
+          <strong><%= equipo.nombre || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Ubicacion</span>
+          <strong><%= equipo.ubicacion || equipo.laboratorio || '—' %></strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <form id="hv-mto-form">
+    <section class="card app-table-panel text-light mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Datos del mantenimiento</h5>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label for="hv-mto-item" class="form-label">
+              Item o descripcion <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="hv-mto-item" name="item" required />
+          </div>
+          <div class="col-md-4">
+            <label for="hv-mto-tipo" class="form-label">
+              Tipo de mantenimiento <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="hv-mto-tipo" name="tipo_mantenimiento" required>
+              <option value="">Seleccione un tipo...</option>
+              <% tiposMantenimiento.forEach(function (tipo) { %>
+                <option value="<%= tipo.codigo %>"><%= tipo.etiqueta %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="hv-mto-fecha" class="form-label">Fecha de realizacion</label>
+            <input type="date" class="form-control" id="hv-mto-fecha" name="fecha_realizacion" />
+          </div>
+          <div class="col-md-4">
+            <label for="hv-mto-estado" class="form-label">Estado</label>
+            <select class="form-select" id="hv-mto-estado" name="estado">
+              <% estadosMantenimiento.forEach(function (estado) { %>
+                <option value="<%= estado.codigo %>" <%= estado.codigo === estadoDefault ? 'selected' : '' %>><%= estado.etiqueta %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="hv-mto-responsable" class="form-label">Responsable</label>
+            <input type="text" class="form-control" id="hv-mto-responsable" name="responsable" />
+          </div>
+          <div class="col-md-6">
+            <label for="hv-mto-empresa" class="form-label">Empresa contratada</label>
+            <textarea class="form-control" id="hv-mto-empresa" name="datos_empresa_contratada" rows="2"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label for="hv-mto-garantia" class="form-label">Tiempo de garantia</label>
+            <input type="text" class="form-control" id="hv-mto-garantia" name="tiempo_garantia" />
+          </div>
+          <div class="col-md-6">
+            <label for="hv-mto-especificaciones" class="form-label">Especificaciones del mantenimiento</label>
+            <textarea class="form-control" id="hv-mto-especificaciones" name="especificaciones_mantenimiento" rows="3"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label for="hv-mto-repuestos" class="form-label">Observaciones de repuestos</label>
+            <textarea class="form-control" id="hv-mto-repuestos" name="observaciones_repuestos" rows="3"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="d-flex gap-2 mb-5">
+      <button type="submit" class="btn btn-perso" id="hv-mto-btn" data-submit-lock="true">
+        <i class="bi bi-tools"></i>
+        <span>Registrar mantenimiento</span>
+      </button>
+      <a
+        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
+        class="btn btn-outline-secondary"
+      >
+        Cancelar
+      </a>
+    </div>
+
+    <div id="hv-mto-loading" class="d-none mb-3">
+      <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+      <span class="ms-2">Registrando mantenimiento...</span>
+    </div>
+
+    <div id="hv-mto-error" class="d-none mb-3">
+      <div class="alert alert-danger" role="alert" id="hv-mto-error-msg"></div>
+    </div>
+  </form>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var equipoId = <%- Number(hojaVida.equipo_id) %>;
+    var form = document.getElementById('hv-mto-form');
+    var loading = document.getElementById('hv-mto-loading');
+    var errorBox = document.getElementById('hv-mto-error');
+    var errorMsg = document.getElementById('hv-mto-error-msg');
+    var submitBtn = document.getElementById('hv-mto-btn');
+
+    function mostrarError(mensaje) {
+      loading.classList.add('d-none');
+      errorMsg.textContent = mensaje;
+      errorBox.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      errorBox.classList.add('d-none');
+      loading.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var formData = new FormData(form);
+      var cuerpo = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        cuerpo.append(key, value);
+      });
+
+      fetch('/milab/api/hojas-vida/' + equipoId + '/mantenimientos', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        },
+        body: cuerpo.toString(),
+      })
+        .then(function (res) {
+          return res
+            .json()
+            .then(function (body) {
+              return { ok: res.ok && body && body.ok === true, body: body };
+            })
+            .catch(function () {
+              return { ok: false, body: null };
+            });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            window.location.href = '/milab/prestamos/hojas-vida/' + equipoId + '/mantenimientos';
+            return;
+          }
+          mostrarError(
+            result.body && result.body.message
+              ? result.body.message
+              : 'No fue posible registrar el mantenimiento.'
+          );
+        })
+        .catch(function () {
+          mostrarError('No se pudo conectar con el servidor. Intenta nuevamente.');
+        });
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

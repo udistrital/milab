@@ -1,0 +1,216 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  var fotoActual = null;
+  (documentos || []).forEach(function (doc) {
+    if (doc.tipo_documento === 'FOTOGRAFIA_EQUIPO' && !fotoActual) { fotoActual = doc; }
+  });
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a
+        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>"
+        class="btn btn-outline-secondary btn-sm"
+      >
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Editar Hoja de Vida</h1>
+    <p class="app-page-subtitle">
+      Actualiza la informacion del activo. Cada cambio quedara registrado en el historial.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Equipo asociado</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Codigo interno</span>
+          <strong><%= equipo.codigo || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Nombre</span>
+          <strong><%= equipo.nombre || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Ubicacion</span>
+          <strong><%= equipo.ubicacion || equipo.laboratorio || '—' %></strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <form id="hv-editar-form" enctype="multipart/form-data">
+    <% secciones.forEach(function (grupo) { %>
+      <section class="card app-table-panel text-light mb-4">
+        <div class="card-header">
+          <h5 class="mb-0"><%= grupo.seccion %></h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <% grupo.campos.forEach(function (campo) { %>
+              <%
+                var requerido = obligatorios.indexOf(campo.nombre) !== -1;
+                var valor = hojaVida[campo.nombre];
+                if (valor == null) { valor = ''; }
+                else if (campo.tipo === 'date') {
+                  var fecha = new Date(valor);
+                  valor = isNaN(fecha.getTime()) ? String(valor) : fecha.toISOString().slice(0, 10);
+                } else { valor = String(valor); }
+                var esCompleto = campo.tipo === 'textarea' ? 12 : 4;
+              %>
+              <div class="col-md-<%= esCompleto %>">
+                <label for="hv-campo-<%= campo.nombre %>" class="form-label">
+                  <%= campo.etiqueta %><% if (requerido) { %> <span class="text-danger">*</span><% } %>
+                </label>
+                <% if (campo.tipo === 'textarea') { %>
+                  <textarea class="form-control" id="hv-campo-<%= campo.nombre %>" name="<%= campo.nombre %>" rows="2" <%= requerido ? 'required' : '' %>><%= valor %></textarea>
+                <% } else { %>
+                  <input
+                    type="<%= campo.tipo === 'number' ? 'number' : (campo.tipo === 'date' ? 'date' : 'text') %>"
+                    class="form-control"
+                    id="hv-campo-<%= campo.nombre %>"
+                    name="<%= campo.nombre %>"
+                    value="<%= valor %>"
+                    <%= requerido ? 'required' : '' %>
+                  />
+                <% } %>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      </section>
+    <% }); %>
+
+    <section class="card app-table-panel text-light mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Fotografia del equipo</h5>
+      </div>
+      <div class="card-body">
+        <% if (fotoActual) { %>
+          <div class="mb-3" data-testid="hv-editar-foto-actual">
+            <span class="text-muted d-block small mb-2">Fotografia actual</span>
+            <img
+              src="/milab/prestamos/hojas-vida/<%= hojaVida.id %>/documento/<%= fotoActual.id %>"
+              alt="Fotografia actual del equipo"
+              class="img-fluid rounded"
+              style="max-height: 220px;"
+            />
+          </div>
+        <% } %>
+        <input type="file" class="form-control" id="hv-foto" name="foto" accept="image/*" />
+        <div class="form-text text-muted">
+          Si seleccionas una imagen se reemplazara la fotografia actual. Formatos: JPG, PNG o
+          WEBP. Tamano maximo: <%= maxFotoMB %> MB.
+        </div>
+      </div>
+    </section>
+
+    <div class="d-flex gap-2 mb-5">
+      <button type="submit" class="btn btn-perso" id="hv-editar-btn" data-submit-lock="true">
+        <i class="bi bi-save"></i>
+        <span>Guardar cambios</span>
+      </button>
+      <a
+        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>"
+        class="btn btn-outline-secondary"
+      >
+        Cancelar
+      </a>
+    </div>
+
+    <div id="hv-loading" class="d-none mb-3">
+      <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+      <span class="ms-2">Guardando cambios...</span>
+    </div>
+
+    <div id="hv-error" class="d-none mb-3">
+      <div class="alert alert-danger" role="alert" id="hv-error-msg"></div>
+    </div>
+
+    <div id="hv-success" class="d-none mb-3">
+      <div class="alert alert-success" role="alert" id="hv-success-msg"></div>
+    </div>
+  </form>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var hojaVidaId = <%= hojaVida.id %>;
+    var equipoId = <%= Number(hojaVida.equipo_id) %>;
+    var form = document.getElementById('hv-editar-form');
+    var loading = document.getElementById('hv-loading');
+    var errorBox = document.getElementById('hv-error');
+    var errorMsg = document.getElementById('hv-error-msg');
+    var successBox = document.getElementById('hv-success');
+    var successMsg = document.getElementById('hv-success-msg');
+    var submitBtn = document.getElementById('hv-editar-btn');
+
+    function mostrarError(mensaje) {
+      loading.classList.add('d-none');
+      successBox.classList.add('d-none');
+      errorMsg.textContent = mensaje;
+      errorBox.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    function mostrarExito(mensaje) {
+      loading.classList.add('d-none');
+      errorBox.classList.add('d-none');
+      successMsg.textContent = mensaje;
+      successBox.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+      setTimeout(function () {
+        window.location.href = '/milab/prestamos/hojas-vida/' + equipoId;
+      }, 1200);
+    }
+
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      errorBox.classList.add('d-none');
+      successBox.classList.add('d-none');
+      loading.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var formData = new FormData(form);
+
+      try {
+        var response = await fetch('/milab/api/hojas-vida/' + hojaVidaId + '/editar', {
+          method: 'POST',
+          body: formData,
+        });
+
+        var contentType = response.headers.get('content-type') || '';
+        var data = {};
+        if (contentType.includes('application/json')) {
+          data = await response.json();
+        }
+
+        if (response.ok) {
+          mostrarExito((data && data.message) || 'Hoja de vida actualizada correctamente.');
+        } else if (response.status === 400 && data.details && data.details.campos_faltantes) {
+          mostrarError('Faltan campos obligatorios: ' + data.details.campos_faltantes.join(', ') + '.');
+        } else {
+          mostrarError((data && data.message) || 'Ocurrio un error al guardar la hoja de vida.');
+        }
+      } catch (err) {
+        mostrarError('No se pudo conectar con el servidor. Intenta nuevamente.');
+      }
+    });
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

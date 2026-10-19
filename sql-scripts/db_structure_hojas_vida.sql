@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     protocolo_limpieza      TEXT,
     cuenta_manual           TEXT,
     accesorios              TEXT,
+    foto_descripcion        TEXT,
     estado                  VARCHAR(30),
     activo                  BOOLEAN                 NOT NULL DEFAULT TRUE,
     fecha_creacion          TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -48,7 +49,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     CONSTRAINT pk_hoja_vida PRIMARY KEY (id),
     CONSTRAINT uq_equipo_id_hoja_vida UNIQUE (equipo_id),
     CONSTRAINT ck_estado_hoja_vida CHECK (
-        estado IN ('PENDIENTE_CONFIRMACION','CONFIRMADA')
+        estado IN ('PENDIENTE_CONFIRMACION','ACTIVA')
     ),
     CONSTRAINT fk_hoja_vida_equipo FOREIGN KEY (equipo_id)
         REFERENCES equipo(id) ON DELETE RESTRICT
@@ -112,7 +113,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida_historial (
     id                  BIGSERIAL,
     hoja_vida_id        BIGINT                  NOT NULL,
     equipo_id           INT                     NOT NULL,
-    tipo_evento         VARCHAR(50),
+    tipo_evento         VARCHAR(50)             NOT NULL,
     campo_modificado    VARCHAR(100),
     valor_anterior      TEXT,
     valor_nuevo         TEXT,
@@ -125,6 +126,12 @@ CREATE TABLE IF NOT EXISTS hoja_vida_historial (
     usuario_creacion    VARCHAR(50),
     usuario_modificacion VARCHAR(50),
     CONSTRAINT pk_hoja_vida_historial PRIMARY KEY (id),
+    CONSTRAINT ck_tipo_evento_hoja_vida_historial CHECK (
+        tipo_evento IN (
+            'CREACION','CONFIRMACION','EDICION','TRASLADO',
+            'MANTENIMIENTO','PRESTAMO','INCIDENCIA','BAJA','OBSERVACION'
+        )
+    ),
     CONSTRAINT fk_hoja_vida_historial_hoja_vida FOREIGN KEY (hoja_vida_id)
         REFERENCES hoja_vida(id) ON DELETE CASCADE,
     CONSTRAINT fk_hoja_vida_historial_equipo FOREIGN KEY (equipo_id)
