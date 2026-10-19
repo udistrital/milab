@@ -1,0 +1,235 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/prestamos/hojas-vida" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Historial del ciclo de vida</h1>
+    <p class="app-page-subtitle">
+      Trazabilidad de los eventos asociados a la hoja de vida del activo.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Equipo asociado</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Codigo interno</span>
+          <strong><%= equipo.codigo || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Nombre</span>
+          <strong><%= equipo.nombre || '—' %></strong>
+        </div>
+        <div class="col-md-4">
+          <span class="text-muted d-block small">Ubicacion</span>
+          <strong><%= equipo.ubicacion || equipo.laboratorio || '—' %></strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <section class="card app-table-panel text-light">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Eventos registrados</h5>
+          <span class="badge bg-secondary" id="hv-eventos-count"><%= eventos.length %> evento<%= eventos.length === 1 ? '' : 's' %></span>
+        </div>
+        <div class="card-body">
+          <% if (!eventos.length) { %>
+            <div class="alert alert-warning mb-0" data-testid="historial-vacio">
+              Aun no hay eventos registrados para este activo.
+            </div>
+          <% } else { %>
+            <ul class="list-unstyled mb-0" id="hv-eventos-lista">
+              <% eventos.forEach(function (evento) { %>
+                <li class="border-start border-3 ps-3 pb-3 mb-3" data-testid="historial-evento">
+                  <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                    <span class="badge bg-<%= evento.tipo_evento_clase %>"><%= evento.tipo_evento_etiqueta %></span>
+                    <small class="text-muted"><%= evento.fecha_display || '—' %></small>
+                  </div>
+                  <p class="mb-1"><%= evento.descripcion || '—' %></p>
+                  <% if (evento.campo_modificado || evento.valor_anterior || evento.valor_nuevo) { %>
+                    <div class="small text-muted">
+                      <% if (evento.campo_modificado) { %>
+                        <span class="me-2">Dato: <strong><%= evento.campo_modificado %></strong></span>
+                      <% } %>
+                      <% if (evento.valor_anterior) { %>
+                        <span class="me-2">Antes: <em><%= evento.valor_anterior %></em></span>
+                      <% } %>
+                      <% if (evento.valor_nuevo) { %>
+                        <span>Despues: <em><%= evento.valor_nuevo %></em></span>
+                      <% } %>
+                    </div>
+                  <% } %>
+                  <div class="small text-muted">Responsable: <%= evento.usuario || '—' %></div>
+                </li>
+              <% }); %>
+            </ul>
+          <% } %>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-lg-5">
+      <section class="card app-table-panel text-light">
+        <div class="card-header">
+          <h5 class="mb-0">Registrar evento</h5>
+        </div>
+        <div class="card-body">
+          <form id="hv-evento-form">
+            <div class="mb-3">
+              <label for="hv-evento-tipo" class="form-label">Tipo de evento <span class="text-danger">*</span></label>
+              <select class="form-select" id="hv-evento-tipo" name="tipo_evento" required>
+                <option value="">Seleccione un tipo...</option>
+                <% tiposEvento.forEach(function (tipo) { %>
+                  <option value="<%= tipo.codigo %>" data-ayuda="<%= tipo.ayuda || '' %>"><%= tipo.etiqueta %></option>
+                <% }); %>
+              </select>
+              <div class="form-text text-muted" id="hv-evento-ayuda"></div>
+            </div>
+
+            <div class="mb-3">
+              <label for="hv-evento-fecha" class="form-label">Fecha del evento</label>
+              <input type="date" class="form-control" id="hv-evento-fecha" name="fecha" />
+            </div>
+
+            <div class="mb-3">
+              <label for="hv-evento-usuario" class="form-label">Usuario responsable</label>
+              <input type="text" class="form-control" id="hv-evento-usuario" name="usuario" placeholder="Documento o nombre" />
+            </div>
+
+            <div class="mb-3">
+              <label for="hv-evento-descripcion" class="form-label">Descripcion <span class="text-danger">*</span></label>
+              <textarea class="form-control" id="hv-evento-descripcion" name="descripcion" rows="3" required></textarea>
+            </div>
+
+            <details class="mb-3">
+              <summary class="text-muted small">Datos adicionales (opcional)</summary>
+              <div class="mt-2">
+                <div class="mb-2">
+                  <label for="hv-evento-campo" class="form-label small">Campo o dato asociado</label>
+                  <input type="text" class="form-control" id="hv-evento-campo" name="campo_modificado" placeholder="Ej: ubicacion" />
+                </div>
+                <div class="mb-2">
+                  <label for="hv-evento-anterior" class="form-label small">Valor anterior</label>
+                  <input type="text" class="form-control" id="hv-evento-anterior" name="valor_anterior" />
+                </div>
+                <div class="mb-0">
+                  <label for="hv-evento-nuevo" class="form-label small">Valor nuevo</label>
+                  <input type="text" class="form-control" id="hv-evento-nuevo" name="valor_nuevo" />
+                </div>
+              </div>
+            </details>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-perso" id="hv-evento-btn" data-submit-lock="true">
+                <i class="bi bi-plus-circle"></i>
+                <span>Registrar evento</span>
+              </button>
+            </div>
+
+            <div id="hv-evento-loading" class="d-none mt-3">
+              <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+              <span class="ms-2">Registrando evento...</span>
+            </div>
+
+            <div id="hv-evento-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var HOJA_VIDA_ID = <%- Number(hojaVida.id) %>;
+    var ENDPOINT = '/milab/api/hojas-vida/' + HOJA_VIDA_ID + '/eventos';
+    var form = document.getElementById('hv-evento-form');
+    var tipoSelect = document.getElementById('hv-evento-tipo');
+    var ayudaEl = document.getElementById('hv-evento-ayuda');
+    var loadingEl = document.getElementById('hv-evento-loading');
+    var errorEl = document.getElementById('hv-evento-error');
+    var submitBtn = document.getElementById('hv-evento-btn');
+
+    if (tipoSelect && ayudaEl) {
+      tipoSelect.addEventListener('change', function () {
+        var option = tipoSelect.options[tipoSelect.selectedIndex];
+        ayudaEl.textContent = (option && option.getAttribute('data-ayuda')) || '';
+      });
+    }
+
+    function showError(message) {
+      if (!errorEl) return;
+      errorEl.textContent = message || 'No fue posible registrar el evento.';
+      errorEl.classList.remove('d-none');
+    }
+
+    if (form) {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (errorEl) errorEl.classList.add('d-none');
+        if (loadingEl) loadingEl.classList.remove('d-none');
+        if (submitBtn) submitBtn.disabled = true;
+
+        var formData = new FormData(form);
+        var cuerpo = new URLSearchParams();
+        formData.forEach(function (value, key) {
+          cuerpo.append(key, value);
+        });
+
+        fetch(ENDPOINT, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          body: cuerpo.toString(),
+        })
+          .then(function (res) {
+            return res
+              .json()
+              .then(function (body) {
+                return { ok: res.ok && body && body.ok === true, body: body };
+              })
+              .catch(function () {
+                return { ok: false, body: null };
+              });
+          })
+          .then(function (result) {
+            if (result.ok) {
+              window.location.reload();
+              return;
+            }
+            if (loadingEl) loadingEl.classList.add('d-none');
+            if (submitBtn) submitBtn.disabled = false;
+            showError(result.body && result.body.message ? result.body.message : 'No fue posible registrar el evento.');
+          })
+          .catch(function () {
+            if (loadingEl) loadingEl.classList.add('d-none');
+            if (submitBtn) submitBtn.disabled = false;
+            showError('No se pudo conectar con el servidor. Intenta nuevamente.');
+          });
+      });
+    }
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

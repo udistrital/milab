@@ -13,6 +13,20 @@ const { fetchOperationalRoleScopeByUser } = require('../../libs/operational-role
 const { APP_PERMISSIONS, hasPermission } = require('../../libs/permissions');
 const { getPrestamosModuleAccess } = require('../../libs/prestamos-module-access');
 const { getPrimaryRole, normalizeRoles } = require('../../libs/roles');
+const { CAMPOS_POR_SECCION } = require('../../libs/hojas-vida-campos');
+const {
+  TIPOS_EVENTO_MANUALES,
+  etiquetaTipoEvento,
+  claseTipoEvento,
+} = require('../../libs/hojas-vida-eventos');
+const {
+  TIPOS_MANTENIMIENTO,
+  ESTADOS_MANTENIMIENTO,
+  ESTADO_MANTENIMIENTO_DEFAULT,
+  etiquetaTipoMantenimiento,
+  etiquetaEstadoMantenimiento,
+  claseEstadoMantenimiento,
+} = require('../../libs/hojas-vida-mantenimientos');
 const {
   fetchUserByEmail,
   fetchUserById,
@@ -147,6 +161,16 @@ const PRESTAMOS_MODULE_CARD_META = {
       laboratorista: 'Consulta el inventario de equipos y elementos disponibles.',
       monitor: 'Consulta el inventario de equipos y elementos disponibles.',
       fallback: 'Consulta el catalogo general de equipos y elementos.',
+    },
+  },
+  '/milab/prestamos/hojas-vida': {
+    icon: 'bi-journal-medical',
+    tone: 'indigo',
+    descriptions: {
+      admin: 'Gestiona hojas de vida, mantenimientos e historial de equipos.',
+      coordinador: 'Consulta y actualiza hojas de vida de los equipos de tu facultad.',
+      laboratorista: 'Consulta hojas de vida y registra mantenimientos de equipos.',
+      fallback: 'Gestiona hojas de vida y mantenimientos de equipos.',
     },
   },
   '/milab/prestamos/equipos': {
@@ -308,6 +332,7 @@ const PRESTAMOS_QUICK_LINK_ALIASES = {
   '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
   '/milab/prestamos/salas': 'Salas disponibles',
   '/milab/prestamos/inventario': 'Inventario',
+  '/milab/prestamos/hojas-vida': 'Hojas de Vida y Mantenimientos',
   '/milab/prestamos/equipos': 'Equipos',
   '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
   '/milab/prestamos/entrega-equipos': 'Entrega y devolucion',
@@ -318,6 +343,7 @@ const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
   ['/milab/prestamos/gestion-solicitudes', 1],
   ['/milab/prestamos/entrega-equipos', 2],
   ['/milab/prestamos/inventario', 3],
+  ['/milab/prestamos/hojas-vida', 3.5],
   ['/milab/prestamos/equipos', 4],
   ['/milab/prestamos/reportes', 5],
   ['/milab/prestamos/solicitar', 6],
@@ -4351,7 +4377,18 @@ function drawPdfBulletList(doc, items) {
   doc.moveDown(0.7);
 }
 
-function drawLegacyTemplateHeader(doc, tituloPrincipal) {
+function drawLegacyTemplateHeader(doc, tituloPrincipal, opciones = {}) {
+  const meta = {
+    sistema: 'SISTEMA DE LABORATORIOS',
+    codigo1: 'Codigo: GL-PR-007-',
+    codigo2: 'FR-010',
+    macroproceso: 'Macro proceso: Apoyo a lo misional',
+    version: 'Version: 04',
+    proceso: 'Proceso: Gestion de Laboratorios',
+    fechaAprobacion: '30/10/2017',
+    ...opciones,
+  };
+
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#000000');
 
@@ -4419,42 +4456,35 @@ function drawLegacyTemplateHeader(doc, tituloPrincipal) {
   doc
     .fontSize(8)
     .fill('#021c27')
-    .text('SISTEMA DE LABORATORIOS', startX + col1Width + 10, marginTop + 4, {
+    .text(meta.sistema, startX + col1Width + 10, marginTop + 4, {
       width: col2Width - 10,
       align: 'center',
     });
-  doc.text('Codigo: GL-PR-007-', startX + col1Width + col2Width + 5, marginTop + 5, {
+  doc.text(meta.codigo1, startX + col1Width + col2Width + 5, marginTop + 5, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text('FR-010', startX + col1Width + col2Width + 5, marginTop + 15, {
+  doc.text(meta.codigo2, startX + col1Width + col2Width + 5, marginTop + 15, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc
-    .fontSize(9)
-    .text('Macro proceso: Apoyo a lo misional', startX + col1Width + 5, marginTop + 30, {
-      width: col2Width - 10,
-      align: 'left',
-    });
-  doc.text('Version: 04', startX + col1Width + col2Width + 5, marginTop + 30, {
+  doc.fontSize(9).text(meta.macroproceso, startX + col1Width + 5, marginTop + 30, {
+    width: col2Width - 10,
+    align: 'left',
+  });
+  doc.text(meta.version, startX + col1Width + col2Width + 5, marginTop + 30, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text(
-    'Proceso: Gestion de Laboratorios',
-    startX + col1Width + 5,
-    marginTop + row1Height + row2Height + 5,
-    {
-      width: col2Width - 10,
-      align: 'left',
-    }
-  );
+  doc.text(meta.proceso, startX + col1Width + 5, marginTop + row1Height + row2Height + 5, {
+    width: col2Width - 10,
+    align: 'left',
+  });
   doc.fontSize(8).text('Fecha de aprobacion:', startX + col1Width + col2Width + 5, marginTop + 55, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text('30/10/2017', startX + col1Width + col2Width + 5, marginTop + 68, {
+  doc.text(meta.fechaAprobacion, startX + col1Width + col2Width + 5, marginTop + 68, {
     width: col3Width - 10,
     align: 'center',
   });
@@ -7999,6 +8029,644 @@ router.get('/inventario', requireInventarioAuthorized, async function (req, res)
     });
   }
 });
+
+router.get('/hojas-vida', requireInventarioAuthorized, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/index', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get(
+  '/hojas-vida/:equipoId/cargar',
+  requireInventarioAuthorized,
+  async function cargarHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const equipoResult = await pool.query(
+        `
+          SELECT e.id, e.codigo, e.nombre, e.estado, e.ubicacion, e.facultad, e.laboratorio,
+                 inv.placa AS codigo_inventario, inv.serie AS numero_serie, inv.nombre_bien
+          FROM equipo e
+          LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
+          WHERE e.id = $1 AND e.activo = TRUE
+        `,
+        [equipoId]
+      );
+
+      if (equipoResult.rows.length === 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=El%20equipo%20no%20existe');
+      }
+
+      const equipo = equipoResult.rows[0];
+
+      const hvExistente = await pool.query(
+        `
+          SELECT id, estado
+          FROM hoja_vida
+          WHERE equipo_id = $1 AND activo = TRUE
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [equipoId]
+      );
+
+      if (hvExistente.rows.length > 0) {
+        const hv = hvExistente.rows[0];
+        const mensaje = encodeURIComponent(
+          hv.estado === 'PENDIENTE_CONFIRMACION'
+            ? 'El equipo ya tiene una hoja de vida pendiente de confirmación.'
+            : 'El equipo ya tiene una hoja de vida registrada.'
+        );
+        return res.redirect(`/milab/prestamos/hojas-vida?error=${mensaje}`);
+      }
+
+      return res.render('home/prestamos/hojas-vida/cargar', {
+        equipo,
+        maxSizeMB: 10,
+        allowedFormats: '.xlsx, .xls, .pdf',
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de carga HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20vista'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:hojaVidaId/confirmar',
+  requireInventarioAuthorized,
+  async function confirmarHojaVidaView(req, res) {
+    try {
+      const hojaVidaId = Number(req.params.hojaVidaId);
+      if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Hoja%20de%20vida%20invalida');
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT hv.*, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+                 e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+                 e.laboratorio AS equipo_laboratorio
+          FROM hoja_vida hv
+          JOIN equipo e ON e.id = hv.equipo_id
+          WHERE hv.id = $1 AND hv.activo = TRUE
+        `,
+        [hojaVidaId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=La%20hoja%20de%20vida%20no%20existe'
+        );
+      }
+
+      const hojaVida = hvResult.rows[0];
+
+      if (hojaVida.estado === 'ACTIVA') {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=La%20hoja%20de%20vida%20ya%20esta%20confirmada'
+        );
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [hojaVidaId]
+      );
+
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      );
+
+      const obligatorios = configResult.rows
+        .filter((row) => row.obligatorio)
+        .map((row) => row.nombre_campo);
+
+      return res.render('home/prestamos/hojas-vida/confirmar', {
+        hojaVida,
+        equipo: {
+          codigo: hojaVida.equipo_codigo,
+          nombre: hojaVida.equipo_nombre,
+          ubicacion: hojaVida.equipo_ubicacion,
+          facultad: hojaVida.equipo_facultad,
+          laboratorio: hojaVida.equipo_laboratorio,
+        },
+        documentos: documentosResult.rows,
+        secciones: CAMPOS_POR_SECCION,
+        obligatorios,
+        maxFotoMB: 5,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de confirmacion HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20confirmacion'
+      );
+    }
+  }
+);
+
+async function cargarHojaVidaPorEquipo(equipoId) {
+  const hvResult = await pool.query(
+    `
+      SELECT hv.*, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+             e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+             e.laboratorio AS equipo_laboratorio
+      FROM hoja_vida hv
+      JOIN equipo e ON e.id = hv.equipo_id
+      WHERE hv.equipo_id = $1 AND hv.activo = TRUE
+      ORDER BY hv.id DESC
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+
+  if (hvResult.rows.length === 0) {
+    return null;
+  }
+
+  const hojaVida = hvResult.rows[0];
+  return {
+    hojaVida,
+    equipo: {
+      codigo: hojaVida.equipo_codigo,
+      nombre: hojaVida.equipo_nombre,
+      ubicacion: hojaVida.equipo_ubicacion,
+      facultad: hojaVida.equipo_facultad,
+      laboratorio: hojaVida.equipo_laboratorio,
+    },
+  };
+}
+
+function formatearValorHojaVidaPdf(valor, tipo) {
+  if (valor === null || valor === undefined || valor === '') return '-';
+  if (valor instanceof Date || tipo === 'date') {
+    const fecha = new Date(valor);
+    if (!Number.isNaN(fecha.getTime())) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(fecha.getDate())}/${pad(fecha.getMonth() + 1)}/${fecha.getFullYear()}`;
+    }
+  }
+  return String(valor);
+}
+
+const HV_PDF_META = {
+  sistema: 'FORMATO',
+  codigo1: 'Codigo: GDTH-PG-003-027',
+  codigo2: '',
+  macroproceso: 'Macroproceso: Gestion de Recursos',
+  version: 'Version: 01',
+  proceso: 'Proceso: Gestion y Desarrollo del Talento Humano',
+  fechaAprobacion: '10/08/2022',
+};
+
+const HV_PDF_TITULO = 'HOJA DE VIDA DE EQUIPOS O MAQUINARIA';
+
+function aplicarFuentePdf(doc, fuente) {
+  try {
+    doc.font(fuente);
+  } catch {
+    // Keep PDF generation working even if the custom font is unavailable.
+  }
+}
+
+function sendHojaVidaPdf(res, hojaVida, equipo, foto) {
+  const doc = new PDFDocument({ margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="Hoja_Vida_${hojaVida.codigo_inventario || hojaVida.id}.pdf"`
+  );
+  doc.pipe(res);
+
+  drawLegacyTemplateHeader(doc, HV_PDF_TITULO, HV_PDF_META);
+
+  aplicarFuentePdf(doc, PDF_FONT_BOLD);
+  doc.fontSize(11).fillColor('#000000');
+  doc.text(`Equipo: ${equipo.nombre || '-'}`);
+  doc.text(`Codigo interno: ${equipo.codigo || '-'}`);
+  doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || '-'}`);
+  doc.moveDown();
+
+  CAMPOS_POR_SECCION.forEach((seccion) => {
+    aplicarFuentePdf(doc, PDF_FONT_BOLD);
+    doc.fontSize(11).fillColor('#021c27').text(seccion.seccion);
+    aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+    doc.fontSize(10).fillColor('#000000');
+    seccion.campos.forEach((campo) => {
+      const valor = formatearValorHojaVidaPdf(hojaVida[campo.nombre], campo.tipo);
+      doc.text(`${campo.etiqueta}: ${valor}`);
+    });
+    doc.moveDown(0.5);
+  });
+
+  if (foto && foto.archivo) {
+    aplicarFuentePdf(doc, PDF_FONT_BOLD);
+    doc.fontSize(11).fillColor('#021c27').text('Fotografia del equipo');
+    const imagen = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
+    try {
+      doc.image(imagen, { fit: [220, 220] });
+    } catch {
+      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+      doc.fontSize(10).fillColor('#000000').text('(No fue posible incrustar la imagen)');
+    }
+  }
+
+  doc.end();
+}
+
+router.get(
+  '/hojas-vida/:equipoId',
+  requireInventarioAuthorized,
+  async function verHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga, usuario_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const documentos = documentosResult.rows.map(function (documento) {
+        return {
+          ...documento,
+          fecha_carga_display: formatearFechaHoraHojaVida(documento.fecha_carga),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/ver', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        secciones: CAMPOS_POR_SECCION,
+        documentos,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20hoja%20de%20vida'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/editar',
+  requireInventarioAuthorized,
+  async function editarHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      if (datos.hojaVida.estado !== 'ACTIVA') {
+        return res.redirect(`/milab/prestamos/hojas-vida/${datos.hojaVida.id}/confirmar`);
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      );
+
+      const obligatorios = configResult.rows
+        .filter((row) => row.obligatorio)
+        .map((row) => row.nombre_campo);
+
+      return res.render('home/prestamos/hojas-vida/editar', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        secciones: CAMPOS_POR_SECCION,
+        obligatorios,
+        documentos: documentosResult.rows,
+        maxFotoMB: 5,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando edicion de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20edicion'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/imprimir',
+  requireInventarioAuthorized,
+  async function imprimirHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const fotoResult = await pool.query(
+        `
+          SELECT archivo, tipo_mime
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [datos.hojaVida.id]
+      );
+
+      return sendHojaVidaPdf(res, datos.hojaVida, datos.equipo, fotoResult.rows[0] || null);
+    } catch (error) {
+      console.error('[prestamos] Error generando PDF de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20generar%20el%20PDF'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:hojaVidaId/documento/:documentoId',
+  requireInventarioAuthorized,
+  async function descargarDocumentoHojaVida(req, res) {
+    try {
+      const hojaVidaId = Number(req.params.hojaVidaId);
+      const documentoId = Number(req.params.documentoId);
+      if (
+        !Number.isInteger(hojaVidaId) ||
+        hojaVidaId <= 0 ||
+        !Number.isInteger(documentoId) ||
+        documentoId <= 0
+      ) {
+        return res.status(400).send('Solicitud invalida.');
+      }
+
+      const result = await pool.query(
+        `
+          SELECT nombre_archivo, tipo_mime, archivo
+          FROM hoja_vida_documento
+          WHERE id = $1 AND hoja_vida_id = $2 AND activo = TRUE
+        `,
+        [documentoId, hojaVidaId]
+      );
+
+      if (result.rows.length === 0 || !result.rows[0].archivo) {
+        return res.status(404).send('Documento no encontrado.');
+      }
+
+      const documento = result.rows[0];
+      res.setHeader('Content-Type', documento.tipo_mime || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(documento.nombre_archivo || 'documento')}"`
+      );
+      return res.send(documento.archivo);
+    } catch (error) {
+      console.error('[prestamos] Error descargando documento de hoja de vida:', error);
+      return res.status(500).send('No fue posible obtener el documento.');
+    }
+  }
+);
+
+function formatearFechaHoraHojaVida(valor) {
+  if (!valor) return null;
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) return String(valor);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(fecha.getDate())}/${pad(fecha.getMonth() + 1)}/${fecha.getFullYear()} ${pad(
+    fecha.getHours()
+  )}:${pad(fecha.getMinutes())}`;
+}
+
+router.get(
+  '/hojas-vida/:equipoId/historial',
+  requireInventarioAuthorized,
+  async function historialHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT hv.id, hv.equipo_id, hv.estado,
+                 e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+                 e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+                 e.laboratorio AS equipo_laboratorio
+          FROM hoja_vida hv
+          JOIN equipo e ON e.id = hv.equipo_id
+          WHERE hv.equipo_id = $1 AND hv.activo = TRUE
+          ORDER BY hv.id DESC
+          LIMIT 1
+        `,
+        [equipoId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const hojaVida = hvResult.rows[0];
+
+      const eventosResult = await pool.query(
+        `
+          SELECT id, tipo_evento, campo_modificado, valor_anterior, valor_nuevo,
+                 descripcion, usuario, fecha
+          FROM hoja_vida_historial
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha DESC NULLS LAST, id DESC
+        `,
+        [hojaVida.id]
+      );
+
+      const eventos = eventosResult.rows.map(function (evento) {
+        return {
+          ...evento,
+          fecha_display: formatearFechaHoraHojaVida(evento.fecha),
+          tipo_evento_etiqueta: etiquetaTipoEvento(evento.tipo_evento),
+          tipo_evento_clase: claseTipoEvento(evento.tipo_evento),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/historial', {
+        hojaVida,
+        equipo: {
+          codigo: hojaVida.equipo_codigo,
+          nombre: hojaVida.equipo_nombre,
+          ubicacion: hojaVida.equipo_ubicacion,
+          facultad: hojaVida.equipo_facultad,
+          laboratorio: hojaVida.equipo_laboratorio,
+        },
+        eventos,
+        tiposEvento: TIPOS_EVENTO_MANUALES,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando historial HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20historial'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/nuevo',
+  requireInventarioAuthorized,
+  async function nuevoMantenimientoHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-nuevo', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+        estadoDefault: ESTADO_MANTENIMIENTO_DEFAULT,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando formulario de mantenimiento:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20formulario'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos',
+  requireInventarioAuthorized,
+  async function listarMantenimientosHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const mantenimientosResult = await pool.query(
+        `
+          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
+                 responsable, datos_empresa_contratada, tiempo_garantia,
+                 especificaciones_mantenimiento, observaciones_repuestos,
+                 fecha_creacion
+          FROM mantenimiento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const mantenimientos = mantenimientosResult.rows.map(function (mantenimiento) {
+        return {
+          ...mantenimiento,
+          tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
+          estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+          estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+          fecha_realizacion_display: formatearValorHojaVidaPdf(
+            mantenimiento.fecha_realizacion,
+            'date'
+          ),
+          fecha_creacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_creacion),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/mantenimientos', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimientos,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando mantenimientos HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20los%20mantenimientos'
+      );
+    }
+  }
+);
 
 router.get('/inventario/crear', requireInventarioAuthorized, function (req, res) {
   return res.render('home/prestamos/inventario/form', {
