@@ -69,6 +69,11 @@ function loadRoute(customQuery = null) {
     ],
   ];
 
+  stubs[0][1].connect = async () => ({
+    query: stubs[0][1].query,
+    release() {},
+  });
+
   delete require.cache[routePath];
 
   for (const [modulePath, stub] of stubs) {
@@ -114,21 +119,356 @@ test('facultad parses form body for UAL edit requests', async () => {
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=1');
-
     const updatedNameQuery = loaded.queryCalls.find(
       ({ sql, params }) =>
         sql ===
-          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6 WHERE ual_id = $7' &&
+          'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6, facultad_id = $7 WHERE ual_id = $8' &&
         params[0] === 'UAL Nueva' &&
         params[1] === 'UAL_NUEVA' &&
         params[2] === 'Descripcion nueva' &&
         params[3] === null &&
         params[4] === null &&
         params[5] === false &&
-        params[6] === '10'
+        params[6] === '1' &&
+        params[7] === '10'
     );
-
     assert.ok(updatedNameQuery);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad editing a UAL between dependencias copies its direct coordinators atomically', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL Antigua',
+            ual_facultad: 10,
+            facultad_nombre: 'Dependencia anterior',
+            facultad_padre_id: 1,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return {
+        rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia nueva', padre_id: 1 }],
+      };
+    }
+    if (sql.includes('INSERT INTO coordinador_facultad')) {
+      return { rows: [{ coordinador_documento_id: '900' }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: '10',
+      facultad_id: '10',
+      new_facultad_id: '20',
+      nombre: 'UAL Actualizada',
+      codigo_abreviacion: 'UAL_ACT',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=20');
+    const copyIndex = loaded.queryCalls.findIndex(({ sql }) =>
+      sql.includes('INSERT INTO coordinador_facultad')
+    );
+    const moveIndex = loaded.queryCalls.findIndex(({ sql }) => sql.includes('UPDATE ual SET'));
+    const commitIndex = loaded.queryCalls.findIndex(({ sql }) => sql === 'COMMIT');
+    assert.ok(copyIndex > 0);
+    assert.ok(moveIndex > copyIndex);
+    assert.ok(commitIndex > moveIndex);
+    assert.deepEqual(loaded.queryCalls[copyIndex].params, [10, '20']);
+    assert.match(
+      loaded.queryCalls[copyIndex].sql,
+      /ON CONFLICT \(coordinador_documento_id, facultad_id\) DO NOTHING/
+    );
+    assert.ok(
+      loaded.queryCalls.some(
+        ({ sql, params }) =>
+          sql.startsWith('INSERT INTO log') &&
+          params[3].includes('coordinadores asignados en destino: 1')
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad moving a UAL from a root faculty does not duplicate inherited coordinators', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL de facultad',
+            ual_facultad: 1,
+            facultad_nombre: 'Facultad',
+            facultad_padre_id: null,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return { rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: 10,
+      facultad_id: 1,
+      new_facultad_id: 20,
+      nombre: 'UAL de facultad',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql.includes('INSERT INTO coordinador_facultad')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rolls back the coordinator assignment and UAL move if edit logging fails', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('SELECT ual.nombre AS ual_nombre')) {
+      return {
+        rows: [
+          {
+            ual_nombre: 'UAL Antigua',
+            ual_facultad: 10,
+            facultad_nombre: 'Dependencia anterior',
+            facultad_padre_id: 1,
+          },
+        ],
+      };
+    }
+    if (sql.includes('SELECT dependencia_facultad_id, nombre, padre_id')) {
+      return {
+        rows: [{ dependencia_facultad_id: 20, nombre: 'Dependencia nueva', padre_id: 1 }],
+      };
+    }
+    if (sql.includes('INSERT INTO coordinador_facultad')) {
+      return { rows: [{ coordinador_documento_id: '900' }] };
+    }
+    if (sql.startsWith('INSERT INTO log')) throw new Error('Audit unavailable');
+    return null;
+  });
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const response = await request(buildApp(loaded.route)).post('/ual/editar').type('form').send({
+      ual_id: 10,
+      facultad_id: 10,
+      new_facultad_id: 20,
+      nombre: 'UAL Actualizada',
+    });
+    assert.equal(response.status, 200);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'),
+      false
+    );
+  } finally {
+    console.error = originalError;
+    loaded.restore();
+  }
+});
+
+test('facultad assigns a direct UAL without changing its metadata or associations', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return { rows: [{ ual_id: 10, nombre: 'Laboratorio', facultad_id: 1, padre_id: null }] };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: '10', dependencia_id: '2' });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/facultad?facultad_id=1');
+    const updates = loaded.queryCalls.filter(({ sql }) => sql.startsWith('UPDATE'));
+    assert.deepEqual(updates, [
+      { sql: 'UPDATE ual SET facultad_id = $1 WHERE ual_id = ANY($2::int[])', params: [2, [10]] },
+    ]);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
+    assert.ok(
+      loaded.queryCalls.some(
+        ({ sql, params }) =>
+          sql.startsWith('INSERT INTO log') && params[2] === 'asignar UAL a dependencia'
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rejects invalid UAL assignments without writing changes', async () => {
+  for (const [source, destination] of [
+    [null, { padre_id: 1 }],
+    [{ facultad_id: 1, padre_id: null }, null],
+    [{ facultad_id: 1, padre_id: null }, { padre_id: null }],
+    [{ facultad_id: 1, padre_id: null }, { padre_id: 3 }],
+    [{ facultad_id: 2, padre_id: 1 }, { padre_id: 1 }],
+  ]) {
+    const loaded = loadRoute((sql) => {
+      if (sql.includes('FOR UPDATE OF u, f')) return { rows: source ? [source] : [] };
+      if (sql.includes('FROM dependencia_facultad WHERE')) {
+        return { rows: destination ? [destination] : [] };
+      }
+      return null;
+    });
+    try {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send({ ual_id: 10, dependencia_id: 2 });
+      assert.equal(response.status, 400);
+      assert.equal(
+        loaded.queryCalls.some(({ sql }) => sql.startsWith('UPDATE')),
+        false
+      );
+      assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('facultad requires UAL and destination IDs before starting an assignment', async () => {
+  const loaded = loadRoute();
+  try {
+    for (const body of [
+      { ual_id: 10 },
+      { dependencia_id: 2 },
+      { ual_id: 0, dependencia_id: 2 },
+      { ual_id: ['10', 'bad'], dependencia_id: 2 },
+      { ual_id: '10abc', dependencia_id: 2 },
+      { ual_id: 10, dependencia_id: '2abc' },
+    ]) {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send(body);
+      assert.equal(response.status, 400);
+    }
+    assert.equal(loaded.queryCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad assigns several UAL atomically and audits each once', async () => {
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return {
+        rows: [
+          { ual_id: 10, nombre: 'Lab 1', facultad_id: 1, padre_id: null },
+          { ual_id: 11, nombre: 'Lab 2', facultad_id: 1, padre_id: null },
+        ],
+      };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: ['10', '11', '10'], dependencia_id: 2 });
+    assert.equal(response.status, 302);
+    assert.deepEqual(loaded.queryCalls.find(({ sql }) => sql.startsWith('UPDATE')).params, [
+      2,
+      [10, 11],
+    ]);
+    assert.equal(
+      loaded.queryCalls.filter(({ sql }) => sql.startsWith('INSERT INTO log')).length,
+      2
+    );
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('facultad rejects the whole batch when a UAL is missing or belongs elsewhere', async () => {
+  for (const rows of [
+    [{ ual_id: 10, facultad_id: 1, padre_id: null }],
+    [
+      { ual_id: 10, facultad_id: 1, padre_id: null },
+      { ual_id: 11, facultad_id: 3, padre_id: null },
+    ],
+    [
+      { ual_id: 10, facultad_id: 1, padre_id: null },
+      { ual_id: 11, facultad_id: 2, padre_id: 1 },
+    ],
+  ]) {
+    const loaded = loadRoute((sql) => {
+      if (sql.includes('FOR UPDATE OF u, f')) return { rows };
+      if (sql.includes('FROM dependencia_facultad WHERE')) {
+        return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+      }
+      return null;
+    });
+    try {
+      const response = await request(buildApp(loaded.route))
+        .post('/ual/asignar-dependencia')
+        .type('form')
+        .send({ ual_id: ['10', '11'], dependencia_id: 2 });
+      assert.equal(response.status, 400);
+      assert.equal(
+        loaded.queryCalls.some(({ sql }) => sql.startsWith('UPDATE')),
+        false
+      );
+      assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('facultad rolls back the batch when auditing its second UAL fails', async () => {
+  let auditCalls = 0;
+  const loaded = loadRoute((sql) => {
+    if (sql.includes('FOR UPDATE OF u, f')) {
+      return {
+        rows: [
+          { ual_id: 10, nombre: 'Lab 1', facultad_id: 1, padre_id: null },
+          { ual_id: 11, nombre: 'Lab 2', facultad_id: 1, padre_id: null },
+        ],
+      };
+    }
+    if (sql.includes('FROM dependencia_facultad WHERE')) {
+      return { rows: [{ facultad_id: 2, nombre: 'Dependencia', padre_id: 1 }] };
+    }
+    if (sql.startsWith('INSERT INTO log') && ++auditCalls === 2)
+      throw new Error('Audit unavailable');
+    return null;
+  });
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/ual/asignar-dependencia')
+      .type('form')
+      .send({ ual_id: ['10', '11'], dependencia_id: 2 });
+    assert.equal(response.status, 500);
+    assert.equal(auditCalls, 2);
+    assert.ok(loaded.queryCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.equal(
+      loaded.queryCalls.some(({ sql }) => sql === 'COMMIT'),
+      false
+    );
   } finally {
     loaded.restore();
   }
@@ -409,7 +749,17 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
     if (sql.includes('FROM ual WHERE facultad_id = $1')) {
       return {
         rows: [
-          { ual_id: 10, nombre: 'Lab Física' },
+          {
+            ual_id: 10,
+            nombre: 'Lab Física',
+            coordinador_encargado: {
+              documento: '2001',
+              nombre: 'Coordinadora Facultad',
+              activo: true,
+              carga_id: 8,
+              fecha_asignacion: '2026-10-15T03:00:00Z',
+            },
+          },
           { ual_id: 11, nombre: 'Lab Química' },
         ],
       };
@@ -447,6 +797,7 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
             asignacion_activa: true,
             heredado: true,
             asignado_en: 'Facultad de Ingeniería',
+            laboratorios_encargados: 'Lab Física',
           },
         ],
       };
@@ -466,6 +817,12 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
     assert.equal(response.body.uals[0].laboratoristas[1].activo, false);
     assert.equal(response.body.coordinadores.length, 1);
     assert.equal(response.body.coordinadores[0].heredado, true);
+    assert.equal(response.body.uals[0].coordinador_encargado.documento, '2001');
+    assert.equal(response.body.uals[0].coordinador_encargado.carga_id, 8);
+    assert.equal(response.body.coordinadores[0].laboratorios_encargados, 'Lab Física');
+    const ualQuery = loaded.queryCalls.find(({ sql }) => sql.includes('AS coordinador_encargado'));
+    assert.match(ualQuery.sql, /FROM coordinador_ual_encargado e/);
+    assert.match(ualQuery.sql, /WHERE e\.ual_id = ual\.ual_id/);
 
     const coordQuery = loaded.queryCalls.find(({ sql }) =>
       sql.includes('FROM coordinador_facultad_alcance cfa')

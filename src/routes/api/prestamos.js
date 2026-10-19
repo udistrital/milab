@@ -38,6 +38,7 @@ const {
   validarCertificacionesParaReserva,
 } = require('../../libs/capacitacion-cert-validation');
 const { requirePermissions, requireRoles, renderAuthError } = require('../middlewares/auth');
+const { validateFormTextLengths } = require('../middlewares/form-text-limits');
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ function parseIncidentEvidenceUpload(req, res, next) {
       });
     }
 
-    return next();
+    return validateFormTextLengths(req, res, next);
   });
 }
 
@@ -988,7 +989,7 @@ async function fetchDashboardStatsForManagement(req) {
           finalizadosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
           disponiblesParams
         ),
       ]);
@@ -1021,7 +1022,7 @@ async function fetchDashboardStatsForUser(usuarioId) {
           [usuarioId || null]
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible'`
+          `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible'`
         ),
       ]);
       return {
@@ -1064,7 +1065,7 @@ async function fetchActiveLoansForManagement(req) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.estado IN ('aprobado', 'activo')
         ${facultadClause} ${laboratorioClause}
@@ -1107,7 +1108,7 @@ async function fetchPendingRequestsForManagement(req) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.estado IN ('pendiente', 'en_cola')
         ${facultadClause} ${laboratorioClause}
@@ -1146,7 +1147,7 @@ async function fetchActiveLoansForUser(usuarioId) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.usuario_id = $1 AND s.estado IN ('aprobado', 'activo')
         ORDER BY s.fecha_inicio DESC NULLS LAST
@@ -1184,7 +1185,7 @@ async function fetchPendingRequestsForUser(usuarioId) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.usuario_id = $1 AND s.estado IN ('pendiente', 'en_cola')
         ORDER BY s.fecha_inicio DESC NULLS LAST
@@ -2099,6 +2100,26 @@ function buildInventoryPayload(body = {}) {
 }
 
 function validateInventoryPayload(payload) {
+  const textLimits = [
+    ['serie', payload.serie, 100],
+    ['placa', payload.placa, 100],
+    ['nombre_bien', payload.nombre_bien, 1000],
+    ['grupo_inventario', payload.grupo_inventario, 100],
+    ['nivel_inventario', payload.nivel_inventario, 50],
+    ['funcionario_doc', payload.funcionario_doc, 50],
+    ['nombre_funcionario', payload.nombre_funcionario, 255],
+    ['sede', payload.sede, 100],
+    ['dependencia', payload.dependencia, 100],
+    ['espacio_fisico', payload.espacio_fisico, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre_bien) {
     return 'El nombre del bien es obligatorio.';
   }
@@ -2152,6 +2173,30 @@ function buildEquipmentPayload(body = {}) {
 }
 
 function validateEquipmentPayload(payload) {
+  const textLimits = [
+    ['codigo', payload.codigo, 50],
+    ['nombre', payload.nombre, 255],
+    ['descripcion', payload.descripcion, 2000],
+    ['categoria', payload.categoria, 100],
+    ['laboratorio', payload.laboratorio, 100],
+    ['facultad', payload.facultad, 100],
+    ['area_conocimiento', payload.area_conocimiento, 100],
+    ['estado', payload.estado, 50],
+    ['ubicacion', payload.ubicacion, 255],
+    ['marca', payload.especificaciones.marca, 2000],
+    ['modelo', payload.especificaciones.modelo, 2000],
+    ['serie_equipo', payload.especificaciones.serie, 2000],
+    ['detalles_tecnicos', payload.especificaciones.detalles, 2000],
+    ['codigo_curso_asociado', payload.codigo_curso_asociado, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre) {
     return 'El nombre del equipo es obligatorio.';
   }
@@ -2177,6 +2222,34 @@ function validateEquipmentPayload(payload) {
   }
 
   return '';
+}
+
+function buildEquipmentInventoryAttributes(payload, code) {
+  const specifications = { ...payload.especificaciones };
+  const attributes = {
+    descripcionEquipo: payload.descripcion || null,
+    categoria: payload.categoria,
+    laboratorioLegacy: payload.laboratorio || null,
+    facultadLegacy: payload.facultad || null,
+    area_conocimiento: payload.area_conocimiento || null,
+    marca: specifications.marca || null,
+    modelo: specifications.modelo || null,
+    proveedor: specifications.proveedor || null,
+    observaciones: specifications.observaciones || null,
+  };
+
+  for (const key of ['marca', 'modelo', 'proveedor', 'observaciones']) {
+    delete specifications[key];
+  }
+
+  if (Object.keys(specifications).length) {
+    attributes.especificaciones = specifications;
+  }
+  if (code) {
+    attributes.codigoEquipo = code;
+  }
+
+  return attributes;
 }
 
 function isValidEquipmentId(id) {
@@ -2291,6 +2364,14 @@ function validateLoanRequestPayload(payload) {
 
   if (fechaFin <= fechaInicio) {
     return 'La fecha de fin debe ser posterior a la fecha de inicio.';
+  }
+
+  if (payload.justificacion_academica.length > 2000) {
+    return 'La justificacion academica no puede superar 2000 caracteres.';
+  }
+
+  if (payload.categoria_practica.length > 20) {
+    return 'La categoria de la practica no puede superar 20 caracteres.';
   }
 
   if (!payload.justificacion_academica || payload.justificacion_academica.length < 10) {
@@ -3057,6 +3138,22 @@ function buildSalaPayload(body = {}) {
 }
 
 function validateSalaPayload(payload) {
+  const textLimits = [
+    ['nombre', payload.nombre, 150],
+    ['tipo_espacio', payload.tipo_espacio, 30],
+    ['formato_practica_libre', payload.formato_practica_libre, 80],
+    ['formato_practica_docente', payload.formato_practica_docente, 80],
+    ['descripcion', payload.descripcion, 2000],
+    ['equipos_nombres', payload.equipos_nombres, 2500],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.facultad || !payload.laboratorio) {
     return 'La facultad y el laboratorio son obligatorios.';
   }
@@ -3072,10 +3169,6 @@ function validateSalaPayload(payload) {
   const capacidad = Number(payload.capacidad);
   if (!Number.isInteger(capacidad) || capacidad <= 0) {
     return 'La capacidad de la sala debe ser un numero entero mayor que cero.';
-  }
-
-  if (payload.equipos_nombres && payload.equipos_nombres.length > 2500) {
-    return 'La lista de equipos excede el maximo permitido.';
   }
 
   return '';
@@ -5175,7 +5268,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
           ee.condicion_devolucion,
           ee.firma_digital AS entrega_firma_digital
         FROM solicitud_prestamo sp
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = sp.equipo_id
         JOIN usuario u
           ON u.id = sp.usuario_id
@@ -5253,7 +5346,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
         ee.condicion_devolucion,
         ee.firma_digital AS entrega_firma_digital
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       JOIN usuario u
         ON u.id = sp.usuario_id
@@ -5747,7 +5840,7 @@ async function fetchLoanReportsViewData(scope, range) {
     pool.query(
       `
         SELECT COUNT(*)::int AS total
-        FROM equipo e
+        FROM equipo_catalogo e
         WHERE 1 = 1
         ${equipmentScopeClause}
         ${equipmentLaboratoryClause}
@@ -5771,7 +5864,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.estado = 'activo'
       ${solicitudActivasScopeClause}
       ${solicitudActivasLaboratoryClause}
@@ -5794,7 +5887,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.estado IN ('pendiente', 'en_cola', 'aprobado')
       ${solicitudPendientesScopeClause}
       ${solicitudPendientesLaboratoryClause}
@@ -5839,7 +5932,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM incidencia i
-      JOIN equipo e ON e.id = i.equipo_id
+      JOIN equipo_catalogo e ON e.id = i.equipo_id
       WHERE i.estado <> 'cerrada'
       ${incidenciasAbiertasScopeClause}
       ${incidenciasAbiertasLaboratoryClause}
@@ -5885,7 +5978,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT sp.estado, COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${solicitudesEstadoScopeClause}
@@ -5936,7 +6029,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT i.estado, COUNT(*)::int AS cantidad
       FROM incidencia i
-      JOIN equipo e ON e.id = i.equipo_id
+      JOIN equipo_catalogo e ON e.id = i.equipo_id
       WHERE i.fecha_creacion >= $1::date
         AND i.fecha_creacion < ($2::date + INTERVAL '1 day')
         ${incidenciasEstadoScopeClause}
@@ -5964,7 +6057,7 @@ async function fetchLoanReportsViewData(scope, range) {
         TO_CHAR(DATE_TRUNC('month', sp.fecha_inicio), 'YYYY-MM') AS periodo,
         COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${solicitudesMesScopeClause}
@@ -6016,7 +6109,7 @@ async function fetchLoanReportsViewData(scope, range) {
         e.codigo,
         COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${equiposTopScopeClause}
@@ -6144,7 +6237,7 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
         COALESCE(e.facultad, f.nombre) AS facultad,
         f.dependencia_facultad_id AS facultad_id
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
@@ -6213,7 +6306,7 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
         ee.condicion_devolucion,
         ee.lista_componentes
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       LEFT JOIN entrega_equipo ee
         ON ee.solicitud_prestamo_id = sp.id
@@ -6284,7 +6377,7 @@ async function fetchManagedIncident(id, scope, executor = pool) {
         COALESCE(e.facultad, f.nombre, rp.facultad) AS facultad,
         f.facultad_id
       FROM incidencia i
-      LEFT JOIN equipo e
+      LEFT JOIN equipo_catalogo e
         ON e.id = i.equipo_id
       LEFT JOIN solicitud_prestamo sp
         ON sp.id = i.solicitud_prestamo_id
@@ -6909,7 +7002,7 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
         e.ubicacion,
         e.ubicacion_prestamo,
         e.especificaciones
-      FROM equipo e
+      FROM equipo_catalogo e
       WHERE e.estado = 'disponible'
         AND UPPER(
           COALESCE(
@@ -7823,7 +7916,7 @@ async function fetchEquipmentItem(id) {
         ubicacion_prestamo,
         fecha_creacion,
         fecha_modificacion
-      FROM equipo
+      FROM equipo_catalogo
       WHERE id = $1
       LIMIT 1
     `,
@@ -7876,6 +7969,26 @@ async function replaceEquipmentSchedules(client, equipmentId, schedules) {
     );
   }
 }
+
+router.all(
+  [
+    '/inventario',
+    '/inventario/crear',
+    '/inventario/:id/editar',
+    '/inventario/:id/eliminar',
+    '/equipos/crear',
+    '/equipos/:id/editar',
+    '/equipos/:id/estado',
+    '/equipos/:id/eliminar',
+  ],
+  function (req, res) {
+    return res.redirect('/milab/inventarios/gestion_inventario');
+  }
+);
+
+router.get('/equipos', function (req, res) {
+  return res.redirect('/milab/inventarios/gestion_inventario?tipo_inventario=equipo_arka');
+});
 
 router.get('/inventario', requireInventarioAuthorized, async function (req, res) {
   try {
@@ -8758,7 +8871,7 @@ router.get('/equipos', requireEquiposAuthorized, async function (req, res) {
           ubicacion_prestamo,
           fecha_creacion,
           fecha_modificacion
-        FROM equipo
+        FROM equipo_catalogo
         ORDER BY fecha_creacion DESC NULLS LAST, id DESC
       `
     );
@@ -8855,41 +8968,62 @@ router.post('/equipos/crear', requireEquiposAuthorized, async function (req, res
     try {
       await client.query('BEGIN');
 
-      const createResult = await client.query(
+      const inventoryResult = await client.query(
         `
-          INSERT INTO equipo (
-            codigo,
-            nombre,
-            descripcion,
-            especificaciones,
-            categoria,
-            laboratorio,
-            facultad,
-            area_conocimiento,
-            estado,
-            ubicacion,
-            ubicacion_prestamo
+          INSERT INTO inventario (
+            nombre_bien,
+            espacio_fisico,
+            disponible_prestamo,
+            tipo_inventario,
+            laboratorio_ual_id,
+            estado_aprobacion,
+            modo_control,
+            atributos
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          VALUES (
+            $1,
+            NULLIF($2, ''),
+            TRUE,
+            'legado',
+            (
+              SELECT MIN(ual_id)
+              FROM ual
+              WHERE UPPER(BTRIM(nombre)) = UPPER(BTRIM($3))
+              HAVING COUNT(*) = 1
+            ),
+            'aprobado',
+            'individual',
+            $4::jsonb
+          )
           RETURNING id
         `,
         [
-          codigo,
           payload.nombre,
-          payload.descripcion,
-          JSON.stringify(payload.especificaciones),
-          payload.categoria,
-          payload.laboratorio,
-          payload.facultad,
-          payload.area_conocimiento,
-          payload.estado,
           payload.ubicacion,
-          JSON.stringify(payload.ubicacion_prestamo),
+          payload.laboratorio,
+          JSON.stringify(buildEquipmentInventoryAttributes(payload, codigo)),
         ]
       );
+      const inventoryId = inventoryResult.rows[0]?.id;
+      if (!inventoryId) {
+        throw new Error('No fue posible guardar el registro canónico del equipo.');
+      }
 
-      await replaceEquipmentSchedules(client, createResult.rows[0].id, schedules);
-      await replaceEquipoCapacitacionAsociada(client, createResult.rows[0].id, payload);
+      const createResult = await client.query(
+        `
+          INSERT INTO equipo (inventario_id, estado, ubicacion_prestamo)
+          VALUES ($1, $2, $3::jsonb)
+          RETURNING id
+        `,
+        [inventoryId, payload.estado, JSON.stringify(payload.ubicacion_prestamo)]
+      );
+      const equipmentId = createResult.rows[0]?.id;
+      if (!equipmentId) {
+        throw new Error('No fue posible crear el registro operativo del equipo.');
+      }
+
+      await replaceEquipmentSchedules(client, equipmentId, schedules);
+      await replaceEquipoCapacitacionAsociada(client, equipmentId, payload);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -8968,45 +9102,79 @@ router.post('/equipos/:id/editar', requireEquiposAuthorized, async function (req
 
   try {
     const client = await pool.connect();
-    let result;
+    let result = { rowCount: 0 };
 
     try {
       await client.query('BEGIN');
-      result = await client.query(
+      const equipmentResult = await client.query(
         `
-          UPDATE equipo
-          SET
-            nombre = $1,
-            descripcion = $2,
-            especificaciones = $3::jsonb,
-            categoria = $4,
-            laboratorio = $5,
-            facultad = $6,
-            area_conocimiento = $7,
-            estado = $8,
-            ubicacion = $9,
-            ubicacion_prestamo = $10::jsonb,
-          fecha_modificacion = CURRENT_TIMESTAMP
-          WHERE id = $11
+          SELECT
+            e.id,
+            e.inventario_id,
+            i.tipo_inventario,
+            CASE
+              WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+              ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+            END AS codigo
+          FROM equipo e
+          JOIN inventario i ON i.id = e.inventario_id
+          WHERE e.id = $1
+          FOR UPDATE OF e, i
         `,
-        [
-          payload.nombre,
-          payload.descripcion,
-          JSON.stringify(payload.especificaciones),
-          payload.categoria,
-          payload.laboratorio,
-          payload.facultad,
-          payload.area_conocimiento,
-          payload.estado,
-          payload.ubicacion,
-          JSON.stringify(payload.ubicacion_prestamo),
-          req.params.id,
-        ]
+        [req.params.id]
       );
+      const equipment = equipmentResult.rows[0];
 
-      if (result.rowCount > 0) {
-        await replaceEquipmentSchedules(client, req.params.id, schedules);
-        await replaceEquipoCapacitacionAsociada(client, req.params.id, payload);
+      if (equipment) {
+        const attributes = buildEquipmentInventoryAttributes(
+          payload,
+          equipment.tipo_inventario === 'equipo_arka' ? null : equipment.codigo
+        );
+        result = await client.query(
+          `
+          UPDATE inventario i
+          SET
+            nombre_bien = $1,
+            espacio_fisico = NULLIF($2, ''),
+            laboratorio_ual_id = (
+              SELECT MIN(ual_id)
+              FROM ual
+              WHERE UPPER(BTRIM(nombre)) = UPPER(BTRIM($3))
+              HAVING COUNT(*) = 1
+            ),
+            atributos = (
+              CASE
+                WHEN i.tipo_inventario = 'equipo_arka'
+                THEN COALESCE(i.atributos, '{}'::jsonb) - 'codigoEquipo'
+                ELSE COALESCE(i.atributos, '{}'::jsonb)
+              END
+            ) || $4::jsonb,
+            fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE i.id = $5
+        `,
+          [
+            payload.nombre,
+            payload.ubicacion,
+            payload.laboratorio,
+            JSON.stringify(attributes),
+            equipment.inventario_id,
+          ]
+        );
+
+        if (result.rowCount > 0) {
+          await client.query(
+            `
+            UPDATE equipo
+            SET estado = $1,
+                ubicacion_prestamo = $2::jsonb,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $3
+          `,
+            [payload.estado, JSON.stringify(payload.ubicacion_prestamo), equipment.id]
+          );
+          await replaceEquipmentSchedules(client, req.params.id, schedules);
+          await replaceEquipoCapacitacionAsociada(client, req.params.id, payload);
+        }
       }
 
       await client.query('COMMIT');
@@ -9052,7 +9220,7 @@ router.post('/equipos/:id/estado', requireEquiposAuthorized, async function (req
     const equipmentResult = await client.query(
       `
         SELECT id, codigo, nombre, facultad, laboratorio, estado
-        FROM equipo
+        FROM equipo_catalogo
         WHERE id = $1
         LIMIT 1
       `,
@@ -9099,15 +9267,26 @@ router.post('/equipos/:id/eliminar', requireEquiposAuthorized, async function (r
   }
 
   try {
-    const result = await pool.query('DELETE FROM equipo WHERE id = $1', [req.params.id]);
+    const result = await pool.query(
+      `
+        UPDATE inventario i
+        SET activo = FALSE,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        FROM equipo e
+        WHERE e.id = $1
+          AND i.id = e.inventario_id
+        RETURNING e.id
+      `,
+      [req.params.id]
+    );
 
     if (result.rowCount === 0) {
       return res.redirect('/milab/prestamos/equipos?error=El equipo no existe');
     }
 
-    return res.redirect('/milab/prestamos/equipos?success=Equipo eliminado correctamente');
+    return res.redirect('/milab/prestamos/equipos?success=Equipo archivado correctamente');
   } catch (error) {
-    console.error('Error eliminando equipo MiLab:', error);
+    console.error('Error archivando equipo MiLab:', error);
     return res.redirect(
       `/milab/prestamos/equipos?error=${encodeURIComponent(
         resolveEquipmentDbErrorMessage(error, 'No fue posible eliminar el equipo.')
@@ -9449,7 +9628,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       const equipmentResult = await client.query(
         `
           SELECT id, codigo, nombre, facultad, laboratorio
-          FROM equipo
+          FROM equipo_catalogo
           WHERE id = $1
           LIMIT 1
         `,
@@ -9596,7 +9775,7 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
           e.laboratorio,
           COALESCE(e.facultad, f.nombre) AS facultad
         FROM cola_solicitud c
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = c.equipo_id
         LEFT JOIN LATERAL (
           SELECT f.nombre
@@ -9637,7 +9816,7 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
           e.laboratorio,
           COALESCE(e.facultad, f.nombre) AS facultad
         FROM solicitud_prestamo sp
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = sp.equipo_id
         LEFT JOIN LATERAL (
           SELECT f.nombre
@@ -9777,7 +9956,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
             u.documento AS usuario_documento,
             u.correo AS usuario_correo
           FROM solicitud_prestamo sp
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = sp.equipo_id
           JOIN usuario u
             ON u.id = sp.usuario_id
@@ -9897,8 +10076,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -9999,8 +10179,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error aprobando solicitud MiLab:', error);
@@ -10008,6 +10186,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );
@@ -10028,8 +10208,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -10111,8 +10292,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error rechazando solicitud MiLab:', error);
@@ -10120,6 +10299,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible rechazar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );
@@ -10186,7 +10367,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
             ee.condicion_devolucion,
             ee.lista_componentes
           FROM solicitud_prestamo sp
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = sp.equipo_id
           JOIN usuario u
             ON u.id = sp.usuario_id
@@ -10246,7 +10427,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
           FROM cola_solicitud c
           JOIN usuario u
             ON u.id = c.usuario_id
-          LEFT JOIN equipo e
+          LEFT JOIN equipo_catalogo e
             ON e.id = c.equipo_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(COALESCE(e.laboratorio, c.laboratorio))
@@ -10746,7 +10927,7 @@ router.post(
               e.laboratorio AS equipo_laboratorio,
               COALESCE(e.facultad, f.nombre) AS equipo_facultad
             FROM cola_solicitud c
-            JOIN equipo e ON e.id = c.equipo_id
+            JOIN equipo_catalogo e ON e.id = c.equipo_id
             LEFT JOIN ual u
               ON UPPER(u.nombre) = UPPER(e.laboratorio)
             LEFT JOIN dependencia_facultad f
@@ -11488,7 +11669,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             u.documento AS reportado_por_documento,
             COALESCE(sp.estado, rp.estado) AS solicitud_estado
           FROM incidencia i
-          LEFT JOIN equipo e
+          LEFT JOIN equipo_catalogo e
             ON e.id = i.equipo_id
           LEFT JOIN usuario u
             ON u.id = i.reportado_por_id
@@ -11572,7 +11753,7 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
       `
         SELECT i.evidencia_foto, i.evidencia_mime
         FROM incidencia i
-        LEFT JOIN equipo e
+        LEFT JOIN equipo_catalogo e
           ON e.id = i.equipo_id
         LEFT JOIN reserva_practica rp
           ON rp.id = i.reserva_practica_id
@@ -11979,7 +12160,7 @@ router.get(
             decisor.nombre AS decisor_nombre,
             decisor.documento AS decisor_documento
           FROM incidencia i
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = i.equipo_id
           LEFT JOIN solicitud_prestamo sp
             ON sp.id = i.solicitud_prestamo_id
@@ -16264,7 +16445,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             u.nombre AS usuario_nombre,
             u.correo AS usuario_correo
           FROM solicitud_prestamo sp
-          JOIN equipo e ON e.id = sp.equipo_id
+          JOIN equipo_catalogo e ON e.id = sp.equipo_id
           JOIN usuario u ON u.id = sp.usuario_id
           LEFT JOIN ual ual_item ON UPPER(ual_item.nombre) = UPPER(e.laboratorio)
           LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual_item.facultad_id
@@ -16376,7 +16557,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             i.documento_que_reporto,
             i.nombre_que_reporto
           FROM incidencia i
-          JOIN equipo e ON e.id = i.equipo_id
+          JOIN equipo_catalogo e ON e.id = i.equipo_id
           WHERE i.fecha_creacion >= $1::date
             AND i.fecha_creacion < ($2::date + INTERVAL '1 day')
             ${scopeClause}
@@ -16418,7 +16599,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             e.laboratorio,
             COUNT(*)::int AS cantidad
           FROM solicitud_prestamo sp
-          JOIN equipo e ON e.id = sp.equipo_id
+          JOIN equipo_catalogo e ON e.id = sp.equipo_id
           WHERE sp.fecha_inicio >= $1::date
             AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}

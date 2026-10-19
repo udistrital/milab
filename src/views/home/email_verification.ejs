@@ -48,7 +48,7 @@
           }
         }, 1000);
       if(seconds !== 60){
-        alert("Demasiados intentos en poco tiempo. Espere un momento antes de intentar nuevamente.");
+        window.MiLabDialogs.alert("Demasiados intentos en poco tiempo. Espere un momento antes de intentar nuevamente.");
         window.MiLabSubmitLock.release(button);
       }else{
         // Hacer una solicitud AJAX para enviar el código al servidor
@@ -59,9 +59,9 @@
           if (xhr.readyState === 4) {
             try {
               if (xhr.status === 200) {
-                alert(xhr.responseText);
+                window.MiLabDialogs.alert(xhr.responseText);
               } else {
-                alert('Error al enviar el correo.');
+                window.MiLabDialogs.alert('Error al enviar el correo.');
               }
             } finally {
               window.MiLabSubmitLock.release(button);

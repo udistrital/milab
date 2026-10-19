@@ -22,34 +22,34 @@
       <p class="lead mb-2 fw-bold" ><em>- Datos del Estudiante -</em></p>
       <div class="col-md-6">
         <label for="con_nombre" class="form-label">Nombre</label>
-        <input type="text" value="<%= con_nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>
+        <input type="text" value="<%= con_nombre %>" class="form-control" id="con_nombre" name="con_nombre" maxlength="200" readonly>
       </div>
   
       <div class="col-md-6">
         <label for="con_documento" class="form-label">Número de Documento</label>
-        <input type="text" value="<%= con_documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" readonly>
+        <input type="text" value="<%= con_documento %>" class="form-control" id="numero_documento_identificacion" name="numero_documento_identificacion" maxlength="50" readonly>
       </div>
   
       <div class="col-md-6">
         <label for="con_codigo" class="form-label">Código</label>
-        <input type="text" value="<%= con_codigo %>" class="form-control" id="con_codigo" name="con_codigo" readonly>
+        <input type="text" value="<%= con_codigo %>" class="form-control" id="con_codigo" name="con_codigo" maxlength="19" readonly>
       </div>
 
       <div class="col-md-6">
         <label for="con_estado" class="form-label">Estado del estudiante</label>
-        <input type="text" value="<%= con_estado %>" class="form-control" id="con_estado" name="con_estado" readonly>
+        <input type="text" value="<%= con_estado %>" class="form-control" id="con_estado" name="con_estado" maxlength="20" readonly>
       </div>
 
       <div class="col-md-12">
         <label for="con_carrera" class="form-label">Programa académico</label>
-        <input type="text" value="<%= con_carrera %>" class="form-control" id="con_carrera" name="con_carrera" readonly>
+        <input type="text" value="<%= con_carrera %>" class="form-control" id="con_carrera" name="con_carrera" maxlength="100" readonly>
       </div>
       <input type="hidden" name="tipo_usuario" value="estudiante">
 
       <p class="lead mt-4 fw-bold"><em>- Complete sus datos para continuar -</em></p>
       <div class="col-md-12">
         <label for="correo" class="form-label">Correo electrónico institucional</label>
-        <input type="email" class="form-control" id="correo" name="correo">
+        <input type="email" class="form-control" id="correo" name="correo" maxlength="255">
         <small id="requisitosCorreo1" class="form-text text-muted">El sistema únicamente funciona con correos institucionales activos en el dominio @udistrital.edu.co</small>
 
       </div>
@@ -57,7 +57,7 @@
       <div class="col-md-6">
         <label for="password" class="form-label">Contraseña</label>
         <div class="input-group">
-            <input type="password" class="form-control" id="password" name="password" oninput="validarRequisitosContrasena()">
+            <input type="password" class="form-control" id="password" name="password" maxlength="255" oninput="validarRequisitosContrasena()">
             <button type="button" class="btn btn-outline-secondary" onclick="mostrarContrasena('password', 'eye-icon-password')">
                 <i id="eye-icon-password" class="bi bi-eye"></i>
             </button>
@@ -68,7 +68,7 @@
       <div class="col-md-6">
         <label for="confirmar_password" class="form-label">Confirmar Contraseña</label>
         <div class="input-group">
-            <input type="password" class="form-control" id="confirmar_password" name="confirmar_password">
+            <input type="password" class="form-control" id="confirmar_password" name="confirmar_password" maxlength="255">
             <button type="button" class="btn btn-outline-secondary" onclick="mostrarContrasena('confirmar_password', 'eye-icon-confirmar')">
                 <i id="eye-icon-confirmar" class="bi bi-eye"></i>
             </button>

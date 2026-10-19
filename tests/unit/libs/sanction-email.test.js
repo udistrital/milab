@@ -38,6 +38,8 @@ test('sanction emails direct students to the reporting lab and discourage replie
       tipoSancion: 'Suspensión',
       observaciones: 'Entrega tardía',
       laboratorio: 'Química & <Materiales>',
+      facultad: 'Ingeniería & Diseño',
+      dependencia: 'Departamento <X>',
       fecha: '2026-10-08',
     };
 
@@ -53,6 +55,10 @@ test('sanction emails direct students to the reporting lab and discourage replie
     assert.equal(message.to, payload.correo);
     assert.match(message.text, /acércate al laboratorio Química & <Materiales>/);
     assert.match(message.html, /acércate al laboratorio Química &amp; &lt;Materiales&gt;/);
+    assert.match(message.text, /Facultad: Ingeniería & Diseño/);
+    assert.match(message.text, /Dependencia: Departamento <X>/);
+    assert.match(message.html, /Facultad:<\/strong> Ingeniería &amp; Diseño/);
+    assert.match(message.html, /Dependencia:<\/strong> Departamento &lt;X&gt;/);
     assert.doesNotMatch(message.html, /<Materiales>/);
     for (const content of [message.text, message.html]) {
       assert.match(content, /Por favor, no respondas a este correo/);
@@ -63,14 +69,21 @@ test('sanction emails direct students to the reporting lab and discourage replie
     assert.match(message.html, /Consultar sanción y presentar reclamación/);
     assert.match(message.html, /\/api\/sanciones\/mis-sanciones/);
 
-    await sendSanctionActivationEmail({ ...payload, laboratorio: null });
-    for (const content of [messages[1].text, messages[1].html]) {
+    await sendSanctionActivationEmail({ ...payload, dependencia: null });
+    assert.match(messages[1].text, /Dependencia: Toda la facultad/);
+    await sendSanctionActivationEmail({
+      ...payload,
+      laboratorio: null,
+      facultad: null,
+      dependencia: null,
+    });
+    for (const content of [messages[2].text, messages[2].html]) {
       assert.match(content, /acércate al laboratorio donde se registró la sanción/);
       assert.doesNotMatch(content, /acércate al laboratorio (?:null|undefined|N\/A)/);
     }
     await sendSanctionActivationEmail({ ...payload, permiteReclamacion: false });
     assert.doesNotMatch(
-      messages[2].html,
+      messages[3].html,
       /presenta tu reclamación|\/api\/sanciones\/mis-sanciones/
     );
   } finally {

@@ -39,22 +39,22 @@
 
         <div class="col-md-6">
           <label class="form-label" for="documento">Documento</label>
-          <input class="form-control" id="documento" type="text" value="<%= laboratorista.documento %>" readonly>
+          <input class="form-control" id="documento" type="text" maxlength="50" value="<%= laboratorista.documento %>" readonly>
         </div>
 
         <div class="col-md-6">
           <label class="form-label" for="n_usuario">Nombre de usuario</label>
-          <input class="form-control" id="n_usuario" type="text" value="<%= laboratorista.n_usuario %>" readonly>
+          <input class="form-control" id="n_usuario" type="text" maxlength="50" value="<%= laboratorista.n_usuario %>" readonly>
         </div>
 
         <div class="col-md-6">
           <label class="form-label" for="nombre">Nombre completo</label>
-          <input class="form-control" id="nombre" name="nombre" type="text" value="<%= laboratorista.nombre %>" required>
+          <input class="form-control" id="nombre" name="nombre" type="text" maxlength="100" value="<%= laboratorista.nombre %>" required>
         </div>
 
         <div class="col-md-6">
           <label class="form-label" for="contrato">Contrato</label>
-          <input class="form-control" id="contrato" name="contrato" type="text" value="<%= laboratorista.contrato || '' %>" required>
+          <input class="form-control" id="contrato" name="contrato" type="text" maxlength="50" value="<%= laboratorista.contrato || '' %>" required>
         </div>
 
         <div class="col-md-12">
@@ -64,6 +64,7 @@
             id="correo"
             name="correo"
             type="email"
+            maxlength="50"
             value="<%= laboratorista.correo %>"
             pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"
             required

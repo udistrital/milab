@@ -132,6 +132,9 @@ test('student submits once to the creator and sees success; claim is committed b
     const page = await request(fixture.app).get('/mis-sanciones');
     assert.equal(page.body.locals.feedback.type, 'success');
     assert.equal(fixture.session.sanctionClaimFeedback, undefined);
+    const sanctionsQuery = fixture.calls.find((call) => call.sql.includes('laboratorio_facultad'));
+    assert.match(sanctionsQuery.sql, /COALESCE\(facultad\.nombre, unidad\.nombre\)/);
+    assert.match(sanctionsQuery.sql, /laboratorio_dependencia/);
   } finally {
     fixture.restore();
   }
@@ -331,6 +334,8 @@ test('student UI exposes a claim icon only for unclaimed active sanctions and es
       cat_multa: '<script>Equipos</script>',
       con_estado_multa: 'ACTIVA',
       fecha_multa: '2026-10-08',
+      laboratorio_facultad: 'Facultad de Ingeniería',
+      laboratorio_dependencia: 'Departamento de Física',
     },
     {
       id: 2,
@@ -365,5 +370,9 @@ test('student UI exposes a claim icon only for unclaimed active sanctions and es
   assert.match(html, /&lt;script&gt;Equipos&lt;\/script&gt;/);
   assert.match(html, /Marcar respuesta como leída/);
   assert.match(html, /Historial de reclamación/);
+  assert.match(html, /data-claim-field="laboratorio_facultad"/);
+  assert.match(html, /data-claim-field="laboratorio_dependencia"/);
+  assert.match(html, /Facultad: Facultad de Ingeniería/);
+  assert.match(html, /Dependencia: Departamento de Física/);
   assert.match(html, /8\/10\/2026/);
 });

@@ -8,6 +8,15 @@ async function ensureOperationalRoleAssignmentsSchema(executor = pool) {
     return;
   }
 
+  // Si la tabla ya fue aprovisionada, no ejecutar DDL: la app puede no tener CREATE sobre el esquema.
+  const existing = await executor.query(
+    `SELECT to_regclass('milab.usuario_ual_rol_operativo') AS tabla`
+  );
+  if (existing.rows[0]?.tabla) {
+    operationalRoleAssignmentSchemaEnsured = true;
+    return;
+  }
+
   await executor.query(`
     CREATE TABLE IF NOT EXISTS usuario_ual_rol_operativo (
       id SERIAL NOT NULL,

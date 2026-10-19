@@ -209,12 +209,14 @@ test('sanction edit preserves its original historical category but rejects inact
           multa_id: '9',
           cat_multa: categoria,
           tipo_sancion: 'Amonestación verbal o escrita',
+          fecha_multa: '2020-01-15',
         });
       if (allowed) {
         assert.equal(response.status, 302);
         assert.equal(response.headers.location, '/milab/api/get_list_multas?success=editada');
         const update = calls.find((call) => call.sql.includes('UPDATE multa'));
         assert.equal(update.params[0], categoria);
+        assert.equal(update.params[2], '2020-01-15');
       } else {
         assert.equal(response.body.view, 'home/message_error');
         assert.ok(!calls.some((call) => call.sql.includes('UPDATE multa')));
@@ -225,9 +227,81 @@ test('sanction edit preserves its original historical category but rejects inact
   }
 });
 
+test('sanction edit validates the sanction date against today in Bogota', () => {
+  const loaded = loadRoute();
+  try {
+    const { validateFineEditDate } = loaded.route.listingHelpers;
+    const today = '2026-10-17';
+
+    assert.deepEqual(validateFineEditDate('2026-10-17', today), {
+      ok: true,
+      fecha: '2026-10-17',
+    });
+    assert.deepEqual(validateFineEditDate('2020-01-15', today), {
+      ok: true,
+      fecha: '2020-01-15',
+    });
+    assert.equal(validateFineEditDate('2026-10-18', today).ok, false);
+    assert.equal(
+      validateFineEditDate('2026-10-18', today).message,
+      'La fecha de la sanción no puede ser futura.'
+    );
+    assert.equal(validateFineEditDate('2026-02-30', today).ok, false);
+    assert.equal(validateFineEditDate('17/10/2026', today).ok, false);
+    assert.equal(validateFineEditDate('', today).ok, false);
+    assert.equal(validateFineEditDate(undefined, today).ok, false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('sanction edit rejects a future date without updating the sanction', async () => {
+  const calls = [];
+  const loaded = loadRoute({
+    clientQueryImpl: async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT m.con_estado_multa')) {
+        return {
+          rows: [{ con_estado_multa: 'ACTIVA', cat_multa: 'Equipos', ual_id: 21, facultad_id: 10 }],
+        };
+      }
+      if (sql.includes('FROM categoria_sancion')) return { rows: [{ id: 1 }] };
+      return { rows: [] };
+    },
+  });
+  try {
+    const response = await request(buildApp(loaded.route, { tipo: 'admin', documento: '123' }))
+      .post('/editar')
+      .type('form')
+      .send({
+        multa_id: '9',
+        cat_multa: 'Equipos',
+        tipo_sancion: 'Amonestación verbal o escrita',
+        fecha_multa: '2999-01-01',
+      });
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(response.body.locals.message, 'La fecha de la sanción no puede ser futura.');
+    assert.ok(!calls.some((call) => call.sql.includes('UPDATE multa')));
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('get_list_multas returns grouped sanctions for non-coordinator roles', async () => {
   let sgaCalls = 0;
   const loaded = loadRoute({
+    clientQueryImpl: async (sql) => {
+      if (sql.includes('FROM multa m')) {
+        assert.match(sql, /COALESCE\(facultad\.nombre, unidad\.nombre\) AS laboratorio_facultad/);
+        assert.match(sql, /AS laboratorio_dependencia/);
+      }
+      return {
+        rows: [
+          { id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'Pendiente' },
+          { id: 2, tipo_sancionado: 'docente', con_estado_multa: 'POR SALDAR' },
+        ],
+      };
+    },
     sgaDebtServiceImpl: {
       isConfigured: () => true,
       async getActiveDebts() {
@@ -289,12 +363,14 @@ test('get_list_multas applies laboratorista UAL assignment scope in query', asyn
       if (sql.includes('SELECT documento FROM laboratorista')) {
         return { rows: [{ documento: '12345' }] };
       }
-
-      capturedSql = sql;
-      capturedParams = params;
-      return {
-        rows: [{ id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA' }],
-      };
+      if (sql.includes('FROM multa m')) {
+        capturedSql = sql;
+        capturedParams = params;
+        return {
+          rows: [{ id: 1, tipo_sancionado: 'estudiante', con_estado_multa: 'ACTIVA' }],
+        };
+      }
+      return { rows: [] };
     },
   });
 
@@ -323,6 +399,7 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
         return {
           rows: [
             {
+              requested_id: 5,
               facultad_id: 5,
               permite_crear_multas_activas_directas: true,
               permite_saldar_multas_directas: true,

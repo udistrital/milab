@@ -143,8 +143,6 @@ CREATE TABLE IF NOT EXISTS sesion_capacitacion (
     creado_por_documento VARCHAR(50),
     modificado_por_documento VARCHAR(50),
     CONSTRAINT pk_sesion_capacitacion PRIMARY KEY (id),
-    CONSTRAINT fk_sesion_capacitacion_cursos FOREIGN KEY (codigo_curso)
-        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
     CONSTRAINT fk_sesion_capacitacion_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE RESTRICT,
     CONSTRAINT fk_sesion_capacitacion_facultad FOREIGN KEY (facultad_id)
@@ -191,9 +189,7 @@ BEGIN
          WHERE constraint_name = 'fk_sesion_capacitacion_cursos' AND table_name = 'sesion_capacitacion'
     ) THEN
         ALTER TABLE sesion_capacitacion
-            DROP CONSTRAINT IF EXISTS fk_sesion_capacitacion_cursos,
-            ADD CONSTRAINT fk_sesion_capacitacion_cursos FOREIGN KEY (codigo_curso)
-                REFERENCES cursos(codigo_curso) ON DELETE CASCADE;
+            DROP CONSTRAINT IF EXISTS fk_sesion_capacitacion_cursos;
     END IF;
 
     IF EXISTS (
@@ -201,22 +197,20 @@ BEGIN
          WHERE constraint_name = 'fk_certificacion_usuario_cursos' AND table_name = 'certificacion_usuario'
     ) THEN
         ALTER TABLE certificacion_usuario
-            DROP CONSTRAINT IF EXISTS fk_certificacion_usuario_cursos,
-            ADD CONSTRAINT fk_certificacion_usuario_cursos FOREIGN KEY (codigo_curso)
-                REFERENCES cursos(codigo_curso) ON DELETE CASCADE;
+            DROP CONSTRAINT IF EXISTS fk_certificacion_usuario_cursos;
     END IF;
 END $$;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM information_schema.table_constraints
          WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
            AND table_name = 'certificacion_usuario'
+           AND table_schema = current_schema()
     ) THEN
         ALTER TABLE certificacion_usuario
-            ADD CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario
-                UNIQUE (codigo_curso, usuario_documento) WHERE (activo = TRUE);
+            DROP CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario;
     END IF;
 END $$;
 
@@ -366,8 +360,6 @@ CREATE TABLE IF NOT EXISTS certificacion_usuario (
     creado_por_documento VARCHAR(50),
     modificado_por_documento VARCHAR(50),
     CONSTRAINT pk_certificacion_usuario PRIMARY KEY (id),
-    CONSTRAINT fk_certificacion_usuario_cursos FOREIGN KEY (codigo_curso)
-        REFERENCES cursos(codigo_curso) ON DELETE CASCADE,
     CONSTRAINT fk_certificacion_usuario_sesion_capacitacion FOREIGN KEY (sesion_capacitacion_id)
         REFERENCES sesion_capacitacion(id) ON DELETE SET NULL,
     CONSTRAINT fk_certificacion_usuario_ual FOREIGN KEY (ual_id)

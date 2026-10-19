@@ -31,10 +31,22 @@
   const sessionName = locals.nombre || '';
   const sessionDocument = locals.documento || '';
   const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  const pendingInventoryApprovalsCount = Number(locals.pendingInventoryApprovalsCount || 0);
   const shouldShowSanctionsBadge = (link) =>
     pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  const shouldShowInventoryApprovalsBadge = (link) =>
+    pendingInventoryApprovalsCount > 0 && link && link.href === '/milab/inventarios/aprobaciones';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
+  const navigationPrimaryLinks = primaryLinks.filter(
+    (link) => link && link.href !== '/milab/inicio'
+  );
+  const navigationGroups = secondaryGroups.filter(
+    (group) => group && Array.isArray(group.items) && group.items.length
+  );
+  const navigationCurrentPath = String(locals.navigationCurrentPath || '')
+    .split('?')[0]
+    .replace(/\/+$/, '') || '/';
   const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
   const activeRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
   const activeSanctionsSummary = locals.activeSanctionsSummary || { enabled: false, count: 0, items: [] };
@@ -123,6 +135,18 @@
     const key = navigationGuideMap[label];
     return key ? `data-guide="${key}"` : '';
   }
+  function isNavigationLinkActive(link) {
+    const href = String(link?.href || '')
+      .split('?')[0]
+      .replace(/\/+$/, '') || '/';
+    return (
+      navigationCurrentPath === href ||
+      (href !== '/' && navigationCurrentPath.startsWith(`${href}/`))
+    );
+  }
+  function isNavigationGroupActive(group) {
+    return Array.isArray(group?.items) && group.items.some(isNavigationLinkActive);
+  }
   function isPrestamosNavLink(link) {
     const label = String(link?.label || '').trim().toLowerCase();
     const href = String(link?.href || '').toLowerCase();
@@ -194,50 +218,8 @@
         </div>
       </div>
 
-      <nav class="navbar navbar-expand-xl app-navbar" aria-label="Navegación principal" data-guide="main-navigation">
+      <nav class="navbar app-navbar app-header-tools" aria-label="Herramientas de usuario">
         <div class="container-fluid app-navbar-inner">
-          <button class="navbar-toggler app-navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavbarNav" aria-controls="appNavbarNav" aria-expanded="false" aria-label="Mostrar navegación">
-            <i class="bi bi-list"></i>
-          </button>
-
-          <div class="collapse navbar-collapse" id="appNavbarNav">
-            <ul class="navbar-nav app-nav-inline">
-              <% primaryLinks.forEach(function(link) { %>
-                <li class="nav-item">
-                  <a class="nav-link<%= getPrestamosNavLinkClass(link) %>" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
-                    <i class="bi <%= link.icon %>" aria-hidden="true"></i>
-                    <span><%= link.label %></span>
-                    <% if (shouldShowSanctionsBadge(link)) { %>
-                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                    <% } %>
-                  </a>
-                </li>
-              <% }) %>
-
-              <% secondaryGroups.forEach(function(group, index) { %>
-                <li class="nav-item dropdown">
-                  <a class="nav-link dropdown-toggle" href="#" id="appDropdown<%= index %>" role="button" data-bs-toggle="dropdown" aria-expanded="false" <%- getNavigationGuideAttribute(group.title) %>>
-                    <i class="bi <%= group.icon %>" aria-hidden="true"></i>
-                    <span><%= group.title %></span>
-                  </a>
-                  <ul class="dropdown-menu" aria-labelledby="appDropdown<%= index %>">
-                    <% group.items.forEach(function(item) { %>
-                      <li>
-                        <a class="dropdown-item" href="<%= item.href %>" <%- getNavigationGuideAttribute(item.label) %>>
-                          <i class="bi <%= item.icon %>" aria-hidden="true"></i>
-                          <span><%= item.label %></span>
-                          <% if (shouldShowSanctionsBadge(item)) { %>
-                            <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                          <% } %>
-                        </a>
-                      </li>
-                    <% }) %>
-                  </ul>
-                </li>
-              <% }) %>
-            </ul>
-          </div>
-
           <div class="app-navbar-actions">
             <% if (claimNotifications && claimNotifications.count > 0) { %>
               <a class="btn app-help-pill" href="<%= claimNotifications.href %>" aria-label="<%= claimNotifications.label %>: <%= claimNotifications.count %>" title="<%= claimNotifications.label %>">
@@ -619,6 +601,117 @@
   <% } %>
 
   <div class="app-frame">
+    <div class="app-workspace">
+      <aside class="app-sidebar" aria-label="Menú principal">
+        <div class="app-sidebar-heading">
+          <span><i class="bi bi-grid" aria-hidden="true"></i> Menú principal</span>
+          <button
+            class="btn app-sidebar-toggler d-lg-none"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#appSidebarNavigation"
+            aria-controls="appSidebarNavigation"
+            aria-expanded="true"
+            aria-label="Mostrar u ocultar el menú"
+          >
+            <i class="bi bi-list" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="collapse show app-sidebar-navigation" id="appSidebarNavigation">
+          <nav class="app-sidebar-nav" aria-label="Navegación principal" data-guide="main-navigation">
+            <ul class="app-sidebar-primary">
+              <% if (isAuthenticated) { %>
+                <% const homeLink = { href: '/milab/inicio' }; %>
+                <li>
+                  <a
+                    class="app-sidebar-link <%= isNavigationLinkActive(homeLink) ? 'is-active' : '' %>"
+                    href="/milab/inicio"
+                    <%- isNavigationLinkActive(homeLink) ? 'aria-current="page"' : '' %>
+                  >
+                    <i class="bi bi-house-door" aria-hidden="true"></i>
+                    <span>Inicio</span>
+                  </a>
+                </li>
+              <% } %>
+
+              <% navigationPrimaryLinks.forEach(function(link) { %>
+                <li>
+                  <a
+                    class="app-sidebar-link<%= getPrestamosNavLinkClass(link) %> <%= isNavigationLinkActive(link) ? 'is-active' : '' %>"
+                    href="<%= link.href %>"
+                    <%- isNavigationLinkActive(link) ? 'aria-current="page"' : '' %>
+                    <%- getNavigationGuideAttribute(link.label) %>
+                  >
+                    <i class="bi <%= link.icon %>" aria-hidden="true"></i>
+                    <span><%= link.label %></span>
+                    <% if (shouldShowSanctionsBadge(link)) { %>
+                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
+                    <% } %>
+                    <% if (shouldShowInventoryApprovalsBadge(link)) { %>
+                      <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
+                    <% } %>
+                  </a>
+                </li>
+              <% }) %>
+            </ul>
+
+            <% if (navigationGroups.length) { %>
+              <div class="accordion app-sidebar-groups" id="appSidebarGroups">
+                <% navigationGroups.forEach(function(group, index) { %>
+                  <% const groupIsActive = isNavigationGroupActive(group); %>
+                  <div class="accordion-item app-sidebar-group">
+                    <h2 class="accordion-header">
+                      <button
+                        class="accordion-button app-sidebar-group-toggle <%= groupIsActive ? '' : 'collapsed' %>"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#appSidebarGroup<%= index %>"
+                        aria-expanded="<%= groupIsActive ? 'true' : 'false' %>"
+                        aria-controls="appSidebarGroup<%= index %>"
+                        <%- getNavigationGuideAttribute(group.title) %>
+                      >
+                        <i class="bi <%= group.icon %>" aria-hidden="true"></i>
+                        <span><%= group.title %></span>
+                      </button>
+                    </h2>
+                    <div
+                      id="appSidebarGroup<%= index %>"
+                      class="accordion-collapse collapse <%= groupIsActive ? 'show' : '' %>"
+                      data-bs-parent="#appSidebarGroups"
+                    >
+                      <div class="accordion-body">
+                        <ul class="app-sidebar-submenu">
+                          <% group.items.forEach(function(item) { %>
+                            <li>
+                              <a
+                                class="app-sidebar-link app-sidebar-sub-link <%= isNavigationLinkActive(item) ? 'is-active' : '' %>"
+                                href="<%= item.href %>"
+                                <%- isNavigationLinkActive(item) ? 'aria-current="page"' : '' %>
+                                <%- getNavigationGuideAttribute(item.label) %>
+                              >
+                                <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+                                <span><%= item.label %></span>
+                                <% if (shouldShowSanctionsBadge(item)) { %>
+                                  <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
+                                <% } %>
+                                <% if (shouldShowInventoryApprovalsBadge(item)) { %>
+                                  <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
+                                <% } %>
+                              </a>
+                            </li>
+                          <% }) %>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                <% }) %>
+              </div>
+            <% } %>
+          </nav>
+        </div>
+      </aside>
+      <div class="app-main-content">
 
   <script nonce="<%= cspNonce %>">
     function openMicrosoftLoginPopup(url) {

@@ -631,7 +631,7 @@
                     <label for="lookup-doc-id">Número de identificación</label>
                     <div class="input-shell">
                       <i id="lookup-input-icon" class="bi bi-person-vcard"></i>
-                      <input id="lookup-doc-id" type="text" name="numero_documento_identificacion" placeholder="Ingrese su número de identificación" required>
+                      <input id="lookup-doc-id" type="text" name="numero_documento_identificacion" maxlength="50" placeholder="Ingrese su número de identificación" required>
                     </div>
                     <div class="hint">Ingrese el número completo sin puntos, comas ni guiones.</div>
                   </div>
@@ -755,12 +755,13 @@
             const recaptchaResponse = grecaptcha.getResponse(recaptchaElement);
             if (recaptchaResponse.length === 0) {
               event.preventDefault();
-              alert('Por favor, complete el reCAPTCHA para continuar.');
+              window.MiLabDialogs.alert('Por favor, complete el reCAPTCHA para continuar.');
             }
           });
         }
       });
     </script>
   <% } %>
+  <%- include('../partials/app-dialogs') %>
 </body>
 </html>

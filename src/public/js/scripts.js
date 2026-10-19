@@ -39,6 +39,10 @@
   }
 
   function buildFilterRow($table) {
+    if ($table.data('gridColumnFilters') === false) {
+      return;
+    }
+
     const $thead = $table.find('thead');
     const $headerRow = $thead.find('tr').first();
 
@@ -70,7 +74,56 @@
     $thead.append($filterRow);
   }
 
-  function resolveColumnDefs($table) {
+  function getActionColumnIndex(table) {
+    const headerRow = table.tHead && table.tHead.rows[0];
+
+    if (!headerRow || headerRow.cells.length === 0) {
+      return -1;
+    }
+
+    const lastColumnIndex = headerRow.cells.length - 1;
+    const lastHeading = headerRow.cells[lastColumnIndex].textContent
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/:$/, '')
+      .toLocaleLowerCase();
+
+    return ['acciones', 'acción', 'accion', 'opciones'].includes(lastHeading)
+      ? lastColumnIndex
+      : -1;
+  }
+
+  function applyStickyActionColumn(table, columnIndex) {
+    if (columnIndex < 0) {
+      return;
+    }
+
+    Array.from(table.tHead ? table.tHead.rows : []).forEach(function (row) {
+      if (row.cells[columnIndex]) {
+        row.cells[columnIndex].classList.add('app-grid-sticky-action');
+      }
+    });
+
+    Array.from(table.tBodies).forEach(function (body) {
+      Array.from(body.rows).forEach(function (row) {
+        if (row.cells[columnIndex]) {
+          row.cells[columnIndex].classList.add('app-grid-sticky-action');
+        }
+      });
+    });
+  }
+
+  function initializeStickyActionColumns() {
+    document.querySelectorAll('table:not(.js-data-grid)').forEach(function (table) {
+      if (table.closest('.dashboard-detail-table-wrap')) {
+        return;
+      }
+
+      applyStickyActionColumn(table, getActionColumnIndex(table));
+    });
+  }
+
+  function resolveColumnDefs($table, stickyActionColumn) {
     const nonOrderable = [];
     const nonSearchable = [];
 
@@ -98,6 +151,10 @@
 
     if (nonSearchable.length > 0) {
       defs.push({ targets: nonSearchable, searchable: false });
+    }
+
+    if (stickyActionColumn >= 0) {
+      defs.push({ targets: stickyActionColumn, className: 'app-grid-sticky-action' });
     }
 
     return defs;
@@ -200,6 +257,8 @@
 
     ensureTableId($table, index);
     buildFilterRow($table);
+    const stickyActionColumn = getActionColumnIndex(table);
+    applyStickyActionColumn(table, stickyActionColumn);
 
     const pageLength = Number($table.data('gridPageLength')) || 10;
     const dataTable = $table.DataTable({
@@ -214,7 +273,7 @@
       autoWidth: false,
       scrollX: resolveScrollX($table),
       searchDelay: 250,
-      columnDefs: resolveColumnDefs($table),
+      columnDefs: resolveColumnDefs($table, stickyActionColumn),
     });
 
     attachColumnFilters(dataTable, $table);
@@ -487,39 +546,46 @@
         dropdowns: [],
       };
 
-      document.querySelectorAll('.app-navbar .collapse').forEach(function (collapse) {
+      document.querySelectorAll('.app-sidebar .collapse').forEach(function (collapse) {
+        const toggle = collapse.id
+          ? document.querySelector(`[data-bs-target="#${collapse.id}"]`)
+          : null;
         expandedState.collapses.push({
           element: collapse,
           wasShown: collapse.classList.contains('show'),
+          toggle,
+          previousExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
         });
 
         if (!collapse.classList.contains('show')) {
           collapse.classList.add('show');
         }
+
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', 'true');
+        }
       });
 
-      document
-        .querySelectorAll('.app-navbar .nav-item.dropdown, .app-user-tools .dropdown')
-        .forEach(function (dropdown) {
-          const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
-          const menu = dropdown.querySelector('.dropdown-menu');
+      document.querySelectorAll('.app-user-tools .dropdown').forEach(function (dropdown) {
+        const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
+        const menu = dropdown.querySelector('.dropdown-menu');
 
-          if (!toggle || !menu) {
-            return;
-          }
+        if (!toggle || !menu) {
+          return;
+        }
 
-          expandedState.dropdowns.push({
-            toggle,
-            menu,
-            toggleWasShown: toggle.classList.contains('show'),
-            menuWasShown: menu.classList.contains('show'),
-            previousExpanded: toggle.getAttribute('aria-expanded'),
-          });
-
-          toggle.classList.add('show');
-          toggle.setAttribute('aria-expanded', 'true');
-          menu.classList.add('show');
+        expandedState.dropdowns.push({
+          toggle,
+          menu,
+          toggleWasShown: toggle.classList.contains('show'),
+          menuWasShown: menu.classList.contains('show'),
+          previousExpanded: toggle.getAttribute('aria-expanded'),
         });
+
+        toggle.classList.add('show');
+        toggle.setAttribute('aria-expanded', 'true');
+        menu.classList.add('show');
+      });
 
       return expandedState;
     }
@@ -532,6 +598,14 @@
       expandedState.collapses.forEach(function (entry) {
         if (!entry.wasShown) {
           entry.element.classList.remove('show');
+        }
+
+        if (entry.toggle) {
+          if (entry.previousExpanded === null) {
+            entry.toggle.removeAttribute('aria-expanded');
+          } else {
+            entry.toggle.setAttribute('aria-expanded', entry.previousExpanded);
+          }
         }
       });
 
@@ -948,7 +1022,11 @@
       }
 
       showOverlay(form.getAttribute('data-oati-loading-message'));
-      form.querySelectorAll('button[type="submit"]').forEach(function (button) {
+      const submitButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+      if (submitButtons.includes(event.submitter) && !event.submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, event.submitter);
+      }
+      submitButtons.forEach(function (button) {
         button.disabled = true;
       });
     });
@@ -976,6 +1054,9 @@
       const submitter =
         event.submitter && submitButtons.includes(event.submitter) ? event.submitter : null;
 
+      if (submitter && !submitter.disabled) {
+        window.MiLabSubmitLock.preserveSubmitter(form, submitter);
+      }
       submitButtons.forEach(function (button) {
         button.disabled = true;
       });
@@ -996,6 +1077,7 @@
 
   $(document).ready(function () {
     $(GRID_SELECTOR).each(initializeDataGrid);
+    initializeStickyActionColumns();
     $('.ocultar-columna').hide();
     initializeLaboratorioCellToggle();
     initializeEmailEditor();
@@ -1004,5 +1086,20 @@
     initializeSingleSubmitGuard();
   });
 
+  document.addEventListener('milab:initialize-data-grids', function (event) {
+    const root = event.detail?.root || document;
+    const tables = root.matches?.(GRID_SELECTOR)
+      ? [root]
+      : Array.from(root.querySelectorAll(GRID_SELECTOR));
+
+    tables.forEach(initializeDataGrid);
+    initializeStickyActionColumns();
+  });
+
   document.addEventListener('shown.bs.tab', adjustTablesInTab);
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted && document.querySelector('table[data-grid-refresh-on-restore="true"]')) {
+      window.location.reload();
+    }
+  });
 })(window, document);

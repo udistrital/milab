@@ -174,27 +174,48 @@
     <div class="alert alert-info text-center">No hay sanciones pendientes asociadas a tu facultad.</div>
   <% } else { %>
     <div class="table-responsive">
-      <table class="table table-bordered table-hover table-light app-table-compact table-multas js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+      <table class="table table-bordered table-hover table-light app-table-compact table-aprobacion-multas app-grid-contained js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
         <thead class="table-light text-center">
           <tr>
             <th>ID</th>
-            <th>Documento sancionado</th>
-            <th>Fecha de la sanción</th>
-            <th>Estado</th>
+            <th>Estudiante</th>
+            <th>Laboratorio</th>
+            <th class="app-sanction-info-column">Información de sanción</th>
             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
           </tr>
         </thead>
         <tbody>
           <% multas.forEach(multa => { %>
+            <%
+            const estadoMulta = String(multa.con_estado_multa || '').trim();
+            const accionTitulo = estadoMulta.toUpperCase() === 'POR SALDAR' ? 'Marcar como saldada' : 'Autorizar sanción';
+            %>
             <tr>
               <td><%= multa.id %></td>
-              <td><%= multa.documento_sancionado %></td>
-              <td><%= new Date(multa.fecha_multa).toLocaleDateString('es-CO') %></td>
-              <td><%= multa.con_estado_multa %></td>
+              <td class="app-aprobacion-estudiante">
+                <strong class="app-sanction-person"><%= String(multa.nombre_sancionado || '').trim() || 'Nombre no registrado' %></strong>
+                <dl class="app-sanction-info-list">
+                  <div>
+                    <dt>Código</dt>
+                    <dd><%= multa.codigo_sancionado || 'Sin código' %></dd>
+                  </div>
+                  <div>
+                    <dt>Documento</dt>
+                    <dd><%= multa.documento_sancionado || 'Sin documento' %></dd>
+                  </div>
+                </dl>
+              </td>
+              <td class="app-aprobacion-lab">
+                <strong class="app-sanction-lab"><%= multa.ual || 'Laboratorio no registrado' %></strong>
+                <%- include('../partials/sanction-location', { sanction: multa }) %>
+              </td>
+              <%- include('../partials/sanction-info-cell', { sanction: multa }) %>
               <td class="text-center">
                 <button
                   type="button"
-                  class="btn btn-outline-info btn-sm app-detail-button"
+                  class="btn btn-outline-success btn-sm app-detail-button"
+                  title="<%= accionTitulo %>"
+                  aria-label="<%= accionTitulo %>"
                   data-bs-toggle="modal"
                   data-bs-target="#detalleSancionModal"
                   data-sancion-id="<%= multa.id %>"
@@ -203,12 +224,13 @@
                   data-sancion-estado="<%= multa.con_estado_multa %>"
                   data-sancion-laboratorista="<%= multa.nombre_laboratorista %>"
                   data-sancion-ual="<%= multa.ual %>"
+                  data-sancion-facultad="<%= multa.laboratorio_facultad || '' %>"
+                  data-sancion-dependencia="<%= multa.laboratorio_dependencia || '' %>"
                   data-sancion-categoria="<%= multa.cat_multa %>"
                   data-sancion-tipo="<%= multa.tipo_sancion || 'Por definir' %>"
                   data-sancion-observaciones="<%= multa.obs_multa || 'Sin observaciones' %>"
                 >
-                  <i class="bi bi-eye"></i>
-                  Ver detalle
+                  <i class="bi bi-check2-circle" aria-hidden="true"></i>
                 </button>
               </td>
             </tr>
@@ -257,6 +279,14 @@
           <div class="col-md-6">
             <div class="text-muted small">UAL</div>
             <div class="fw-semibold" data-detail-field="ual"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Facultad</div>
+            <div class="fw-semibold" data-detail-field="facultad"></div>
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small">Dependencia</div>
+            <div class="fw-semibold" data-detail-field="dependencia"></div>
           </div>
           <div class="col-md-6">
             <div class="text-muted small">Categoría de la sanción</div>
@@ -459,6 +489,8 @@
       estado: trigger.getAttribute('data-sancion-estado'),
       laboratorista: trigger.getAttribute('data-sancion-laboratorista'),
       ual: trigger.getAttribute('data-sancion-ual'),
+      facultad: trigger.getAttribute('data-sancion-facultad'),
+      dependencia: trigger.getAttribute('data-sancion-dependencia'),
       categoria: trigger.getAttribute('data-sancion-categoria'),
       tipo: trigger.getAttribute('data-sancion-tipo'),
       observaciones: trigger.getAttribute('data-sancion-observaciones'),

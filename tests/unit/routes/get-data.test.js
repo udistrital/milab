@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 test('get-data exports an Express router with handlers', () => {
   const modulePath = path.resolve(__dirname, '../../../src/routes/api/get-data.js');
@@ -13,7 +15,6 @@ test('get-data exports an Express router with handlers', () => {
   assert.equal(router.stack.length > 0, true);
 });
 
-const os = require('node:os');
 const express = require('express');
 const request = require('supertest');
 
@@ -36,24 +37,38 @@ function loadGetDataRoute({
   studentRecords,
   usuarioCodigoRows = [],
   multaRows = [],
+  poolQueryImpl,
+  sendCertificateEmailImpl = async () => null,
   sessionUser = { documento: '1001219870', documento_real: '1001219870', roles: ['estudiante'] },
 }) {
   const originals = new Map();
   const ensuredProfiles = [];
   const queries = [];
+  const emailCalls = [];
+  const generateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'milab-get-data-'));
   const stubs = {
     db: {
-      async query(sql, params) {
+      query(sql, params = [], callback) {
         queries.push({ sql, params });
-        if (String(sql).includes('FROM multa m')) return { rows: multaRows };
-        if (String(sql).includes('FROM usuario WHERE documento')) {
-          return { rows: usuarioCodigoRows };
+        const result = poolQueryImpl
+          ? poolQueryImpl(sql, params)
+          : String(sql).includes('FROM multa m')
+            ? { rows: multaRows }
+            : String(sql).includes('FROM usuario WHERE documento')
+              ? { rows: usuarioCodigoRows }
+              : { rows: [] };
+        if (typeof callback === 'function') {
+          Promise.resolve(result).then(
+            (rows) => callback(null, rows),
+            (error) => callback(error)
+          );
+          return undefined;
         }
-        return { rows: [] };
+        return Promise.resolve(result);
       },
     },
     appUrl: { buildAppUrl: (value) => value },
-    generatePath: { buildGeneratePath: (value) => path.join(os.tmpdir(), value) },
+    generatePath: { buildGeneratePath: (value) => path.join(generateDir, value) },
     oatiClient: {
       getAcademicServicePath: (value) => value,
       async requestOati(servicePath) {
@@ -71,7 +86,10 @@ function loadGetDataRoute({
     certificateEmail: {
       buildCertificateEmailFailureFeedback: () => null,
       buildCertificateEmailFeedback: () => null,
-      sendCertificateEmail: async () => null,
+      sendCertificateEmail: async (payload) => {
+        emailCalls.push(payload);
+        return sendCertificateEmailImpl(payload);
+      },
     },
     userIdentity: {
       async ensurePerfilEstudiante(profile) {
@@ -107,6 +125,8 @@ function loadGetDataRoute({
     app,
     ensuredProfiles,
     queries,
+    emailCalls,
+    generateDir,
     requestedDocumentos,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
@@ -115,6 +135,7 @@ function loadGetDataRoute({
       }
       delete require.cache[getDataRoutePath];
       delete require.cache[getDataStudentRecordPath];
+      fs.rmSync(generateDir, { recursive: true, force: true });
     },
   };
 }
@@ -234,6 +255,112 @@ test('get-data rechaza la solicitud si la sesión no tiene documento', async () 
 
     assert.equal(response.body.view, 'home/message_error');
     assert.deepEqual(loaded.requestedDocumentos, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data rejects an egresado before creating a certificate or database record', async () => {
+  const loaded = loadGetDataRoute({
+    studentRecords: [{ ...getDataEgresado, documento: '1001219870' }],
+    sessionUser: { documento: '80000000', roles: ['admin'] },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/').type('form').send({
+      numero_documento_identificacion: '1001219870',
+      motivo_exp: 'Grado',
+      correo: 'estudiante@udistrital.edu.co',
+    });
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(loaded.ensuredProfiles.length, 0);
+    assert.equal(
+      loaded.queries.some(({ sql }) => sql.includes('INSERT INTO certificado_estudiante')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(loaded.generateDir, `${getDataEgresado.codigo}.png`)),
+      false
+    );
+    assert.equal(loaded.emailCalls.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data creates a PDF and sends the certificate email after a clear active-student lookup', async () => {
+  let persistenceComplete = false;
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('INSERT INTO certificado_estudiante')) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        persistenceComplete = true;
+        return { rows: [{ id: 901 }] };
+      }
+      if (sql.includes('FROM multa m')) return { rows: [] };
+      if (sql.includes('FROM usuario WHERE documento')) return { rows: [] };
+      return { rows: [] };
+    },
+    sendCertificateEmailImpl: async () => {
+      assert.equal(persistenceComplete, true);
+      return { status: 'sent' };
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/').type('form').send({
+      numero_documento_identificacion: '1001219870',
+      motivo_exp: 'Grado',
+      correo: 'estudiante@udistrital.edu.co',
+    });
+    const pdfPath = path.join(loaded.generateDir, `certificado_${getDataActivo.codigo}.pdf`);
+    const pdfBytes = fs.readFileSync(pdfPath);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    assert.equal(loaded.emailCalls.length, 1);
+    assert.equal(loaded.emailCalls[0].pdfPath, pdfPath);
+    assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
+    assert.ok(loaded.queries.some(({ sql }) => sql.includes('INSERT INTO certificado_estudiante')));
+    assert.equal(persistenceComplete, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-data does not create a PDF or send email when certificate persistence fails', async () => {
+  let emailCallCount = 0;
+  const loaded = loadGetDataRoute({
+    studentRecords: [getDataActivo],
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('INSERT INTO certificado_estudiante')) {
+        throw new Error('Certificate database unavailable');
+      }
+      if (sql.includes('FROM multa m')) return { rows: [] };
+      if (sql.includes('FROM usuario WHERE documento')) return { rows: [] };
+      return { rows: [] };
+    },
+    sendCertificateEmailImpl: async () => {
+      emailCallCount += 1;
+      return { status: 'sent' };
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/').type('form').send({
+      numero_documento_identificacion: '1001219870',
+      motivo_exp: 'Grado',
+      correo: 'estudiante@udistrital.edu.co',
+    });
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(emailCallCount, 0);
+    assert.equal(
+      fs.existsSync(path.join(loaded.generateDir, `certificado_${getDataActivo.codigo}.pdf`)),
+      false
+    );
   } finally {
     loaded.restore();
   }

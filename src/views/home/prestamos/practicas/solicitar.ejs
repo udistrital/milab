@@ -135,6 +135,7 @@
             class="form-control"
             id="justificacion"
             rows="4"
+            maxlength="2000"
             minlength="10"
             required
             placeholder="Describe el objetivo de la practica."
@@ -241,6 +242,7 @@
                     type="text"
                     class="form-control"
                     id="practicaSignatureText"
+                    maxlength="255"
                     placeholder="Escribe tu nombre aqui"
                     autocomplete="off"
                   >
@@ -292,27 +294,27 @@
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label" for="pdf_fecha">Fecha</label>
-            <input type="text" class="form-control" id="pdf_fecha">
+            <input type="text" class="form-control" id="pdf_fecha" maxlength="10">
           </div>
           <div class="col-md-4">
             <label class="form-label" for="pdf_cod_equipo">Codigo equipo</label>
-            <input type="text" class="form-control" id="pdf_cod_equipo">
+            <input type="text" class="form-control" id="pdf_cod_equipo" maxlength="50">
           </div>
           <div class="col-md-4">
             <label class="form-label" for="pdf_clase_equipo">Clase equipo</label>
-            <input type="text" class="form-control" id="pdf_clase_equipo">
+            <input type="text" class="form-control" id="pdf_clase_equipo" maxlength="255">
           </div>
           <div class="col-md-6">
             <label class="form-label" for="pdf_nombre">Nombre</label>
-            <input type="text" class="form-control" id="pdf_nombre">
+            <input type="text" class="form-control" id="pdf_nombre" maxlength="200">
           </div>
           <div class="col-md-6">
             <label class="form-label" for="pdf_celular">Celular</label>
-            <input type="text" class="form-control" id="pdf_celular">
+            <input type="text" class="form-control" id="pdf_celular" maxlength="20">
           </div>
           <div class="col-md-6">
             <label class="form-label" for="pdf_proyecto">Proyecto curricular</label>
-            <input type="text" class="form-control" id="pdf_proyecto">
+            <input type="text" class="form-control" id="pdf_proyecto" maxlength="255">
           </div>
           <div class="col-md-3">
             <label class="form-label" for="pdf_sede">Sede</label>
@@ -325,19 +327,19 @@
           </div>
           <div class="col-md-3">
             <label class="form-label" for="pdf_salon">Salon</label>
-            <input type="text" class="form-control" id="pdf_salon">
+            <input type="text" class="form-control" id="pdf_salon" maxlength="150">
           </div>
           <div class="col-md-6">
             <label class="form-label" for="pdf_hora_salida">Hora salida</label>
-            <input type="text" class="form-control" id="pdf_hora_salida">
+            <input type="text" class="form-control" id="pdf_hora_salida" maxlength="5">
           </div>
           <div class="col-md-6">
             <label class="form-label" for="pdf_hora_entrega">Hora entrega</label>
-            <input type="text" class="form-control" id="pdf_hora_entrega">
+            <input type="text" class="form-control" id="pdf_hora_entrega" maxlength="5">
           </div>
           <div class="col-12">
             <label class="form-label" for="pdf_observaciones">Observaciones</label>
-            <textarea class="form-control" id="pdf_observaciones" rows="3"></textarea>
+            <textarea class="form-control" id="pdf_observaciones" maxlength="2000" rows="3"></textarea>
           </div>
         </div>
         <div id="pdfExtraFields"></div>
@@ -747,9 +749,9 @@
         } else if (field.key === 'motivo') {
           html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><select class="form-select" data-key="' + field.key + '"><option value="">Seleccione...</option><option value="practica">Practica academica</option><option value="mantenimiento">Mantenimiento</option><option value="investigacion">Investigacion</option><option value="prestamo">Prestamo</option><option value="garantia">Garantia</option><option value="otro">Otro</option></select></div>';
         } else if (field.textarea) {
-          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><textarea class="form-control" data-key="' + field.key + '"></textarea></div>';
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><textarea class="form-control" maxlength="2000" data-key="' + field.key + '"></textarea></div>';
         } else {
-          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><input type="text" class="form-control" data-key="' + field.key + '"></div>';
+          html += '<div class="col-md-' + field.col + '"><label class="form-label">' + field.label + '</label><input type="text" class="form-control" maxlength="2000" data-key="' + field.key + '"></div>';
         }
       });
       html += '</div>';
@@ -774,7 +776,7 @@
           if (!fr002Rows || count >= 20) return;
           var row = document.createElement('div');
           row.className = 'row g-2 align-items-end fr002-row';
-          row.innerHTML = '<div class="col-md-5"><label class="form-label">Materiales y equipos</label><input type="text" class="form-control" data-key="materiales"></div><div class="col-md-3"><label class="form-label">Reactivos</label><input type="text" class="form-control" data-key="reactivos"></div><div class="col-md-2"><label class="form-label">Concentracion</label><input type="text" class="form-control" data-key="concentracion"></div><div class="col-md-2"><label class="form-label">Cantidad</label><input type="text" class="form-control" data-key="cantidad"></div>';
+          row.innerHTML = '<div class="col-md-5"><label class="form-label">Materiales y equipos</label><input type="text" class="form-control" maxlength="2000" data-key="materiales"></div><div class="col-md-3"><label class="form-label">Reactivos</label><input type="text" class="form-control" maxlength="2000" data-key="reactivos"></div><div class="col-md-2"><label class="form-label">Concentracion</label><input type="text" class="form-control" maxlength="2000" data-key="concentracion"></div><div class="col-md-2"><label class="form-label">Cantidad</label><input type="text" class="form-control" maxlength="50" data-key="cantidad"></div>';
           fr002Rows.appendChild(row);
         };
         if (fr002Btn) fr002Btn.addEventListener('click', addFr002Row);
@@ -787,7 +789,7 @@
           if (!fr001Rows || count >= 18) return;
           var row = document.createElement('div');
           row.className = 'row g-2 align-items-end fr001-row';
-          row.innerHTML = '<div class="col-md-2"><label class="form-label">Cant</label><input type="text" class="form-control" data-key="cant"></div><div class="col-md-6"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div><div class="col-md-2"><label class="form-label">Interno</label><input type="text" class="form-control" data-key="interno"></div><div class="col-md-2"><label class="form-label">Entrega</label><input type="text" class="form-control" data-key="entrega"></div>';
+          row.innerHTML = '<div class="col-md-2"><label class="form-label">Cant</label><input type="text" class="form-control" maxlength="50" data-key="cant"></div><div class="col-md-6"><label class="form-label">Descripcion</label><input type="text" class="form-control" maxlength="2000" data-key="desc"></div><div class="col-md-2"><label class="form-label">Interno</label><input type="text" class="form-control" maxlength="255" data-key="interno"></div><div class="col-md-2"><label class="form-label">Entrega</label><input type="text" class="form-control" maxlength="255" data-key="entrega"></div>';
           fr001Rows.appendChild(row);
         };
         if (fr001Btn) fr001Btn.addEventListener('click', addFr001Row);
@@ -800,9 +802,9 @@
           if (!fr004Rows || count >= 21) return;
           var row = document.createElement('div');
           row.className = 'row g-2 align-items-end fr004-row';
-          var inner = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div>';
+          var inner = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" maxlength="2000" data-key="desc"></div>';
           for (var i = 1; i <= 15; i += 1) {
-            inner += '<div class="col-md-1"><label class="form-label">G' + i + '</label><input type="text" class="form-control" data-key="g' + i + '"></div>';
+            inner += '<div class="col-md-1"><label class="form-label">G' + i + '</label><input type="text" class="form-control" maxlength="50" data-key="g' + i + '"></div>';
           }
           row.innerHTML = inner;
           fr004Rows.appendChild(row);
@@ -817,7 +819,7 @@
           if (!fr006ElemRows || count >= 4) return;
           var row = document.createElement('div');
           row.className = 'row g-2 align-items-end fr006-elem-row';
-          row.innerHTML = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" data-key="desc"></div><div class="col-md-2"><label class="form-label">Placa</label><input type="text" class="form-control" data-key="placa"></div><div class="col-md-2"><label class="form-label">F. Salida</label><input type="text" class="form-control" data-key="fSalida"></div><div class="col-md-2"><label class="form-label">F. Devol</label><input type="text" class="form-control" data-key="fDevol"></div><div class="col-md-2"><label class="form-label">Precio</label><input type="text" class="form-control" data-key="precio"></div>';
+          row.innerHTML = '<div class="col-md-4"><label class="form-label">Descripcion</label><input type="text" class="form-control" maxlength="2000" data-key="desc"></div><div class="col-md-2"><label class="form-label">Placa</label><input type="text" class="form-control" maxlength="100" data-key="placa"></div><div class="col-md-2"><label class="form-label">F. Salida</label><input type="text" class="form-control" maxlength="10" data-key="fSalida"></div><div class="col-md-2"><label class="form-label">F. Devol</label><input type="text" class="form-control" maxlength="10" data-key="fDevol"></div><div class="col-md-2"><label class="form-label">Precio</label><input type="text" class="form-control" maxlength="50" data-key="precio"></div>';
           fr006ElemRows.appendChild(row);
         };
         if (fr006ElemBtn) fr006ElemBtn.addEventListener('click', addFr006ElemRow);
@@ -830,7 +832,7 @@
           if (!fr006UsrRows || count >= 5) return;
           var row = document.createElement('div');
           row.className = 'row g-2 align-items-end fr006-usr-row';
-          row.innerHTML = '<div class="col-md-6"><label class="form-label">Nombre</label><input type="text" class="form-control" data-key="uNom"></div><div class="col-md-2"><label class="form-label">Codigo</label><input type="text" class="form-control" data-key="uCod"></div><div class="col-md-2"><label class="form-label">Cedula</label><input type="text" class="form-control" data-key="uCed"></div><div class="col-md-2"><label class="form-label">Celular</label><input type="text" class="form-control" data-key="uCel"></div>';
+          row.innerHTML = '<div class="col-md-6"><label class="form-label">Nombre</label><input type="text" class="form-control" maxlength="200" data-key="uNom"></div><div class="col-md-2"><label class="form-label">Codigo</label><input type="text" class="form-control" maxlength="19" data-key="uCod"></div><div class="col-md-2"><label class="form-label">Cedula</label><input type="text" class="form-control" maxlength="50" data-key="uCed"></div><div class="col-md-2"><label class="form-label">Celular</label><input type="text" class="form-control" maxlength="20" data-key="uCel"></div>';
           fr006UsrRows.appendChild(row);
         };
         if (fr006UsrBtn) fr006UsrBtn.addEventListener('click', addFr006UsrRow);

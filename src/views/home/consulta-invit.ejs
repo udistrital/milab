@@ -183,7 +183,7 @@
 
               <div class="guest-check-field">
                 <label class="form-label" for="documento">Código</label>
-                <input type="text" class="form-control" id="documento" name="documento" placeholder="Ingrese código" required>
+                <input type="text" class="form-control" id="documento" name="documento" maxlength="20" placeholder="Ingrese código" required>
               </div>
 
               <div class="guest-check-captcha-shell">
@@ -246,7 +246,7 @@
       const response = grecaptcha.getResponse();
       if (!response) {
         e.preventDefault();
-        alert("Por favor completa el reCAPTCHA.");
+        window.MiLabDialogs.alert("Por favor completa el reCAPTCHA.");
       }
     });
   });

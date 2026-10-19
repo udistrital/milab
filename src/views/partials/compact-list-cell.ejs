@@ -1,0 +1,20 @@
+<%
+  const compactCellText = String(typeof text === 'undefined' || text === null ? '' : text);
+  const compactCellThreshold =
+    Number(typeof threshold === 'undefined' ? 120 : threshold) || 120;
+  const compactCellHasMore = compactCellText.length > compactCellThreshold;
+%>
+<span
+  class="app-labs-cell-text <%= compactCellHasMore ? 'is-collapsed' : '' %>"
+  data-labs-text="true"
+><%= compactCellText %></span>
+<% if (compactCellHasMore) { %>
+  <button
+    type="button"
+    class="app-labs-toggle"
+    data-labs-toggle="true"
+    aria-expanded="false"
+  >
+    Ver más
+  </button>
+<% } %>

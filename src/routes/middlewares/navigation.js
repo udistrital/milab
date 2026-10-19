@@ -124,159 +124,6 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
-function ensureCapacitacionNavigationItems(navigation, roles) {
-  if (!navigation || typeof navigation !== 'object') return navigation;
-  const normalizedRoles = normalizeRoles(roles);
-  if (!normalizedRoles.length) return navigation;
-
-  const canGestionar = normalizedRoles.some((r) =>
-    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
-  );
-  const canCursos = normalizedRoles.includes('admin');
-  const canAsociacion = normalizedRoles.some((r) =>
-    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
-  );
-  const canMisCapacitaciones = normalizedRoles.some((r) => ['estudiante', 'docente'].includes(r));
-
-  const desiredItems = [];
-  if (canCursos) {
-    desiredItems.push({
-      label: 'Creación de cursos',
-      href: '/milab/capacitacion/cursos/load_info',
-      icon: 'bi-book',
-    });
-  }
-  if (canAsociacion) {
-    desiredItems.push({
-      label: 'Asociación curso-equipo',
-      href: '/milab/capacitacion/asociacion-equipos/load_info',
-      icon: 'bi-diagram-3',
-    });
-  }
-  if (canGestionar) {
-    desiredItems.push({
-      label: 'Gestionar capacitaciones',
-      href: '/milab/capacitacion/gestion/load_info',
-      icon: 'bi-calendar-check',
-    });
-  }
-  if (canMisCapacitaciones) {
-    desiredItems.push({
-      label: 'Mis capacitaciones',
-      href: '/milab/capacitacion/mis-capacitaciones/load_info',
-      icon: 'bi-journal-bookmark',
-    });
-  }
-
-  if (!desiredItems.length) return navigation;
-
-  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
-    ? [...navigation.secondaryGroups]
-    : [];
-  const capTitleLower = 'capacitación';
-  let capGroupIndex = secondaryGroups.findIndex(
-    (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === capTitleLower
-  );
-
-  if (capGroupIndex < 0) {
-    secondaryGroups.push({
-      title: 'Capacitación',
-      icon: 'bi-mortarboard',
-      items: [],
-    });
-    capGroupIndex = secondaryGroups.length - 1;
-  }
-
-  const capGroup = { ...(secondaryGroups[capGroupIndex] || {}) };
-  const existingItems = Array.isArray(capGroup.items) ? [...capGroup.items] : [];
-  desiredItems.forEach((desired) => {
-    const exists = existingItems.some((item) => item?.href === desired.href);
-    if (!exists) existingItems.push(desired);
-  });
-
-  const ORDER_HINTS = {
-    '/milab/capacitacion/cursos/load_info': 1,
-    '/milab/capacitacion/asociacion-equipos/load_info': 2,
-    '/milab/capacitacion/gestion/load_info': 3,
-    '/milab/capacitacion/mis-capacitaciones/load_info': 4,
-  };
-  existingItems.sort((a, b) => {
-    const ha = ORDER_HINTS[a?.href] || 999;
-    const hb = ORDER_HINTS[b?.href] || 999;
-    if (ha !== hb) return ha - hb;
-    return (a?.label || '').localeCompare(b?.label || '');
-  });
-
-  capGroup.items = existingItems;
-  if (!capGroup.icon) capGroup.icon = 'bi-mortarboard';
-  secondaryGroups[capGroupIndex] = capGroup;
-
-  return {
-    ...navigation,
-    secondaryGroups,
-  };
-}
-
-function ensureHojasVidaNavigationItems(navigation, roles) {
-  if (!navigation || typeof navigation !== 'object') return navigation;
-  const normalizedRoles = normalizeRoles(roles);
-  if (!normalizedRoles.length) return navigation;
-
-  const canAccess = normalizedRoles.some((r) =>
-    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
-  );
-
-  if (!canAccess) return navigation;
-
-  const desiredItems = [
-    {
-      label: 'Hojas de Vida y Mantenimientos',
-      href: '/milab/prestamos/hojas-vida',
-      icon: 'bi-journal-medical',
-    },
-  ];
-
-  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
-    ? [...navigation.secondaryGroups]
-    : [];
-  const inventarioTitleLower = 'inventario';
-  const prestamosTitleLower = 'prestamos';
-  let targetGroupIndex = secondaryGroups.findIndex(
-    (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === inventarioTitleLower
-  );
-
-  if (targetGroupIndex < 0) {
-    targetGroupIndex = secondaryGroups.findIndex(
-      (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === prestamosTitleLower
-    );
-  }
-
-  if (targetGroupIndex < 0) {
-    secondaryGroups.push({
-      title: 'Inventario',
-      icon: 'bi-box-seam',
-      items: [],
-    });
-    targetGroupIndex = secondaryGroups.length - 1;
-  }
-
-  const targetGroup = { ...(secondaryGroups[targetGroupIndex] || {}) };
-  const existingItems = Array.isArray(targetGroup.items) ? [...targetGroup.items] : [];
-  desiredItems.forEach((desired) => {
-    const exists = existingItems.some((item) => item?.href === desired.href);
-    if (!exists) existingItems.push(desired);
-  });
-
-  targetGroup.items = existingItems;
-  if (!targetGroup.icon) targetGroup.icon = 'bi-box-seam';
-  secondaryGroups[targetGroupIndex] = targetGroup;
-
-  return {
-    ...navigation,
-    secondaryGroups,
-  };
-}
-
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -298,6 +145,7 @@ function buildStaticNavigation(user) {
       createGroup('Configuración', 'bi-gear', [
         createLink('Roles', '/milab/api/admin/roles', 'bi-people'),
         createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
+        createLink('Esquema de base de datos', '/milab/api/admin/esquema-bd', 'bi-database'),
       ])
     );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
@@ -350,32 +198,6 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink('Creación de cursos', '/milab/capacitacion/cursos/load_info', 'bi-book'),
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Inventario', 'bi-box-seam', [
-        createLink(
-          'Hojas de Vida y Mantenimientos',
-          '/milab/prestamos/hojas-vida',
-          'bi-journal-medical'
-        ),
-      ])
-    );
   }
 
   if (role === 'coordinador') {
@@ -422,102 +244,6 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Inventario', 'bi-box-seam', [
-        createLink(
-          'Hojas de Vida y Mantenimientos',
-          '/milab/prestamos/hojas-vida',
-          'bi-journal-medical'
-        ),
-      ])
-    );
-  }
-
-  if (role === 'coordinador_general') {
-    primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
-    primaryLinks.push(
-      createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
-    );
-    primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
-
-    secondaryGroups.push(
-      createGroup('Registro', 'bi-person-plus', [
-        createLink(
-          'Registro de laboratoristas',
-          '/milab/api/register_labs/load_info',
-          'bi-person-plus'
-        ),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Consulta y control', 'bi-grid-1x2', [
-        createLink(
-          'Consulta masiva',
-          '/milab/api/get_list_estudiantes/get_consulta',
-          'bi-collection'
-        ),
-        createLink(
-          'Estudiantes y docentes registrados',
-          '/milab/api/estudiantes_registrados',
-          'bi-card-list'
-        ),
-        createLink(
-          'Laboratoristas registrados',
-          '/milab/api/laboratoristas_registrados',
-          'bi-person-workspace'
-        ),
-        createLink('Sanciones', '/milab/api/get_list_multas', 'bi-shield-exclamation'),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Paz y Salvos', 'bi-patch-check', [
-        createLink('Verificar estudiante', '/milab/api/verificar_estudiante', 'bi-person-check'),
-        createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Inventario', 'bi-box-seam', [
-        createLink(
-          'Hojas de Vida y Mantenimientos',
-          '/milab/prestamos/hojas-vida',
-          'bi-journal-medical'
-        ),
-      ])
-    );
   }
 
   if (role === 'laboratorista') {
@@ -554,31 +280,6 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
-
-    secondaryGroups.push(
-      createGroup('Inventario', 'bi-box-seam', [
-        createLink(
-          'Hojas de Vida y Mantenimientos',
-          '/milab/prestamos/hojas-vida',
-          'bi-journal-medical'
-        ),
-      ])
-    );
   }
 
   if (role === 'monitor') {
@@ -593,16 +294,6 @@ function buildStaticNavigation(user) {
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Mis capacitaciones',
-          '/milab/capacitacion/mis-capacitaciones/load_info',
-          'bi-journal-bookmark'
-        ),
-      ])
-    );
   }
 
   if (role === 'docente') {
@@ -614,16 +305,6 @@ function buildStaticNavigation(user) {
       )
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Mis capacitaciones',
-          '/milab/capacitacion/mis-capacitaciones/load_info',
-          'bi-journal-bookmark'
-        ),
-      ])
-    );
   }
 
   if (isAuthenticated) {
@@ -662,6 +343,45 @@ async function getPendingSanctionsCount(user, role) {
   );
 
   return result.rows[0]?.total || 0;
+}
+
+async function getPendingInventoryApprovalsCount(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const globalViewer = roles.some((role) => ['admin', 'coordinador_general'].includes(role));
+  if (!user || (!globalViewer && !roles.includes('coordinador'))) return 0;
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM inventario_carga c
+        JOIN ual u ON u.ual_id = c.ual_id
+        LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id
+        WHERE c.estado = 'pendiente_aprobacion'
+          AND (
+            $1::boolean
+            OR (
+              COALESCE(encargado.coordinador_documento, c.coordinador_documento) = $2
+              AND EXISTS (
+                SELECT 1
+                FROM coordinador_facultad_alcance ca
+                JOIN coordinador active_coordinator
+                  ON active_coordinator.documento = ca.coordinador_documento_id
+                 AND active_coordinator.activo = TRUE
+                WHERE ca.coordinador_documento_id = $2
+                  AND ca.facultad_id = u.facultad_id
+                  AND ca.activo = TRUE
+              )
+            )
+          )
+      `,
+      [globalViewer, user.documento || null]
+    );
+    return Number(result.rows[0]?.total) || 0;
+  } catch (error) {
+    console.warn('Navegación: no fue posible consultar aprobaciones de inventario:', error.message);
+    return 0;
+  }
 }
 
 async function getActiveSanctionsSummary(user, role) {
@@ -754,7 +474,7 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      const patchedCap = ensureCapacitacionNavigationItems(
+      return ensureCoordinatorSignatureAccountLink(
         {
           isAuthenticated,
           role: getPrimaryRole(roles),
@@ -763,8 +483,6 @@ async function buildNavigation(user) {
         },
         roles
       );
-      const patchedHV = ensureHojasVidaNavigationItems(patchedCap, roles);
-      return ensureCoordinatorSignatureAccountLink(patchedHV, roles);
     }
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -773,14 +491,7 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    const patchedCap = ensureCapacitacionNavigationItems(
-      {
-        ...filteredFallback,
-        roleLabel: formatRoleLabel(roles),
-      },
-      roles
-    );
-    return ensureHojasVidaNavigationItems(patchedCap, roles);
+    return { ...filteredFallback, roleLabel: formatRoleLabel(roles) };
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -789,14 +500,7 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  const patchedCap = ensureCapacitacionNavigationItems(
-    {
-      ...filteredFallback,
-      roleLabel: formatRoleLabel(roles),
-    },
-    roles
-  );
-  return ensureHojasVidaNavigationItems(patchedCap, roles);
+  return { ...filteredFallback, roleLabel: formatRoleLabel(roles) };
 }
 
 async function navigationMiddleware(req, res, next) {
@@ -806,6 +510,7 @@ async function navigationMiddleware(req, res, next) {
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
     const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
     // Un contador del menú no debe impedir cargar la página.
@@ -823,11 +528,13 @@ async function navigationMiddleware(req, res, next) {
     res.locals.user = sessionUser;
     res.locals.roles = roles;
     res.locals.tipo = primaryRole;
+    res.locals.navigationCurrentPath = req.path || '';
     res.locals.documento = sessionUser?.documento || '';
     res.locals.appNavigation = navigation;
     res.locals.isAuthenticated = navigation.isAuthenticated;
     res.locals.sessionRoleLabel = navigation.roleLabel;
     res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;
@@ -838,7 +545,7 @@ async function navigationMiddleware(req, res, next) {
   }
 
   async function getClaimNotifications(user, role) {
-    if (!user || !['estudiante', 'laboratorista', 'admin'].includes(role)) return null;
+    if (!user || !['estudiante', 'laboratorista'].includes(role)) return null;
     const document = String(user.documento_real || user.documento || '');
     let result;
     if (role === 'estudiante') {
@@ -853,8 +560,9 @@ async function navigationMiddleware(req, res, next) {
         `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
          JOIN laboratorista l ON l.documento = r.responsable_documento_id
          WHERE r.fecha_respuesta IS NULL
-           AND ($1::boolean OR ((l.documento = $2 OR l.n_usuario = $2) AND l.activo = TRUE))`,
-        [role === 'admin', document]
+           AND (l.documento = $1 OR l.n_usuario = $1)
+           AND l.activo = TRUE`,
+        [document]
       );
     }
     return {

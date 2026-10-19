@@ -207,6 +207,52 @@ test('aprobacion_multa activar redirects on successful update', async () => {
   }
 });
 
+test('aprobacion_multa activation includes faculty and dependency in the notice payload', async () => {
+  let emailPayload;
+  const loaded = loadRoute({
+    resolveStudentContactImpl: async () => ({
+      nombre: 'Estudiante',
+      documento: '123',
+      codigo: '2024',
+      correo: 'estudiante@udistrital.edu.co',
+    }),
+    sendSanctionEmailImpl: async (payload) => {
+      emailPayload = payload;
+      return { ok: true };
+    },
+    queryImpl: async (sql) => {
+      if (sql.includes('UPDATE multa AS m')) return { rowCount: 1, rows: [] };
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
+        return {
+          rows: [
+            {
+              usuario_sancionado_id: 77,
+              fecha_multa: '2026-01-01',
+              ual: 'Lab',
+              obs_multa: '',
+              laboratorio_facultad: 'Facultad de Ingeniería',
+              laboratorio_dependencia: 'Departamento de Física',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route)).post('/activar').type('form').send({
+      multa_id: '1',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(emailPayload.facultad, 'Facultad de Ingeniería');
+    assert.equal(emailPayload.dependencia, 'Departamento de Física');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('aprobacion_multa activar from listado redirects to sanctions list', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {

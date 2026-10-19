@@ -81,7 +81,7 @@
             <div class="d-flex gap-2 flex-wrap align-items-center">
               <div class="input-group input-group-sm" style="max-width:260px;">
                 <span class="input-group-text">Curso</span>
-                <input type="text" class="form-control" id="filter-curso-solicitudes" placeholder="Buscar por código o nombre" />
+                <input type="text" class="form-control" id="filter-curso-solicitudes" maxlength="255" placeholder="Buscar por código o nombre" />
               </div>
               <select class="form-select form-select-sm" id="filter-estado-solicitudes" style="max-width:200px;">
                 <option value="">Todos los estados</option>
@@ -203,7 +203,7 @@
             <div class="row g-3 align-items-end mb-4">
               <div class="col-md-6">
                 <label for="filter-asistidos-search" class="form-label">Buscar inscrito</label>
-                <input type="text" id="filter-asistidos-search" class="form-control" placeholder="Filtrar tabla por nombre o documento" />
+                <input type="text" id="filter-asistidos-search" class="form-control" maxlength="255" placeholder="Filtrar tabla por nombre o documento" />
               </div>
               <div class="col-md-6 text-end">
                 <button type="button" id="btn-certificar-asistentes-sesion" class="btn btn-outline-success me-2">
@@ -292,7 +292,7 @@
               </div>
               <div class="col-md-3">
                 <label for="report-codigo-curso" class="form-label">Código curso</label>
-                <input type="text" class="form-control" id="report-codigo-curso" placeholder="Ej. MOCK-COURSE-055" />
+                <input type="text" class="form-control" id="report-codigo-curso" maxlength="100" placeholder="Ej. MOCK-COURSE-055" />
               </div>
               <div class="col-md-3">
                 <label for="report-ual" class="form-label">Laboratorio / UAL</label>
@@ -1179,7 +1179,7 @@
     }
   }
 
-  function onCambiarEstadoSesion(ev) {
+  async function onCambiarEstadoSesion(ev) {
     var btn = ev.currentTarget;
     var id = btn?.getAttribute('data-id-sesion');
     var est = btn?.getAttribute('data-estado');
@@ -1187,7 +1187,7 @@
     var okMsg = est === 'cancelada'
       ? '¿Seguro deseas CANCELAR esta sesión? No podrá revertirse (mejor marca Realizada si solo deseas cerrarla).'
       : '¿Cambiar estado de la sesión #' + id + ' a: ' + est.toUpperCase() + '?';
-    if (!window.confirm(okMsg)) return;
+    if (!(await window.MiLabDialogs.confirm(okMsg))) return;
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Cambiando…');
       var xhr = new XMLHttpRequest();
@@ -1260,12 +1260,13 @@
     onMarcarAsistenciaClick(null);
   }
 
-  function onCertificarBtn(ev) {
+  async function onCertificarBtn(ev) {
+    var btn = ev?.currentTarget;
     var id = ev?.currentTarget?.getAttribute('data-id-sesion') || state.selectedSesionId;
     if (!id) { setGlobalAlert('Selecciona la sesión primero.', 'warning'); return; }
-    if (!window.confirm('¿CERTIFICAR a TODOS los asistentes de la sesión #' + id + '?\nEsto generará certificaciones locales vigentes para los usuarios que asistieron (asistio=TRUE) y marcará la sesión como "Realizada" por defecto.')) return;
+    if (!(await window.MiLabDialogs.confirm('¿CERTIFICAR a TODOS los asistentes de la sesión #' + id + '?\nEsto generará certificaciones locales vigentes para los usuarios que asistieron (asistio=TRUE) y marcará la sesión como "Realizada" por defecto.'))) return;
     try {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(ev?.currentTarget, 'Certificando…');
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Certificando…');
       var xhr = new XMLHttpRequest();
       xhr.open('POST', api.certificar(id), true);
       setJsonPostHeaders(xhr);
@@ -1274,8 +1275,22 @@
         if (!data) return;
         if (data.ok || data.success) {
           var n = Number(data.certificados_emitidos || data.count || (Array.isArray(data.certificados) ? data.certificados.length : 0)) || 0;
-          var omit = Number(data.ya_certificados_omitidos?.length || data.omitidos?.length || 0);
-          setGlobalAlert('✅ Certificación completada. ' + n + ' NUEVOS certificados. ' + omit + ' omitidos (ya tenían activa).', 'success');
+          var omitidos = Array.isArray(data.ya_certificados_omitidos) ? data.ya_certificados_omitidos : [];
+          var omit = omitidos.length;
+          var hayErrores = omitidos.some(function (o) {
+            return o && o.motivo && !/ya ten[ií]a/i.test(o.motivo);
+          });
+          var msg = '✅ Certificación completada. ' + n + ' NUEVO(S) certificado(s). ' + omit + ' omitido(s).';
+          if (hayErrores) {
+            var detalles = omitidos.filter(function (o) { return o && o.motivo && !/ya ten[ií]a/i.test(o.motivo); })
+              .map(function (o) { return (o.usuario_nombre || o.usuario_documento || '?') + ': ' + o.motivo; })
+              .slice(0, 3).join(' | ');
+            setGlobalAlert('⚠️ Certificación con errores. ' + n + ' certificado(s) OK, ' + omit + ' omitido(s). Errores: ' + detalles, 'warning');
+          } else if (n === 0 && omit > 0) {
+            setGlobalAlert('ℹ️ ' + omit + ' asistente(s) ya contaban con certificación vigente (no se duplicó).', 'info');
+          } else {
+            setGlobalAlert(msg, 'success');
+          }
           loadSesiones();
           if (state.selectedSesionId === id) loadAsistenciasSesion(id);
         } else {
@@ -1285,7 +1300,7 @@
       xhr.onerror = function () { setGlobalAlert('Error de conexión.', 'danger'); };
       xhr.send(JSON.stringify({ finalizar_sesion: true }));
     } finally {
-      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(ev?.currentTarget);
+      if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }
   }
 
@@ -1358,14 +1373,15 @@
   function onAplicarFiltrosReporte() { setGlobalAlert('Reporte detallado = Task 7 (CSV y filtros avanzados).', 'info', 'alert-reporte'); }
   function onDescargarCsv() { setGlobalAlert('Exportación CSV = Task 7. Descarga directa desde GET ' + escapeHtml(api.reporteCsv) + ' (cuando esté habilitado).', 'info', 'alert-reporte'); }
   function onBtnEvidenciaSesion() { onEvidenciaBtn(null); }
-  function onBtnFinalizarSesion() {
+  async function onBtnFinalizarSesion() {
     if (!state.selectedSesionId) return setGlobalAlert('Selecciona una sesión primero.', 'warning', 'alert-asistencia');
-    if (!window.confirm('¿Marcar sesión #' + state.selectedSesionId + ' como REALIZADA (sin certificar aún)?')) return;
+    var sesionId = state.selectedSesionId;
+    if (!(await window.MiLabDialogs.confirm('¿Marcar sesión #' + sesionId + ' como REALIZADA (sin certificar aún)?'))) return;
     var btn = document.getElementById('btn-finalizar-sesion');
     try {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.lock(btn, 'Finalizando…');
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', api.cambiarEstado(state.selectedSesionId), true);
+      xhr.open('POST', api.cambiarEstado(sesionId), true);
       setJsonPostHeaders(xhr);
       xhr.onload = function () {
         var data = safeParseJsonXhr(xhr, 'finalizar-sesion', 'Error finalizando. ');
@@ -1377,7 +1393,7 @@
           setGlobalAlert('❌ No se pudo finalizar: ' + (data.message || 'Error desconocido.'), 'danger', 'alert-asistencia');
         }
       };
-      xhr.send(JSON.stringify({ sesion_id: state.selectedSesionId, estado: 'realizada' }));
+      xhr.send(JSON.stringify({ sesion_id: sesionId, estado: 'realizada' }));
     } finally {
       if (window.MiLabSubmitLock) window.MiLabSubmitLock.release(btn);
     }

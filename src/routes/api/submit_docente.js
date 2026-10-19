@@ -292,7 +292,16 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       try {
         const contacto = await resolveStudentContactByUsuarioId(usuarioIdSancionado);
         if (contacto && contacto.correo) {
-          const ualRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [idUal]);
+          const ualRes = await pool.query(
+            `SELECT u.nombre,
+                    COALESCE(facultad.nombre, unidad.nombre) AS facultad,
+                    CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS dependencia
+             FROM ual u
+             LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+             LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
+             WHERE u.ual_id = $1`,
+            [idUal]
+          );
           await sendSanctionActivationEmail({
             permiteReclamacion: false,
             correo: contacto.correo,
@@ -301,6 +310,8 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
             tipoSancion: tipoSancionFinal,
             observaciones: obs_multa,
             laboratorio: ualRes.rows[0]?.nombre,
+            facultad: ualRes.rows[0]?.facultad,
+            dependencia: ualRes.rows[0]?.dependencia,
             fecha: fecha_multa,
           });
         }
