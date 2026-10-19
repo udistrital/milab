@@ -312,7 +312,8 @@ function isActiveTeacherRecord(record) {
   return estado === 'A' || estado === 'ACTIVO';
 }
 
-// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso.
+// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso. Un documento puede
+// tener varios registros: los demás (por ejemplo, egresado de otro programa) solo se informan.
 async function lookupEligibleStudentRecords(documento, signal) {
   let studentData;
   try {
@@ -357,7 +358,7 @@ async function lookupEligibleStudentRecords(documento, signal) {
     }
     const stateLabel = `Estudiante: ${estado}${stateCode ? ` (${stateCode})` : ''}`;
     if (!states.includes(stateLabel)) states.push(stateLabel);
-    if (!isEligibleStudentRecord(record) || normalizeEstadoCodigo(estado) === 'EGRESADO') continue;
+    if (!isEligibleStudentRecord(record)) continue;
 
     let carrera = '';
     try {
