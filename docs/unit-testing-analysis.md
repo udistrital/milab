@@ -99,8 +99,8 @@ Ya existen pruebas sobre varias rutas y flujos puntuales, por ejemplo:
 - [src/routes/api/download-pdf.js](src/routes/api/download-pdf.js)
 - [src/routes/api/facultad.js](src/routes/api/facultad.js)
 - [src/routes/api/generate_cert_estudiante_lab.js](src/routes/api/generate_cert_estudiante_lab.js)
-- [src/routes/api/get-data2.js](src/routes/api/get-data2.js)
 - [src/routes/api/login.js](src/routes/api/login.js)
+- [src/routes/api/profile.js](src/routes/api/profile.js)
 - [src/routes/api/registro_coordinador.js](src/routes/api/registro_coordinador.js)
 - [src/routes/api/verificar_docente.js](src/routes/api/verificar_docente.js)
 - [src/routes/api/verificar_estudiante.js](src/routes/api/verificar_estudiante.js)
@@ -164,8 +164,7 @@ Recomendación:
 Se usan llamadas remotas a Google y a servicios académicos externos en rutas como:
 
 - [src/routes/api/login.js](src/routes/api/login.js)
-- [src/routes/api/get-data1.js](src/routes/api/get-data1.js)
-- [src/routes/api/get-data2.js](src/routes/api/get-data2.js)
+- [src/routes/api/profile.js](src/routes/api/profile.js)
 - [src/routes/api/consulta-invit.js](src/routes/api/consulta-invit.js)
 
 Recomendación:

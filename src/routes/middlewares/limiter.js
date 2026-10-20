@@ -41,9 +41,6 @@ const limiter = rateLimit({
         templateData.recaptchaError = templateData.error;
       } else if (req.originalUrl.includes('/auth/login')) {
         errorTemplate = 'home/login_2';
-      } else if (req.originalUrl.includes('/api/get-data1')) {
-        errorTemplate = 'home/register_2';
-        templateData.selectedType = 'estudiante';
       }
       return res.render(errorTemplate, templateData);
     } else {

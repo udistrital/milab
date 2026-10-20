@@ -1,25 +1,14 @@
 const express = require('express');
 
 const pool = require('../../libs/db');
-const { verifyRecaptchaToken } = require('../../libs/recaptcha');
 const {
   ensurePerfilEstudiante,
   isPlaceholderEmail,
   resolveUsuarioIdForStudent,
 } = require('../../libs/user-identity');
-const limiter = require('../middlewares/limiter');
 const { requireRoles } = require('../middlewares/auth');
-const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
-
-// Variables de entorno
-require('dotenv').config();
-
-const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
 const router = express.Router();
-
-router.use(express.json());
-router.use(express.urlencoded({ extended: true }));
 
 const requireStudentSelfServiceAccess = requireRoles(['admin', 'estudiante'], {
   message: '¡Algo ha salido mal!',
@@ -125,132 +114,6 @@ router.get('/verificacion', requireStudentSelfServiceAccess, async function (req
       carrera: profileRow.carrera || '',
       estado: profileRow.estado || '',
       codigo: profileRow.codigo || '',
-    });
-  }
-});
-
-router.post('/', limiter, async function (req, res) {
-  const { numero_documento_identificacion, 'g-recaptcha-response': recaptchaResponse } = req.body;
-
-  // Validar reCAPTCHA
-  if (!recaptchaResponse) {
-    return res.render('home/register_2', {
-      error: 'Por favor completa el reCAPTCHA.',
-      confirmacion: null,
-      selectedType: 'estudiante',
-    });
-  }
-
-  try {
-    const recaptchaData = await verifyRecaptchaToken({
-      secretKey,
-      token: recaptchaResponse,
-    });
-
-    if (!recaptchaData.success) {
-      return res.render('home/register_2', {
-        error: 'No se pudo verificar el reCAPTCHA.',
-        confirmacion: null,
-        selectedType: 'estudiante',
-      });
-    }
-  } catch (error) {
-    console.error('Error verificando reCAPTCHA:', error);
-    return res.render('home/register_2', {
-      error: 'Error al verificar reCAPTCHA.',
-      confirmacion: null,
-      selectedType: 'estudiante',
-    });
-  }
-  let con_codigo;
-  let con_estado;
-  let con_documento;
-  let con_carrera;
-  let con_nombre;
-  // con_multado removed (was unused)
-
-  const query1 = 'SELECT * FROM usuario WHERE documento = $1';
-  const values1 = [numero_documento_identificacion];
-  const result1 = await pool.query(query1, values1);
-
-  if (result1.rows[0]) {
-    res.render('home/message_error', {
-      message: 'Datos inválidos. Verifica la información e inténtalo nuevamente.',
-      message2: 'Revisa los datos ingresados',
-      limit: null,
-    });
-  }
-  // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
-  try {
-    const dato1 = await requestOati(
-      getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
-    );
-    // dataString removed (was unused)
-    const cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
-
-    con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
-    con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
-    con_documento = numero_documento_identificacion;
-
-    con_carrera = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
-    con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
-
-    const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
-    con_estado = dato2.estado.nombre;
-
-    const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
-    con_carrera = dato3.carrerasCollection.carrera[0].nombre;
-
-    console.log('con_codigo ' + con_codigo);
-    console.log('con_estado ' + con_estado);
-    console.log('con_documento ' + con_documento);
-    console.log('con_carrera ' + con_carrera);
-    console.log('con_nombre ' + con_nombre);
-
-    if (con_estado === 'EGRESADO') {
-      console.log('El estudiante es egresado. No se puede continuar.');
-      return res.render('home/alerta-egresado', {
-        message: 'El estudiante es egresado. No se puede continuar.',
-      });
-    }
-
-    const con_nombre_oculto =
-      con_nombre.substring(0, Math.min(4, con_nombre.length)) +
-      '*'.repeat(Math.max(0, con_nombre.length - 4));
-    const con_documento_oculto =
-      con_documento.substring(0, Math.min(3, con_documento.length)) +
-      '*'.repeat(Math.max(0, con_documento.length - 3));
-    const con_codigo_oculto =
-      con_codigo.substring(0, Math.min(3, con_codigo.length)) +
-      '*'.repeat(Math.max(0, con_codigo.length - 3));
-    const con_estado_oculto =
-      con_estado.substring(0, Math.min(3, con_estado.length)) +
-      '*'.repeat(Math.max(0, con_estado.length - 3));
-    const con_carrera_oculta =
-      con_carrera.substring(0, Math.min(8, con_carrera.length)) +
-      '*'.repeat(Math.max(0, con_carrera.length - 8));
-
-    req.session.studentData = {
-      con_codigo_completo: con_codigo,
-      con_estado_completo: con_estado,
-      con_documento_completo: con_documento,
-      con_carrera_completa: con_carrera,
-      con_nombre_completo: con_nombre,
-    };
-
-    return res.render('home/register_data', {
-      con_codigo: con_codigo_oculto,
-      con_estado: con_estado_oculto,
-      con_documento: con_documento_oculto,
-      con_carrera: con_carrera_oculta,
-      con_nombre: con_nombre_oculto,
-      confirmacion: null,
-      error: null,
-    });
-  } catch (error) {
-    console.error(error);
-    return res.render('home/error-consulta', {
-      message: 'Se ha producido un error',
     });
   }
 });
