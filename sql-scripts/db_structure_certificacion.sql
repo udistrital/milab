@@ -63,10 +63,6 @@ CREATE INDEX IF NOT EXISTS idx_equipo_especializado_equipo
 CREATE INDEX IF NOT EXISTS idx_equipo_especializado_activo
     ON equipo_especializado(activo);
 
-DROP TRIGGER IF EXISTS trg_validar_facultad_curso_laboratorio
-    ON curso_laboratorio;
-DROP FUNCTION IF EXISTS validar_facultad_curso_laboratorio();
-
 -- ============================================================
 -- MODULO CAPACITACION SOLICITUDES / SESIONES / CERTIFICACIONES
 --
@@ -145,38 +141,6 @@ BEGIN
     ) THEN
         ALTER TABLE sesion_capacitacion
             ADD COLUMN notas_evidencia TEXT;
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-         WHERE constraint_name = 'fk_sesion_capacitacion_cursos' AND table_name = 'sesion_capacitacion'
-    ) THEN
-        ALTER TABLE sesion_capacitacion
-            DROP CONSTRAINT IF EXISTS fk_sesion_capacitacion_cursos;
-    END IF;
-
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-         WHERE constraint_name = 'fk_certificacion_usuario_cursos' AND table_name = 'certificacion_usuario'
-    ) THEN
-        ALTER TABLE certificacion_usuario
-            DROP CONSTRAINT IF EXISTS fk_certificacion_usuario_cursos;
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-         WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
-           AND table_name = 'certificacion_usuario'
-           AND table_schema = current_schema()
-    ) THEN
-        ALTER TABLE certificacion_usuario
-            DROP CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario;
     END IF;
 END $$;
 
@@ -361,10 +325,6 @@ CREATE INDEX IF NOT EXISTS idx_certificacion_usuario_solicitud_prestamo
 CREATE INDEX IF NOT EXISTS idx_certificacion_usuario_entrega_equipo
     ON certificacion_usuario(entrega_equipo_id);
 
-
-DROP TRIGGER IF EXISTS trg_validar_facultad_sesion_capacitacion
-    ON sesion_capacitacion;
-DROP FUNCTION IF EXISTS validar_facultad_sesion_capacitacion();
 
 -- ============================================================
 -- SUBMODULO ENCUENTROS
