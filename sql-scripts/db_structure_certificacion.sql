@@ -415,6 +415,7 @@ CREATE TABLE IF NOT EXISTS encuentro_participante (
     documento VARCHAR(50) NOT NULL,
     documento_normalizado VARCHAR(50) NOT NULL,
     correo VARCHAR(255) NOT NULL,
+    rol VARCHAR(255) NOT NULL DEFAULT 'Participante',
     facultad VARCHAR(255) NOT NULL,
     laboratorio VARCHAR(255) NOT NULL,
     usuario_id BIGINT,
@@ -440,6 +441,9 @@ CREATE TABLE IF NOT EXISTS encuentro_participante (
     CONSTRAINT ck_correo_encuentro_participante CHECK (BTRIM(correo) <> ''),
     CONSTRAINT ck_nombre_encuentro_participante CHECK (BTRIM(nombre) <> '')
 );
+
+ALTER TABLE encuentro_participante
+    ADD COLUMN IF NOT EXISTS rol VARCHAR(255) NOT NULL DEFAULT 'Participante';
 
 CREATE INDEX IF NOT EXISTS idx_encuentro_participante_evento_nombre
     ON encuentro_participante(evento_id, LOWER(nombre)) WHERE activo = TRUE;

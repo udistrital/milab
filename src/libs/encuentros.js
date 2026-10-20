@@ -6,8 +6,9 @@ const PARTICIPANT_HEADERS = [
   'Nombre completo',
   'Número de documento',
   'Correo electrónico',
+  'Cargo',
   'Facultad',
-  'Laboratorio',
+  'Unidad Académica de Laboratorio (UAL)',
 ];
 
 const CERTIFICATE_VARIABLES = new Set([
@@ -67,6 +68,7 @@ function validateParticipant(raw) {
   const email = String(raw?.correo || '')
     .trim()
     .toLowerCase();
+  const role = String(raw?.rol || '').trim();
   const faculty = String(raw?.facultad || '').trim();
   const laboratory = String(raw?.laboratorio || '').trim();
   const errors = [];
@@ -83,6 +85,7 @@ function validateParticipant(raw) {
   if (!email || email.length > 255 || !EMAIL_PATTERN.test(email)) {
     errors.push('Correo electrónico obligatorio y con formato válido.');
   }
+  if (!role || role.length > 255) errors.push('Cargo es obligatorio (máximo 255 caracteres).');
   if (!faculty || faculty.length > 255)
     errors.push('Facultad es obligatoria (máximo 255 caracteres).');
   if (!laboratory || laboratory.length > 255) {
@@ -95,6 +98,7 @@ function validateParticipant(raw) {
       documento: document,
       documento_normalizado: normalizeDocument(document),
       correo: email,
+      rol: role,
       facultad: faculty,
       laboratorio: laboratory,
     },
@@ -304,6 +308,7 @@ async function buildParticipantTemplateBuffer() {
     { width: 36 },
     { width: 32 },
     { width: 32 },
+    { width: 46 },
   ];
   sheet.getColumn(2).numFmt = '@';
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
@@ -356,8 +361,9 @@ async function previewParticipantWorkbook(buffer) {
       nombre: getCellText(values[0]),
       documento: rawDocument,
       correo: getCellText(values[2]),
-      facultad: getCellText(values[3]),
-      laboratorio: getCellText(values[4]),
+      rol: getCellText(values[3]),
+      facultad: getCellText(values[4]),
+      laboratorio: getCellText(values[5]),
     });
     if (typeof documentCell === 'number') {
       validation.errores.push(

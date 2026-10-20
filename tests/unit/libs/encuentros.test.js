@@ -28,6 +28,7 @@ test('normalizes document identity while preserving leading zeroes', () => {
       nombre: 'Persona de prueba',
       documento: '000123',
       correo: 'persona@example.edu',
+      rol: 'Docente',
       facultad: 'Ingeniería',
       laboratorio: 'Lab 1',
     }).participante.documento,
@@ -64,10 +65,11 @@ test('validates participant contact information and required fields', () => {
     nombre: '',
     documento: '',
     correo: 'correo-invalido',
+    rol: '',
     facultad: '',
     laboratorio: '',
   });
-  assert.equal(result.errores.length, 5);
+  assert.equal(result.errores.length, 6);
 });
 
 test('requires a QR verification position in valid template configuration', () => {
@@ -104,8 +106,9 @@ test('creates an Excel participant template with the expected headings', async (
     'Nombre completo',
     'Número de documento',
     'Correo electrónico',
+    'Cargo',
     'Facultad',
-    'Laboratorio',
+    'Unidad Académica de Laboratorio (UAL)',
   ]);
   assert.equal(workbook.worksheets[0].getColumn(2).numFmt, '@');
   assert.equal(isSafeXlsxArchive(Buffer.from([0x50, 0x4b, 0x03, 0x04])), false);
@@ -118,18 +121,20 @@ test('previews valid, duplicate, and numeric-document spreadsheet rows', async (
     'Nombre completo',
     'Número de documento',
     'Correo electrónico',
+    'Cargo',
     'Facultad',
-    'Laboratorio',
+    'Unidad Académica de Laboratorio (UAL)',
   ]);
-  sheet.addRow(['Persona Uno', '0000123', 'uno@example.edu', 'Ingeniería', 'Lab 1']);
-  sheet.addRow(['Persona Dos', '0000123', 'dos@example.edu', 'Ingeniería', 'Lab 2']);
-  sheet.addRow(['Persona Tres', 9876, 'tres@example.edu', 'Ingeniería', 'Lab 3']);
+  sheet.addRow(['Persona Uno', '0000123', 'uno@example.edu', 'Docente', 'Ingeniería', 'Lab 1']);
+  sheet.addRow(['Persona Dos', '0000123', 'dos@example.edu', 'Estudiante', 'Ingeniería', 'Lab 2']);
+  sheet.addRow(['Persona Tres', 9876, 'tres@example.edu', 'Monitor', 'Ingeniería', 'Lab 3']);
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
   const preview = await previewParticipantWorkbook(buffer);
   assert.deepEqual(preview.errores_estructura, []);
   assert.equal(preview.filas.length, 3);
   assert.equal(preview.filas[0].participante.documento, '0000123');
+  assert.equal(preview.filas[0].participante.rol, 'Docente');
   assert.match(preview.filas[1].errores.join(' '), /duplicado/i);
   assert.match(preview.filas[2].errores.join(' '), /perdido ceros iniciales/i);
 });

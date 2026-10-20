@@ -20,6 +20,13 @@ app.use('/auth', require('./routes/api/logout'));
 app.use('/auth', require('./routes/api/dev-login'));
 app.use('/encuentros', require('./routes/api/encuentros'));
 
+app.use(
+  '/public/vendor/pdfjs',
+  express.static(path.join(__dirname, '../node_modules/pdfjs-dist/build'), {
+    index: false,
+    maxAge: '1d',
+  })
+);
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 module.exports = app;
