@@ -111,7 +111,24 @@ test('creates an Excel participant template with the expected headings', async (
     'Unidad Académica de Laboratorio (UAL)',
   ]);
   assert.equal(workbook.worksheets[0].getColumn(2).numFmt, '@');
+  assert.deepEqual((await previewParticipantWorkbook(template)).errores_estructura, []);
   assert.equal(isSafeXlsxArchive(Buffer.from([0x50, 0x4b, 0x03, 0x04])), false);
+});
+
+test('accepts the previous Laboratorio header as a UAL alias', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Participantes');
+  sheet.addRow([
+    'Nombre completo',
+    'Número de documento',
+    'Correo electrónico',
+    'Cargo',
+    'Facultad',
+  ]);
+  sheet.getRow(1).getCell(6).value = 'Laboratorio';
+
+  const preview = await previewParticipantWorkbook(Buffer.from(await workbook.xlsx.writeBuffer()));
+  assert.deepEqual(preview.errores_estructura, []);
 });
 
 test('previews valid, duplicate, and numeric-document spreadsheet rows', async () => {
@@ -128,15 +145,27 @@ test('previews valid, duplicate, and numeric-document spreadsheet rows', async (
   sheet.addRow(['Persona Uno', '0000123', 'uno@example.edu', 'Docente', 'Ingeniería', 'Lab 1']);
   sheet.addRow(['Persona Dos', '0000123', 'dos@example.edu', 'Estudiante', 'Ingeniería', 'Lab 2']);
   sheet.addRow(['Persona Tres', 9876, 'tres@example.edu', 'Monitor', 'Ingeniería', 'Lab 3']);
+  sheet.getRow(4).getCell(2).numFmt = '00000000';
+  sheet.addRow([
+    'Persona Cuatro',
+    1234567890123456,
+    'cuatro@example.edu',
+    'Monitor',
+    'Ingeniería',
+    'Lab 4',
+  ]);
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
   const preview = await previewParticipantWorkbook(buffer);
   assert.deepEqual(preview.errores_estructura, []);
-  assert.equal(preview.filas.length, 3);
+  assert.equal(preview.filas.length, 4);
   assert.equal(preview.filas[0].participante.documento, '0000123');
   assert.equal(preview.filas[0].participante.rol, 'Docente');
   assert.match(preview.filas[1].errores.join(' '), /duplicado/i);
-  assert.match(preview.filas[2].errores.join(' '), /perdido ceros iniciales/i);
+  assert.equal(preview.filas[2].participante.documento, '00009876');
+  assert.deepEqual(preview.filas[2].errores, []);
+  assert.match(preview.filas[2].advertencias.join(' '), /ceros iniciales/i);
+  assert.match(preview.filas[3].errores.join(' '), /rango de precisión segura/i);
 });
 
 test('validates and personalizes a PDF using configured text and QR coordinates', async () => {
