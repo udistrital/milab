@@ -30,9 +30,8 @@
   const sessionRole = locals.sessionRoleLabel || navigation.roleLabel || 'Invitado';
   const sessionName = locals.nombre || '';
   const sessionDocument = locals.documento || '';
-  const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
-  const shouldShowSanctionsBadge = (link) =>
-    pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  // const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  // const shouldShowSanctionsBadge = (link) => pendingSanctionsCount > 0 && link?.href === '/milab/api/aprobacion_multa';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
   const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
@@ -84,7 +83,7 @@
   const helpManualsLabel = helpManualsConfig.label;
   const navigationGuideMap = {
     'Solicitar certificado': 'nav-solicitar-certificado',
-    'Autorizaciones': 'nav-autorizaciones',
+    // 'Autorizaciones': 'nav-autorizaciones',
     'Registro': 'nav-registro',
     'Registro de coordinadores': 'nav-registro-coordinadores',
     'Registro de laboratoristas': 'nav-registro-laboratoristas',
@@ -207,9 +206,7 @@
                   <a class="nav-link<%= getPrestamosNavLinkClass(link) %>" href="<%= link.href %>" <%- getNavigationGuideAttribute(link.label) %>>
                     <i class="bi <%= link.icon %>" aria-hidden="true"></i>
                     <span><%= link.label %></span>
-                    <% if (shouldShowSanctionsBadge(link)) { %>
-                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                    <% } %>
+                    <%# Antes: if (shouldShowSanctionsBadge(link)) se renderizaba app-nav-badge con pendingSanctionsCount. %>
                   </a>
                 </li>
               <% }) %>
@@ -226,9 +223,7 @@
                         <a class="dropdown-item" href="<%= item.href %>" <%- getNavigationGuideAttribute(item.label) %>>
                           <i class="bi <%= item.icon %>" aria-hidden="true"></i>
                           <span><%= item.label %></span>
-                          <% if (shouldShowSanctionsBadge(item)) { %>
-                            <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                          <% } %>
+                          <%# Antes: if (shouldShowSanctionsBadge(item)) se renderizaba app-nav-badge con pendingSanctionsCount. %>
                         </a>
                       </li>
                     <% }) %>

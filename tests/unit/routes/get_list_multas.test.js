@@ -385,7 +385,7 @@ test('get_list_multas applies laboratorista UAL assignment scope in query', asyn
   }
 });
 
-test('get_list_multas exposes state-specific actions for authorized laboratoristas', async () => {
+test('get_list_multas exposes direct state actions regardless of faculty authorization flags', async () => {
   const loaded = loadRoute({
     clientQueryImpl: async (sql, params) => {
       if (sql.includes('SELECT documento FROM laboratorista')) {
@@ -399,8 +399,8 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
             {
               requested_id: 5,
               facultad_id: 5,
-              permite_crear_multas_activas_directas: true,
-              permite_saldar_multas_directas: true,
+              permite_crear_multas_activas_directas: false,
+              permite_saldar_multas_directas: false,
             },
           ],
         };
@@ -428,9 +428,9 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
     assert.equal(rows[0].canSaldar, false);
     assert.equal(rows[1].canActivate, false);
     assert.equal(rows[1].canSaldar, true);
-    assert.equal(rows[2].canAplazar, true);
+    assert.equal(rows[2].canAplazar, false);
     assert.equal(rows[2].canRemove, true);
-    assert.equal(rows[3].canReactivar, true);
+    assert.equal(rows[3].canReactivar, false);
     assert.equal(rows[3].canActivate, false);
     assert.equal(rows[3].canSaldar, false);
     assert.equal(rows[3].canRemove, false);

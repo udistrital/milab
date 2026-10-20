@@ -1,0 +1,46 @@
+<div class="sanction-flow-help">
+    <button
+        class="sanction-flow-help__trigger"
+        type="button"
+        aria-label="Ver guía de tipos y estados de sanciones"
+        aria-describedby="sanction-flow-help-popover"
+    >
+        <i class="bi bi-lightbulb-fill" aria-hidden="true"></i>
+    </button>
+    <section class="sanction-flow-help__popover" id="sanction-flow-help-popover" role="tooltip" aria-label="Guía de sanciones">
+        <header class="sanction-flow-help__header">
+            <span class="sanction-flow-help__header-icon"><i class="bi bi-lightbulb-fill" aria-hidden="true"></i></span>
+            <div>
+                <h2>Guía rápida de sanciones</h2>
+                <p>Tipos disponibles y recorrido de sus estados</p>
+            </div>
+        </header>
+
+        <section class="sanction-flow-help__section">
+            <h3><i class="bi bi-shield-check" aria-hidden="true"></i> Tipos de sanción</h3>
+            <ul class="sanction-flow-help__types">
+                <% (Array.isArray(locals.SANCTION_TYPES) ? locals.SANCTION_TYPES : []).forEach(function (tipo) { %>
+                    <li><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span><%= tipo %></span></li>
+                <% }) %>
+            </ul>
+        </section>
+
+        <section class="sanction-flow-help__section">
+            <h3><i class="bi bi-signpost-split" aria-hidden="true"></i> Estados y transiciones</h3>
+            <ul class="sanction-flow-help__states">
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--pending">Pendiente</span><span>Registro anterior que espera activación.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--active">ACTIVA</span><span>Sanción vigente.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--postponed">APLAZADA</span><span>Sanción en pausa temporal.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--closing">POR SALDAR</span><span>Registro anterior pendiente de cierre.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--settled">SALDADA</span><span>Sanción finalizada.</span></li>
+            </ul>
+            <ol class="sanction-flow-help__transitions">
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--pending">Pendiente</span><i class="bi bi-arrow-right" aria-hidden="true"></i><span class="sanction-flow-help__state sanction-flow-help__state--active">ACTIVA</span><span>El laboratorista activa registros pendientes desde el listado.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--active">ACTIVA</span><i class="bi bi-arrow-right" aria-hidden="true"></i><span class="sanction-flow-help__state sanction-flow-help__state--settled">SALDADA</span><span>El laboratorista puede finalizarla directamente.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--active">ACTIVA</span><i class="bi bi-arrow-left-right" aria-hidden="true"></i><span class="sanction-flow-help__state sanction-flow-help__state--postponed">APLAZADA</span><span>Puede aplazarse y reactivarse según los permisos configurados.</span></li>
+                <li><span class="sanction-flow-help__state sanction-flow-help__state--closing">POR SALDAR</span><i class="bi bi-arrow-right" aria-hidden="true"></i><span class="sanction-flow-help__state sanction-flow-help__state--settled">SALDADA</span><span>El laboratorista puede cerrar estos registros desde el listado.</span></li>
+            </ol>
+            <p class="sanction-flow-help__note"><i class="bi bi-info-circle-fill" aria-hidden="true"></i> Los registros nuevos se crean directamente como <strong>ACTIVA</strong>; Pendiente y POR SALDAR pueden corresponder a registros anteriores.</p>
+        </section>
+    </section>
+</div>
