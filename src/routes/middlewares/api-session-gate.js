@@ -3,11 +3,8 @@ const { isPublicMilabApiRequest } = require('./session-gate');
 
 const publicApiAllowlist = [
   { prefix: '/api/login/login', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/register', methods: ['POST'], allowSubpaths: true },
   { prefix: '/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
   { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
-  { prefix: '/api/get-data1', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/api/get-data2', methods: ['POST'], allowSubpaths: false },
   { prefix: '/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
   { prefix: '/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
 ];

@@ -6,11 +6,8 @@ const request = require('supertest');
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/get-data1.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
-const recaptchaPath = path.resolve(__dirname, '../../../src/libs/recaptcha.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
-const limiterPath = path.resolve(__dirname, '../../../src/routes/middlewares/limiter.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
-const oatiPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 
 function buildApp(route, sessionUser) {
   const app = express();
@@ -40,12 +37,6 @@ function loadGetDataRoute({ poolQueryImpl } = {}) {
   const stubs = [
     [dbPath, poolStub],
     [
-      recaptchaPath,
-      {
-        verifyRecaptchaToken: async () => ({ success: true }),
-      },
-    ],
-    [
       userIdentityPath,
       {
         ensurePerfilEstudiante: async () => 261,
@@ -57,15 +48,7 @@ function loadGetDataRoute({ poolQueryImpl } = {}) {
         resolveUsuarioIdForStudent: async () => 261,
       },
     ],
-    [limiterPath, (req, res, next) => next()],
     [authPath, { requireRoles: () => (req, res, next) => next() }],
-    [
-      oatiPath,
-      {
-        getAcademicServicePath: (value) => value,
-        requestOati: async () => ({}),
-      },
-    ],
   ];
 
   delete require.cache[routePath];
@@ -159,6 +142,23 @@ test('student self-service does not block placeholder-email account even with ac
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/get-info2');
     assert.equal(response.body.locals.documento, '1000586756');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('legacy student sign-up endpoint is no longer available', async () => {
+  const loaded = loadGetDataRoute();
+
+  try {
+    const app = buildApp(loaded.route, {
+      documento: '1000586756',
+      tipo: 'estudiante',
+      roles: ['estudiante'],
+    });
+    const response = await request(app).post('/');
+
+    assert.equal(response.status, 404);
   } finally {
     loaded.restore();
   }

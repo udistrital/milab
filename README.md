@@ -51,12 +51,12 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 ## Identificación durante el registro
 
-- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Solo ofrece perfiles de estudiante en estado `A`; el estado `B` (`PRUEBA AC Y ACTIVO`) no habilita un perfil de estudiante.
+- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Los estados `A` y `B` (`PRUEBA AC Y ACTIVO`) habilitan el perfil de estudiante; si hay varios programas, se puede elegir cualquiera de los habilitados.
 - Si no hay perfil académico activo ni roles habilitados en MILab, el registro explica que no puede usar MILab y muestra los estados reportados por OATI (estudiante o docente), incluyendo prueba académica, inactividad y egreso. Si OATI no devuelve registros, se indica que no reporta un perfil activo, sin inventar un estado.
 - El mensaje remite a los laboratorios del proyecto académico para que un laboratorista genere el paz y salvo a través de MILab. Para solicitar acceso como coordinador o laboratorista, indica escribir a `milab@udistrital.edu.co` detallando la solicitud.
 - Las consultas OATI del registro comparten un límite total de 20 segundos, incluyendo token y reintentos. Si OATI falla, se muestra un error recuperable sin cerrar la sesión de identificación. Esta regla no modifica el flujo de consulta de paz y salvo.
 - Los errores inesperados de la finalización del registro se propagan al manejador de errores de Express: se registran en el servidor y se responde con una página de error, en lugar de dejar la solicitud pendiente.
-- Si falla la consulta de roles durante la identificación, se conservan en el mensaje los estados devueltos por OATI y se informa que no pudo verificarse el acceso. Se ofrecen las instrucciones de certificado y solicitud de acceso, sin atribuir la falla técnica al estado académico ni exponer detalles de PostgreSQL.
+- Si falla la consulta de roles durante la identificación, un estudiante habilitado por OATI puede continuar sin roles adicionales de MILab; el error queda registrado en el servidor. Para una persona sin perfil OATI habilitado, la consulta de roles debe completarse antes de determinar si cuenta con acceso por un rol de MILab.
 
 ## Grillas de facultades y UAL
 
