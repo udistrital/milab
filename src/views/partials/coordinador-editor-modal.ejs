@@ -17,7 +17,7 @@
         <div class="modal-header flex-shrink-0">
           <div>
             <h5 class="modal-title" id="coordinadorEditorModalLabel" data-coordinador-editor-title="true">Editar coordinador</h5>
-            <p class="text-muted mb-0 small" data-coordinador-editor-subtitle="true">Actualiza los datos institucionales y asigna el coordinador a una facultad o a sus dependencias.</p>
+            <p class="text-muted mb-0 small" data-coordinador-editor-subtitle="true">Actualiza los datos institucionales y asigna el coordinador a una facultad, a sus dependencias o a UALs espec&iacute;ficas.</p>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
         </div>
@@ -147,6 +147,23 @@
               <small class="form-text text-muted">Puedes seleccionar una o varias dependencias de la facultad elegida.</small>
             </div>
 
+            <div class="col-12" data-coordinador-editor-ual-section="true">
+              <label class="form-label">UALs asignadas</label>
+              <div class="coordinator-dependency-list" data-coordinador-editor-ual-container="true">
+                <% if (Array.isArray(ualesDisponibles) && ualesDisponibles.length) { %>
+                  <% ualesDisponibles.forEach(function(ual) { %>
+                    <label class="form-check coordinator-dependency-option">
+                      <input class="form-check-input me-2" type="checkbox" value="<%= ual.ual_id %>" data-coordinador-editor-ual="true" data-ual-nombre="<%= ual.nombre %>">
+                      <span class="form-check-label"><%= ual.nombre %><% if (ual.facultad_nombre) { %> <small class="text-muted">(<%= ual.facultad_nombre %>)</small><% } %></span>
+                    </label>
+                  <% }); %>
+                <% } else { %>
+                  <p class="text-muted mb-0">No hay UALs activas disponibles.</p>
+                <% } %>
+              </div>
+              <small class="form-text text-muted">Todo coordinador debe tener facultad. Si asignas UALs, el coordinador solo ver&aacute; las multas de esas UALs (pueden ser de distintas dependencias o facultades) y no tendr&aacute; el panel de configuraci&oacute;n de facultades.</small>
+            </div>
+
             <div class="col-12 alert alert-info d-none mb-0" role="status" data-coordinador-editor-legacy-assignment="true">
               La asignaci&oacute;n actual abarca varias facultades o no coincide con el nuevo esquema. Si no cambias esta selecci&oacute;n, se conservar&aacute; sin modificaciones; al elegir una facultad se reemplazar&aacute; por el nuevo alcance.
             </div>
@@ -188,6 +205,31 @@
 
     var endpoint = '';
     var assignmentChanged = false;
+    var ualChanged = false;
+    var ualContainer = modalEl.querySelector('[data-coordinador-editor-ual-container="true"]');
+
+    function parseIdList(raw) {
+      try {
+        var parsed = JSON.parse(raw || '[]');
+        return Array.isArray(parsed) ? parsed.map(String) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function selectedUalIds() {
+      if (!ualContainer) return [];
+      return Array.from(ualContainer.querySelectorAll('[data-coordinador-editor-ual="true"]:checked')).map(function(check) {
+        return check.value;
+      });
+    }
+
+    function setUalsFromExisting(ids) {
+      if (!ualContainer) return;
+      ualContainer.querySelectorAll('[data-coordinador-editor-ual="true"]').forEach(function(check) {
+        check.checked = ids.indexOf(check.value) >= 0;
+      });
+    }
 
     function showFeedback(el, type, message) {
       if (!el) return;
@@ -247,7 +289,7 @@
       }
     }
 
-    function updateCoordinatorRow(documento, values, assignmentChanged) {
+    function updateCoordinatorRow(documento, values, assignmentChanged, ualChanged) {
       var row = findCoordinatorRow(documento);
       if (!row) return null;
 
@@ -262,6 +304,9 @@
         updateCompactCell(row.querySelector('[data-facultad-cell="true"]'), values.facultad);
         updateCompactCell(row.querySelector('[data-dependencias-cell="true"]'), values.dependencias);
       }
+      if (ualChanged) {
+        updateCompactCell(row.querySelector('[data-ual-cell="true"]'), values.ualNombre);
+      }
 
       var trigger = row.querySelector('[data-coordinador-editor-trigger="true"]');
       if (trigger) {
@@ -273,6 +318,9 @@
             'data-coordinador-editor-facultad-ids',
             JSON.stringify(values.facultadIds)
           );
+        }
+        if (ualChanged) {
+          trigger.setAttribute('data-coordinador-editor-ual-ids', JSON.stringify(values.ualIds));
         }
       }
 
@@ -332,6 +380,8 @@
         });
       }
       if (legacyAssignmentNotice) legacyAssignmentNotice.classList.add('d-none');
+      ualChanged = false;
+      setUalsFromExisting([]);
       updateDependencyOptions();
     }
 
@@ -417,6 +467,7 @@
       if (soporteResolucionEl) soporteResolucionEl.value = soporteResolucion;
 
       setAssignmentFromExisting(selectedIds);
+      setUalsFromExisting(parseIdList(button.getAttribute('data-coordinador-editor-ual-ids')));
 
       modal.show();
     });
@@ -451,6 +502,14 @@
       });
     }
 
+    if (ualContainer) {
+      ualContainer.addEventListener('change', function(event) {
+        if (event.target.matches('[data-coordinador-editor-ual="true"]')) {
+          ualChanged = true;
+        }
+      });
+    }
+
     if (dependencySearch) dependencySearch.addEventListener('input', updateDependencyOptions);
 
     if (form) {
@@ -465,11 +524,12 @@
         var selectedDependencies = dependenciesContainer
           ? dependenciesContainer.querySelectorAll('[data-coordinador-editor-dependency="true"]:checked')
           : [];
+        var selectedUals = selectedUalIds();
         if (assignmentChanged && !facultySelect.value) {
           showFeedback(feedback, 'warning', 'Debes seleccionar una facultad.');
           return;
         }
-        if (assignmentChanged && selectedScope() === 'dependencias' && selectedDependencies.length === 0) {
+        if (assignmentChanged && facultySelect.value && selectedScope() === 'dependencias' && selectedDependencies.length === 0) {
           showFeedback(feedback, 'warning', 'Debes seleccionar al menos una dependencia.');
           return;
         }
@@ -493,6 +553,9 @@
           requestBody.dependencia_ids = Array.from(selectedDependencies).map(function(check) {
             return check.value;
           });
+        }
+        if (ualChanged) {
+          requestBody.ual_ids = selectedUals;
         }
 
         try {
@@ -528,8 +591,11 @@
               facultad: data.facultad_nombre || '',
               dependencias: data.dependencia_nombre || '',
               facultadIds: data.facultad_ids || [],
+              ualNombre: data.ual_nombre || '',
+              ualIds: data.ual_ids || [],
             },
-            assignmentChanged
+            assignmentChanged,
+            ualChanged
           );
           refreshCoordinatorGridRow(row);
 

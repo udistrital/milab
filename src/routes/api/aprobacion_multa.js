@@ -1,6 +1,10 @@
 const express = require('express');
 const pool = require('../../libs/db');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const {
+  resolveCoordinatorAuthorizationScope,
+  buildMultaScopeFilter,
+  hasCoordinatorScope,
+} = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const {
   SANCTION_TYPES,
@@ -145,17 +149,18 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
-    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
-    if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+    const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
+    if (!scope.coordinatorDocument || !hasCoordinatorScope(scope)) {
       return {
         allowed: false,
-        message2: 'La cuenta de coordinador no tiene facultades asociadas.',
+        message2: 'La cuenta de coordinador no tiene UALs, dependencias ni facultades asociadas.',
       };
     }
     return {
       allowed: true,
       actorDocument: scope.coordinatorDocument,
       facultyIds: scope.facultyIds,
+      ualIds: scope.ualIds,
       role,
     };
   }
@@ -246,17 +251,18 @@ async function resolveAplazamientoActionScope(req, multaId) {
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
-    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
-    if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+    const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
+    if (!scope.coordinatorDocument || !hasCoordinatorScope(scope)) {
       return {
         allowed: false,
-        message2: 'La cuenta de coordinador no tiene facultades asociadas.',
+        message2: 'La cuenta de coordinador no tiene UALs, dependencias ni facultades asociadas.',
       };
     }
     return {
       allowed: true,
       actorDocument: scope.coordinatorDocument,
       facultyIds: scope.facultyIds,
+      ualIds: scope.ualIds,
       role,
     };
   }
@@ -349,7 +355,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   try {
-    const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
+    const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
 
     if (!scope.coordinatorDocument) {
       return res.render('home/message_error', {
@@ -359,13 +365,16 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
       });
     }
 
-    if (scope.facultyIds.length === 0) {
+    if (!hasCoordinatorScope(scope)) {
       return res.render('home/message_error', {
-        message: 'No hay facultades asociadas al coordinador.',
+        message: 'No hay UALs, dependencias ni facultades asociadas al coordinador.',
         message2: 'Contacte al administrador',
         limit: null,
       });
     }
+
+    const scopeFilter = buildMultaScopeFilter(scope, 1);
+    const configuracionDisponible = scope.ualIds.length === 0;
 
     const result = await pool.query(
       `SELECT 
@@ -394,29 +403,32 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
         LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-        AND u.facultad_id = ANY($1::int[])`,
-      [scope.facultyIds]
+        AND ${scopeFilter.sql}`,
+      [scopeFilter.value]
     );
 
     const multasPendientes = result.rows;
 
-    const facultadesResult = await pool.query(
-      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) AND padre_id IS NULL ORDER BY nombre ASC',
-      [scope.facultyIds]
-    );
-    const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
-    const facultadesParaAutorizar = facultadesResult.rows.map((row) => {
-      const cfg = configMap.get(Number(row.facultad_id)) || {};
-      return {
-        facultad_id: Number(row.facultad_id),
-        nombre: row.nombre,
-        permite_crear_multas_activas_directas: Boolean(cfg.permite_crear_multas_activas_directas),
-        permite_saldar_multas_directas: Boolean(cfg.permite_saldar_multas_directas),
-        fecha_ultima_modificacion: cfg.fecha_ultima_modificacion || null,
-        documento_ultimo_autorizador: cfg.documento_ultimo_autorizador || null,
-        accion_ultima: cfg.accion_ultima || 'inicial',
-      };
-    });
+    let facultadesParaAutorizar = [];
+    if (configuracionDisponible) {
+      const facultadesResult = await pool.query(
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) AND padre_id IS NULL ORDER BY nombre ASC',
+        [scope.facultyIds]
+      );
+      const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
+      facultadesParaAutorizar = facultadesResult.rows.map((row) => {
+        const cfg = configMap.get(Number(row.facultad_id)) || {};
+        return {
+          facultad_id: Number(row.facultad_id),
+          nombre: row.nombre,
+          permite_crear_multas_activas_directas: Boolean(cfg.permite_crear_multas_activas_directas),
+          permite_saldar_multas_directas: Boolean(cfg.permite_saldar_multas_directas),
+          fecha_ultima_modificacion: cfg.fecha_ultima_modificacion || null,
+          documento_ultimo_autorizador: cfg.documento_ultimo_autorizador || null,
+          accion_ultima: cfg.accion_ultima || 'inicial',
+        };
+      });
+    }
 
     res.set('Cache-Control', 'no-store');
     return res.render('home/aprobacion_multa', {
@@ -424,6 +436,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
       nombreCoordinador: req.session.user.nombre,
       SANCTION_TYPES,
       facultadesParaAutorizar,
+      configuracionDisponible,
     });
   } catch (error) {
     console.error('Error en /aprobacion_multa:', error);
@@ -472,6 +485,7 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
       });
     }
 
+    const scopeFilter = buildMultaScopeFilter(scope, 3);
     const result = await pool.query(
       `
       UPDATE multa AS m
@@ -481,9 +495,9 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
       WHERE m.id = $1
         AND m.con_estado_multa = 'Pendiente'
         AND u.ual_id = m.ual_id
-        AND u.facultad_id = ANY($3::int[])
+        AND ${scopeFilter.sql}
     `,
-      [multa_id, tipo_sancion, scope.facultyIds]
+      [multa_id, tipo_sancion, scopeFilter.value]
     );
 
     if (result.rowCount === 0) {
@@ -578,6 +592,7 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
       });
     }
 
+    const scopeFilter = buildMultaScopeFilter(scope, 2);
     const result = await pool.query(
       `
       UPDATE multa AS m
@@ -586,9 +601,9 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
       WHERE m.id = $1
         AND m.con_estado_multa = 'POR SALDAR'
         AND u.ual_id = m.ual_id
-        AND u.facultad_id = ANY($2::int[])
+        AND ${scopeFilter.sql}
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scopeFilter.value]
     );
 
     if (result.rowCount === 0) {
@@ -656,6 +671,7 @@ router.post('/aplazar', requireApprovalAction, async function (req, res) {
       });
     }
 
+    const scopeFilter = buildMultaScopeFilter(scope, 2);
     const result = await pool.query(
       `
       UPDATE multa AS m
@@ -664,9 +680,9 @@ router.post('/aplazar', requireApprovalAction, async function (req, res) {
       WHERE m.id = $1
         AND m.con_estado_multa = 'ACTIVA'
         AND u.ual_id = m.ual_id
-        AND u.facultad_id = ANY($2::int[])
+        AND ${scopeFilter.sql}
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scopeFilter.value]
     );
 
     if (result.rowCount === 0) {
@@ -735,6 +751,7 @@ router.post('/reactivar', requireApprovalAction, async function (req, res) {
       });
     }
 
+    const scopeFilter = buildMultaScopeFilter(scope, 2);
     const result = await pool.query(
       `
       UPDATE multa AS m
@@ -743,9 +760,9 @@ router.post('/reactivar', requireApprovalAction, async function (req, res) {
       WHERE m.id = $1
         AND m.con_estado_multa = 'APLAZADA'
         AND u.ual_id = m.ual_id
-        AND u.facultad_id = ANY($2::int[])
+        AND ${scopeFilter.sql}
     `,
-      [multa_id, scope.facultyIds]
+      [multa_id, scopeFilter.value]
     );
 
     if (result.rowCount === 0) {
@@ -793,14 +810,23 @@ router.post('/reactivar', requireApprovalAction, async function (req, res) {
 function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, descripcionBase) {
   return async function (req, res) {
     try {
-      const scope = await resolveCoordinatorScope(pool, getSessionDocument(req));
-      if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
+      const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
+      if (!scope.coordinatorDocument || !hasCoordinatorScope(scope)) {
         const msg = {
           message: 'No autorizado',
-          message2: 'La cuenta no tiene facultades asociadas.',
+          message2: 'La cuenta no tiene UALs, dependencias ni facultades asociadas.',
         };
         return req.accepts('json')
           ? res.status(401).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
+      }
+      if (scope.ualIds.length > 0) {
+        const msg = {
+          message: 'No autorizado',
+          message2: 'La configuración de facultad no aplica a coordinadores asignados por UAL.',
+        };
+        return req.accepts('json')
+          ? res.status(403).json({ ok: false, ...msg })
           : res.render('home/message_error', { ...msg, limit: null });
       }
       const facultadIdParam = Number(req.params.facultad_id);

@@ -97,8 +97,14 @@ function loadRoute({
     [
       facultyScopePath,
       {
-        resolveCoordinatorScope:
-          scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
+        resolveCoordinatorAuthorizationScope:
+          scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10], ualIds: [] })),
+        hasCoordinatorScope: (scope) =>
+          (scope?.ualIds?.length || 0) > 0 || (scope?.facultyIds?.length || 0) > 0,
+        buildMultaScopeFilter: (scope, paramIndex) =>
+          scope.ualIds?.length
+            ? { sql: `u.ual_id = ANY($${paramIndex}::int[])`, value: scope.ualIds }
+            : { sql: `u.facultad_id = ANY($${paramIndex}::int[])`, value: scope.facultyIds },
       },
     ],
     [
