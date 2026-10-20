@@ -64,6 +64,7 @@
     <p class="app-page-subtitle">Desde aquí puedes autorizar a los laboratoristas de tu facultad para que apliquen y salden multas directamente sin pasar por tu aprobación. También puedes gestionar el paso de sanciones pendientes a activas o saldadas.</p>
   </section>
 
+  <% if (configuracionDisponible) { %>
   <section class="card app-table-panel mb-4">
     <div class="card-body">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
@@ -166,6 +167,7 @@
       <% } %>
     </div>
   </section>
+  <% } %>
 
   <section class="card app-table-panel p-0">
   <div class="card-body">

@@ -17,6 +17,10 @@ const securityLoggerPath = path.resolve(
   '../../../src/routes/middlewares/security-logger.js'
 );
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const operationalRoleAssignmentsPath = path.resolve(
+  __dirname,
+  '../../../src/libs/operational-role-assignments.js'
+);
 
 function buildApp(route) {
   const app = express();
@@ -97,7 +101,7 @@ function loadRoute() {
   };
 }
 
-function loadRouteWithDbQuery(dbQueryImpl) {
+function loadRouteWithDbQuery(dbQueryImpl, extraStubs = []) {
   const originals = new Map();
   const sentMessages = [];
   const stubs = [
@@ -130,6 +134,7 @@ function loadRouteWithDbQuery(dbQueryImpl) {
         requireRoles: () => (req, res, next) => next(),
       },
     ],
+    ...extraStubs,
   ];
 
   delete require.cache[routePath];
@@ -488,6 +493,260 @@ test('registro_coordinador assigns the faculty itself for whole-faculty scope', 
     assert.deepEqual(assignment.params, ['79520187', [10]]);
     assert.equal(
       calls.some((call) => call.sql.includes('ANY($2::int[])')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+function buildUalStubs(state) {
+  return [
+    [
+      operationalRoleAssignmentsPath,
+      {
+        ensureOperationalRoleAssignmentsSchema: async () => {
+          state.ensureCalls += 1;
+        },
+        fetchActiveUalOptions: async () => state.ualOptions,
+        replaceOperationalRoleAssignments: async (args) => {
+          state.replaceCalls.push(args);
+        },
+      },
+    ],
+  ];
+}
+
+function buildCoordinatorDbHandler(calls, ualRows = []) {
+  return async (sql, params = []) => {
+    const statement = String(sql || '');
+    calls.push({ sql: statement, params });
+
+    if (statement.includes('FROM coordinador WHERE documento = $1')) return { rows: [] };
+    if (statement.includes('existing_emails')) return { rows: [] };
+    if (
+      statement.includes('SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2')
+    ) {
+      return { rows: [] };
+    }
+    if (statement.includes('INSERT INTO usuario (correo, documento, nombre)')) {
+      return { rows: [{ id: 330 }] };
+    }
+    if (statement.includes('FROM ual WHERE ual_id = ANY')) return { rows: ualRows };
+    if (statement.includes('information_schema.columns')) {
+      return {
+        rows: [
+          {
+            column_name: params[1].includes('padre_id') ? 'padre_id' : params[1][0],
+          },
+        ],
+      };
+    }
+    if (statement.includes('FROM dependencia_facultad') && statement.includes('IS NULL')) {
+      return { rows: [{ facultad_id: 10, nombre: 'Facultad completa' }] };
+    }
+    return { rows: [] };
+  };
+}
+
+test('registro_coordinador GET load_info exposes the active UALs to the form', async () => {
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [
+      { ual_id: 5, nombre: 'UAL Norte', facultad_id: 10, facultad_nombre: 'Ingeniería' },
+    ],
+  };
+  const loaded = loadRouteWithDbQuery(buildCoordinatorDbHandler([], []), buildUalStubs(state));
+
+  try {
+    const response = await request(buildApp(loaded.route)).get('/load_info');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.ualesDisponibles, state.ualOptions);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador GET /new exposes the active UALs to the form', async () => {
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [
+      { ual_id: 5, nombre: 'UAL Norte', facultad_id: 10, facultad_nombre: 'Ingeniería' },
+    ],
+  };
+  const loaded = loadRouteWithDbQuery(buildCoordinatorDbHandler([], []), buildUalStubs(state));
+
+  try {
+    const response = await request(buildApp(loaded.route)).get('/new');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/registro_coordinador');
+    assert.deepEqual(response.body.locals.ualesDisponibles, state.ualOptions);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador creates a coordinator with the selected UALs', async () => {
+  const calls = [];
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [],
+  };
+  const loaded = loadRouteWithDbQuery(
+    buildCoordinatorDbHandler(calls, [{ nombre: 'UAL Norte' }, { nombre: 'UAL Sur' }]),
+    buildUalStubs(state)
+  );
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Coordinador UAL',
+        documento: '79520190',
+        correo: 'coordinador.ual@udistrital.edu.co',
+        role_name: 'coordinador',
+        facultad_id: '10',
+        alcance: 'facultad',
+        ual_ids: ['5', '7'],
+        numero_resolucion_coordinador: 'Resolucion 1010 de 2026',
+        soporte_resolucion: 'https://example.test/resolucion.pdf',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    const ualQuery = calls.find((call) => call.sql.includes('FROM ual WHERE ual_id = ANY'));
+    assert.deepEqual(ualQuery.params, [[5, 7]]);
+    assert.equal(state.ensureCalls, 1);
+    assert.deepEqual(state.replaceCalls, [
+      {
+        userId: 330,
+        roleName: 'coordinador',
+        ualIds: [5, 7],
+        facultyId: null,
+        createdByUserId: null,
+      },
+    ]);
+    assert.match(loaded.sentMessages[0].text, /UALs: UAL Norte, UAL Sur/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador rejects UALs that are missing or inactive', async () => {
+  const calls = [];
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [],
+  };
+  const loaded = loadRouteWithDbQuery(
+    buildCoordinatorDbHandler(calls, [{ nombre: 'UAL Norte' }]),
+    buildUalStubs(state)
+  );
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Coordinador UAL',
+        documento: '79520191',
+        correo: 'coordinador.ual.invalida@udistrital.edu.co',
+        role_name: 'coordinador',
+        facultad_id: '10',
+        alcance: 'facultad',
+        ual_ids: ['5', '99'],
+        numero_resolucion_coordinador: 'Resolucion 1011 de 2026',
+        soporte_resolucion: 'https://example.test/resolucion.pdf',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /no existen o están inactivas/);
+    assert.deepEqual(state.replaceCalls, []);
+    assert.equal(state.ensureCalls, 0);
+    assert.equal(
+      calls.some((call) => call.sql.includes('INSERT INTO usuario (correo, documento, nombre)')),
+      false
+    );
+    assert.equal(
+      calls.some((call) => call.sql.includes('INSERT INTO coordinador')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador ignores UALs for coordinador_general', async () => {
+  const calls = [];
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [],
+  };
+  const loaded = loadRouteWithDbQuery(buildCoordinatorDbHandler(calls, []), buildUalStubs(state));
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({
+        nombre: 'Coordinador General',
+        documento: '79520192',
+        correo: 'coordinador.general@udistrital.edu.co',
+        role_name: 'coordinador_general',
+        ual_ids: ['5'],
+        numero_resolucion_coordinador: 'Resolucion 1012 de 2026',
+        soporte_resolucion: 'https://example.test/resolucion.pdf',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    assert.equal(
+      calls.some((call) => call.sql.includes('FROM ual WHERE ual_id = ANY')),
+      false
+    );
+    assert.equal(state.ensureCalls, 0);
+    assert.deepEqual(state.replaceCalls, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('registro_coordinador does not touch UAL assignments when no UAL is selected', async () => {
+  const calls = [];
+  const state = {
+    ensureCalls: 0,
+    replaceCalls: [],
+    ualOptions: [],
+  };
+  const loaded = loadRouteWithDbQuery(buildCoordinatorDbHandler(calls, []), buildUalStubs(state));
+
+  try {
+    const response = await request(buildApp(loaded.route)).post('/').type('form').send({
+      nombre: 'Coordinador Facultad',
+      documento: '79520193',
+      correo: 'coordinador.sin.ual@udistrital.edu.co',
+      role_name: 'coordinador',
+      facultad_id: '10',
+      alcance: 'facultad',
+      numero_resolucion_coordinador: 'Resolucion 1013 de 2026',
+      soporte_resolucion: 'https://example.test/resolucion.pdf',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    assert.equal(state.ensureCalls, 0);
+    assert.deepEqual(state.replaceCalls, []);
+    assert.equal(
+      calls.some((call) => call.sql.includes('FROM ual WHERE ual_id = ANY')),
       false
     );
   } finally {

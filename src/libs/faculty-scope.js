@@ -1,3 +1,5 @@
+const { fetchOperationalRoleAssignmentsByUserId } = require('./operational-role-assignments');
+
 function normalizeAcademicText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -151,6 +153,83 @@ async function resolveCoordinatorScope(client, authDocument) {
   };
 }
 
+const COORDINATOR_ROLE_NAME = 'coordinador';
+
+async function resolveCoordinatorUserId(client, coordinador) {
+  if (coordinador?.usuario_id) {
+    return coordinador.usuario_id;
+  }
+
+  const result = await client.query(
+    `SELECT id
+     FROM usuario
+     WHERE documento = $1
+        OR documento = $2
+        OR (correo IS NOT NULL AND LOWER(correo) = LOWER($3))
+     LIMIT 1`,
+    [coordinador?.documento || '', coordinador?.nombre_u || '', coordinador?.correo || '']
+  );
+
+  return result.rows[0]?.id || null;
+}
+
+async function resolveCoordinatorScopeByRecord(client, coordinador) {
+  const facultiesRes = await client.query(
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
+    [coordinador.documento]
+  );
+  const facultyIds = facultiesRes.rows.map((row) => Number(row.facultad_id)).filter(Boolean);
+
+  const usuarioId = await resolveCoordinatorUserId(client, coordinador);
+  const ualAssignments = usuarioId
+    ? await fetchOperationalRoleAssignmentsByUserId(usuarioId, COORDINATOR_ROLE_NAME, client)
+    : [];
+  const ualIds = ualAssignments.map((row) => Number(row.ual_id)).filter(Boolean);
+
+  return {
+    coordinatorDocument: coordinador.documento,
+    facultyIds: [...new Set(facultyIds)],
+    ualIds: [...new Set(ualIds)],
+  };
+}
+
+async function resolveCoordinatorAuthorizationScope(client, authDocument) {
+  const coordInfoRes = await client.query(
+    'SELECT documento, nombre_u, correo, usuario_id FROM coordinador WHERE nombre_u = $1',
+    [authDocument]
+  );
+
+  if (coordInfoRes.rows.length === 0) {
+    return {
+      coordinatorDocument: null,
+      facultyIds: [],
+      ualIds: [],
+    };
+  }
+
+  return resolveCoordinatorScopeByRecord(client, coordInfoRes.rows[0]);
+}
+
+function hasCoordinatorScope(scope) {
+  return (scope?.ualIds?.length || 0) > 0 || (scope?.facultyIds?.length || 0) > 0;
+}
+
+// Las UALs asignadas al coordinador tienen prioridad sobre facultad/dependencias.
+// El alias `u` debe referenciar la tabla ual en la consulta que usa este filtro.
+function buildMultaScopeFilter(scope, paramIndex) {
+  if (scope.ualIds?.length) {
+    return {
+      sql: `u.ual_id = ANY($${paramIndex}::int[])`,
+      value: scope.ualIds,
+    };
+  }
+
+  return {
+    sql: `u.facultad_id = ANY($${paramIndex}::int[])`,
+    value: scope.facultyIds,
+  };
+}
+
 async function resolveCoordinatorFacultyNames(client, authDocument) {
   const scope = await resolveCoordinatorScope(client, authDocument);
 
@@ -168,9 +247,14 @@ async function resolveCoordinatorFacultyNames(client, authDocument) {
 
 module.exports = {
   OFFICIAL_FACULTY_NAMES,
+  buildMultaScopeFilter,
   canonicalizeFacultyName,
+  hasCoordinatorScope,
   normalizeAcademicText,
   resolveAcademicFacultyName,
+  resolveCoordinatorAuthorizationScope,
   resolveCoordinatorFacultyNames,
   resolveCoordinatorScope,
+  resolveCoordinatorScopeByRecord,
+  resolveCoordinatorUserId,
 };
