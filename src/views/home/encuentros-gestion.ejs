@@ -64,9 +64,9 @@
           <input type="hidden" id="template-config" name="plantilla_config">
           <div class="col-12 d-none" id="template-editor">
             <div class="alert alert-info py-2" role="status">
-              Elige un campo y haz clic en la vista del PDF para ubicarlo. Puedes cambiar de página
-              para las plantillas de varias páginas. Los datos y el QR se superponen; el PDF original
-              no se modifica.
+              Elige un campo y haz clic en un espacio libre para ubicarlo; arrastra una caja
+              existente para moverla. Puedes cambiar de página para las plantillas de varias páginas.
+              Los datos y el QR se superponen; el PDF original no se modifica.
             </div>
             <div class="row g-3">
               <div class="col-12 col-xl-8">
@@ -80,7 +80,10 @@
                   </button>
                 </div>
                 <div class="template-preview-surface" id="template-preview-surface">
-                  <canvas id="template-preview-canvas" aria-label="Vista previa de la plantilla PDF"></canvas>
+                  <div class="template-preview-canvas-wrap" id="template-preview-canvas-wrap">
+                    <canvas id="template-preview-canvas" aria-label="Vista previa de la plantilla PDF"></canvas>
+                    <canvas id="template-preview-overlay" aria-label="Campos superpuestos; arrastra para moverlos"></canvas>
+                  </div>
                 </div>
                 <div class="small text-muted mt-2" id="template-editor-status" role="status" aria-live="polite">
                   Carga una plantilla PDF para comenzar.
@@ -131,8 +134,9 @@
                 <h3 class="h6 mt-4">Campos ubicados</h3>
                 <ul class="list-group list-group-flush" id="template-placement-list" aria-live="polite"></ul>
                 <div class="form-text mt-2">
-                  Debes ubicar el QR de verificación. En los campos de texto, el clic indica el
-                  punto de alineación del texto.
+                  Debes ubicar el QR de verificación. Haz clic en un espacio libre para colocar el
+                  campo; arrastra una caja para moverla. Quitar una caja no elimina texto impreso en
+                  el PDF original.
                 </div>
               </div>
             </div>

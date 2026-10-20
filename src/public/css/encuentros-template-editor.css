@@ -9,13 +9,32 @@
   background: #f8f9fa;
 }
 
+.template-preview-canvas-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  max-width: 100%;
+  line-height: 0;
+}
+
 #template-preview-canvas {
   display: block;
   max-width: 100%;
   height: auto;
-  cursor: crosshair;
   background: #fff;
   box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 18%);
+}
+
+#template-preview-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+#template-preview-overlay:active {
+  cursor: grabbing;
 }
 
 #template-placement-list .template-placement-item {
