@@ -1032,7 +1032,7 @@ test('dashboard paz y salvo cards link each role to its own workflow', () => {
     const find = (cards, text) => cards.find((card) => card.label.includes(text));
 
     const coordCards = buildPazYSalvoCards('coordinador', indicators);
-    assert.equal(find(coordCards, 'autorización').href, '/milab/api/aprobacion_multa');
+    assert.equal(find(coordCards, 'Sanciones pendientes').href, '/milab/api/get_list_multas');
     assert.equal(find(coordCards, 'Reclamaciones').href, null);
 
     const labCards = buildPazYSalvoCards('laboratorista', indicators);

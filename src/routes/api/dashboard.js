@@ -1410,17 +1410,21 @@ function buildPazYSalvoCards(role, indicators) {
   });
 
   const pendingApproval = sanciones.pendientes + sanciones.porSaldar;
+  // Lógica anterior mientras las sanciones requerían autorización:
+  // label:
+  //   role === 'coordinador'
+  //     ? 'Pendientes de tu autorización'
+  //     : role === 'laboratorista'
+  //       ? 'Esperando al coordinador'
+  //       : 'Pendientes de autorización',
+  // hint: `${sanciones.pendientes} por crear · ${sanciones.porSaldar} por saldar`,
+  // href: role === 'coordinador' ? '/milab/api/aprobacion_multa' : multasUrl,
   cards.push({
-    label:
-      role === 'coordinador'
-        ? 'Pendientes de tu autorización'
-        : role === 'laboratorista'
-          ? 'Esperando al coordinador'
-          : 'Pendientes de autorización',
+    label: 'Sanciones pendientes o por saldar',
     value: pendingApproval,
-    hint: `${sanciones.pendientes} por crear · ${sanciones.porSaldar} por saldar`,
+    hint: `${sanciones.pendientes} pendientes · ${sanciones.porSaldar} por saldar`,
     tone: pendingApproval ? 'warn' : 'ok',
-    href: role === 'coordinador' ? '/milab/api/aprobacion_multa' : multasUrl,
+    href: multasUrl,
   });
 
   if (reclamaciones) {

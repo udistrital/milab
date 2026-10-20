@@ -5,7 +5,7 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { resolveSanctionPersonLookup } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
-const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
+// const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
 require('dotenv').config();
 
@@ -107,6 +107,7 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
       const valuesMultaInfo = [usuarioId, 'ACTIVA'];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
+      /*
       if (multaInfo && multaInfo.length) {
         const configs = await Promise.all(multaInfo.map((m) => resolveMultaConfigForMultaId(m.id)));
         multaInfo = multaInfo.map((m, idx) => ({
@@ -116,6 +117,7 @@ router.post('/', requireLaboratoristaTeacherEraseAccess, async function (req, re
           ),
         }));
       }
+      */
 
       console.log(`Cantidad de registros de multas ACTIVAS: ${multaInfo.length}`);
       console.log(multaInfo);

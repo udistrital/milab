@@ -623,6 +623,7 @@
           'bottom',
           'center'
         ),
+        /*
         createStep(
           ['[data-guide="nav-autorizaciones"]'],
           'Autorizaciones',
@@ -630,6 +631,7 @@
           'bottom',
           'center'
         ),
+        */
         createStep(
           ['[data-guide="nav-registro"]'],
           'Registro',
