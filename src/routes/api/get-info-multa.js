@@ -8,7 +8,8 @@ const {
   resolveSanctionPersonLookup,
 } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
-const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
+const { SANCTION_TYPES } = require('../../libs/multa-config');
+// const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
 const { sgaDebtService } = require('../../libs/oati-debts');
 const { listingHelpers: sanctionListHelpers } = require('./get_list_multas');
@@ -354,22 +355,26 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
     }
 
     if (Array.isArray(uals) && uals.length > 0) {
+      /*
       const facultyIds = [
         ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
       ];
       const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
+      */
       const needsDelegateOptions =
         req.session.user.tipo === 'admin' || req.session.user.tipo === 'coordinador';
       const laboratoristasPorUal = needsDelegateOptions
         ? await fetchLaboratoristasByUalIds(uals.map((u) => Number(u.ual_id)))
         : new Map();
       uals = uals.map((u) => {
+        /*
         const cfg = Number.isFinite(Number(u.facultad_id))
           ? configMap.get(Number(u.facultad_id))
           : null;
+        */
         return {
           ...u,
-          _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
+          // _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
           _laboratoristas: needsDelegateOptions
             ? laboratoristasPorUal.get(Number(u.ual_id)) || []
             : [],

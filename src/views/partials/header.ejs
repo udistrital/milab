@@ -30,10 +30,10 @@
   const sessionRole = locals.sessionRoleLabel || navigation.roleLabel || 'Invitado';
   const sessionName = locals.nombre || '';
   const sessionDocument = locals.documento || '';
-  const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  // const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
   const pendingInventoryApprovalsCount = Number(locals.pendingInventoryApprovalsCount || 0);
-  const shouldShowSanctionsBadge = (link) =>
-    pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  // const shouldShowSanctionsBadge = (link) =>
+  //   pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
   const shouldShowInventoryApprovalsBadge = (link) =>
     pendingInventoryApprovalsCount > 0 && link && link.href === '/milab/inventarios/aprobaciones';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
@@ -96,7 +96,7 @@
   const helpManualsLabel = helpManualsConfig.label;
   const navigationGuideMap = {
     'Solicitar certificado': 'nav-solicitar-certificado',
-    'Autorizaciones': 'nav-autorizaciones',
+    // 'Autorizaciones': 'nav-autorizaciones',
     'Registro': 'nav-registro',
     'Registro de coordinadores': 'nav-registro-coordinadores',
     'Registro de laboratoristas': 'nav-registro-laboratoristas',
@@ -645,9 +645,7 @@
                   >
                     <i class="bi <%= link.icon %>" aria-hidden="true"></i>
                     <span><%= link.label %></span>
-                    <% if (shouldShowSanctionsBadge(link)) { %>
-                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                    <% } %>
+                    <%# Antes, shouldShowSanctionsBadge(link) mostraba las sanciones pendientes en el menú. %>
                     <% if (shouldShowInventoryApprovalsBadge(link)) { %>
                       <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                     <% } %>
@@ -692,9 +690,7 @@
                               >
                                 <i class="bi <%= item.icon %>" aria-hidden="true"></i>
                                 <span><%= item.label %></span>
-                                <% if (shouldShowSanctionsBadge(item)) { %>
-                                  <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                                <% } %>
+                                <%# Antes, shouldShowSanctionsBadge(item) mostraba las sanciones pendientes en el menú. %>
                                 <% if (shouldShowInventoryApprovalsBadge(item)) { %>
                                   <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                                 <% } %>

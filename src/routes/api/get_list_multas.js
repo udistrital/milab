@@ -482,8 +482,12 @@ async function addLaboratoristaActions(client, rows, req) {
 
     return {
       ...row,
-      canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
-      canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      // Antes las acciones directas dependían de flags configurados por facultad:
+      // canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
+      // canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      // canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
+      canActivate: state === 'PENDIENTE',
+      canSaldar: state === 'POR SALDAR',
       canAplazar:
         state === 'ACTIVA' &&
         (config?.permite_crear_multas_activas_directas === true ||
@@ -492,7 +496,7 @@ async function addLaboratoristaActions(client, rows, req) {
         state === 'APLAZADA' &&
         (config?.permite_crear_multas_activas_directas === true ||
           config?.permite_saldar_multas_directas === true),
-      canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
+      canRemove: state === 'ACTIVA',
       canEdit: state === 'ACTIVA',
     };
   });

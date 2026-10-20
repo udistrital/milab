@@ -112,6 +112,7 @@ test('submit rejects inactive or removed catalog categories before inserting san
       ual_id: '21',
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
+      tipo_sancion: 'Firma de compromiso de buen uso',
     });
     assert.equal(response.body.view, 'home/message_error');
     assert.match(response.body.locals.message, /Categoría.*no disponible/);
@@ -217,13 +218,18 @@ test('submit inserts fine and log when request is valid', async () => {
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',
+      tipo_sancion: 'Firma de compromiso de buen uso',
     });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_success');
     assert.match(response.body.locals.message, /Multa registrada correctamente/i);
 
-    const queries = loaded.getExecutedQueries().map((item) => item.sql);
+    const executedQueries = loaded.getExecutedQueries();
+    const queries = executedQueries.map((item) => item.sql);
+    const multaInsert = executedQueries.find((item) => item.sql.includes('INSERT INTO multa'));
+    assert.equal(multaInsert.params[5], 'ACTIVA');
+    assert.equal(multaInsert.params[7], 'Firma de compromiso de buen uso');
     assert.equal(
       queries.some((sql) => sql.includes('INSERT INTO multa')),
       true,
@@ -298,6 +304,7 @@ test('submit allows coordinador to register on behalf of an assigned laboratoris
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
       actuar_como_laboratorista: 'lab-99',
+      tipo_sancion: 'Firma de compromiso de buen uso',
     });
 
     assert.equal(response.status, 200);
