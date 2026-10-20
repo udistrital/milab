@@ -15,6 +15,7 @@ const {
   logConfigChangeToAuditoria,
 } = require('../../libs/multa-config');
 const { wantsJson } = require('../middlewares/error-handler');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
@@ -55,6 +56,13 @@ function resolvePostActionRedirectPath(req) {
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
+
+  if (source === 'get-info-multa-persona') {
+    return (
+      buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim()) ||
+      '/milab/api/get-info-multa/get'
+    );
+  }
 
   if (
     source === 'estudiante' ||
@@ -105,7 +113,9 @@ function resolvePostActionFeedbackValue(payload = {}) {
 }
 
 function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
-  if (redirectTo !== '/milab/api/get_list_multas') {
+  const isListRedirect = redirectTo === '/milab/api/get_list_multas';
+  const isPersonaRedirect = redirectTo.startsWith('/milab/api/get-info-multa/persona?');
+  if (!isListRedirect && !isPersonaRedirect) {
     return redirectTo;
   }
 
@@ -114,7 +124,8 @@ function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
     return redirectTo;
   }
 
-  return `${redirectTo}?success=${encodeURIComponent(feedback)}`;
+  const separator = redirectTo.includes('?') ? '&' : '?';
+  return `${redirectTo}${separator}success=${encodeURIComponent(feedback)}`;
 }
 
 function respondWithActionSuccess(req, res, payload = {}) {
@@ -371,13 +382,15 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
         m.usuario_sancionado_id,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
-        us.codigo AS codigo_sancionado,
+        COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado,
+        COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         l.nombre AS nombre_laboratorista,
         m.cat_multa,
         u.nombre AS ual,
         COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
         CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
-        m.fecha_multa, 
+        m.fecha_multa,
+        TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
         m.con_estado_multa, 
         m.obs_multa,
         m.tipo_sancion
@@ -399,7 +412,7 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     let facultadesParaAutorizar = [];
     if (configuracionDisponible) {
       const facultadesResult = await pool.query(
-        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) AND padre_id IS NULL ORDER BY nombre ASC',
         [scope.facultyIds]
       );
       const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
@@ -835,9 +848,22 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
           ? res.status(403).json({ ok: false, ...msg })
           : res.render('home/message_error', { ...msg, limit: null });
       }
-      const currentCfg = (await fetchMultaConfigsForFacultyIds([facultadIdParam])).get(
-        facultadIdParam
+      const unidadResult = await pool.query(
+        'SELECT padre_id FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
+        [facultadIdParam]
       );
+      if (unidadResult.rows[0]?.padre_id != null) {
+        const msg = {
+          message: 'Operación no válida',
+          message2: 'La configuración de autorizaciones se gestiona a nivel de facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(400).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
+      }
+      const currentCfg = scope.facultyIds?.length
+        ? (await fetchMultaConfigsForFacultyIds([facultadIdParam])).get(facultadIdParam)
+        : null;
       const currentValue = Boolean(currentCfg?.[flag]);
       const nextValue = !currentValue;
       const accionAudit = nextValue ? accionHabilitar : accionDeshabilitar;

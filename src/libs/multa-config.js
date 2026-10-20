@@ -39,6 +39,9 @@ function normalizeConfigRow(row) {
   };
 }
 
+// La configuración vive a nivel de facultad. Los ids recibidos pueden ser facultades o
+// dependencias/laboratorios; cada uno se resuelve a su facultad padre y el mapa se indexa
+// por el id recibido.
 async function fetchMultaConfigsForFacultyIds(facultyIds) {
   const ids = Array.isArray(facultyIds) ? facultyIds.filter((v) => Number.isFinite(Number(v))) : [];
   const map = new Map();
@@ -46,10 +49,16 @@ async function fetchMultaConfigsForFacultyIds(facultyIds) {
     return map;
   }
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
-  const query = `SELECT * FROM config_facultad_multas WHERE facultad_id IN (${placeholders})`;
+  const query = `
+    SELECT unidad.dependencia_facultad_id AS requested_id, cfm.*
+    FROM dependencia_facultad unidad
+    LEFT JOIN config_facultad_multas cfm
+      ON cfm.facultad_id = COALESCE(unidad.padre_id, unidad.dependencia_facultad_id)
+    WHERE unidad.dependencia_facultad_id IN (${placeholders})
+  `;
   const result = await pool.query(query, ids);
   for (const row of result.rows) {
-    map.set(Number(row.facultad_id), normalizeConfigRow(row));
+    map.set(Number(row.requested_id), normalizeConfigRow(row));
   }
   for (const id of ids) {
     const key = Number(id);
@@ -76,7 +85,9 @@ async function resolveMultaConfigForUalId(ualId) {
   const query = `
     SELECT cfm.*
     FROM ual
-    LEFT JOIN config_facultad_multas cfm ON cfm.facultad_id = ual.facultad_id
+    LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = ual.facultad_id
+    LEFT JOIN config_facultad_multas cfm
+      ON cfm.facultad_id = COALESCE(unidad.padre_id, unidad.dependencia_facultad_id)
     WHERE ual.ual_id = $1
     LIMIT 1
   `;
@@ -92,7 +103,9 @@ async function resolveMultaConfigForMultaId(multaId) {
     SELECT cfm.*
     FROM multa
     JOIN ual ON ual.ual_id = multa.ual_id
-    LEFT JOIN config_facultad_multas cfm ON cfm.facultad_id = ual.facultad_id
+    LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = ual.facultad_id
+    LEFT JOIN config_facultad_multas cfm
+      ON cfm.facultad_id = COALESCE(unidad.padre_id, unidad.dependencia_facultad_id)
     WHERE multa.id = $1
     LIMIT 1
   `;

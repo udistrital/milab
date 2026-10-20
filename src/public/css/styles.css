@@ -736,6 +736,16 @@ body.app-shell .app-navbar-actions {
   flex: 0 0 auto;
 }
 
+@media (min-width: 1200px) and (max-width: 1599.98px) {
+  body.app-shell .app-nav-inline {
+    justify-content: space-between;
+  }
+
+  body.app-shell .app-nav-inline .nav-link {
+    white-space: nowrap;
+  }
+}
+
 body.app-shell .app-user-tools {
   display: flex;
   align-items: center;
@@ -3276,6 +3286,85 @@ body.app-shell .table-logs .btn {
   white-space: nowrap;
 }
 
+body.app-shell .table-aprobacion-multas th:nth-child(1),
+body.app-shell .table-aprobacion-multas td:nth-child(1),
+body.app-shell .table-aprobacion-multas th:nth-child(5),
+body.app-shell .table-aprobacion-multas td:nth-child(5) {
+  width: 1%;
+}
+
+body.app-shell .app-table-panel .table td.app-sanction-info-cell,
+body.app-shell .app-table-panel .table th.app-sanction-info-column,
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-estudiante,
+body.app-shell .app-table-panel .table-aprobacion-multas td.app-aprobacion-lab,
+body.app-shell .app-table-panel .table-aprobacion-multas th.app-aprobacion-lab {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .app-table-panel .table td.app-sanction-info-cell,
+body.app-shell .app-table-panel .table th.app-sanction-info-column {
+  min-width: 260px;
+  max-width: 340px;
+}
+
+body.app-shell .app-sanction-info-list {
+  margin: 0;
+}
+
+body.app-shell .app-sanction-info-list > div + div {
+  margin-top: 0.5rem;
+}
+
+body.app-shell .app-sanction-info-list dt {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6c8b93;
+  margin: 0;
+}
+
+body.app-shell .app-sanction-info-list dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #2c4b52;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .table-aprobacion-multas .btn {
+  white-space: nowrap;
+}
+
+body.app-shell .table-aprobacion-multas .app-labs-cell-text {
+  display: block;
+}
+
+body.app-shell .table-aprobacion-multas .app-labs-cell-text.is-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body.app-shell .table-aprobacion-multas .app-labs-toggle {
+  margin-top: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+body.app-shell .table-aprobacion-multas .app-labs-toggle:hover,
+body.app-shell .table-aprobacion-multas .app-labs-toggle:focus {
+  color: var(--app-accent-deep);
+}
+
 body.app-shell .table-striped > tbody > tr:nth-of-type(odd) > * {
   background: rgba(255, 255, 255, 0.5);
 }
@@ -3583,9 +3672,29 @@ body.app-shell .app-sanctions-table .app-sanction-actions {
   white-space: nowrap;
 }
 
-body.app-shell .app-sanction-actions .btn {
-  margin: 0.2rem;
-  white-space: nowrap;
+body.app-shell .app-sanction-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0 0.1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  font-size: 1.15rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+body.app-shell .app-sanction-icon-action:hover {
+  background: var(--app-surface-strong);
+}
+
+body.app-shell .app-sanction-icon-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 body.app-shell .app-sanctions-report form > .d-flex {

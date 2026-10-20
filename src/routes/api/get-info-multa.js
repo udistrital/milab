@@ -10,6 +10,8 @@ const {
 const { requireRoles } = require('../middlewares/auth');
 const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
+const { sgaDebtService } = require('../../libs/oati-debts');
+const { listingHelpers: sanctionListHelpers } = require('./get_list_multas');
 
 // Variables de entorno
 require('dotenv').config();
@@ -63,9 +65,103 @@ const requireFineInfoPageAccess = requireRoles(['admin', 'laboratorista', 'coord
   limit: 'noSession',
 });
 
+// Historial y SGA son solo del estudiante consultado; los reutilizan la búsqueda y el regreso desde cada acción.
+async function buildStudentSanctionPanel(req, { usuarioId, person }) {
+  const activeResult = await pool.query(
+    "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
+    [usuarioId]
+  );
+
+  // Si el alcance del usuario no permite ver el historial, la pantalla sigue operativa con un aviso.
+  let history = [];
+  let historyError = '';
+  const queryContext = await sanctionListHelpers.buildMultasQueryContext(
+    { session: req.session, query: {} },
+    pool
+  );
+  if (queryContext.error) {
+    historyError = queryContext.error.message2 || queryContext.error.message;
+  } else {
+    const rows = await sanctionListHelpers.queryMultasRows(
+      pool,
+      [...queryContext.conditions, `m.usuario_sancionado_id = $${queryContext.params.length + 1}`],
+      [...queryContext.params, usuarioId]
+    );
+    history = await sanctionListHelpers.addLaboratoristaActions(pool, rows, req);
+  }
+
+  const sga = { configured: sgaDebtService.isConfigured(), debts: [], failed: false };
+  if (sga.configured) {
+    try {
+      sga.debts = await sgaDebtService.getActiveDebts({
+        codigo: person.codigo,
+        documento: person.documento,
+      });
+    } catch (error) {
+      sga.failed = true;
+      console.error('Error consultando sanciones SGA en Paso 2:', error);
+    }
+  }
+
+  return {
+    activeSanctionCount: Number(activeResult.rows[0]?.total || 0),
+    history,
+    historyError,
+    sga,
+  };
+}
+
+async function renderStudentSanctionActions(
+  req,
+  res,
+  { lookupToken, person, usuarioId, successFeedback = null }
+) {
+  const panel = await buildStudentSanctionPanel(req, { usuarioId, person });
+  const sanctionCategories = await fetchSanctionCategories({ client: pool });
+  return res.render('home/sancion-person-actions', {
+    lookupToken,
+    personType: 'estudiante',
+    person,
+    activeSanctionCount: panel.activeSanctionCount,
+    sanctionHistory: panel.history,
+    sanctionHistoryError: panel.historyError,
+    sanctionCategories,
+    sga: panel.sga,
+    sgaConfigured: panel.sga.configured,
+    successFeedback,
+  });
+}
+
 router.get('/get', requireFineInfoPageAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   res.render('home/get-info-multa');
+});
+
+// Regreso a Paso 2 desde las acciones del listado; el token es el mismo de la búsqueda.
+router.get('/persona', requireFineInfoPageAccess, async function (req, res) {
+  res.set('Cache-Control', 'no-store');
+
+  const lookupToken = String(req.query.lookup_token || '').trim();
+  const person = resolveSanctionPersonLookup(req, lookupToken, 'estudiante');
+  if (!person) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
+
+  try {
+    return await renderStudentSanctionActions(req, res, {
+      lookupToken,
+      person,
+      usuarioId: person.usuarioId,
+      successFeedback: sanctionListHelpers.normalizeListSuccessFeedback(req.query.success),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.render('home/error-consulta', {
+      message: 'Se ha producido un error',
+    });
+  }
 });
 
 router.post('/', requireFineInfoPageAccess, async function (req, res) {
@@ -161,10 +257,6 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
         });
       }
 
-      const activeSanctionsResult = await pool.query(
-        "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
-        [usuarioId]
-      );
       const createdLookupToken = createSanctionPersonLookup(req, 'estudiante', {
         usuarioId,
         codigo: con_codigo,
@@ -174,9 +266,8 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
         nombre: con_nombre,
       });
 
-      return res.render('home/sancion-person-actions', {
+      return await renderStudentSanctionActions(req, res, {
         lookupToken: createdLookupToken,
-        personType: 'estudiante',
         person: {
           codigo: con_codigo,
           estado: con_estado,
@@ -184,7 +275,7 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
           programa: con_carrera,
           nombre: con_nombre,
         },
-        activeSanctionCount: Number(activeSanctionsResult.rows[0]?.total || 0),
+        usuarioId,
       });
     }
 

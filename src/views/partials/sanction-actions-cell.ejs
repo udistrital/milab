@@ -1,0 +1,85 @@
+<%
+  const detailAction = sanction.canActivate ? 'activate' : sanction.canSaldar ? 'saldar' : sanction.canReactivar ? 'reactivate' : sanction.canAplazar ? 'defer' : sanction.canRemove ? 'remove' : '';
+  const hasPrimaryAction = sanction.canActivate || sanction.canSaldar || sanction.canRemove || sanction.canReactivar;
+  const primaryAction = sanction.canActivate ? 'activate' : sanction.canSaldar ? 'saldar' : sanction.canReactivar ? 'reactivate' : 'remove';
+  // "remove" abre el formulario de quitar-multa, que confirma con el texto "Saldar sanción".
+  const primaryActions = {
+    activate: { icon: 'bi-check-circle', label: 'Activar', tone: 'text-success' },
+    saldar: { icon: 'bi-check2-all', label: 'Saldar', tone: 'text-success' },
+    reactivate: { icon: 'bi-arrow-counterclockwise', label: 'Reactivar', tone: 'text-success' },
+    remove: { icon: 'bi-check2-all', label: 'Saldar', tone: 'text-success' },
+  };
+  const primary = primaryActions[primaryAction];
+%>
+<td class="app-sanction-actions">
+    <button
+        type="button"
+        class="app-sanction-icon-action app-detail-button text-info"
+        title="Ver detalle"
+        aria-label="Ver detalle"
+        data-bs-toggle="modal"
+        data-bs-target="#detalleSancionModal"
+        data-sancion-id="<%= sanction.id %>"
+        data-sancion-nombre="<%= sanction.nombre_sancionado || '' %>"
+        data-sancion-documento="<%= sanction.documento_sancionado %>"
+        data-sancion-codigo="<%= sanction.codigo_sancionado || '' %>"
+        data-sancion-tipo-persona="<%= sanction.tipo_sancionado %>"
+        data-sga-configurado="<%= sgaConfigured ? 'true' : 'false' %>"
+        data-sancion-fecha="<%= sanction.fecha_multa_formateada %>"
+        data-sancion-estado="<%= sanction.con_estado_multa %>"
+        data-sancion-laboratorista="<%= sanction.nombre_laboratorista %>"
+        data-sancion-ual="<%= sanction.ual %>"
+        data-sancion-facultad="<%= sanction.laboratorio_facultad || '' %>"
+        data-sancion-dependencia="<%= sanction.laboratorio_dependencia || '' %>"
+        data-sancion-categoria="<%= sanction.cat_multa %>"
+        data-sancion-tipo="<%= sanction.tipo_sancion || 'Sin definir' %>"
+        data-sancion-observaciones="<%= sanction.obs_multa || 'Sin observaciones' %>"
+        data-sancion-action="<%= detailAction %>"
+    >
+        <i class="bi bi-eye" aria-hidden="true"></i>
+    </button>
+    <% if (hasPrimaryAction) { %>
+        <button
+            type="button"
+            class="app-sanction-icon-action app-sanction-action-button <%= primary.tone %>"
+            title="<%= primary.label %>"
+            aria-label="<%= primary.label %>"
+            data-bs-toggle="modal"
+            data-bs-target="#detalleSancionModal"
+            data-sancion-id="<%= sanction.id %>"
+            data-sancion-action="<%= primaryAction %>"
+        >
+            <i class="bi <%= primary.icon %>" aria-hidden="true"></i>
+        </button>
+    <% } %>
+    <% if (sanction.canAplazar) { %>
+        <button
+            type="button"
+            class="app-sanction-icon-action app-sanction-action-button text-secondary"
+            title="Aplazar"
+            aria-label="Aplazar"
+            data-bs-toggle="modal"
+            data-bs-target="#detalleSancionModal"
+            data-sancion-id="<%= sanction.id %>"
+            data-sancion-action="defer"
+        >
+            <i class="bi bi-pause-circle" aria-hidden="true"></i>
+        </button>
+    <% } %>
+    <% if (sanction.canEdit) { %>
+        <button
+            type="button"
+            class="app-sanction-icon-action app-sanction-action-button text-warning"
+            title="Editar"
+            aria-label="Editar"
+            data-bs-toggle="modal"
+            data-bs-target="#detalleSancionModal"
+            data-sancion-id="<%= sanction.id %>"
+            data-sancion-action="edit"
+            data-sancion-categoria="<%= sanction.cat_multa %>"
+            data-sancion-tipo="<%= sanction.tipo_sancion || '' %>"
+        >
+            <i class="bi bi-pencil-square" aria-hidden="true"></i>
+        </button>
+    <% } %>
+</td>
