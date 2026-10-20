@@ -1,250 +1,317 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('node:path');
-const express = require('express');
 const request = require('supertest');
 
-const root = path.resolve(__dirname, '../../..');
-const routePath = path.join(root, 'src/routes/api/capacitacion-cursos.js');
-const poolPath = path.join(root, 'src/libs/db.js');
-const scopePath = path.join(root, 'src/libs/capacitacion-scope.js');
+const { buildApp, resolveRepoPath } = require('../../integration/helpers/build-test-app');
+const { createSessionHarness, createUser } = require('../../integration/helpers/session-fixtures');
 
-function buildTestApp(query, connect) {
-  const originalPool = require.cache[poolPath];
-  const originalScope = require.cache[scopePath];
-  delete require.cache[routePath];
-  delete require.cache[scopePath];
-  require.cache[poolPath] = {
-    id: poolPath,
-    filename: poolPath,
-    loaded: true,
-    exports: { query, ...(connect ? { connect } : {}) },
-  };
+const routePath = resolveRepoPath('src/routes/api/capacitacion-cursos.js');
+const dbPath = resolveRepoPath('src/libs/db.js');
+const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
+const accountEmailPath = resolveRepoPath('src/libs/account-email.js');
+const scopePath = resolveRepoPath('src/libs/capacitacion-scope.js');
+const edxClientPath = resolveRepoPath('src/libs/edx-cert-client.js');
 
-  const router = require(routePath);
-  const app = express();
-  app.use(express.json());
-  app.use((req, _res, next) => {
-    req.session = {
-      user: { id: 12, documento: '12345', tipo: 'admin', roles: ['admin'] },
-    };
-    next();
+const allowJsonRoles = () => (req, res, next) => next();
+
+function loadRoute({
+  query,
+  connect,
+  scope = { isAdmin: true },
+  user = {},
+  authModule = { requireJsonRoles: allowJsonRoles },
+} = {}) {
+  const sessionHarness = createSessionHarness({
+    user: createUser({
+      tipo: 'admin',
+      roles: ['admin'],
+      documento: 'admin-1',
+      ...user,
+    }),
   });
-  app.use('/capacitacion-cursos', router);
+  const loaded = buildApp({
+    entryPath: routePath,
+    sessionHarness,
+    stubs: [
+      [dbPath, { query: query || (async () => ({ rows: [] })), connect }],
+      [authPath, authModule],
+      [accountEmailPath, { normalizeLogDocument: (documento) => String(documento || '').trim() }],
+      [scopePath, { resolveLaboratoristaScope: async () => scope }],
+      [edxClientPath, { consultarCursosUsuario: async () => ({ cursos: [] }) }],
+    ],
+    purgePaths: [routePath],
+  });
 
+  return loaded;
+}
+
+function validCourse(overrides = {}) {
   return {
-    app,
-    restore() {
-      delete require.cache[routePath];
-      delete require.cache[scopePath];
-      if (originalPool) require.cache[poolPath] = originalPool;
-      else delete require.cache[poolPath];
-      if (originalScope) require.cache[scopePath] = originalScope;
-    },
+    codigo_curso: 'COURSE-1',
+    id_facultad_padre: 2,
+    id_facultad: 3,
+    nombre_curso: 'Introducción a equipos',
+    url_edx: 'https://edx.test/course-1',
+    activo: true,
+    id_laboratorios: [11],
+    ...overrides,
   };
+}
+
+function courseValidationResult(sql, params) {
+  if (sql.includes('FROM dependencia_facultad padre')) {
+    const [idFacultadPadre, idFacultad] = params;
+    if (idFacultadPadre !== 2 || idFacultad !== 3) return { rows: [] };
+    return {
+      rows: [
+        { nombre_facultad: 'Facultad de prueba', nombre_dependencia: 'Dependencia de prueba' },
+      ],
+    };
+  }
+  if (sql.includes('FROM ual')) {
+    return {
+      rows: (params[0] || []).map((ualId) => ({
+        ual_id: ualId,
+        facultad_id: 3,
+        activo: true,
+      })),
+    };
+  }
+  return null;
 }
 
 test('faculty catalog returns only active root faculties', async () => {
   let queryText = '';
-  const setup = buildTestApp(async (sql) => {
-    queryText = sql;
-    return { rows: [{ facultad_id: 3, nombre: 'Facultad de prueba' }] };
+  const loaded = loadRoute({
+    query: async (sql) => {
+      queryText = sql;
+      return { rows: [{ facultad_id: 2, nombre: 'Facultad de prueba' }] };
+    },
   });
 
   try {
-    const response = await request(setup.app).get('/capacitacion-cursos/facultades');
+    const response = await request(loaded.app).get('/facultades');
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.facultades, [{ facultad_id: 3, nombre: 'Facultad de prueba' }]);
-    assert.match(queryText, /FROM dependencia_facultad/);
+    assert.deepEqual(response.body.facultades, [{ facultad_id: 2, nombre: 'Facultad de prueba' }]);
     assert.match(queryText, /WHERE padre_id IS NULL AND activo = TRUE/);
   } finally {
-    setup.restore();
+    loaded.restore();
   }
 });
 
 test('dependence catalog returns only children of the selected faculty', async () => {
   const calls = [];
-  const setup = buildTestApp(async (sql, values) => {
-    calls.push({ sql, values });
-    if (sql.includes('WHERE dependencia_facultad_id = $1')) {
-      return { rows: [{ facultad_id: 3, nombre: 'Facultad de prueba' }] };
-    }
-    return {
-      rows: [{ dependencia_id: 9, nombre: 'Departamento de prueba' }],
-    };
-  });
-
-  try {
-    const response = await request(setup.app).get('/capacitacion-cursos/facultades/3/dependencias');
-    assert.equal(response.status, 200);
-    assert.equal(response.body.facultad.facultad_id, 3);
-    assert.deepEqual(response.body.dependencias, [
-      { dependencia_id: 9, nombre: 'Departamento de prueba' },
-    ]);
-    assert.match(calls[0].sql, /padre_id IS NULL/);
-    assert.match(calls[1].sql, /WHERE padre_id = \$1 AND activo = TRUE/);
-    assert.deepEqual(calls[1].values, [3]);
-  } finally {
-    setup.restore();
-  }
-});
-
-test('course creation requires a faculty and its selected dependence', async () => {
-  let queryCount = 0;
-  const setup = buildTestApp(async () => {
-    queryCount += 1;
-    throw new Error('Database should not be queried for invalid form data');
-  });
-
-  try {
-    const response = await request(setup.app)
-      .post('/capacitacion-cursos/nuevo')
-      .send({
-        codigo_curso: 'CURSO-1',
-        nombre_curso: 'Curso de prueba',
-        url_edx: 'https://example.test/course',
-        id_facultad: 9,
-        id_laboratorios: [1],
-      });
-    assert.equal(response.status, 400);
-    assert.match(response.body.errors.join(' '), /La facultad es obligatoria/);
-    assert.equal(queryCount, 0);
-  } finally {
-    setup.restore();
-  }
-});
-
-test('course creation rejects the faculty root when a dependency must be selected', async () => {
-  const clientCalls = [];
-  const client = {
-    async query(sql, values) {
-      clientCalls.push({ sql, values });
-      if (sql.includes('FROM dependencia_facultad padre')) {
-        assert.deepEqual(values, [3, 3]);
-        assert.match(sql, /dependencia\.padre_id = padre\.dependencia_facultad_id/);
-        return { rows: [] };
+  const loaded = loadRoute({
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.includes('padre_id IS NULL')) {
+        return { rows: [{ facultad_id: 2, nombre: 'Facultad de prueba' }] };
       }
-      return { rows: [] };
+      return { rows: [{ dependencia_id: 3, nombre: 'Dependencia de prueba' }] };
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/facultades/2/dependencias');
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.facultad, {
+      facultad_id: 2,
+      nombre: 'Facultad de prueba',
+    });
+    assert.deepEqual(response.body.dependencias, [
+      { dependencia_id: 3, nombre: 'Dependencia de prueba' },
+    ]);
+    assert.match(calls[1].sql, /WHERE padre_id = \$1 AND activo = TRUE/);
+    assert.deepEqual(calls[1].params, [2]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course creation rejects a faculty root when a child dependence is required', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push(sql);
+      return courseValidationResult(sql, params) || { rows: [] };
     },
     release() {},
   };
-  const setup = buildTestApp(
-    async () => ({ rows: [] }),
-    async () => client
-  );
+  const loaded = loadRoute({ connect: async () => client });
 
   try {
-    const response = await request(setup.app)
-      .post('/capacitacion-cursos/nuevo')
-      .send({
-        codigo_curso: 'CURSO-2',
-        nombre_curso: 'Curso de prueba',
-        url_edx: 'https://example.test/course',
-        id_facultad_padre: 3,
-        id_facultad: 3,
-        id_laboratorios: [1],
-      });
+    const response = await request(loaded.app)
+      .post('/nuevo')
+      .send(validCourse({ id_facultad_padre: 2, id_facultad: 2 }));
+
     assert.equal(response.status, 400);
     assert.match(response.body.message, /dependencia no pertenece a la facultad/i);
-    assert.ok(clientCalls.some(({ sql }) => sql === 'ROLLBACK'));
+    assert.ok(calls.includes('ROLLBACK'));
+    assert.equal(
+      calls.some((sql) => sql.includes('FROM ual')),
+      false
+    );
   } finally {
-    setup.restore();
+    loaded.restore();
   }
 });
 
-test('course creation and editing reject laboratories outside the selected dependence', async () => {
-  const writes = [
-    {
-      path: '/capacitacion-cursos/nuevo',
-      body: {
-        codigo_curso: 'CURSO-3',
-        nombre_curso: 'Curso de prueba',
-        url_edx: 'https://example.test/course',
-        id_facultad_padre: 3,
-        id_facultad: 9,
-        id_laboratorios: [1],
-      },
+test('course creation rejects invalid fields before opening a database transaction', async () => {
+  let connectCalls = 0;
+  const loaded = loadRoute({
+    connect: async () => {
+      connectCalls += 1;
+      throw new Error('Database should not be reached');
     },
-    {
-      path: '/capacitacion-cursos/editar',
-      body: {
-        codigo_curso_original: 'CURSO-3',
-        codigo_curso: 'CURSO-3',
-        nombre_curso: 'Curso de prueba',
-        url_edx: 'https://example.test/course',
-        id_facultad_padre: 3,
-        id_facultad: 9,
-        id_laboratorios: [1],
-      },
-    },
-  ];
+  });
 
-  for (const write of writes) {
-    const clientCalls = [];
+  try {
+    const response = await request(loaded.app).post('/nuevo').send({
+      codigo_curso: '',
+      id_facultad: '0',
+      nombre_curso: '',
+      url_edx: 'javascript:alert(1)',
+      id_laboratorios: [],
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.ok(response.body.errors.length >= 4);
+    assert.equal(connectCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course write routes reject students using the real role middleware', async () => {
+  let connectCalls = 0;
+  const authModule = require(resolveRepoPath('src/routes/middlewares/auth.js'));
+  const loaded = loadRoute({
+    authModule,
+    user: { tipo: 'estudiante', roles: ['estudiante'] },
+    connect: async () => {
+      connectCalls += 1;
+      throw new Error('Database should not be reached');
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).post('/nuevo').send(validCourse());
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.ok, false);
+    assert.equal(connectCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course creation commits the course and unique laboratory associations', async () => {
+  const calls = [];
+  let released = false;
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      const validation = courseValidationResult(sql, params);
+      if (validation) return validation;
+      if (sql.includes('INSERT INTO cursos')) {
+        return {
+          rows: [
+            {
+              codigo_curso: 'COURSE-1',
+              id_facultad: 3,
+              nombre_curso: 'Introducción a equipos',
+              activo: true,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    release() {
+      released = true;
+    },
+  };
+  const loaded = loadRoute({ connect: async () => client });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/nuevo')
+      .send(validCourse({ id_laboratorios: [11, 11, 0, -1] }));
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.curso.codigo_curso, 'COURSE-1');
+    assert.ok(calls.some(({ sql }) => sql === 'BEGIN'));
+    assert.equal(
+      calls.filter(({ sql }) => sql.includes('INSERT INTO curso_laboratorio')).length,
+      1
+    );
+    assert.ok(calls.some(({ sql }) => sql === 'COMMIT'));
+    assert.equal(released, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course creation and editing reject laboratories from another dependence before writes', async () => {
+  for (const path of ['/nuevo', '/editar']) {
+    const calls = [];
     const client = {
-      async query(sql) {
-        clientCalls.push(sql);
+      async query(sql, params) {
+        calls.push(sql);
         if (sql.includes('FROM dependencia_facultad padre')) {
-          return {
-            rows: [{ nombre_facultad: 'Facultad de prueba', nombre_dependencia: 'Departamento' }],
-          };
+          return courseValidationResult(sql, params);
         }
         if (sql.includes('FROM ual')) {
-          return { rows: [{ ual_id: 1, facultad_id: 10, activo: true }] };
+          return { rows: [{ ual_id: 11, facultad_id: 99, activo: true }] };
         }
         if (sql.includes('SELECT codigo_curso FROM cursos')) {
-          return { rows: [{ codigo_curso: 'CURSO-3' }] };
+          return { rows: [{ codigo_curso: 'COURSE-1' }] };
         }
         return { rows: [] };
       },
       release() {},
     };
-    const setup = buildTestApp(
-      async () => ({ rows: [] }),
-      async () => client
-    );
+    const loaded = loadRoute({ connect: async () => client });
 
     try {
-      const response = await request(setup.app).post(write.path).send(write.body);
+      const response = await request(loaded.app)
+        .post(path)
+        .send(validCourse({ codigo_curso_original: 'COURSE-1' }));
+
       assert.equal(response.status, 400);
       assert.match(response.body.message, /laboratorios deben estar activos y pertenecer/i);
-      assert.ok(clientCalls.includes('ROLLBACK'));
-      assert.ok(
-        clientCalls.some((sql) => sql.includes('ORDER BY ual_id') && sql.includes('FOR UPDATE'))
-      );
+      assert.ok(calls.includes('ROLLBACK'));
       assert.equal(
-        clientCalls.some((sql) =>
+        calls.some((sql) =>
           /^(INSERT INTO cursos|UPDATE cursos|DELETE FROM curso_laboratorio)/.test(sql)
         ),
         false
       );
     } finally {
-      setup.restore();
+      loaded.restore();
     }
   }
 });
 
-test('course creation accepts active laboratories from the selected dependence', async () => {
-  const clientCalls = [];
+test('course editing replaces laboratory associations and commits the full change', async () => {
+  const calls = [];
   const client = {
-    async query(sql) {
-      clientCalls.push(sql);
-      if (sql.includes('FROM dependencia_facultad padre')) {
-        return {
-          rows: [{ nombre_facultad: 'Facultad de prueba', nombre_dependencia: 'Departamento' }],
-        };
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT codigo_curso FROM cursos')) {
+        return { rows: [{ codigo_curso: 'COURSE-1' }] };
       }
-      if (sql.includes('FROM ual')) {
-        return { rows: [{ ual_id: 1, facultad_id: 9, activo: true }] };
-      }
-      if (sql.includes('INSERT INTO cursos')) {
+      const validation = courseValidationResult(sql, params);
+      if (validation) return validation;
+      if (sql.includes('UPDATE cursos')) {
         return {
           rows: [
             {
-              codigo_curso: 'CURSO-4',
-              id_facultad: 9,
-              nombre_curso: 'Curso de prueba',
-              url_edx: 'https://example.test/course',
+              codigo_curso: 'COURSE-1',
+              id_facultad: 3,
+              nombre_curso: 'Curso actualizado',
               activo: true,
             },
           ],
@@ -254,26 +321,153 @@ test('course creation accepts active laboratories from the selected dependence',
     },
     release() {},
   };
-  const setup = buildTestApp(
-    async () => ({ rows: [] }),
-    async () => client
-  );
+  const loaded = loadRoute({ connect: async () => client });
 
   try {
-    const response = await request(setup.app)
-      .post('/capacitacion-cursos/nuevo')
-      .send({
-        codigo_curso: 'CURSO-4',
-        nombre_curso: 'Curso de prueba',
-        url_edx: 'https://example.test/course',
-        id_facultad_padre: 3,
-        id_facultad: 9,
-        id_laboratorios: [1],
-      });
+    const response = await request(loaded.app)
+      .post('/editar')
+      .send(
+        validCourse({
+          codigo_curso_original: 'COURSE-1',
+          nombre_curso: 'Curso actualizado',
+          id_laboratorios: [11, 12],
+        })
+      );
+
     assert.equal(response.status, 200);
-    assert.ok(clientCalls.some((sql) => sql.includes('INSERT INTO curso_laboratorio')));
-    assert.ok(clientCalls.includes('COMMIT'));
+    assert.ok(calls.some(({ sql }) => sql === 'BEGIN'));
+    assert.ok(
+      calls.some(
+        ({ sql, params }) =>
+          sql.includes('DELETE FROM curso_laboratorio') && params[0] === 'COURSE-1'
+      )
+    );
+    assert.equal(
+      calls.filter(({ sql }) => sql.includes('INSERT INTO curso_laboratorio')).length,
+      2
+    );
+    assert.ok(calls.some(({ sql }) => sql === 'COMMIT'));
   } finally {
-    setup.restore();
+    loaded.restore();
+  }
+});
+
+test('course editing rolls back when a new laboratory association fails', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push(sql);
+      if (sql.includes('SELECT codigo_curso FROM cursos')) {
+        return { rows: [{ codigo_curso: 'COURSE-1' }] };
+      }
+      const validation = courseValidationResult(sql, params);
+      if (validation) return validation;
+      if (sql.includes('UPDATE cursos')) {
+        return { rows: [{ codigo_curso: 'COURSE-1' }] };
+      }
+      if (sql.includes('INSERT INTO curso_laboratorio')) {
+        const error = new Error('invalid laboratory');
+        error.code = '23503';
+        error.constraint = 'fk_curso_laboratorio_ual';
+        throw error;
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const loaded = loadRoute({ connect: async () => client });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/editar')
+      .send(validCourse({ codigo_curso_original: 'COURSE-1' }));
+
+    assert.equal(response.status, 400);
+    assert.ok(calls.includes('ROLLBACK'));
+    assert.equal(calls.includes('COMMIT'), false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course creation maps duplicate course identifiers and rolls back', async () => {
+  const calls = [];
+  let released = false;
+  const client = {
+    async query(sql, params) {
+      calls.push(sql);
+      const validation = courseValidationResult(sql, params);
+      if (validation) return validation;
+      if (sql.includes('INSERT INTO cursos')) {
+        const error = new Error('duplicate key');
+        error.code = '23505';
+        error.constraint = 'pk_cursos';
+        throw error;
+      }
+      return { rows: [] };
+    },
+    release() {
+      released = true;
+    },
+  };
+  const loaded = loadRoute({ connect: async () => client });
+
+  try {
+    const response = await request(loaded.app).post('/nuevo').send(validCourse());
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /duplicado/i);
+    assert.ok(calls.includes('ROLLBACK'));
+    assert.equal(released, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course status changes persist the requested active flag', async () => {
+  const calls = [];
+  const loaded = loadRoute({
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT codigo_curso, nombre_curso, activo FROM cursos')) {
+        return { rows: [{ codigo_curso: 'COURSE-1', nombre_curso: 'Curso uno', activo: true }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/cambiar-estado')
+      .send({ codigo_curso: 'COURSE-1', activo: false });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.activo, false);
+    assert.deepEqual(calls.find(({ sql }) => sql.includes('UPDATE cursos')).params, [
+      false,
+      'COURSE-1',
+    ]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('course listing reports a missing capacitacion schema as a service error', async () => {
+  const loaded = loadRoute({
+    query: async () => {
+      const error = new Error('relation cursos does not exist');
+      error.code = '42P01';
+      throw error;
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/list');
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.migration_faltante, true);
+    assert.equal(response.body.script_requerido, 'sql-scripts/db_structure_certificacion.sql');
+  } finally {
+    loaded.restore();
   }
 });

@@ -246,7 +246,7 @@
     document.querySelectorAll('.js-delete-horario-sala').forEach(function(button) {
       button.addEventListener('click', async function() {
         var horarioId = button.getAttribute('data-horario-id');
-        if (!horarioId || !window.confirm('¿Deseas eliminar este horario?')) return;
+        if (!horarioId || !(await window.MiLabDialogs.confirm('¿Deseas eliminar este horario?'))) return;
 
         var btn = button;
 

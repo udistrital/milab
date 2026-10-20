@@ -521,9 +521,9 @@
   async function recordAttendance(event, participant, operation) {
     const promptText = operation === 'entrada' ? 'entrada' : 'salida';
     if (
-      !window.confirm(
+      !(await window.MiLabDialogs.confirm(
         `Confirma la ${promptText} de ${participant.nombre} (documento ${participant.documento}) en "${event.nombre}".`
-      )
+      ))
     )
       return;
     try {
@@ -560,9 +560,9 @@
 
   async function generateCertificate(eventId, participantId) {
     if (
-      !window.confirm(
+      !(await window.MiLabDialogs.confirm(
         'La participación se completó. ¿Generar el certificado ahora y enviarlo por correo?'
-      )
+      ))
     )
       return;
     try {
@@ -583,12 +583,15 @@
   }
 
   async function annulCertificate(certificateId) {
-    const reason = window.prompt('Indica el motivo de anulación del certificado:');
+    const reason = await window.MiLabDialogs.prompt(
+      'Indica el motivo de anulación del certificado:',
+      'Motivo de anulación'
+    );
     if (!reason?.trim()) return;
     if (
-      !window.confirm(
+      !(await window.MiLabDialogs.confirm(
         '¿Confirmas la anulación? El código QR público mostrará el certificado como anulado.'
-      )
+      ))
     )
       return;
     try {
@@ -605,7 +608,7 @@
 
   async function updateState(eventId, state) {
     const labels = { en_curso: 'iniciar', finalizado: 'finalizar', cancelado: 'cancelar' };
-    if (!window.confirm(`¿Confirmas ${labels[state]} este evento?`)) return;
+    if (!(await window.MiLabDialogs.confirm(`¿Confirmas ${labels[state]} este evento?`))) return;
     try {
       await request(`/eventos/${eventId}/estado`, {
         method: 'PATCH',

@@ -15,51 +15,35 @@
         <div class="alert alert-success" role="alert"><%= successMessage %></div>
       <% } %>
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid table-laboratoristas" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped table-hover js-data-grid table-laboratoristas" data-grid-page-length="25" data-grid-scroll-x="false" data-grid-refresh-on-restore="true">
           <thead class="thead-dark text-center">
             <tr>
               <th>Nombres y Apellidos</th>
               <th>Cédula</th>
               <th>Correo</th>
-              <th>Laboratorio</th> <!-- cambiado de UAL a Laboratorio -->
               <th>Facultad</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
+              <th>Dependencia</th>
+              <th>Laboratorio asignado</th>
               <th>Estado actual</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
           <tbody class="text-center text-light">
             <% laboratoristas.forEach(laboratorista => { %>
+              <% const facultadTexto = String(laboratorista.con_facultad || ''); %>
+              <% const dependenciaTexto = String(laboratorista.con_dependencia || ''); %>
               <% const laboratorioTexto = String(laboratorista.con_ual || ''); %>
-              <% const mostrarToggleLaboratorio = laboratorioTexto.length > 140; %>
               <tr>
                 <td><%= laboratorista.con_nombre %></td>
                 <td><%= laboratorista.con_documento %></td>
                 <td data-email-cell="true"><%= laboratorista.con_correo %></td>
+                <td><%- include('../partials/compact-list-cell', { text: facultadTexto }) %></td>
+                <td><%- include('../partials/compact-list-cell', { text: dependenciaTexto }) %></td>
                 <td>
-                  <span
-                    class="app-labs-cell-text <%= mostrarToggleLaboratorio ? 'is-collapsed' : '' %>"
-                    data-labs-text="true"
-                  ><%= laboratorioTexto %></span>
-                  <% if (mostrarToggleLaboratorio) { %>
-                    <button
-                      type="button"
-                      class="app-labs-toggle"
-                      data-labs-toggle="true"
-                      aria-expanded="false"
-                    >
-                      Ver más
-                    </button>
-                  <% } %>
-                </td> <!-- nombre del laboratorio -->
-                <td><%= laboratorista.con_facultad %></td> <!-- nombre de la facultad -->
-                <td>
-                  <a
-                    class="btn btn-sm btn-outline-primary"
-                    href="/milab/api/laboratoristas_registrados/editar?documento=<%= encodeURIComponent(laboratorista.con_documento) %>"
-                  >
-                    Editar
-                  </a>
+                  <%- include('../partials/compact-list-cell', {
+                    text: laboratorioTexto,
+                    threshold: 140,
+                  }) %>
                 </td>
                 <td>
                   <span class="badge <%= laboratorista.activo ? 'text-bg-success' : 'text-bg-secondary' %>">
@@ -67,6 +51,12 @@
                   </span>
                 </td>
                 <td>
+                  <a
+                    class="btn btn-sm btn-outline-primary"
+                    href="/milab/api/laboratoristas_registrados/editar?documento=<%= encodeURIComponent(laboratorista.con_documento) %>"
+                  >
+                    Editar
+                  </a>
                   <form action="/milab/api/laboratoristas_registrados/toggle-estado" method="POST">
                     <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= laboratorista.con_documento %>">

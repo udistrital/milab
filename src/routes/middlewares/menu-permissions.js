@@ -17,10 +17,7 @@ function sanitizePath(pathname) {
 
 const publicApiAllowlist = [
   { prefix: '/milab/api/login/login', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/milab/api/register', methods: ['POST'], allowSubpaths: true },
   { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
-  { prefix: '/milab/api/get-data1', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/milab/api/get-data2', methods: ['POST'], allowSubpaths: false },
   { prefix: '/milab/api/check-services', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
@@ -55,6 +52,10 @@ function isPublicApiPath(requestPath, method) {
 
 function buildRouteCandidates(pathname, method) {
   const candidates = [pathname];
+  for (const section of ['mis-sanciones', 'reclamaciones']) {
+    const parent = `/milab/api/sanciones/${section}`;
+    if (pathname.startsWith(`${parent}/`)) candidates.push(parent);
+  }
 
   if (method === 'POST' && pathname === '/milab/api/get_list_estudiantes/consulta_masiva') {
     candidates.push('/milab/api/get_list_estudiantes/get_consulta');
@@ -68,6 +69,9 @@ function buildRouteCandidates(pathname, method) {
 
   if (pathname.startsWith('/milab/api/')) {
     const parts = pathname.split('/').filter(Boolean);
+    if (parts[2] === 'admin' && parts.length > 4) {
+      candidates.push(`/${parts.slice(0, 4).join('/')}`);
+    }
     if (parts.length > 3) {
       const apiModuleRoute = `/${parts.slice(0, 3).join('/')}`;
       candidates.push(apiModuleRoute, `${apiModuleRoute}/load_info`);

@@ -76,13 +76,17 @@ function loadRoute({ poolQueryImpl, connectQueryImpl, requestOatiImpl, scopeImpl
 
           if (
             sql.includes(
-              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+              'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
             )
           ) {
             return { rows: [{ facultad_id: 10 }] };
           }
 
-          if (sql.includes('SELECT * FROM facultad WHERE facultad_id = ANY($1::int[])')) {
+          if (
+            sql.includes(
+              'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[])'
+            )
+          ) {
             return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
           }
 
@@ -264,7 +268,7 @@ test('register_monitor post rejects labs outside the selected faculty', async ()
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }] };

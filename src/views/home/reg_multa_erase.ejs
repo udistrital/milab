@@ -69,15 +69,17 @@
               <th>Documento</th>
               <th>Fecha</th>
               <th>Estado</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Ver detalle</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <% if(multaInfo.length > 0) { %>
               <% multaInfo.forEach(function(data){ %>
                 <% const laboratoristaUalIds = Array.isArray(locals.laboratoristaUalIds) ? locals.laboratoristaUalIds : []; %>
-                <% const canRemove = data.con_estado_multa !== 'SALDADO' && (locals.tipo === 'admin' || locals.tipo === 'coordinador' || (locals.tipo === 'laboratorista' && laboratoristaUalIds.includes(Number(data.ual_id)))); %>
+                <%# Antes la condición usaba SALDADO y el flujo dependía del flag de saldo directo. %>
+                <% const canRemove = data.con_estado_multa !== 'SALDADA' && (locals.tipo === 'admin' || locals.tipo === 'coordinador' || (locals.tipo === 'laboratorista' && laboratoristaUalIds.includes(Number(data.ual_id)))); %>
                 <% const referenciaSancionado = data.documento_sancionado || data.usuario_sancionado_id; %>
+                <%# Antes este botón llevaba data-sancion-saldar-directa según la configuración de la facultad. %>
                 <tr class="text-light">
                   <td><%= data.id %></td>
                   <td><%= referenciaSancionado %></td>
@@ -95,11 +97,12 @@
                       data-sancion-estado="<%= data.con_estado_multa %>"
                       data-sancion-laboratorista="<%= data.nombre_laboratorista %>"
                       data-sancion-ual="<%= data.ual %>"
+                      data-sancion-facultad="<%= data.laboratorio_facultad || '' %>"
+                      data-sancion-dependencia="<%= data.laboratorio_dependencia || '' %>"
                       data-sancion-categoria="<%= data.cat_multa %>"
                       data-sancion-tipo="<%= data.tipo_sancion || 'Sin definir' %>"
                       data-sancion-observaciones="<%= data.obs_multa || 'Sin observaciones' %>"
-                      data-sancion-can-remove="<%= canRemove ? 'true' : 'false' %>"
-                      data-sancion-saldar-directa="<%= data._permiteSaldarDirecta ? 'true' : 'false' %>">
+                      data-sancion-can-remove="<%= canRemove ? 'true' : 'false' %>">
                     >
                       <i class="bi bi-eye"></i>
                       Ver detalle
@@ -152,6 +155,14 @@
               <div class="fw-semibold" data-detail-field="ual"></div>
             </div>
             <div class="col-md-6">
+              <div class="text-muted small">Facultad</div>
+              <div class="fw-semibold" data-detail-field="facultad"></div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Dependencia</div>
+              <div class="fw-semibold" data-detail-field="dependencia"></div>
+            </div>
+            <div class="col-md-6">
               <div class="text-muted small">Categoría de la sanción</div>
               <div class="fw-semibold" data-detail-field="categoria"></div>
             </div>
@@ -167,11 +178,11 @@
 
           <div class="border-top pt-3 mt-3 d-none" data-detail-action="remove">
             <h6 class="mb-3" data-detail-title="quitar">Quitar sanción</h6>
-            <div class="alert alert-info d-none mb-3" data-detail-alert="directa" role="alert">Esta facultad tiene autorización para saldar directamente. La sanción pasará inmediatamente a SALDADA.</div>
-            <div class="alert alert-secondary d-none mb-3" data-detail-alert="pendiente" role="alert">La sanción se marcará como POR SALDAR y el coordinador deberá aprobarla para cerrarla.</div>
+            <!-- Antes el texto y la decisión entre SALDADA y POR SALDAR dependían de la autorización por facultad. -->
+            <div class="alert alert-info mb-3" role="alert">La sanción pasará inmediatamente a SALDADA.</div>
             <form action="/milab/api/quitar-multa" method="post" class="row g-3" data-submit-once="true">
               <%- include('../partials/csrf_field') %>
-              <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
+              <input type="text" name="con_id" data-detail-input="con_id" class="d-none" maxlength="10" readonly>
               <input type="hidden" name="source" value="estudiante">
               <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
@@ -207,6 +218,8 @@
       estado: trigger.getAttribute('data-sancion-estado'),
       laboratorista: trigger.getAttribute('data-sancion-laboratorista'),
       ual: trigger.getAttribute('data-sancion-ual'),
+      facultad: trigger.getAttribute('data-sancion-facultad'),
+      dependencia: trigger.getAttribute('data-sancion-dependencia'),
       categoria: trigger.getAttribute('data-sancion-categoria'),
       tipo: trigger.getAttribute('data-sancion-tipo'),
       observaciones: trigger.getAttribute('data-sancion-observaciones'),
@@ -220,16 +233,18 @@
     });
 
     const canRemove = trigger.getAttribute('data-sancion-can-remove') === 'true';
-    const saldarDirecta = trigger.getAttribute('data-sancion-saldar-directa') === 'true';
     const removeSection = document.querySelector('[data-detail-action="remove"]');
     const noRemoveSection = document.querySelector('[data-detail-action="no-remove"]');
 
     if (removeSection) {
       removeSection.classList.toggle('d-none', !canRemove);
       const titleQuitar = removeSection.querySelector('[data-detail-title="quitar"]');
+      const btnQuitar = removeSection.querySelector('[data-detail-button="quitar"]');
+      /*
+      // El botón recibía data-sancion-saldar-directa desde la configuración de la facultad.
+      const saldarDirecta = trigger.getAttribute('data-sancion-saldar-directa') === 'true';
       const alertDirecta = removeSection.querySelector('[data-detail-alert="directa"]');
       const alertPendiente = removeSection.querySelector('[data-detail-alert="pendiente"]');
-      const btnQuitar = removeSection.querySelector('[data-detail-button="quitar"]');
       if (titleQuitar) {
         titleQuitar.textContent = saldarDirecta ? 'Saldar sanción directamente' : 'Quitar sanción';
       }
@@ -237,6 +252,13 @@
       if (alertPendiente) alertPendiente.classList.toggle('d-none', saldarDirecta);
       if (btnQuitar) {
         btnQuitar.textContent = saldarDirecta ? 'Saldar sanción definitivamente' : 'Quitar sanción';
+      }
+      */
+      if (titleQuitar) {
+        titleQuitar.textContent = 'Saldar sanción directamente';
+      }
+      if (btnQuitar) {
+        btnQuitar.textContent = 'Saldar sanción definitivamente';
       }
     }
     if (noRemoveSection) {

@@ -12,62 +12,52 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false">
+        <table id="myTable" class="table table-bordered table-striped js-data-grid table-coordinadores" data-grid-page-length="25" data-grid-scroll-x="false" data-grid-refresh-on-restore="true">
           <thead class="text-light">
             <tr>
               <th>Nombres y Apellidos</th>
               <th>Cédula</th>
               <th>Correo</th>
               <th>Facultad</th>
+              <th>Dependencia</th>
+              <th>Laboratorios a cargo</th>
+              <th>UALs</th>
               <th>Resoluci&oacute;n</th>
               <th>Soporte Resoluci&oacute;n</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Editar</th>
               <th>Estado actual</th>
-              <th data-grid-filter="false" data-grid-orderable="false">Activar / Inactivar</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <% coordinadores.forEach(coordinador => { %>
               <% const facultadTexto = String(coordinador.facultad_nombre || ''); %>
+              <% const dependenciaTexto = String(coordinador.dependencia_nombre || ''); %>
+              <% const ualTexto = String(coordinador.ual_nombre || ''); %>
               <% const soporteResolucionTexto = String(coordinador.con_soporte_resolucion || ''); %>
-              <% const mostrarToggleFacultad = facultadTexto.length > 120; %>
-              <% const mostrarToggleSoporte = soporteResolucionTexto.length > 120; %>
               <tr data-coordinador-row="<%= coordinador.con_documento %>">
                 <td><%= coordinador.con_nombre %></td>
                 <td><%= coordinador.con_documento %></td>
                 <td data-email-cell="true"><%= coordinador.con_correo %></td>
-                <td data-facultades-cell="true">
-                  <span
-                    class="app-labs-cell-text <%= mostrarToggleFacultad ? 'is-collapsed' : '' %>"
-                    data-labs-text="true"
-                  ><%= facultadTexto %></span>
-                  <% if (mostrarToggleFacultad) { %>
-                    <button
-                      type="button"
-                      class="app-labs-toggle"
-                      data-labs-toggle="true"
-                      aria-expanded="false"
-                    >
-                      Ver más
-                    </button>
-                  <% } %>
+                <td data-facultad-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: facultadTexto }) %>
+                </td>
+                <td data-dependencias-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: dependenciaTexto }) %>
+                </td>
+                <td>
+                  <%- include('../partials/compact-list-cell', { text: coordinador.laboratorios_encargados || 'Sin laboratorios a cargo' }) %>
+                </td>
+                <td data-ual-cell="true">
+                  <%- include('../partials/compact-list-cell', { text: ualTexto }) %>
                 </td>
                 <td data-numero-resolucion-cell="true"><%= coordinador.con_numero_resolucion_coordinador || '' %></td>
                 <td data-soporte-resolucion-cell="true">
-                  <span
-                    class="app-labs-cell-text <%= mostrarToggleSoporte ? 'is-collapsed' : '' %>"
-                    data-labs-text="true"
-                  ><%= soporteResolucionTexto %></span>
-                  <% if (mostrarToggleSoporte) { %>
-                    <button
-                      type="button"
-                      class="app-labs-toggle"
-                      data-labs-toggle="true"
-                      aria-expanded="false"
-                    >
-                      Ver más
-                    </button>
-                  <% } %>
+                  <%- include('../partials/compact-list-cell', { text: soporteResolucionTexto }) %>
+                </td>
+                <td>
+                  <span class="badge <%= coordinador.tipo === 'coordinador' ? 'text-bg-success' : 'text-bg-secondary' %>">
+                    <%= coordinador.tipo === 'coordinador' ? 'Activo' : 'Inactivo' %>
+                  </span>
                 </td>
                 <td>
                   <button
@@ -81,16 +71,10 @@
                     data-coordinador-editor-numero-resolucion="<%= coordinador.con_numero_resolucion_coordinador || '' %>"
                     data-coordinador-editor-soporte-resolucion="<%= coordinador.con_soporte_resolucion || '' %>"
                     data-coordinador-editor-facultad-ids='<%= JSON.stringify(Array.isArray(coordinador.facultad_ids) ? coordinador.facultad_ids : []) %>'
+                    data-coordinador-editor-ual-ids='<%= JSON.stringify(Array.isArray(coordinador.ual_ids) ? coordinador.ual_ids : []) %>'
                   >
                     Editar
                   </button>
-                </td>
-                <td>
-                  <span class="badge <%= coordinador.tipo === 'coordinador' ? 'text-bg-success' : 'text-bg-secondary' %>">
-                    <%= coordinador.tipo === 'coordinador' ? 'Activo' : 'Inactivo' %>
-                  </span>
-                </td>
-                <td>
                   <form action="/milab/api/coordinadores_registrados/toggle-estado" method="POST">
                     <%- include('../partials/csrf_field') %>
                     <input type="hidden" name="documento" value="<%= coordinador.con_documento %>">
@@ -110,6 +94,9 @@
   <%- include('../partials/coordinador-editor-modal', {
     actionUrl: '/milab/api/coordinadores_registrados/actualizar',
     facultadesDisponibles: facultadesDisponibles || [],
+    dependenciasDisponibles:
+      typeof dependenciasDisponibles !== 'undefined' ? dependenciasDisponibles : [],
+    ualesDisponibles: typeof ualesDisponibles !== 'undefined' ? ualesDisponibles : [],
   }) %>
 
 <div class="px-3">
@@ -117,7 +104,7 @@
     <div class="card-body p-3">
       <div class="mb-0 text-center" role="alert">
         <strong>Información:</strong> La columna <strong>Estado actual</strong> muestra si el coordinador está activo o inactivo.
-        <br>Usa la columna <strong>Activar / Inactivar</strong> para cambiar su estado operativo.
+        <br>Usa los iconos de la columna <strong>Acciones</strong> para editar o cambiar su estado operativo.
       </div>
     </div>
   </div>

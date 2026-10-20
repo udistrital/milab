@@ -1,10 +1,14 @@
 const pool = require('./db');
 const transporter = require('./mail');
 const { normalizeSanctionType } = require('./multa-config');
+const { buildAppUrl } = require('./app-url');
 const {
+  NO_REPLY_NOTICE,
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
   escapeHtml,
 } = require('./email-layout');
 
@@ -12,7 +16,8 @@ async function resolveStudentContactByUsuarioId(usuarioId) {
   if (!usuarioId) return null;
   const result = await pool.query(
     `
-      SELECT u.nombre, u.documento, u.codigo, u.correo
+      SELECT u.nombre, u.documento, u.codigo, u.correo,
+             EXISTS (SELECT 1 FROM perfil_docente pd WHERE pd.usuario_id = u.id) AS es_docente
       FROM usuario u
       WHERE u.id = $1
       LIMIT 1
@@ -29,7 +34,11 @@ async function sendSanctionActivationEmail({
   tipoSancion,
   observaciones,
   laboratorio,
+  facultad,
+  dependencia,
   fecha,
+  multaId,
+  permiteReclamacion = true,
 }) {
   if (!transporter) {
     return { ok: false, reason: 'sin-transporter' };
@@ -40,12 +49,21 @@ async function sendSanctionActivationEmail({
 
   const safeNombre = nombre || 'estudiante';
   const h = escapeHtml;
+  const dependenciaVisible = dependencia || (facultad ? 'Toda la facultad' : 'No disponible');
+  const clarificationMessage = laboratorio
+    ? `Si tienes dudas sobre la sanción reportada, por favor acércate al laboratorio ${laboratorio} (${facultad ? `Facultad: ${facultad}. ` : ''}Dependencia: ${dependenciaVisible}) para aclarar tu situación.`
+    : 'Si tienes dudas sobre la sanción reportada, por favor acércate al laboratorio donde se registró la sanción para aclarar tu situación.';
+  const claimUrl =
+    buildAppUrl('/api/sanciones/mis-sanciones') +
+    (multaId ? `#sancion-${encodeURIComponent(multaId)}` : '');
+  const claimMessage =
+    'Si consideras que esta sanción requiere revisión, ingresa a MILab y presenta tu reclamación desde Mis sanciones. El laboratorista responsable responderá por la plataforma. Solo se permite una reclamación por sanción. Este buzón no es el canal de recepción de reclamaciones.';
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: buildNoReplySender(),
     to: correo,
     subject: 'Notificación de sanción activada - MILab Laboratorios UD',
-    text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\nSi tienes dudas, comunícate con la coordinación de laboratorios.`,
+    text: `Hola ${safeNombre},\n\nSe ha activado una sanción asociada a tu registro con código ${codigo}.\n\nTipo de sanción: ${tipoSancion}.\nLaboratorio: ${laboratorio || 'N/A'}.\nFacultad: ${facultad || 'No disponible'}.\nDependencia: ${dependenciaVisible}.\nFecha: ${fecha || 'N/A'}.\nObservaciones: ${observaciones || 'Sin observaciones'}.\n\n${clarificationMessage}\n\n${permiteReclamacion ? `${claimMessage}\n${claimUrl}\n\n` : ''}${NO_REPLY_NOTICE}`,
     html: `
       <!DOCTYPE html>
       <html lang="es">
@@ -78,14 +96,23 @@ async function sendSanctionActivationEmail({
                     <div style="background:#f8f9fa;border-radius:8px;padding:16px;border-left:4px solid #e53935;margin-top:16px;">
                       <p style="margin:0;font-size:14px;color:#202124;"><strong>Tipo de sanción:</strong> ${h(tipoSancion)}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Laboratorio:</strong> ${h(laboratorio || 'N/A')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Facultad:</strong> ${h(facultad || 'No disponible')}</p>
+                      <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Dependencia:</strong> ${h(dependenciaVisible)}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Fecha:</strong> ${h(fecha || 'N/A')}</p>
                       <p style="margin:6px 0 0 0;font-size:14px;color:#202124;"><strong>Observaciones:</strong> ${h(observaciones || 'Sin observaciones')}</p>
                     </div>
                     <p style="font-size:14px;line-height:1.6;color:#5f6368;margin-top:18px;">
-                      Si tienes dudas, comunícate con la coordinación de laboratorios.
+                      ${h(clarificationMessage)}
                     </p>
+                    ${
+                      permiteReclamacion
+                        ? `<p style="font-size:14px;line-height:1.6;color:#5f6368;">${h(claimMessage)}</p>
+                    <p><a href="${h(claimUrl)}" style="display:inline-block;padding:12px 18px;background:#b71c1c;color:#fff;text-decoration:none;border-radius:6px;">Consultar sanción y presentar reclamación</a></p>`
+                        : ''
+                    }
                   </td>
                 </tr>
+                ${buildNoReplyNoticeHtml()}
                 ${buildEmailFooterHtml(`
                   <p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">
                     MILab - Coordinación General de Laboratorios

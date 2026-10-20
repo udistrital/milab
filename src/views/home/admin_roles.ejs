@@ -95,13 +95,12 @@
                           </button>
                         </form>
 
-                        <form method="POST" action="/milab/api/admin/roles/<%= role.id %>/eliminar">
+                        <form method="POST" action="/milab/api/admin/roles/<%= role.id %>/eliminar" data-confirm-submit="¿Seguro que deseas eliminar el rol <%= role.nombre %>?">
                           <%- include('../partials/csrf_field') %>
                           <button
                             class="btn btn-sm btn-outline-danger"
                             type="submit"
                             <%= isProtected ? 'disabled' : '' %>
-                            onclick="return confirm('¿Seguro que deseas eliminar el rol <%= role.nombre %>?');"
                           >
                             Eliminar
                           </button>

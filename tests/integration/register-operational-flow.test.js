@@ -24,7 +24,11 @@ function createClient(queryImpl) {
         return queryImpl(sql, params);
       }
 
-      if (sql.includes('SELECT * FROM facultad WHERE facultad_id = ANY($1::int[])')) {
+      if (
+        sql.includes(
+          'SELECT dependencia_facultad_id AS facultad_id, * FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[])'
+        )
+      ) {
         return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
       }
 
@@ -60,6 +64,7 @@ function loadRegisterLabsApp({ sessionState, queryImpl }) {
       [
         emailLayoutPath,
         {
+          ...require(emailLayoutPath),
           buildBrandedEmailAttachments: () => [],
           buildEmailFooterHtml: () => '',
           buildEmailHeaderHtml: () => '',

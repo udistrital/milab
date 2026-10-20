@@ -1,0 +1,14 @@
+<td>
+  <div class="app-sanction-identification">
+    <span><small>Código</small><strong><%= sanction.codigo_sancionado || 'Sin código' %></strong></span>
+    <span><small>Documento</small><strong><%= sanction.documento_sancionado || 'Sin documento' %></strong></span>
+  </div>
+</td>
+<td>
+  <strong class="app-sanction-person"><%= String(sanction.nombre_sancionado || '').trim() || 'Nombre no registrado' %></strong>
+</td>
+<td>
+  <strong class="app-sanction-lab"><%= sanction.ual || 'Laboratorio no registrado' %></strong>
+  <%- include('./sanction-location', { sanction }) %>
+  <span class="app-sanction-meta">Sanción #<%= sanction.id %></span>
+</td>

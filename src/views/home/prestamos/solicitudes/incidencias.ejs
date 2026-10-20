@@ -199,6 +199,7 @@
             <textarea
               class="form-control"
               id="pazYSalvoJustificacion"
+              maxlength="2000"
               rows="3"
               placeholder="Describe por qué esta incidencia debe o no debe bloquear el paz y salvo."
               required
@@ -209,6 +210,7 @@
             <textarea
               class="form-control"
               id="aprobarSancionDetalle"
+              maxlength="2000"
               rows="3"
               placeholder="Describe brevemente la medida aplicada."
             ></textarea>
@@ -238,6 +240,7 @@
           <textarea
             class="form-control"
             id="cerrarIncidenciaDescripcion"
+            maxlength="2000"
             rows="4"
             placeholder="Describe la solucion aplicada."
           ></textarea>
@@ -360,7 +363,7 @@
       button.addEventListener('click', async function() {
         var incidentId = button.getAttribute('data-incident-id') || '';
         if (!incidentId) return;
-        if (!window.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?')) return;
+        if (!(await window.MiLabDialogs.confirm('¿Deseas marcar esta incidencia como pendiente por cerrar?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(button, 'Marcando incidencia como pendiente por cerrar...');

@@ -78,7 +78,10 @@ function loadNavigationModule({ menuImpl, scopeImpl, queryImpl } = {}) {
 test('navigationMiddleware builds dynamic menu by role when DB menu is available', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
-      primaryLinks: [{ label: 'Panel coordinador', href: '/custom/panel', icon: 'bi-grid' }],
+      primaryLinks: [
+        { label: 'Panel coordinador', href: '/custom/panel', icon: 'bi-grid' },
+        { label: 'Autorizaciones', href: '/milab/api/aprobacion_multa', icon: 'bi-check' },
+      ],
       secondaryGroups: [],
       accountLinks: [{ label: 'Perfil', href: '/custom/profile', icon: 'bi-person' }],
     }),
@@ -87,6 +90,7 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
   try {
     const req = {
+      path: '/milab/api/dashboard',
       session: {
         user: {
           tipo: 'coordinador',
@@ -103,9 +107,16 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
     assert.equal(nextCalled, true);
     assert.equal(res.locals.tipo, 'coordinador');
+    assert.equal(res.locals.navigationCurrentPath, '/milab/api/dashboard');
     assert.deepEqual(res.locals.roles, ['coordinador']);
     assert.equal(res.locals.appNavigation.primaryLinks[0].href, '/custom/panel');
-    assert.equal(res.locals.pendingSanctionsCount, 0);
+    assert.equal(
+      res.locals.appNavigation.primaryLinks.some(
+        (link) => link.href === '/milab/api/aprobacion_multa'
+      ),
+      false
+    );
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
   } finally {
     loaded.restore();
   }
@@ -132,7 +143,7 @@ test('buildNavigation falls back to static menu when dynamic menu lookup fails',
   }
 });
 
-test('navigationMiddleware sets pending sanctions badge for coordinador', async () => {
+test('navigationMiddleware no longer queries authorization counts', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({ primaryLinks: [], secondaryGroups: [], accountLinks: [] }),
     scopeImpl: async () => ({ coordinatorDocument: '1024467835', facultyIds: [4, 7] }),
@@ -156,21 +167,152 @@ test('navigationMiddleware sets pending sanctions badge for coordinador', async 
     });
 
     assert.equal(nextCalled, true);
-    assert.equal(res.locals.pendingSanctionsCount, 5);
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
 
     const queryCalls = loaded.getQueryCalls();
-    assert.equal(queryCalls.length >= 1, true);
     assert.equal(
-      queryCalls.some((call) => call.sql.includes('INNER JOIN ual u ON u.ual_id = m.ual_id')),
-      true,
-      'debe contar sanciones uniendo multa con ual'
+      queryCalls.some((call) => call.sql.includes('FROM multa m')),
+      false,
+      'no debe consultar los totales de la vista de autorizaciones'
     );
   } finally {
     loaded.restore();
   }
 });
 
-test('navigationMiddleware keeps pending sanctions badge at zero for non coordinador roles', async () => {
+test('navigationMiddleware counts inventory approvals using the same role scope as the queue', async () => {
+  for (const scenario of [
+    { role: 'admin', global: true, document: 'admin-1' },
+    { role: 'coordinador_general', global: true, document: 'general-1' },
+    { role: 'coordinador', global: false, document: 'coord-1' },
+  ]) {
+    const loaded = loadNavigationModule({
+      scopeImpl: async () => ({ coordinatorDocument: 'coord-1', facultyIds: [4] }),
+      queryImpl: async (sql) =>
+        sql.includes('FROM inventario_carga c') ? { rows: [{ total: 3 }] } : { rows: [] },
+    });
+    try {
+      const res = { locals: {} };
+      await loaded.navigationMiddleware(
+        {
+          session: {
+            user: {
+              tipo: scenario.role,
+              roles: [scenario.role],
+              documento: scenario.document,
+            },
+          },
+        },
+        res,
+        (error) => assert.ifError(error)
+      );
+
+      assert.equal(res.locals.pendingInventoryApprovalsCount, 3);
+      const approvalsQuery = loaded
+        .getQueryCalls()
+        .find(({ sql }) => sql.includes('FROM inventario_carga c'));
+      assert.ok(approvalsQuery);
+      assert.match(approvalsQuery.sql, /c\.estado = 'pendiente_aprobacion'/);
+      assert.deepEqual(approvalsQuery.params, [scenario.global, scenario.document]);
+      if (!scenario.global) {
+        assert.match(
+          approvalsQuery.sql,
+          /COALESCE\(encargado\.coordinador_documento, c\.coordinador_documento\) = \$2/
+        );
+        assert.match(approvalsQuery.sql, /ca\.facultad_id = u\.facultad_id/);
+      }
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('claim notification badges reflect unread student answers and assigned pending requests', async () => {
+  for (const role of ['estudiante', 'laboratorista']) {
+    const loaded = loadNavigationModule({
+      queryImpl: async (sql) =>
+        sql.includes('reclamacion_sancion') ? { rows: [{ total: 2 }] } : { rows: [] },
+    });
+    try {
+      const res = { locals: {} };
+      await loaded.navigationMiddleware(
+        { session: { user: { tipo: role, documento: '123' } } },
+        res,
+        (error) => assert.ifError(error)
+      );
+      assert.equal(res.locals.claimNotifications.count, 2);
+      assert.match(
+        res.locals.claimNotifications.href,
+        role === 'estudiante' ? /mis-sanciones$/ : /reclamaciones$/
+      );
+      const query = loaded.getQueryCalls().find((call) => call.sql.includes('reclamacion_sancion'));
+      assert.match(
+        query.sql,
+        role === 'estudiante' ? /fecha_lectura IS NULL/ : /fecha_respuesta IS NULL/
+      );
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('admins can manage claims without receiving a pending-claim notification badge', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) =>
+      sql.includes('reclamacion_sancion') ? { rows: [{ total: 2 }] } : { rows: [] },
+  });
+
+  try {
+    const res = { locals: {} };
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'admin', documento: '123' } } },
+      res,
+      (error) => assert.ifError(error)
+    );
+
+    assert.equal(res.locals.claimNotifications, null);
+    assert.equal(
+      loaded.getQueryCalls().some((call) => call.sql.includes('reclamacion_sancion')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('navigationMiddleware still renders when claim notifications cannot be queried', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) => {
+      if (sql.includes('reclamacion_sancion')) {
+        throw Object.assign(new Error('permission denied for table reclamacion_sancion'), {
+          code: '42501',
+        });
+      }
+      return { rows: [] };
+    },
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const res = { locals: {} };
+    let nextError;
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'admin', documento: '123' } } },
+      res,
+      (error) => {
+        nextError = error;
+      }
+    );
+    assert.equal(nextError, undefined);
+    assert.equal(res.locals.claimNotifications, null);
+    assert.equal(res.locals.isAuthenticated, true);
+  } finally {
+    console.warn = originalWarn;
+    loaded.restore();
+  }
+});
+
+test('navigationMiddleware does not query authorization counts for laboratoristas', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
       primaryLinks: [{ label: 'Monitoreo', href: '/milab/api/dashboard', icon: 'bi-activity' }],
@@ -196,8 +338,22 @@ test('navigationMiddleware keeps pending sanctions badge at zero for non coordin
     });
 
     assert.equal(nextCalled, true);
-    assert.equal(res.locals.pendingSanctionsCount, 0);
-    assert.equal(loaded.getQueryCalls().length, 0, 'no debe consultar conteo para no coordinador');
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
+    assert.equal(res.locals.pendingInventoryApprovalsCount, 0);
+    assert.ok(
+      !loaded
+        .getQueryCalls()
+        .some(
+          (call) =>
+            call.sql.includes('FROM multa m') && call.sql.includes("IN ('Pendiente', 'POR SALDAR')")
+        ),
+      'no debe consultar el conteo de autorizaciones para un laboratorista'
+    );
+    assert.ok(
+      !loaded.getQueryCalls().some((call) => call.sql.includes('FROM inventario_carga c')),
+      'no debe contar aprobaciones de inventario para un laboratorista'
+    );
+    assert.equal(res.locals.claimNotifications.count, 0);
   } finally {
     loaded.restore();
   }

@@ -12,6 +12,12 @@
   <section class="app-page-header">
     <h1 class="app-page-title">Perfil</h1>
     <p class="app-page-subtitle">Complete o actualice la información necesaria para usar MILab con su correo institucional.</p>
+    <% if (locals.tipo === 'estudiante' || (Array.isArray(locals.roles) && locals.roles.includes('estudiante'))) { %>
+      <a class="btn btn-outline-primary mt-2" href="/milab/api/sanciones/mis-sanciones">
+        <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
+        Mis sanciones y reclamaciones
+      </a>
+    <% } %>
   </section>
 
   <section class="row justify-content-center">
@@ -81,38 +87,57 @@
 
             <div class="col-md-6">
               <label for="nombre" class="form-label">Nombre</label>
-              <input type="text" class="form-control" id="nombre" name="nombre" value="<%= nombre || '' %>" <%= profileLocked ? 'readonly' : (readonly ? 'readonly' : '') %> required>
+              <input type="text" class="form-control" id="nombre" name="nombre" maxlength="200" value="<%= nombre || '' %>" <%= profileLocked ? 'readonly' : (readonly ? 'readonly' : '') %> required>
             </div>
 
             <div class="col-md-6">
               <label for="correo" class="form-label">Correo institucional</label>
-              <input type="email" class="form-control" id="correo" name="correo" value="<%= correo || '' %>" readonly required>
+              <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= correo || '' %>" readonly required>
             </div>
 
             <div class="col-md-6">
               <label for="tipo_usuario" class="form-label">Tipo de usuario</label>
-              <input type="text" class="form-control text-capitalize" value="<%= tipo_usuario || '' %>" readonly>
+              <input type="text" class="form-control text-capitalize" value="<%= tipo_usuario || '' %>" maxlength="40" readonly>
               <input type="hidden" id="tipo_usuario" name="tipo_usuario" value="<%= tipo_usuario || '' %>">
             </div>
 
             <div class="col-md-6">
               <label for="documento" class="form-label">Documento</label>
-              <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
+              <input type="text" class="form-control" id="documento" name="documento" maxlength="50" value="<%= documento || '' %>" <%= (modo === 'editar' || profileLocked) ? 'readonly' : '' %> required>
             </div>
 
-            <div class="col-md-6 student-only">
-              <label for="codigo" class="form-label">Código</label>
-              <input type="text" class="form-control" id="codigo" name="codigo" value="<%= codigo || '' %>" <%= readonly ? 'readonly' : '' %>>
-            </div>
+            <% const opcionesCodigo = Array.isArray(locals.opcionesCodigo) ? locals.opcionesCodigo : []; %>
+            <% if (opcionesCodigo.length > 1) { %>
+              <div class="col-12 student-only">
+                <label for="codigo" class="form-label">Programa / código de estudiante</label>
+                <select class="form-select" id="codigo" name="codigo" required>
+                  <option value="" <%= !codigo ? 'selected' : '' %> disabled>Seleccione el programa con el que desea registrarse</option>
+                  <% opcionesCodigo.forEach(function(opcion) { %>
+                    <option
+                      value="<%= opcion.codigo %>"
+                      data-carrera="<%= opcion.carrera || '' %>"
+                      data-estado="<%= opcion.estado || '' %>"
+                      <%= codigo === opcion.codigo ? 'selected' : '' %>
+                    ><%= opcion.codigo %> - <%= opcion.carrera || 'Sin programa' %></option>
+                  <% }) %>
+                </select>
+                <div class="form-text">Su documento tiene varios registros habilitados en la universidad. Elija el programa que usará en MILab.</div>
+              </div>
+            <% } else { %>
+              <div class="col-md-6 student-only">
+                <label for="codigo" class="form-label">Código</label>
+                <input type="text" class="form-control" id="codigo" name="codigo" maxlength="19" value="<%= codigo || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+              </div>
+            <% } %>
 
             <div class="col-md-6">
               <label for="estado" class="form-label">Estado</label>
-              <input type="text" class="form-control" id="estado" name="estado" value="<%= estado || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %> required>
+              <input type="text" class="form-control" id="estado" name="estado" maxlength="20" value="<%= estado || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %> required>
             </div>
 
             <div class="col-12 student-only">
               <label for="carrera" class="form-label">Carrera</label>
-              <input type="text" class="form-control" id="carrera" name="carrera" value="<%= carrera || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
+              <input type="text" class="form-control" id="carrera" name="carrera" maxlength="100" value="<%= carrera || '' %>" <%= (readonly || profileLocked) ? 'readonly' : '' %>>
             </div>
 
             <div class="col-12 d-flex justify-content-center gap-2 pt-2">
@@ -146,7 +171,25 @@
     if (carrera) carrera.required = isStudent;
   }
 
-  document.addEventListener('DOMContentLoaded', toggleStudentFields);
+  function syncCodigoSelection() {
+    var codigo = document.getElementById('codigo');
+    if (!codigo || codigo.tagName !== 'SELECT') return;
+
+    var option = codigo.options[codigo.selectedIndex];
+    var carrera = document.getElementById('carrera');
+    var estado = document.getElementById('estado');
+    if (carrera) carrera.value = option && option.value ? option.getAttribute('data-carrera') || '' : '';
+    if (estado) estado.value = option && option.value ? option.getAttribute('data-estado') || '' : '';
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    toggleStudentFields();
+    var codigo = document.getElementById('codigo');
+    if (codigo && codigo.tagName === 'SELECT') {
+      codigo.addEventListener('change', syncCodigoSelection);
+      syncCodigoSelection();
+    }
+  });
 </script>
 
 <%- include('../partials/footer'); -%>

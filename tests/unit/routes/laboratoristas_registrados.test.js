@@ -64,7 +64,7 @@ function loadRoute({
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };
@@ -105,7 +105,7 @@ function loadRoute({
 
           if (
             sql.includes(
-              'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+              'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
             )
           ) {
             return { rows: [{ facultad_id: 10 }] };
@@ -131,7 +131,7 @@ function loadRoute({
 
           if (
             sql.includes(
-              'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[])'
+              'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[])'
             )
           ) {
             return { rows: [{ facultad_id: 10, nombre: 'Facultad 10' }] };
@@ -217,6 +217,53 @@ function loadRoute({
   };
 }
 
+test('laboratoristas_registrados lists faculty, dependencies and assigned labs', async () => {
+  const loaded = loadRoute({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM laboratorista l')) {
+        return {
+          rows: [
+            {
+              con_nombre: 'Laboratorista Demo',
+              con_documento: '12345',
+              con_correo: 'lab.demo@udistrital.edu.co',
+              con_facultad: 'Facultad de Ingeniería',
+              con_dependencia: 'Laboratorio de Sistemas',
+              con_ual: 'Sala 1',
+              activo: true,
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, loaded.sessionUser);
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.laboratoristas[0], {
+      con_nombre: 'Laboratorista Demo',
+      con_documento: '12345',
+      con_correo: 'lab.demo@udistrital.edu.co',
+      con_facultad: 'Facultad de Ingeniería',
+      con_dependencia: 'Laboratorio de Sistemas',
+      con_ual: 'Sala 1',
+      activo: true,
+    });
+    const listQuery = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('FROM laboratorista l'))?.sql;
+    assert.match(listQuery, /AS con_dependencia/);
+    assert.match(listQuery, /LEFT JOIN dependencia_facultad facultad/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('laboratoristas_registrados /editar allows admin edit and updates assigned UALs', async () => {
   const loaded = loadRoute({ sessionRole: 'admin' });
 
@@ -275,7 +322,7 @@ test('laboratoristas_registrados /editar blocks coordinador when laboratorista f
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }] };
@@ -329,7 +376,7 @@ test('laboratoristas_registrados /editar allows coordinador within scope and log
 
       if (
         sql.includes(
-          'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1'
+          'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1'
         )
       ) {
         return { rows: [{ facultad_id: 10 }, { facultad_id: 20 }] };

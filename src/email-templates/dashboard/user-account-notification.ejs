@@ -42,6 +42,14 @@
                 </li>
               <% }); %>
             </ul>
+            <% if (tipoUsuario === 'estudiante') { %>
+              <p style="font-size:14px;line-height:1.6;margin-top:16px;">
+                Si solicitas revisar una sanción, presenta tu reclamación en
+                <a href="<%= buildAppUrl('/api/sanciones/mis-sanciones') %>">Mis sanciones en MILab</a>
+                después de registrarte e iniciar sesión. El laboratorista responsable responderá por la plataforma.
+                Este buzón no es el canal de recepción de reclamaciones.
+              </p>
+            <% } %>
           </td>
         </tr>
       <% } %>
@@ -61,6 +69,7 @@
           </table>
         </td>
       </tr>
+      <%- buildNoReplyNoticeHtml() %>
       <%- buildEmailFooterHtml('<p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">Coordinación General de Laboratorios - MILab</p>') %>
     </table>
   </body>

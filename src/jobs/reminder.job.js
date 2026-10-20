@@ -30,7 +30,7 @@ async function fetchUpcomingPrestamos() {
         e.nombre AS equipo_nombre
       FROM solicitud_prestamo sp
       JOIN usuario u ON u.id = sp.usuario_id
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.estado = 'aprobado'
         AND COALESCE(sp.recordatorio_enviado, FALSE) = FALSE
         AND sp.fecha_inicio > CURRENT_TIMESTAMP

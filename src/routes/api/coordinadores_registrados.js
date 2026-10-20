@@ -7,6 +7,11 @@ const {
   normalizeLogDocument,
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
+const { resolveCoordinatorUserId } = require('../../libs/faculty-scope');
+const {
+  fetchActiveUalOptions,
+  replaceOperationalRoleAssignments,
+} = require('../../libs/operational-role-assignments');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
@@ -36,24 +41,6 @@ const requireAdminCoordinatorEmailEdit = requireJsonRoles('admin', {
   message: 'No tienes permisos para actualizar este correo.',
 });
 
-async function resolveCoordinatorUserId(client, coordinador) {
-  if (coordinador?.usuario_id) {
-    return coordinador.usuario_id;
-  }
-
-  const result = await client.query(
-    `SELECT id
-     FROM usuario
-     WHERE documento = $1
-        OR documento = $2
-        OR (correo IS NOT NULL AND LOWER(correo) = LOWER($3))
-     LIMIT 1`,
-    [coordinador?.documento || '', coordinador?.nombre_u || '', coordinador?.correo || '']
-  );
-
-  return result.rows[0]?.id || null;
-}
-
 async function resolveExistingColumn(tableName, candidateColumns) {
   try {
     const res = await pool.query(
@@ -79,15 +66,31 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              c.correo AS con_correo,
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
-             STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre) AS facultad_nombre,
-             ARRAY_AGG(DISTINCT f.facultad_id ORDER BY f.facultad_id) FILTER (WHERE f.facultad_id IS NOT NULL) AS facultad_ids,
+             (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+              FROM coordinador_ual_encargado e
+              JOIN ual u ON u.ual_id = e.ual_id
+              WHERE e.coordinador_documento = c.documento) AS laboratorios_encargados,
+             STRING_AGG(
+               DISTINCT COALESCE(facultad.nombre, f.nombre),
+               ', '
+               ORDER BY COALESCE(facultad.nombre, f.nombre)
+             ) AS facultad_nombre,
+             STRING_AGG(
+               DISTINCT CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END,
+               ', '
+               ORDER BY CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END
+             ) AS dependencia_nombre,
+             ARRAY_AGG(DISTINCT f.dependencia_facultad_id ORDER BY f.dependencia_facultad_id) FILTER (WHERE f.dependencia_facultad_id IS NOT NULL) AS facultad_ids,
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
-             END AS tipo
+             END AS tipo,
+             ARRAY_AGG(DISTINCT ual_row.ual_id ORDER BY ual_row.ual_id) FILTER (WHERE ual_row.ual_id IS NOT NULL) AS ual_ids,
+             STRING_AGG(DISTINCT ual_row.nombre, ', ' ORDER BY ual_row.nombre) FILTER (WHERE ual_row.ual_id IS NOT NULL) AS ual_nombre
       FROM coordinador c
-      JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-      JOIN facultad f ON f.facultad_id = cf.facultad_id
+      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+      LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = f.padre_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
         OR u.documento = c.documento
@@ -101,19 +104,52 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
           AND r.nombre = 'coordinador'
         LIMIT 1
       ) role_state ON true
+      LEFT JOIN usuario_ual_rol_operativo uro
+        ON uro.usuario_id = u.id
+       AND uro.activo = TRUE
+      LEFT JOIN rol uro_rol
+        ON uro_rol.id = uro.rol_id
+       AND uro_rol.nombre = 'coordinador'
+      LEFT JOIN ual ual_row
+        ON ual_row.ual_id = uro.ual_id
+       AND ual_row.activo = TRUE
       GROUP BY c.nombre, c.documento, c.correo, c.numero_resolucion_coordinador, c.soporte_resolucion, role_state.activo
     `;
     const result = await client.query(query);
     const coordinadores = result.rows;
 
-    const facultadesResult = await client.query(
-      'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC'
-    );
+    const facultadIdColumn = await resolveExistingColumn('dependencia_facultad', [
+      'dependencia_facultad_id',
+      'facultad_id',
+      'id_facultad',
+    ]);
+    const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
+    const [facultadesResult, dependenciasResult, ualesResult] = await Promise.all([
+      client.query(
+        `SELECT ${facultadIdColumn} AS facultad_id, nombre
+         FROM dependencia_facultad
+         WHERE ${parentIdColumn} IS NULL
+         ORDER BY nombre ASC`
+      ),
+      client.query(
+        `SELECT ${facultadIdColumn} AS dependencia_id,
+                ${parentIdColumn} AS facultad_id,
+                nombre
+         FROM dependencia_facultad
+         WHERE ${parentIdColumn} IS NOT NULL
+         ORDER BY nombre ASC`
+      ),
+      fetchActiveUalOptions(client),
+    ]);
     const facultadesDisponibles = facultadesResult.rows;
+    const dependenciasDisponibles = dependenciasResult.rows;
+    const ualesDisponibles = ualesResult;
 
     return res.render('home/coordinadores_registrados', {
       coordinadores,
       facultadesDisponibles,
+      dependenciasDisponibles,
+      ualesDisponibles,
     });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
@@ -168,12 +204,32 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     }
   }
 
-  const facultyIdsInput = req.body.facultad_ids;
-  const facultadIds = Array.isArray(facultyIdsInput)
-    ? facultyIdsInput.map((x) => parseInt(String(x || '0'), 10)).filter(Number.isFinite)
-    : typeof facultyIdsInput === 'string' && /^\d+$/.test(facultyIdsInput)
-      ? [parseInt(facultyIdsInput, 10)]
+  const assignmentFieldsProvided = ['facultad_id', 'alcance', 'dependencia_ids'].some((field) =>
+    Object.prototype.hasOwnProperty.call(req.body, field)
+  );
+  const legacyFacultyIdsInput = req.body.facultad_ids;
+  const legacyFacultyIds = Array.isArray(legacyFacultyIdsInput)
+    ? [...new Set(legacyFacultyIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+    : typeof legacyFacultyIdsInput === 'string' && /^\d+$/.test(legacyFacultyIdsInput)
+      ? [Number(legacyFacultyIdsInput)]
       : [];
+  const assignmentProvided = assignmentFieldsProvided || legacyFacultyIdsInput !== undefined;
+  const facultyId = Number(req.body.facultad_id);
+  const assignmentScope = String(req.body.alcance || '');
+  const dependencyIdsInput = Array.isArray(req.body.dependencia_ids)
+    ? req.body.dependencia_ids
+    : [req.body.dependencia_ids];
+  const dependencyIds = [
+    ...new Set(dependencyIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0)),
+  ];
+  const ualProvided = Object.prototype.hasOwnProperty.call(req.body, 'ual_ids');
+  const ualIdsInput = Array.isArray(req.body.ual_ids) ? req.body.ual_ids : [req.body.ual_ids];
+  const ualIds = ualProvided
+    ? [...new Set(ualIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+    : [];
+  let assignmentIds = legacyFacultyIds;
+  let assignmentFacultyNames = [];
+  let assignmentDependencyNames = [];
 
   if (!documento) {
     return res.status(400).json({
@@ -189,7 +245,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
     });
   }
 
-  if (!facultadIds.length) {
+  if (assignmentProvided && !assignmentFieldsProvided && legacyFacultyIds.length === 0) {
     return res.status(400).json({
       ok: false,
       message: 'Debes seleccionar al menos una sede / facultad.',
@@ -232,26 +288,173 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       }
     }
 
-    const validFacultyColumn = await resolveExistingColumn('facultad', [
-      'facultad_id',
-      'id_facultad',
-    ]);
-    const validFacs = await client.query(
-      `SELECT ${validFacultyColumn} AS facultad_id FROM facultad WHERE ${validFacultyColumn} = ANY($1::int[])`,
-      [facultadIds]
-    );
-    if (validFacs.rows.length !== facultadIds.length) {
-      client.release();
-      return res.status(400).json({
-        ok: false,
-        message: 'Una o más facultades seleccionadas no existen.',
-      });
+    if (assignmentProvided) {
+      const validFacultyColumn = await resolveExistingColumn('dependencia_facultad', [
+        'dependencia_facultad_id',
+        'facultad_id',
+        'id_facultad',
+      ]);
+
+      if (assignmentFieldsProvided) {
+        const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
+        if (!Number.isInteger(facultyId) || facultyId <= 0) {
+          client.release();
+          return res.status(400).json({
+            ok: false,
+            message: 'Debes seleccionar una facultad.',
+          });
+        }
+        if (!['facultad', 'dependencias'].includes(assignmentScope)) {
+          client.release();
+          return res.status(400).json({
+            ok: false,
+            message: 'Selecciona si la asignación corresponde a toda la facultad o a dependencias.',
+          });
+        }
+
+        const facultyResult = await client.query(
+          `SELECT ${validFacultyColumn} AS facultad_id, nombre
+           FROM dependencia_facultad
+           WHERE ${validFacultyColumn} = $1 AND ${parentIdColumn} IS NULL`,
+          [facultyId]
+        );
+        if (!facultyResult.rows.length) {
+          client.release();
+          return res.status(400).json({
+            ok: false,
+            message: 'La facultad seleccionada no existe.',
+          });
+        }
+
+        if (assignmentScope === 'facultad') {
+          assignmentIds = [facultyId];
+          assignmentFacultyNames = [facultyResult.rows[0].nombre];
+          assignmentDependencyNames = ['Toda la facultad'];
+        } else {
+          if (!dependencyIds.length) {
+            client.release();
+            return res.status(400).json({
+              ok: false,
+              message: 'Selecciona al menos una dependencia de la facultad.',
+            });
+          }
+          const dependencyResult = await client.query(
+            `SELECT ${validFacultyColumn} AS dependencia_id, nombre
+             FROM dependencia_facultad
+             WHERE ${parentIdColumn} = $1
+               AND ${validFacultyColumn} = ANY($2::int[])
+             ORDER BY nombre ASC`,
+            [facultyId, dependencyIds]
+          );
+          if (dependencyResult.rows.length !== dependencyIds.length) {
+            client.release();
+            return res.status(400).json({
+              ok: false,
+              message: 'Una o más dependencias no pertenecen a la facultad seleccionada.',
+            });
+          }
+          assignmentIds = dependencyResult.rows.map((dependency) => dependency.dependencia_id);
+          assignmentFacultyNames = [facultyResult.rows[0].nombre];
+          assignmentDependencyNames = dependencyResult.rows.map((dependency) => dependency.nombre);
+        }
+      } else {
+        const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
+        const validFaculties = await client.query(
+          `SELECT f.${validFacultyColumn} AS facultad_id,
+                  f.nombre,
+                  f.${parentIdColumn} AS padre_id,
+                  COALESCE(parent.nombre, f.nombre) AS facultad_nombre
+           FROM dependencia_facultad f
+           LEFT JOIN dependencia_facultad parent
+             ON parent.${validFacultyColumn} = f.${parentIdColumn}
+           WHERE f.${validFacultyColumn} = ANY($1::int[])
+           ORDER BY COALESCE(parent.nombre, f.nombre) ASC, f.nombre ASC`,
+          [legacyFacultyIds]
+        );
+        if (validFaculties.rows.length !== legacyFacultyIds.length) {
+          client.release();
+          return res.status(400).json({
+            ok: false,
+            message: 'Una o más facultades seleccionadas no existen.',
+          });
+        }
+        assignmentFacultyNames = [
+          ...new Set(validFaculties.rows.map((faculty) => faculty.facultad_nombre)),
+        ];
+        assignmentDependencyNames = [
+          ...new Set(
+            validFaculties.rows.map((faculty) =>
+              faculty.padre_id === null ? 'Toda la facultad' : faculty.nombre
+            )
+          ),
+        ];
+      }
     }
 
-    const coordinatorFacultyColumn = await resolveExistingColumn('coordinador_facultad', [
-      'facultad_id',
-      'id_facultad',
-    ]);
+    const coordinatorUserId = await resolveCoordinatorUserId(client, coordinador);
+    // El coordinador general no tiene facultad a cargo por diseño.
+    const isCoordinadorGeneral = coordinatorUserId
+      ? (
+          await client.query(
+            `SELECT 1
+             FROM usuario_rol ur
+             JOIN rol r ON r.id = ur.rol_id
+             WHERE ur.usuario_id = $1
+               AND r.nombre = 'coordinador_general'
+             LIMIT 1`,
+            [coordinatorUserId]
+          )
+        ).rows.length > 0
+      : false;
+
+    let ualNames = [];
+    if (ualIds.length > 0) {
+      const ualResult = await client.query(
+        'SELECT ual_id, nombre FROM ual WHERE ual_id = ANY($1::int[]) AND activo = TRUE ORDER BY nombre ASC',
+        [ualIds]
+      );
+      ualNames = ualResult.rows.map((ual) => ual.nombre);
+      if (ualResult.rows.length !== ualIds.length) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message: 'Una o más UALs seleccionadas no existen o están inactivas.',
+        });
+      }
+      if (!coordinatorUserId) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message:
+            'El coordinador no tiene un usuario asociado, por lo que no es posible asignarle UALs.',
+        });
+      }
+    }
+
+    const scopeChangeProvided = ualProvided || assignmentProvided;
+    if (scopeChangeProvided) {
+      const finalFacultyCount = assignmentProvided
+        ? assignmentIds.length
+        : Number(
+            (
+              await client.query(
+                'SELECT COUNT(*)::int AS total FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+                [documento]
+              )
+            ).rows[0].total
+          );
+      if (finalFacultyCount === 0 && !isCoordinadorGeneral) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message: 'Todo coordinador debe tener una facultad asignada.',
+        });
+      }
+    }
+
+    const coordinatorFacultyColumn = assignmentProvided
+      ? await resolveExistingColumn('coordinador_facultad', ['facultad_id', 'id_facultad'])
+      : null;
 
     await client.query('BEGIN');
 
@@ -301,24 +504,38 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       }
     }
 
-    await client.query(`DELETE FROM coordinador_facultad WHERE coordinador_documento_id = $1`, [
-      documento,
-    ]);
+    if (assignmentProvided) {
+      await client.query(`DELETE FROM coordinador_facultad WHERE coordinador_documento_id = $1`, [
+        documento,
+      ]);
 
-    for (const facId of facultadIds) {
-      await client.query(
-        `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyColumn})
-         VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [documento, facId]
-      );
+      for (const facId of assignmentIds) {
+        await client.query(
+          `INSERT INTO coordinador_facultad (coordinador_documento_id, ${coordinatorFacultyColumn})
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [documento, facId]
+        );
+      }
+    }
+
+    if (ualProvided && coordinatorUserId) {
+      await replaceOperationalRoleAssignments({
+        userId: coordinatorUserId,
+        roleName: 'coordinador',
+        ualIds,
+        facultyId: null,
+        createdByUserId: req.session.user?.id || null,
+        client,
+      });
     }
 
     const logParts = [];
     if (wantsUpdateEmail) logParts.push('correo');
     if (wantsUpdateNumeroResolucion || wantsUpdateSoporteResolucion)
       logParts.push('resoluci\u00F3n');
-    logParts.push('facultades');
+    if (assignmentProvided) logParts.push('facultades');
+    if (ualProvided) logParts.push('UALs');
 
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
@@ -342,7 +559,14 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
         ? rawSoporteResolucion
         : coordinador.soporte_resolucion,
       documento,
-      facultad_ids: facultadIds,
+      ...(assignmentProvided
+        ? {
+            facultad_ids: assignmentIds,
+            facultad_nombre: assignmentFacultyNames.join(', '),
+            dependencia_nombre: assignmentDependencyNames.join(', '),
+          }
+        : {}),
+      ...(ualProvided ? { ual_ids: ualIds, ual_nombre: ualNames.join(', ') } : {}),
     });
   } catch (error) {
     if (client) {

@@ -3,13 +3,11 @@ require('dotenv').config();
 const express = require('express');
 
 const pool = require('../../libs/db');
+const { isActiveSanctionCategory } = require('../../libs/sanction-categories');
 const { resolveUsuarioIdForDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
-const {
-  isValidSanctionType,
-  normalizeSanctionType,
-  resolveMultaConfigForUalId,
-} = require('../../libs/multa-config');
+const { isValidSanctionType, normalizeSanctionType } = require('../../libs/multa-config');
+// const { resolveMultaConfigForUalId } = require('../../libs/multa-config');
 const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
@@ -72,8 +70,9 @@ function isDuplicateSubmission(req, fingerprint) {
 
 router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
   const requestBody = req.body || {};
-  const { cat_multa, con_documento, ual_id, fecha_multa, con_estado_multa, obs_multa } =
-    requestBody;
+  const { cat_multa: rawCategory, con_documento, ual_id, fecha_multa, obs_multa } = requestBody;
+  // const { con_estado_multa } = requestBody; // Se usaba con el flujo anterior por facultad.
+  const cat_multa = typeof rawCategory === 'string' ? rawCategory.trim() : '';
   const today = new Date().toISOString().slice(0, 10);
 
   try {
@@ -196,6 +195,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       }
     }
 
+    /*
     const cfg = await resolveMultaConfigForUalId(idUal);
     const permiteCrearActivaDirecta = Boolean(cfg && cfg.permite_crear_multas_activas_directas);
 
@@ -221,6 +221,43 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
         'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
     }
 
+    if (permiteCrearActivaDirecta) {
+      const inserted = await pool.query(
+        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [cat_multa, laboratorista.documento, usuarioIdSancionado, idUal, fecha_multa, finalEstado, obs_multa, tipoSancionFinal]
+      );
+      multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
+    } else {
+      await pool.query(
+        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [cat_multa, laboratorista.documento, usuarioIdSancionado, idUal, fecha_multa, finalEstado, obs_multa]
+      );
+    }
+    */
+
+    const rawTipo = requestBody.tipo_sancion;
+    if (!isValidSanctionType(rawTipo)) {
+      return res.render('home/message_error', {
+        message: 'Tipo de sanción inválido.',
+        message2: 'Selecciona una opción válida de tipo de sanción antes de continuar.',
+        limit: null,
+      });
+    }
+    const finalEstado = 'ACTIVA';
+    const tipoSancionFinal = normalizeSanctionType(rawTipo);
+    const accionLog = 'Multa activa directa a docente';
+    const mensajeSuccessExtra =
+      'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
+    let multaIdNueva = null;
+
+    if (!(await isActiveSanctionCategory(cat_multa, pool))) {
+      return res.render('home/message_error', {
+        message: 'Categoría de sanción no disponible.',
+        message2: 'Selecciona una categoría activa del catálogo y vuelve a intentarlo.',
+        limit: null,
+      });
+    }
+
     const submissionFingerprint = buildSubmissionFingerprint({
       actorDocument: sessionDocumento,
       role: actorRole,
@@ -242,48 +279,45 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       });
     }
 
-    if (permiteCrearActivaDirecta) {
-      const inserted = await pool.query(
-        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-        [
-          cat_multa,
-          laboratorista.documento,
-          usuarioIdSancionado,
-          idUal,
-          fecha_multa,
-          finalEstado,
-          obs_multa,
-          tipoSancionFinal,
-        ]
-      );
-      multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
-    } else {
-      await pool.query(
-        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [
-          cat_multa,
-          laboratorista.documento,
-          usuarioIdSancionado,
-          idUal,
-          fecha_multa,
-          finalEstado,
-          obs_multa,
-        ]
-      );
-    }
+    const inserted = await pool.query(
+      'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+      [
+        cat_multa,
+        laboratorista.documento,
+        usuarioIdSancionado,
+        idUal,
+        fecha_multa,
+        finalEstado,
+        obs_multa,
+        tipoSancionFinal,
+      ]
+    );
+    multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
 
     if (multaIdNueva) {
       try {
         const contacto = await resolveStudentContactByUsuarioId(usuarioIdSancionado);
         if (contacto && contacto.correo) {
-          const ualRes = await pool.query('SELECT nombre FROM ual WHERE ual_id = $1', [idUal]);
+          const ualRes = await pool.query(
+            `SELECT u.nombre,
+                    COALESCE(facultad.nombre, unidad.nombre) AS facultad,
+                    CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS dependencia
+             FROM ual u
+             LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+             LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
+             WHERE u.ual_id = $1`,
+            [idUal]
+          );
           await sendSanctionActivationEmail({
+            permiteReclamacion: false,
             correo: contacto.correo,
             nombre: contacto.nombre,
             codigo: contacto.codigo || contacto.documento || con_documento,
             tipoSancion: tipoSancionFinal,
             observaciones: obs_multa,
             laboratorio: ualRes.rows[0]?.nombre,
+            facultad: ualRes.rows[0]?.facultad,
+            dependencia: ualRes.rows[0]?.dependencia,
             fecha: fecha_multa,
           });
         }

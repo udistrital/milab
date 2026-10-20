@@ -300,13 +300,13 @@ WITH active_roles AS (
     SELECT unnest(ARRAY['coordinador', 'laboratorista', 'monitor']) AS rol
 ),
 all_active_faculties AS (
-    SELECT facultad_id
-    FROM facultad
+    SELECT dependencia_facultad_id AS facultad_id
+    FROM dependencia_facultad
     WHERE activo = TRUE
 ),
 allowed_faculties AS (
-    SELECT facultad_id
-    FROM facultad
+    SELECT dependencia_facultad_id AS facultad_id
+    FROM dependencia_facultad
     WHERE activo = TRUE
       AND (
           upper(nombre) IN ('ASAB', 'BOSA', 'CALLE 40')
@@ -325,8 +325,8 @@ WITH active_roles AS (
     SELECT unnest(ARRAY['coordinador', 'laboratorista', 'monitor']) AS rol
 ),
 allowed_faculties AS (
-    SELECT facultad_id
-    FROM facultad
+    SELECT dependencia_facultad_id AS facultad_id
+    FROM dependencia_facultad
     WHERE activo = TRUE
       AND (
           upper(nombre) IN ('ASAB', 'BOSA', 'CALLE 40')

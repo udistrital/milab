@@ -1,7 +1,35 @@
 const path = require('path');
+const addressParser = require('nodemailer/lib/addressparser');
 
 const HEADER_LOGO_CID = 'milab-header-logo';
 const FOOTER_LOGO_CID = 'ud-footer-logo';
+const NO_REPLY_NOTICE =
+  'Por favor, no respondas a este correo. Este mensaje se envía automáticamente y es exclusivamente para notificaciones.';
+
+function buildNoReplySender(address = process.env.EMAIL_USER) {
+  if (typeof address !== 'string') {
+    return { name: 'MILab — No responder', address };
+  }
+
+  const senders = addressParser(address);
+  if (senders.length !== 1 || !senders[0].address) {
+    throw new Error('El remitente de notificaciones debe contener una única dirección de correo.');
+  }
+
+  return { name: 'MILab — No responder', address: senders[0].address };
+}
+
+function buildNoReplyNoticeHtml() {
+  return `
+    <tr>
+      <td style="padding: 0 30px 24px 30px;">
+        <p style="font-size: 14px; line-height: 1.6; color: #5f6368; margin: 0;">
+          ${NO_REPLY_NOTICE}
+        </p>
+      </td>
+    </tr>
+  `;
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -58,8 +86,11 @@ function buildEmailFooterHtml(noteHtml) {
 }
 
 module.exports = {
+  NO_REPLY_NOTICE,
   buildBrandedEmailAttachments,
   buildEmailFooterHtml,
   buildEmailHeaderHtml,
+  buildNoReplyNoticeHtml,
+  buildNoReplySender,
   escapeHtml,
 };

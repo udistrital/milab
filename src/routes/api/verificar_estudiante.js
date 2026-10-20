@@ -3,6 +3,11 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { sgaDebtService } = require('../../libs/oati-debts');
 const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
+const {
+  collectStudentCodigos,
+  getActiveSgaDebtsForStudent,
+  selectStudentRecordForDocumento,
+} = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
 const router = express.Router();
 
@@ -101,7 +106,35 @@ router.post('/', requireVerificationAction, async (req, res) => {
       });
     }
 
-    const ultimoEstudiante = studentRecords.at(-1);
+    let ultimoEstudiante;
+    let codigosPersona = collectStudentCodigos(studentRecords);
+    if (tipo_busqueda === 'codigo') {
+      ultimoEstudiante = studentRecords.at(-1);
+      const documentoRegistro = String(ultimoEstudiante?.documento || '').trim();
+      if (/^\d+$/.test(documentoRegistro) && documentoRegistro !== '0') {
+        try {
+          const registrosPorCedula = extractOasStudentRecords(
+            await requestOati(
+              getAcademicServicePath(`datos_basicos_activos_cedula/${documentoRegistro}`)
+            )
+          );
+          if (registrosPorCedula.length) {
+            codigosPersona = collectStudentCodigos(registrosPorCedula, ...codigosPersona);
+            const seleccion = await selectStudentRecordForDocumento(
+              registrosPorCedula,
+              documentoRegistro
+            );
+            // Solo se reemplaza el registro buscado cuando MILab tiene un código asociado válido.
+            if (seleccion.matchedAssociation) ultimoEstudiante = seleccion.record;
+          }
+        } catch (lookupError) {
+          console.error('Error consultando registros OATI por cédula del estudiante:', lookupError);
+        }
+      }
+    } else {
+      ultimoEstudiante = (await selectStudentRecordForDocumento(studentRecords, valor_busqueda))
+        .record;
+    }
 
     const con_codigo = ultimoEstudiante.codigo;
     const con_nombre = ultimoEstudiante.nombre;
@@ -168,15 +201,15 @@ router.post('/', requireVerificationAction, async (req, res) => {
 
     // 2. Consultar Multas en BD local
     const queryMultas =
-      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
+      "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad, CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')";
     const resultMultas = await pool.query(queryMultas, [usuarioId]);
     let sgaMultaInfo = [];
     let sgaLookupError = null;
 
     if (sgaDebtService.isConfigured()) {
       try {
-        sgaMultaInfo = await sgaDebtService.getActiveDebts({
-          codigo: con_codigo,
+        sgaMultaInfo = await getActiveSgaDebtsForStudent(sgaDebtService, {
+          codigos: codigosPersona.length ? codigosPersona : collectStudentCodigos([], con_codigo),
           documento,
         });
       } catch (sgaError) {

@@ -15,145 +15,498 @@
         </div>
       <% } %>
     </div>
-
-    <div class="dashboard-toolbar-inline dashboard-toolbar-inline--compact">
-      <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
-        <label for="filtro">Agrupar por</label>
-        <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
-        <div class="dashboard-select-shell">
-          <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select">
-            <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
-            <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
-            <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
-            <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
-          </select>
-          <i class="bi bi-calendar3"></i>
-        </div>
-      </form>
-
-      <div class="dashboard-control-group">
-        <label for="tipoGrafico">Indicador</label>
-        <div class="dashboard-select-shell">
-          <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select">
-            <% availableCharts.forEach(function(chart) { %>
-              <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
-            <% }) %>
-          </select>
-          <i class="bi bi-bar-chart-line"></i>
-        </div>
-      </div>
-    </div>
   </section>
 
-  <section class="dashboard-overview-grid">
-    <% scopeCounters.forEach(function(counter) { %>
-      <article class="dashboard-overview-card">
-        <span class="dashboard-overview-label"><%= counter.label %></span>
-        <strong class="dashboard-overview-value"><%= counter.value %></strong>
-      </article>
-    <% }) %>
-  </section>
-
-  <section class="dashboard-main-card dashboard-chart-card dashboard-main-card--compact">
-    <div class="dashboard-main-header dashboard-main-header--compact">
-      <div>
-        <span class="dashboard-panel-kicker">Serie principal</span>
-        <h2 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h2>
-        <p id="dashboardChartHint" class="dashboard-main-subtitle">
-          <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
-        </p>
-      </div>
-
-      <div class="dashboard-main-meta">
-        <div class="dashboard-main-total">
-          <span>Total</span>
-          <strong id="dashboardChartTotal">0</strong>
-        </div>
-        <span class="dashboard-panel-badge">Agrupado por <%= labelFormat %></span>
-      </div>
-    </div>
-
-    <div class="dashboard-canvas-wrap dashboard-canvas-wrap--simple dashboard-canvas-wrap--compact">
-      <canvas id="chartDinamico"></canvas>
-    </div>
-  </section>
-
-  <section class="dashboard-stats-grid dashboard-stats-grid--simplified dashboard-stats-grid--compact">
-    <% availableCharts.forEach(function(chart) { %>
-      <button
-        type="button"
-        class="dashboard-stat-card <%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
-        data-chart-target="<%= chart.id %>"
-      >
-        <span class="dashboard-stat-label"><%= chart.cardLabel %></span>
-        <strong class="dashboard-stat-value"><%= chart.total %></strong>
+  <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
+  <nav class="dashboard-section-tabs" aria-label="Navegación del dashboard">
+    <div class="dashboard-section-tablist" role="tablist" aria-label="Secciones de monitoreo">
+      <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
+        <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+        <span>Toda la plataforma</span>
       </button>
-    <% }) %>
-  </section>
+      <% if (hasPazYSalvo) { %>
+        <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
+          <i class="bi bi-patch-check" aria-hidden="true"></i>
+          <span>Paz y salvos</span>
+        </button>
+      <% } %>
+      <button type="button" class="dashboard-section-tab" id="dashboardTabInventarios" role="tab" aria-selected="false" aria-controls="dashboardSectionInventarios" data-dashboard-section="inventarios" tabindex="-1">
+        <i class="bi bi-box-seam" aria-hidden="true"></i>
+        <span>Dashboard de inventarios</span>
+      </button>
+    </div>
+  </nav>
 
-  <section
-    id="dashboardDetailPanel"
-    class="app-form-panel dashboard-detail-panel mt-4"
-  >
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-      <div>
-        <h3 id="dashboardDetailTitle" class="mb-0" style="font-size: 1.1rem;">Detalle</h3>
-        <p id="dashboardDetailHint" class="mb-0 mt-1 text-muted" style="font-size: 0.88rem;">
-          Selecciona una tarjeta superior para ver el detalle de sus registros.
-        </p>
+  <div id="dashboardSectionGeneral" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabGeneral">
+    <% const overview = typeof generalOverview !== 'undefined' && generalOverview ? generalOverview : null; %>
+    <% const overviewHints = overview ? overview.hints : {}; %>
+    <% const kpiIcons = {
+      estudiantes: 'bi-people',
+      docentes: 'bi-person-video3',
+      laboratoristas: 'bi-tools',
+      coordinadores: 'bi-diagram-3',
+      usuariosRegistrados: 'bi-person-check',
+    }; %>
+    <section class="dashboard-general" aria-labelledby="dashboardGeneralTitle">
+      <h2 id="dashboardGeneralTitle" class="visually-hidden">Toda la plataforma</h2>
+
+      <div class="dashboard-pys-cards dashboard-kpi-grid">
+        <% availableCharts.forEach(function(chart) { %>
+          <button
+            type="button"
+            class="dashboard-pys-card dashboard-kpi-card kpi-<%= chart.tone %> <%= chart.id === selectedChart ? 'is-active' : '' %>"
+            data-chart-target="<%= chart.id %>"
+            aria-pressed="<%= chart.id === selectedChart ? 'true' : 'false' %>"
+          >
+            <span class="dashboard-pys-card-label">
+              <i class="bi <%= kpiIcons[chart.id] || 'bi-graph-up' %>" aria-hidden="true"></i>
+              <%= chart.cardLabel %>
+            </span>
+            <strong class="dashboard-pys-card-value"><%= Number(chart.total || 0).toLocaleString('es-CO') %></strong>
+            <span class="dashboard-pys-card-hint"><%= overviewHints[chart.id] || 'Ver evolución y detalle' %></span>
+          </button>
+        <% }) %>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <div id="dashboardUsuariosFilterWrap" class="dashboard-users-filter d-none">
-          <label for="dashboardUsuariosFiltro" class="form-label mb-0">Estado de registro</label>
-          <select id="dashboardUsuariosFiltro" class="form-select form-select-sm">
-            <option value="registrados" selected>Activos en plataforma</option>
-            <option value="placeholder">Pendientes (placeholder no-email)</option>
-          </select>
-        </div>
-        <div id="dashboardUsuariosColumnFilterWrap" class="dashboard-users-filter d-none">
-          <label for="dashboardUsuariosFiltroColumna" class="form-label mb-0">Filtro de usuarios</label>
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <select id="dashboardUsuariosFiltroColumna" class="form-select form-select-sm">
-              <option value="__all" selected>Todas las columnas</option>
-            </select>
-            <label for="dashboardUsuariosFiltroValor" class="visually-hidden">Valor exacto para filtrar</label>
-            <input
-              type="text"
-              id="dashboardUsuariosFiltroValor"
-              class="form-control form-control-sm"
-              placeholder="Valor exacto"
-              autocomplete="off"
-            >
-            <button type="button" id="dashboardUsuariosFiltroLimpiar" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+
+      <div class="dashboard-pys-panels">
+        <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+          <div class="dashboard-gen-evolution-head">
+            <div class="dashboard-gen-evolution-copy">
+              <h3 id="tituloGrafico"><%= availableCharts.find((chart) => chart.id === selectedChart)?.title || '' %></h3>
+              <p id="dashboardChartHint" class="dashboard-gen-hint">
+                <%= availableCharts.find((chart) => chart.id === selectedChart)?.summary || '' %>
+              </p>
+            </div>
+            <div class="dashboard-gen-evolution-tools">
+              <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
+                <label for="filtro">Agrupar por</label>
+                <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
+                <div class="dashboard-select-shell">
+                  <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select form-select-sm">
+                    <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
+                    <option value="semana" <%= filtro === 'semana' ? 'selected' : '' %>>Semana</option>
+                    <option value="mes" <%= filtro === 'mes' ? 'selected' : '' %>>Mes</option>
+                    <option value="anio" <%= filtro === 'anio' ? 'selected' : '' %>>Año</option>
+                  </select>
+                  <i class="bi bi-calendar3"></i>
+                </div>
+              </form>
+              <div class="dashboard-control-group">
+                <label for="tipoGrafico">Indicador</label>
+                <div class="dashboard-select-shell">
+                  <select id="tipoGrafico" onchange="cambiarGrafico()" class="form-select form-select-sm">
+                    <% availableCharts.forEach(function(chart) { %>
+                      <option value="<%= chart.id %>" <%= selectedChart === chart.id ? 'selected' : '' %>><%= chart.optionLabel %></option>
+                    <% }) %>
+                  </select>
+                  <i class="bi bi-bar-chart-line"></i>
+                </div>
+              </div>
+              <dl class="dashboard-pys-kpis dashboard-gen-total">
+                <div>
+                  <dt>Total · por <%= labelFormat.toLowerCase() %></dt>
+                  <dd id="dashboardChartTotal">0</dd>
+                </div>
+              </dl>
+            </div>
           </div>
-        </div>
-        <span id="dashboardDetailCount" class="badge text-bg-light border" style="font-size: 0.82rem;">
-          0 registros
-        </span>
+          <div class="dashboard-pys-chart" style="height: 260px;">
+            <canvas id="chartDinamico" role="img" aria-label="Evolución del indicador seleccionado"></canvas>
+          </div>
+        </article>
+
+        <% if (overview) { %>
+          <% const activityTotal = overview.actividad.datasets.reduce((sum, item) => sum + item.data.reduce((acc, value) => acc + value, 0), 0); %>
+          <% if (overview.actividad.datasets.length) { %>
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>Nuevos registros en los últimos 12 meses</h3>
+              <% if (activityTotal) { %>
+                <div class="dashboard-pys-chart" style="height: 230px;">
+                  <canvas data-gen-chart="activity" role="img" aria-label="Nuevos registros por mes: <%= overview.actividad.datasets.map((item) => item.label + ' ' + item.data.reduce((acc, value) => acc + value, 0)).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin registros nuevos en los últimos 12 meses.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.usuarios) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Usuarios por tipo</h3>
+              <% if (overview.usuarios.some((item) => item.value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="users" role="img" aria-label="Usuarios por tipo: <%= overview.usuarios.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay usuarios en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.estadosCuenta) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Estado de cuentas académicas</h3>
+              <% if (overview.estadosCuenta.length) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="accountStates" role="img" aria-label="Estado de cuentas: <%= overview.estadosCuenta.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay estudiantes ni docentes en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.programas) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Estudiantes por programa</h3>
+              <% if (overview.programas.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + overview.programas.length * 28 %>px;">
+                  <canvas data-gen-chart="programs" role="img" aria-label="Estudiantes por programa: <%= overview.programas.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay estudiantes en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (overview.laboratoristasEstado) { %>
+            <article class="dashboard-pys-panel">
+              <h3>Laboratoristas activos</h3>
+              <% if (overview.laboratoristasEstado.some((item) => item.value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="labStatus" role="img" aria-label="Laboratoristas: <%= overview.laboratoristasEstado.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay laboratoristas en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+        <% } %>
       </div>
-    </div>
 
-    <div id="dashboardDetailFeedback" class="alert d-none py-2" role="alert"></div>
+      <% const cobertura = typeof coberturaOperativa !== 'undefined' && coberturaOperativa ? coberturaOperativa : null; %>
+      <% if (cobertura) { %>
+        <% const coverageTotals = cobertura.totales; %>
+        <section class="dashboard-gen-block" aria-labelledby="dashboardCoverageTitle">
+          <header class="dashboard-gen-block-head">
+            <h3 id="dashboardCoverageTitle"><i class="bi bi-diagram-3" aria-hidden="true"></i> Cobertura operativa</h3>
+            <span class="dashboard-gen-block-scope">Toda la universidad</span>
+          </header>
+          <div class="dashboard-pys-panels dashboard-gen-panels--pair">
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>UAL activas por facultad</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Facultades</dt><dd><%= coverageTotals.facultades %></dd></div>
+                <div><dt>UAL activas</dt><dd><%= coverageTotals.ualActivas.toLocaleString('es-CO') %></dd></div>
+                <div>
+                  <dt>Con laboratorista</dt>
+                  <dd><%= coverageTotals.ualConLaboratorista.toLocaleString('es-CO') %><% if (coverageTotals.porcentajeCubierto !== null) { %> <small class="dashboard-gen-kpi-note">(<%= coverageTotals.porcentajeCubierto %>%)</small><% } %></dd>
+                </div>
+                <div><dt>Laboratoristas activos</dt><dd><%= coverageTotals.laboratoristas %></dd></div>
+                <div><dt>Coordinadores activos</dt><dd><%= coverageTotals.coordinadores %></dd></div>
+                <div><dt>Monitores activos</dt><dd><%= coverageTotals.monitores %></dd></div>
+                <div class="<%= coverageTotals.monitoresPorVencer ? 'dashboard-gen-kpi--warn' : '' %>">
+                  <dt>Monitores que vencen en 30 días</dt><dd><%= coverageTotals.monitoresPorVencer %></dd>
+                </div>
+              </dl>
+              <% if (cobertura.facultades.some((item) => item.ualActivas > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 40 + cobertura.facultades.length * 30 %>px;">
+                  <canvas data-gen-chart="coverage" role="img" aria-label="UAL por facultad: <%= cobertura.facultades.map((item) => item.nombre + ' ' + item.ualConLaboratorista + ' de ' + item.ualActivas + ' con laboratorista').join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay UAL activas.</p>
+              <% } %>
+            </article>
 
-    <div class="table-responsive dashboard-detail-table-wrap">
-      <table
-        id="dashboardDetailTable"
-        class="table table-striped table-hover align-middle"
-        style="width: 100%;"
-      >
-        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
-          <tr id="dashboardDetailTableHead"></tr>
-        </thead>
-        <tbody id="dashboardDetailTableBody">
-          <tr>
-            <td class="text-center py-4 text-muted">
-              Selecciona una tarjeta superior para cargar el detalle.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            <article class="dashboard-pys-panel">
+              <h3>Cobertura de laboratoristas</h3>
+              <% if (coverageTotals.ualActivas) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="coverageShare" role="img" aria-label="UAL con laboratorista <%= coverageTotals.ualConLaboratorista %>, sin laboratorista <%= coverageTotals.ualActivas - coverageTotals.ualConLaboratorista %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay UAL activas.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Personal por facultad</h3>
+              <% if (cobertura.facultadesSinCoordinador) { %>
+                <p class="dashboard-gen-hint mb-2"><i class="bi bi-exclamation-circle" aria-hidden="true"></i> <%= cobertura.facultadesSinCoordinador %> facultad(es) sin coordinador activo.</p>
+              <% } %>
+              <% if (cobertura.facultades.some((item) => item.laboratoristas || item.coordinadores)) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 50 + cobertura.facultades.length * 30 %>px;">
+                  <canvas data-gen-chart="staff" role="img" aria-label="Personal por facultad: <%= cobertura.facultades.map((item) => item.nombre + ' ' + item.laboratoristas + ' laboratoristas y ' + item.coordinadores + ' coordinadores').join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay personal asignado.</p>
+              <% } %>
+            </article>
+          </div>
+        </section>
+      <% } %>
+
+      <% const actividadLog = typeof actividadPlataforma !== 'undefined' && actividadPlataforma ? actividadPlataforma : null; %>
+      <% if (actividadLog) { %>
+        <section class="dashboard-gen-block" aria-labelledby="dashboardActivityTitle">
+          <header class="dashboard-gen-block-head">
+            <h3 id="dashboardActivityTitle"><i class="bi bi-activity" aria-hidden="true"></i> Actividad en la plataforma</h3>
+            <span class="dashboard-gen-block-scope">Registro de auditoría · solo administrador</span>
+          </header>
+          <div class="dashboard-pys-panels dashboard-gen-panels--pair">
+            <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+              <h3>Acciones registradas por mes</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Acciones · últimos 30 días</dt><dd><%= actividadLog.acciones30.toLocaleString('es-CO') %></dd></div>
+                <div class="<%= actividadLog.variacion === null ? '' : (actividadLog.variacion >= 0 ? 'dashboard-gen-kpi--up' : 'dashboard-gen-kpi--down') %>">
+                  <dt>Vs. 30 días anteriores</dt>
+                  <dd><%= actividadLog.variacion === null ? '—' : (actividadLog.variacion > 0 ? '+' : '') + actividadLog.variacion + '%' %></dd>
+                </div>
+                <div><dt>Usuarios que registraron acciones</dt><dd><%= actividadLog.actores30 %></dd></div>
+              </dl>
+              <% if (actividadLog.mensual.data.some((value) => value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 220px;">
+                  <canvas data-gen-chart="logMonthly" role="img" aria-label="Acciones por mes: <%= actividadLog.mensual.labels.map((label, index) => label + ' ' + actividadLog.mensual.data[index]).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones registradas en los últimos 12 meses.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Acciones más frecuentes <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.acciones.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + actividadLog.acciones.length * 28 %>px;">
+                  <canvas data-gen-chart="logActions" role="img" aria-label="Acciones más frecuentes: <%= actividadLog.acciones.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Acciones por tipo de usuario <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.roles.length) { %>
+                <div class="dashboard-pys-chart" style="height: 210px;">
+                  <canvas data-gen-chart="logRoles" role="img" aria-label="Acciones por tipo de usuario: <%= actividadLog.roles.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Actividad por día de la semana <small class="dashboard-gen-kpi-note">· 90 días</small></h3>
+              <% if (actividadLog.semana.data.some((value) => value > 0)) { %>
+                <div class="dashboard-pys-chart" style="height: 230px;">
+                  <canvas data-gen-chart="logWeekday" role="img" aria-label="Acciones por día: <%= actividadLog.semana.labels.map((label, index) => label + ' ' + actividadLog.semana.data[index]).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 90 días.</p>
+              <% } %>
+            </article>
+
+            <article class="dashboard-pys-panel">
+              <h3>Usuarios más activos <small class="dashboard-gen-kpi-note">· 30 días</small></h3>
+              <% if (actividadLog.actores.length) { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + actividadLog.actores.length * 28 %>px;">
+                  <canvas data-gen-chart="logActors" role="img" aria-label="Usuarios más activos: <%= actividadLog.actores.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Sin acciones en los últimos 30 días.</p>
+              <% } %>
+            </article>
+          </div>
+        </section>
+      <% } %>
+    </section>
+
+    <section
+      id="dashboardDetailPanel"
+      class="app-form-panel dashboard-detail-panel mt-4"
+    >
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <div>
+          <h3 id="dashboardDetailTitle" class="mb-0" style="font-size: 1.1rem;">Detalle</h3>
+          <p id="dashboardDetailHint" class="mb-0 mt-1 text-muted" style="font-size: 0.88rem;">
+            Selecciona una tarjeta superior para ver el detalle de sus registros.
+          </p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <div id="dashboardUsuariosFilterWrap" class="dashboard-users-filter d-none">
+            <label for="dashboardUsuariosFiltro" class="form-label mb-0">Estado de registro</label>
+            <select id="dashboardUsuariosFiltro" class="form-select form-select-sm">
+              <option value="registrados" selected>Activos en plataforma</option>
+              <option value="placeholder">Pendientes (placeholder no-email)</option>
+            </select>
+          </div>
+          <div id="dashboardUsuariosColumnFilterWrap" class="dashboard-users-filter d-none">
+            <label for="dashboardUsuariosFiltroColumna" class="form-label mb-0">Filtro de usuarios</label>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <select id="dashboardUsuariosFiltroColumna" class="form-select form-select-sm">
+                <option value="__all" selected>Todas las columnas</option>
+              </select>
+              <label for="dashboardUsuariosFiltroValor" class="visually-hidden">Valor exacto para filtrar</label>
+              <input
+                type="text"
+                id="dashboardUsuariosFiltroValor"
+                class="form-control form-control-sm"
+                maxlength="255"
+                placeholder="Valor exacto"
+                autocomplete="off"
+              >
+              <button type="button" id="dashboardUsuariosFiltroLimpiar" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+            </div>
+          </div>
+          <span id="dashboardDetailCount" class="badge text-bg-light border" style="font-size: 0.82rem;">
+            0 registros
+          </span>
+        </div>
+      </div>
+
+      <div id="dashboardDetailFeedback" class="alert d-none py-2" role="alert"></div>
+
+      <div class="table-responsive dashboard-detail-table-wrap">
+        <table
+          id="dashboardDetailTable"
+          class="table table-striped table-hover align-middle"
+          style="width: 100%;"
+        >
+          <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+            <tr id="dashboardDetailTableHead"></tr>
+          </thead>
+          <tbody id="dashboardDetailTableBody">
+            <tr>
+              <td class="text-center py-4 text-muted">
+                Selecciona una tarjeta superior para cargar el detalle.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <% if (hasPazYSalvo) { %>
+    <div id="dashboardSectionPys" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabPys" hidden>
+      <section class="dashboard-pys" aria-labelledby="dashboardPysTitle">
+        <div class="dashboard-pys-header">
+          <h2 id="dashboardPysTitle" class="visually-hidden">Paz y salvos</h2>
+          <p class="dashboard-pys-note mb-0">
+            Bloquean el paz y salvo las sanciones en estado ACTIVA, Pendiente o POR SALDAR.
+          </p>
+        </div>
+
+        <div class="dashboard-pys-cards">
+          <% pazYSalvo.cards.forEach(function(card) { %>
+            <% const cardTag = card.href ? 'a' : 'article'; %>
+            <<%= cardTag %>
+              class="dashboard-pys-card pys-tone-<%= card.tone %>"
+              <% if (card.href) { %>href="<%= card.href %>"<% } %>
+            >
+              <span class="dashboard-pys-card-label"><%= card.label %></span>
+              <strong class="dashboard-pys-card-value"><%= Number(card.value || 0).toLocaleString('es-CO') %></strong>
+              <span class="dashboard-pys-card-hint"><%= card.hint %></span>
+            </<%= cardTag %>>
+          <% }) %>
+        </div>
+
+        <% const pysSanciones = pazYSalvo.sanciones; %>
+        <% const pysReclamaciones = pazYSalvo.reclamaciones; %>
+        <% const pysCertificados = pazYSalvo.certificados; %>
+        <div class="dashboard-pys-panels">
+          <article class="dashboard-pys-panel">
+            <h3>Antigüedad de sanciones abiertas</h3>
+            <% if (pysSanciones.abiertas) { %>
+              <div class="dashboard-pys-chart" style="height: 150px;">
+                <canvas data-pys-chart="aging" role="img" aria-label="Antigüedad de sanciones abiertas: <%= pysSanciones.antiguedad.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+              </div>
+            <% } else { %>
+              <p class="dashboard-pys-empty">Sin sanciones abiertas.</p>
+            <% } %>
+          </article>
+
+          <article class="dashboard-pys-panel">
+            <h3>¿Dónde se concentran los bloqueos?</h3>
+            <% pazYSalvo.rankingGroups.forEach(function(group, groupIndex) { %>
+              <p class="dashboard-pys-subtitle"><%= group.title %></p>
+              <% if (!group.items.length) { %>
+                <p class="dashboard-pys-empty">Sin sanciones abiertas.</p>
+              <% } else { %>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + group.items.length * 26 %>px;">
+                  <canvas data-pys-chart="ranking" data-pys-group="<%= groupIndex %>" role="img" aria-label="Sanciones abiertas por <%= group.title.toLowerCase() %>: <%= group.items.map((item) => item.nombre + ' ' + item.abiertas).join(', ') %>"></canvas>
+                </div>
+              <% } %>
+            <% }) %>
+          </article>
+
+          <% if (pysReclamaciones) { %>
+            <% const avgHours = pysReclamaciones.horasPromedio; %>
+            <article class="dashboard-pys-panel">
+              <h3>Reclamaciones</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Recibidas</dt><dd><%= pysReclamaciones.total %></dd></div>
+                <div>
+                  <dt>% que procede</dt>
+                  <dd><%= pysReclamaciones.tasaProcede === null ? '—' : pysReclamaciones.tasaProcede + '%' %></dd>
+                </div>
+                <div>
+                  <dt>Respuesta promedio</dt>
+                  <dd><%= avgHours === null ? '—' : (avgHours >= 48 ? (avgHours / 24).toFixed(1) + ' días' : avgHours + ' h') %></dd>
+                </div>
+              </dl>
+              <% if (pysReclamaciones.total) { %>
+                <div class="dashboard-pys-chart" style="height: 180px;">
+                  <canvas data-pys-chart="claims" role="img" aria-label="Reclamaciones: sin respuesta <%= pysReclamaciones.pendientes %>, procede <%= pysReclamaciones.procede %>, no procede <%= pysReclamaciones.noProcede %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay reclamaciones en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+
+          <% if (pysCertificados) { %>
+            <% const totalCertificados = pysCertificados.estudiantes + (pysCertificados.docentes || 0); %>
+            <article class="dashboard-pys-panel">
+              <h3>Paz y salvos expedidos</h3>
+              <dl class="dashboard-pys-kpis">
+                <div><dt>Estudiantes</dt><dd><%= pysCertificados.estudiantes %></dd></div>
+                <% if (pysCertificados.docentes !== null) { %>
+                  <div><dt>Docentes</dt><dd><%= pysCertificados.docentes %></dd></div>
+                <% } %>
+                <div><dt>Total</dt><dd><%= totalCertificados %></dd></div>
+              </dl>
+              <% if (totalCertificados) { %>
+                <p class="dashboard-pys-subtitle">Origen</p>
+                <div class="dashboard-pys-chart" style="height: 160px;">
+                  <canvas data-pys-chart="origin" role="img" aria-label="Origen de los paz y salvos: <%= pysCertificados.origen.map((item) => item.label + ' ' + item.value).join(', ') %>"></canvas>
+                </div>
+                <p class="dashboard-pys-subtitle">Motivos más frecuentes</p>
+                <div class="dashboard-pys-chart" style="height: <%= 24 + pysCertificados.motivos.length * 26 %>px;">
+                  <canvas data-pys-chart="reasons" role="img" aria-label="Motivos más frecuentes: <%= pysCertificados.motivos.map((item) => item.nombre + ' ' + item.total).join(', ') %>"></canvas>
+                </div>
+              <% } else { %>
+                <p class="dashboard-pys-empty">Aún no hay paz y salvos en este alcance.</p>
+              <% } %>
+            </article>
+          <% } %>
+        </div>
+      </section>
     </div>
-  </section>
+  <% } %>
+  <div
+    id="dashboardSectionInventarios"
+    class="dashboard-section-panel"
+    role="tabpanel"
+    aria-labelledby="dashboardTabInventarios"
+    data-dashboard-inventory-panel
+    data-dashboard-inventory-url="/milab/api/dashboard/inventarios?fragment=1"
+    hidden
+  >
+    <div class="alert alert-info mb-0" role="status">
+      El dashboard de inventarios se cargará al abrir esta pestaña.
+    </div>
+  </div>
 </main>
 
 <div class="modal fade" id="dashboardEmailEditorModal" tabindex="-1" aria-hidden="true">
@@ -172,17 +525,17 @@
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorName">Nombre</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorName" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorName" maxlength="200" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorDocument">Documento</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorDocument" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorDocument" maxlength="50" readonly>
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="dashboardEmailEditorCurrent">Correo actual</label>
-            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" readonly>
+            <input type="text" class="form-control" id="dashboardEmailEditorCurrent" maxlength="255" readonly>
           </div>
 
           <div class="mb-3">
@@ -191,6 +544,7 @@
               type="email"
               class="form-control"
               id="dashboardEmailEditorInput"
+              maxlength="255"
               required
               autocomplete="off"
               pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"
@@ -242,16 +596,101 @@
   </div>
 </div>
 
+<div class="modal fade" id="dashboardUserEditorModal" tabindex="-1" aria-labelledby="dashboardUserEditorTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+    <div class="modal-content">
+      <form id="dashboardUserEditorForm">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="dashboardUserEditorTitle">Editar usuario</h5>
+            <p class="text-muted mb-0 small">Asocia la cuenta de MILab con uno de los registros académicos que OATI tiene para su documento.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="dashboardUserEditorFeedback" class="alert alert-danger d-none py-2" role="alert"></div>
+
+          <h6 class="mb-2">Datos actuales en MILab</h6>
+          <dl class="row small mb-4" id="dashboardUserEditorCurrent">
+            <dt class="col-sm-3">Nombre</dt><dd class="col-sm-9" data-user-field="nombre">-</dd>
+            <dt class="col-sm-3">Documento</dt><dd class="col-sm-9" data-user-field="documento">-</dd>
+            <dt class="col-sm-3">Correo</dt><dd class="col-sm-9" data-user-field="correo">-</dd>
+            <dt class="col-sm-3">Código</dt><dd class="col-sm-9" data-user-field="codigo">-</dd>
+            <dt class="col-sm-3">Programa</dt><dd class="col-sm-9" data-user-field="carrera">-</dd>
+            <dt class="col-sm-3">Estado</dt><dd class="col-sm-9" data-user-field="estado">-</dd>
+          </dl>
+
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h6 class="mb-0">Registros en OATI para el documento</h6>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="dashboardUserEditorReload">
+              <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Consultar OATI
+            </button>
+          </div>
+          <p class="small text-muted mb-2">El documento y el correo de la cuenta no cambian. Se actualizarán nombre, código, programa y estado con el registro seleccionado.</p>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" class="text-center">Asociar</th>
+                  <th scope="col">Código</th>
+                  <th scope="col">Nombre</th>
+                  <th scope="col">Programa</th>
+                  <th scope="col">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="dashboardUserEditorRecords">
+                <tr><td colspan="5" class="text-center text-muted py-3">Sin consultar.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="dashboardUserEditorConfirm">
+            <label class="form-check-label" for="dashboardUserEditorConfirm">
+              Confirmo que quiero asociar el registro seleccionado a esta cuenta de MILab.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="dashboardUserEditorSave" disabled>Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script nonce="<%= cspNonce %>">
-  const rawData = <%- JSON.stringify(chartsData) %>;
-  const chartsData = {
-    ...rawData,
-    sanciones: rawData.multas,
-    sancionesActivas: rawData.multasActivas,
-    sancionesSaldadas: rawData.multasSaldadas,
-  };
+  const chartsData = <%- JSON.stringify(chartsData) %>;
 
   const tablesData = <%- JSON.stringify(tablesData || {}) %>;
+  const tablesMeta = <%- JSON.stringify(typeof tablesMeta !== 'undefined' ? tablesMeta : {}) %>;
+  const pazYSalvoChartData = <%- JSON.stringify(
+    typeof pazYSalvo !== 'undefined' && pazYSalvo
+      ? {
+          antiguedad: pazYSalvo.sanciones.antiguedad,
+          rankingGroups: pazYSalvo.rankingGroups,
+          reclamaciones: pazYSalvo.reclamaciones,
+          certificados: pazYSalvo.certificados
+            ? { origen: pazYSalvo.certificados.origen, motivos: pazYSalvo.certificados.motivos }
+            : null,
+        }
+      : null
+  ).replace(/</g, '\\u003c') %>;
+  const generalChartData = <%- JSON.stringify(
+    typeof generalOverview !== 'undefined' && generalOverview
+      ? {
+          actividad: generalOverview.actividad,
+          usuarios: generalOverview.usuarios,
+          programas: generalOverview.programas,
+          estadosCuenta: generalOverview.estadosCuenta,
+          laboratoristasEstado: generalOverview.laboratoristasEstado,
+          cobertura: typeof coberturaOperativa !== 'undefined' ? coberturaOperativa : null,
+          actividadLog: typeof actividadPlataforma !== 'undefined' ? actividadPlataforma : null,
+        }
+      : null
+  ).replace(/</g, '\\u003c') %>;
   const usuarioTableColumns = <%- JSON.stringify(usuarioTableColumns || []) %>;
   const dynamicUsuariosColumns = Array.isArray(usuarioTableColumns)
     ? usuarioTableColumns
@@ -261,9 +700,19 @@
         if (columnName === 'activo') {
           return { key: columnName, label: 'Activo', format: (v) => renderBooleanBadge(v) };
         }
-        return { key: columnName, label: columnName };
+        if (columnName.startsWith('fecha_')) {
+          return { key: columnName, label: humanizeColumnName(columnName), format: (v) => formatDate(v) };
+        }
+        return { key: columnName, label: humanizeColumnName(columnName) };
       })
     : [];
+
+  function humanizeColumnName(columnName) {
+    const knownLabels = { id: 'ID', codigo: 'Código', fecha_creacion: 'Fecha creación', fecha_modificacion: 'Fecha modificación' };
+    if (knownLabels[columnName]) return knownLabels[columnName];
+    const text = columnName.replace(/_/g, ' ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
   const defaultUsuariosColumns = [
     { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
     { key: 'nombre', label: 'Nombre' },
@@ -275,25 +724,6 @@
   ];
 
   const TABLE_COLUMN_DEFS = {
-    certificadosEstudiantes: [
-      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
-      { key: 'correo', label: 'Correo' },
-      { key: 'motivo_exp', label: 'Motivo' },
-      { key: 'motivo_expedicion', label: 'Detalle motivo' },
-      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'fecha_vencimiento', label: 'Vence', format: (v) => formatDate(v) },
-    ],
-    certificadosDocentes: [
-      { key: 'fecha_creacion', label: 'Fecha emisión', format: (v) => formatDate(v) },
-      { key: 'certificado_id', label: 'Certificado #', format: (v) => String(v ?? '') },
-      { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
-      { key: 'correo', label: 'Correo' },
-      { key: 'motivo_exp', label: 'Motivo' },
-      { key: 'multa', label: 'Multa asociada', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'origen_descarga', label: 'Origen' },
-    ],
     estudiantes: [
       { key: 'fecha_creacion', label: 'Fecha creación', format: (v) => formatDate(v) },
       { key: 'nombre', label: 'Nombres y apellidos' },
@@ -314,38 +744,6 @@
       { key: 'carrera', label: 'Programa', format: (v) => (v ? escapeHtml(String(v)) : 'N/A') },
       { key: 'estado', label: 'Estado cuenta', format: (v) => renderEstadoBadge(v) },
     ],
-    sanciones: [
-      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
-    ],
-    sancionesActivas: [
-      { key: 'fecha_multa', label: 'Fecha', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'laboratorista_documento_id', label: 'Laboratorista doc' },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
-    ],
-    sancionesSaldadas: [
-      { key: 'fecha_multa', label: 'Fecha registro', format: (v) => formatDate(v) },
-      { key: 'id', label: 'Sanción #', format: (v) => String(v ?? '') },
-      { key: 'con_estado_multa', label: 'Estado', format: (v) => renderEstadoBadge(v) },
-      { key: 'cat_multa', label: 'Categoría' },
-      { key: 'tipo_sancion', label: 'Tipo' },
-      { key: 'usuario_sancionado_id', label: 'ID sancionado', format: (v) => String(v ?? '') },
-      { key: 'ual_id', label: 'UAL id', format: (v) => (Number.isFinite(+v) ? String(v ?? '') : escapeHtml(v ?? '')) },
-      { key: 'obs_multa', label: 'Observaciones' },
-    ],
     laboratoristas: [
       { key: 'fecha_creacion', label: 'Fecha registro', format: (v) => formatDate(v) },
       { key: 'nombre', label: 'Laboratorista' },
@@ -361,6 +759,7 @@
       { key: 'documento', label: 'Documento' },
       { key: 'correo', label: 'Correo' },
       { key: 'numero_resolucion_coordinador', label: 'Resolución' },
+      { key: 'laboratorios_encargados', label: 'Laboratorios a cargo' },
       { key: 'soporte_resolucion', label: 'Soporte URL' },
       { key: 'nombre_u', label: 'Universidad' },
       { key: 'usuario_id', label: 'ID usuario', format: (v) => String(v ?? '') },
@@ -378,6 +777,7 @@
   let usuariosDashboardFilter = 'registrados';
   let usuariosColumnFilter = { column: '__all', value: '' };
   let dashboardEmailEditContext = null;
+  let dashboardUserEditContext = null;
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -512,23 +912,23 @@
     }
 
     const usuarioActivo = isActiveFlag(row?.activo);
-    const toggleLabel = usuarioActivo ? 'Inactivar' : 'Activar';
-    const toggleClass = usuarioActivo ? 'btn-outline-warning' : 'btn-outline-success';
+    const actions = [
+      { action: 'editar-usuario', label: 'Editar usuario', icon: 'bi-person-gear', tone: 'primary' },
+      { action: 'editar-correo', label: 'Editar correo', icon: 'bi-envelope', tone: 'secondary' },
+      usuarioActivo
+        ? { action: 'toggle-activo', label: 'Inactivar usuario', icon: 'bi-person-dash', tone: 'danger' }
+        : { action: 'toggle-activo', label: 'Activar usuario', icon: 'bi-person-check', tone: 'success' },
+      { action: 'impersonar', label: 'Impersonar usuario', icon: 'bi-incognito', tone: 'info' },
+    ];
 
-    return `
-      <div class="d-flex flex-wrap gap-1">
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-dashboard-action="editar-correo" data-row-id="${rowId}">Editar correo</button>
-        <button type="button" class="btn btn-sm ${toggleClass}" data-dashboard-action="toggle-activo" data-row-id="${rowId}">${toggleLabel}</button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary"
-            data-dashboard-action="impersonar"
-            data-row-id="${rowId}"
-            title="Impersonar usuario"
-            aria-label="Impersonar usuario"
-          ><i class="bi bi-incognito me-1" aria-hidden="true"></i>Impersonar</button>
-      </div>
-    `;
+    const buttons = actions
+      .map(
+        (item) =>
+          `<button type="button" class="app-grid-action" data-grid-action-tone="${item.tone}" data-dashboard-action="${item.action}" data-row-id="${rowId}" title="${item.label}" aria-label="${item.label}"><i class="bi ${item.icon} app-grid-action-icon" aria-hidden="true"></i></button>`
+      )
+      .join('');
+
+    return `<div class="app-grid-actions dashboard-row-actions">${buttons}</div>`;
   }
 
   function getUsuariosFilterWrapElement() {
@@ -638,6 +1038,220 @@
 
     saveButton.disabled = false;
     saveButton.textContent = 'Guardar y enrolar';
+  }
+
+  function setDashboardUserEditorFeedback(message, type = 'error') {
+    const feedback = document.getElementById('dashboardUserEditorFeedback');
+    if (!feedback) return;
+    if (!message) {
+      feedback.className = 'alert alert-danger d-none py-2';
+      feedback.textContent = '';
+      return;
+    }
+    const tone = type === 'warning' ? 'alert-warning' : type === 'info' ? 'alert-info' : 'alert-danger';
+    feedback.className = `alert ${tone} py-2`;
+    feedback.textContent = message;
+  }
+
+  function renderDashboardUserEditorCurrent(usuario) {
+    document.querySelectorAll('#dashboardUserEditorCurrent [data-user-field]').forEach((element) => {
+      const field = element.getAttribute('data-user-field');
+      const value = String(usuario?.[field] ?? '').trim();
+      element.textContent = value || '-';
+    });
+  }
+
+  function renderDashboardUserEditorRecords(registros, message) {
+    const body = document.getElementById('dashboardUserEditorRecords');
+    if (!body) return;
+
+    if (message) {
+      body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">${escapeHtml(message)}</td></tr>`;
+      return;
+    }
+
+    const currentCodigo = String(dashboardUserEditContext?.usuario?.codigo || '').trim();
+    body.innerHTML = registros
+      .map((registro, index) => {
+        const codigo = String(registro.codigo || '');
+        const isCurrent = codigo === currentCodigo;
+        const estado = String(registro.estado || '').trim();
+        const isEgresado = estado.toUpperCase() === 'EGRESADO';
+        const estadoBadgeClass = isEgresado ? 'text-bg-warning' : 'text-bg-light border';
+        const inputId = `dashboardUserEditorRecord${index}`;
+        return `
+          <tr class="${isCurrent ? 'table-primary' : ''}">
+            <td class="text-center">
+              <input class="form-check-input" type="radio" name="dashboardUserEditorRecord" id="${inputId}" value="${escapeHtml(codigo)}" ${isCurrent ? 'checked' : ''}>
+            </td>
+            <td>
+              <label for="${inputId}" class="mb-0 fw-semibold">${escapeHtml(codigo)}</label>
+              ${isCurrent ? '<span class="badge text-bg-primary ms-1">Actual en MILab</span>' : ''}
+            </td>
+            <td>${escapeHtml(registro.nombre || '-')}</td>
+            <td>${escapeHtml(registro.carrera || '-')}</td>
+            <td>${estado ? `<span class="badge ${estadoBadgeClass}">${escapeHtml(estado)}</span>` : '<span class="text-muted">-</span>'}${isEgresado ? '<div class="small text-warning-emphasis mt-1">Con este estado no se generan certificados.</div>' : ''}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+
+  function getDashboardUserEditorSelectedCodigo() {
+    const selected = document.querySelector('input[name="dashboardUserEditorRecord"]:checked');
+    return selected ? String(selected.value || '').trim() : '';
+  }
+
+  function syncDashboardUserEditorSaveState() {
+    const saveButton = document.getElementById('dashboardUserEditorSave');
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+    if (!saveButton) return;
+    const selectedCodigo = getDashboardUserEditorSelectedCodigo();
+    const currentCodigo = String(dashboardUserEditContext?.usuario?.codigo || '').trim();
+    const canSave =
+      !dashboardUserEditContext?.loading &&
+      !dashboardUserEditContext?.saving &&
+      Boolean(selectedCodigo) &&
+      Boolean(confirmCheckbox?.checked);
+
+    saveButton.disabled = !canSave;
+    saveButton.textContent = dashboardUserEditContext?.saving
+      ? 'Guardando...'
+      : selectedCodigo && selectedCodigo === currentCodigo
+        ? 'Guardar (actualizar datos)'
+        : 'Guardar';
+  }
+
+  async function loadDashboardUserOatiRecords() {
+    if (!dashboardUserEditContext) return;
+    const rowId = dashboardUserEditContext.rowId;
+    const reloadButton = document.getElementById('dashboardUserEditorReload');
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+
+    dashboardUserEditContext.loading = true;
+    if (reloadButton) reloadButton.disabled = true;
+    if (confirmCheckbox) confirmCheckbox.checked = false;
+    setDashboardUserEditorFeedback('');
+    renderDashboardUserEditorRecords([], 'Consultando OATI...');
+    syncDashboardUserEditorSaveState();
+
+    try {
+      const response = await fetch(`/milab/api/dashboard/usuarios/${rowId}/oati-registros`, {
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (dashboardUserEditContext?.rowId !== rowId) return;
+
+      if (payload.usuario) {
+        dashboardUserEditContext.usuario = payload.usuario;
+        renderDashboardUserEditorCurrent(payload.usuario);
+      }
+
+      if (!response.ok || !payload.ok) {
+        setDashboardUserEditorFeedback(payload.message || 'No fue posible consultar OATI.');
+        renderDashboardUserEditorRecords([], 'No hay registros para mostrar.');
+        return;
+      }
+
+      const registros = Array.isArray(payload.registros) ? payload.registros : [];
+      if (!registros.length) {
+        setDashboardUserEditorFeedback('OATI no devolvió registros de estudiante para este documento.', 'warning');
+        renderDashboardUserEditorRecords([], 'Sin registros en OATI.');
+        return;
+      }
+
+      renderDashboardUserEditorRecords(registros);
+    } catch {
+      if (dashboardUserEditContext?.rowId !== rowId) return;
+      setDashboardUserEditorFeedback('No fue posible consultar OATI. Verifica la conexión e inténtalo nuevamente.');
+      renderDashboardUserEditorRecords([], 'No hay registros para mostrar.');
+    } finally {
+      if (dashboardUserEditContext?.rowId === rowId) {
+        dashboardUserEditContext.loading = false;
+        if (reloadButton) reloadButton.disabled = false;
+        syncDashboardUserEditorSaveState();
+      }
+    }
+  }
+
+  function openDashboardUserEditorModal(rowId) {
+    const row = getUsuarioDashboardRowById(rowId);
+    if (!row || !Number.isInteger(Number(row.id)) || !window.bootstrap) return;
+
+    dashboardUserEditContext = { rowId: Number(row.id), usuario: row, loading: false, saving: false };
+    renderDashboardUserEditorCurrent(row);
+
+    const modalElement = document.getElementById('dashboardUserEditorModal');
+    window.bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    loadDashboardUserOatiRecords();
+  }
+
+  function syncUsuariosRowsAfterUserUpdate(usuario) {
+    const rowId = Number(usuario?.id);
+    [tablesData.usuariosRegistrados, tablesData.usuariosPlaceholder].forEach((rows) => {
+      if (!Array.isArray(rows)) return;
+      const row = rows.find((item) => Number(item?.id) === rowId);
+      if (!row) return;
+      ['nombre', 'codigo', 'carrera', 'estado'].forEach((field) => {
+        row[field] = usuario[field];
+      });
+    });
+  }
+
+  async function guardarRegistroOatiUsuarioDesdeDashboard() {
+    if (!dashboardUserEditContext) return;
+    const rowId = dashboardUserEditContext.rowId;
+    const codigo = getDashboardUserEditorSelectedCodigo();
+    const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+
+    if (!codigo) {
+      setDashboardUserEditorFeedback('Debes seleccionar un registro de OATI.');
+      return;
+    }
+
+    if (!confirmCheckbox?.checked) {
+      setDashboardUserEditorFeedback('Debes confirmar la asociación para continuar.');
+      return;
+    }
+
+    dashboardUserEditContext.saving = true;
+    setDashboardUserEditorFeedback('');
+    syncDashboardUserEditorSaveState();
+
+    try {
+      const response = await fetch(`/milab/api/dashboard/usuarios/${rowId}/oati-registro`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ codigo }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.ok) {
+        setDashboardUserEditorFeedback(payload.message || 'No fue posible guardar el registro seleccionado.');
+        return;
+      }
+
+      syncUsuariosRowsAfterUserUpdate(payload.usuario);
+      renderDetailTable('usuariosRegistrados');
+
+      const modalElement = document.getElementById('dashboardUserEditorModal');
+      window.bootstrap?.Modal.getOrCreateInstance(modalElement)?.hide();
+      showDashboardFeedback(
+        `Usuario actualizado: quedó asociado al código ${payload.usuario?.codigo || codigo} (${payload.usuario?.estado || 'sin estado'}).`,
+        'success'
+      );
+    } catch {
+      setDashboardUserEditorFeedback('No fue posible guardar el registro. Verifica la conexión e inténtalo nuevamente.');
+    } finally {
+      if (dashboardUserEditContext?.rowId === rowId) {
+        dashboardUserEditContext.saving = false;
+        syncDashboardUserEditorSaveState();
+      }
+    }
   }
 
   function isNoEmailPlaceholderCorreo(correo) {
@@ -992,7 +1606,11 @@
     hintEl.textContent =
       config.summary ||
       'Registros que componen el total mostrado en la tarjeta. Se presenta el detalle paginado y buscable.';
-    countEl.textContent = `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
+    const detailMeta = tablesMeta[tipo];
+    const isTruncated = detailMeta && detailMeta.total > detailMeta.shown;
+    countEl.textContent = isTruncated
+      ? `Últimos ${detailMeta.shown.toLocaleString()} de ${detailMeta.total.toLocaleString()} registros`
+      : `${rows.length.toLocaleString()} registro${rows.length === 1 ? '' : 's'}`;
 
     const shouldRenderAdminActions = canAdminManageUsuarios && tipo === 'usuariosRegistrados';
     const resolvedColumns = shouldRenderAdminActions
@@ -1005,7 +1623,11 @@
     }
 
     headEl.innerHTML = resolvedColumns
-      .map((col) => `<th scope="col">${escapeHtml(col.label)}</th>`)
+      .map((col) =>
+        col.key === '__acciones_admin'
+          ? `<th scope="col" class="app-grid-actions-heading dashboard-actions-cell">${escapeHtml(col.label)}</th>`
+          : `<th scope="col">${escapeHtml(col.label)}</th>`
+      )
       .join('');
 
     if (!rows.length) {
@@ -1018,7 +1640,7 @@
         const cells = resolvedColumns
           .map((col) => {
             if (col.key === '__acciones_admin') {
-              return `<td>${renderUsuariosAdminActions(row)}</td>`;
+              return `<td class="app-grid-actions-cell dashboard-actions-cell">${renderUsuariosAdminActions(row)}</td>`;
             }
 
             if (tipo === 'coordinadores' && col.key === 'soporte_resolucion') {
@@ -1083,37 +1705,54 @@
   let currentChartType = <%- JSON.stringify(selectedChart) %>;
   let detailEnabled = false;
 
-  const chartVisualConfig = {
-    estudiantes: {
-      color: '#1f7aec',
-      backgroundColor: 'rgba(31, 122, 236, 0.18)',
-    },
-    docentes: {
-      color: '#219653',
-      backgroundColor: 'rgba(33, 150, 83, 0.18)',
-    },
-    sanciones: {},
-    sancionesActivas: {
-      color: '#e63946',
-      backgroundColor: 'rgba(230, 57, 70, 0.18)',
-    },
-    sancionesSaldadas: {
-      color: '#28b6d8',
-      backgroundColor: 'rgba(40, 182, 216, 0.18)',
-    },
-    laboratoristas: {
-      color: '#2a2f36',
-      backgroundColor: 'rgba(42, 47, 54, 0.18)',
-    },
-    coordinadores: {
-      color: '#8b949e',
-      backgroundColor: 'rgba(139, 148, 158, 0.18)',
-    },
-    usuariosRegistrados: {
-      color: '#ff7a00',
-      backgroundColor: 'rgba(255, 122, 0, 0.18)',
-    },
+  const GEN_COLORS = {
+    blue: '#1f7aec',
+    green: '#219653',
+    amber: '#e08a00',
+    red: '#d62839',
+    teal: '#0f9fb5',
+    purple: '#7b4fd6',
+    slate: '#5e7178',
+    orange: '#f2700d',
+    pink: '#d6409f',
   };
+  const GEN_SERIES_COLORS = [
+    GEN_COLORS.blue,
+    GEN_COLORS.amber,
+    GEN_COLORS.purple,
+    GEN_COLORS.teal,
+    GEN_COLORS.pink,
+    GEN_COLORS.green,
+    GEN_COLORS.orange,
+    GEN_COLORS.slate,
+  ];
+  const chartVisualConfig = {
+    estudiantes: { color: GEN_COLORS.blue },
+    docentes: { color: GEN_COLORS.green },
+    laboratoristas: { color: GEN_COLORS.purple },
+    coordinadores: { color: GEN_COLORS.slate },
+    usuariosRegistrados: { color: GEN_COLORS.orange },
+  };
+
+  function hexToRgba(hex, alpha) {
+    const value = String(hex || '').replace('#', '');
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function buildAreaGradient(color) {
+    return function(context) {
+      const { chart } = context;
+      const area = chart.chartArea;
+      if (!area) return hexToRgba(color, 0.15);
+      const gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+      gradient.addColorStop(0, hexToRgba(color, 0.32));
+      gradient.addColorStop(1, hexToRgba(color, 0.02));
+      return gradient;
+    };
+  }
 
   function getChartTheme() {
     const styles = getComputedStyle(document.documentElement);
@@ -1144,8 +1783,10 @@
     document.getElementById('dashboardChartHint').textContent = config.summary;
     document.getElementById('dashboardChartTotal').textContent = getTotal(tipo).toLocaleString();
 
-    document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
-      card.classList.toggle('is-active', card.dataset.chartTarget === tipo);
+    document.querySelectorAll('.dashboard-kpi-card').forEach((card) => {
+      const isActive = card.dataset.chartTarget === tipo;
+      card.classList.toggle('is-active', isActive);
+      card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
 
     try {
@@ -1198,83 +1839,8 @@
 
     updateSummary(tipo, options);
 
-    if (tipo === 'sanciones') {
-      chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: chartsData.sanciones.labels,
-          datasets: [
-            {
-              label: 'Total sanciones',
-              data: chartsData.sanciones.data,
-              fill: false,
-              borderColor: '#ffbf1f',
-              backgroundColor: 'rgba(255, 191, 31, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#ffbf1f',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 3,
-            },
-            {
-              label: 'Sanciones activas',
-              data: chartsData.sancionesActivas.data,
-              fill: false,
-              borderColor: '#e63946',
-              backgroundColor: 'rgba(230, 57, 70, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#e63946',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 2,
-            },
-            {
-              label: 'Sanciones saldadas',
-              data: chartsData.sancionesSaldadas.data,
-              fill: false,
-              borderColor: '#28b6d8',
-              backgroundColor: 'rgba(40, 182, 216, 0.18)',
-              tension: 0.35,
-              pointBackgroundColor: '#28b6d8',
-              pointBorderColor: theme.surface,
-              pointBorderWidth: 2,
-              pointRadius: 3,
-              borderWidth: 2,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: theme.text }, display: true },
-          },
-          scales: {
-            x: {
-              ticks: { color: theme.muted },
-              grid: { color: theme.grid },
-            },
-            y: {
-              ticks: {
-                color: theme.muted,
-                stepSize: 1,
-                callback: function(value) {
-                  return Number.isInteger(value) ? value : '';
-                },
-              },
-              beginAtZero: true,
-              grid: { color: theme.grid },
-            },
-          },
-        },
-      });
-      return;
-    }
-
     const data = chartsData[tipo] || { labels: [], data: [] };
-    const visual = chartVisualConfig[tipo] || chartVisualConfig.sancionesActivas;
+    const visual = chartVisualConfig[tipo] || { color: GEN_COLORS.blue };
     chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
@@ -1285,7 +1851,7 @@
             data: data.data,
             fill: true,
             borderColor: visual.color,
-            backgroundColor: visual.backgroundColor,
+            backgroundColor: buildAreaGradient(visual.color),
             tension: 0.35,
             pointBackgroundColor: visual.color,
             pointBorderColor: theme.surface,
@@ -1327,7 +1893,681 @@
     renderChart(document.getElementById('tipoGrafico').value, { renderDetail: false });
   }
 
+  const PYS_TONE_COLORS = { ok: '#219653', warn: '#e08a00', danger: '#d62839', info: '#1f7aec' };
+  const PYS_RANKING_COLOR = '#1f7aec';
+  const pazYSalvoCharts = [];
+  let pazYSalvoChartsRendered = false;
+
+  function truncatePysLabel(value, maxLength = 28) {
+    const text = String(value || '');
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function buildPysHorizontalBarConfig(labels, values, colors, theme) {
+    return {
+      type: 'bar',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label)),
+        datasets: [
+          {
+            data: values,
+            backgroundColor: colors,
+            borderRadius: 6,
+            maxBarThickness: 18,
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: {
+            ticks: { color: theme.text, font: { size: 11 } },
+            grid: { display: false },
+          },
+        },
+      },
+    };
+  }
+
+  function buildPysDoughnutConfig(labels, values, colors, theme) {
+    return {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: colors, borderColor: theme.surface, borderWidth: 2 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+        },
+      },
+    };
+  }
+
+  function buildPysChartConfig(canvas, theme) {
+    const data = pazYSalvoChartData;
+    const kind = canvas.dataset.pysChart;
+
+    if (kind === 'aging') {
+      return buildPysHorizontalBarConfig(
+        data.antiguedad.map((item) => item.label),
+        data.antiguedad.map((item) => item.value),
+        data.antiguedad.map((item) => PYS_TONE_COLORS[item.tone] || PYS_RANKING_COLOR),
+        theme
+      );
+    }
+
+    if (kind === 'ranking') {
+      const group = data.rankingGroups[Number(canvas.dataset.pysGroup)];
+      if (!group) return null;
+      return buildPysHorizontalBarConfig(
+        group.items.map((item) => item.nombre),
+        group.items.map((item) => item.abiertas),
+        PYS_RANKING_COLOR,
+        theme
+      );
+    }
+
+    if (kind === 'claims' && data.reclamaciones) {
+      return buildPysDoughnutConfig(
+        ['Sin respuesta', 'Procede', 'No procede'],
+        [data.reclamaciones.pendientes, data.reclamaciones.procede, data.reclamaciones.noProcede],
+        [PYS_TONE_COLORS.warn, PYS_TONE_COLORS.ok, PYS_TONE_COLORS.danger],
+        theme
+      );
+    }
+
+    if (kind === 'origin' && data.certificados) {
+      return buildPysDoughnutConfig(
+        data.certificados.origen.map((item) => item.label),
+        data.certificados.origen.map((item) => item.value),
+        data.certificados.origen.map((item) => PYS_TONE_COLORS[item.tone] || PYS_RANKING_COLOR),
+        theme
+      );
+    }
+
+    if (kind === 'reasons' && data.certificados) {
+      return buildPysHorizontalBarConfig(
+        data.certificados.motivos.map((item) => item.nombre),
+        data.certificados.motivos.map((item) => item.total),
+        PYS_TONE_COLORS.info,
+        theme
+      );
+    }
+
+    return null;
+  }
+
+  function renderPazYSalvoCharts() {
+    if (!pazYSalvoChartData || typeof Chart === 'undefined') return;
+    pazYSalvoCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    document.querySelectorAll('[data-pys-chart]').forEach((canvas) => {
+      const config = buildPysChartConfig(canvas, theme);
+      if (config) pazYSalvoCharts.push(new Chart(canvas, config));
+    });
+    pazYSalvoChartsRendered = true;
+  }
+
+  const dashboardInventoryCharts = [];
+  let dashboardInventoryChartsRendered = false;
+
+  function buildDashboardInventoryBarConfig(chartData, theme, stacked = false) {
+    const colors = [
+      GEN_COLORS.blue,
+      GEN_COLORS.green,
+      GEN_COLORS.amber,
+      GEN_COLORS.red,
+      GEN_COLORS.purple,
+      GEN_COLORS.teal,
+    ];
+
+    return {
+      type: 'bar',
+      data: {
+        labels: chartData.labels,
+        datasets: chartData.datasets.map((dataset, index) => {
+          const color = colors[index % colors.length];
+          return {
+            label: dataset.label,
+            data: dataset.values,
+            backgroundColor: hexToRgba(color, 0.82),
+            hoverBackgroundColor: color,
+            borderRadius: 5,
+            maxBarThickness: 18,
+          };
+        }),
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: chartData.datasets.length > 1,
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) =>
+                `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString('es-CO')}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            stacked,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: {
+            stacked,
+            ticks: { color: theme.text, font: { size: 11 } },
+            grid: { display: false },
+          },
+        },
+      },
+    };
+  }
+
+  function buildDashboardInventoryChartConfig(canvas, data, theme) {
+    const chartType = canvas.dataset.dashboardInventoryChart;
+    if (chartType === 'equipment-status') {
+      return buildPysDoughnutConfig(
+        data.equipmentStatus.labels,
+        data.equipmentStatus.values,
+        [
+          PYS_TONE_COLORS.ok,
+          PYS_TONE_COLORS.info,
+          PYS_TONE_COLORS.warn,
+          PYS_TONE_COLORS.danger,
+        ],
+        theme
+      );
+    }
+
+    const chartDataByType = {
+      'type-summary': data.typeSummary,
+      'laboratory-inventory': data.laboratoryInventory,
+      'laboratory-details': data.laboratoryDetails,
+      'laboratory-equipment': data.laboratoryEquipment,
+    };
+    const chartData = chartDataByType[chartType];
+    if (!chartData || !chartData.labels.length || !chartData.datasets.length) return null;
+    return buildDashboardInventoryBarConfig(chartData, theme, chartType === 'laboratory-equipment');
+  }
+
+  function renderDashboardInventoryCharts(root) {
+    if (!root || typeof Chart === 'undefined') return;
+    const dataElement = root.querySelector('[data-dashboard-inventory-chart-data]');
+    if (!dataElement) return;
+
+    const data = JSON.parse(dataElement.textContent);
+    dashboardInventoryCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    root.querySelectorAll('[data-dashboard-inventory-chart]').forEach((canvas) => {
+      const config = buildDashboardInventoryChartConfig(canvas, data, theme);
+      if (config) dashboardInventoryCharts.push(new Chart(canvas, config));
+    });
+    dashboardInventoryChartsRendered = true;
+  }
+
+  const GEN_USER_COLORS = {
+    estudiantes: GEN_COLORS.blue,
+    docentes: GEN_COLORS.green,
+    laboratoristas: GEN_COLORS.purple,
+    coordinadores: GEN_COLORS.slate,
+  };
+  const generalOverviewCharts = [];
+  let generalOverviewChartsRendered = false;
+
+  function buildGenActivityConfig(actividad, theme) {
+    return {
+      type: 'bar',
+      data: {
+        labels: actividad.labels,
+        datasets: actividad.datasets.map((dataset) => {
+          const color = GEN_USER_COLORS[dataset.key] || GEN_COLORS.slate;
+          return {
+            label: dataset.label,
+            data: dataset.data,
+            backgroundColor: hexToRgba(color, 0.85),
+            hoverBackgroundColor: color,
+            borderRadius: 5,
+            maxBarThickness: 16,
+          };
+        }),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+        },
+        scales: {
+          x: { ticks: { color: theme.muted, font: { size: 11 } }, grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenPolarConfig(labels, values, colors, theme) {
+    return {
+      type: 'polarArea',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label, 24)),
+        datasets: [
+          {
+            data: values,
+            backgroundColor: colors.map((color) => hexToRgba(color, 0.72)),
+            borderColor: theme.surface,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { display: false },
+            grid: { color: theme.grid },
+            angleLines: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenGroupedHorizontalConfig(labels, datasets, theme, stacked, labelLength = 34) {
+    return {
+      type: 'bar',
+      data: {
+        labels: labels.map((label) => truncatePysLabel(label, labelLength)),
+        datasets: datasets.map((dataset) => ({
+          label: dataset.label,
+          data: dataset.data,
+          backgroundColor: hexToRgba(dataset.color, 0.85),
+          hoverBackgroundColor: dataset.color,
+          borderRadius: 5,
+          maxBarThickness: 16,
+        })),
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+          },
+          tooltip: { callbacks: { title: (items) => labels[items[0].dataIndex] } },
+        },
+        scales: {
+          x: {
+            stacked,
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+          y: { stacked, ticks: { color: theme.text, font: { size: 11 } }, grid: { display: false } },
+        },
+      },
+    };
+  }
+
+  function buildGenAreaConfig(labels, values, color, label, theme) {
+    return {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label,
+            data: values,
+            fill: true,
+            borderColor: color,
+            backgroundColor: buildAreaGradient(color),
+            tension: 0.35,
+            pointBackgroundColor: color,
+            pointBorderColor: theme.surface,
+            pointBorderWidth: 2,
+            pointRadius: 3,
+            borderWidth: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: theme.muted, font: { size: 11 } }, grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            ticks: { precision: 0, color: theme.muted, font: { size: 11 } },
+            grid: { color: theme.grid },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenRadarConfig(labels, values, color, theme) {
+    return {
+      type: 'radar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Acciones',
+            data: values,
+            fill: true,
+            backgroundColor: hexToRgba(color, 0.22),
+            borderColor: color,
+            pointBackgroundColor: color,
+            pointBorderColor: theme.surface,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          r: {
+            beginAtZero: true,
+            ticks: { display: false },
+            grid: { color: theme.grid },
+            angleLines: { color: theme.grid },
+            pointLabels: { color: theme.text, font: { size: 11 } },
+          },
+        },
+      },
+    };
+  }
+
+  function buildGenCoverageChartConfig(kind, theme) {
+    const cobertura = generalChartData.cobertura;
+    const actividad = generalChartData.actividadLog;
+
+    if (kind === 'coverage' && cobertura) {
+      return buildGenGroupedHorizontalConfig(
+        cobertura.facultades.map((item) => item.nombre),
+        [
+          {
+            label: 'Con laboratorista',
+            data: cobertura.facultades.map((item) => item.ualConLaboratorista),
+            color: GEN_COLORS.green,
+          },
+          {
+            label: 'Sin laboratorista',
+            data: cobertura.facultades.map((item) => item.ualActivas - item.ualConLaboratorista),
+            color: GEN_COLORS.red,
+          },
+        ],
+        theme,
+        true
+      );
+    }
+
+    if (kind === 'coverageShare' && cobertura) {
+      const totals = cobertura.totales;
+      return buildPysDoughnutConfig(
+        ['Con laboratorista', 'Sin laboratorista'],
+        [totals.ualConLaboratorista, totals.ualActivas - totals.ualConLaboratorista],
+        [GEN_COLORS.green, GEN_COLORS.red],
+        theme
+      );
+    }
+
+    if (kind === 'staff' && cobertura) {
+      return buildGenGroupedHorizontalConfig(
+        cobertura.facultades.map((item) => item.nombre),
+        [
+          {
+            label: 'Laboratoristas',
+            data: cobertura.facultades.map((item) => item.laboratoristas),
+            color: GEN_COLORS.purple,
+          },
+          {
+            label: 'Coordinadores',
+            data: cobertura.facultades.map((item) => item.coordinadores),
+            color: GEN_COLORS.teal,
+          },
+        ],
+        theme,
+        false,
+        22
+      );
+    }
+
+    if (kind === 'logMonthly' && actividad) {
+      return buildGenAreaConfig(
+        actividad.mensual.labels,
+        actividad.mensual.data,
+        GEN_COLORS.blue,
+        'Acciones',
+        theme
+      );
+    }
+
+    if (kind === 'logActions' && actividad) {
+      return buildPysHorizontalBarConfig(
+        actividad.acciones.map((item) => item.nombre),
+        actividad.acciones.map((item) => item.total),
+        actividad.acciones.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'logRoles' && actividad) {
+      return buildPysDoughnutConfig(
+        actividad.roles.map((item) => item.nombre),
+        actividad.roles.map((item) => item.total),
+        actividad.roles.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'logWeekday' && actividad) {
+      return buildGenRadarConfig(actividad.semana.labels, actividad.semana.data, GEN_COLORS.pink, theme);
+    }
+
+    if (kind === 'logActors' && actividad) {
+      return buildPysHorizontalBarConfig(
+        actividad.actores.map((item) => item.nombre),
+        actividad.actores.map((item) => item.total),
+        actividad.actores.map((_, index) => hexToRgba(GEN_COLORS.orange, Math.max(0.35, 0.95 - index * 0.08))),
+        theme
+      );
+    }
+
+    return null;
+  }
+
+  function buildGeneralChartConfig(canvas, theme) {
+    const data = generalChartData;
+    const kind = canvas.dataset.genChart;
+
+    if (kind === 'activity') {
+      return buildGenActivityConfig(data.actividad, theme);
+    }
+
+    if (kind === 'accountStates' && data.estadosCuenta) {
+      return buildGenPolarConfig(
+        data.estadosCuenta.map((item) => item.nombre),
+        data.estadosCuenta.map((item) => item.total),
+        data.estadosCuenta.map((_, index) => GEN_SERIES_COLORS[index % GEN_SERIES_COLORS.length]),
+        theme
+      );
+    }
+
+    if (kind === 'labStatus' && data.laboratoristasEstado) {
+      return buildPysDoughnutConfig(
+        data.laboratoristasEstado.map((item) => item.label),
+        data.laboratoristasEstado.map((item) => item.value),
+        [GEN_COLORS.purple, GEN_COLORS.slate],
+        theme
+      );
+    }
+
+    if (kind === 'programs' && data.programas) {
+      return buildPysHorizontalBarConfig(
+        data.programas.map((item) => item.nombre),
+        data.programas.map((item) => item.total),
+        data.programas.map((_, index) => hexToRgba(GEN_COLORS.blue, Math.max(0.35, 0.95 - index * 0.11))),
+        theme
+      );
+    }
+
+    if (kind === 'users' && data.usuarios) {
+      const config = buildPysDoughnutConfig(
+        data.usuarios.map((item) => item.label),
+        data.usuarios.map((item) => item.value),
+        data.usuarios.map((item) => GEN_USER_COLORS[item.key] || GEN_COLORS.slate),
+        theme
+      );
+      config.type = 'pie';
+      delete config.options.cutout;
+      return config;
+    }
+
+    return buildGenCoverageChartConfig(kind, theme);
+  }
+
+  function renderGeneralOverviewCharts() {
+    if (!generalChartData || typeof Chart === 'undefined') return;
+    generalOverviewCharts.splice(0).forEach((chart) => chart.destroy());
+    const theme = getChartTheme();
+    document.querySelectorAll('[data-gen-chart]').forEach((canvas) => {
+      const config = buildGeneralChartConfig(canvas, theme);
+      if (config) generalOverviewCharts.push(new Chart(canvas, config));
+    });
+    generalOverviewChartsRendered = true;
+  }
+
+  async function loadDashboardInventoryPanel() {
+    const panel = document.getElementById('dashboardSectionInventarios');
+    if (!panel || panel.dataset.loaded === 'true' || panel.dataset.loading === 'true') return;
+
+    panel.dataset.loading = 'true';
+    panel.innerHTML = '<div class="alert alert-info mb-0" role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Cargando dashboard de inventarios...</div>';
+    try {
+      const response = await fetch(panel.dataset.dashboardInventoryUrl, {
+        headers: { Accept: 'text/html' },
+      });
+      if (!response.ok) {
+        throw new Error(`La solicitud respondió ${response.status}.`);
+      }
+
+      panel.innerHTML = await response.text();
+      renderDashboardInventoryCharts(panel);
+      panel.dataset.loaded = 'true';
+    } catch (error) {
+      console.error('No fue posible cargar el dashboard de inventarios:', error);
+      panel.innerHTML = '<div class="alert alert-danger mb-0" role="alert">No fue posible cargar el dashboard de inventarios. Intenta nuevamente. <button type="button" class="btn btn-sm btn-outline-danger ms-2" data-dashboard-inventory-retry>Reintentar</button></div>';
+      panel
+        .querySelector('[data-dashboard-inventory-retry]')
+        ?.addEventListener('click', () => {
+          void loadDashboardInventoryPanel();
+        });
+    } finally {
+      panel.dataset.loading = 'false';
+    }
+  }
+
+  function initDashboardSectionTabs() {
+    const tabs = Array.from(document.querySelectorAll('[data-dashboard-section]'));
+    if (!tabs.length) return;
+
+    function activate(sectionId, { focus = false, updateHash = true } = {}) {
+      const target = tabs.find((tab) => tab.dataset.dashboardSection === sectionId) || tabs[0];
+      tabs.forEach((tab) => {
+        const isActive = tab === target;
+        tab.classList.toggle('is-active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        tab.tabIndex = isActive ? 0 : -1;
+        const panel = document.getElementById(tab.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !isActive;
+      });
+      if (focus) target.focus();
+      if (updateHash) {
+        const hash = target.dataset.dashboardSection === 'general' ? '' : `#${target.dataset.dashboardSection}`;
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+      }
+      if (target.dataset.dashboardSection === 'general') {
+        if (chartInstance) chartInstance.resize();
+        if (!generalOverviewChartsRendered) renderGeneralOverviewCharts();
+      }
+      if (target.dataset.dashboardSection === 'paz-y-salvos' && !pazYSalvoChartsRendered) {
+        renderPazYSalvoCharts();
+      }
+      if (target.dataset.dashboardSection === 'inventarios') {
+        void loadDashboardInventoryPanel();
+        dashboardInventoryCharts.forEach((chart) => chart.resize());
+      }
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activate(tab.dataset.dashboardSection));
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = tabs.length - 1;
+        activate(tabs[nextIndex].dataset.dashboardSection, { focus: true });
+      });
+    });
+
+    activate(window.location.hash.replace('#', '') || 'general', { updateHash: false });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
+    initDashboardSectionTabs();
     const emailEditorForm = document.getElementById('dashboardEmailEditorForm');
     const emailRoleSelect = document.getElementById('dashboardEmailEditorRole');
     const emailInput = document.getElementById('dashboardEmailEditorInput');
@@ -1435,6 +2675,40 @@
     }
 
     const detailBody = document.getElementById('dashboardDetailTableBody');
+    const userEditorForm = document.getElementById('dashboardUserEditorForm');
+    if (userEditorForm) {
+      userEditorForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        await guardarRegistroOatiUsuarioDesdeDashboard();
+      });
+      userEditorForm.addEventListener('change', function(event) {
+        if (event.target?.name === 'dashboardUserEditorRecord') {
+          const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+          if (confirmCheckbox) confirmCheckbox.checked = false;
+        }
+        syncDashboardUserEditorSaveState();
+      });
+    }
+
+    const userEditorReload = document.getElementById('dashboardUserEditorReload');
+    if (userEditorReload) {
+      userEditorReload.addEventListener('click', function() {
+        loadDashboardUserOatiRecords();
+      });
+    }
+
+    const userEditorModal = document.getElementById('dashboardUserEditorModal');
+    if (userEditorModal) {
+      userEditorModal.addEventListener('hidden.bs.modal', function() {
+        dashboardUserEditContext = null;
+        setDashboardUserEditorFeedback('');
+        renderDashboardUserEditorRecords([], 'Sin consultar.');
+        const confirmCheckbox = document.getElementById('dashboardUserEditorConfirm');
+        if (confirmCheckbox) confirmCheckbox.checked = false;
+        syncDashboardUserEditorSaveState();
+      });
+    }
+
     if (detailBody) {
       detailBody.addEventListener('click', async function(event) {
         const button = event.target.closest('[data-dashboard-action]');
@@ -1443,6 +2717,11 @@
         const action = button.getAttribute('data-dashboard-action');
         const rowId = Number(button.getAttribute('data-row-id'));
         if (!Number.isInteger(rowId)) return;
+
+        if (action === 'editar-usuario') {
+          openDashboardUserEditorModal(rowId);
+          return;
+        }
 
         if (action === 'editar-correo') {
           openDashboardEmailEditorModal(rowId);
@@ -1460,7 +2739,7 @@
       });
     }
 
-    document.querySelectorAll('.dashboard-stat-card').forEach((card) => {
+    document.querySelectorAll('.dashboard-kpi-card').forEach((card) => {
       card.addEventListener('click', function() {
         const chartTarget = card.dataset.chartTarget;
         detailEnabled = true;
@@ -1471,9 +2750,18 @@
 
     resetDetailPanel();
     renderChart(currentChartType, { renderDetail: false });
+    const generalCanvas = document.querySelector('[data-gen-chart]');
+    if (!generalOverviewChartsRendered && generalCanvas && generalCanvas.offsetParent) {
+      renderGeneralOverviewCharts();
+    }
 
     const themeObserver = new MutationObserver(function() {
       renderChart(currentChartType, { renderDetail: detailEnabled });
+      if (generalOverviewChartsRendered) renderGeneralOverviewCharts();
+      if (pazYSalvoChartsRendered) renderPazYSalvoCharts();
+      if (dashboardInventoryChartsRendered) {
+        renderDashboardInventoryCharts(document.getElementById('dashboardSectionInventarios'));
+      }
     });
 
     themeObserver.observe(document.documentElement, {

@@ -87,7 +87,7 @@
 
           <div class="col-md-4">
             <label for="url_edx" class="form-label">URL EDX *</label>
-            <input type="url" class="form-control" id="url_edx" placeholder="https://courses.edx.org/courses/course-v1:..." required />
+            <input type="url" class="form-control" id="url_edx" maxlength="5000" placeholder="https://courses.edx.org/courses/course-v1:..." required />
           </div>
 
           <div class="col-12">
@@ -130,7 +130,7 @@
       <div class="d-flex gap-2 align-items-center">
         <div class="input-group input-group-sm" style="max-width:260px;">
           <span class="input-group-text" id="search-basic-addon1"><i class="bi bi-search"></i></span>
-          <input type="search" id="buscador-cursos" class="form-control form-control-sm" placeholder="Buscar curso / facultad…" aria-label="Buscar curso">
+          <input type="search" id="buscador-cursos" class="form-control form-control-sm" maxlength="255" placeholder="Buscar curso / facultad…" aria-label="Buscar curso">
         </div>
         <span id="contador-cursos" class="badge text-bg-warning rounded-pill" style="background:#ffbf00;color:#7c3b04;">0</span>
       </div>

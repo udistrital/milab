@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="es">
+<body style="font-family:Arial,sans-serif;background:#f8f9fa;">
+  <table style="max-width:600px;margin:auto;background:#fff;width:100%;">
+    <%- buildEmailHeaderHtml() %>
+    <tr><td style="padding:24px;">
+      <h1 style="font-size:22px;"><%= answered ? 'Tu reclamación tiene una respuesta' : 'Tienes una reclamación pendiente' %></h1>
+      <p>La reclamación asociada a la sanción #<%= multaId %> <%= answered ? 'fue respondida por el laboratorista responsable.' : 'requiere revisión y una respuesta del laboratorista responsable.' %></p>
+      <p><%= answered ? 'Ingresa a Mis sanciones para consultar la decisión y su explicación.' : 'Ingresa a Reclamaciones para consultar el caso y responder. Solo se permite una respuesta definitiva.' %></p>
+      <p><a href="<%= actionUrl %>">Consultar reclamación en MILab</a></p>
+      <p>La reclamación y su respuesta no modifican automáticamente el estado de la sanción.</p>
+    </td></tr>
+    <%- buildNoReplyNoticeHtml() %>
+    <%- buildEmailFooterHtml() %>
+  </table>
+</body>
+</html>

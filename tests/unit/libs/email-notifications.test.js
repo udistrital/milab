@@ -62,6 +62,9 @@ test('notification delivery is independent of audit record failures', async () =
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0].to, 'estudiante@udistrital.edu.co');
     assert.match(sentMessages[0].html, /Estudiante/);
+    assert.equal(sentMessages[0].from.name, 'MILab — No responder');
+    assert.equal(sentMessages[0].from.address, process.env.EMAIL_FROM || process.env.EMAIL_USER);
+    assert.match(sentMessages[0].html, /Por favor, no respondas a este correo/);
     assert.match(loggedErrors[0][1].message, /audit unavailable/);
 
     auditUnavailable = false;
@@ -70,6 +73,33 @@ test('notification delivery is independent of audit record failures', async () =
     assert.deepEqual(sentWithoutAuditUpdate, { id: 42, status: 'SENT' });
     assert.equal(sentMessages.length, 2);
     assert.match(loggedErrors[1][1].message, /audit unavailable/);
+
+    await sendEmailNotification({
+      sourceSystem: 'sanciones',
+      templateName: 'sanciones/reclamacion',
+      recipient: 'laboratorista@udistrital.edu.co',
+      subject: 'Reclamación pendiente',
+      variables: {
+        answered: false,
+        multaId: 9,
+        actionUrl: 'https://example.test/milab/api/sanciones/reclamaciones',
+      },
+    });
+    assert.equal(sentMessages[2].from.name, 'MILab — No responder');
+    assert.match(sentMessages[2].html, /Tienes una reclamación pendiente/);
+    assert.match(
+      sentMessages[2].html,
+      /https:\/\/example.test\/milab\/api\/sanciones\/reclamaciones/
+    );
+    assert.match(sentMessages[2].html, /Por favor, no respondas a este correo/);
+    await sendEmailNotification({
+      ...notification,
+      variables: {
+        ...notification.variables,
+        sanciones: [{ cat_multa: 'Entrega', laboratorio: 'Laboratorio de prueba' }],
+      },
+    });
+    assert.match(sentMessages[3].html, /Mis sanciones en MILab/);
   } finally {
     console.error = previousConsoleError;
     [modulePath, dbPath, mailPath].forEach((modulePath, index) => {

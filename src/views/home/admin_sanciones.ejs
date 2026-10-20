@@ -1,0 +1,97 @@
+<%- include('../partials/header'); -%>
+<main class="container-fluid app-page-shell app-sanctions-report">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Catálogo de sanciones</h1>
+    <p class="app-page-subtitle">Administra las categorías disponibles para registrar sanciones de estudiantes y docentes. Los cambios no modifican las sanciones históricas.</p>
+  </section>
+  <% if (error) { %>
+    <div class="alert alert-danger" role="alert"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success" role="status">El catálogo se actualizó correctamente.</div>
+  <% } %>
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <h2 class="h5">Agregar categoría</h2>
+      <form method="POST" action="/milab/api/admin/sanciones/crear" class="row g-3">
+        <%- include('../partials/csrf_field') %>
+        <div class="col-md-4">
+          <label for="categoryName" class="form-label">Nombre corto</label>
+          <input id="categoryName" name="nombre" class="form-control" minlength="2" maxlength="150" required>
+        </div>
+        <div class="col-md-6">
+          <label for="categoryDescription" class="form-label">Descripción de la categoría</label>
+          <textarea id="categoryDescription" name="descripcion" class="form-control" minlength="2" maxlength="500" rows="2" required></textarea>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary" data-submit-lock="true">Agregar categoría</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <h2 class="h5">Categorías registradas</h2>
+      <p class="text-muted">Inactivar una categoría impide seleccionarla para nuevos registros. Puedes volver a activarla en cualquier momento.</p>
+      <table id="tbl-categorias-sancion" class="table table-bordered table-striped table-hover js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            <th>Estado</th>
+            <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% categories.forEach(category => { %>
+            <tr>
+              <td><strong><%= category.nombre %></strong></td>
+              <td style="white-space:normal;min-width:18rem;max-width:40rem;overflow-wrap:anywhere;"><%= category.descripcion %></td>
+              <td><span class="badge rounded-pill <%= category.activo ? 'text-bg-success' : 'text-bg-secondary' %>"><%= category.activo ? 'Activa' : 'Inactiva' %></span></td>
+              <td>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editarCategoriaModal" data-category-id="<%= category.id %>" data-category-name="<%= category.nombre %>" data-category-description="<%= category.descripcion %>">Editar</button>
+                <form method="POST" action="/milab/api/admin/sanciones/<%= category.id %>/estado">
+                  <%- include('../partials/csrf_field') %>
+                  <input type="hidden" name="activo" value="<%= category.activo ? 'false' : 'true' %>">
+                  <button type="submit" class="btn btn-sm <%= category.activo ? 'btn-outline-danger' : 'btn-outline-success' %>" data-submit-lock="true"><%= category.activo ? 'Inactivar' : 'Activar' %></button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<div class="modal fade" id="editarCategoriaModal" tabindex="-1" aria-labelledby="editarCategoriaTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="POST" id="editarCategoriaForm" class="modal-content">
+      <%- include('../partials/csrf_field') %>
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="editarCategoriaTitle">Editar categoría</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">El nombre y la descripción actualizados se usarán en nuevos registros; el historial conserva la descripción original.</p>
+        <label for="editCategoryName" class="form-label">Nombre corto</label>
+        <input id="editCategoryName" name="nombre" class="form-control mb-3" minlength="2" maxlength="150" required>
+        <label for="editCategoryDescription" class="form-label">Descripción</label>
+        <textarea id="editCategoryDescription" name="descripcion" class="form-control" minlength="2" maxlength="500" rows="4" required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" data-submit-lock="true">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script nonce="<%= cspNonce %>">
+  document.getElementById('editarCategoriaModal').addEventListener('show.bs.modal', function (event) {
+    const trigger = event.relatedTarget;
+    if (!trigger) return;
+    document.getElementById('editarCategoriaForm').action = '/milab/api/admin/sanciones/' + encodeURIComponent(trigger.dataset.categoryId) + '/editar';
+    document.getElementById('editCategoryName').value = trigger.dataset.categoryName;
+    document.getElementById('editCategoryDescription').value = trigger.dataset.categoryDescription;
+  });
+</script>
+<%- include('../partials/footer'); -%>

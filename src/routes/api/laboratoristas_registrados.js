@@ -65,7 +65,7 @@ async function resolveCoordinatorScopeByDocument(client, coordinatorDocument) {
   }
 
   const facultiesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
     [normalizedDocument]
   );
 
@@ -88,7 +88,7 @@ async function fetchCoordinatorOptions(client) {
             COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS facultades
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-     LEFT JOIN facultad f ON f.facultad_id = cf.facultad_id
+     LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
      GROUP BY c.documento, c.nombre
      ORDER BY c.nombre ASC`
   );
@@ -119,7 +119,7 @@ async function resolveCoordinatorFacultyIds(client, authDocument) {
 
   const coordDocumento = coordInfoRes.rows[0].documento;
   const facultadesRes = await client.query(
-    'SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+    'SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1',
     [coordDocumento]
   );
 
@@ -151,11 +151,27 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
         l.correo AS con_correo,
         l.activo AS activo,
         COALESCE(STRING_AGG(DISTINCT u_rel.nombre, ', ' ORDER BY u_rel.nombre), '') AS con_ual,
-        COALESCE(STRING_AGG(DISTINCT f.nombre, ', ' ORDER BY f.nombre), '') AS con_facultad
+        COALESCE(
+          STRING_AGG(
+            DISTINCT COALESCE(facultad.nombre, f.nombre),
+            ', '
+            ORDER BY COALESCE(facultad.nombre, f.nombre)
+          ),
+          ''
+        ) AS con_facultad,
+        COALESCE(
+          STRING_AGG(
+            DISTINCT CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END,
+            ', '
+            ORDER BY CASE WHEN f.padre_id IS NULL THEN 'Toda la facultad' ELSE f.nombre END
+          ),
+          ''
+        ) AS con_dependencia
       FROM laboratorista l
       LEFT JOIN laboratorista_ual lu ON lu.laboratorista_documento_id = l.documento
       LEFT JOIN ual u_rel ON u_rel.ual_id = lu.ual_id
-      LEFT JOIN facultad f ON f.facultad_id = u_rel.facultad_id
+      LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = u_rel.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = f.padre_id
     `;
 
     if (req.session.user.tipo === 'admin') {
@@ -181,7 +197,7 @@ router.get('/', requireAdminOrCoordinadorLabAccess, async (req, res) => {
 
       const coordDocumento = coordInfoRes.rows[0].documento;
       const cfRes = await pool.query(
-        `SELECT facultad_id FROM coordinador_facultad WHERE coordinador_documento_id = $1`,
+        `SELECT facultad_id FROM coordinador_facultad_alcance WHERE coordinador_documento_id = $1`,
         [coordDocumento]
       );
 
@@ -287,17 +303,17 @@ router.get('/editar', requireAdminOrCoordinadorLabAccess, async (req, res) => {
     let facultadesRes;
     if (req.session.user.tipo === 'coordinador') {
       facultadesRes = await pool.query(
-        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [facultadesPermitidas]
       );
     } else if (coordinatorScope?.coordinatorDocument && coordinatorScope.facultyIds.length) {
       facultadesRes = await pool.query(
-        'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = ANY($1::int[]) ORDER BY nombre ASC',
         [coordinatorScope.facultyIds]
       );
     } else {
       facultadesRes = await pool.query(
-        'SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC'
+        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad ORDER BY nombre ASC'
       );
     }
 

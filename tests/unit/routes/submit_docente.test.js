@@ -27,7 +27,7 @@ function buildApp(route) {
   return app;
 }
 
-function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
+function loadRoute({ resolveUsuarioId = async () => 88, queryImpl, categoryActive = true } = {}) {
   const originals = new Map();
   const executedQueries = [];
   const stubs = [
@@ -36,6 +36,9 @@ function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
       {
         query: async (sql, params) => {
           executedQueries.push({ sql, params });
+          if (sql.includes('FROM categoria_sancion')) {
+            return { rows: categoryActive ? [{ id: 1 }] : [] };
+          }
           if (typeof queryImpl === 'function') {
             return queryImpl(sql, params);
           }
@@ -98,6 +101,26 @@ function loadRoute({ resolveUsuarioId = async () => 88, queryImpl } = {}) {
     },
   };
 }
+
+test('submit_docente rejects inactive or removed catalog categories before inserting sanctions', async () => {
+  const loaded = loadRoute({ categoryActive: false });
+  try {
+    const response = await request(buildApp(loaded.route)).post('/').type('form').send({
+      cat_multa: 'Uso indebido',
+      con_documento: '79520182',
+      ual_id: '21',
+      fecha_multa: '2026-01-01',
+      con_estado_multa: 'Pendiente',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+    });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /Categoría.*no disponible/);
+    assert.ok(!loaded.getExecutedQueries().some((call) => call.sql.includes('INSERT INTO multa')));
+  } finally {
+    loaded.restore();
+  }
+});
 
 test('submit_docente rejects future fine date', async () => {
   const loaded = loadRoute();
@@ -191,13 +214,18 @@ test('submit_docente inserts fine and log when request is valid', async () => {
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',
+      tipo_sancion: 'Firma de compromiso de buen uso',
     });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/message_success');
     assert.match(response.body.locals.message, /Multa registrada correctamente/i);
 
-    const queries = loaded.getExecutedQueries().map((item) => item.sql);
+    const executedQueries = loaded.getExecutedQueries();
+    const queries = executedQueries.map((item) => item.sql);
+    const multaInsert = executedQueries.find((item) => item.sql.includes('INSERT INTO multa'));
+    assert.equal(multaInsert.params[5], 'ACTIVA');
+    assert.equal(multaInsert.params[7], 'Firma de compromiso de buen uso');
     assert.equal(
       queries.some((sql) => sql.includes('INSERT INTO multa')),
       true,

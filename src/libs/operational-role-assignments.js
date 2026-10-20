@@ -8,6 +8,15 @@ async function ensureOperationalRoleAssignmentsSchema(executor = pool) {
     return;
   }
 
+  // Si la tabla ya fue aprovisionada, no ejecutar DDL: la app puede no tener CREATE sobre el esquema.
+  const existing = await executor.query(
+    `SELECT to_regclass('milab.usuario_ual_rol_operativo') AS tabla`
+  );
+  if (existing.rows[0]?.tabla) {
+    operationalRoleAssignmentSchemaEnsured = true;
+    return;
+  }
+
   await executor.query(`
     CREATE TABLE IF NOT EXISTS usuario_ual_rol_operativo (
       id SERIAL NOT NULL,
@@ -65,8 +74,8 @@ async function fetchOperationalRoleAssignmentsByUserId(userId, roleName, executo
       JOIN ual u
         ON u.ual_id = a.ual_id
        AND u.activo = TRUE
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE a.usuario_id = $1
         AND r.nombre = $2
         AND a.activo = TRUE
@@ -214,8 +223,20 @@ async function replaceOperationalRoleAssignments({
   );
 }
 
+async function fetchActiveUalOptions(executor = pool) {
+  const result = await executor.query(
+    `SELECT ual.ual_id, ual.nombre, ual.facultad_id, f.nombre AS facultad_nombre
+     FROM ual
+     LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual.facultad_id
+     WHERE ual.activo = TRUE
+     ORDER BY f.nombre ASC NULLS LAST, ual.nombre ASC`
+  );
+  return result.rows;
+}
+
 module.exports = {
   ensureOperationalRoleAssignmentsSchema,
+  fetchActiveUalOptions,
   fetchOperationalRoleAssignmentsByUserId,
   fetchOperationalRoleScopeByUser,
   replaceOperationalRoleAssignments,

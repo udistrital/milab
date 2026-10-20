@@ -116,13 +116,15 @@ async function assertCursoInScope(codigoCurso, scope) {
 
 async function getScopedFacultades(scope) {
   if (scope.isAdmin || scope.facultyIds.length === 0) {
-    const result = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
+    const result = await pool.query(
+      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad ORDER BY nombre ASC'
+    );
     return result.rows;
   }
   const result = await pool.query(
-    `SELECT facultad_id, nombre
-     FROM facultad
-     WHERE facultad_id = ANY($1::int[])
+    `SELECT dependencia_facultad_id AS facultad_id, nombre
+     FROM dependencia_facultad
+     WHERE dependencia_facultad_id = ANY($1::int[])
      ORDER BY nombre ASC`,
     [scope.facultyIds]
   );
@@ -140,7 +142,7 @@ async function getScopedCursos(scope) {
               c.activo,
               COALESCE(lab.nombres, '[]') AS laboratorios_nombres
        FROM cursos c
-       JOIN facultad f ON f.facultad_id = c.id_facultad
+       JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
        LEFT JOIN (
            SELECT cl.codigo_curso,
                   json_agg(json_build_object(
@@ -167,7 +169,7 @@ async function getScopedCursos(scope) {
             c.activo,
             COALESCE(lab.nombres, '[]') AS laboratorios_nombres
      FROM cursos c
-     JOIN facultad f ON f.facultad_id = c.id_facultad
+     JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
      LEFT JOIN (
          SELECT cl.codigo_curso,
                 json_agg(json_build_object(
@@ -202,7 +204,7 @@ router.get('/equipos/search', requireEquiposAccess, async function (req, res) {
     if (!q) {
       rows = await pool.query(
         `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
-         FROM equipo
+         FROM equipo_catalogo
          WHERE activo = TRUE
          ORDER BY nombre ASC, codigo ASC
          LIMIT 200`
@@ -211,7 +213,7 @@ router.get('/equipos/search', requireEquiposAccess, async function (req, res) {
       const pattern = '%' + q + '%';
       rows = await pool.query(
         `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
-         FROM equipo
+         FROM equipo_catalogo
          WHERE activo = TRUE
            AND (
              UPPER(nombre) LIKE UPPER($1)
@@ -254,13 +256,13 @@ router.get('/list', requireEquiposAccess, async function (req, res) {
     const equiposQ = scope.isAdmin
       ? await pool.query(
           `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
-           FROM equipo
+           FROM equipo_catalogo
            WHERE activo = TRUE
            ORDER BY nombre ASC, codigo ASC`
         )
       : await pool.query(
           `SELECT id, codigo, nombre, descripcion, categoria, laboratorio, facultad, estado, ubicacion, activo
-           FROM equipo
+           FROM equipo_catalogo
            WHERE activo = TRUE
            ORDER BY nombre ASC, codigo ASC`
         );
@@ -277,7 +279,7 @@ router.get('/list', requireEquiposAccess, async function (req, res) {
                   e.laboratorio AS equipo_laboratorio,
                   e.estado AS equipo_estado
            FROM equipo_especializado ee
-           JOIN equipo e ON e.id = ee.id_equipo
+           JOIN equipo_catalogo e ON e.id = ee.id_equipo
            WHERE ee.activo = TRUE
              AND ee.codigo_curso = ANY($1::varchar(100)[])
            ORDER BY ee.codigo_curso ASC, e.nombre ASC`,

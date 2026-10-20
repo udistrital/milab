@@ -1,36 +1,16 @@
 const pool = require('./db');
 
-let monitorSchemaEnsured = false;
-
 function normalizeText(value) {
   return value === undefined || value === null ? '' : String(value).trim();
 }
 
 async function ensureMonitorSchema(executor = pool) {
-  if (monitorSchemaEnsured) {
-    return;
+  const result = await executor.query(`SELECT to_regclass('milab.monitor') AS monitor_table`);
+  if (!result.rows[0]?.monitor_table) {
+    throw new Error(
+      'No existe milab.monitor. La tabla debe aprovisionarse con un usuario administrador de base de datos.'
+    );
   }
-
-  await executor.query(`
-    CREATE TABLE IF NOT EXISTS monitor (
-      documento VARCHAR(50) PRIMARY KEY,
-      nombre VARCHAR(255) NOT NULL,
-      correo VARCHAR(255) NOT NULL UNIQUE,
-      numero_contrato VARCHAR(100),
-      tipo_vinculacion VARCHAR(100),
-      fecha_inicio DATE,
-      fecha_fin DATE,
-      soporte_contrato VARCHAR(1000),
-      usuario_id BIGINT REFERENCES usuario(id) ON DELETE SET NULL,
-      activo BOOLEAN NOT NULL DEFAULT TRUE,
-      fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-      fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await executor.query(`CREATE INDEX IF NOT EXISTS idx_monitor_usuario_id ON monitor(usuario_id)`);
-
-  monitorSchemaEnsured = true;
 }
 
 async function fetchMonitorByDocumento(documento, executor = pool) {

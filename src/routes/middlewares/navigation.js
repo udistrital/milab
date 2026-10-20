@@ -1,5 +1,5 @@
 const pool = require('../../libs/db');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+// const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const {
   getPrestamosModuleAccess,
   removePrestamosNavigation,
@@ -13,6 +13,28 @@ function createLink(label, href, icon) {
 
 function createGroup(title, icon, items) {
   return { title, icon, items };
+}
+
+function removeSanctionAuthorizationLink(navigation) {
+  // Antes, el menú dinámico se devolvía sin filtrar y el enlace de autorizaciones quedaba visible.
+  const isAuthorizationLink = (item) =>
+    item?.href === '/milab/api/aprobacion_multa' ||
+    String(item?.label || '')
+      .trim()
+      .toLowerCase() === 'autorizaciones';
+  const secondaryGroups = (navigation.secondaryGroups || [])
+    .map((group) => ({
+      ...group,
+      items: (group.items || []).filter((item) => !isAuthorizationLink(item)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  return {
+    ...navigation,
+    primaryLinks: (navigation.primaryLinks || []).filter((item) => !isAuthorizationLink(item)),
+    secondaryGroups,
+    accountLinks: (navigation.accountLinks || []).filter((item) => !isAuthorizationLink(item)),
+  };
 }
 
 function normalizeHoursValue(value) {
@@ -124,99 +146,6 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
-function ensureCapacitacionNavigationItems(navigation, roles) {
-  if (!navigation || typeof navigation !== 'object') return navigation;
-  const normalizedRoles = normalizeRoles(roles);
-  if (!normalizedRoles.length) return navigation;
-
-  const canGestionar = normalizedRoles.some((r) =>
-    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
-  );
-  const canCursos = normalizedRoles.includes('admin');
-  const canAsociacion = normalizedRoles.some((r) =>
-    ['admin', 'coordinador', 'coordinador_general', 'laboratorista'].includes(r)
-  );
-  const canMisCapacitaciones = normalizedRoles.some((r) => ['estudiante', 'docente'].includes(r));
-
-  const desiredItems = [];
-  if (canCursos) {
-    desiredItems.push({
-      label: 'Creación de cursos',
-      href: '/milab/capacitacion/cursos/load_info',
-      icon: 'bi-book',
-    });
-  }
-  if (canAsociacion) {
-    desiredItems.push({
-      label: 'Asociación curso-equipo',
-      href: '/milab/capacitacion/asociacion-equipos/load_info',
-      icon: 'bi-diagram-3',
-    });
-  }
-  if (canGestionar) {
-    desiredItems.push({
-      label: 'Gestionar capacitaciones',
-      href: '/milab/capacitacion/gestion/load_info',
-      icon: 'bi-calendar-check',
-    });
-  }
-  if (canMisCapacitaciones) {
-    desiredItems.push({
-      label: 'Mis capacitaciones',
-      href: '/milab/capacitacion/mis-capacitaciones/load_info',
-      icon: 'bi-journal-bookmark',
-    });
-  }
-
-  if (!desiredItems.length) return navigation;
-
-  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
-    ? [...navigation.secondaryGroups]
-    : [];
-  const capTitleLower = 'capacitación';
-  let capGroupIndex = secondaryGroups.findIndex(
-    (g) => typeof g?.title === 'string' && g.title.trim().toLowerCase() === capTitleLower
-  );
-
-  if (capGroupIndex < 0) {
-    secondaryGroups.push({
-      title: 'Capacitación',
-      icon: 'bi-mortarboard',
-      items: [],
-    });
-    capGroupIndex = secondaryGroups.length - 1;
-  }
-
-  const capGroup = { ...(secondaryGroups[capGroupIndex] || {}) };
-  const existingItems = Array.isArray(capGroup.items) ? [...capGroup.items] : [];
-  desiredItems.forEach((desired) => {
-    const exists = existingItems.some((item) => item?.href === desired.href);
-    if (!exists) existingItems.push(desired);
-  });
-
-  const ORDER_HINTS = {
-    '/milab/capacitacion/cursos/load_info': 1,
-    '/milab/capacitacion/asociacion-equipos/load_info': 2,
-    '/milab/capacitacion/gestion/load_info': 3,
-    '/milab/capacitacion/mis-capacitaciones/load_info': 4,
-  };
-  existingItems.sort((a, b) => {
-    const ha = ORDER_HINTS[a?.href] || 999;
-    const hb = ORDER_HINTS[b?.href] || 999;
-    if (ha !== hb) return ha - hb;
-    return (a?.label || '').localeCompare(b?.label || '');
-  });
-
-  capGroup.items = existingItems;
-  if (!capGroup.icon) capGroup.icon = 'bi-mortarboard';
-  secondaryGroups[capGroupIndex] = capGroup;
-
-  return {
-    ...navigation,
-    secondaryGroups,
-  };
-}
-
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -231,6 +160,16 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'admin') {
+    primaryLinks.push(
+      createLink('Reclamaciones', '/milab/api/sanciones/reclamaciones', 'bi-chat-left-text')
+    );
+    secondaryGroups.push(
+      createGroup('Configuración', 'bi-gear', [
+        createLink('Roles', '/milab/api/admin/roles', 'bi-people'),
+        createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
+        createLink('Esquema de base de datos', '/milab/api/admin/esquema-bd', 'bi-database'),
+      ])
+    );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
@@ -281,29 +220,11 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink('Creación de cursos', '/milab/capacitacion/cursos/load_info', 'bi-book'),
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
   }
 
   if (role === 'coordinador') {
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
-    primaryLinks.push(
-      createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
-    );
+    // primaryLinks.push(createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
     secondaryGroups.push(
@@ -343,24 +264,12 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
   }
 
   if (role === 'laboratorista') {
+    primaryLinks.push(
+      createLink('Reclamaciones', '/milab/api/sanciones/reclamaciones', 'bi-chat-left-text')
+    );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
     secondaryGroups.push(
@@ -391,21 +300,6 @@ function buildStaticNavigation(user) {
         createLink('Verificar docente', '/milab/api/verificar_docente', 'bi-person-vcard'),
       ])
     );
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Asociación curso-equipo',
-          '/milab/capacitacion/asociacion-equipos/load_info',
-          'bi-diagram-3'
-        ),
-        createLink(
-          'Gestionar capacitaciones',
-          '/milab/capacitacion/gestion/load_info',
-          'bi-calendar-check'
-        ),
-      ])
-    );
   }
 
   if (role === 'monitor') {
@@ -413,20 +307,13 @@ function buildStaticNavigation(user) {
   }
 
   if (role === 'estudiante') {
+    accountLinks.push(
+      createLink('Mis sanciones', '/milab/api/sanciones/mis-sanciones', 'bi-shield-exclamation')
+    );
     primaryLinks.push(
       createLink('Solicitar certificado', '/milab/api/get-data1/verificacion', 'bi-patch-check')
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Mis capacitaciones',
-          '/milab/capacitacion/mis-capacitaciones/load_info',
-          'bi-journal-bookmark'
-        ),
-      ])
-    );
   }
 
   if (role === 'docente') {
@@ -438,16 +325,6 @@ function buildStaticNavigation(user) {
       )
     );
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
-
-    secondaryGroups.push(
-      createGroup('Capacitación', 'bi-mortarboard', [
-        createLink(
-          'Mis capacitaciones',
-          '/milab/capacitacion/mis-capacitaciones/load_info',
-          'bi-journal-bookmark'
-        ),
-      ])
-    );
   }
 
   if (isAuthenticated) {
@@ -467,25 +344,62 @@ function buildStaticNavigation(user) {
   );
 }
 
+/*
 async function getPendingSanctionsCount(user, role) {
   if (!user || role !== 'coordinador') return 0;
 
   const scope = await resolveCoordinatorScope(pool, user.documento);
-
-  if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
-    return 0;
-  }
+  if (!scope.coordinatorDocument || scope.facultyIds.length === 0) return 0;
 
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
-    FROM multa m
+     FROM multa m
      INNER JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
        AND u.facultad_id = ANY($1::int[])`,
     [scope.facultyIds]
   );
-
   return result.rows[0]?.total || 0;
+}
+*/
+
+async function getPendingInventoryApprovalsCount(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const globalViewer = roles.some((role) => ['admin', 'coordinador_general'].includes(role));
+  if (!user || (!globalViewer && !roles.includes('coordinador'))) return 0;
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM inventario_carga c
+        JOIN ual u ON u.ual_id = c.ual_id
+        LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id
+        WHERE c.estado = 'pendiente_aprobacion'
+          AND (
+            $1::boolean
+            OR (
+              COALESCE(encargado.coordinador_documento, c.coordinador_documento) = $2
+              AND EXISTS (
+                SELECT 1
+                FROM coordinador_facultad_alcance ca
+                JOIN coordinador active_coordinator
+                  ON active_coordinator.documento = ca.coordinador_documento_id
+                 AND active_coordinator.activo = TRUE
+                WHERE ca.coordinador_documento_id = $2
+                  AND ca.facultad_id = u.facultad_id
+                  AND ca.activo = TRUE
+              )
+            )
+          )
+      `,
+      [globalViewer, user.documento || null]
+    );
+    return Number(result.rows[0]?.total) || 0;
+  } catch (error) {
+    console.warn('Navegación: no fue posible consultar aprobaciones de inventario:', error.message);
+    return 0;
+  }
 }
 
 async function getActiveSanctionsSummary(user, role) {
@@ -578,16 +492,15 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      const patched = ensureCapacitacionNavigationItems(
-        {
+      return ensureCoordinatorSignatureAccountLink(
+        removeSanctionAuthorizationLink({
           isAuthenticated,
           role: getPrimaryRole(roles),
           roleLabel: formatRoleLabel(roles),
           ...filteredMenu,
-        },
+        }),
         roles
       );
-      return ensureCoordinatorSignatureAccountLink(patched, roles);
     }
   } catch {
     const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -596,13 +509,10 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return ensureCapacitacionNavigationItems(
-      {
-        ...filteredFallback,
-        roleLabel: formatRoleLabel(roles),
-      },
-      roles
-    );
+    return {
+      ...removeSanctionAuthorizationLink(filteredFallback),
+      roleLabel: formatRoleLabel(roles),
+    };
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -611,13 +521,10 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return ensureCapacitacionNavigationItems(
-    {
-      ...filteredFallback,
-      roleLabel: formatRoleLabel(roles),
-    },
-    roles
-  );
+  return {
+    ...removeSanctionAuthorizationLink(filteredFallback),
+    roleLabel: formatRoleLabel(roles),
+  };
 }
 
 async function navigationMiddleware(req, res, next) {
@@ -626,9 +533,17 @@ async function navigationMiddleware(req, res, next) {
     const navigation = await buildNavigation(sessionUser);
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    // const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
+    // Un contador del menú no debe impedir cargar la página.
+    const claimNotifications = await getClaimNotifications(sessionUser, primaryRole).catch(
+      (error) => {
+        console.warn('Navegación: no fue posible consultar reclamaciones:', error.message);
+        return null;
+      }
+    );
 
     if (sessionUser) {
       Object.assign(res.locals, sessionUser);
@@ -637,17 +552,52 @@ async function navigationMiddleware(req, res, next) {
     res.locals.user = sessionUser;
     res.locals.roles = roles;
     res.locals.tipo = primaryRole;
+    res.locals.navigationCurrentPath = req.path || '';
     res.locals.documento = sessionUser?.documento || '';
     res.locals.appNavigation = navigation;
     res.locals.isAuthenticated = navigation.isAuthenticated;
     res.locals.sessionRoleLabel = navigation.roleLabel;
-    res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    // res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
+    res.locals.claimNotifications = claimNotifications;
 
     return next();
   } catch (error) {
     return next(error);
+  }
+
+  async function getClaimNotifications(user, role) {
+    if (!user || !['estudiante', 'laboratorista'].includes(role)) return null;
+    const document = String(user.documento_real || user.documento || '');
+    let result;
+    if (role === 'estudiante') {
+      result = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN multa m ON m.id = r.multa_id JOIN usuario u ON u.id = m.usuario_sancionado_id
+         WHERE u.documento = $1 AND r.fecha_respuesta IS NOT NULL AND r.fecha_lectura IS NULL`,
+        [document]
+      );
+    } else {
+      result = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN laboratorista l ON l.documento = r.responsable_documento_id
+         WHERE r.fecha_respuesta IS NULL
+           AND (l.documento = $1 OR l.n_usuario = $1)
+           AND l.activo = TRUE`,
+        [document]
+      );
+    }
+    return {
+      count: result.rows[0]?.total || 0,
+      label:
+        role === 'estudiante' ? 'Respuestas a reclamaciones sin leer' : 'Reclamaciones pendientes',
+      href:
+        role === 'estudiante'
+          ? '/milab/api/sanciones/mis-sanciones'
+          : '/milab/api/sanciones/reclamaciones',
+    };
   }
 }
 

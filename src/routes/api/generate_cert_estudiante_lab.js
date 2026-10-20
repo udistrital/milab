@@ -13,6 +13,11 @@ const {
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const {
+  collectStudentCodigos,
+  getActiveSgaDebtsForStudent,
+  selectStudentRecordForDocumento,
+} = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
 
 // Variables de entorno
@@ -72,6 +77,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   }
 
   let con_codigo;
+  let con_codigos = [];
   let con_estado;
   let con_documento;
   let con_carrera;
@@ -255,7 +261,14 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         throw new Error('Estudiante no encontrado en OAS');
       }
 
-      const datosEstudiante = studentRecords[studentRecords.length - 1];
+      const searchedByCodigo =
+        (!numero_documento_identificacion || numero_documento_identificacion === '0') &&
+        codigo_form;
+      const datosEstudiante = searchedByCodigo
+        ? studentRecords[studentRecords.length - 1]
+        : (await selectStudentRecordForDocumento(studentRecords, numero_documento_identificacion))
+            .record;
+      con_codigos = collectStudentCodigos(studentRecords);
 
       con_codigo = datosEstudiante.codigo;
       con_estado = datosEstudiante.estado;
@@ -274,18 +287,23 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       //----------------------- Generar QR y guardar Imagen
 
       const uniqueId = generateUniqueId(); // Esta función genera un ID único
-      QRCode.toFile(
-        buildGeneratePath(`${con_codigo}.png`),
-        buildAppUrl(`/api/validateqr/${uniqueId}`),
-        {
-          // QRCode.toDataURL(`src/public/generate/${con_codigo}.png`, 'https://validateQR/' + uniqueId, {
-          errorCorrectionLevel: 'H',
-        },
-        function (err) {
-          if (err) throw err;
-          console.log('QR unico generado!');
-        }
-      );
+      await new Promise((resolve, reject) => {
+        QRCode.toFile(
+          buildGeneratePath(`${con_codigo}.png`),
+          buildAppUrl(`/api/validateqr/${uniqueId}`),
+          {
+            errorCorrectionLevel: 'H',
+          },
+          function (err) {
+            if (err) {
+              reject(err);
+              return;
+            }
+            console.log('QR unico generado!');
+            resolve();
+          }
+        );
+      });
 
       qr_name = con_codigo + '-' + uniqueId;
       uniqueId1 = uniqueId;
@@ -371,7 +389,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         motivo_expedicion: origen_descarga,
         multa: multado,
       };
-      submit_data(data_to_submit);
+      await submit_data(data_to_submit);
 
       if (!isEgresadoStatus(con_estado)) {
         await print_data();
@@ -756,7 +774,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
 
   // Función para subir data a la ba se de datos - certificados solicitadas
 
-  function submit_data(req) {
+  async function submit_data(req) {
     // Usar pool centralizado
 
     const {
@@ -770,7 +788,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       multa,
     } = req;
     // AQUÍ AGREGAMOS motivo_expedicion AL QUERY
-    pool.query(
+    return pool.query(
       'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, motivo_expedicion, multa) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
       [
         usuario_id,
@@ -781,12 +799,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         motivo_exp,
         motivo_expedicion,
         multa,
-      ],
-      (error) => {
-        if (error) {
-          throw error;
-        }
-      }
+      ]
     );
   }
 
@@ -801,7 +814,7 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
 
     try {
       const result = await query(
-        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad, CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
         [usuarioId]
       );
 
@@ -825,8 +838,8 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   async function consultarMultasSga() {
     if (!sgaDebtService.isConfigured()) return [];
 
-    return sgaDebtService.getActiveDebts({
-      codigo: con_codigo,
+    return getActiveSgaDebtsForStudent(sgaDebtService, {
+      codigos: con_codigos.length ? con_codigos : collectStudentCodigos([], con_codigo),
       documento: con_documento,
     });
   }

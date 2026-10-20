@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireRoles } = require('../middlewares/auth');
+const { normalizeRoles } = require('../../libs/roles');
 
 const router = express.Router();
 
@@ -85,8 +86,15 @@ router.get('/', function (req, res) {
 });
 
 router.get('/inicio', function (req, res) {
-  if (!req.session?.user) {
+  const user = req.session?.user;
+  if (!user) {
     return res.redirect('/milab/');
+  }
+
+  const dashboardRoles = ['admin', 'coordinador_general', 'coordinador', 'laboratorista'];
+  const userRoles = normalizeRoles(user.roles || user.tipo);
+  if (userRoles.some((role) => dashboardRoles.includes(role))) {
+    return res.redirect('/milab/api/dashboard');
   }
 
   return res.render('home/inicio');
@@ -117,7 +125,7 @@ router.get('/contact', function (req, res) {
 });
 
 router.get('/reg_multa', function (req, res) {
-  res.render('home/reg_multa');
+  return redirectToCanonicalPublicRoute(req, res, '/milab/api/get-info-multa/get');
 });
 router.get('/get-info-multa-docente', function (req, res) {
   res.render('home/get-info-multa-docente');

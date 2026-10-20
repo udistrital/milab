@@ -1,0 +1,195 @@
+<%- include('../../../partials/header'); -%>
+<link rel="stylesheet" href="/milab/public/css/inventory-review.css">
+
+<main id="inventoryReviewStart" class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Revisar carga de inventario</h1>
+    <p class="app-page-subtitle">
+      <%= inventoryLabels[batch.tipo_inventario] || batch.tipo_inventario %> —
+      <%= batch.laboratorio %> / <%= batch.dependencia %>
+    </p>
+  </section>
+
+  <nav class="d-flex justify-content-end gap-2 mb-3" aria-label="Navegación de la revisión">
+    <a class="btn btn-outline-secondary" href="#inventoryReviewEnd">
+      <i class="bi bi-arrow-down" aria-hidden="true"></i> Ir al final
+    </a>
+  </nav>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (reviewHistory.length) { %>
+    <section class="card app-table-panel text-light mb-4">
+      <div class="card-header"><h2 class="h5 mb-0">Historial de revisión</h2></div>
+      <div class="card-body">
+        <ol class="mb-0">
+          <% reviewHistory.forEach(function(entry) { %>
+            <li class="mb-2">
+              <strong><%= entry.accion.replaceAll('carga_', '').replaceAll('_', ' ') %></strong>
+              — <%= entry.actor_rol %> <%= entry.actor_documento ? `(${entry.actor_documento})` : '' %>,
+              <%= new Date(entry.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %>
+              <% if (entry.detalle && entry.detalle.comentario) { %>
+                <div class="small">Comentario: <%= entry.detalle.comentario %></div>
+              <% } %>
+            </li>
+          <% }) %>
+        </ol>
+      </div>
+    </section>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Archivo / declaración</dt>
+        <dd class="col-sm-9"><%= batch.archivo_nombre %></dd>
+        <dt class="col-sm-3">Solicitante</dt>
+        <dd class="col-sm-9"><%= batch.solicitante_nombre || 'Nombre no disponible' %> — <%= batch.creada_por_documento %></dd>
+        <dt class="col-sm-3">Fecha de envío</dt>
+        <dd class="col-sm-9"><%= new Date(batch.fecha_confirmacion || batch.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></dd>
+        <dt class="col-sm-3">Filas</dt>
+        <dd class="col-sm-9">
+          <%= batch.filas_exitosas %> exitosas y <%= batch.filas_fallidas %> fallidas
+        </dd>
+        <dt class="col-sm-3">Coordinador responsable</dt>
+        <dd class="col-sm-9"><%= batch.coordinador_nombre || batch.coordinador_documento || '-' %></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Registros enviados</h2>
+    </div>
+    <div class="card-body">
+      <% if (batch.declaracion_sin_inventario) { %>
+        <div class="alert alert-info mb-0">
+          El laboratorista declaró que este laboratorio no tiene inventario complementario.
+        </div>
+      <% } else if (rows.length) { %>
+        <div class="table-responsive">
+          <table
+            class="table table-bordered table-striped app-table-compact js-data-grid"
+            data-grid-page-length="25"
+            data-grid-scroll-x="true"
+          >
+            <thead class="text-light">
+              <tr>
+                <th>Fila</th>
+                <th>Descripción</th>
+                <th>Placa / serial</th>
+                <th>Identificadores</th>
+                <th>Existencias</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rows.forEach(function(row) { %>
+                <% if (row.estado === 'pendiente_aprobacion') { %>
+                  <tr>
+                    <td><%= row.numero_fila %></td>
+                    <td class="inventory-review-description-cell">
+                      <% const description = String(row.payload.descripcion || '-'); %>
+                      <span class="inventory-review-description" data-description-text><%= description %></span>
+                      <% if (Array.from(description).length > 80) { %>
+                        <button type="button" class="btn btn-link btn-sm p-0" data-description-toggle data-grid-action-ignore aria-expanded="false">Ver más</button>
+                      <% } %>
+                    </td>
+                    <td><%= row.payload.placa || '-' %><%= row.payload.serie ? ` / ${row.payload.serie}` : '' %></td>
+                    <td>
+                      <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
+                        <%= row.payload.identificadores.map(function(identifier) {
+                          const label = identifier.tipo === 'nomenclatura_adicional'
+                            ? `Nomenclatura adicional (${identifier.etiqueta})`
+                            : identifier.tipo;
+                          return `${label}: ${identifier.valor}`;
+                        }).join(', ') %>
+                      <% } else { %>
+                        -
+                      <% } %>
+                    </td>
+                    <td>
+                      <% if (row.payload.existencias && row.payload.existencias.length) { %>
+                        <%= row.payload.existencias.map(function(balance) { return `${balance.cantidad} ${balance.unidad} (${balance.grado}/${balance.ubicacion})`; }).join(', ') %>
+                      <% } else { %>
+                        <%= row.payload.modoControl === 'cantidad' ? 'Cantidad no informada' : 'Individual' %>
+                      <% } %>
+                    </td>
+                  </tr>
+                <% } %>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <div class="alert alert-warning mb-0">La carga no tiene filas pendientes.</div>
+      <% } %>
+    </div>
+  </section>
+
+  <% if (batch.estado === 'pendiente_aprobacion' && canResolve) { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body">
+        <h2 class="h5">Decisión del coordinador</h2>
+        <p>Al aprobar, los equipos ARKA se vincularán al catálogo técnico usado por los demás módulos.</p>
+        <p>La primera aprobación registra al coordinador responsable de esta carga como encargado del laboratorio. Las siguientes cargas se dirigirán únicamente a ese encargado.</p>
+        <form
+          action="/milab/inventarios/aprobaciones/<%= batch.id %>/resolver"
+          method="post"
+          class="row g-3"
+          data-confirm-submit="¿Confirmas esta decisión sobre la carga completa?"
+        >
+          <%- include('../../../partials/csrf_field') %>
+          <div class="col-12">
+            <label for="comentario" class="form-label">
+              Comentario (opcional al aprobar o rechazar; obligatorio al devolver)
+            </label>
+            <textarea id="comentario" name="comentario" class="form-control" rows="3" maxlength="2000"></textarea>
+          </div>
+          <div class="col-12 d-flex justify-content-end gap-2">
+            <% if (!batch.declaracion_sin_inventario) { %>
+              <button
+                class="btn btn-outline-warning"
+                type="submit"
+                name="decision"
+                value="devolver"
+                data-submit-lock="true"
+              >
+                Devolver para corrección
+              </button>
+            <% } %>
+            <button
+              class="btn btn-outline-danger"
+              type="submit"
+              name="decision"
+              value="rechazar"
+              data-submit-lock="true"
+            >
+              Rechazar
+            </button>
+            <button
+              class="btn btn-perso"
+              type="submit"
+              name="decision"
+              value="aprobar"
+              data-submit-lock="true"
+            >
+              Aprobar carga
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } %>
+
+  <div id="inventoryReviewEnd" class="d-flex justify-content-end flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="#inventoryReviewStart">
+      <i class="bi bi-arrow-up" aria-hidden="true"></i> Ir al inicio
+    </a>
+    <a class="btn btn-outline-secondary" href="/milab/inventarios/aprobaciones">Volver a aprobaciones</a>
+  </div>
+</main>
+
+<script src="/milab/public/js/inventory-preview.js" defer></script>
+<%- include('../../../partials/footer'); -%>

@@ -87,13 +87,139 @@ async function fetchUalsByFacultyId(facultadId) {
     existingColumns.has(column) ? column : OPTIONAL_UAL_FALLBACKS[column]
   ).join(', ');
 
-  const query = `SELECT ual_id, nombre, ${selectOptionalColumns} FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
+  const query = `SELECT ual_id, nombre, ${selectOptionalColumns},
+      (SELECT json_build_object(
+         'documento', c.documento, 'nombre', c.nombre, 'correo', c.correo,
+         'activo', c.activo, 'fecha_asignacion', e.fecha_asignacion, 'carga_id', e.carga_id
+       )
+       FROM coordinador_ual_encargado e
+       JOIN coordinador c ON c.documento = e.coordinador_documento
+       WHERE e.ual_id = ual.ual_id) AS coordinador_encargado
+    FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
   return pool.query(query, [facultadId]);
+}
+
+function fetchUalLaboratoristas(facultadId) {
+  return pool.query(
+    `SELECT lu.ual_id,
+            l.documento,
+            l.nombre,
+            l.correo,
+            l.activo,
+            lu.activo AS asignacion_activa
+     FROM laboratorista_ual lu
+     JOIN ual u ON u.ual_id = lu.ual_id
+     JOIN laboratorista l ON l.documento = lu.laboratorista_documento_id
+     WHERE u.facultad_id = $1
+     ORDER BY l.nombre ASC`,
+    [facultadId]
+  );
+}
+
+// Incluye los coordinadores heredados de la facultad padre (vista de alcance).
+function fetchUnitCoordinadores(facultadId) {
+  return pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (c.documento)
+              c.documento,
+              c.nombre,
+              c.correo,
+              c.activo,
+              cfa.activo AS asignacion_activa,
+              (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+               FROM coordinador_ual_encargado e
+               JOIN ual u ON u.ual_id = e.ual_id
+               WHERE e.coordinador_documento = c.documento
+                 AND u.facultad_id = $1) AS laboratorios_encargados,
+              (cfa.facultad_asignada_id <> cfa.facultad_id) AS heredado,
+              fa.nombre AS asignado_en
+       FROM coordinador_facultad_alcance cfa
+       JOIN coordinador c ON c.documento = cfa.coordinador_documento_id
+       JOIN dependencia_facultad fa ON fa.dependencia_facultad_id = cfa.facultad_asignada_id
+       WHERE cfa.facultad_id = $1
+       ORDER BY c.documento, (cfa.facultad_asignada_id <> cfa.facultad_id) ASC
+     ) coordinadores
+     ORDER BY heredado ASC, nombre ASC`,
+    [facultadId]
+  );
 }
 
 router.use(requireAdminFacultyAccess);
 
-// Endpoint JSON: UALs de una facultad (usado por la SPA sin recarga)
+function parsePositiveId(value) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function renderFacultyError(res, message, message2) {
+  return res.render('home/message_error', { message, message2, limit: null });
+}
+
+function buildFacultyRedirect({ padreId = null, facultadId = null } = {}) {
+  if (facultadId) return `/milab/api/facultad?facultad_id=${facultadId}`;
+  if (padreId) return `/milab/api/facultad?padre_id=${padreId}`;
+  return '/milab/api/facultad';
+}
+
+async function fetchFacultyHierarchy(client = pool) {
+  const result = await client.query(
+    `SELECT d.dependencia_facultad_id AS facultad_id,
+            d.nombre,
+            d.padre_id,
+            d.activo,
+            (SELECT COUNT(*)::int
+             FROM dependencia_facultad h
+             WHERE h.padre_id = d.dependencia_facultad_id) AS dependencias_count,
+            (SELECT COUNT(*)::int
+             FROM ual u
+             WHERE u.facultad_id = d.dependencia_facultad_id) AS uals_count
+     FROM dependencia_facultad d
+     ORDER BY d.nombre ASC`
+  );
+  return result.rows || [];
+}
+
+async function fetchFacultyRow(client, id) {
+  const result = await client.query(
+    `SELECT dependencia_facultad_id AS facultad_id, nombre, padre_id
+     FROM dependencia_facultad
+     WHERE dependencia_facultad_id = $1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function countFacultyChildren(client, id) {
+  const result = await client.query(
+    'SELECT COUNT(*)::int AS c FROM dependencia_facultad WHERE padre_id = $1',
+    [id]
+  );
+  return result.rows[0]?.c || 0;
+}
+
+// Solo dos niveles: el padre debe ser una facultad y quien tiene dependencias no puede tener padre.
+async function validateParentAssignment(client, { id = null, padreId }) {
+  if (!padreId) return null;
+  if (id && Number(id) === Number(padreId)) {
+    return 'Un registro no puede pertenecer a sí mismo.';
+  }
+
+  const padre = await fetchFacultyRow(client, padreId);
+  if (!padre) return 'La facultad seleccionada no existe.';
+  if (padre.padre_id) {
+    return 'Solo puedes asignar como padre una facultad (registro sin padre).';
+  }
+  if (id && (await countFacultyChildren(client, id)) > 0) {
+    return 'Este registro tiene dependencias asociadas y no puede convertirse en dependencia.';
+  }
+  return null;
+}
+
+function isHierarchyViolation(error) {
+  return error?.code === '23514' || error?.code === '23503';
+}
+
+// Endpoint JSON: UALs de una facultad o dependencia (usado por la SPA sin recarga)
 router.get('/ual/json', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const { facultad_id: facultadId } = req.query;
@@ -101,91 +227,160 @@ router.get('/ual/json', async (req, res) => {
 
   try {
     const facRes = await pool.query(
-      'SELECT facultad_id, nombre FROM facultad WHERE facultad_id = $1',
+      `SELECT dependencia_facultad_id AS facultad_id, nombre, padre_id
+       FROM dependencia_facultad
+       WHERE dependencia_facultad_id = $1`,
       [facultadId]
     );
     if (facRes.rows.length === 0) return res.status(404).json({ error: 'Facultad no encontrada' });
     const facultad = facRes.rows[0];
 
-    const ualRes = await fetchUalsByFacultyId(facultadId);
-    return res.json({ facultad, uals: ualRes.rows });
+    const [ualRes, labRes, coordRes] = await Promise.all([
+      fetchUalsByFacultyId(facultadId),
+      fetchUalLaboratoristas(facultadId),
+      fetchUnitCoordinadores(facultadId),
+    ]);
+
+    const labsByUal = new Map();
+    for (const lab of labRes.rows) {
+      const key = String(lab.ual_id);
+      if (!labsByUal.has(key)) labsByUal.set(key, []);
+      labsByUal.get(key).push({
+        documento: lab.documento,
+        nombre: lab.nombre,
+        correo: lab.correo,
+        activo: lab.activo === true,
+        asignacion_activa: lab.asignacion_activa === true,
+      });
+    }
+
+    const uals = ualRes.rows.map((ual) => ({
+      ...ual,
+      laboratoristas: labsByUal.get(String(ual.ual_id)) || [],
+    }));
+
+    return res.json({ facultad, uals, coordinadores: coordRes.rows });
   } catch (error) {
     console.error('Error en /ual/json:', error);
     return res.status(500).json({ error: 'Error interno' });
   }
 });
 
-// Página principal de administración de facultades y UALs (admin solo)
+// Endpoint JSON: dependencias de una facultad
+router.get('/dependencias/json', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const padreId = parsePositiveId(req.query.padre_id);
+  if (!padreId) return res.status(400).json({ error: 'padre_id requerido' });
+
+  try {
+    const hierarchy = await fetchFacultyHierarchy();
+    const facultad = hierarchy.find((row) => Number(row.facultad_id) === padreId && !row.padre_id);
+    if (!facultad) return res.status(404).json({ error: 'Facultad no encontrada' });
+    const dependencias = hierarchy.filter((row) => Number(row.padre_id) === padreId);
+    return res.json({ facultad, dependencias });
+  } catch (error) {
+    console.error('Error en /dependencias/json:', error);
+    return res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// Página principal: facultades -> dependencias -> UALs (admin solo)
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
-  const { facultad_id: facultadId } = req.query;
+  const facultadId = parsePositiveId(req.query.facultad_id);
+  const padreId = parsePositiveId(req.query.padre_id);
 
   try {
-    let facultades = [];
+    const hierarchy = await fetchFacultyHierarchy();
+    const facultades = hierarchy.filter((row) => !row.padre_id);
+    const dependencias = hierarchy.filter((row) => row.padre_id);
     let selectedFacultad = null;
     let uals = [];
 
-    const facRes = await pool.query('SELECT facultad_id, nombre FROM facultad ORDER BY nombre ASC');
-    facultades = facRes.rows;
     if (facultadId) {
-      const facSel = facultades.find((f) => String(f.facultad_id) === String(facultadId));
-      selectedFacultad = facSel || null;
-      const ualRes = await fetchUalsByFacultyId(facultadId);
-      uals = ualRes.rows;
+      selectedFacultad = hierarchy.find((row) => Number(row.facultad_id) === facultadId) || null;
+      if (selectedFacultad) {
+        const ualRes = await fetchUalsByFacultyId(facultadId);
+        uals = ualRes.rows;
+      }
     }
 
-    return res.render('home/facultad', { facultades, uals, selectedFacultad });
+    const selectedPadreId = selectedFacultad
+      ? Number(selectedFacultad.padre_id) || null
+      : facultades.some((row) => Number(row.facultad_id) === padreId)
+        ? padreId
+        : null;
+
+    return res.render('home/facultad', {
+      facultades,
+      dependencias,
+      uals,
+      selectedFacultad,
+      selectedPadreId,
+    });
   } catch (error) {
     console.error('Error cargando facultades/UALs:', error);
-    return res.render('home/message_error', {
-      message: 'Error al cargar datos',
-      message2: 'Por favor intenta nuevamente',
-      limit: null,
-    });
+    return renderFacultyError(res, 'Error al cargar datos', 'Por favor intenta nuevamente');
   }
 });
 
-// Agregar facultad
+// Agregar facultad (sin padre) o dependencia (con padre_id)
 router.post('/add', async (req, res) => {
-  const { nombre } = req.body;
-  if (!nombre || !nombre.trim()) {
-    return res.render('home/message_error', {
-      message: 'Nombre inválido',
-      message2: 'Proporcione un nombre de facultad válido',
-      limit: null,
-    });
+  const nombre = String(req.body.nombre || '').trim();
+  const padreId = parsePositiveId(req.body.padre_id);
+  const tipoRegistro = padreId ? 'dependencia' : 'facultad';
+  if (!nombre || nombre.length > 255) {
+    return renderFacultyError(
+      res,
+      'Nombre inválido',
+      `Proporcione un nombre de ${tipoRegistro} válido (máximo 255 caracteres)`
+    );
   }
 
   try {
-    await pool.query('INSERT INTO facultad (nombre) VALUES ($1)', [nombre.trim()]);
+    const parentError = await validateParentAssignment(pool, { padreId });
+    if (parentError) {
+      return renderFacultyError(res, 'Facultad padre inválida', parentError);
+    }
+
+    await pool.query('INSERT INTO dependencia_facultad (nombre, padre_id) VALUES ($1, $2)', [
+      nombre,
+      padreId,
+    ]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
-      [req.session.user.tipo, getLogActorDocument(req), 'agregar facultad', nombre.trim()]
+      [req.session.user.tipo, getLogActorDocument(req), `agregar ${tipoRegistro}`, nombre]
     );
-    return res.redirect('/milab/api/facultad');
+    return res.redirect(buildFacultyRedirect({ padreId }));
   } catch (error) {
-    console.error('Error agregando facultad:', error);
-    return res.render('home/message_error', {
-      message: 'Error al agregar facultad',
-      message2: 'Inténtalo nuevamente',
-      limit: null,
-    });
+    console.error(`Error agregando ${tipoRegistro}:`, error);
+    if (isHierarchyViolation(error)) {
+      return renderFacultyError(res, 'Facultad padre inválida', 'Revisa la facultad seleccionada.');
+    }
+    return renderFacultyError(res, `Error al agregar ${tipoRegistro}`, 'Inténtalo nuevamente');
   }
 });
 
-// Eliminar facultad (solo si no tiene dependencias)
+// Eliminar facultad o dependencia (solo si no tiene dependencias, UALs ni usuarios)
 router.post('/eliminar', async (req, res) => {
-  const { facultad_id: facultadId } = req.body;
+  const facultadId = parsePositiveId(req.body.facultad_id);
   if (!facultadId) {
-    return res.render('home/message_error', {
-      message: 'ID de facultad inválido',
-      message2: 'Verifique la solicitud',
-      limit: null,
-    });
+    return renderFacultyError(res, 'ID de facultad inválido', 'Verifique la solicitud');
   }
 
   try {
+    const row = await fetchFacultyRow(pool, facultadId);
+    if (!row) {
+      return renderFacultyError(
+        res,
+        'Registro no encontrado',
+        'La facultad o dependencia no existe.'
+      );
+    }
+    const tipoRegistro = row.padre_id ? 'dependencia' : 'facultad';
+
+    const childrenCount = await countFacultyChildren(pool, facultadId);
     const depUal = await pool.query('SELECT COUNT(*)::int AS c FROM ual WHERE facultad_id = $1', [
       facultadId,
     ]);
@@ -201,32 +396,33 @@ router.post('/eliminar', async (req, res) => {
       [facultadId]
     );
 
-    if (depUal.rows[0].c > 0 || depLab.rows[0].c > 0 || depCoord.rows[0].c > 0) {
-      return res.render('home/message_error', {
-        message: 'No se puede eliminar la facultad',
-        message2: 'Tiene UALs o usuarios asociados. Elimine dependencias primero.',
-        limit: null,
-      });
+    if (childrenCount > 0) {
+      return renderFacultyError(
+        res,
+        'No se puede eliminar la facultad',
+        'Tiene dependencias asociadas. Elimínalas o muévelas a otra facultad primero.'
+      );
     }
 
-    const facNameRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
+    if (depUal.rows[0].c > 0 || depLab.rows[0].c > 0 || depCoord.rows[0].c > 0) {
+      return renderFacultyError(
+        res,
+        `No se puede eliminar la ${tipoRegistro}`,
+        'Tiene UALs o usuarios asociados. Elimine dependencias primero.'
+      );
+    }
+
+    await pool.query('DELETE FROM dependencia_facultad WHERE dependencia_facultad_id = $1', [
       facultadId,
     ]);
-    const facName = facNameRes.rows[0] ? facNameRes.rows[0].nombre : String(facultadId);
-
-    await pool.query('DELETE FROM facultad WHERE facultad_id = $1', [facultadId]);
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
-      [req.session.user.tipo, getLogActorDocument(req), 'eliminar facultad', facName]
+      [req.session.user.tipo, getLogActorDocument(req), `eliminar ${tipoRegistro}`, row.nombre]
     );
-    return res.redirect('/milab/api/facultad');
+    return res.redirect(buildFacultyRedirect({ padreId: row.padre_id }));
   } catch (error) {
     console.error('Error eliminando facultad:', error);
-    return res.render('home/message_error', {
-      message: 'Error al eliminar facultad',
-      message2: 'Inténtalo nuevamente',
-      limit: null,
-    });
+    return renderFacultyError(res, 'Error al eliminar facultad', 'Inténtalo nuevamente');
   }
 });
 
@@ -321,7 +517,85 @@ router.post('/ual/add', async (req, res) => {
   }
 });
 
-// Editar UAL (admin o coordinador dentro de su facultad)
+router.post('/ual/asignar-dependencia', async (req, res) => {
+  const rawIds = Array.isArray(req.body.ual_id) ? req.body.ual_id : [req.body.ual_id];
+  const validId = (value) =>
+    /^\d+$/.test(String(value)) && Number(value) > 0 && Number(value) <= 2147483647;
+  if (!rawIds.length || !rawIds.every(validId) || !validId(req.body.dependencia_id)) {
+    return res.status(400).render('home/message_error', {
+      message: 'Asignación inválida',
+      message2: 'Selecciona una o varias UAL y una dependencia válidas.',
+      limit: null,
+    });
+  }
+  const ualIds = [...new Set(rawIds.map(Number))];
+  const dependenciaId = Number(req.body.dependencia_id);
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const sourceRes = await client.query(
+      `SELECT u.ual_id, u.nombre, u.facultad_id, f.padre_id
+       FROM ual u
+       JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
+       WHERE u.ual_id = ANY($1::int[]) ORDER BY u.ual_id FOR UPDATE OF u, f`,
+      [ualIds]
+    );
+    const source = sourceRes.rows[0];
+    const destinationRes = await client.query(
+      `SELECT dependencia_facultad_id AS facultad_id, nombre, padre_id
+       FROM dependencia_facultad WHERE dependencia_facultad_id = $1 FOR UPDATE`,
+      [dependenciaId]
+    );
+    const destination = destinationRes.rows[0];
+    if (
+      sourceRes.rows.length !== ualIds.length ||
+      !destination?.padre_id ||
+      sourceRes.rows.some(
+        (row) => row.padre_id || Number(destination.padre_id) !== Number(row.facultad_id)
+      )
+    ) {
+      await client.query('ROLLBACK');
+      return res.status(400).render('home/message_error', {
+        message: 'Dependencia destino inválida',
+        message2:
+          'Todas las UAL deben estar asignadas directamente a la facultad padre de esa dependencia. No se realizó ningún cambio.',
+        limit: null,
+      });
+    }
+
+    await client.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = ANY($2::int[])', [
+      dependenciaId,
+      ualIds,
+    ]);
+    for (const row of sourceRes.rows) {
+      await client.query(
+        'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+        [
+          req.session.user.tipo,
+          getLogActorDocument(req),
+          'asignar UAL a dependencia',
+          `${row.nombre} | dependencia: ${destination.nombre} (ID: ${dependenciaId})`,
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    return res.redirect(buildFacultyRedirect({ facultadId: source.facultad_id }));
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    console.error('Error asignando UAL a dependencia:', error);
+    return res.status(500).render('home/message_error', {
+      message: 'Error al asignar UAL',
+      message2: 'No se pudo guardar la asignación. Inténtalo nuevamente.',
+      limit: null,
+    });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+// Editar UAL (solo admin)
 router.post('/ual/editar', async (req, res) => {
   const { ual_id: ualId, facultad_id: facultadId, new_facultad_id: newFacultadId } = req.body;
   const { nombre } = req.body;
@@ -372,50 +646,96 @@ router.post('/ual/editar', async (req, res) => {
     });
   }
 
+  let client;
+  let transactionStarted = false;
   try {
-    // Solo admin edita UAL
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
 
-    const oldRes = await pool.query(
-      'SELECT ual.nombre AS ual_nombre, ual.codigo_abreviacion AS ual_codigo_abreviacion, ual.descripcion AS ual_descripcion, ual.sal_id_espacio AS ual_sal_id_espacio, ual.sal_ocupantes AS ual_sal_ocupantes, ual.activo AS ual_activo, ual.facultad_id AS ual_facultad, f.nombre AS facultad_nombre FROM ual JOIN facultad f ON f.facultad_id = ual.facultad_id WHERE ual_id = $1',
+    const oldRes = await client.query(
+      `SELECT ual.nombre AS ual_nombre,
+              ual.facultad_id AS ual_facultad,
+              f.nombre AS facultad_nombre,
+              f.padre_id AS facultad_padre_id
+       FROM ual
+       JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual.facultad_id
+       WHERE ual_id = $1
+       FOR UPDATE OF ual, f`,
       [ualId]
     );
     const oldRow = oldRes.rows[0] || {
       ual_nombre: '',
       ual_facultad: facultadId,
       facultad_nombre: '',
+      facultad_padre_id: null,
     };
 
-    // Actualización de nombre y metadatos operativos
-    await pool.query(
-      'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6 WHERE ual_id = $7',
-      [nombre.trim(), codigoAbreviacion, descripcion, salIdEspacio, salOcupantes, activo, ualId]
-    );
-
-    // Si es admin y envía new_facultad_id diferente, mover UAL a otra facultad
     let redirectFacultadId = facultadId;
     let cambioFacultadTexto = '';
-    if (
+    let coordinadoresCopiados = 0;
+    const movingToAnotherUnit =
       req.session.user.tipo === 'admin' &&
       newFacultadId &&
-      String(newFacultadId) !== String(oldRow.ual_facultad)
-    ) {
-      // Validar que la facultad destino existe
-      const facDestRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
-        newFacultadId,
-      ]);
-      if (facDestRes.rows.length === 0) {
+      String(newFacultadId) !== String(oldRow.ual_facultad);
+
+    if (movingToAnotherUnit) {
+      const facDestRes = await client.query(
+        `SELECT dependencia_facultad_id, nombre, padre_id
+         FROM dependencia_facultad
+         WHERE dependencia_facultad_id = $1
+         FOR UPDATE`,
+        [newFacultadId]
+      );
+      const destination = facDestRes.rows[0];
+      if (!destination) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.render('home/message_error', {
           message: 'Facultad destino inválida',
           message2: 'Seleccione una facultad existente',
           limit: null,
         });
       }
-      await pool.query('UPDATE ual SET facultad_id = $1 WHERE ual_id = $2', [newFacultadId, ualId]);
-      cambioFacultadTexto = ` | facultad: ${oldRow.facultad_nombre} -> ${facDestRes.rows[0].nombre}`;
+
+      // Las asignaciones directas a una dependencia acompañan a la UAL;
+      // las asignaciones a la facultad padre ya se heredan automáticamente.
+      if (oldRow.facultad_padre_id && destination.padre_id) {
+        const copied = await client.query(
+          `INSERT INTO coordinador_facultad
+             (coordinador_documento_id, facultad_id, activo)
+           SELECT coordinador_documento_id, $2, activo
+           FROM coordinador_facultad
+           WHERE facultad_id = $1
+           ON CONFLICT (coordinador_documento_id, facultad_id) DO NOTHING
+           RETURNING coordinador_documento_id`,
+          [oldRow.ual_facultad, newFacultadId]
+        );
+        coordinadoresCopiados = copied.rows.length;
+      }
+
+      cambioFacultadTexto = ` | dependencia: ${oldRow.facultad_nombre} -> ${destination.nombre}`;
+      if (coordinadoresCopiados) {
+        cambioFacultadTexto += ` | coordinadores asignados en destino: ${coordinadoresCopiados}`;
+      }
       redirectFacultadId = newFacultadId;
     }
 
-    await pool.query(
+    await client.query(
+      'UPDATE ual SET nombre = $1, codigo_abreviacion = $2, descripcion = $3, sal_id_espacio = $4, sal_ocupantes = $5, activo = $6, facultad_id = $7 WHERE ual_id = $8',
+      [
+        nombre.trim(),
+        codigoAbreviacion,
+        descripcion,
+        salIdEspacio,
+        salOcupantes,
+        activo,
+        movingToAnotherUnit ? newFacultadId : oldRow.ual_facultad,
+        ualId,
+      ]
+    );
+
+    await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
@@ -424,8 +744,17 @@ router.post('/ual/editar', async (req, res) => {
         `${oldRow.ual_nombre} -> ${nombre.trim()}${cambioFacultadTexto}`,
       ]
     );
+    await client.query('COMMIT');
+    transactionStarted = false;
     return res.redirect(`/milab/api/facultad?facultad_id=${redirectFacultadId || ''}`);
   } catch (error) {
+    if (client && transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo la edición de UAL:', rollbackError);
+      }
+    }
     console.error('Error editando UAL:', error);
 
     if (
@@ -444,6 +773,8 @@ router.post('/ual/editar', async (req, res) => {
       message2: 'Inténtalo nuevamente',
       limit: null,
     });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -490,44 +821,64 @@ router.post('/ual/eliminar', async (req, res) => {
   }
 });
 
-// Editar Facultad (solo admin)
+// Editar facultad o dependencia (nombre y facultad padre)
 router.post('/editar', async (req, res) => {
-  const { facultad_id: facultadId } = req.body;
-  const { nombre } = req.body;
-  if (!facultadId || !nombre || !nombre.trim()) {
-    return res.render('home/message_error', {
-      message: 'Datos inválidos',
-      message2: 'Proporcione un nombre válido para la facultad',
-      limit: null,
-    });
+  const facultadId = parsePositiveId(req.body.facultad_id);
+  const nombre = String(req.body.nombre || '').trim();
+  if (!facultadId || !nombre || nombre.length > 255) {
+    return renderFacultyError(
+      res,
+      'Datos inválidos',
+      'Proporcione un nombre válido para la facultad (máximo 255 caracteres)'
+    );
   }
 
   try {
-    const oldRes = await pool.query('SELECT nombre FROM facultad WHERE facultad_id = $1', [
-      facultadId,
-    ]);
-    const oldName = oldRes.rows[0] ? oldRes.rows[0].nombre : '';
-    await pool.query('UPDATE facultad SET nombre = $1 WHERE facultad_id = $2', [
-      nombre.trim(),
-      facultadId,
-    ]);
+    const oldRow = await fetchFacultyRow(pool, facultadId);
+    if (!oldRow) {
+      return renderFacultyError(
+        res,
+        'Registro no encontrado',
+        'La facultad o dependencia no existe.'
+      );
+    }
+
+    const changesParent = Object.prototype.hasOwnProperty.call(req.body, 'padre_id');
+    const padreId = changesParent ? parsePositiveId(req.body.padre_id) : oldRow.padre_id || null;
+    if (changesParent && Number(padreId || 0) !== Number(oldRow.padre_id || 0)) {
+      const parentError = await validateParentAssignment(pool, { id: facultadId, padreId });
+      if (parentError) {
+        return renderFacultyError(res, 'Facultad padre inválida', parentError);
+      }
+    }
+
+    await pool.query(
+      `UPDATE dependencia_facultad
+       SET nombre = $1, padre_id = $2, fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE dependencia_facultad_id = $3`,
+      [nombre, padreId, facultadId]
+    );
+
+    let parentChange = '';
+    if (Number(padreId || 0) !== Number(oldRow.padre_id || 0)) {
+      parentChange = ` | padre: ${oldRow.padre_id || 'ninguno'} -> ${padreId || 'ninguno'}`;
+    }
     await pool.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         getLogActorDocument(req),
-        'editar facultad',
-        `${oldName} -> ${nombre.trim()}`,
+        padreId ? 'editar dependencia' : 'editar facultad',
+        `${oldRow.nombre} -> ${nombre}${parentChange}`,
       ]
     );
-    return res.redirect('/milab/api/facultad');
+    return res.redirect(buildFacultyRedirect({ padreId }));
   } catch (error) {
     console.error('Error editando facultad:', error);
-    return res.render('home/message_error', {
-      message: 'Error al editar facultad',
-      message2: 'Inténtalo nuevamente',
-      limit: null,
-    });
+    if (isHierarchyViolation(error)) {
+      return renderFacultyError(res, 'Facultad padre inválida', 'Revisa la facultad seleccionada.');
+    }
+    return renderFacultyError(res, 'Error al editar facultad', 'Inténtalo nuevamente');
   }
 });
 

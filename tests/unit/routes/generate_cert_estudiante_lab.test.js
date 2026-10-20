@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const os = require('node:os');
+const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
@@ -18,6 +19,7 @@ const oatiDebtsPath = path.resolve(__dirname, '../../../src/libs/oati-debts.js')
 const certificateEmailPath = path.resolve(__dirname, '../../../src/libs/certificate-email.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const oatiStudentRecordPath = path.resolve(__dirname, '../../../src/libs/oati-student-record.js');
 
 function buildApp(route) {
   const app = express();
@@ -45,41 +47,62 @@ const defaultStudentRecord = {
   documento: '1000694178',
 };
 
-function buildOatiResponse(servicePath, studentRecord) {
+function buildOatiResponse(servicePath, studentRecord, studentRecords) {
   if (servicePath.startsWith('estados_codigo/')) {
-    return { estado: { nombre: 'ACTIVO' } };
+    return { estado: { nombre: servicePath === 'estados_codigo/E' ? 'EGRESADO' : 'ACTIVO' } };
   }
   if (servicePath.startsWith('carrera/')) {
     return { carrerasCollection: { carrera: [{ nombre: 'Ingeniería de Prueba' }] } };
   }
   return {
     datosEstudianteCollection: {
-      datosBasicosEstudiante: studentRecord ? [studentRecord] : [],
+      datosBasicosEstudiante: studentRecords || (studentRecord ? [studentRecord] : []),
     },
   };
 }
 
 function loadRoute({
   studentRecord = null,
+  studentRecords = null,
+  usuarioCodigoRows = [],
   multaRows = [],
   sgaServiceConfigured = true,
   sgaDebtsImpl = async () => [],
+  poolQueryImpl,
+  sendCertificateEmailImpl = async () => null,
 } = {}) {
   const originals = new Map();
   const requestOatiCalls = [];
   const sgaRequests = [];
-  const generateDir = os.tmpdir();
-  const queryResult = (sql) => ({ rows: String(sql).includes('FROM multa m') ? multaRows : [] });
+  const queryCalls = [];
+  const generateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'milab-student-certificate-'));
+  const queryResult = (sql) => {
+    if (String(sql).includes('FROM multa m')) return { rows: multaRows };
+    if (String(sql).includes('FROM usuario WHERE documento')) return { rows: usuarioCodigoRows };
+    return { rows: [] };
+  };
+  const executePoolQuery = (sql, params = []) => {
+    queryCalls.push({ sql, params });
+    return poolQueryImpl ? poolQueryImpl(sql, params) : queryResult(sql);
+  };
   const stubs = [
     [
       dbPath,
       {
         query(sql, params, callback) {
+          const result = executePoolQuery(sql, params);
           if (typeof callback === 'function') {
-            callback(null, queryResult(sql));
+            if (result && typeof result.then === 'function') {
+              result.then(
+                (rows) => callback(null, rows),
+                (error) => callback(error)
+              );
+              return undefined;
+            }
+            callback(null, result);
             return undefined;
           }
-          return Promise.resolve(queryResult(sql));
+          return Promise.resolve(result);
         },
       },
     ],
@@ -91,7 +114,7 @@ function loadRoute({
         getAcademicServicePath: (value) => value,
         requestOati: async (value) => {
           requestOatiCalls.push(value);
-          return buildOatiResponse(value, studentRecord);
+          return buildOatiResponse(value, studentRecord, studentRecords);
         },
       },
     ],
@@ -112,7 +135,7 @@ function loadRoute({
       {
         buildCertificateEmailFailureFeedback: () => null,
         buildCertificateEmailFeedback: () => null,
-        sendCertificateEmail: async () => null,
+        sendCertificateEmail: async (payload) => sendCertificateEmailImpl(payload),
       },
     ],
     [userIdentityPath, { ensurePerfilEstudiante: async () => 1 }],
@@ -125,6 +148,7 @@ function loadRoute({
   ];
 
   delete require.cache[routePath];
+  delete require.cache[oatiStudentRecordPath];
 
   for (const [modulePath, stub] of stubs) {
     originals.set(modulePath, require.cache[modulePath]);
@@ -140,6 +164,8 @@ function loadRoute({
     route: require(routePath),
     requestOatiCalls,
     sgaRequests,
+    queryCalls,
+    generateDir,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
         if (original) {
@@ -150,6 +176,8 @@ function loadRoute({
       }
 
       delete require.cache[routePath];
+      delete require.cache[oatiStudentRecordPath];
+      fs.rmSync(generateDir, { recursive: true, force: true });
     },
   };
 }
@@ -317,6 +345,151 @@ test('generate_cert_estudiante_lab skips SGA when the service is not configured'
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.deepEqual(response.body.locals.sgaMultaInfo, []);
     assert.equal(loaded.sgaRequests.length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+const egresadoRecord = {
+  codigo: '20151234',
+  nombre: 'Estudiante Prueba',
+  carrera: '578',
+  estado: 'E',
+  documento: '1000694178',
+};
+const activoRecord = { ...egresadoRecord, codigo: '20242583011', carrera: '383', estado: 'A' };
+
+test('generate_cert_estudiante_lab uses the code associated in MILab instead of the last OATI record', async () => {
+  const loaded = loadRoute({
+    studentRecords: [activoRecord, egresadoRecord],
+    usuarioCodigoRows: [{ codigo: '20242583011' }],
+    sgaDebtsImpl: async (student) =>
+      student.codigo === '20151234' ? [{ DEU_ID: '1', DEU_EST_COD: '20151234' }] : [],
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send({ ...validCertificateForm, con_codigo: '20242583011' });
+
+    assert.equal(response.body.view, 'home/alerta-multado');
+    assert.deepEqual(response.body.locals.sgaMultaInfo, [{ DEU_ID: '1', DEU_EST_COD: '20151234' }]);
+    assert.deepEqual(loaded.sgaRequests, [
+      { codigo: '20242583011', documento: '1000694178' },
+      { codigo: '20151234', documento: '1000694178' },
+    ]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_cert_estudiante_lab blocks when the code associated in MILab is EGRESADO', async () => {
+  const loaded = loadRoute({
+    studentRecords: [egresadoRecord, activoRecord],
+    usuarioCodigoRows: [{ codigo: '20151234' }],
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send(validCertificateForm);
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(response.body.locals.message, 'Estudiante egresado');
+    assert.deepEqual(loaded.sgaRequests, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_cert_estudiante_lab keeps the last OATI record when MILab has no associated code', async () => {
+  const loaded = loadRoute({
+    studentRecords: [activoRecord, egresadoRecord],
+    usuarioCodigoRows: [],
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send(validCertificateForm);
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(response.body.locals.message, 'Estudiante egresado');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_cert_estudiante_lab creates a PDF and requests email after all checks pass', async () => {
+  let emailPayload;
+  const loaded = loadRoute({
+    studentRecord: defaultStudentRecord,
+    sendCertificateEmailImpl: async (payload) => {
+      emailPayload = payload;
+      return { status: 'sent', recipient: payload.correo };
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send(validCertificateForm);
+
+    const pdfPath = path.join(loaded.generateDir, 'certificado_2024100001.pdf');
+    const pdfBytes = fs.readFileSync(pdfPath);
+    const certificateInsert = loaded.queryCalls.find(({ sql }) =>
+      sql.includes('INSERT INTO certificado_estudiante')
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_success');
+    assert.equal(response.body.locals.autoDownloadAction, '/milab/api/download-pdf');
+    assert.equal(emailPayload.pdfPath, pdfPath);
+    assert.equal(emailPayload.correo, validCertificateForm.correo);
+    assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-');
+    assert.ok(certificateInsert);
+    assert.equal(certificateInsert.params[4], validCertificateForm.correo);
+    assert.equal(certificateInsert.params[5], validCertificateForm.motivo_exp);
+    assert.equal(loaded.sgaRequests.length, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_cert_estudiante_lab does not issue a PDF or email when certificate persistence fails', async () => {
+  let emailCallCount = 0;
+  const loaded = loadRoute({
+    studentRecord: defaultStudentRecord,
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('INSERT INTO certificado_estudiante')) {
+        throw new Error('Certificate database unavailable');
+      }
+      if (sql.includes('FROM multa m')) return { rows: [] };
+      if (sql.includes('FROM usuario WHERE documento')) return { rows: [] };
+      return { rows: [] };
+    },
+    sendCertificateEmailImpl: async () => {
+      emailCallCount += 1;
+      return { status: 'sent' };
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send(validCertificateForm);
+
+    assert.equal(response.body.view, 'home/message_error');
+    assert.equal(emailCallCount, 0);
+    assert.ok(
+      loaded.queryCalls.some(({ sql }) => sql.includes('INSERT INTO certificado_estudiante'))
+    );
+    assert.equal(fs.existsSync(path.join(loaded.generateDir, 'certificado_2024100001.pdf')), false);
   } finally {
     loaded.restore();
   }

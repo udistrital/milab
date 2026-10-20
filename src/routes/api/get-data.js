@@ -11,7 +11,9 @@ const {
   sendCertificateEmail,
 } = require('../../libs/certificate-email');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
+const { normalizeRoles } = require('../../libs/roles');
 
 // Variables de entorno
 require('dotenv').config();
@@ -28,13 +30,28 @@ const requireStudentCertificateAccess = requireRoles(['admin', 'estudiante'], {
 });
 
 router.post('/', requireStudentCertificateAccess, async function (req, res) {
-  const { numero_documento_identificacion, motivo_exp, correo } = req.body;
+  const { motivo_exp, correo } = req.body;
+  const sessionUser = req.session?.user || {};
+  const sessionRoles = normalizeRoles(sessionUser.roles || sessionUser.tipo);
+  // Solo un admin real puede consultar otra cédula; el estudiante (o la impersonación) usa la suya.
+  const puedeConsultarOtroDocumento =
+    sessionRoles.includes('admin') && !sessionUser.__impersonating;
+  const numero_documento_identificacion = puedeConsultarOtroDocumento
+    ? String(req.body.numero_documento_identificacion || '').trim()
+    : String(sessionUser.documento_real || sessionUser.documento || '').trim();
+
+  if (!numero_documento_identificacion) {
+    return res.render('home/message_error', {
+      message: '¡Algo ha salido mal!',
+      message2: 'No fue posible identificar el documento del estudiante en la sesión.',
+      limit: null,
+    });
+  }
   let con_codigo;
   let con_estado;
   let con_documento;
   let con_carrera;
   let con_nombre;
-  let qr_name;
   let con_multado = null;
   // con_multado removed (was never assigned)
   let uniqueId1;
@@ -197,14 +214,16 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       const dato1 = await requestOati(
         getAcademicServicePath(`datos_basicos_activos_cedula/${numero_documento_identificacion}`)
       );
-      const cant_carreras = dato1.datosEstudianteCollection.datosBasicosEstudiante.length;
+      const { record: datosEstudiante } = await selectStudentRecordForDocumento(
+        dato1.datosEstudianteCollection.datosBasicosEstudiante,
+        numero_documento_identificacion
+      );
 
-      con_codigo = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].codigo;
-      con_estado = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].estado;
+      con_codigo = datosEstudiante.codigo;
+      con_estado = datosEstudiante.estado;
       con_documento = numero_documento_identificacion;
-      con_carrera =
-        dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].carrera;
-      con_nombre = dato1.datosEstudianteCollection.datosBasicosEstudiante[cant_carreras - 1].nombre;
+      con_carrera = datosEstudiante.carrera;
+      con_nombre = datosEstudiante.nombre;
 
       con_facultad = determinarFacultad(con_carrera);
 
@@ -212,28 +231,30 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       console.log('Facultad determinada: ' + con_facultad);
       //----------------------- Generar QR y guardar Imagen
 
-      const uniqueId = generateUniqueId(); // Esta función genera un ID único
-      QRCode.toFile(
-        buildGeneratePath(`${con_codigo}.png`),
-        buildAppUrl(`/api/validateqr/${uniqueId}`),
-        {
-          errorCorrectionLevel: 'H',
-        },
-        function (err) {
-          if (err) throw err;
-          console.log('QR unico generado!');
-        }
-      );
-
-      qr_name = con_codigo + '-' + uniqueId;
-      uniqueId1 = uniqueId;
-      console.log(qr_name);
-
       const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
       con_estado = dato2.estado.nombre;
 
       const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
       con_carrera = dato3.carrerasCollection.carrera[0].nombre;
+
+      const estadosConCertificado = [
+        'ACTIVO',
+        'PRUEBA AC Y ACTIVO',
+        'CANCELADO',
+        'TERMINO Y MATRICULO',
+        'APLAZO',
+        'NO ESTUDIANTE AC004',
+        'VACACIONES',
+        'ABANDONO',
+        'PRUEBA ACAD',
+      ];
+      if (!estadosConCertificado.includes(con_estado)) {
+        return res.render('home/message_error', {
+          message: 'No fue posible generar el certificado',
+          message2: 'Intentelo nuevamente.',
+          limit: null,
+        });
+      }
 
       console.log('con_codigo ' + con_codigo);
       console.log('con_estado ' + con_estado);
@@ -260,6 +281,32 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         });
       }
 
+      // Las multas se asocian a la persona (cédula), así que incluyen las de otros códigos/programas.
+      const multasResult = await pool.query(
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad, CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa IN ('ACTIVA','Pendiente','POR SALDAR')",
+        [usuarioId]
+      );
+      if (multasResult.rows.length > 0) {
+        return res.render('home/alerta-multado', { multaInfo: multasResult.rows });
+      }
+
+      const uniqueId = generateUniqueId();
+      await new Promise((resolve, reject) => {
+        QRCode.toFile(
+          buildGeneratePath(`${con_codigo}.png`),
+          buildAppUrl(`/api/validateqr/${uniqueId}`),
+          { errorCorrectionLevel: 'H' },
+          (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          }
+        );
+      });
+      uniqueId1 = uniqueId;
+
       let data_to_submit = {
         usuario_id: usuarioId,
         fecha_creacion: con_fecha,
@@ -269,47 +316,27 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
         motivo_exp: motivo_exp,
         multa: con_multado,
       };
-      submit_data(data_to_submit);
+      await submit_data(data_to_submit);
 
-      if (
-        con_estado == 'ACTIVO' ||
-        con_estado == 'PRUEBA AC Y ACTIVO' ||
-        con_estado == 'CANCELADO' ||
-        con_estado == 'TERMINO Y MATRICULO' ||
-        con_estado == 'APLAZO' ||
-        con_estado == 'NO ESTUDIANTE AC004' ||
-        con_estado == 'VACACIONES' ||
-        con_estado == 'ABANDONO' ||
-        con_estado == 'PRUEBA ACAD'
-      ) {
-        await print_data();
-        let emailFeedback = null;
+      await print_data();
+      let emailFeedback = null;
 
-        try {
-          const emailResult = await sendCertificateEmail({
-            correo,
-            pdfPath: buildGeneratePath(`certificado_${con_codigo}.pdf`),
-            ownerName: con_nombre,
-            reference: con_codigo,
-            referenceType: 'código',
-            motivo: motivo_exp,
-          });
-          emailFeedback = buildCertificateEmailFeedback(emailResult);
-        } catch (emailError) {
-          console.error('Error al enviar certificado de estudiante por correo:', emailError);
-          emailFeedback = buildCertificateEmailFailureFeedback();
-        }
-
-        salvar(con_codigo, emailFeedback);
-      } else {
-        console.log('ERROR el USUARIO NO ESTA ACTIVO');
-        // ERROR MENSAJES WEB
-        return res.render('home/message_error', {
-          message: 'No fue posible generar el certificado',
-          message2: 'Intentelo nuevamente.',
-          limit: null,
+      try {
+        const emailResult = await sendCertificateEmail({
+          correo,
+          pdfPath: buildGeneratePath(`certificado_${con_codigo}.pdf`),
+          ownerName: con_nombre,
+          reference: con_codigo,
+          referenceType: 'código',
+          motivo: motivo_exp,
         });
+        emailFeedback = buildCertificateEmailFeedback(emailResult);
+      } catch (emailError) {
+        console.error('Error al enviar certificado de estudiante por correo:', emailError);
+        emailFeedback = buildCertificateEmailFailureFeedback();
       }
+
+      salvar(con_codigo, emailFeedback);
     } catch (error) {
       console.error(error);
       return res.render('home/message_error', {
@@ -640,7 +667,7 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
 
   // Función para subir data a la ba se de datos - certificados solicitadas
 
-  function submit_data(req) {
+  async function submit_data(req) {
     // Usar pool centralizado
 
     const {
@@ -652,14 +679,9 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
       motivo_exp,
       multa,
     } = req;
-    pool.query(
+    return pool.query(
       'INSERT INTO certificado_estudiante (usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, multa) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, multa],
-      (error) => {
-        if (error) {
-          throw error;
-        }
-      }
+      [usuario_id, fecha_creacion, fecha_vencimiento, certificado_id, correo, motivo_exp, multa]
     );
   }
 });

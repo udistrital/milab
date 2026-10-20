@@ -3,8 +3,14 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilDocente } = require('../../libs/user-identity');
+const {
+  createSanctionPersonLookup,
+  resolveSanctionPersonLookup,
+} = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
-const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
+const { SANCTION_TYPES } = require('../../libs/multa-config');
+// const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
+const { fetchSanctionCategories } = require('../../libs/sanction-categories');
 
 require('dotenv').config();
 
@@ -52,49 +58,93 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
   res.set('Cache-Control', 'no-store');
 
   const requestBody = req.body || {};
+  const lookupToken = String(requestBody.lookup_token || '').trim();
+  const searchedPerson = lookupToken
+    ? resolveSanctionPersonLookup(req, lookupToken, 'docente')
+    : null;
+  if (lookupToken && !searchedPerson) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
+
   const { numero_documento_identificacion } = requestBody;
-  let con_estado;
-  let con_documento;
-  let con_nombre;
+  let con_estado = searchedPerson?.estado;
+  let con_documento = searchedPerson?.documento;
+  let con_nombre = searchedPerson?.nombre;
+  let usuarioId = searchedPerson?.usuarioId;
 
   try {
-    const dato1 = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
-    );
+    if (!searchedPerson) {
+      const dato1 = await requestOati(
+        getAcademicServicePath(`consultar_estado_docente/${numero_documento_identificacion}`)
+      );
 
-    console.log('Respuesta completa desde OAS:');
-    console.log(JSON.stringify(dato1, null, 2));
+      console.log('Respuesta completa desde OAS:');
+      console.log(JSON.stringify(dato1, null, 2));
 
-    if (
-      !dato1 ||
-      !dato1.docentesCollection ||
-      !dato1.docentesCollection.docente ||
-      dato1.docentesCollection.docente.length === 0
-    ) {
-      return res.render('home/error-consulta', {
-        message: 'No se encontraron datos del docente con el documento ingresado.',
+      if (
+        !dato1 ||
+        !dato1.docentesCollection ||
+        !dato1.docentesCollection.docente ||
+        dato1.docentesCollection.docente.length === 0
+      ) {
+        return res.render('home/error-consulta', {
+          message: 'No se encontraron datos del docente con el documento ingresado.',
+        });
+      }
+
+      const docenteData = dato1.docentesCollection.docente[0];
+      con_estado = docenteData.estado_docente;
+      con_documento = numero_documento_identificacion;
+      con_nombre = docenteData.nombre;
+
+      console.log('con_estado ' + con_estado);
+      console.log('con_documento ' + con_documento);
+      console.log('con_nombre ' + con_nombre);
+
+      usuarioId = await ensurePerfilDocente({
+        documento: con_documento,
+        nombre: con_nombre,
+        estado: con_estado,
+        correo: null,
       });
-    }
 
-    const docenteData = dato1.docentesCollection.docente[0];
-    con_estado = docenteData.estado_docente;
-    con_documento = numero_documento_identificacion;
-    con_nombre = docenteData.nombre;
+      if (!usuarioId) {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo registrar el perfil del docente.',
+        });
+      }
 
-    console.log('con_estado ' + con_estado);
-    console.log('con_documento ' + con_documento);
-    console.log('con_nombre ' + con_nombre);
+      if (con_estado === 'INACTIVO') {
+        console.log('El docente esta inactivo. No se puede continuar.');
+        return res.render('home/message_error', {
+          message: 'Docente inactivo',
+          message2: 'No se puede continuar con la solicitud.',
+          limit: null,
+        });
+      }
 
-    const usuarioId = await ensurePerfilDocente({
-      documento: con_documento,
-      nombre: con_nombre,
-      estado: con_estado,
-      correo: null,
-    });
+      const activeSanctionsResult = await pool.query(
+        "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
+        [usuarioId]
+      );
+      const createdLookupToken = createSanctionPersonLookup(req, 'docente', {
+        usuarioId,
+        estado: con_estado,
+        documento: con_documento,
+        nombre: con_nombre,
+      });
 
-    if (!usuarioId) {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo registrar el perfil del docente.',
+      return res.render('home/sancion-person-actions', {
+        lookupToken: createdLookupToken,
+        personType: 'docente',
+        person: {
+          estado: con_estado,
+          documento: con_documento,
+          nombre: con_nombre,
+        },
+        activeSanctionCount: Number(activeSanctionsResult.rows[0]?.total || 0),
       });
     }
 
@@ -160,22 +210,26 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
     }
 
     if (Array.isArray(uals) && uals.length > 0) {
+      /*
       const facultyIds = [
         ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
       ];
       const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
+      */
       const needsDelegateOptions =
         req.session.user.tipo === 'admin' || req.session.user.tipo === 'coordinador';
       const laboratoristasPorUal = needsDelegateOptions
         ? await fetchLaboratoristasByUalIds(uals.map((u) => Number(u.ual_id)))
         : new Map();
       uals = uals.map((u) => {
+        /*
         const cfg = Number.isFinite(Number(u.facultad_id))
           ? configMap.get(Number(u.facultad_id))
           : null;
+        */
         return {
           ...u,
-          _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
+          // _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
           _laboratoristas: needsDelegateOptions
             ? laboratoristasPorUal.get(Number(u.ual_id)) || []
             : [],
@@ -195,6 +249,7 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
     }
 
     return res.render('home/reg_multa_docente', {
+      sanctionCategories: await fetchSanctionCategories({ client: pool }),
       con_estado,
       con_documento,
       con_nombre,

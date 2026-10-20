@@ -120,3 +120,48 @@ test('requestOati does not retry non-retryable 404 responses', async () => {
     loaded.restore();
   }
 });
+
+test('requestOati forwards the same cancellation signal to token and academic requests', async () => {
+  const signal = new AbortController().signal;
+  const loaded = loadOatiClient({
+    postImpl: async (url, body, options) => {
+      assert.equal(options.signal, signal);
+      return { data: { access_token: 'test-token', expires_in: 300 } };
+    },
+    getImpl: async (url, options) => {
+      assert.equal(options.signal, signal);
+      return { data: { ok: true } };
+    },
+  });
+
+  try {
+    assert.deepEqual(await loaded.oatiClient.requestOati('test', { signal }), { ok: true });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('requestOati cancels retry backoff within the caller deadline', async () => {
+  let getCalls = 0;
+  const loaded = loadOatiClient({
+    postImpl: async () => ({ data: { access_token: 'test-token', expires_in: 300 } }),
+    getImpl: async () => {
+      getCalls += 1;
+      const error = new Error('OATI timeout');
+      error.code = 'ECONNABORTED';
+      throw error;
+    },
+  });
+
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      loaded.oatiClient.requestOati('test', { signal: AbortSignal.timeout(30) }),
+      { name: 'AbortError' }
+    );
+    assert.equal(getCalls, 1);
+    assert.ok(Date.now() - started < 500, 'must cancel before the first retry delay completes');
+  } finally {
+    loaded.restore();
+  }
+});

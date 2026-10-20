@@ -26,6 +26,17 @@ test('student peace-of-mind verification remains protected', () => {
   );
 });
 
+test('legacy local-registration endpoints are not public', () => {
+  for (const originalUrl of [
+    '/api/register/email_verification',
+    '/milab/api/register/create_account',
+    '/api/get-data1',
+    '/milab/api/get-data2',
+  ]) {
+    assert.equal(isPublicApiRequest({ method: 'POST', originalUrl }), false);
+  }
+});
+
 test('public API gate lets the canonical anonymous consultation through', () => {
   let nextCalled = false;
   const response = {

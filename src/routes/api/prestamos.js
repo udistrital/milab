@@ -13,6 +13,20 @@ const { fetchOperationalRoleScopeByUser } = require('../../libs/operational-role
 const { APP_PERMISSIONS, hasPermission } = require('../../libs/permissions');
 const { getPrestamosModuleAccess } = require('../../libs/prestamos-module-access');
 const { getPrimaryRole, normalizeRoles } = require('../../libs/roles');
+const { CAMPOS_POR_SECCION } = require('../../libs/hojas-vida-campos');
+const {
+  TIPOS_EVENTO_MANUALES,
+  etiquetaTipoEvento,
+  claseTipoEvento,
+} = require('../../libs/hojas-vida-eventos');
+const {
+  TIPOS_MANTENIMIENTO,
+  ESTADOS_MANTENIMIENTO,
+  ESTADO_MANTENIMIENTO_DEFAULT,
+  etiquetaTipoMantenimiento,
+  etiquetaEstadoMantenimiento,
+  claseEstadoMantenimiento,
+} = require('../../libs/hojas-vida-mantenimientos');
 const {
   fetchUserByEmail,
   fetchUserById,
@@ -24,6 +38,7 @@ const {
   validarCertificacionesParaReserva,
 } = require('../../libs/capacitacion-cert-validation');
 const { requirePermissions, requireRoles, renderAuthError } = require('../middlewares/auth');
+const { validateFormTextLengths } = require('../middlewares/form-text-limits');
 
 const router = express.Router();
 
@@ -59,7 +74,7 @@ function parseIncidentEvidenceUpload(req, res, next) {
       });
     }
 
-    return next();
+    return validateFormTextLengths(req, res, next);
   });
 }
 
@@ -146,6 +161,16 @@ const PRESTAMOS_MODULE_CARD_META = {
       laboratorista: 'Consulta el inventario de equipos y elementos disponibles.',
       monitor: 'Consulta el inventario de equipos y elementos disponibles.',
       fallback: 'Consulta el catalogo general de equipos y elementos.',
+    },
+  },
+  '/milab/prestamos/hojas-vida': {
+    icon: 'bi-journal-medical',
+    tone: 'indigo',
+    descriptions: {
+      admin: 'Gestiona hojas de vida, mantenimientos e historial de equipos.',
+      coordinador: 'Consulta y actualiza hojas de vida de los equipos de tu facultad.',
+      laboratorista: 'Consulta hojas de vida y registra mantenimientos de equipos.',
+      fallback: 'Gestiona hojas de vida y mantenimientos de equipos.',
     },
   },
   '/milab/prestamos/equipos': {
@@ -307,6 +332,7 @@ const PRESTAMOS_QUICK_LINK_ALIASES = {
   '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
   '/milab/prestamos/salas': 'Salas disponibles',
   '/milab/prestamos/inventario': 'Inventario',
+  '/milab/prestamos/hojas-vida': 'Hojas de Vida y Mantenimientos',
   '/milab/prestamos/equipos': 'Equipos',
   '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
   '/milab/prestamos/entrega-equipos': 'Entrega y devolucion',
@@ -317,6 +343,7 @@ const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
   ['/milab/prestamos/gestion-solicitudes', 1],
   ['/milab/prestamos/entrega-equipos', 2],
   ['/milab/prestamos/inventario', 3],
+  ['/milab/prestamos/hojas-vida', 3.5],
   ['/milab/prestamos/equipos', 4],
   ['/milab/prestamos/reportes', 5],
   ['/milab/prestamos/solicitar', 6],
@@ -962,7 +989,7 @@ async function fetchDashboardStatsForManagement(req) {
           finalizadosParams
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
+          `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible' ${disponiblesFacultadClause} ${disponiblesLaboratorioClause}`,
           disponiblesParams
         ),
       ]);
@@ -995,7 +1022,7 @@ async function fetchDashboardStatsForUser(usuarioId) {
           [usuarioId || null]
         ),
         pool.query(
-          `SELECT COUNT(*) AS total FROM equipo e WHERE e.activo = TRUE AND e.estado = 'disponible'`
+          `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible'`
         ),
       ]);
       return {
@@ -1038,7 +1065,7 @@ async function fetchActiveLoansForManagement(req) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.estado IN ('aprobado', 'activo')
         ${facultadClause} ${laboratorioClause}
@@ -1081,7 +1108,7 @@ async function fetchPendingRequestsForManagement(req) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.estado IN ('pendiente', 'en_cola')
         ${facultadClause} ${laboratorioClause}
@@ -1120,7 +1147,7 @@ async function fetchActiveLoansForUser(usuarioId) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.usuario_id = $1 AND s.estado IN ('aprobado', 'activo')
         ORDER BY s.fecha_inicio DESC NULLS LAST
@@ -1158,7 +1185,7 @@ async function fetchPendingRequestsForUser(usuarioId) {
                 eq.facultad AS facultad,
                 eq.laboratorio AS laboratorio
          FROM solicitud_prestamo s
-         LEFT JOIN equipo eq ON eq.id = s.equipo_id
+         LEFT JOIN equipo_catalogo eq ON eq.id = s.equipo_id
          LEFT JOIN usuario u ON u.id = s.usuario_id
         WHERE s.usuario_id = $1 AND s.estado IN ('pendiente', 'en_cola')
         ORDER BY s.fecha_inicio DESC NULLS LAST
@@ -2073,6 +2100,26 @@ function buildInventoryPayload(body = {}) {
 }
 
 function validateInventoryPayload(payload) {
+  const textLimits = [
+    ['serie', payload.serie, 100],
+    ['placa', payload.placa, 100],
+    ['nombre_bien', payload.nombre_bien, 1000],
+    ['grupo_inventario', payload.grupo_inventario, 100],
+    ['nivel_inventario', payload.nivel_inventario, 50],
+    ['funcionario_doc', payload.funcionario_doc, 50],
+    ['nombre_funcionario', payload.nombre_funcionario, 255],
+    ['sede', payload.sede, 100],
+    ['dependencia', payload.dependencia, 100],
+    ['espacio_fisico', payload.espacio_fisico, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre_bien) {
     return 'El nombre del bien es obligatorio.';
   }
@@ -2126,6 +2173,30 @@ function buildEquipmentPayload(body = {}) {
 }
 
 function validateEquipmentPayload(payload) {
+  const textLimits = [
+    ['codigo', payload.codigo, 50],
+    ['nombre', payload.nombre, 255],
+    ['descripcion', payload.descripcion, 2000],
+    ['categoria', payload.categoria, 100],
+    ['laboratorio', payload.laboratorio, 100],
+    ['facultad', payload.facultad, 100],
+    ['area_conocimiento', payload.area_conocimiento, 100],
+    ['estado', payload.estado, 50],
+    ['ubicacion', payload.ubicacion, 255],
+    ['marca', payload.especificaciones.marca, 2000],
+    ['modelo', payload.especificaciones.modelo, 2000],
+    ['serie_equipo', payload.especificaciones.serie, 2000],
+    ['detalles_tecnicos', payload.especificaciones.detalles, 2000],
+    ['codigo_curso_asociado', payload.codigo_curso_asociado, 100],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.nombre) {
     return 'El nombre del equipo es obligatorio.';
   }
@@ -2151,6 +2222,34 @@ function validateEquipmentPayload(payload) {
   }
 
   return '';
+}
+
+function buildEquipmentInventoryAttributes(payload, code) {
+  const specifications = { ...payload.especificaciones };
+  const attributes = {
+    descripcionEquipo: payload.descripcion || null,
+    categoria: payload.categoria,
+    laboratorioLegacy: payload.laboratorio || null,
+    facultadLegacy: payload.facultad || null,
+    area_conocimiento: payload.area_conocimiento || null,
+    marca: specifications.marca || null,
+    modelo: specifications.modelo || null,
+    proveedor: specifications.proveedor || null,
+    observaciones: specifications.observaciones || null,
+  };
+
+  for (const key of ['marca', 'modelo', 'proveedor', 'observaciones']) {
+    delete specifications[key];
+  }
+
+  if (Object.keys(specifications).length) {
+    attributes.especificaciones = specifications;
+  }
+  if (code) {
+    attributes.codigoEquipo = code;
+  }
+
+  return attributes;
 }
 
 function isValidEquipmentId(id) {
@@ -2265,6 +2364,14 @@ function validateLoanRequestPayload(payload) {
 
   if (fechaFin <= fechaInicio) {
     return 'La fecha de fin debe ser posterior a la fecha de inicio.';
+  }
+
+  if (payload.justificacion_academica.length > 2000) {
+    return 'La justificacion academica no puede superar 2000 caracteres.';
+  }
+
+  if (payload.categoria_practica.length > 20) {
+    return 'La categoria de la practica no puede superar 20 caracteres.';
   }
 
   if (!payload.justificacion_academica || payload.justificacion_academica.length < 10) {
@@ -3031,6 +3138,22 @@ function buildSalaPayload(body = {}) {
 }
 
 function validateSalaPayload(payload) {
+  const textLimits = [
+    ['nombre', payload.nombre, 150],
+    ['tipo_espacio', payload.tipo_espacio, 30],
+    ['formato_practica_libre', payload.formato_practica_libre, 80],
+    ['formato_practica_docente', payload.formato_practica_docente, 80],
+    ['descripcion', payload.descripcion, 2000],
+    ['equipos_nombres', payload.equipos_nombres, 2500],
+  ];
+  const exceededTextLimit = textLimits.find(
+    ([, value, maxLength]) => String(value || '').length > maxLength
+  );
+
+  if (exceededTextLimit) {
+    return `El campo ${exceededTextLimit[0]} no puede superar ${exceededTextLimit[2]} caracteres.`;
+  }
+
   if (!payload.facultad || !payload.laboratorio) {
     return 'La facultad y el laboratorio son obligatorios.';
   }
@@ -3046,10 +3169,6 @@ function validateSalaPayload(payload) {
   const capacidad = Number(payload.capacidad);
   if (!Number.isInteger(capacidad) || capacidad <= 0) {
     return 'La capacidad de la sala debe ser un numero entero mayor que cero.';
-  }
-
-  if (payload.equipos_nombres && payload.equipos_nombres.length > 2500) {
-    return 'La lista de equipos excede el maximo permitido.';
   }
 
   return '';
@@ -3609,9 +3728,9 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
         SELECT DISTINCT
           f.nombre AS facultad,
           u.nombre AS laboratorio
-        FROM facultad f
+        FROM dependencia_facultad f
         LEFT JOIN ual u
-          ON u.facultad_id = f.facultad_id
+          ON u.facultad_id = f.dependencia_facultad_id
          AND u.activo = TRUE
         WHERE f.activo = TRUE
         ORDER BY f.nombre ASC, u.nombre ASC
@@ -3634,12 +3753,12 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
           SELECT DISTINCT
             f.nombre AS facultad,
             u.nombre AS laboratorio
-          FROM facultad f
+          FROM dependencia_facultad f
           LEFT JOIN ual u
-            ON u.facultad_id = f.facultad_id
+            ON u.facultad_id = f.dependencia_facultad_id
            AND u.activo = TRUE
           WHERE f.activo = TRUE
-            AND f.facultad_id = ANY($1::int[])
+            AND f.dependencia_facultad_id = ANY($1::int[])
           ORDER BY f.nombre ASC, u.nombre ASC
         `,
         [scopedFacultyIds]
@@ -3687,12 +3806,12 @@ async function fetchEquipmentFormOptions(req, currentItem = {}) {
       const result = await pool.query(
         `
           SELECT DISTINCT
-            f.facultad_id,
+            f.dependencia_facultad_id AS facultad_id,
             f.nombre AS facultad,
             u.nombre AS laboratorio
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE u.activo = TRUE
             AND f.activo = TRUE
             AND u.ual_id = ANY($1::int[])
@@ -3783,7 +3902,7 @@ async function fetchCursosActivosParaEquipoForm(normalizedItem) {
       `
         SELECT c.codigo_curso, c.nombre_curso, c.id_facultad, f.nombre AS facultad_nombre
         FROM cursos c
-        JOIN facultad f ON f.facultad_id = c.id_facultad
+        JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY f.nombre ASC, c.nombre_curso ASC
       `,
@@ -3894,8 +4013,8 @@ function buildFacultyNameScopeClause(columnExpression, scope, params) {
   return `
     AND EXISTS (
       SELECT 1
-      FROM facultad f_scope
-      WHERE f_scope.facultad_id = ANY($${params.length}::int[])
+      FROM dependencia_facultad f_scope
+      WHERE f_scope.dependencia_facultad_id = ANY($${params.length}::int[])
         AND UPPER(f_scope.nombre) = UPPER(${columnExpression})
     )
   `;
@@ -4258,7 +4377,18 @@ function drawPdfBulletList(doc, items) {
   doc.moveDown(0.7);
 }
 
-function drawLegacyTemplateHeader(doc, tituloPrincipal) {
+function drawLegacyTemplateHeader(doc, tituloPrincipal, opciones = {}) {
+  const meta = {
+    sistema: 'SISTEMA DE LABORATORIOS',
+    codigo1: 'Codigo: GL-PR-007-',
+    codigo2: 'FR-010',
+    macroproceso: 'Macro proceso: Apoyo a lo misional',
+    version: 'Version: 04',
+    proceso: 'Proceso: Gestion de Laboratorios',
+    fechaAprobacion: '30/10/2017',
+    ...opciones,
+  };
+
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#000000');
 
@@ -4326,42 +4456,35 @@ function drawLegacyTemplateHeader(doc, tituloPrincipal) {
   doc
     .fontSize(8)
     .fill('#021c27')
-    .text('SISTEMA DE LABORATORIOS', startX + col1Width + 10, marginTop + 4, {
+    .text(meta.sistema, startX + col1Width + 10, marginTop + 4, {
       width: col2Width - 10,
       align: 'center',
     });
-  doc.text('Codigo: GL-PR-007-', startX + col1Width + col2Width + 5, marginTop + 5, {
+  doc.text(meta.codigo1, startX + col1Width + col2Width + 5, marginTop + 5, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text('FR-010', startX + col1Width + col2Width + 5, marginTop + 15, {
+  doc.text(meta.codigo2, startX + col1Width + col2Width + 5, marginTop + 15, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc
-    .fontSize(9)
-    .text('Macro proceso: Apoyo a lo misional', startX + col1Width + 5, marginTop + 30, {
-      width: col2Width - 10,
-      align: 'left',
-    });
-  doc.text('Version: 04', startX + col1Width + col2Width + 5, marginTop + 30, {
+  doc.fontSize(9).text(meta.macroproceso, startX + col1Width + 5, marginTop + 30, {
+    width: col2Width - 10,
+    align: 'left',
+  });
+  doc.text(meta.version, startX + col1Width + col2Width + 5, marginTop + 30, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text(
-    'Proceso: Gestion de Laboratorios',
-    startX + col1Width + 5,
-    marginTop + row1Height + row2Height + 5,
-    {
-      width: col2Width - 10,
-      align: 'left',
-    }
-  );
+  doc.text(meta.proceso, startX + col1Width + 5, marginTop + row1Height + row2Height + 5, {
+    width: col2Width - 10,
+    align: 'left',
+  });
   doc.fontSize(8).text('Fecha de aprobacion:', startX + col1Width + col2Width + 5, marginTop + 55, {
     width: col3Width - 10,
     align: 'center',
   });
-  doc.text('30/10/2017', startX + col1Width + col2Width + 5, marginTop + 68, {
+  doc.text(meta.fechaAprobacion, startX + col1Width + col2Width + 5, marginTop + 68, {
     width: col3Width - 10,
     align: 'center',
   });
@@ -5145,7 +5268,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
           ee.condicion_devolucion,
           ee.firma_digital AS entrega_firma_digital
         FROM solicitud_prestamo sp
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = sp.equipo_id
         JOIN usuario u
           ON u.id = sp.usuario_id
@@ -5153,17 +5276,18 @@ async function fetchLoanDocumentRecord(req, loanId) {
           ON ee.solicitud_prestamo_id = sp.id
         LEFT JOIN ual ul
           ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-        LEFT JOIN facultad f
-          ON f.facultad_id = ul.facultad_id
+        LEFT JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = ul.facultad_id
         LEFT JOIN LATERAL (
           SELECT c.nombre, c.firma_digital
-          FROM coordinador_facultad cf
+          FROM coordinador_facultad_alcance cf
           JOIN coordinador c
             ON c.documento = cf.coordinador_documento_id
-          WHERE cf.facultad_id = f.facultad_id
+          WHERE cf.facultad_id = f.dependencia_facultad_id
             AND cf.activo = TRUE
             AND c.activo = TRUE
-          ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+          ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+            c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
           LIMIT 1
         ) coord
           ON TRUE
@@ -5189,7 +5313,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
   }
 
   const params = [loanId];
-  const scopeClause = buildFacultyIdScopeClause('f.facultad_id', scope, params);
+  const scopeClause = buildFacultyIdScopeClause('f.dependencia_facultad_id', scope, params);
   const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
   const result = await pool.query(
     `
@@ -5222,7 +5346,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
         ee.condicion_devolucion,
         ee.firma_digital AS entrega_firma_digital
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       JOIN usuario u
         ON u.id = sp.usuario_id
@@ -5230,17 +5354,18 @@ async function fetchLoanDocumentRecord(req, loanId) {
         ON ee.solicitud_prestamo_id = sp.id
       LEFT JOIN ual ul
         ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = ul.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = ul.facultad_id
       LEFT JOIN LATERAL (
         SELECT c.nombre, c.firma_digital
-        FROM coordinador_facultad cf
+        FROM coordinador_facultad_alcance cf
         JOIN coordinador c
           ON c.documento = cf.coordinador_documento_id
-        WHERE cf.facultad_id = f.facultad_id
+        WHERE cf.facultad_id = f.dependencia_facultad_id
           AND cf.activo = TRUE
           AND c.activo = TRUE
-        ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+        ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+          c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
         LIMIT 1
       ) coord
         ON TRUE
@@ -5297,17 +5422,18 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
           ON u.id = rp.usuario_id
         LEFT JOIN sala s
           ON s.id = rp.sala_id
-        LEFT JOIN facultad f
+        LEFT JOIN dependencia_facultad f
           ON UPPER(f.nombre) = UPPER(rp.facultad)
         LEFT JOIN LATERAL (
           SELECT c.nombre, c.firma_digital
-          FROM coordinador_facultad cf
+          FROM coordinador_facultad_alcance cf
           JOIN coordinador c
             ON c.documento = cf.coordinador_documento_id
-          WHERE cf.facultad_id = f.facultad_id
+          WHERE cf.facultad_id = f.dependencia_facultad_id
             AND cf.activo = TRUE
             AND c.activo = TRUE
-          ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+          ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+            c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
           LIMIT 1
         ) coord
           ON TRUE
@@ -5373,17 +5499,18 @@ async function fetchPracticeDocumentRecord(req, reservationId) {
         ON u.id = rp.usuario_id
       LEFT JOIN sala s
         ON s.id = rp.sala_id
-      LEFT JOIN facultad f
+      LEFT JOIN dependencia_facultad f
         ON UPPER(f.nombre) = UPPER(rp.facultad)
       LEFT JOIN LATERAL (
         SELECT c.nombre, c.firma_digital
-        FROM coordinador_facultad cf
+        FROM coordinador_facultad_alcance cf
         JOIN coordinador c
           ON c.documento = cf.coordinador_documento_id
-        WHERE cf.facultad_id = f.facultad_id
+        WHERE cf.facultad_id = f.dependencia_facultad_id
           AND cf.activo = TRUE
           AND c.activo = TRUE
-        ORDER BY c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
+        ORDER BY (cf.facultad_asignada_id = cf.facultad_id) DESC,
+          c.fecha_firma DESC NULLS LAST, c.fecha_modificacion DESC NULLS LAST, c.documento ASC
         LIMIT 1
       ) coord
         ON TRUE
@@ -5713,7 +5840,7 @@ async function fetchLoanReportsViewData(scope, range) {
     pool.query(
       `
         SELECT COUNT(*)::int AS total
-        FROM equipo e
+        FROM equipo_catalogo e
         WHERE 1 = 1
         ${equipmentScopeClause}
         ${equipmentLaboratoryClause}
@@ -5737,7 +5864,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.estado = 'activo'
       ${solicitudActivasScopeClause}
       ${solicitudActivasLaboratoryClause}
@@ -5760,7 +5887,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.estado IN ('pendiente', 'en_cola', 'aprobado')
       ${solicitudPendientesScopeClause}
       ${solicitudPendientesLaboratoryClause}
@@ -5805,7 +5932,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT COUNT(*)::int AS total
       FROM incidencia i
-      JOIN equipo e ON e.id = i.equipo_id
+      JOIN equipo_catalogo e ON e.id = i.equipo_id
       WHERE i.estado <> 'cerrada'
       ${incidenciasAbiertasScopeClause}
       ${incidenciasAbiertasLaboratoryClause}
@@ -5851,7 +5978,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT sp.estado, COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${solicitudesEstadoScopeClause}
@@ -5902,7 +6029,7 @@ async function fetchLoanReportsViewData(scope, range) {
     `
       SELECT i.estado, COUNT(*)::int AS cantidad
       FROM incidencia i
-      JOIN equipo e ON e.id = i.equipo_id
+      JOIN equipo_catalogo e ON e.id = i.equipo_id
       WHERE i.fecha_creacion >= $1::date
         AND i.fecha_creacion < ($2::date + INTERVAL '1 day')
         ${incidenciasEstadoScopeClause}
@@ -5930,7 +6057,7 @@ async function fetchLoanReportsViewData(scope, range) {
         TO_CHAR(DATE_TRUNC('month', sp.fecha_inicio), 'YYYY-MM') AS periodo,
         COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${solicitudesMesScopeClause}
@@ -5982,7 +6109,7 @@ async function fetchLoanReportsViewData(scope, range) {
         e.codigo,
         COUNT(*)::int AS cantidad
       FROM solicitud_prestamo sp
-      JOIN equipo e ON e.id = sp.equipo_id
+      JOIN equipo_catalogo e ON e.id = sp.equipo_id
       WHERE sp.fecha_inicio >= $1::date
         AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
         ${equiposTopScopeClause}
@@ -6077,7 +6204,9 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6106,14 +6235,14 @@ async function fetchManagedLoanRequest(id, scope, executor = pool) {
         e.nombre AS equipo_nombre,
         e.laboratorio,
         COALESCE(e.facultad, f.nombre) AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE sp.id = $1
         ${facultyCondition}
         ${laboratoryCondition}
@@ -6130,7 +6259,9 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
     return null;
   }
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6166,7 +6297,7 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
             AND i.estado <> 'cerrada'
         ) AS incidencia_activa,
         COALESCE(e.facultad, f.nombre) AS facultad,
-        f.facultad_id,
+        f.dependencia_facultad_id AS facultad_id,
         ee.id AS entrega_id,
         ee.fecha_entrega,
         ee.fecha_devolucion_esperada,
@@ -6175,14 +6306,14 @@ async function fetchManagedDeliveryLoanRequest(id, scope, executor = pool) {
         ee.condicion_devolucion,
         ee.lista_componentes
       FROM solicitud_prestamo sp
-      JOIN equipo e
+      JOIN equipo_catalogo e
         ON e.id = sp.equipo_id
       LEFT JOIN entrega_equipo ee
         ON ee.solicitud_prestamo_id = sp.id
       LEFT JOIN ual u
         ON UPPER(u.nombre) = UPPER(e.laboratorio)
-      LEFT JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE sp.id = $1
         ${facultyCondition}
         ${laboratoryCondition}
@@ -6246,7 +6377,7 @@ async function fetchManagedIncident(id, scope, executor = pool) {
         COALESCE(e.facultad, f.nombre, rp.facultad) AS facultad,
         f.facultad_id
       FROM incidencia i
-      LEFT JOIN equipo e
+      LEFT JOIN equipo_catalogo e
         ON e.id = i.equipo_id
       LEFT JOIN solicitud_prestamo sp
         ON sp.id = i.solicitud_prestamo_id
@@ -6255,11 +6386,11 @@ async function fetchManagedIncident(id, scope, executor = pool) {
       LEFT JOIN LATERAL (
         SELECT
           u.ual_id,
-          f.facultad_id,
+          f.dependencia_facultad_id AS facultad_id,
           f.nombre
         FROM ual u
-        JOIN facultad f
-          ON f.facultad_id = u.facultad_id
+        JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = u.facultad_id
         WHERE UPPER(u.nombre) = UPPER(COALESCE(e.laboratorio, rp.laboratorio))
         ORDER BY u.ual_id ASC
         LIMIT 1
@@ -6282,7 +6413,9 @@ async function fetchManagedPracticeReservation(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6318,13 +6451,13 @@ async function fetchManagedPracticeReservation(id, scope) {
         u.nombre AS usuario_nombre,
         u.documento AS usuario_documento,
         u.correo AS usuario_correo,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM reserva_practica rp
       JOIN usuario u
         ON u.id = rp.usuario_id
       LEFT JOIN sala s
         ON s.id = rp.sala_id
-      LEFT JOIN facultad f
+      LEFT JOIN dependencia_facultad f
         ON UPPER(f.nombre) = UPPER(rp.facultad)
       WHERE rp.id = $1
         ${facultyCondition}
@@ -6343,7 +6476,9 @@ async function resolveManagedUal(payload, scope) {
   }
 
   const params = [payload.facultad, payload.laboratorio];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($3::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($3::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6351,9 +6486,9 @@ async function resolveManagedUal(payload, scope) {
 
   const result = await pool.query(
     `
-      SELECT u.ual_id, u.nombre AS laboratorio, f.nombre AS facultad, f.facultad_id
+      SELECT u.ual_id, u.nombre AS laboratorio, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE UPPER(f.nombre) = UPPER($1::text)
         AND UPPER(u.nombre) = UPPER($2::text)
         ${facultyCondition}
@@ -6379,7 +6514,7 @@ async function fetchManagedUalById(ualId, scope) {
 
   if (!scope.unrestricted) {
     params.push(scope.facultyIds);
-    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+    whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
   if (
@@ -6397,9 +6532,9 @@ async function fetchManagedUalById(ualId, scope) {
         u.ual_id,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       LIMIT 1
     `,
@@ -6672,7 +6807,9 @@ async function fetchManagedSala(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6694,10 +6831,10 @@ async function fetchManagedSala(id, scope) {
         s.activo,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM sala s
       JOIN ual u ON u.ual_id = s.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE s.id = $1
         ${facultyCondition}
       LIMIT 1
@@ -6714,7 +6851,9 @@ async function fetchManagedHorarioSala(id, scope) {
   }
 
   const params = [id];
-  const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+  const facultyCondition = scope?.unrestricted
+    ? ''
+    : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
   if (!scope?.unrestricted) {
     params.push(scope.facultyIds);
@@ -6734,11 +6873,11 @@ async function fetchManagedHorarioSala(id, scope) {
         s.nombre AS sala_nombre,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM horario_sala h
       JOIN sala s ON s.id = h.sala_id
       JOIN ual u ON u.ual_id = s.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE h.id = $1
         ${facultyCondition}
       LIMIT 1
@@ -6810,7 +6949,7 @@ async function fetchPrestamoFacultades() {
   const result = await pool.query(
     `
       SELECT DISTINCT nombre AS facultad
-      FROM facultad
+      FROM dependencia_facultad
       WHERE activo = TRUE
       ORDER BY nombre ASC
     `
@@ -6824,8 +6963,8 @@ async function fetchPrestamoLaboratorios(facultad) {
     `
       SELECT DISTINCT u.nombre AS laboratorio
       FROM ual u
-      JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
       WHERE u.activo = TRUE
         AND f.activo = TRUE
         AND UPPER(f.nombre) = UPPER($1)
@@ -6852,8 +6991,8 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
           (
             SELECT f.nombre
             FROM ual u
-            JOIN facultad f
-              ON f.facultad_id = u.facultad_id
+            JOIN dependencia_facultad f
+              ON f.dependencia_facultad_id = u.facultad_id
             WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
             ORDER BY f.nombre ASC
             LIMIT 1
@@ -6863,7 +7002,7 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
         e.ubicacion,
         e.ubicacion_prestamo,
         e.especificaciones
-      FROM equipo e
+      FROM equipo_catalogo e
       WHERE e.estado = 'disponible'
         AND UPPER(
           COALESCE(
@@ -6871,8 +7010,8 @@ async function fetchPrestamoEquipos(facultad, laboratorio) {
             (
               SELECT f.nombre
               FROM ual u
-              JOIN facultad f
-                ON f.facultad_id = u.facultad_id
+              JOIN dependencia_facultad f
+                ON f.dependencia_facultad_id = u.facultad_id
               WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
               ORDER BY f.nombre ASC
               LIMIT 1
@@ -7000,11 +7139,11 @@ async function fetchPracticeConfigurationByFacultyName(facultyName) {
 
   const result = await pool.query(
     `
-      SELECT f.facultad_id
-      FROM facultad f
+      SELECT f.dependencia_facultad_id AS facultad_id
+      FROM dependencia_facultad f
       WHERE UPPER(f.nombre) = UPPER($1::text)
          OR ($2::text IS NOT NULL AND UPPER(f.nombre) = UPPER($2::text))
-      ORDER BY f.facultad_id ASC
+      ORDER BY f.dependencia_facultad_id ASC
       LIMIT 1
     `,
     [normalizedName, canonicalName]
@@ -7039,8 +7178,8 @@ async function fetchCoordinatorSignatureRecord(req) {
       LEFT JOIN coordinador_facultad cf
         ON cf.coordinador_documento_id = c.documento
        AND cf.activo = TRUE
-      LEFT JOIN facultad f
-        ON f.facultad_id = cf.facultad_id
+      LEFT JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = cf.facultad_id
       WHERE c.documento = $1
       ORDER BY cf.fecha_modificacion DESC NULLS LAST, cf.facultad_id ASC
       LIMIT 1
@@ -7057,8 +7196,8 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
   if (scope.unrestricted) {
     const result = await pool.query(
       `
-        SELECT facultad_id, nombre
-        FROM facultad
+        SELECT dependencia_facultad_id AS facultad_id, nombre
+        FROM dependencia_facultad
         WHERE activo = TRUE
         ORDER BY nombre ASC
       `
@@ -7073,9 +7212,9 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
 
   const result = await pool.query(
     `
-      SELECT facultad_id, nombre
-      FROM facultad
-      WHERE facultad_id = ANY($1::int[])
+      SELECT dependencia_facultad_id AS facultad_id, nombre
+      FROM dependencia_facultad
+      WHERE dependencia_facultad_id = ANY($1::int[])
       ORDER BY nombre ASC
     `,
     [scope.facultyIds]
@@ -7109,9 +7248,9 @@ async function fetchScopedPracticeConfigurationLaboratories(req, facultyId) {
 
   const result = await pool.query(
     `
-      SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+      SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
       FROM ual u
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       ORDER BY u.nombre ASC
     `,
@@ -7370,8 +7509,8 @@ async function fetchAcademicPracticesForReservation(facultad, laboratorio) {
       JOIN ual u
         ON u.ual_id = p.ual_id
        AND u.activo = TRUE
-      JOIN facultad f
-        ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
        AND f.activo = TRUE
       LEFT JOIN asignatura_practica ap
         ON ap.practica_id = p.id
@@ -7473,7 +7612,7 @@ async function fetchManagedAcademicPractice(practiceId, scope) {
 
   if (!scope.unrestricted) {
     params.push(scope.facultyIds);
-    whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+    whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
   if (
@@ -7494,10 +7633,10 @@ async function fetchManagedAcademicPractice(practiceId, scope) {
         p.estado,
         u.nombre AS laboratorio,
         f.nombre AS facultad,
-        f.facultad_id
+        f.dependencia_facultad_id AS facultad_id
       FROM practica p
       JOIN ual u ON u.ual_id = p.ual_id
-      JOIN facultad f ON f.facultad_id = u.facultad_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE ${whereParts.join(' AND ')}
       LIMIT 1
     `,
@@ -7777,7 +7916,7 @@ async function fetchEquipmentItem(id) {
         ubicacion_prestamo,
         fecha_creacion,
         fecha_modificacion
-      FROM equipo
+      FROM equipo_catalogo
       WHERE id = $1
       LIMIT 1
     `,
@@ -7831,6 +7970,26 @@ async function replaceEquipmentSchedules(client, equipmentId, schedules) {
   }
 }
 
+router.all(
+  [
+    '/inventario',
+    '/inventario/crear',
+    '/inventario/:id/editar',
+    '/inventario/:id/eliminar',
+    '/equipos/crear',
+    '/equipos/:id/editar',
+    '/equipos/:id/estado',
+    '/equipos/:id/eliminar',
+  ],
+  function (req, res) {
+    return res.redirect('/milab/inventarios/gestion_inventario');
+  }
+);
+
+router.get('/equipos', function (req, res) {
+  return res.redirect('/milab/inventarios/gestion_inventario?tipo_inventario=equipo_arka');
+});
+
 router.get('/inventario', requireInventarioAuthorized, async function (req, res) {
   try {
     const result = await pool.query(
@@ -7870,6 +8029,644 @@ router.get('/inventario', requireInventarioAuthorized, async function (req, res)
     });
   }
 });
+
+router.get('/hojas-vida', requireInventarioAuthorized, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/index', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get(
+  '/hojas-vida/:equipoId/cargar',
+  requireInventarioAuthorized,
+  async function cargarHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const equipoResult = await pool.query(
+        `
+          SELECT e.id, e.codigo, e.nombre, e.estado, e.ubicacion, e.facultad, e.laboratorio,
+                 inv.placa AS codigo_inventario, inv.serie AS numero_serie, inv.nombre_bien
+          FROM equipo e
+          LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
+          WHERE e.id = $1 AND e.activo = TRUE
+        `,
+        [equipoId]
+      );
+
+      if (equipoResult.rows.length === 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=El%20equipo%20no%20existe');
+      }
+
+      const equipo = equipoResult.rows[0];
+
+      const hvExistente = await pool.query(
+        `
+          SELECT id, estado
+          FROM hoja_vida
+          WHERE equipo_id = $1 AND activo = TRUE
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [equipoId]
+      );
+
+      if (hvExistente.rows.length > 0) {
+        const hv = hvExistente.rows[0];
+        const mensaje = encodeURIComponent(
+          hv.estado === 'PENDIENTE_CONFIRMACION'
+            ? 'El equipo ya tiene una hoja de vida pendiente de confirmación.'
+            : 'El equipo ya tiene una hoja de vida registrada.'
+        );
+        return res.redirect(`/milab/prestamos/hojas-vida?error=${mensaje}`);
+      }
+
+      return res.render('home/prestamos/hojas-vida/cargar', {
+        equipo,
+        maxSizeMB: 10,
+        allowedFormats: '.xlsx, .xls, .pdf',
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de carga HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20vista'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:hojaVidaId/confirmar',
+  requireInventarioAuthorized,
+  async function confirmarHojaVidaView(req, res) {
+    try {
+      const hojaVidaId = Number(req.params.hojaVidaId);
+      if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Hoja%20de%20vida%20invalida');
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT hv.*, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+                 e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+                 e.laboratorio AS equipo_laboratorio
+          FROM hoja_vida hv
+          JOIN equipo e ON e.id = hv.equipo_id
+          WHERE hv.id = $1 AND hv.activo = TRUE
+        `,
+        [hojaVidaId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=La%20hoja%20de%20vida%20no%20existe'
+        );
+      }
+
+      const hojaVida = hvResult.rows[0];
+
+      if (hojaVida.estado === 'ACTIVA') {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=La%20hoja%20de%20vida%20ya%20esta%20confirmada'
+        );
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [hojaVidaId]
+      );
+
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      );
+
+      const obligatorios = configResult.rows
+        .filter((row) => row.obligatorio)
+        .map((row) => row.nombre_campo);
+
+      return res.render('home/prestamos/hojas-vida/confirmar', {
+        hojaVida,
+        equipo: {
+          codigo: hojaVida.equipo_codigo,
+          nombre: hojaVida.equipo_nombre,
+          ubicacion: hojaVida.equipo_ubicacion,
+          facultad: hojaVida.equipo_facultad,
+          laboratorio: hojaVida.equipo_laboratorio,
+        },
+        documentos: documentosResult.rows,
+        secciones: CAMPOS_POR_SECCION,
+        obligatorios,
+        maxFotoMB: 5,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de confirmacion HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20confirmacion'
+      );
+    }
+  }
+);
+
+async function cargarHojaVidaPorEquipo(equipoId) {
+  const hvResult = await pool.query(
+    `
+      SELECT hv.*, e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+             e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+             e.laboratorio AS equipo_laboratorio
+      FROM hoja_vida hv
+      JOIN equipo e ON e.id = hv.equipo_id
+      WHERE hv.equipo_id = $1 AND hv.activo = TRUE
+      ORDER BY hv.id DESC
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+
+  if (hvResult.rows.length === 0) {
+    return null;
+  }
+
+  const hojaVida = hvResult.rows[0];
+  return {
+    hojaVida,
+    equipo: {
+      codigo: hojaVida.equipo_codigo,
+      nombre: hojaVida.equipo_nombre,
+      ubicacion: hojaVida.equipo_ubicacion,
+      facultad: hojaVida.equipo_facultad,
+      laboratorio: hojaVida.equipo_laboratorio,
+    },
+  };
+}
+
+function formatearValorHojaVidaPdf(valor, tipo) {
+  if (valor === null || valor === undefined || valor === '') return '-';
+  if (valor instanceof Date || tipo === 'date') {
+    const fecha = new Date(valor);
+    if (!Number.isNaN(fecha.getTime())) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(fecha.getDate())}/${pad(fecha.getMonth() + 1)}/${fecha.getFullYear()}`;
+    }
+  }
+  return String(valor);
+}
+
+const HV_PDF_META = {
+  sistema: 'FORMATO',
+  codigo1: 'Codigo: GDTH-PG-003-027',
+  codigo2: '',
+  macroproceso: 'Macroproceso: Gestion de Recursos',
+  version: 'Version: 01',
+  proceso: 'Proceso: Gestion y Desarrollo del Talento Humano',
+  fechaAprobacion: '10/08/2022',
+};
+
+const HV_PDF_TITULO = 'HOJA DE VIDA DE EQUIPOS O MAQUINARIA';
+
+function aplicarFuentePdf(doc, fuente) {
+  try {
+    doc.font(fuente);
+  } catch {
+    // Keep PDF generation working even if the custom font is unavailable.
+  }
+}
+
+function sendHojaVidaPdf(res, hojaVida, equipo, foto) {
+  const doc = new PDFDocument({ margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="Hoja_Vida_${hojaVida.codigo_inventario || hojaVida.id}.pdf"`
+  );
+  doc.pipe(res);
+
+  drawLegacyTemplateHeader(doc, HV_PDF_TITULO, HV_PDF_META);
+
+  aplicarFuentePdf(doc, PDF_FONT_BOLD);
+  doc.fontSize(11).fillColor('#000000');
+  doc.text(`Equipo: ${equipo.nombre || '-'}`);
+  doc.text(`Codigo interno: ${equipo.codigo || '-'}`);
+  doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || '-'}`);
+  doc.moveDown();
+
+  CAMPOS_POR_SECCION.forEach((seccion) => {
+    aplicarFuentePdf(doc, PDF_FONT_BOLD);
+    doc.fontSize(11).fillColor('#021c27').text(seccion.seccion);
+    aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+    doc.fontSize(10).fillColor('#000000');
+    seccion.campos.forEach((campo) => {
+      const valor = formatearValorHojaVidaPdf(hojaVida[campo.nombre], campo.tipo);
+      doc.text(`${campo.etiqueta}: ${valor}`);
+    });
+    doc.moveDown(0.5);
+  });
+
+  if (foto && foto.archivo) {
+    aplicarFuentePdf(doc, PDF_FONT_BOLD);
+    doc.fontSize(11).fillColor('#021c27').text('Fotografia del equipo');
+    const imagen = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
+    try {
+      doc.image(imagen, { fit: [220, 220] });
+    } catch {
+      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+      doc.fontSize(10).fillColor('#000000').text('(No fue posible incrustar la imagen)');
+    }
+  }
+
+  doc.end();
+}
+
+router.get(
+  '/hojas-vida/:equipoId',
+  requireInventarioAuthorized,
+  async function verHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga, usuario_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const documentos = documentosResult.rows.map(function (documento) {
+        return {
+          ...documento,
+          fecha_carga_display: formatearFechaHoraHojaVida(documento.fecha_carga),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/ver', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        secciones: CAMPOS_POR_SECCION,
+        documentos,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando vista de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20hoja%20de%20vida'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/editar',
+  requireInventarioAuthorized,
+  async function editarHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      if (datos.hojaVida.estado !== 'ACTIVA') {
+        return res.redirect(`/milab/prestamos/hojas-vida/${datos.hojaVida.id}/confirmar`);
+      }
+
+      const documentosResult = await pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const configResult = await pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      );
+
+      const obligatorios = configResult.rows
+        .filter((row) => row.obligatorio)
+        .map((row) => row.nombre_campo);
+
+      return res.render('home/prestamos/hojas-vida/editar', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        secciones: CAMPOS_POR_SECCION,
+        obligatorios,
+        documentos: documentosResult.rows,
+        maxFotoMB: 5,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando edicion de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20la%20edicion'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/imprimir',
+  requireInventarioAuthorized,
+  async function imprimirHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const fotoResult = await pool.query(
+        `
+          SELECT archivo, tipo_mime
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1 AND activo = TRUE AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [datos.hojaVida.id]
+      );
+
+      return sendHojaVidaPdf(res, datos.hojaVida, datos.equipo, fotoResult.rows[0] || null);
+    } catch (error) {
+      console.error('[prestamos] Error generando PDF de hoja de vida:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20generar%20el%20PDF'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:hojaVidaId/documento/:documentoId',
+  requireInventarioAuthorized,
+  async function descargarDocumentoHojaVida(req, res) {
+    try {
+      const hojaVidaId = Number(req.params.hojaVidaId);
+      const documentoId = Number(req.params.documentoId);
+      if (
+        !Number.isInteger(hojaVidaId) ||
+        hojaVidaId <= 0 ||
+        !Number.isInteger(documentoId) ||
+        documentoId <= 0
+      ) {
+        return res.status(400).send('Solicitud invalida.');
+      }
+
+      const result = await pool.query(
+        `
+          SELECT nombre_archivo, tipo_mime, archivo
+          FROM hoja_vida_documento
+          WHERE id = $1 AND hoja_vida_id = $2 AND activo = TRUE
+        `,
+        [documentoId, hojaVidaId]
+      );
+
+      if (result.rows.length === 0 || !result.rows[0].archivo) {
+        return res.status(404).send('Documento no encontrado.');
+      }
+
+      const documento = result.rows[0];
+      res.setHeader('Content-Type', documento.tipo_mime || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(documento.nombre_archivo || 'documento')}"`
+      );
+      return res.send(documento.archivo);
+    } catch (error) {
+      console.error('[prestamos] Error descargando documento de hoja de vida:', error);
+      return res.status(500).send('No fue posible obtener el documento.');
+    }
+  }
+);
+
+function formatearFechaHoraHojaVida(valor) {
+  if (!valor) return null;
+  const fecha = new Date(valor);
+  if (Number.isNaN(fecha.getTime())) return String(valor);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(fecha.getDate())}/${pad(fecha.getMonth() + 1)}/${fecha.getFullYear()} ${pad(
+    fecha.getHours()
+  )}:${pad(fecha.getMinutes())}`;
+}
+
+router.get(
+  '/hojas-vida/:equipoId/historial',
+  requireInventarioAuthorized,
+  async function historialHojaVidaView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const hvResult = await pool.query(
+        `
+          SELECT hv.id, hv.equipo_id, hv.estado,
+                 e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
+                 e.ubicacion AS equipo_ubicacion, e.facultad AS equipo_facultad,
+                 e.laboratorio AS equipo_laboratorio
+          FROM hoja_vida hv
+          JOIN equipo e ON e.id = hv.equipo_id
+          WHERE hv.equipo_id = $1 AND hv.activo = TRUE
+          ORDER BY hv.id DESC
+          LIMIT 1
+        `,
+        [equipoId]
+      );
+
+      if (hvResult.rows.length === 0) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const hojaVida = hvResult.rows[0];
+
+      const eventosResult = await pool.query(
+        `
+          SELECT id, tipo_evento, campo_modificado, valor_anterior, valor_nuevo,
+                 descripcion, usuario, fecha
+          FROM hoja_vida_historial
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha DESC NULLS LAST, id DESC
+        `,
+        [hojaVida.id]
+      );
+
+      const eventos = eventosResult.rows.map(function (evento) {
+        return {
+          ...evento,
+          fecha_display: formatearFechaHoraHojaVida(evento.fecha),
+          tipo_evento_etiqueta: etiquetaTipoEvento(evento.tipo_evento),
+          tipo_evento_clase: claseTipoEvento(evento.tipo_evento),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/historial', {
+        hojaVida,
+        equipo: {
+          codigo: hojaVida.equipo_codigo,
+          nombre: hojaVida.equipo_nombre,
+          ubicacion: hojaVida.equipo_ubicacion,
+          facultad: hojaVida.equipo_facultad,
+          laboratorio: hojaVida.equipo_laboratorio,
+        },
+        eventos,
+        tiposEvento: TIPOS_EVENTO_MANUALES,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando historial HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20historial'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/nuevo',
+  requireInventarioAuthorized,
+  async function nuevoMantenimientoHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-nuevo', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+        estadoDefault: ESTADO_MANTENIMIENTO_DEFAULT,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando formulario de mantenimiento:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20formulario'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos',
+  requireInventarioAuthorized,
+  async function listarMantenimientosHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      if (!Number.isInteger(equipoId) || equipoId <= 0) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const mantenimientosResult = await pool.query(
+        `
+          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
+                 responsable, datos_empresa_contratada, tiempo_garantia,
+                 especificaciones_mantenimiento, observaciones_repuestos,
+                 fecha_creacion
+          FROM mantenimiento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const mantenimientos = mantenimientosResult.rows.map(function (mantenimiento) {
+        return {
+          ...mantenimiento,
+          tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
+          estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+          estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+          fecha_realizacion_display: formatearValorHojaVidaPdf(
+            mantenimiento.fecha_realizacion,
+            'date'
+          ),
+          fecha_creacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_creacion),
+        };
+      });
+
+      return res.render('home/prestamos/hojas-vida/mantenimientos', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimientos,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando mantenimientos HV:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20los%20mantenimientos'
+      );
+    }
+  }
+);
 
 router.get('/inventario/crear', requireInventarioAuthorized, function (req, res) {
   return res.render('home/prestamos/inventario/form', {
@@ -8074,7 +8871,7 @@ router.get('/equipos', requireEquiposAuthorized, async function (req, res) {
           ubicacion_prestamo,
           fecha_creacion,
           fecha_modificacion
-        FROM equipo
+        FROM equipo_catalogo
         ORDER BY fecha_creacion DESC NULLS LAST, id DESC
       `
     );
@@ -8171,41 +8968,62 @@ router.post('/equipos/crear', requireEquiposAuthorized, async function (req, res
     try {
       await client.query('BEGIN');
 
-      const createResult = await client.query(
+      const inventoryResult = await client.query(
         `
-          INSERT INTO equipo (
-            codigo,
-            nombre,
-            descripcion,
-            especificaciones,
-            categoria,
-            laboratorio,
-            facultad,
-            area_conocimiento,
-            estado,
-            ubicacion,
-            ubicacion_prestamo
+          INSERT INTO inventario (
+            nombre_bien,
+            espacio_fisico,
+            disponible_prestamo,
+            tipo_inventario,
+            laboratorio_ual_id,
+            estado_aprobacion,
+            modo_control,
+            atributos
           )
-          VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11::jsonb)
+          VALUES (
+            $1,
+            NULLIF($2, ''),
+            TRUE,
+            'legado',
+            (
+              SELECT MIN(ual_id)
+              FROM ual
+              WHERE UPPER(BTRIM(nombre)) = UPPER(BTRIM($3))
+              HAVING COUNT(*) = 1
+            ),
+            'aprobado',
+            'individual',
+            $4::jsonb
+          )
           RETURNING id
         `,
         [
-          codigo,
           payload.nombre,
-          payload.descripcion,
-          JSON.stringify(payload.especificaciones),
-          payload.categoria,
-          payload.laboratorio,
-          payload.facultad,
-          payload.area_conocimiento,
-          payload.estado,
           payload.ubicacion,
-          JSON.stringify(payload.ubicacion_prestamo),
+          payload.laboratorio,
+          JSON.stringify(buildEquipmentInventoryAttributes(payload, codigo)),
         ]
       );
+      const inventoryId = inventoryResult.rows[0]?.id;
+      if (!inventoryId) {
+        throw new Error('No fue posible guardar el registro canónico del equipo.');
+      }
 
-      await replaceEquipmentSchedules(client, createResult.rows[0].id, schedules);
-      await replaceEquipoCapacitacionAsociada(client, createResult.rows[0].id, payload);
+      const createResult = await client.query(
+        `
+          INSERT INTO equipo (inventario_id, estado, ubicacion_prestamo)
+          VALUES ($1, $2, $3::jsonb)
+          RETURNING id
+        `,
+        [inventoryId, payload.estado, JSON.stringify(payload.ubicacion_prestamo)]
+      );
+      const equipmentId = createResult.rows[0]?.id;
+      if (!equipmentId) {
+        throw new Error('No fue posible crear el registro operativo del equipo.');
+      }
+
+      await replaceEquipmentSchedules(client, equipmentId, schedules);
+      await replaceEquipoCapacitacionAsociada(client, equipmentId, payload);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -8284,45 +9102,79 @@ router.post('/equipos/:id/editar', requireEquiposAuthorized, async function (req
 
   try {
     const client = await pool.connect();
-    let result;
+    let result = { rowCount: 0 };
 
     try {
       await client.query('BEGIN');
-      result = await client.query(
+      const equipmentResult = await client.query(
         `
-          UPDATE equipo
-          SET
-            nombre = $1,
-            descripcion = $2,
-            especificaciones = $3::jsonb,
-            categoria = $4,
-            laboratorio = $5,
-            facultad = $6,
-            area_conocimiento = $7,
-            estado = $8,
-            ubicacion = $9,
-            ubicacion_prestamo = $10::jsonb,
-          fecha_modificacion = CURRENT_TIMESTAMP
-          WHERE id = $11
+          SELECT
+            e.id,
+            e.inventario_id,
+            i.tipo_inventario,
+            CASE
+              WHEN i.tipo_inventario = 'equipo_arka' THEN i.placa
+              ELSE COALESCE(NULLIF(i.atributos->>'codigoEquipo', ''), i.placa)
+            END AS codigo
+          FROM equipo e
+          JOIN inventario i ON i.id = e.inventario_id
+          WHERE e.id = $1
+          FOR UPDATE OF e, i
         `,
-        [
-          payload.nombre,
-          payload.descripcion,
-          JSON.stringify(payload.especificaciones),
-          payload.categoria,
-          payload.laboratorio,
-          payload.facultad,
-          payload.area_conocimiento,
-          payload.estado,
-          payload.ubicacion,
-          JSON.stringify(payload.ubicacion_prestamo),
-          req.params.id,
-        ]
+        [req.params.id]
       );
+      const equipment = equipmentResult.rows[0];
 
-      if (result.rowCount > 0) {
-        await replaceEquipmentSchedules(client, req.params.id, schedules);
-        await replaceEquipoCapacitacionAsociada(client, req.params.id, payload);
+      if (equipment) {
+        const attributes = buildEquipmentInventoryAttributes(
+          payload,
+          equipment.tipo_inventario === 'equipo_arka' ? null : equipment.codigo
+        );
+        result = await client.query(
+          `
+          UPDATE inventario i
+          SET
+            nombre_bien = $1,
+            espacio_fisico = NULLIF($2, ''),
+            laboratorio_ual_id = (
+              SELECT MIN(ual_id)
+              FROM ual
+              WHERE UPPER(BTRIM(nombre)) = UPPER(BTRIM($3))
+              HAVING COUNT(*) = 1
+            ),
+            atributos = (
+              CASE
+                WHEN i.tipo_inventario = 'equipo_arka'
+                THEN COALESCE(i.atributos, '{}'::jsonb) - 'codigoEquipo'
+                ELSE COALESCE(i.atributos, '{}'::jsonb)
+              END
+            ) || $4::jsonb,
+            fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE i.id = $5
+        `,
+          [
+            payload.nombre,
+            payload.ubicacion,
+            payload.laboratorio,
+            JSON.stringify(attributes),
+            equipment.inventario_id,
+          ]
+        );
+
+        if (result.rowCount > 0) {
+          await client.query(
+            `
+            UPDATE equipo
+            SET estado = $1,
+                ubicacion_prestamo = $2::jsonb,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $3
+          `,
+            [payload.estado, JSON.stringify(payload.ubicacion_prestamo), equipment.id]
+          );
+          await replaceEquipmentSchedules(client, req.params.id, schedules);
+          await replaceEquipoCapacitacionAsociada(client, req.params.id, payload);
+        }
       }
 
       await client.query('COMMIT');
@@ -8368,7 +9220,7 @@ router.post('/equipos/:id/estado', requireEquiposAuthorized, async function (req
     const equipmentResult = await client.query(
       `
         SELECT id, codigo, nombre, facultad, laboratorio, estado
-        FROM equipo
+        FROM equipo_catalogo
         WHERE id = $1
         LIMIT 1
       `,
@@ -8415,15 +9267,26 @@ router.post('/equipos/:id/eliminar', requireEquiposAuthorized, async function (r
   }
 
   try {
-    const result = await pool.query('DELETE FROM equipo WHERE id = $1', [req.params.id]);
+    const result = await pool.query(
+      `
+        UPDATE inventario i
+        SET activo = FALSE,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        FROM equipo e
+        WHERE e.id = $1
+          AND i.id = e.inventario_id
+        RETURNING e.id
+      `,
+      [req.params.id]
+    );
 
     if (result.rowCount === 0) {
       return res.redirect('/milab/prestamos/equipos?error=El equipo no existe');
     }
 
-    return res.redirect('/milab/prestamos/equipos?success=Equipo eliminado correctamente');
+    return res.redirect('/milab/prestamos/equipos?success=Equipo archivado correctamente');
   } catch (error) {
-    console.error('Error eliminando equipo MiLab:', error);
+    console.error('Error archivando equipo MiLab:', error);
     return res.redirect(
       `/milab/prestamos/equipos?error=${encodeURIComponent(
         resolveEquipmentDbErrorMessage(error, 'No fue posible eliminar el equipo.')
@@ -8765,7 +9628,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       const equipmentResult = await client.query(
         `
           SELECT id, codigo, nombre, facultad, laboratorio
-          FROM equipo
+          FROM equipo_catalogo
           WHERE id = $1
           LIMIT 1
         `,
@@ -8912,13 +9775,13 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
           e.laboratorio,
           COALESCE(e.facultad, f.nombre) AS facultad
         FROM cola_solicitud c
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = c.equipo_id
         LEFT JOIN LATERAL (
           SELECT f.nombre
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
           ORDER BY u.ual_id ASC
           LIMIT 1
@@ -8953,13 +9816,13 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
           e.laboratorio,
           COALESCE(e.facultad, f.nombre) AS facultad
         FROM solicitud_prestamo sp
-        JOIN equipo e
+        JOIN equipo_catalogo e
           ON e.id = sp.equipo_id
         LEFT JOIN LATERAL (
           SELECT f.nombre
           FROM ual u
-          JOIN facultad f
-            ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = u.facultad_id
           WHERE UPPER(u.nombre) = UPPER(e.laboratorio)
           ORDER BY u.ual_id ASC
           LIMIT 1
@@ -9063,7 +9926,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
@@ -9093,14 +9956,14 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
             u.documento AS usuario_documento,
             u.correo AS usuario_correo
           FROM solicitud_prestamo sp
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = sp.equipo_id
           JOIN usuario u
             ON u.id = sp.usuario_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY sp.fecha_inicio ASC, sp.fecha_creacion ASC, sp.id ASC
         `,
@@ -9213,8 +10076,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -9315,8 +10179,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error aprobando solicitud MiLab:', error);
@@ -9324,6 +10186,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible aprobar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );
@@ -9344,8 +10208,9 @@ router.post(
       });
     }
 
+    let client;
     try {
-      const client = await pool.connect();
+      client = await pool.connect();
       const scope = await resolveLoanManagementScope(req);
       const solicitud = await fetchManagedLoanRequest(req.params.id, scope, client);
 
@@ -9427,8 +10292,6 @@ router.post(
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
-      } finally {
-        client.release();
       }
     } catch (error) {
       console.error('Error rechazando solicitud MiLab:', error);
@@ -9436,6 +10299,8 @@ router.post(
         success: false,
         message: resolveLoanDbErrorMessage(error, 'No fue posible rechazar la solicitud.'),
       });
+    } finally {
+      client?.release();
     }
   }
 );
@@ -9452,7 +10317,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause('e.laboratorio', scope, params);
@@ -9502,7 +10367,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
             ee.condicion_devolucion,
             ee.lista_componentes
           FROM solicitud_prestamo sp
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = sp.equipo_id
           JOIN usuario u
             ON u.id = sp.usuario_id
@@ -9510,8 +10375,8 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
             ON ee.solicitud_prestamo_id = sp.id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY sp.estado ASC, sp.fecha_inicio ASC, sp.id ASC
         `,
@@ -9531,7 +10396,7 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
 
       if (!scope.unrestricted) {
         queueParams.push(scope.facultyIds);
-        queueWhereParts.push(`f.facultad_id = ANY($${queueParams.length}::int[])`);
+        queueWhereParts.push(`f.dependencia_facultad_id = ANY($${queueParams.length}::int[])`);
       }
 
       const queueLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -9562,12 +10427,12 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
           FROM cola_solicitud c
           JOIN usuario u
             ON u.id = c.usuario_id
-          LEFT JOIN equipo e
+          LEFT JOIN equipo_catalogo e
             ON e.id = c.equipo_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(COALESCE(e.laboratorio, c.laboratorio))
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${queueWhereParts.join(' AND ')}
           ORDER BY c.fecha_inicio ASC, c.id ASC
         `,
@@ -10062,11 +10927,11 @@ router.post(
               e.laboratorio AS equipo_laboratorio,
               COALESCE(e.facultad, f.nombre) AS equipo_facultad
             FROM cola_solicitud c
-            JOIN equipo e ON e.id = c.equipo_id
+            JOIN equipo_catalogo e ON e.id = c.equipo_id
             LEFT JOIN ual u
               ON UPPER(u.nombre) = UPPER(e.laboratorio)
-            LEFT JOIN facultad f
-              ON f.facultad_id = u.facultad_id
+            LEFT JOIN dependencia_facultad f
+              ON f.dependencia_facultad_id = u.facultad_id
             WHERE c.id = $1
               AND c.tipo = 'prestamo'
               AND c.estado = 'pendiente'
@@ -10762,7 +11627,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       }
 
       const laboratoryClause = buildLaboratoryNameScopeClause(
@@ -10804,7 +11669,7 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             u.documento AS reportado_por_documento,
             COALESCE(sp.estado, rp.estado) AS solicitud_estado
           FROM incidencia i
-          LEFT JOIN equipo e
+          LEFT JOIN equipo_catalogo e
             ON e.id = i.equipo_id
           LEFT JOIN usuario u
             ON u.id = i.reportado_por_id
@@ -10822,8 +11687,8 @@ router.get('/incidencias', requireIncidenciasAuthorized, async function (req, re
             ORDER BY ual_id ASC
             LIMIT 1
           ) ul ON TRUE
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY
             CASE i.estado
@@ -10868,7 +11733,9 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
   try {
     const scope = await resolveLoanManagementScope(req);
     const params = [req.params.id];
-    const facultyCondition = scope?.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+    const facultyCondition = scope?.unrestricted
+      ? ''
+      : 'AND f.dependencia_facultad_id = ANY($2::int[])';
     if (!scope?.unrestricted) {
       if (!scope?.facultyIds?.length) {
         return res.status(404).send('La evidencia no existe o no esta disponible.');
@@ -10886,7 +11753,7 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
       `
         SELECT i.evidencia_foto, i.evidencia_mime
         FROM incidencia i
-        LEFT JOIN equipo e
+        LEFT JOIN equipo_catalogo e
           ON e.id = i.equipo_id
         LEFT JOIN reserva_practica rp
           ON rp.id = i.reserva_practica_id
@@ -10900,8 +11767,8 @@ router.get('/incidencias/:id/imagen', requireIncidenciasAuthorized, async functi
           ORDER BY ual_id ASC
           LIMIT 1
         ) ul ON TRUE
-        LEFT JOIN facultad f
-          ON f.facultad_id = ul.facultad_id
+        LEFT JOIN dependencia_facultad f
+          ON f.dependencia_facultad_id = ul.facultad_id
         WHERE i.id = $1
           ${facultyCondition}
           ${laboratoryCondition}
@@ -11257,7 +12124,7 @@ router.get(
         // no-op
       } else if (scope?.facultyIds?.length) {
         params.push(scope.facultyIds);
-        whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+        whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
       } else {
         return res.render('home/prestamos/coordinador/sanciones_pendientes_bloqueo', {
           incidencias: [],
@@ -11293,7 +12160,7 @@ router.get(
             decisor.nombre AS decisor_nombre,
             decisor.documento AS decisor_documento
           FROM incidencia i
-          JOIN equipo e
+          JOIN equipo_catalogo e
             ON e.id = i.equipo_id
           LEFT JOIN solicitud_prestamo sp
             ON sp.id = i.solicitud_prestamo_id
@@ -11305,8 +12172,8 @@ router.get(
             ON decisor.id = i.paz_y_salvo_decision_by_id
           LEFT JOIN ual ul
             ON UPPER(ul.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f
-            ON f.facultad_id = ul.facultad_id
+          LEFT JOIN dependencia_facultad f
+            ON f.dependencia_facultad_id = ul.facultad_id
           WHERE ${whereParts.join(' AND ')}
           ORDER BY i.paz_y_salvo_decision_at DESC, i.id DESC
         `,
@@ -12712,7 +13579,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         dayParams.push(scope.facultyIds);
-        dayWhereParts.push(`f.facultad_id = ANY($${dayParams.length}::int[])`);
+        dayWhereParts.push(`f.dependencia_facultad_id = ANY($${dayParams.length}::int[])`);
       }
 
       const dayLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12765,7 +13632,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
           LEFT JOIN practica p ON p.id = rp.practica_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${dayWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12795,7 +13662,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         activeParams.push(scope.facultyIds);
-        activeWhereParts.push(`f.facultad_id = ANY($${activeParams.length}::int[])`);
+        activeWhereParts.push(`f.dependencia_facultad_id = ANY($${activeParams.length}::int[])`);
       }
 
       const activeLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12848,7 +13715,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
           LEFT JOIN practica p ON p.id = rp.practica_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${activeWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12870,7 +13737,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         cancelParams.push(scope.facultyIds);
-        cancelWhereParts.push(`f.facultad_id = ANY($${cancelParams.length}::int[])`);
+        cancelWhereParts.push(`f.dependencia_facultad_id = ANY($${cancelParams.length}::int[])`);
       }
 
       const cancelLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12900,7 +13767,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
           FROM reserva_practica rp
           JOIN usuario u ON u.id = rp.usuario_id
           LEFT JOIN sala s ON s.id = rp.sala_id
-          LEFT JOIN facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
+          LEFT JOIN dependencia_facultad f ON UPPER(f.nombre) = UPPER(rp.facultad)
           WHERE ${cancelWhereParts.join(' AND ')}
           ORDER BY rp.fecha_inicio ASC, rp.id ASC
         `,
@@ -12914,7 +13781,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
 
       if (!scope.unrestricted) {
         queueParams.push(scope.facultyIds);
-        queueWhereParts.push(`f.facultad_id = ANY($${queueParams.length}::int[])`);
+        queueWhereParts.push(`f.dependencia_facultad_id = ANY($${queueParams.length}::int[])`);
       }
 
       const queueLaboratoryClause = buildLaboratoryNameScopeClause(
@@ -12947,7 +13814,7 @@ router.get('/practicas/gestion', requireGestionPracticasAuthorized, async functi
             ON u.id = c.usuario_id
           LEFT JOIN reserva_practica rp
             ON rp.id = c.referencia_id
-          LEFT JOIN facultad f
+          LEFT JOIN dependencia_facultad f
             ON UPPER(f.nombre) = UPPER(COALESCE(rp.facultad, ''))
           WHERE ${queueWhereParts.join(' AND ')}
           ORDER BY c.fecha_inicio ASC, c.id ASC
@@ -14094,7 +14961,9 @@ router.post(
       }
 
       const params = [req.params.id];
-      const facultyCondition = scope.unrestricted ? '' : 'AND f.facultad_id = ANY($2::int[])';
+      const facultyCondition = scope.unrestricted
+        ? ''
+        : 'AND f.dependencia_facultad_id = ANY($2::int[])';
 
       if (!scope.unrestricted) {
         params.push(scope.facultyIds);
@@ -14121,7 +14990,7 @@ router.post(
           FROM cola_solicitud c
           LEFT JOIN reserva_practica rp
             ON rp.id = c.referencia_id
-          LEFT JOIN facultad f
+          LEFT JOIN dependencia_facultad f
             ON UPPER(f.nombre) = UPPER(COALESCE(rp.facultad, ''))
           LEFT JOIN sala s
             ON s.id = rp.sala_id
@@ -14560,7 +15429,7 @@ router.get(
         ? await fetchScopedPracticeConfigurationFaculties(req)
         : [];
       let selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
-      if (selectedId && !facultades.some((f) => Number(f.facultad_id) === selectedId)) {
+      if (selectedId && !facultades.some((f) => Number(f.dependencia_facultad_id) === selectedId)) {
         selectedId = Number(facultades[0]?.facultad_id || 0);
       }
       const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
@@ -14598,9 +15467,9 @@ router.get(
             }
             const labsQ = await pool.query(
               `
-                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.facultad_id
+                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
                 FROM ual u
-                JOIN facultad f ON f.facultad_id = u.facultad_id
+                JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
                 WHERE ${whereParts.join(' AND ') || 'TRUE'}
                 ORDER BY f.nombre ASC, u.nombre ASC
               `,
@@ -15036,7 +15905,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
 
     if (!scope.unrestricted) {
       params.push(scope.facultyIds);
-      whereParts.push(`f.facultad_id = ANY($${params.length}::int[])`);
+      whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
     }
 
     if (facultad) {
@@ -15072,7 +15941,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
           ) AS total_horarios
         FROM sala s
         JOIN ual u ON u.ual_id = s.ual_id
-        JOIN facultad f ON f.facultad_id = u.facultad_id
+        JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
         WHERE ${whereParts.join(' AND ')}
         ORDER BY f.nombre ASC, u.nombre ASC, s.nombre ASC
       `,
@@ -15576,10 +16445,10 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             u.nombre AS usuario_nombre,
             u.correo AS usuario_correo
           FROM solicitud_prestamo sp
-          JOIN equipo e ON e.id = sp.equipo_id
+          JOIN equipo_catalogo e ON e.id = sp.equipo_id
           JOIN usuario u ON u.id = sp.usuario_id
           LEFT JOIN ual ual_item ON UPPER(ual_item.nombre) = UPPER(e.laboratorio)
-          LEFT JOIN facultad f ON f.facultad_id = ual_item.facultad_id
+          LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = ual_item.facultad_id
           WHERE sp.fecha_inicio >= $1::date
             AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
@@ -15688,7 +16557,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             i.documento_que_reporto,
             i.nombre_que_reporto
           FROM incidencia i
-          JOIN equipo e ON e.id = i.equipo_id
+          JOIN equipo_catalogo e ON e.id = i.equipo_id
           WHERE i.fecha_creacion >= $1::date
             AND i.fecha_creacion < ($2::date + INTERVAL '1 day')
             ${scopeClause}
@@ -15730,7 +16599,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
             e.laboratorio,
             COUNT(*)::int AS cantidad
           FROM solicitud_prestamo sp
-          JOIN equipo e ON e.id = sp.equipo_id
+          JOIN equipo_catalogo e ON e.id = sp.equipo_id
           WHERE sp.fecha_inicio >= $1::date
             AND sp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}
@@ -15767,7 +16636,7 @@ router.get('/reportes/export/:dataset', requireReportesAuthorized, async functio
           FROM reserva_practica rp
           JOIN sala s ON s.id = rp.sala_id
           JOIN ual u ON u.ual_id = s.ual_id
-          JOIN facultad f ON f.facultad_id = u.facultad_id
+          JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
           WHERE rp.fecha_inicio >= $1::date
             AND rp.fecha_inicio < ($2::date + INTERVAL '1 day')
             ${scopeClause}

@@ -22,6 +22,7 @@
               class="form-control"
               id="documento_lookup"
               name="documento"
+              maxlength="50"
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
@@ -50,7 +51,7 @@
 
     <div class="col-md-6">
       <label for="nombre" class="form-label">Nombre Completo</label>
-      <input type="text" class="form-control" id="nombre" name="nombre" value="<%= lookupData?.nombre || '' %>" required>
+      <input type="text" class="form-control" id="nombre" name="nombre" maxlength="255" value="<%= lookupData?.nombre || '' %>" required>
     </div>
 
     <div class="col-md-6">
@@ -61,6 +62,7 @@
         class="form-control"
         id="documento"
         name="documento"
+        maxlength="50"
         value="<%= lookupData?.documento || '' %>"
         required
       >
@@ -68,42 +70,106 @@
 
     <div class="col-md-12">
       <label for="correo" class="form-label">Correo electrónico</label>
-      <input type="email" class="form-control" id="correo" name="correo" value="<%= lookupData?.correo || '' %>" required>
+      <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= lookupData?.correo || '' %>" required>
     </div>
 
     <div class="col-md-12">
       <label for="role_name" class="form-label">Rol de acceso</label>
       <select id="role_name" name="role_name" class="form-select">
-        <option value="coordinador" <%= (selectedRole || 'coordinador') === 'coordinador' ? 'selected' : '' %>>Coordinador (con facultades a cargo)</option>
+        <option value="coordinador" <%= (selectedRole || 'coordinador') === 'coordinador' ? 'selected' : '' %>>Coordinador (con alcance institucional definido abajo)</option>
         <option value="coordinador_general" <%= selectedRole === 'coordinador_general' ? 'selected' : '' %>>Coordinador General (lectura global, sin facultad a cargo)</option>
       </select>
       <small class="form-text text-muted">El Coordinador General podrá ver todos los módulos habilitados en modo solo lectura.</small>
     </div>
 
     <fieldset class="col-md-12" id="facultadesSection">
-      <legend class="form-label fs-6">Seleccione Sedes / Facultades (una o varias)</legend>
-      <div class="row">
-        <% for (var i = 0; i < facultades.length; i++) { %>
-          <div class="col-md-6 mb-2">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="facultad_<%= facultades[i].facultad_id %>" name="facultad_ids" value="<%= facultades[i].facultad_id %>">
-              <label class="form-check-label" for="facultad_<%= facultades[i].facultad_id %>"><%= facultades[i].nombre %></label>
-            </div>
-          </div>
-        <% } %>
+      <legend class="form-label fs-6">Alcance del coordinador</legend>
+      <div class="mb-3">
+        <label for="facultad_id" class="form-label">Facultad</label>
+        <select class="form-select" id="facultad_id" name="facultad_id" required>
+          <option value="">Selecciona una facultad</option>
+          <% facultades.forEach(function(facultad) { %>
+            <option value="<%= facultad.facultad_id %>"><%= facultad.nombre %></option>
+          <% }); %>
+        </select>
       </div>
-      <small class="form-text text-muted">Elija al menos una facultad para el rol Coordinador.</small>
+
+      <div class="d-flex flex-column gap-2 mb-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="alcance_facultad" name="alcance" value="facultad" checked>
+          <label class="form-check-label" for="alcance_facultad">Toda la facultad</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="alcance_dependencias" name="alcance" value="dependencias">
+          <label class="form-check-label" for="alcance_dependencias">Solo dependencias específicas</label>
+        </div>
+      </div>
+
+      <div id="dependenciasSection" class="d-none">
+        <label class="form-label" for="dependenciasSearch">Dependencias</label>
+        <input
+          type="search"
+          class="form-control mb-2"
+          id="dependenciasSearch"
+          maxlength="255"
+          placeholder="Filtrar dependencias..."
+          autocomplete="off"
+        >
+        <div class="coordinator-dependency-list" id="dependenciasOptions">
+          <% dependencias.forEach(function(dependencia) { %>
+            <label
+              class="form-check coordinator-dependency-option"
+              data-dependencia-option="true"
+              data-facultad="<%= dependencia.facultad_id %>"
+              data-search="<%= dependencia.nombre.toLowerCase() %>"
+              hidden
+            >
+              <input
+                class="form-check-input me-2"
+                type="checkbox"
+                name="dependencia_ids"
+                value="<%= dependencia.dependencia_id %>"
+                data-dependencia-checkbox="true"
+              >
+              <span class="form-check-label"><%= dependencia.nombre %></span>
+            </label>
+          <% }); %>
+          <p class="text-muted mb-0" id="dependenciasEmpty" hidden>No hay dependencias que coincidan con la facultad y búsqueda seleccionadas.</p>
+        </div>
+        <small class="form-text text-muted">Puedes seleccionar una o varias dependencias de la facultad elegida.</small>
+      </div>
+    </fieldset>
+
+    <fieldset class="col-md-12" id="ualesSection">
+      <legend class="form-label fs-6">UALs asignadas (opcional)</legend>
+      <input
+        type="search"
+        class="form-control mb-2"
+        id="ualesSearch"
+        placeholder="Filtrar UALs..."
+        autocomplete="off"
+      >
+      <div class="coordinator-dependency-list" id="ualesOptions">
+        <% ualesDisponibles.forEach(function(ual) { %>
+          <label class="form-check coordinator-dependency-option" data-ual-option="true" data-search="<%= ual.nombre.toLowerCase() %>">
+            <input class="form-check-input me-2" type="checkbox" name="ual_ids" value="<%= ual.ual_id %>">
+            <span class="form-check-label"><%= ual.nombre %><% if (ual.facultad_nombre) { %> <small class="text-muted">(<%= ual.facultad_nombre %>)</small><% } %></span>
+          </label>
+        <% }); %>
+        <p class="text-muted mb-0" id="ualesEmpty" hidden>No hay UALs que coincidan con la búsqueda.</p>
+      </div>
+      <small class="form-text text-muted">Las UALs pueden ser de cualquier dependencia o facultad. Si asignas UALs, el coordinador solo verá las multas de esas UALs y no tendrá el panel de configuración de facultades.</small>
     </fieldset>
 
     <!-- NUEVOS CAMPOS -->
     <div class="col-md-6">
       <label for="numero_resolucion_coordinador" class="form-label">Número y año de Resolución del encargo de coordinación</label>
-      <input type="text" class="form-control" id="numero_resolucion_coordinador" name="numero_resolucion_coordinador" required>
+      <input type="text" class="form-control" id="numero_resolucion_coordinador" name="numero_resolucion_coordinador" maxlength="100" required>
     </div>
 
     <div class="col-md-6">
       <label for="soporte_resolucion" class="form-label">Soporte Resolución (URL) del sistema sgral </label>
-      <input type="url" class="form-control" id="soporte_resolucion" name="soporte_resolucion" required>
+      <input type="url" class="form-control" id="soporte_resolucion" name="soporte_resolucion" maxlength="1000" required>
     </div>
 
     <div id="mensajeError" class="col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
@@ -164,10 +230,17 @@
     }
 
     if (roleName === 'coordinador') {
-      var checks = document.querySelectorAll('input[name="facultad_ids"]:checked');
-      if (checks.length === 0) {
+      var facultyId = document.getElementById('facultad_id').value;
+      var scope = document.querySelector('input[name="alcance"]:checked')?.value;
+      var dependencies = document.querySelectorAll('input[name="dependencia_ids"]:checked');
+      if (!facultyId) {
         mensajeError.classList.remove("d-none");
-        mensajeError.innerHTML += "<p>Debe seleccionar al menos una sede/facultad.</p>";
+        mensajeError.innerHTML += "<p>Debe seleccionar una facultad.</p>";
+        return false;
+      }
+      if (scope === 'dependencias' && dependencies.length === 0) {
+        mensajeError.classList.remove("d-none");
+        mensajeError.innerHTML += "<p>Debe seleccionar al menos una dependencia.</p>";
         return false;
       }
     }
@@ -178,19 +251,58 @@
   function syncFacultySection() {
     var roleSelect = document.getElementById('role_name');
     var facultiesSection = document.getElementById('facultadesSection');
+    var ualesSection = document.getElementById('ualesSection');
     if (!roleSelect || !facultiesSection) {
       return;
     }
 
     var isGeneralRole = roleSelect.value === 'coordinador_general';
     facultiesSection.classList.toggle('d-none', isGeneralRole);
+    facultiesSection.disabled = isGeneralRole;
+    ualesSection.classList.toggle('d-none', isGeneralRole);
+    ualesSection.disabled = isGeneralRole;
 
     if (isGeneralRole) {
-      var checks = document.querySelectorAll('input[name="facultad_ids"]');
+      var checks = document.querySelectorAll('input[name="dependencia_ids"]');
       checks.forEach(function (check) {
         check.checked = false;
       });
+      document.querySelectorAll('input[name="ual_ids"]').forEach(function (check) {
+        check.checked = false;
+      });
+      document.getElementById('facultad_id').value = '';
     }
+  }
+
+  function filterUalOptions() {
+    var filter = document.getElementById('ualesSearch').value.trim().toLocaleLowerCase();
+    var visibleCount = 0;
+    document.querySelectorAll('[data-ual-option="true"]').forEach(function (option) {
+      option.hidden = !option.getAttribute('data-search').includes(filter);
+      if (!option.hidden) visibleCount++;
+    });
+    document.getElementById('ualesEmpty').hidden = visibleCount > 0;
+  }
+
+  function updateDependencyOptions() {
+    var facultyId = document.getElementById('facultad_id').value;
+    var scope = document.querySelector('input[name="alcance"]:checked')?.value;
+    var section = document.getElementById('dependenciasSection');
+    var filter = document.getElementById('dependenciasSearch').value.trim().toLocaleLowerCase();
+    var options = document.querySelectorAll('[data-dependencia-option="true"]');
+    var visibleCount = 0;
+
+    section.classList.toggle('d-none', scope !== 'dependencias');
+    options.forEach(function (option) {
+      var matchesFaculty = option.getAttribute('data-facultad') === facultyId;
+      var matchesFilter = option.getAttribute('data-search').includes(filter);
+      option.hidden = !matchesFaculty || !matchesFilter;
+      if (!option.hidden) visibleCount++;
+      if (!matchesFaculty) {
+        option.querySelector('input').checked = false;
+      }
+    });
+    document.getElementById('dependenciasEmpty').hidden = !facultyId || visibleCount > 0;
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -198,6 +310,14 @@
     if (roleSelect) {
       roleSelect.addEventListener('change', syncFacultySection);
     }
+    document.getElementById('facultad_id').addEventListener('change', updateDependencyOptions);
+    document.querySelectorAll('input[name="alcance"]').forEach(function (radio) {
+      radio.addEventListener('change', updateDependencyOptions);
+    });
+    document.getElementById('dependenciasSearch').addEventListener('input', updateDependencyOptions);
+    document.getElementById('ualesSearch').addEventListener('input', filterUalOptions);
     syncFacultySection();
+    updateDependencyOptions();
+    filterUalOptions();
   });
 </script>

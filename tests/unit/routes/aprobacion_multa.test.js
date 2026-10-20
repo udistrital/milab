@@ -97,8 +97,14 @@ function loadRoute({
     [
       facultyScopePath,
       {
-        resolveCoordinatorScope:
-          scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10] })),
+        resolveCoordinatorAuthorizationScope:
+          scopeImpl || (async () => ({ coordinatorDocument: '900', facultyIds: [10], ualIds: [] })),
+        hasCoordinatorScope: (scope) =>
+          (scope?.ualIds?.length || 0) > 0 || (scope?.facultyIds?.length || 0) > 0,
+        buildMultaScopeFilter: (scope, paramIndex) =>
+          scope.ualIds?.length
+            ? { sql: `u.ual_id = ANY($${paramIndex}::int[])`, value: scope.ualIds }
+            : { sql: `u.facultad_id = ANY($${paramIndex}::int[])`, value: scope.facultyIds },
       },
     ],
     [
@@ -135,18 +141,32 @@ function loadRoute({
   };
 }
 
-test('aprobacion_multa renders access error when coordinator has no document scope', async () => {
-  const loaded = loadRoute({
-    scopeImpl: async () => ({ coordinatorDocument: null, facultyIds: [10] }),
-  });
+test('aprobacion_multa redirects coordinators to the sanctions list', async () => {
+  const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route);
     const response = await request(app).get('/');
 
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get_list_multas');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('aprobacion_multa rejects disabled faculty authorization settings', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/configuracion/10/toggle-crear-directa')
+      .type('form')
+      .set('Accept', 'text/html');
+
+    assert.equal(response.status, 410);
     assert.equal(response.body.view, 'home/message_error');
-    assert.match(response.body.locals.message, /No se encontró información del coordinador/i);
+    assert.match(response.body.locals.message, /Funcionalidad desactivada/i);
   } finally {
     loaded.restore();
   }
@@ -207,6 +227,52 @@ test('aprobacion_multa activar redirects on successful update', async () => {
   }
 });
 
+test('aprobacion_multa activation includes faculty and dependency in the notice payload', async () => {
+  let emailPayload;
+  const loaded = loadRoute({
+    resolveStudentContactImpl: async () => ({
+      nombre: 'Estudiante',
+      documento: '123',
+      codigo: '2024',
+      correo: 'estudiante@udistrital.edu.co',
+    }),
+    sendSanctionEmailImpl: async (payload) => {
+      emailPayload = payload;
+      return { ok: true };
+    },
+    queryImpl: async (sql) => {
+      if (sql.includes('UPDATE multa AS m')) return { rowCount: 1, rows: [] };
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
+        return {
+          rows: [
+            {
+              usuario_sancionado_id: 77,
+              fecha_multa: '2026-01-01',
+              ual: 'Lab',
+              obs_multa: '',
+              laboratorio_facultad: 'Facultad de Ingeniería',
+              laboratorio_dependencia: 'Departamento de Física',
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route)).post('/activar').type('form').send({
+      multa_id: '1',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(emailPayload.facultad, 'Facultad de Ingeniería');
+    assert.equal(emailPayload.dependencia, 'Departamento de Física');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('aprobacion_multa activar from listado redirects to sanctions list', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
@@ -258,6 +324,42 @@ test('aprobacion_multa saldar from listado redirects to sanctions list', async (
 
   try {
     const app = buildApp(loaded.route);
+    const response = await request(app).post('/saldar').type('form').send({
+      multa_id: '33',
+      source: 'listado',
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=saldada');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('laboratorista can mark POR SALDAR sanctions as SALDADA without faculty authorization', async () => {
+  const loaded = loadRoute({
+    queryImpl: async (sql) => {
+      if (sql.includes('SELECT documento FROM laboratorista')) {
+        return { rows: [{ documento: 'lab-1' }] };
+      }
+      if (sql.includes('SELECT m.id, u.ual_id, u.facultad_id')) {
+        return { rows: [{ id: 33, ual_id: 12, facultad_id: 7 }] };
+      }
+      if (sql.includes('FROM laboratorista_ual')) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+      if (sql.includes("SET con_estado_multa = 'SALDADA'")) {
+        return { rowCount: 1, rows: [] };
+      }
+      if (sql.includes('SELECT u.documento FROM multa')) {
+        return { rows: [{ documento: '20241001' }] };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: 'lab-user' });
     const response = await request(app).post('/saldar').type('form').send({
       multa_id: '33',
       source: 'listado',

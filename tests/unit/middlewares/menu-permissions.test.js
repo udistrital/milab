@@ -9,6 +9,69 @@ const middlewarePath = path.resolve(
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 
+test('claim submissions and responses resolve their own menu permissions rather than the entire sanctions module', async () => {
+  for (const [route, parent] of [
+    ['/milab/api/sanciones/mis-sanciones/9/reclamar', '/milab/api/sanciones/mis-sanciones'],
+    ['/milab/api/sanciones/reclamaciones/11/responder', '/milab/api/sanciones/reclamaciones'],
+    ['/milab/api/sanciones/reclamaciones/11/reasignar', '/milab/api/sanciones/reclamaciones'],
+  ]) {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async (sql) =>
+        sql.includes('FROM menu_item') ? { rows: [{ id: 42, route: parent }] } : { rows: [] },
+    });
+    try {
+      let called = false;
+      const res = createResponse();
+      await loaded.menuPermissionMiddleware(
+        {
+          method: 'POST',
+          originalUrl: route,
+          session: { user: { tipo: 'estudiante' } },
+        },
+        res,
+        () => {
+          called = true;
+        }
+      );
+      assert.ok(loaded.getCalls()[0].params[0].includes(parent));
+      assert.equal(called, false);
+      assert.equal(res.rendered.view, 'home/message_error');
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('admin catalog mutations resolve their menu parent and respect can_use permission', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM menu_item'))
+        return { rows: [{ id: 42, route: '/milab/api/admin/sanciones' }] };
+      return { rows: [] };
+    },
+  });
+  try {
+    const res = createResponse();
+    let nextCalled = false;
+    await loaded.menuPermissionMiddleware(
+      {
+        originalUrl: '/milab/api/admin/sanciones/2/estado',
+        method: 'POST',
+        session: { user: { tipo: 'admin' } },
+      },
+      res,
+      () => {
+        nextCalled = true;
+      }
+    );
+    assert.ok(loaded.getCalls()[0].params[0].includes('/milab/api/admin/sanciones'));
+    assert.equal(nextCalled, false);
+    assert.equal(res.rendered.view, 'home/message_error');
+  } finally {
+    loaded.restore();
+  }
+});
+
 function createResponse() {
   return {
     rendered: null,

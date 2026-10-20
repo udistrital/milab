@@ -1,0 +1,36 @@
+<%
+  const state = String(sanction.con_estado_multa || '').trim();
+  const stateStyles = {
+    ACTIVA: 'danger',
+    APLAZADA: 'secondary',
+    PENDIENTE: 'warning',
+    'POR SALDAR': 'info',
+    SALDADA: 'success',
+  };
+  const stateStyle = stateStyles[state.toUpperCase()] || 'secondary';
+  const fecha = sanction.fecha_multa_formateada || '';
+%>
+<td class="app-sanction-info-cell" data-order="<%= fecha %>">
+  <dl class="app-sanction-info-list">
+    <div>
+      <dt>Categoría</dt>
+      <dd><%= sanction.cat_multa || 'Sin categoría' %></dd>
+    </div>
+    <div>
+      <dt>Tipo</dt>
+      <dd><%= sanction.tipo_sancion || 'Por definir' %></dd>
+    </div>
+    <div>
+      <dt>Fecha</dt>
+      <dd><time datetime="<%= fecha %>"><%= fecha || 'Sin fecha' %></time></dd>
+    </div>
+    <div>
+      <dt>Laboratorista</dt>
+      <dd><%= sanction.nombre_laboratorista || 'No registrado' %></dd>
+    </div>
+    <div>
+      <dt>Estado</dt>
+      <dd><span class="badge rounded-pill text-bg-<%= stateStyle %> app-sanction-state"><%= state || 'Sin estado' %></span></dd>
+    </div>
+  </dl>
+</td>
