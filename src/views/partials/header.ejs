@@ -117,6 +117,7 @@
     'Capacitación': 'nav-capacitacion',
     'Creación de cursos': 'nav-capacitacion-cursos',
     'Asociación curso-equipo': 'nav-capacitacion-asociacion-equipos',
+    'Mis logros': 'nav-mis-logros',
   };
   function getNavigationGuideAttribute(label) {
     const key = navigationGuideMap[label];
@@ -395,6 +396,19 @@
                   </ul>
                 </div>
 
+                <a
+                  class="btn app-help-pill app-user-card app-user-card--icon"
+                  href="/milab/encuentros/mis-logros"
+                  aria-label="Consultar mis medallas"
+                  title="Mis logros"
+                  data-guide="nav-mis-logros"
+                >
+                  <span class="app-user-card-icon" aria-hidden="true">
+                    <i class="bi bi-award"></i>
+                  </span>
+                  <span class="visually-hidden">Mis logros</span>
+                </a>
+
                 <div class="dropdown">
                   <button
                     class="btn app-help-pill app-user-card app-user-card--icon app-user-menu dropdown-toggle"
@@ -563,6 +577,17 @@
                     </li>
                   </ul>
                 </div>
+
+                <a
+                  class="btn app-help-pill app-user-chip app-user-chip--icon"
+                  href="/milab/encuentros/mis-logros"
+                  aria-label="Consultar mis medallas"
+                  title="Mis logros"
+                  data-guide="nav-mis-logros"
+                >
+                  <i class="bi bi-award" aria-hidden="true"></i>
+                  <span class="visually-hidden">Mis logros</span>
+                </a>
 
                 <div class="dropdown">
                   <button

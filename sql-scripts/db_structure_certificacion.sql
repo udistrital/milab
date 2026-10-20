@@ -201,19 +201,6 @@ BEGIN
     END IF;
 END $$;
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints
-         WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
-           AND table_name = 'certificacion_usuario'
-    ) THEN
-        ALTER TABLE certificacion_usuario
-            ADD CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario
-                UNIQUE (codigo_curso, usuario_documento) WHERE (activo = TRUE);
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
     id BIGSERIAL NOT NULL,
     codigo_curso VARCHAR(100) NOT NULL,
@@ -444,5 +431,247 @@ BEFORE INSERT OR UPDATE OF codigo_curso, ual_id, facultad_id
 ON sesion_capacitacion
 FOR EACH ROW
 EXECUTE FUNCTION validar_facultad_sesion_capacitacion();
+
+-- ============================================================
+-- SUBMODULO ENCUENTROS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS encuentro_evento (
+    id BIGSERIAL NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    lugar VARCHAR(255) NOT NULL,
+    organizador VARCHAR(255) NOT NULL,
+    banner_path TEXT,
+    plantilla_pdf_path TEXT NOT NULL,
+    plantilla_pdf_nombre VARCHAR(255) NOT NULL,
+    plantilla_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    estado VARCHAR(20) NOT NULL DEFAULT 'programado',
+    creado_por_usuario_id BIGINT,
+    modificado_por_usuario_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_evento PRIMARY KEY (id),
+    CONSTRAINT fk_encuentro_evento_creado_por FOREIGN KEY (creado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT fk_encuentro_evento_modificado_por FOREIGN KEY (modificado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_estado_encuentro_evento CHECK (
+        estado IN ('programado', 'en_curso', 'finalizado', 'cancelado')
+    ),
+    CONSTRAINT ck_horario_encuentro_evento CHECK (hora_fin > hora_inicio),
+    CONSTRAINT ck_nombre_encuentro_evento CHECK (BTRIM(nombre) <> ''),
+    CONSTRAINT ck_lugar_encuentro_evento CHECK (BTRIM(lugar) <> ''),
+    CONSTRAINT ck_organizador_encuentro_evento CHECK (BTRIM(organizador) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_evento_fecha_estado
+    ON encuentro_evento(fecha, estado) WHERE activo = TRUE;
+CREATE INDEX IF NOT EXISTS idx_encuentro_evento_nombre
+    ON encuentro_evento(LOWER(nombre)) WHERE activo = TRUE;
+
+CREATE TABLE IF NOT EXISTS encuentro_participante (
+    id BIGSERIAL NOT NULL,
+    evento_id BIGINT NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    documento VARCHAR(50) NOT NULL,
+    documento_normalizado VARCHAR(50) NOT NULL,
+    correo VARCHAR(255) NOT NULL,
+    facultad VARCHAR(255) NOT NULL,
+    laboratorio VARCHAR(255) NOT NULL,
+    usuario_id BIGINT,
+    creado_por_usuario_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_inscripcion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_participante PRIMARY KEY (id),
+    CONSTRAINT uq_id_evento_encuentro_participante UNIQUE (id, evento_id),
+    CONSTRAINT uq_id_evento_usuario_encuentro_participante UNIQUE (id, evento_id, usuario_id),
+    CONSTRAINT uq_evento_documento_encuentro_participante UNIQUE (evento_id, documento_normalizado),
+    CONSTRAINT fk_encuentro_participante_evento FOREIGN KEY (evento_id)
+        REFERENCES encuentro_evento(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_participante_usuario FOREIGN KEY (usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT fk_encuentro_participante_creado_por FOREIGN KEY (creado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_documento_encuentro_participante CHECK (BTRIM(documento) <> ''),
+    CONSTRAINT ck_documento_normalizado_encuentro_participante CHECK (
+        BTRIM(documento_normalizado) <> ''
+    ),
+    CONSTRAINT ck_correo_encuentro_participante CHECK (BTRIM(correo) <> ''),
+    CONSTRAINT ck_nombre_encuentro_participante CHECK (BTRIM(nombre) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_participante_evento_nombre
+    ON encuentro_participante(evento_id, LOWER(nombre)) WHERE activo = TRUE;
+
+CREATE TABLE IF NOT EXISTS encuentro_asistencia (
+    id BIGSERIAL NOT NULL,
+    evento_id BIGINT NOT NULL,
+    participante_id BIGINT NOT NULL,
+    entrada_en TIMESTAMPTZ,
+    entrada_por_usuario_id BIGINT,
+    entrada_metodo VARCHAR(20) NOT NULL DEFAULT 'manual',
+    salida_en TIMESTAMPTZ,
+    salida_por_usuario_id BIGINT,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_asistencia PRIMARY KEY (id),
+    CONSTRAINT uq_id_evento_encuentro_asistencia UNIQUE (id, evento_id),
+    CONSTRAINT uq_participante_encuentro_asistencia UNIQUE (participante_id),
+    CONSTRAINT fk_encuentro_asistencia_participante_evento FOREIGN KEY (participante_id, evento_id)
+        REFERENCES encuentro_participante(id, evento_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_asistencia_entrada_por FOREIGN KEY (entrada_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT fk_encuentro_asistencia_salida_por FOREIGN KEY (salida_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_metodo_entrada_encuentro_asistencia CHECK (entrada_metodo = 'manual'),
+    CONSTRAINT ck_salida_posterior_entrada_encuentro_asistencia CHECK (
+        salida_en IS NULL OR (entrada_en IS NOT NULL AND salida_en >= entrada_en)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_asistencia_evento_entrada
+    ON encuentro_asistencia(evento_id, entrada_en, salida_en) WHERE activo = TRUE;
+
+CREATE TABLE IF NOT EXISTS encuentro_asistencia_correccion (
+    id BIGSERIAL NOT NULL,
+    evento_id BIGINT NOT NULL,
+    asistencia_id BIGINT NOT NULL,
+    entrada_anterior TIMESTAMPTZ,
+    salida_anterior TIMESTAMPTZ,
+    entrada_nueva TIMESTAMPTZ,
+    salida_nueva TIMESTAMPTZ,
+    motivo VARCHAR(1000) NOT NULL,
+    corregido_por_usuario_id BIGINT,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_asistencia_correccion PRIMARY KEY (id),
+    CONSTRAINT fk_encuentro_asistencia_correccion_asistencia FOREIGN KEY (asistencia_id, evento_id)
+        REFERENCES encuentro_asistencia(id, evento_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_asistencia_correccion_usuario FOREIGN KEY (corregido_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_motivo_encuentro_asistencia_correccion CHECK (BTRIM(motivo) <> ''),
+    CONSTRAINT ck_salida_encuentro_asistencia_correccion CHECK (
+        salida_nueva IS NULL OR (entrada_nueva IS NOT NULL AND salida_nueva >= entrada_nueva)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_asistencia_correccion_asistencia
+    ON encuentro_asistencia_correccion(asistencia_id, fecha_creacion DESC);
+
+CREATE TABLE IF NOT EXISTS encuentro_certificado (
+    id BIGSERIAL NOT NULL,
+    evento_id BIGINT NOT NULL,
+    participante_id BIGINT NOT NULL,
+    codigo VARCHAR(64) NOT NULL,
+    token_verificacion VARCHAR(64) NOT NULL,
+    estado VARCHAR(20) NOT NULL DEFAULT 'valido',
+    email_estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+    intentos_email INT NOT NULL DEFAULT 0,
+    email_lease_hasta TIMESTAMPTZ,
+    email_enviado_en TIMESTAMPTZ,
+    email_error TEXT,
+    archivo_actual TEXT NOT NULL,
+    version_actual INT NOT NULL DEFAULT 1,
+    datos_snapshot JSONB NOT NULL,
+    creado_por_usuario_id BIGINT,
+    anulado_por_usuario_id BIGINT,
+    anulado_en TIMESTAMPTZ,
+    motivo_anulacion VARCHAR(1000),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_emision TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_certificado PRIMARY KEY (id),
+    CONSTRAINT uq_evento_participante_encuentro_certificado UNIQUE (evento_id, participante_id),
+    CONSTRAINT uq_id_participante_evento_encuentro_certificado UNIQUE (id, participante_id, evento_id),
+    CONSTRAINT uq_codigo_encuentro_certificado UNIQUE (codigo),
+    CONSTRAINT uq_token_encuentro_certificado UNIQUE (token_verificacion),
+    CONSTRAINT fk_encuentro_certificado_participante_evento FOREIGN KEY (participante_id, evento_id)
+        REFERENCES encuentro_participante(id, evento_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_certificado_creado_por FOREIGN KEY (creado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT fk_encuentro_certificado_anulado_por FOREIGN KEY (anulado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_estado_encuentro_certificado CHECK (estado IN ('valido', 'anulado')),
+    CONSTRAINT ck_email_estado_encuentro_certificado CHECK (
+        email_estado IN ('pendiente', 'enviando', 'enviado', 'error', 'omitido')
+    ),
+    CONSTRAINT ck_version_encuentro_certificado CHECK (version_actual > 0),
+    CONSTRAINT ck_intentos_email_encuentro_certificado CHECK (intentos_email >= 0),
+    CONSTRAINT ck_anulacion_encuentro_certificado CHECK (
+        (estado = 'valido' AND anulado_en IS NULL AND motivo_anulacion IS NULL)
+        OR (estado = 'anulado' AND anulado_en IS NOT NULL AND motivo_anulacion IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_certificado_estado_email
+    ON encuentro_certificado(email_estado, fecha_modificacion);
+
+CREATE TABLE IF NOT EXISTS encuentro_certificado_version (
+    id BIGSERIAL NOT NULL,
+    certificado_id BIGINT NOT NULL,
+    numero_version INT NOT NULL,
+    archivo_path TEXT NOT NULL,
+    plantilla_config_snapshot JSONB NOT NULL,
+    datos_snapshot JSONB NOT NULL,
+    generado_por_usuario_id BIGINT,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_certificado_version PRIMARY KEY (id),
+    CONSTRAINT uq_certificado_version_encuentro UNIQUE (certificado_id, numero_version),
+    CONSTRAINT fk_encuentro_certificado_version_certificado FOREIGN KEY (certificado_id)
+        REFERENCES encuentro_certificado(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_certificado_version_usuario FOREIGN KEY (generado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_numero_version_encuentro_certificado CHECK (numero_version > 0)
+);
+
+CREATE TABLE IF NOT EXISTS encuentro_envio_certificado (
+    id BIGSERIAL NOT NULL,
+    certificado_id BIGINT NOT NULL,
+    intento INT NOT NULL,
+    estado VARCHAR(20) NOT NULL,
+    error TEXT,
+    iniciado_por_usuario_id BIGINT,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_envio_certificado PRIMARY KEY (id),
+    CONSTRAINT uq_certificado_intento_encuentro_envio UNIQUE (certificado_id, intento),
+    CONSTRAINT fk_encuentro_envio_certificado_certificado FOREIGN KEY (certificado_id)
+        REFERENCES encuentro_certificado(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_envio_certificado_usuario FOREIGN KEY (iniciado_por_usuario_id)
+        REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_estado_encuentro_envio CHECK (
+        estado IN ('enviando', 'enviado', 'error', 'omitido')
+    ),
+    CONSTRAINT ck_intento_encuentro_envio CHECK (intento > 0)
+);
+
+CREATE TABLE IF NOT EXISTS encuentro_logro (
+    id BIGSERIAL NOT NULL,
+    evento_id BIGINT NOT NULL,
+    participante_id BIGINT NOT NULL,
+    usuario_id BIGINT NOT NULL,
+    certificado_id BIGINT NOT NULL,
+    fecha_obtencion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_encuentro_logro PRIMARY KEY (id),
+    CONSTRAINT uq_evento_usuario_encuentro_logro UNIQUE (evento_id, usuario_id),
+    CONSTRAINT uq_evento_participante_encuentro_logro UNIQUE (evento_id, participante_id),
+    CONSTRAINT fk_encuentro_logro_participante_usuario FOREIGN KEY (participante_id, evento_id, usuario_id)
+        REFERENCES encuentro_participante(id, evento_id, usuario_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_logro_usuario FOREIGN KEY (usuario_id)
+        REFERENCES usuario(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_encuentro_logro_certificado_participante_evento
+        FOREIGN KEY (certificado_id, participante_id, evento_id)
+        REFERENCES encuentro_certificado(id, participante_id, evento_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_encuentro_logro_usuario_fecha
+    ON encuentro_logro(usuario_id, fecha_obtencion DESC);
 
 COMMIT;

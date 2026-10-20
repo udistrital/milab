@@ -17,6 +17,7 @@ app.use('/auth', require('./routes/api/login'));
 app.use('/auth', require('./routes/api/microsoft'));
 app.use('/auth', require('./routes/api/logout'));
 app.use('/auth', require('./routes/api/dev-login'));
+app.use('/encuentros', require('./routes/api/encuentros'));
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
