@@ -238,7 +238,7 @@ test('merged action columns preserve table structure and state in registered-use
   };
   for (const [view, variables, expectedColumns] of [
     ['laboratoristas_registrados', { laboratoristas: [person] }, 8],
-    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 10],
+    ['coordinadores_registrados', { coordinadores: [person], facultadesDisponibles: [] }, 11],
     [
       'facultad',
       {
