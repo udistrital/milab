@@ -19,9 +19,9 @@ Las URL del QR se generan con `APP_BASE_URL` y la ruta pública `/encuentros/ver
 
 ## Plantillas de certificados
 
-Carga el PDF en el formulario de Encuentros. El editor muestra sus páginas y permite elegir un campo, hacer clic en el lugar donde debe aparecer y ajustar tamaño, alineación y color del texto. Para un PDF con varias páginas, navega hasta la página deseada antes de ubicar el campo. El QR se configura de la misma forma, indicando su esquina inferior izquierda y su tamaño.
+Carga el PDF en el formulario de Encuentros. El editor muestra sus páginas y permite elegir un campo, hacer clic en un espacio libre para colocarlo y arrastrar su caja para moverlo. También puedes ajustar tamaño, alineación y color del texto. Para un PDF con varias páginas, navega hasta la página deseada antes de ubicar el campo. El QR se configura de la misma forma, indicando su esquina inferior izquierda y su tamaño.
 
-El QR `qr_verificacion` es obligatorio y solo sirve para verificación pública. La asistencia se registra manualmente por documento. El archivo cargado se conserva sin modificaciones: el certificado superpone los datos y el QR al PDF; no borra ni reemplaza contenido que ya esté impreso en el fondo. Usa la vista previa del certificado con datos de ejemplo antes de guardar. Cada certificado guarda su propia versión, sus datos de emisión y el archivo generado.
+El QR `qr_verificacion` es obligatorio y solo sirve para verificación pública. La asistencia se registra manualmente por documento. Quitar una caja elimina su ubicación del editor; no borra texto que ya forme parte del PDF original. El archivo cargado se conserva sin modificaciones: el certificado superpone los datos y el QR al PDF. Usa la vista previa del certificado con datos de ejemplo antes de guardar. Cada certificado guarda su propia versión, sus datos de emisión y el archivo generado.
 
 ## Participantes Excel
 

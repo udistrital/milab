@@ -5,6 +5,8 @@
   const fieldSelect = document.getElementById('template-field-select');
   const editor = document.getElementById('template-editor');
   const canvas = document.getElementById('template-preview-canvas');
+  const overlayCanvas = document.getElementById('template-preview-overlay');
+  const canvasWrap = document.getElementById('template-preview-canvas-wrap');
   const surface = document.getElementById('template-preview-surface');
   const pageLabel = document.getElementById('template-page-label');
   const previousPage = document.getElementById('template-page-prev');
@@ -46,6 +48,10 @@
     loadId: 0,
     viewport: null,
     pdfJs: null,
+    draggingKey: null,
+    pointerStart: null,
+    pointerMoved: false,
+    pointerWasPlaced: false,
   };
 
   function setStatus(message, variant = 'muted') {
@@ -191,6 +197,12 @@
     canvas.height = Math.ceil(viewport.height * pixelRatio);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
+    overlayCanvas.width = canvas.width;
+    overlayCanvas.height = canvas.height;
+    overlayCanvas.style.width = `${viewport.width}px`;
+    overlayCanvas.style.height = `${viewport.height}px`;
+    canvasWrap.style.width = `${viewport.width}px`;
+    canvasWrap.style.height = `${viewport.height}px`;
     state.viewport = viewport;
 
     const task = page.render({
@@ -212,63 +224,102 @@
     updatePageControls();
   }
 
+  function getFieldBounds(key, field, context) {
+    if (!state.viewport || Number(field.page || 0) !== state.pageNumber - 1) return null;
+    const x = Number(field.x);
+    const y = Number(field.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+    const [pointX, pointY] = state.viewport.convertToViewportPoint(x, y);
+    if (key === 'qr_verificacion') {
+      const width = Number(field.width);
+      if (!Number.isFinite(width)) return null;
+      const [otherX, otherY] = state.viewport.convertToViewportPoint(x + width, y + width);
+      return {
+        left: Math.min(pointX, otherX) - 4,
+        top: Math.min(pointY, otherY) - 4,
+        right: Math.max(pointX, otherX) + 4,
+        bottom: Math.max(pointY, otherY) + 4,
+        pointX,
+        pointY,
+      };
+    }
+
+    const fontSize = Number(field.fontSize || 18);
+    const sample = previewValues[key] || labels.get(key) || key;
+    context.font = `${Math.max(8, fontSize * state.viewport.scale)}px sans-serif`;
+    context.textAlign = field.align || 'center';
+    const textWidth = context.measureText(sample).width;
+    const left =
+      context.textAlign === 'center'
+        ? pointX - textWidth / 2
+        : context.textAlign === 'right'
+          ? pointX - textWidth
+          : pointX;
+    return {
+      left: left - 6,
+      top: pointY - fontSize * state.viewport.scale - 5,
+      right: left + textWidth + 6,
+      bottom: pointY + 5,
+      pointX,
+      pointY,
+      fontSize,
+      sample,
+    };
+  }
+
   function drawOverlays() {
-    if (!state.document || !state.viewport) return;
-    const context = canvas.getContext('2d');
+    const context = overlayCanvas.getContext('2d');
     const pixelRatio = window.devicePixelRatio || 1;
     context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    if (!state.document || !state.viewport) {
+      context.restore();
+      return;
+    }
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     Object.entries(state.config).forEach(([key, field]) => {
-      if (Number(field.page || 0) !== state.pageNumber - 1) return;
-      const viewport = state.viewport;
-      const x = Number(field.x);
-      const y = Number(field.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      const [pointX, pointY] = viewport.convertToViewportPoint(x, y);
-      const label = labels.get(key) || key;
+      const bounds = getFieldBounds(key, field, context);
+      if (!bounds) return;
+      const selected = fieldSelect.value === key;
+      const width = bounds.right - bounds.left;
+      const height = bounds.bottom - bounds.top;
 
       if (key === 'qr_verificacion') {
-        const width = Number(field.width);
-        if (!Number.isFinite(width)) return;
-        const [right, top] = viewport.convertToViewportPoint(x + width, y + width);
-        context.fillStyle = 'rgb(255 255 255 / 82%)';
-        context.fillRect(pointX, top, right - pointX, pointY - top);
-        context.strokeStyle = '#0d6efd';
-        context.lineWidth = 2;
-        context.strokeRect(pointX, top, right - pointX, pointY - top);
+        context.fillStyle = 'rgb(255 255 255 / 92%)';
+        context.fillRect(bounds.left, bounds.top, width, height);
+        context.strokeStyle = selected ? '#0d6efd' : 'rgb(13 110 253 / 72%)';
+        context.lineWidth = selected ? 2 : 1;
+        context.setLineDash(selected ? [] : [5, 3]);
+        context.strokeRect(bounds.left, bounds.top, width, height);
+        context.setLineDash([]);
         context.fillStyle = '#0d6efd';
         context.font = 'bold 12px sans-serif';
         context.textAlign = 'center';
         context.textBaseline = 'middle';
-        context.fillText('QR', pointX + (right - pointX) / 2, top + (pointY - top) / 2);
+        context.fillText('QR', bounds.left + width / 2, bounds.top + height / 2);
         return;
       }
 
-      const fontSize = Number(field.fontSize || 18);
-      const sample = previewValues[key] || label;
-      context.font = `${Math.max(8, fontSize * viewport.scale)}px sans-serif`;
+      context.font = `${Math.max(8, bounds.fontSize * state.viewport.scale)}px sans-serif`;
       context.textAlign = field.align || 'center';
       context.textBaseline = 'alphabetic';
-      context.fillStyle = 'rgb(255 255 255 / 72%)';
-      const textWidth = context.measureText(sample).width;
-      const left =
-        context.textAlign === 'center'
-          ? pointX - textWidth / 2
-          : context.textAlign === 'right'
-            ? pointX - textWidth
-            : pointX;
-      context.fillRect(
-        left - 2,
-        pointY - fontSize * viewport.scale - 2,
-        textWidth + 4,
-        fontSize * viewport.scale + 4
-      );
+      context.fillStyle = 'rgb(255 255 255 / 92%)';
+      context.fillRect(bounds.left, bounds.top, width, height);
+      context.strokeStyle = selected ? '#0d6efd' : 'rgb(13 110 253 / 72%)';
+      context.lineWidth = selected ? 2 : 1;
+      context.setLineDash(selected ? [] : [5, 3]);
+      context.strokeRect(bounds.left, bounds.top, width, height);
+      context.setLineDash([]);
       context.fillStyle = field.color || '#000000';
-      context.fillText(sample, pointX, pointY);
-      context.beginPath();
-      context.arc(pointX, pointY, 3, 0, Math.PI * 2);
-      context.fillStyle = '#0d6efd';
-      context.fill();
+      context.fillText(bounds.sample, bounds.pointX, bounds.pointY);
+      if (selected) {
+        context.beginPath();
+        context.arc(bounds.pointX, bounds.pointY, 3, 0, Math.PI * 2);
+        context.fillStyle = '#0d6efd';
+        context.fill();
+      }
     });
     context.restore();
   }
@@ -292,8 +343,8 @@
       await renderCurrentPage();
       setStatus(
         Object.hasOwn(state.config, 'qr_verificacion')
-          ? 'Selecciona un campo y haz clic en la página para ubicarlo o moverlo.'
-          : 'Selecciona el código QR y haz clic en su esquina inferior izquierda.'
+          ? 'Haz clic en un espacio libre para colocar un campo o arrastra una caja para moverla.'
+          : 'Selecciona el código QR y haz clic para colocarlo; luego puedes arrastrar su caja.'
       );
       if (previousDocument) {
         previousDocument.destroy().catch((error) => {
@@ -376,6 +427,9 @@
         console.error('[encuentros-template-editor:destroy]', error);
       });
     }
+    state.draggingKey = null;
+    state.pointerStart = null;
+    state.pointerMoved = false;
     state.document = null;
     state.pageNumber = 1;
     state.config = {};
@@ -385,6 +439,12 @@
     canvas.height = 0;
     canvas.style.width = '';
     canvas.style.height = '';
+    overlayCanvas.width = 0;
+    overlayCanvas.height = 0;
+    overlayCanvas.style.width = '';
+    overlayCanvas.style.height = '';
+    canvasWrap.style.width = '';
+    canvasWrap.style.height = '';
     editor.classList.add('d-none');
     configInput.value = '';
     setStatus('Carga una plantilla PDF para comenzar.');
@@ -392,19 +452,13 @@
     syncConfig();
   }
 
-  function placeSelectedField(event) {
-    if (!state.document || !state.viewport || !fieldSelect.value) return;
-    const rect = canvas.getBoundingClientRect();
-    const [x, y] = state.viewport.convertToPdfPoint(
-      event.clientX - rect.left,
-      event.clientY - rect.top
-    );
-    const key = fieldSelect.value;
+  function placeSelectedField(key, x, y) {
+    if (!state.document || !state.viewport || !key) return false;
     if (key === 'qr_verificacion') {
       const width = Number(qrWidthInput.value);
       if (!Number.isFinite(width) || width < 24 || width > 500) {
         setStatus('El tamaño del QR debe estar entre 24 y 500 puntos.', 'danger');
-        return;
+        return false;
       }
       state.config[key] = {
         x: Number(x.toFixed(2)),
@@ -417,7 +471,7 @@
       const fontSize = Number(fontSizeInput.value);
       if (!Number.isFinite(fontSize) || fontSize < 6 || fontSize > 96) {
         setStatus('El tamaño de texto debe estar entre 6 y 96 puntos.', 'danger');
-        return;
+        return false;
       }
       state.config[key] = {
         x: Number(x.toFixed(2)),
@@ -431,7 +485,95 @@
     }
     syncConfig();
     drawOverlays();
-    setStatus(`${labels.get(key)} ubicado en la página ${state.pageNumber}.`, 'success');
+    setStatus(
+      `${labels.get(key)} ubicado en la página ${state.pageNumber}. Arrastra su caja para moverlo.`,
+      'success'
+    );
+    return true;
+  }
+
+  function pointerPosition(event) {
+    const rect = overlayCanvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    const [pdfX, pdfY] = state.viewport.convertToPdfPoint(x, y);
+    return { x, y, pdfX, pdfY };
+  }
+
+  function findFieldAtPosition(x, y) {
+    const context = overlayCanvas.getContext('2d');
+    const fields = Object.entries(state.config).reverse();
+    for (const [key, field] of fields) {
+      const bounds = getFieldBounds(key, field, context);
+      if (
+        bounds &&
+        x >= bounds.left &&
+        x <= bounds.right &&
+        y >= bounds.top &&
+        y <= bounds.bottom
+      ) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  function beginFieldDrag(event) {
+    if (event.button !== 0 || !state.document || !state.viewport) return;
+    event.preventDefault();
+    const position = pointerPosition(event);
+    let key = findFieldAtPosition(position.x, position.y);
+    const placedOnPointerDown = !key;
+    if (key) {
+      fieldSelect.value = key;
+      updateFieldControls();
+      drawOverlays();
+    } else {
+      key = fieldSelect.value;
+      if (!placeSelectedField(key, position.pdfX, position.pdfY)) return;
+    }
+    state.draggingKey = key;
+    state.pointerStart = { x: event.clientX, y: event.clientY };
+    state.pointerMoved = false;
+    state.pointerWasPlaced = placedOnPointerDown;
+    overlayCanvas.setPointerCapture(event.pointerId);
+  }
+
+  function moveFieldDrag(event) {
+    if (!state.draggingKey || !state.pointerStart) return;
+    if (
+      !state.pointerMoved &&
+      Math.hypot(event.clientX - state.pointerStart.x, event.clientY - state.pointerStart.y) < 2
+    ) {
+      return;
+    }
+    state.pointerMoved = true;
+    const position = pointerPosition(event);
+    const field = state.config[state.draggingKey];
+    field.x = Number(position.pdfX.toFixed(2));
+    field.y = Number(position.pdfY.toFixed(2));
+    field.page = state.pageNumber - 1;
+    drawOverlays();
+  }
+
+  function endFieldDrag(event) {
+    const key = state.draggingKey;
+    if (!key) return;
+    if (overlayCanvas.hasPointerCapture(event.pointerId)) {
+      overlayCanvas.releasePointerCapture(event.pointerId);
+    }
+    const moved = state.pointerMoved;
+    const placed = state.pointerWasPlaced;
+    state.draggingKey = null;
+    state.pointerStart = null;
+    state.pointerMoved = false;
+    state.pointerWasPlaced = false;
+    syncConfig();
+    if (moved) {
+      setStatus(`${labels.get(key)} movido en la página ${state.pageNumber}.`, 'success');
+    } else if (!placed) {
+      setStatus(`${labels.get(key)} seleccionado. Arrastra su caja para moverlo.`, 'info');
+    }
   }
 
   function updateSelectedFieldStyle() {
@@ -461,7 +603,10 @@
     drawOverlays();
   }
 
-  fieldSelect.addEventListener('change', updateFieldControls);
+  fieldSelect.addEventListener('change', () => {
+    updateFieldControls();
+    drawOverlays();
+  });
   [fontSizeInput, alignmentInput, colorInput, qrWidthInput].forEach((input) => {
     input.addEventListener('change', updateSelectedFieldStyle);
   });
@@ -472,7 +617,10 @@
     syncConfig();
     drawOverlays();
   });
-  canvas.addEventListener('click', placeSelectedField);
+  overlayCanvas.addEventListener('pointerdown', beginFieldDrag);
+  overlayCanvas.addEventListener('pointermove', moveFieldDrag);
+  overlayCanvas.addEventListener('pointerup', endFieldDrag);
+  overlayCanvas.addEventListener('pointercancel', endFieldDrag);
   fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
   previousPage.addEventListener('click', () => {
     if (!state.document || state.pageNumber <= 1) return;
