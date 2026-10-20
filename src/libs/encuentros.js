@@ -62,6 +62,16 @@ function getCellText(cell) {
   return String(cell).trim();
 }
 
+function getDocumentCellText(cell) {
+  const value = cell.value;
+  const numberFormat = typeof cell.numFmt === 'string' ? cell.numFmt : '';
+  if (typeof value === 'number' && Number.isSafeInteger(value) && /^0+$/.test(numberFormat)) {
+    const sign = value < 0 ? '-' : '';
+    return `${sign}${String(Math.abs(value)).padStart(numberFormat.length - sign.length, '0')}`;
+  }
+  return getCellText(cell.text || value);
+}
+
 function validateParticipant(raw) {
   const name = String(raw?.nombre || '').trim();
   const document = String(raw?.documento || '').trim();
@@ -81,6 +91,12 @@ function validateParticipant(raw) {
     );
   } else if (!normalizeDocument(document)) {
     errors.push('Número de documento inválido.');
+  }
+  if (
+    typeof raw?.documento === 'number' &&
+    (!Number.isSafeInteger(raw.documento) || String(Math.abs(raw.documento)).length > 15)
+  ) {
+    errors.push('El documento numérico supera el rango de precisión segura.');
   }
   if (!email || email.length > 255 || !EMAIL_PATTERN.test(email)) {
     errors.push('Correo electrónico obligatorio y con formato válido.');
@@ -330,9 +346,14 @@ async function previewParticipantWorkbook(buffer) {
     normalizeHeader(getCellText(sheet.getRow(1).getCell(index + 1).value))
   );
   const expectedHeaders = PARTICIPANT_HEADERS.map(normalizeHeader);
+  const headersMatch = expectedHeaders.every(
+    (header, index) =>
+      actualHeaders[index] === header ||
+      (index === 5 && actualHeaders[index] === normalizeHeader('Laboratorio'))
+  );
   if (
     actualHeaders.length !== expectedHeaders.length ||
-    expectedHeaders.some((header, index) => actualHeaders[index] !== header) ||
+    !headersMatch ||
     sheet.getRow(1).cellCount !== PARTICIPANT_HEADERS.length
   ) {
     return {
@@ -355,8 +376,10 @@ async function previewParticipantWorkbook(buffer) {
     const values = PARTICIPANT_HEADERS.map((_, index) => row.getCell(index + 1).value);
     if (values.every((value) => value === null || value === undefined || value === '')) continue;
 
-    const documentCell = values[1];
-    const rawDocument = getCellText(documentCell);
+    const documentCell = row.getCell(2);
+    const documentValue = documentCell.value;
+    const rawDocument = getDocumentCellText(documentCell);
+    const advertencias = [];
     const validation = validateParticipant({
       nombre: getCellText(values[0]),
       documento: rawDocument,
@@ -365,10 +388,16 @@ async function previewParticipantWorkbook(buffer) {
       facultad: getCellText(values[4]),
       laboratorio: getCellText(values[5]),
     });
-    if (typeof documentCell === 'number') {
-      validation.errores.push(
-        'El documento se guardó como número y podría haber perdido ceros iniciales. Cambie la celda a Texto e importe nuevamente.'
-      );
+    if (typeof documentValue === 'number') {
+      if (!Number.isSafeInteger(documentValue) || String(Math.abs(documentValue)).length > 15) {
+        validation.errores.push(
+          'El documento numérico supera el rango de precisión segura. Corrija la celda y guárdela como texto antes de importar.'
+        );
+      } else {
+        advertencias.push(
+          'El documento estaba guardado como número y se convertirá a texto; verifique que conserve los ceros iniciales antes de confirmar.'
+        );
+      }
     }
 
     const normalizedDocument = validation.participante.documento_normalizado;
@@ -384,6 +413,7 @@ async function previewParticipantWorkbook(buffer) {
       fila: rowNumber,
       participante: validation.participante,
       errores: validation.errores,
+      advertencias,
     });
   }
 

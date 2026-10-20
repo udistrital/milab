@@ -727,8 +727,16 @@
       addCell(tr, row.participante.rol);
       addCell(tr, row.participante.facultad);
       addCell(tr, row.participante.laboratorio);
-      addCell(tr, row.errores.length ? row.errores.join(' ') : 'Válido');
+      addCell(
+        tr,
+        row.errores.length
+          ? row.errores.join(' ')
+          : row.advertencias?.length
+            ? `Advertencia: ${row.advertencias.join(' ')}`
+            : 'Válido'
+      );
       if (row.errores.length) tr.classList.add('table-danger');
+      else if (row.advertencias?.length) tr.classList.add('table-warning');
       body.appendChild(tr);
     });
     table.append(head, body);

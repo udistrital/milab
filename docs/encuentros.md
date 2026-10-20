@@ -29,7 +29,7 @@ Descargar la plantilla desde el detalle del evento y conservar estos encabezados
 
 `Nombre completo`, `Número de documento`, `Correo electrónico`, `Cargo`, `Facultad`, `Unidad Académica de Laboratorio (UAL)`
 
-Todos los campos son obligatorios. `Cargo` alimenta el campo `rol` del certificado; `Facultad` y `Unidad Académica de Laboratorio (UAL)` alimentan sus campos homónimos. La columna del documento usa formato de texto. Los documentos ingresados como número se rechazan para evitar perder ceros iniciales. La importación admite hasta 2000 filas por archivo y requiere confirmar la vista previa.
+Todos los campos son obligatorios. `Cargo` alimenta el campo `rol` del certificado; `Facultad` y `Unidad Académica de Laboratorio (UAL)` alimentan sus campos homónimos. La plantilla configura el documento como texto. Los documentos guardados como números enteros seguros se convierten a texto y generan una advertencia para revisar ceros iniciales; los valores no enteros o que exceden la precisión segura se rechazan. La importación admite hasta 2000 filas por archivo y requiere confirmar la vista previa.
 
 ## Validación
 
