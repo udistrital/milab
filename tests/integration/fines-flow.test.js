@@ -266,6 +266,16 @@ test('laboratorista fine activation redirects back to sanctions list', async () 
         facultyScopePath,
         {
           resolveCoordinatorScope: async () => ({ coordinatorDocument: '900', facultyIds: [7] }),
+          buildMultaScopeFilter: (scope, paramIndex) =>
+            scope.ualIds?.length
+              ? {
+                  sql: `u.ual_id = ANY($${paramIndex}::int[])`,
+                  value: scope.ualIds,
+                }
+              : {
+                  sql: `u.facultad_id = ANY($${paramIndex}::int[])`,
+                  value: scope.facultyIds,
+                },
         },
       ],
     ],
