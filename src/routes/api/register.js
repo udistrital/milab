@@ -538,8 +538,13 @@ async function create_account(data) {
   const estado = data.estado;
   const carrera = data.carrera;
   const tipo = data.tipo;
+  let client;
+
   try {
-    const result1 = await pool.query(
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const result1 = await client.query(
       `INSERT INTO usuario (documento, codigo, nombre, correo, estado, carrera)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (documento) DO UPDATE
@@ -558,7 +563,7 @@ async function create_account(data) {
       throw new Error('No fue posible crear el usuario');
     }
 
-    await pool.query(
+    await client.query(
       `INSERT INTO usuario_rol (usuario_id, rol_id, activo)
        SELECT $1, id, TRUE FROM rol WHERE nombre = $2
        ON CONFLICT (usuario_id, rol_id) DO UPDATE
@@ -567,9 +572,19 @@ async function create_account(data) {
       [userId, tipo]
     );
 
+    await client.query('COMMIT');
     return result1;
   } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error al revertir la creación de la cuenta:', rollbackError);
+      }
+    }
     console.error('Error en la función create_account:', error);
+  } finally {
+    client?.release();
   }
 }
 

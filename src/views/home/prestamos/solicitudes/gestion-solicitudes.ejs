@@ -269,7 +269,7 @@
     document.querySelectorAll('.js-approve-request').forEach(function(button) {
       button.addEventListener('click', async function() {
         var requestId = button.getAttribute('data-request-id');
-        if (!requestId || !window.confirm('¿Deseas aprobar esta solicitud?')) return;
+        if (!requestId || !(await window.MiLabDialogs.confirm('¿Deseas aprobar esta solicitud?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(button, 'Aprobando solicitud...');
@@ -291,7 +291,7 @@
         var queueId = button.getAttribute('data-queue-id');
         var sourceRequestId = button.getAttribute('data-source-request-id');
         if (!queueId || !sourceRequestId) return;
-        if (!window.confirm('¿Deseas asignar esta solicitud en cola por ultima hora?')) return;
+        if (!(await window.MiLabDialogs.confirm('¿Deseas asignar esta solicitud en cola por ultima hora?'))) return;
 
         try {
           window.MiLabSubmitLock.lock(button, 'Asignando solicitud por ultima hora...');

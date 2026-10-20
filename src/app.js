@@ -59,17 +59,14 @@ require('./routes/middlewares/microsoft');
 const { installConsoleBridge, installProcessHandlers, logger } = require('./libs/logger');
 const { requestLogger } = require('./routes/middlewares/request-logger');
 const { navigationMiddleware } = require('./routes/middlewares/navigation');
+const { validateFormTextLengths } = require('./routes/middlewares/form-text-limits');
 const {
   createApplicationErrorHandler,
   enrichErrorPayloadForAdmin,
   renderApplicationError,
   wantsJson,
 } = require('./routes/middlewares/error-handler');
-const {
-  csrfTokenMiddleware,
-  verifyCsrfToken,
-  createCsrfVerifier,
-} = require('./routes/middlewares/csrf');
+const { csrfTokenMiddleware, createCsrfVerifier } = require('./routes/middlewares/csrf');
 const { ipBlockMiddleware } = require('./routes/middlewares/limiter');
 const { requireApiSessionUnlessPublic } = require('./routes/middlewares/api-session-gate');
 const { sessionGateMiddleware } = require('./routes/middlewares/session-gate');
@@ -90,6 +87,10 @@ const legacyBasePath = '/pazysalvos';
 const canonicalBasePath = '/milab';
 const apiCsrfExemptPaths = [];
 const verifyApiCsrfToken = createCsrfVerifier({ skipPaths: apiCsrfExemptPaths });
+// Multer parses this multipart form before its route-level CSRF verification.
+const verifyCsrfToken = createCsrfVerifier({
+  skipPaths: ['/inventarios/cargas/previsualizar'],
+});
 const normalizedNodeEnv = (process.env.NODE_ENV || '').toLowerCase();
 const isProduction = normalizedNodeEnv === 'production';
 const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
@@ -97,7 +98,7 @@ const isDevLoginEnabled = ['1', 'true', 'yes'].includes(
 );
 const hasDevAdminPasswordConfigured = Boolean((process.env.ADMINDEV || '').trim());
 const isDevLoginRuntime = normalizedNodeEnv === 'dev';
-const codeDefinedAppVersion = '2.9.10';
+const codeDefinedAppVersion = '3.0.0';
 
 // Dev-login: solo se habilita si NODE_ENV=dev y ENABLE_DEV_LOGIN=true.
 if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
@@ -106,7 +107,7 @@ if (isDevLoginEnabled && isDevLoginRuntime && !hasDevAdminPasswordConfigured) {
   );
 }
 const localPort = process.env.PORT || 3000;
-const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '2.9.10').toString().trim();
+const appVersion = (codeDefinedAppVersion || process.env.APP_VERSION || '3.0.0').toString().trim();
 const configuredAppOrigin = getOriginFromUrl(process.env.APP_BASE_URL);
 const defaultLocalFormOrigins = [
   `http://localhost:${localPort}`,
@@ -260,10 +261,15 @@ app.use(
 );
 
 const limiter2 = rateLimit({
-  windowMs: 60 * 1000, // tiempo de espera
-  max: 100, // límite de solicitudes por dirección IP
+  windowMs: 60 * 1000,
+  limit: (req) => {
+    const userType = req.session?.user?.tipo;
+    if (userType === 'admin') return 1000;
+    if (userType === 'laboratorista') return 700;
+    return 500;
+  },
   handler: (req, res) => {
-    return res.render('home/message_error', {
+    return res.status(429).render('home/message_error', {
       message: '¡Demasiadas solicitudes desde esta dirección IP!',
       message2: '!Inténtalo de nuevo más tarde!',
       limit: true,
@@ -271,10 +277,6 @@ const limiter2 = rateLimit({
   },
 });
 app.use(ipBlockMiddleware);
-app.use(limiter2);
-
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 
 app.use(
   session({
@@ -291,6 +293,9 @@ app.use(
   })
 );
 
+app.use(limiter2);
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(requestLogger);
 app.use((req, res, next) => {
   req.sessionCookieSecure = sessionCookieSecure;
@@ -357,8 +362,20 @@ app.set('host', process.env.HOST || '0.0.0.0');
 app.set('port', process.env.PORT || 3000);
 
 app.use(passport.initialize());
-app.use('/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
-app.use('/milab/api', requireApiSessionUnlessPublic, verifyApiCsrfToken, require('./routes/api'));
+app.use(
+  '/api',
+  requireApiSessionUnlessPublic,
+  verifyApiCsrfToken,
+  validateFormTextLengths,
+  require('./routes/api')
+);
+app.use(
+  '/milab/api',
+  requireApiSessionUnlessPublic,
+  verifyApiCsrfToken,
+  validateFormTextLengths,
+  require('./routes/api')
+);
 app.use('/auth', require('./routes/api/microsoft'));
 app.use(legacyBasePath, (req, res, next) => {
   const legacySuffix = req.originalUrl.slice(legacyBasePath.length) || '/';
@@ -370,8 +387,20 @@ app.use(legacyBasePath, (req, res, next) => {
   next();
 });
 
-app.use(canonicalBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
-app.use(legacyBasePath, sessionGateMiddleware, verifyCsrfToken, require('./milab_routes'));
+app.use(
+  canonicalBasePath,
+  sessionGateMiddleware,
+  verifyCsrfToken,
+  validateFormTextLengths,
+  require('./milab_routes')
+);
+app.use(
+  legacyBasePath,
+  sessionGateMiddleware,
+  verifyCsrfToken,
+  validateFormTextLengths,
+  require('./milab_routes')
+);
 
 // Redirección desde la raíz del dominio hacia la aplicación milab
 // Garantiza que https://laboratorios.udistrital.edu.co/ lleve a /milab/

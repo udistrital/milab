@@ -16,7 +16,13 @@
         <div class="text-center">
             <h1 class="display-4" style="color: var(--app-accent);"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span class="visually-hidden">Error</span></h1>
             <h3><%- displayMessage -%></h3>
+            <% if (typeof registrationDenied !== 'undefined' && registrationDenied) { %>
+            <h4 class="app-page-subtitle"><%= displayMessage2 %></h4>
+            <p>Si necesitas la generación de un paz y salvo, solicítalo a los laboratorios de tu proyecto académico para que un laboratorista lo genere a través de MILab.</p>
+            <p>Si necesitas acceder como coordinador o laboratorista, envía un correo a <a href="mailto:milab@udistrital.edu.co">milab@udistrital.edu.co</a> detallando tu solicitud.</p>
+            <% } else { %>
             <h4 class="app-page-subtitle"><%- displayMessage2 -%></h4>
+            <% } %>
         </div>
         <% if (typeof adminErrorDetail !== 'undefined' && adminErrorDetail) { %>
         <section class="app-error-detail mt-3" aria-label="Detalle técnico de error para administrador">

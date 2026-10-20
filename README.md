@@ -17,6 +17,7 @@ MILab es la aplicación web para la gestión de paz y salvos en laboratorios de 
 - **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
+- **Registro de coordinadores y laboratoristas:** el coordinador queda asignado a una sola facultad, con alcance en toda ella o en dependencias específicas. El selector de coordinador permite buscar por nombre/documento y el listado de laboratorios se puede filtrar y seleccionar de forma ordenada.
 - **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
 
 ## Política de sesiones
@@ -48,15 +49,53 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 - Se conserva la dirección de envío actual; no se modifica la autenticación SMTP ni se configura una dirección `Reply-To`. El nombre visible y la advertencia no bloquean las respuestas: para impedir que lleguen al buzón se necesita una dirección institucional no-reply autorizada y reglas de recepción en el servidor de correo.
 - Las notificaciones de activación de sanciones remiten al estudiante al laboratorio que reportó la sanción para aclarar su situación.
 
+## Identificación durante el registro
+
+- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Solo ofrece perfiles de estudiante en estado `A`; el estado `B` (`PRUEBA AC Y ACTIVO`) no habilita un perfil de estudiante.
+- Si no hay perfil académico activo ni roles habilitados en MILab, el registro explica que no puede usar MILab y muestra los estados reportados por OATI (estudiante o docente), incluyendo prueba académica, inactividad y egreso. Si OATI no devuelve registros, se indica que no reporta un perfil activo, sin inventar un estado.
+- El mensaje remite a los laboratorios del proyecto académico para que un laboratorista genere el paz y salvo a través de MILab. Para solicitar acceso como coordinador o laboratorista, indica escribir a `milab@udistrital.edu.co` detallando la solicitud.
+- Las consultas OATI del registro comparten un límite total de 20 segundos, incluyendo token y reintentos. Si OATI falla, se muestra un error recuperable sin cerrar la sesión de identificación. Esta regla no modifica el flujo de consulta de paz y salvo.
+- Los errores inesperados de la finalización del registro se propagan al manejador de errores de Express: se registran en el servidor y se responde con una página de error, en lugar de dejar la solicitud pendiente.
+- Si falla la consulta de roles durante la identificación, se conservan en el mensaje los estados devueltos por OATI y se informa que no pudo verificarse el acceso. Se ofrecen las instrucciones de certificado y solicitud de acceso, sin atribuir la falla técnica al estado académico ni exponer detalles de PostgreSQL.
+
 ## Grillas de facultades y UAL
 
 Las tablas de administración de facultades y UAL mantienen el desplazamiento horizontal dentro de la tabla, sin desplazar los filtros, el contador de registros ni la paginación. Los controles se distribuyen en varias filas en pantallas pequeñas y los paneles conservan el ancho disponible incluso con columnas extensas.
+
+## Filtros de gestión del inventario
+
+En `/milab/inventarios/gestion_inventario`, admin y coordinador general pueden filtrar por facultad, dependencia y UAL. Las dependencias se actualizan según la facultad y las UAL según ambos filtros. El coordinador de facultad dispone de dependencias y UAL dentro de su alcance asignado; el laboratorista únicamente ve sus laboratorios activos asignados. Cambiar un filtro superior limpia la selección de los inferiores. Al consultar una UAL o regresar desde sus inventarios se recuperan su facultad y dependencia. Los filtros no modifican los permisos de consulta, edición ni aprobación.
+
+Para todos los perfiles, el selector solo incluye UAL activas con al menos un laboratorista activo con asignación activa y un coordinador activo con alcance activo sobre su facultad o dependencia. Si falta cualquiera de las dos asignaciones, el laboratorio no aparece ni puede seleccionarse mediante un enlace directo a esta página. Las facultades y dependencias permanecen disponibles como filtros, aunque no tengan UAL listas.
+
+## Aprobaciones y confirmaciones
+
+La primera aprobación de cualquier tipo de inventario (incluida la declaración sin complementarios) fija un único coordinador encargado por UAL en `coordinador_ual_encargado`, junto con la carga de origen y la fecha. Si aprueba un administrador, el encargado es el coordinador destinatario de la carga, no el administrador. Rechazar no crea esta relación. Las aprobaciones y asignaciones se guardan en una misma transacción y se serializan por UAL; las siguientes aprobaciones no reemplazan al encargado.
+
+Los próximos envíos y declaraciones solo permiten al encargado, que aparece preseleccionado. Las cargas aún pendientes se consultan y resuelven con ese encargado, aunque se hubieran enviado a otro coordinador antes de fijar la relación. Debe continuar activo y conservar alcance sobre la UAL; si deja de cumplirlo, el envío se bloquea y no se elige otro coordinador automáticamente. El alcance general de consulta por facultad no cambia.
+
+La relación se identifica en Gestión del inventario, en las UAL y la consulta de coordinadores de facultades/dependencias, en Coordinadores registrados y en el detalle de coordinadores del dashboard. La migración [db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql) debe aplicarse antes de desplegar: recupera al destinatario de la primera carga aprobada de cada UAL, ordenada por fecha de resolución e ID, sin sobrescribir encargados ya guardados.
+
+Las cargas pendientes muestran nombre y documento del laboratorista solicitante. La revisión permite expandir descripciones largas con “Ver más” y navegar al inicio o al final de la página. La acción Revisar utiliza el icono estándar de las grillas.
+
+El coordinador puede aprobar, rechazar o devolver una carga con un comentario obligatorio. La devolución conserva la auditoría y habilita al laboratorista que la envió para subir un Excel corregido que reemplaza la versión devuelta y vuelve al flujo de revisión. Los listados de registros, cargas y aprobaciones tienen paginación y filtros por columna.
+
+Después de aprobar un tipo de inventario, el laboratorista asignado, los coordinadores dentro de su alcance y el administrador pueden crear, editar o dar de baja registros individuales. La baja conserva el registro histórico; los equipos prestados no se pueden dar de baja y los equipos dados de baja quedan deshabilitados para préstamos. El detalle aprobado agrupa descripciones normalizadas y mantiene separadas las cantidades por grado, ubicación y unidad. También permite descargar el inventario aprobado en Excel.
+
+El dashboard de inventario está disponible desde el dashboard de monitoreo o en `/milab/api/dashboard/inventarios`. Admin y coordinador general ven la institución completa, coordinadores ven las facultades de su alcance y laboratoristas ven únicamente sus UAL asignadas. La documentación de estados operativos y de aprobación está en [estados-equipo-inventarios.md](docs/estados-equipo-inventarios.md).
+
+Las confirmaciones y avisos usan el diálogo HTML compartido con el estilo Bootstrap del sistema en [app-dialogs.ejs](src/views/partials/app-dialogs.ejs), no los mensajes `confirm`/`alert` del navegador. Los formularios usan `data-confirm-submit` y las operaciones AJAX esperan `await window.MiLabDialogs.confirm(mensaje)`; los avisos usan `window.MiLabDialogs.alert(mensaje)`. Cancelar, cerrar o pulsar Escape no ejecuta la acción. El diálogo mantiene el foco y no cierra ni reinicia otros modales abiertos. Al confirmar se conserva el botón pulsado, incluyendo su nombre y valor, antes de bloquear envíos duplicados; así llegan correctamente las decisiones `aprobar`, `rechazar` y `devolver`.
 
 ## Reporte de sanciones
 
 El listado de sanciones aprovecha un ancho de hasta 1800 px y muestra código y documento en una misma columna, nombre de la persona, laboratorio, fecha y estado destacado. Las pestañas de estudiantes y docentes conservan sus acciones y muestran el número de sanciones del resultado actual. El identificador de sanción se muestra debajo del laboratorio; los nombres ausentes se indican explícitamente, sin consultar servicios externos al cargar el listado. El detalle y la exportación Excel conservan su información y permisos.
 
 El filtro de sanciones permite acotar por ubicación según el rol: admin y coordinador general filtran por facultad, dependencia y UAL (coordinador general en solo lectura); el coordinador filtra por las dependencias y UAL a su cargo; el laboratorista, por las UAL asignadas. Los selectores se encadenan (facultad → dependencia → UAL) y el servidor rechaza valores fuera del alcance del usuario. La exportación Excel aplica los mismos filtros.
+
+Para admin y coordinador general, Dependencia se habilita al elegir Facultad
+y UAL se habilita al elegir Dependencia, mostrando solo sus registros asociados.
+Cambiar un nivel limpia los filtros inferiores. El coordinador empieza en
+Dependencia y el laboratorista selecciona directamente entre sus UAL asignadas.
 
 ## Monitoreo de paz y salvo
 
@@ -266,15 +305,15 @@ La inicialización de base para recreación completa del entorno de pruebas usa 
 2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
+5. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
+6. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
+7. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
+8. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
+9. [sql-scripts/db_seed_pruebas_ofuscado.sql](sql-scripts/db_seed_pruebas_ofuscado.sql)
 
-La recreación en CI y en reset manual de pruebas aplica los cuatro scripts base de forma explícita con `ON_ERROR_STOP=1` para fallar temprano ante cualquier inconsistencia.
+La recreación en CI aplica los nueve scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. El seed ofuscado queda al final y se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
-Adicionalmente, cuando la rama es `modulo_capacitacion_certificacion`, se aplican estos dos scripts opcionales (dependen de `facultad`, `ual` y `equipo` ya creados por los scripts anteriores):
-
-5. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
-6. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
-
-El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 
 ## Reset completo en EC2 (pruebas)
 
@@ -284,8 +323,8 @@ Puntos operativos aplicados en el flujo actual:
 
 1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
 2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
-3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 4 scripts SQL en secuencia y luego se reconstruye `milabud`.
-4. La validación mínima post-seed comprueba que exista el menú principal de préstamos.
+3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 9 scripts SQL en secuencia (el seed ofuscado al final) y luego se reconstruye `milabud`.
+4. La validación post-seed comprueba el menú principal de préstamos, las opciones de inventarios y los permisos de solo lectura del coordinador general.
 
 Script de apoyo:
 
@@ -451,6 +490,15 @@ el catálogo y las reclamaciones de sanciones y la jerarquía
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/20261008_hotfix_sanciones_dependencias.sql
 ```
 
+El registro de monitores no ejecuta DDL desde la aplicación, así que desplegar
+el código no requiere permisos `CREATE` sobre `milab` ni ejecutar una migración
+si `milab.monitor` ya existe y el rol de aplicación puede acceder a ella (la
+tabla forma parte de `sql-scripts/db_structure.sql`). Si en producción falta la
+tabla o el rol no tiene permisos de tabla, un administrador de base de datos
+debe aplicar
+[`sql/20261010_hotfix_monitor_schema_permissions.sql`](sql/20261010_hotfix_monitor_schema_permissions.sql),
+que crea la tabla si hace falta y replica en ella los permisos de `milab.multa`.
+
 Hasta esta versión las categorías eran una lista fija en
 `src/views/partials/multa-options.ejs`; la tabla `multa` solo guarda el texto
 en `cat_multa`. El script crea y carga el catálogo con esas 13 categorías,
@@ -497,9 +545,26 @@ facultades. Desde **Facultades** (`/milab/api/facultad`) el administrador:
   quiénes son, y los coordinadores de la dependencia, incluidos los heredados
   de su facultad.
 
-Las UAL que siguen colgando directamente de una facultad se señalan para
-moverlas a una dependencia. La configuración de multas y el acceso a préstamos
+Las UAL que siguen colgando directamente de una facultad se abren desde
+**Organizar** en la columna **UALs directas**. Cada fila permite **Editar** sus
+datos o **Asignar a dependencia** mediante un modal con las dependencias de esa
+misma facultad. La asignación conserva los datos, laboratoristas e historial de
+la UAL, se registra en auditoría y vuelve al listado de UAL directas.
+Para reorganizar varias UAL, se marcan las casillas junto a sus nombres o se usa
+**Seleccionar todas las filtradas** (incluye todas las páginas del resultado).
+La selección se conserva al paginar o filtrar; **Limpiar selección** la vacía.
+**Asignar seleccionadas a dependencia** mueve todo el lote en una transacción:
+si alguna UAL no pertenece a esa facultad o falla el guardado, no se mueve ninguna.
+Si no hay
+dependencias, primero debe crearse una. La configuración de multas y el acceso a préstamos
 siguen siendo por registro; las dependencias no los heredan de su facultad.
+
+Al editar una UAL de una dependencia y moverla a otra, las asignaciones directas
+de coordinadores de la dependencia de origen también se agregan a la dependencia
+destino, conservando las asignaciones originales y los estados activos/inactivos.
+El registro y el cambio de ubicación se guardan en una sola transacción. Los
+coordinadores asignados a una dependencia tienen alcance sobre todas sus UAL;
+las asignaciones a la facultad padre continúan heredándose automáticamente.
 
 ## Reclamaciones de sanciones
 

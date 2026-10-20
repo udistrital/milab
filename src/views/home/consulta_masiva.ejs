@@ -5,7 +5,7 @@
     </script>
   <% } else { %>
 
-<main class="container app-page-shell">
+<main class="container app-page-shell app-bulk-query-page">
     <section class="app-page-header">
         <h1 class="app-page-title">Consulta masiva de estudiantes</h1>
         <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y UAL asociada.</p>
@@ -26,13 +26,13 @@
     }
 %>
 
-<section class="card app-form-panel justify-content-center mx-auto">
+<section class="card app-form-panel app-bulk-query-panel justify-content-center mx-auto">
     <div class="card-body text-light mt-2 mx-auto">
-        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="row col-md-11 justify-content-center d-flex mx-auto app-form-grid" onsubmit="return verificarEntrada()" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
+        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
             <%- include('../partials/csrf_field') %>
-            <label class="lead col-md-12" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
-            <input type="text" class="col-md-12 mt-1" id="consulta_masiva" name="consulta_masiva"  required>
-            <button type="submit" class="col-md-11 btn btn-perso mt-2 mb-1" data-read-only-lock="true">Consultar</button>
+            <label class="lead" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
+            <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" maxlength="1038" required>
+            <button type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
         </form>
         <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
         <% if (error) {%>
@@ -46,12 +46,12 @@
         </div>
         <% } %>
     </div>
-    <div class="card-header col-md-11 mt-3 mx-auto text-center">
+    <div class="card-header app-bulk-query-results-heading mt-3 text-center">
         <h5>Resultados del lote</h5>
     </div>
-    <div class="card-body col-md-11 mx-auto pt-0">
-            <div class="table-responsive">
-                <table id="myTable" class="table table-bordered table-striped js-data-grid" data-grid-page-length="25" data-grid-scroll-x="false">
+    <div class="card-body app-bulk-query-results pt-0">
+            <div class="app-bulk-query-grid-wrap">
+                <table id="myTable" class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="true">
                     <thead class="text-light">
                         <tr>
                             <th>Documento</th>
@@ -114,7 +114,10 @@
                                                 <td class="text-light"><%= multa.fecha_multa %></td>
                                                 <td class="text-light"><%= resumirTexto(multa.obs_multa, 52) %></td>
                                                 <td class="text-light"><%= multa.nombre_laboratorista %></td>
-                                                <td class="text-light"><%= multa.ual %></td>
+                                                <td class="text-light">
+                                                    <%= multa.ual %>
+                                                    <%- include('../partials/sanction-location', { sanction: multa }) %>
+                                                </td>
                                                 <td class="text-center">
                                                     <button
                                                         type="button"
@@ -130,6 +133,8 @@
                                                         data-detalle-observacion="<%= multa.obs_multa || 'Sin observaciones' %>"
                                                         data-detalle-laboratorista="<%= multa.nombre_laboratorista || '-' %>"
                                                         data-detalle-ual="<%= multa.ual || '-' %>"
+                                                        data-detalle-facultad="<%= multa.laboratorio_facultad || '' %>"
+                                                        data-detalle-dependencia="<%= multa.laboratorio_dependencia || '' %>"
                                                     >
                                                         Ver detalle
                                                     </button>
@@ -205,6 +210,14 @@
                         <div class="text-muted small">UAL</div>
                         <div class="fw-semibold" data-detail-field="ual"></div>
                     </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Facultad</div>
+                        <div class="fw-semibold" data-detail-field="facultad"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Dependencia</div>
+                        <div class="fw-semibold" data-detail-field="dependencia"></div>
+                    </div>
                     <div class="col-12">
                         <div class="text-muted small">Motivo de la sanción</div>
                         <div class="fw-semibold" data-detail-field="categoria"></div>
@@ -244,6 +257,8 @@
             observacion: trigger.getAttribute('data-detalle-observacion'),
             laboratorista: trigger.getAttribute('data-detalle-laboratorista'),
             ual: trigger.getAttribute('data-detalle-ual'),
+            facultad: trigger.getAttribute('data-detalle-facultad'),
+            dependencia: trigger.getAttribute('data-detalle-dependencia'),
         };
 
         Object.keys(fields).forEach(function (key) {

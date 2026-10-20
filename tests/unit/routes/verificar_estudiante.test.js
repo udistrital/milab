@@ -187,7 +187,7 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
       valor_busqueda: '2024100001',
     });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 200, JSON.stringify(response.body));
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.deepEqual(response.body.locals.multaInfo, [localFine]);
     assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaFine, { ...sgaFine, DEU_ESTADO: '1' }]);

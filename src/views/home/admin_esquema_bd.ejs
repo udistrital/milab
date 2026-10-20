@@ -1,0 +1,204 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Esquema de base de datos</h1>
+    <p class="app-page-subtitle">Consulta de solo lectura de las tablas y vistas disponibles, con sus columnas, restricciones e índices.</p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-xl-10">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <dl class="row mb-0 small">
+            <dt class="col-sm-3">Base de datos</dt>
+            <dd class="col-sm-9"><%= baseDatos.base_datos %></dd>
+            <dt class="col-sm-3">Usuario de la aplicación</dt>
+            <dd class="col-sm-9"><%= baseDatos.usuario_app %></dd>
+            <dt class="col-sm-3">search_path</dt>
+            <dd class="col-sm-9"><code><%= baseDatos.search_path %></code></dd>
+          </dl>
+        </div>
+      </div>
+
+      <% if (notFound) { %>
+        <div class="alert alert-warning">
+          La tabla <strong><%= seleccion.esquema %>.<%= seleccion.tabla %></strong> no existe en la base de datos.
+        </div>
+      <% } %>
+
+      <% if (detalle) { %>
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body">
+            <h2 class="h5 mb-3"><%= detalle.esquema %>.<%= detalle.nombre %></h2>
+            <dl class="row mb-0 small">
+              <dt class="col-sm-3">Tipo</dt>
+              <dd class="col-sm-9"><%= detalle.tipo %></dd>
+              <dt class="col-sm-3">Propietario</dt>
+              <dd class="col-sm-9"><%= detalle.propietario %></dd>
+              <dt class="col-sm-3">Lectura para el usuario de la aplicación</dt>
+              <dd class="col-sm-9">
+                <% if (detalle.lectura_permitida) { %>
+                  <span class="badge text-bg-success">Sí</span>
+                <% } else { %>
+                  <span class="badge text-bg-danger">No (sin privilegio SELECT)</span>
+                <% } %>
+              </dd>
+              <% if (detalle.comentario) { %>
+                <dt class="col-sm-3">Comentario</dt>
+                <dd class="col-sm-9"><%= detalle.comentario %></dd>
+              <% } %>
+            </dl>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body">
+            <h3 class="h6 mb-3">Columnas</h3>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Columna</th>
+                    <th>Tipo</th>
+                    <th class="text-center">Permite nulo</th>
+                    <th>Valor por defecto</th>
+                    <th class="text-center">Identidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% (detalle.columnas || []).forEach(function(col) { %>
+                    <tr>
+                      <td><%= col.posicion %></td>
+                      <td><strong><%= col.columna %></strong></td>
+                      <td><code><%= col.tipo %></code></td>
+                      <td class="text-center"><%= col.permite_nulo ? 'Sí' : 'No' %></td>
+                      <td><code><%= col.valor_por_defecto || '' %></code></td>
+                      <td class="text-center"><%= col.identidad ? 'Sí' : '' %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body">
+            <h3 class="h6 mb-3">Restricciones</h3>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Definición</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if (!detalle.restricciones.length) { %>
+                    <tr><td colspan="3" class="text-muted">Sin restricciones.</td></tr>
+                  <% } %>
+                  <% detalle.restricciones.forEach(function(con) { %>
+                    <tr>
+                      <td><%= con.nombre %></td>
+                      <td><%= con.tipo %></td>
+                      <td><code><%= con.definicion %></code></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body">
+            <h3 class="h6 mb-3">Índices</h3>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Definición</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if (!detalle.indices.length) { %>
+                    <tr><td colspan="2" class="text-muted">Sin índices.</td></tr>
+                  <% } %>
+                  <% detalle.indices.forEach(function(idx) { %>
+                    <tr>
+                      <td><%= idx.nombre %></td>
+                      <td><code><%= idx.definicion %></code></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      <% } %>
+
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Tablas y vistas</h2>
+          <form method="GET" action="/milab/api/admin/esquema-bd" class="row g-2 mb-3">
+            <div class="col-md-9">
+              <label class="visually-hidden" for="filtroEsquema">Filtrar por nombre o esquema</label>
+              <input
+                id="filtroEsquema"
+                class="form-control"
+                type="search"
+                name="q"
+                maxlength="100"
+                placeholder="Filtrar por nombre o esquema"
+                value="<%= filtro %>"
+              />
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-outline-primary w-100" type="submit">Buscar</button>
+            </div>
+          </form>
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Esquema</th>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Propietario</th>
+                  <th class="text-center">Lectura para la app</th>
+                  <th>Comentario</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!relaciones.length) { %>
+                  <tr><td colspan="6" class="text-muted">No se encontraron tablas.</td></tr>
+                <% } %>
+                <% relaciones.forEach(function(rel) { %>
+                  <tr>
+                    <td><%= rel.esquema %></td>
+                    <td>
+                      <a href="/milab/api/admin/esquema-bd?esquema=<%= encodeURIComponent(rel.esquema) %>&tabla=<%= encodeURIComponent(rel.nombre) %>">
+                        <%= rel.nombre %>
+                      </a>
+                    </td>
+                    <td><%= rel.tipo %></td>
+                    <td><%= rel.propietario %></td>
+                    <td class="text-center"><%= rel.lectura_permitida ? 'Sí' : 'No' %></td>
+                    <td><%= rel.comentario || '' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

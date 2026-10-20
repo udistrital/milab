@@ -66,13 +66,18 @@ router.get('/mis-sanciones', requireStudent, async (req, res) => {
     const result = await pool.query(
       `SELECT m.id, m.cat_multa, m.tipo_sancion, m.obs_multa,
               TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa, m.con_estado_multa,
-              ual.nombre AS laboratorio, l.nombre AS creador,
+              ual.nombre AS laboratorio,
+              COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+              CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
+              l.nombre AS creador,
               r.id AS reclamacion_id, r.texto, r.fecha_creacion AS fecha_reclamacion,
               r.respuesta, r.decision, r.fecha_respuesta, r.fecha_lectura,
               responsable.nombre AS responsable, responsable.activo AS responsable_activo,
               respondiente.nombre AS respondido_por
        FROM multa m
        LEFT JOIN ual ON ual.ual_id = m.ual_id
+       LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = ual.facultad_id
+       LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
        JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
        LEFT JOIN reclamacion_sancion r ON r.multa_id = m.id
        LEFT JOIN laboratorista responsable ON responsable.documento = r.responsable_documento_id
@@ -99,7 +104,10 @@ router.get('/reclamaciones', requireInbox, async (req, res) => {
     const result = await pool.query(
       `SELECT r.*, m.cat_multa, m.obs_multa, m.con_estado_multa,
               TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa,
-              ual.nombre AS laboratorio, estudiante.nombre AS estudiante,
+              ual.nombre AS laboratorio,
+              COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+              CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
+              estudiante.nombre AS estudiante,
               estudiante.documento, estudiante.codigo,
               responsable.nombre AS responsable, responsable.activo AS responsable_activo,
               respondiente.nombre AS nombre_respondiente
@@ -107,6 +115,8 @@ router.get('/reclamaciones', requireInbox, async (req, res) => {
        JOIN multa m ON m.id = r.multa_id
        JOIN usuario estudiante ON estudiante.id = m.usuario_sancionado_id
        LEFT JOIN ual ON ual.ual_id = m.ual_id
+       LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = ual.facultad_id
+       LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
        JOIN laboratorista responsable ON responsable.documento = r.responsable_documento_id
        LEFT JOIN laboratorista respondiente ON respondiente.documento = r.respondido_por_id
        WHERE ($1::text IS NULL OR r.responsable_documento_id = $1)

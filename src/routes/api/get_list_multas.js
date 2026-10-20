@@ -12,6 +12,7 @@ const { fetchSanctionClaimHistory } = require('../../libs/sanction-claims');
 const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
 const { sgaDebtService } = require('../../libs/oati-debts');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
   renderApplicationError,
   renderModuleError,
@@ -48,6 +49,31 @@ function normalizeDateFilter(rawValue) {
   const value = String(rawValue || '').trim();
   if (!value) return null;
   return ISO_DATE_PATTERN.test(value) ? value : 'INVALID';
+}
+
+function todayInBogota(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+}
+
+function validateFineEditDate(rawValue, today = todayInBogota()) {
+  const value = String(rawValue || '').trim();
+  const isRealDate =
+    ISO_DATE_PATTERN.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
+  if (!isRealDate) {
+    return {
+      ok: false,
+      message: 'Fecha de sanción inválida.',
+      message2: 'Selecciona una fecha válida antes de guardar.',
+    };
+  }
+  if (value > today) {
+    return {
+      ok: false,
+      message: 'La fecha de la sanción no puede ser futura.',
+      message2: 'Selecciona una fecha igual o anterior al día de hoy.',
+    };
+  }
+  return { ok: true, fecha: value };
 }
 
 function normalizeFineStateFilter(rawValue) {
@@ -396,6 +422,8 @@ async function queryMultasRows(client, conditions, params) {
         COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
         CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
         u.nombre AS ual,
+        COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+        CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
         m.ual_id,
         u.facultad_id,
         TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
@@ -404,6 +432,8 @@ async function queryMultasRows(client, conditions, params) {
         m.tipo_sancion
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
+      LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
       LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
       LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
       LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
@@ -435,11 +465,15 @@ async function addLaboratoristaActions(client, rows, req) {
   }
 
   const configResult = await client.query(
-    'SELECT * FROM config_facultad_multas WHERE facultad_id = ANY($1::int[])',
+    `SELECT unidad.dependencia_facultad_id AS requested_id, cfm.*
+     FROM dependencia_facultad unidad
+     LEFT JOIN config_facultad_multas cfm
+       ON cfm.facultad_id = COALESCE(unidad.padre_id, unidad.dependencia_facultad_id)
+     WHERE unidad.dependencia_facultad_id = ANY($1::int[])`,
     [facultyIds]
   );
   const configMap = new Map(
-    configResult.rows.map((config) => [Number(config.facultad_id), config])
+    configResult.rows.map((config) => [Number(config.requested_id), config])
   );
 
   return rows.map((row) => {
@@ -601,6 +635,15 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
     });
   }
 
+  const fechaValidation = validateFineEditDate(req.body?.fecha_multa);
+  if (!fechaValidation.ok) {
+    return res.render('home/message_error', {
+      message: fechaValidation.message,
+      message2: fechaValidation.message2,
+      limit: null,
+    });
+  }
+
   let client;
   try {
     client = await pool.connect();
@@ -627,23 +670,30 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
       `UPDATE multa
        SET cat_multa = $1,
            tipo_sancion = $2,
+           fecha_multa = $3,
            fecha_modificacion = CURRENT_TIMESTAMP
-       WHERE id = $3
+       WHERE id = $4
          AND con_estado_multa = 'ACTIVA'`,
-      [categoria, tipoSancion, multaId]
+      [categoria, tipoSancion, fechaValidation.fecha, multaId]
     );
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [
         req.session.user.tipo,
         getSessionDocument(req),
-        'Editar categoría y tipo de sanción activa',
+        'Editar categoría, tipo y fecha de sanción activa',
         String(multaId),
       ]
     );
     client.release();
 
-    return res.redirect('/milab/api/get_list_multas?success=editada');
+    const personaReturnPath =
+      String(req.body?.source || '')
+        .trim()
+        .toLowerCase() === 'get-info-multa-persona'
+        ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim(), 'editada')
+        : null;
+    return res.redirect(personaReturnPath || '/milab/api/get_list_multas?success=editada');
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);
@@ -805,3 +855,10 @@ router.get('/export/excel', requireMultasAccess, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listingHelpers = {
+  addLaboratoristaActions,
+  buildMultasQueryContext,
+  normalizeListSuccessFeedback,
+  queryMultasRows,
+  validateFineEditDate,
+};

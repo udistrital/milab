@@ -19,12 +19,12 @@
             <%- include('../partials/csrf_field') %>
             <div class="col-12">
               <label for="correo" class="form-label">Correo institucional</label>
-              <input type="email" class="form-control" id="correo" value="<%= correo || '' %>" readonly>
+              <input type="email" class="form-control" id="correo" maxlength="255" value="<%= correo || '' %>" readonly>
             </div>
 
             <div class="col-12">
               <label for="documento" class="form-label">Número de documento</label>
-              <input type="text" class="form-control" id="documento" name="documento" value="<%= documento || '' %>" required>
+              <input type="text" class="form-control" id="documento" name="documento" maxlength="50" value="<%= documento || '' %>" required>
             </div>
 
             <div class="col-12 d-flex justify-content-center pt-2">

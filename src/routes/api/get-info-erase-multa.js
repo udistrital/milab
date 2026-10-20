@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
+const { resolveSanctionPersonLookup } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
 const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
@@ -75,73 +76,89 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
 
   const requestBody = req.body || {};
   const { tipo_busqueda, valor_busqueda } = requestBody;
+  const lookupToken = String(requestBody.lookup_token || '').trim();
+  const searchedPerson = lookupToken
+    ? resolveSanctionPersonLookup(req, lookupToken, 'estudiante')
+    : null;
+  if (lookupToken && !searchedPerson) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
 
-  let con_codigo, con_estado, con_documento, con_carrera, con_nombre;
+  let con_codigo = searchedPerson?.codigo;
+  let con_estado = searchedPerson?.estado;
+  let con_documento = searchedPerson?.documento;
+  let con_carrera = searchedPerson?.programa;
+  let con_nombre = searchedPerson?.nombre;
   let multaInfo;
+  let usuarioId = searchedPerson?.usuarioId;
 
   try {
-    // Consulta 1 - Datos básicos del estudiante
-    let servicePath;
-    if (tipo_busqueda === 'codigo') {
-      servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
-    } else {
-      servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
-    }
+    if (!searchedPerson) {
+      // Consulta 1 - Datos básicos del estudiante
+      let servicePath;
+      if (tipo_busqueda === 'codigo') {
+        servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
+      } else {
+        servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
+      }
 
-    const dato1 = await requestOati(servicePath);
-    const studentRecords = extractOasStudentRecords(dato1);
-    if (!studentRecords.length) {
-      throw new Error('Estudiante no encontrado en OAS');
-    }
+      const dato1 = await requestOati(servicePath);
+      const studentRecords = extractOasStudentRecords(dato1);
+      if (!studentRecords.length) {
+        throw new Error('Estudiante no encontrado en OAS');
+      }
 
-    const studentRecord = studentRecords[studentRecords.length - 1];
+      const studentRecord = studentRecords[studentRecords.length - 1];
 
-    con_codigo = studentRecord.codigo;
-    con_estado = studentRecord.estado;
-    con_documento =
-      studentRecord.documento || studentRecord.numero_documento_identificacion || null;
-    if (
-      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
-      tipo_busqueda === 'codigo'
-    ) {
-      con_documento = await resolveStudentDocumentByCode(con_codigo || valor_busqueda);
-    }
-    if (
-      (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
-      tipo_busqueda === 'documento'
-    ) {
-      con_documento = String(valor_busqueda || '').trim();
-    }
-    con_carrera = studentRecord.carrera;
-    con_nombre = studentRecord.nombre;
+      con_codigo = studentRecord.codigo;
+      con_estado = studentRecord.estado;
+      con_documento =
+        studentRecord.documento || studentRecord.numero_documento_identificacion || null;
+      if (
+        (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
+        tipo_busqueda === 'codigo'
+      ) {
+        con_documento = await resolveStudentDocumentByCode(con_codigo || valor_busqueda);
+      }
+      if (
+        (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
+        tipo_busqueda === 'documento'
+      ) {
+        con_documento = String(valor_busqueda || '').trim();
+      }
+      con_carrera = studentRecord.carrera;
+      con_nombre = studentRecord.nombre;
 
-    if (!con_documento || con_documento === 'undefined' || con_documento === 'null') {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo resolver el documento del estudiante.',
+      if (!con_documento || con_documento === 'undefined' || con_documento === 'null') {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo resolver el documento del estudiante.',
+        });
+      }
+
+      // Consulta 2 - Estado académico
+      const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
+      con_estado = estadoData.estado.nombre;
+
+      // Consulta 3 - Carrera
+      const carreraData = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
+      con_carrera = carreraData.carrerasCollection.carrera[0].nombre;
+
+      usuarioId = await ensurePerfilEstudiante({
+        documento: con_documento,
+        nombre: con_nombre,
+        codigo: con_codigo,
+        programa: con_carrera,
+        estado: con_estado,
+        correo: null,
       });
-    }
 
-    // Consulta 2 - Estado académico
-    const estadoData = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
-    con_estado = estadoData.estado.nombre;
-
-    // Consulta 3 - Carrera
-    const carreraData = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
-    con_carrera = carreraData.carrerasCollection.carrera[0].nombre;
-
-    const usuarioId = await ensurePerfilEstudiante({
-      documento: con_documento,
-      nombre: con_nombre,
-      codigo: con_codigo,
-      programa: con_carrera,
-      estado: con_estado,
-      correo: null,
-    });
-
-    if (!usuarioId) {
-      return res.render('home/error-consulta', {
-        message: 'No se pudo registrar el perfil del estudiante.',
-      });
+      if (!usuarioId) {
+        return res.render('home/error-consulta', {
+          message: 'No se pudo registrar el perfil del estudiante.',
+        });
+      }
     }
 
     const query =
@@ -151,7 +168,7 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
 
     if (result.rows[0].multado > 0) {
       const queryMultaInfo =
-        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa = 'ACTIVA'";
+        "SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad, CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1 AND m.con_estado_multa = 'ACTIVA'";
       const valuesMultaInfo = [usuarioId];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;

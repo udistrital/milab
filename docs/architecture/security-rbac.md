@@ -37,8 +37,9 @@ flowchart TB
 | Rol             | Capacidades principales                                                                                  |
 | --------------- | -------------------------------------------------------------------------------------------------------- |
 | `admin`         | Vista global, administración, configuración, consultas operativas, monitoreo completo, todos los permisos de Préstamos                                    |
-| `coordinador`   | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades, aprobación/gestión completa de Préstamos en su alcance |
-| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL, gestión operativa de Préstamos (inventario, equipos, solicitudes, incidencias, prácticas, salas) |
+| `coordinador_general` | Consulta global de módulos, incluida la gestión y aprobación de inventarios, en modo de solo lectura |
+| `coordinador`   | Registro de laboratoristas, autorizaciones, consultas operativas de su alcance, monitoreo por facultades, inventarios de sus facultades/dependencias/UAL y aprobación de sus cargas |
+| `laboratorista` | Registro y retiro de sanciones, consultas operativas, paz y salvos, monitoreo por UAL, consulta y carga de inventarios en sus UAL asignadas, gestión operativa de Préstamos |
 | `monitor`       | Subrol operativo de Préstamos con alcance por UAL: entrega/recepción de equipos, registro de incidencias y gestión de prácticas; sin aprobación de solicitudes ni configuración |
 | `estudiante`    | Solicitud y descarga de su certificado; autoservicio de solicitudes y reservas de práctica en Préstamos                                                                   |
 | `docente`       | Solicitud y descarga de su certificado; autoservicio de solicitudes y reservas de práctica en Préstamos                                                                   |
@@ -51,6 +52,7 @@ Además de `requireRoles(...)`, el módulo de Préstamos ([src/routes/api/presta
 - `ROLE_PERMISSION_MAP` asigna esas capacidades por rol: `admin` recibe todos los permisos; `coordinador` recibe aprobación y gestión completa; `laboratorista` recibe gestión operativa sin aprobación de multas; `monitor` recibe solo entrega, recepción, incidencias (ver y crear) y prácticas.
 - Las rutas de Préstamos usan `requirePermissions(...)` con este mapa, y las rutas de autoservicio (`/solicitar`, `/mis-solicitudes`, `/practicas/solicitar`, `/practicas/mis-reservas`) usan `requireRoles(['estudiante', 'docente'], ...)` en paralelo al permiso, para permitir que cualquier usuario autenticado con esos roles opere sobre sus propias solicitudes.
 - El acceso al módulo completo también puede deshabilitarse por facultad mediante la tabla `facultad_modulo_acceso` ([src/libs/prestamos-module-access.js](../src/libs/prestamos-module-access.js)).
+- En Inventarios, `coordinador` se limita por `coordinador_facultad_alcance` (facultad y dependencias descendientes), `laboratorista` por `laboratorista_ual`, y `admin`/`coordinador_general` consultan todas las UAL activas. `coordinador_general` conserva solo lectura.
 
 ## Alcance De Monitoreo
 

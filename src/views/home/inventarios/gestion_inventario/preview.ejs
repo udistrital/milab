@@ -1,0 +1,461 @@
+<%- include('../../../partials/header'); -%>
+
+<style>
+  .inventory-preview-filter {
+    width: 100%;
+    color: inherit;
+    text-align: left;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+
+  .inventory-preview-filter:hover,
+  .inventory-preview-filter:focus-visible,
+  .inventory-preview-filter[aria-pressed='true'] {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 14%);
+  }
+
+  .inventory-preview-filter:hover {
+    transform: translateY(-2px);
+  }
+
+  .inventory-preview-description-cell {
+    width: 18rem;
+    min-width: 18rem;
+    max-width: 18rem;
+  }
+
+  .inventory-preview-description {
+    display: block;
+    max-width: 17rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inventory-preview-description.is-expanded {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .inventory-preview-scroll-top {
+    position: fixed;
+    z-index: 1030;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 24%);
+  }
+
+  .inventory-preview-scroll-top[hidden] {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inventory-preview-filter {
+      transition: none;
+    }
+  }
+</style>
+
+<main class="container app-page-shell">
+  <section class="app-page-header d-flex justify-content-between align-items-start flex-wrap gap-3">
+    <div>
+      <h1 class="app-page-title">Revisión de carga</h1>
+      <p class="app-page-subtitle mb-0">
+        <%= inventoryLabels[batch.tipo_inventario] || batch.tipo_inventario %> — <%=
+        batch.laboratorio_nombre || `Laboratorio ${batch.ual_id}` %>
+      </p>
+    </div>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <a
+        class="btn btn-outline-secondary"
+        href="/milab/inventarios/gestion_inventario?ual_id=<%= batch.ual_id %>&panel=<%= batch.tipo_inventario %>"
+      >Volver</a>
+      <% if (batch.estado === 'previsualizada' && canConfirm) { %>
+        <form
+          action="/milab/inventarios/cargas/<%= batch.id %>/cancelar"
+          method="post"
+          data-confirm-submit="¿Cancelar esta previsualización? Podrás cargar un archivo nuevo."
+        >
+          <%- include('../../../partials/csrf_field') %>
+          <button class="btn btn-outline-danger" type="submit">Cancelar esta carga</button>
+        </form>
+      <% } %>
+    </div>
+  </section>
+
+  <% if (successMessage) { %>
+  <div class="alert alert-success" role="status"><%= successMessage %></div>
+  <% } %> <% if (errorMessage) { %>
+  <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (batch.estado === 'devuelta' && canRetry) { %>
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <h2 class="h5">Corregir y reemplazar archivo</h2>
+      <p>
+        La carga fue devuelta por el coordinador. Revisa los comentarios del historial, corrige el
+        Excel y súbelo aquí; reemplazará esta versión y conservará la trazabilidad de la revisión.
+      </p>
+      <form
+        action="/milab/inventarios/cargas/previsualizar"
+        method="post"
+        enctype="multipart/form-data"
+        class="row g-3 align-items-end"
+      >
+        <%- include('../../../partials/csrf_field') %>
+        <input type="hidden" name="ual_id" value="<%= batch.ual_id %>" />
+        <input type="hidden" name="tipo_inventario" value="<%= batch.tipo_inventario %>" />
+        <input type="hidden" name="carga_devuelta_id" value="<%= batch.id %>" />
+        <div class="col-md-8">
+          <label for="archivo_corregido" class="form-label">Excel corregido</label>
+          <input
+            id="archivo_corregido"
+            name="archivo"
+            type="file"
+            class="form-control"
+            accept=".xls,.xlsx"
+            required
+          />
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-perso" type="submit" data-submit-lock="true">
+            Reemplazar y revisar
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-body">
+      <h2 class="h5">Reporte de lectura</h2>
+      <p class="mb-3">
+        Archivo: <strong><%= batch.archivo_nombre %></strong> · Estado:
+        <strong><%= batch.estado.replaceAll('_', ' ') %></strong>
+      </p>
+      <div class="row g-3">
+        <div class="col-6 col-lg-3">
+          <button
+            class="card app-table-panel inventory-preview-filter h-100"
+            type="button"
+            data-row-filter="all"
+            aria-controls="previewRowsTable"
+            aria-pressed="true"
+            <%= rows.length ? '' : 'disabled' %>
+          >
+            <span class="card-body p-3">
+              <small class="d-block">Filas leídas</small>
+              <strong class="fs-4"><%= batch.total_filas %></strong>
+            </span>
+          </button>
+        </div>
+        <div class="col-6 col-lg-3">
+          <button
+            class="card app-table-panel inventory-preview-filter h-100"
+            type="button"
+            data-row-filter="ready"
+            aria-controls="previewRowsTable"
+            aria-pressed="false"
+            <%= rows.length ? '' : 'disabled' %>
+          >
+            <span class="card-body p-3">
+              <small class="d-block">Filas listas</small>
+              <strong class="fs-4"><%= batch.filas_exitosas %></strong>
+            </span>
+          </button>
+        </div>
+        <div class="col-6 col-lg-3">
+          <button
+            class="card app-table-panel inventory-preview-filter h-100"
+            type="button"
+            data-row-filter="observations"
+            aria-controls="previewRowsTable"
+            aria-pressed="false"
+            <%= rows.length ? '' : 'disabled' %>
+          >
+            <span class="card-body p-3">
+              <small class="d-block">Filas con observaciones</small>
+              <strong class="fs-4"><%= batch.filas_fallidas %></strong>
+            </span>
+          </button>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="border rounded p-3 h-100">
+            <small class="d-block">Tipo de inventario</small>
+            <strong><%= inventoryLabels[batch.tipo_inventario] || batch.tipo_inventario %></strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <% if (reviewHistory.length) { %>
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Historial de revisión</h2>
+    </div>
+    <div class="card-body">
+      <ol class="mb-0">
+        <% reviewHistory.forEach(function(entry) { %>
+        <li class="mb-2">
+          <strong><%= entry.accion.replaceAll('carga_', '').replaceAll('_', ' ') %></strong>
+          — <%= entry.actor_rol %> <%= entry.actor_documento ? `(${entry.actor_documento})` : '' %>,
+          <%= new Date(entry.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %>
+          <% if (entry.detalle && entry.detalle.comentario) { %>
+          <div class="small">Comentario: <%= entry.detalle.comentario %></div>
+          <% } %>
+        </li>
+        <% }) %>
+      </ol>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Detalle de los datos leídos</h2>
+      <p class="mb-0 mt-2">
+        Selecciona un resumen para filtrar las filas. Los campos obligatorios aparecen primero;
+        usa “Ver más” para desplegar descripciones largas.
+      </p>
+    </div>
+    <div class="card-body">
+      <% if (rows.length) { %>
+      <p id="previewFilterSummary" class="small" aria-live="polite">
+        Mostrando <%= rows.length %> de <%= rows.length %> filas.
+      </p>
+      <div class="table-responsive">
+        <%
+          const hasRequiredPlate = batch.tipo_inventario === 'equipo_arka';
+          const hasRequiredReference = batch.tipo_inventario === 'reactivo';
+          const requiredColumnCount = 1 + Number(hasRequiredPlate) + Number(hasRequiredReference);
+          const optionalColumnCount = 10 + Number(!hasRequiredReference);
+        %>
+        <table
+          id="previewRowsTable"
+          class="table table-bordered table-striped app-table-compact align-middle js-data-grid"
+          data-grid-page-length="25"
+          data-grid-scroll-x="true"
+          data-grid-column-filters="false"
+        >
+          <thead class="text-light">
+            <tr>
+              <th rowspan="2">Fila</th>
+              <th rowspan="2">Estado</th>
+              <th rowspan="2">Tipo</th>
+              <th colspan="<%= requiredColumnCount %>">Campos obligatorios</th>
+              <th colspan="<%= optionalColumnCount %>">Opcionales y validación</th>
+            </tr>
+            <tr>
+              <th>Descripción *</th>
+              <% if (hasRequiredPlate) { %><th>Placa ARKA *</th><% } %>
+              <% if (hasRequiredReference) { %><th>Referencia *</th><% } %>
+              <% if (!hasRequiredReference) { %><th>Referencia</th><% } %>
+              <th>Serie</th>
+              <th>Marca</th>
+              <th>Modelo</th>
+              <th>Proveedor</th>
+              <th>Código interno</th>
+              <th>Identificadores</th>
+              <th>Existencias</th>
+              <th>Modo de control</th>
+              <th>Observaciones</th>
+              <th>Errores</th>
+            </tr>
+          </thead>
+          <tbody id="previewRowsBody">
+            <% rows.forEach(function(row) { %>
+            <tr
+              data-preview-row
+              data-row-status="<%= row.estado === 'fallida' ? 'observations' : 'ready' %>"
+            >
+              <td><%= row.numeroFila %></td>
+              <td>
+                <span class="badge <%= row.estado === 'fallida' ? 'bg-danger' : 'bg-success' %>">
+                  <%= row.estado.replaceAll('_', ' ') %>
+                </span>
+              </td>
+              <td>
+                <%= inventoryLabels[row.payload.tipo] || row.payload.tipo ||
+                inventoryLabels[batch.tipo_inventario] %>
+              </td>
+              <%
+                const descriptionText = String(row.payload.descripcion || '-');
+                const isLongDescription = Array.from(descriptionText).length > 80;
+              %>
+              <td class="inventory-preview-description-cell">
+                <span class="inventory-preview-description" data-description-text><%= descriptionText %></span>
+                <% if (isLongDescription) { %>
+                  <button
+                    class="btn btn-link btn-sm p-0"
+                    type="button"
+                    data-description-toggle
+                    aria-expanded="false"
+                  >Ver más</button>
+                <% } %>
+              </td>
+              <% if (hasRequiredPlate) { %><td><%= row.payload.placa || '-' %></td><% } %>
+              <% if (hasRequiredReference) { %><td><%= row.payload.referencia || '-' %></td><% } %>
+              <% if (!hasRequiredReference) { %><td><%= row.payload.referencia || '-' %></td><% } %>
+              <td><%= row.payload.serie || '-' %></td>
+              <td><%= row.payload.marca || '-' %></td>
+              <td><%= row.payload.modelo || '-' %></td>
+              <td><%= row.payload.proveedor || '-' %></td>
+              <td><%= row.payload.codigoInterno || '-' %></td>
+              <td>
+                <% if (row.payload.identificadores && row.payload.identificadores.length) { %>
+                  <%= row.payload.identificadores.map(function(identifier) {
+                    const label = identifier.tipo === 'nomenclatura_adicional'
+                      ? `Nomenclatura adicional (${identifier.etiqueta})`
+                      : identifier.tipo;
+                    return `${label}: ${identifier.valor}`;
+                  }).join(', ') %>
+                <% } else { %> - <% } %>
+              </td>
+              <td>
+                <% if (row.payload.existencias && row.payload.existencias.length) { %> <%=
+                row.payload.existencias.map(function(balance) { return `${balance.cantidad}
+                ${balance.unidad} (${balance.grado}/${balance.ubicacion})`; }).join(', ') %> <% }
+                else { %> <%= row.payload.modoControl === 'cantidad' ? 'Cantidad no informada' :
+                'Individual' %> <% } %>
+              </td>
+              <td><%= row.payload.modoControl === 'cantidad' ? 'Por cantidad' : 'Individual' %></td>
+              <td><%= row.payload.observaciones || '-' %></td>
+              <td>
+                <% if (row.errores && row.errores.length) { %>
+                <ul class="mb-0 ps-3">
+                  <% row.errores.forEach(function(error) { %>
+                  <li><%= error %></li>
+                  <% }) %>
+                </ul>
+                <% } else { %> - <% } %>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+      <p id="previewNoMatchingRows" class="alert alert-info" hidden>
+        No hay filas que coincidan con el filtro.
+      </p>
+      <% } else if (batch.declaracion_sin_inventario) { %>
+      <div class="alert alert-info mb-0">
+        Declaración de inventario complementario vacío; queda pendiente de aprobación.
+      </div>
+      <% } else { %>
+      <div class="alert alert-info mb-0">Esta carga no tiene filas almacenadas.</div>
+      <% } %>
+    </div>
+  </section>
+
+  <% if (batch.estado === 'previsualizada' && canConfirm) { %> <% if (batch.filas_exitosas > 0 &&
+  coordinators.length) { %>
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <h2 class="h5">Enviar registros exitosos a aprobación</h2>
+      <p>
+        Las filas fallidas quedarán en el registro de auditoría, pero no se crearán como inventario.
+        El coordinador podrá aprobar o rechazar el lote completo.
+      </p>
+      <form
+        action="/milab/inventarios/cargas/<%= batch.id %>/confirmar"
+        method="post"
+        class="row g-3"
+        data-confirm-submit="¿Confirmas el envío de las filas exitosas a aprobación?"
+      >
+        <%- include('../../../partials/csrf_field') %>
+        <% if (batch.tipo_inventario === 'equipo_arka') { %>
+        <div class="col-12">
+          <label for="nomenclatura_adicional_columna" class="form-label">
+            Columna de nomenclatura adicional (opcional)
+          </label>
+          <select
+            id="nomenclatura_adicional_columna"
+            name="nomenclatura_adicional_columna"
+            class="form-select"
+          >
+            <option value="">No usar código adicional</option>
+            <% additionalIdentifierHeaders.forEach(function(header) { %>
+            <option value="<%= header %>"><%= header.toLocaleUpperCase('es-CO') %></option>
+            <% }) %>
+          </select>
+          <% if (additionalIdentifierHeaders.length) { %>
+          <div class="form-text text-light-emphasis">
+            El valor de cada fila se guardará como un identificador separado con el encabezado
+            seleccionado. Nunca sustituye la placa oficial ARKA.
+          </div>
+          <% } else { %>
+          <div class="form-text text-light-emphasis">
+            No se detectaron encabezados adicionales sin mapear en este Excel.
+          </div>
+          <% } %>
+        </div>
+        <% } %>
+        <div class="col-12">
+          <div class="form-check">
+            <input
+              id="confirmar_revision"
+              class="form-check-input"
+              type="checkbox"
+              name="confirmar_revision"
+              value="confirmo"
+              required
+            />
+            <label class="form-check-label" for="confirmar_revision">
+              Confirmo que revisé el reporte de lectura y que las filas exitosas pueden enviarse al
+              coordinador para aprobación.
+            </label>
+          </div>
+        </div>
+        <div class="col-md-8">
+          <label for="coordinador_documento" class="form-label">Coordinador aprobador</label>
+          <select
+            id="coordinador_documento"
+            name="coordinador_documento"
+            class="form-select"
+            required
+          >
+            <option value="">Selecciona un coordinador autorizado</option>
+            <% coordinators.forEach(function(coordinator) { %>
+            <option value="<%= coordinator.documento %>" <%= coordinator.encargado ? 'selected' : '' %>><%= coordinator.nombre %><%= coordinator.encargado ? ' (encargado)' : '' %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-perso" type="submit" data-submit-lock="true">
+            Confirmar y enviar
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+  <% } else if (batch.filas_exitosas > 0) { %>
+  <div class="alert alert-warning">
+    No hay coordinadores activos autorizados para aprobar inventarios de este laboratorio.
+  </div>
+  <% } else { %>
+  <div class="alert alert-warning">
+    No hay filas exitosas para enviar. Corrige el archivo y realiza una nueva carga.
+  </div>
+  <% } %> <% } %>
+
+</main>
+
+<button
+  class="btn btn-perso inventory-preview-scroll-top"
+  id="inventoryPreviewScrollTop"
+  type="button"
+  aria-label="Subir al inicio de la página"
+  hidden
+>
+  <i class="bi bi-arrow-up me-1" aria-hidden="true"></i>
+  Subir
+</button>
+<script src="/milab/public/js/inventory-preview.js" defer></script>
+<%- include('../../../partials/footer'); -%>

@@ -16,6 +16,8 @@
           <% sanctions.forEach(sanction => { %>
             <% const payload = {
               multa_id: sanction.id, cat_multa: sanction.cat_multa, laboratorio: sanction.laboratorio,
+              laboratorio_facultad: sanction.laboratorio_facultad,
+              laboratorio_dependencia: sanction.laboratorio_dependencia,
               obs_multa: sanction.obs_multa, con_estado_multa: sanction.con_estado_multa,
               fecha_multa: sanction.fecha_multa, creador: sanction.creador,
               id: sanction.reclamacion_id, texto: sanction.texto, fecha_creacion: sanction.fecha_reclamacion,
@@ -24,7 +26,14 @@
               respondido_por: sanction.respondido_por, responsable_activo: sanction.responsable_activo
             }; %>
             <tr id="sancion-<%= sanction.id %>">
-              <td class="app-claim-text"><strong><%= sanction.cat_multa %></strong><br><span><%= sanction.laboratorio || 'Laboratorio no disponible' %></span><br><small>Sanción #<%= sanction.id %></small></td>
+              <td class="app-claim-text">
+                <div class="app-claim-summary">
+                  <strong><%= sanction.cat_multa %></strong>
+                  <span><%= sanction.laboratorio || 'Laboratorio no disponible' %></span>
+                  <%- include('../partials/sanction-location', { sanction }) %>
+                  <small>Sanción #<%= sanction.id %></small>
+                </div>
+              </td>
               <td data-order="<%= sanction.fecha_multa || '' %>"><%= sanction.fecha_multa ? new Date(sanction.fecha_multa).toLocaleDateString('es-CO', { timeZone: 'UTC' }) : '-' %></td>
               <td><%= sanction.con_estado_multa %></td>
               <td>

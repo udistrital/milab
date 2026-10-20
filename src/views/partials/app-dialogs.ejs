@@ -1,0 +1,22 @@
+<link rel="stylesheet" href="/milab/public/css/app-dialogs.css">
+<dialog class="modal" id="appDialog" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="appDialogTitle">
+          <i class="bi bi-question-circle me-2" aria-hidden="true"></i>
+          <span data-dialog-title>Confirmar acción</span>
+        </h2>
+        <button type="button" class="btn-close" data-dialog-close aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p id="appDialogMessage" class="mb-0 text-break"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-dialog-cancel>Cancelar</button>
+        <button type="button" class="btn btn-primary btn-perso" data-dialog-accept>Confirmar</button>
+      </dialog>
+    </div>
+  </div>
+</div>
+<script src="/milab/public/js/app-dialogs.js"></script>

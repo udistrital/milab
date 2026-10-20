@@ -1,0 +1,85 @@
+<section class="app-page-header">
+  <h1 class="app-page-title"><%= searchConfig.title %></h1>
+  <p class="app-page-subtitle"><%= searchConfig.description %></p>
+</section>
+
+<section class="card app-form-panel app-fine-search-card">
+  <div class="card-body">
+    <p class="app-home-welcome-kicker">Paso 1 de 2</p>
+    <h2 class="app-panel-title mb-2">Busca a la persona</h2>
+    <p class="app-page-subtitle mb-4">Verificaremos su información antes de mostrar las acciones disponibles.</p>
+
+    <form
+      method="POST"
+      action="<%= searchConfig.searchUrl %>"
+      class="row g-3 app-form-grid align-items-end"
+      data-oati-loading="true"
+      data-oati-loading-message="<%= searchConfig.loadingMessage %>"
+    >
+      <%- include('./csrf_field') %>
+      <% if (searchConfig.studentSearch) { %>
+        <div class="col-12 col-md-5">
+          <label for="fineSearchType" class="form-label">Tipo de búsqueda</label>
+          <select class="form-select" id="fineSearchType" name="tipo_busqueda" required>
+            <option value="codigo" selected>Código institucional</option>
+            <option value="documento">Documento de identidad</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-7">
+          <label for="fineSearchValue" class="form-label" id="fineSearchLabel">Código institucional</label>
+          <input
+            type="text"
+            class="form-control"
+            id="fineSearchValue"
+            name="valor_busqueda"
+            maxlength="50"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Ej: 20241001"
+            required
+          >
+        </div>
+      <% } else { %>
+        <div class="col-12">
+          <label for="fineSearchValue" class="form-label">Documento del docente</label>
+          <input
+            type="text"
+            class="form-control"
+            id="fineSearchValue"
+            name="numero_documento_identificacion"
+            maxlength="50"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Ej: 1020304050"
+            required
+          >
+        </div>
+      <% } %>
+      <div class="col-12 d-flex flex-wrap align-items-center gap-3">
+        <button class="btn btn-perso" type="submit" data-submit-lock="true">
+          <i class="bi bi-search me-1" aria-hidden="true"></i>Buscar persona
+        </button>
+        <span class="form-text">Después podrás elegir registrar o retirar una sanción.</span>
+      </div>
+    </form>
+  </div>
+</section>
+
+<% if (searchConfig.studentSearch) { %>
+  <script nonce="<%= cspNonce %>">
+    (function () {
+      const typeSelect = document.getElementById('fineSearchType');
+      const valueInput = document.getElementById('fineSearchValue');
+      const valueLabel = document.getElementById('fineSearchLabel');
+
+      if (!typeSelect || !valueInput || !valueLabel) return;
+
+      typeSelect.addEventListener('change', function () {
+        const searchingByCode = typeSelect.value === 'codigo';
+        valueLabel.textContent = searchingByCode ? 'Código institucional' : 'Documento de identidad';
+        valueInput.placeholder = searchingByCode ? 'Ej: 20241001' : 'Ej: 1020304050';
+        valueInput.value = '';
+      });
+    })();
+  </script>
+<% } %>

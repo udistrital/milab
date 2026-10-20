@@ -301,8 +301,8 @@ function toArray(value) {
   return value ? [value] : [];
 }
 
-function isActiveStudentRecord(record) {
-  return normalizeEstadoCodigo(record?.estado) === 'A';
+function isEligibleStudentRecord(record) {
+  return ['A', 'B'].includes(normalizeEstadoCodigo(record?.estado));
 }
 
 function isActiveTeacherRecord(record) {
@@ -312,48 +312,69 @@ function isActiveTeacherRecord(record) {
   return estado === 'A' || estado === 'ACTIVO';
 }
 
-// Solo registros de estudiante con estado A (activo) que no resuelvan a EGRESADO.
-async function lookupActiveStudentRecords(documento) {
+// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso. Un documento puede
+// tener varios registros: los demás (por ejemplo, egresado de otro programa) solo se informan.
+async function lookupEligibleStudentRecords(documento, signal) {
   let studentData;
   try {
     studentData = await requestOati(
-      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`),
+      { signal }
     );
-  } catch {
-    return [];
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return { eligibleRecords: [], states: [] };
+    }
+    throw error;
   }
 
   const collection = toArray(studentData?.datosEstudianteCollection?.datosBasicosEstudiante);
+  const states = [];
+  const stateNames = new Map();
   const seenCodigos = new Set();
-  const activeRecords = [];
+  const eligibleRecords = [];
 
   for (const record of collection) {
     const codigo = (record?.codigo || '').toString().trim();
-    if (!codigo || seenCodigos.has(codigo) || !isActiveStudentRecord(record)) continue;
+    if (!codigo || seenCodigos.has(codigo)) continue;
 
-    let estado = 'ACTIVO';
-    try {
-      const estadoData = await requestOati(
-        getAcademicServicePath(`estados_codigo/${record.estado}`)
-      );
-      estado = estadoData?.estado?.nombre || estado;
-    } catch {
-      // Se conserva ACTIVO porque el código de estado ya es A.
+    const stateCode = normalizeEstadoCodigo(record.estado);
+    let estado = stateNames.get(stateCode);
+    if (!estado) {
+      estado = isEligibleStudentRecord(record) ? 'ACTIVO' : stateCode || 'NO INFORMADO';
+      if (stateCode) {
+        try {
+          const estadoData = await requestOati(
+            getAcademicServicePath(`estados_codigo/${stateCode}`),
+            { signal }
+          );
+          estado = estadoData?.estado?.nombre || estado;
+        } catch (error) {
+          if (signal.aborted) throw error;
+          console.warn('No se pudo resolver el estado del estudiante en OATI:', error.code);
+        }
+      }
+      stateNames.set(stateCode, estado);
     }
-    if (normalizeEstadoCodigo(estado) === 'EGRESADO') continue;
+    const stateLabel = `Estudiante: ${estado}${stateCode ? ` (${stateCode})` : ''}`;
+    if (!states.includes(stateLabel)) states.push(stateLabel);
+    if (!isEligibleStudentRecord(record)) continue;
 
     let carrera = '';
     try {
       const carreraData = await requestOati(
-        getAcademicServicePath(`carrera/${record.carrera || ''}`)
+        getAcademicServicePath(`carrera/${record.carrera || ''}`),
+        { signal }
       );
       carrera = carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '';
-    } catch {
+    } catch (error) {
+      if (signal.aborted) throw error;
+      console.warn('No se pudo resolver el programa del estudiante en OATI:', error.code);
       // Se usa el código de carrera de OATI si no se puede resolver el nombre.
     }
 
     seenCodigos.add(codigo);
-    activeRecords.push({
+    eligibleRecords.push({
       tipo_usuario: 'estudiante',
       documento,
       codigo,
@@ -364,31 +385,43 @@ async function lookupActiveStudentRecords(documento) {
     });
   }
 
-  return activeRecords;
+  return { eligibleRecords, states };
 }
 
-async function lookupTeacherByDocumento(documento) {
+async function lookupTeacherByDocumento(documento, signal) {
   try {
     const teacherData = await requestOati(
-      getAcademicServicePath(`consultar_estado_docente/${documento}`)
+      getAcademicServicePath(`consultar_estado_docente/${documento}`),
+      { signal }
     );
 
-    const docente = toArray(teacherData?.docentesCollection?.docente).find((item) =>
-      isActiveTeacherRecord(item)
-    );
-    if (!docente) return null;
+    const records = toArray(teacherData?.docentesCollection?.docente);
+    const states = [
+      ...new Set(
+        records.map(
+          (item) =>
+            `Docente: ${normalizeEstadoCodigo(item.estado_docente || item.estadoDocente || item.estado) || 'NO INFORMADO'}`
+        )
+      ),
+    ];
+    const docente = records.find((item) => isActiveTeacherRecord(item));
+    if (!docente) return { docente: null, states };
 
     return {
-      tipo_usuario: 'docente',
-      documento,
-      codigo: '',
-      estado: docente.estado_docente || docente.estadoDocente || docente.estado || '',
-      carrera: '',
-      nombre: docente.nombre || '',
-      correo: resolveOatiEmail(docente),
+      states,
+      docente: {
+        tipo_usuario: 'docente',
+        documento,
+        codigo: '',
+        estado: docente.estado_docente || docente.estadoDocente || docente.estado || '',
+        carrera: '',
+        nombre: docente.nombre || '',
+        correo: resolveOatiEmail(docente),
+      },
     };
-  } catch {
-    return null;
+  } catch (error) {
+    if (error.response?.status === 404) return { docente: null, states: [] };
+    throw error;
   }
 }
 
@@ -813,7 +846,7 @@ router.get('/identify', async (req, res) => {
   });
 });
 
-router.post('/identify', async (req, res) => {
+async function identifyProfile(req, res) {
   if (!req.session.microsoftProfile?.correo) {
     return res.redirect('/milab/auth/login');
   }
@@ -822,12 +855,13 @@ router.post('/identify', async (req, res) => {
   const correo = normalizeEmail(req.session.microsoftProfile.correo);
   const nombreEntra = req.session.microsoftProfile?.nombre || '';
 
-  const denyAccess = (message2) => {
+  const denyAccess = (message2, registrationDenied = false) => {
     const renderError = () =>
       res.render('home/message_error', {
         message: 'Acceso denegado',
         message2,
         limit: 'loginOnly',
+        registrationDenied,
       });
 
     if (req.session) {
@@ -845,15 +879,59 @@ router.post('/identify', async (req, res) => {
     });
   }
 
-  const estudiantes = await lookupActiveStudentRecords(documento);
-  const docente = await lookupTeacherByDocumento(documento);
-  const { roles: milabRoles, identity: milabIdentity } = await findMilabRolesByDocumento(
-    documento,
-    correo
-  );
+  const signal = AbortSignal.timeout(20000);
+  let estudiantes;
+  let docente;
+  let states;
+  try {
+    const studentLookup = await lookupEligibleStudentRecords(documento, signal);
+    estudiantes = studentLookup.eligibleRecords;
+    const teacherLookup = await lookupTeacherByDocumento(documento, signal);
+    docente = teacherLookup.docente;
+    states = [...studentLookup.states, ...teacherLookup.states];
+  } catch (error) {
+    console.error('Error consultando OATI durante el registro:', {
+      code: error.code,
+      status: error.response?.status,
+    });
+    return res.status(503).render('home/profile_identify', {
+      correo,
+      documento,
+      error:
+        'No fue posible completar la consulta en OATI. Por favor intenta nuevamente. Si el problema persiste, contacta a los laboratorios de tu programa académico.',
+    });
+  }
+  let milabRoles;
+  let milabIdentity;
+  try {
+    const roleLookup = await findMilabRolesByDocumento(documento, correo);
+    milabRoles = roleLookup.roles;
+    milabIdentity = roleLookup.identity;
+  } catch (error) {
+    console.error('Error verificando roles de MILab durante el registro:', {
+      code: error.code,
+      message: error.message,
+      requestId: req.id,
+    });
+    return res.status(503).render('home/message_error', {
+      message: 'No fue posible completar tu registro',
+      message2: `${
+        states.length
+          ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
+          : 'OATI no reporta un perfil académico habilitado.'
+      } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
+      limit: 'loginOnly',
+      registrationDenied: true,
+    });
+  }
 
   if (!estudiantes.length && !docente && !milabRoles.length) {
-    return denyAccess('El documento no esta asociado para ingresar a MILab.');
+    return denyAccess(
+      states.length
+        ? `No puedes usar MILab porque tu estado en OATI no está habilitado para el acceso. ${states.join('; ')}.`
+        : 'No puedes usar MILab porque OATI no reporta un perfil académico habilitado y no tienes un rol habilitado en MILab.',
+      true
+    );
   }
 
   const identityRef = estudiantes[0] || docente || milabIdentity || {};
@@ -934,6 +1012,10 @@ router.post('/identify', async (req, res) => {
     tipo_usuario: estudiantes.length ? 'estudiante' : 'docente',
     opcionesCodigo: estudiantes.length > 1 ? estudiantes : [],
   });
+}
+
+router.post('/identify', (req, res, next) => {
+  identifyProfile(req, res).catch(next);
 });
 
 router.post('/', async (req, res) => {
@@ -1009,7 +1091,7 @@ router.post('/', async (req, res) => {
           codigo: '',
           estado: '',
           carrera: '',
-          error: 'Seleccione el código de estudiante activo con el que desea registrarse.',
+          error: 'Seleccione el código de estudiante habilitado con el que desea registrarse.',
         });
       }
 

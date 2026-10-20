@@ -143,6 +143,40 @@ test('registration verification email includes no-reply sender and notice in bot
   }
 });
 
+test('enviar-codigo reports email delivery failure without creating an account', async () => {
+  let queryCalls = 0;
+  const sessionState = {
+    usuario_no_verificado: {
+      documento: 'test-reg-1001',
+      nombre: 'Docente de Prueba',
+      correo: 'docente-reg-1001@udistrital.edu.co',
+      tipo: 'docente',
+    },
+  };
+  const loaded = loadRegisterRoute({
+    poolQueryImpl: async () => {
+      queryCalls += 1;
+      return { rows: [], rowCount: 0 };
+    },
+    sendMailImpl: async () => {
+      throw new Error('SMTP unavailable');
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route, sessionState))
+      .post('/enviar-codigo')
+      .send({});
+
+    assert.equal(response.status, 500);
+    assert.match(response.body.message, /no fue posible enviar el correo/i);
+    assert.match(sessionState.usuario_no_verificado.codigoVerificacion, /^\d{6}$/);
+    assert.equal(queryCalls, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('email_verification promotes placeholder account by documento and allows first-time registration', async () => {
   let updateCalled = false;
 

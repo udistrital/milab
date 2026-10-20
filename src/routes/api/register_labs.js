@@ -179,8 +179,8 @@ async function fetchCoordinatorOptions(client) {
   return result.rows;
 }
 
-async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }) {
-  const existing = await pool.query(
+async function ensureUserIdentityForRole({ client = pool, correo, documento, nombre, roleName }) {
+  const existing = await client.query(
     'SELECT id FROM usuario WHERE LOWER(correo) = LOWER($1) OR documento = $2 LIMIT 1',
     [correo, documento]
   );
@@ -188,7 +188,7 @@ async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }
   let userId;
   if (existing.rows.length) {
     userId = existing.rows[0].id;
-    await pool.query(
+    await client.query(
       `UPDATE usuario
        SET correo = $1,
            documento = $2,
@@ -198,14 +198,14 @@ async function ensureUserIdentityForRole({ correo, documento, nombre, roleName }
       [correo, documento, nombre, userId]
     );
   } else {
-    const inserted = await pool.query(
+    const inserted = await client.query(
       'INSERT INTO usuario (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
       [correo, documento, nombre]
     );
     userId = inserted.rows[0].id;
   }
 
-  await pool.query(
+  await client.query(
     `INSERT INTO usuario_rol (usuario_id, rol_id)
      SELECT $1, id FROM rol WHERE nombre = $2
      ON CONFLICT DO NOTHING`,
@@ -622,7 +622,10 @@ router.post(
       } else {
         return res.render('home/message_success', {
           message: 'Cuenta creada',
-          message2: 'Exitosamente',
+          message2:
+            items.emailSent === false
+              ? 'La cuenta fue creada, pero no se pudo enviar el correo de bienvenida.'
+              : 'Exitosamente',
         });
       }
     } catch (error) {
@@ -656,6 +659,7 @@ async function create_account(data, userSession) {
     await client.query('BEGIN');
 
     const userId = await ensureUserIdentityForRole({
+      client,
       correo,
       documento,
       nombre,
@@ -717,9 +721,9 @@ async function create_account(data, userSession) {
         documento_creador: userSession.documento,
       };
 
-      await enviarCorreoBienvenidaLaboratorista(datosCompletos);
+      const emailSent = await enviarCorreoBienvenidaLaboratorista(datosCompletos);
 
-      return true;
+      return { emailSent };
     } else {
       throw new Error('Error al intentar agregar el usuario');
     }
@@ -920,8 +924,10 @@ ${NO_REPLY_NOTICE}`,
 
     await transporter.sendMail(mailOptions);
     console.log(`Correo de bienvenida enviado a: ${datosLaboratorista.correo}`);
+    return true;
   } catch (error) {
     console.error(`Error al enviar correo de bienvenida a ${datosLaboratorista.correo}:`, error);
+    return false;
   }
 }
 

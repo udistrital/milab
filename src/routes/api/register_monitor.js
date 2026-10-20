@@ -365,6 +365,7 @@ router.get('/load_info', requireMonitorRegistrationAccess, async function (req, 
       ...viewContext,
     });
   } catch (error) {
+    console.error('Error cargando el registro de monitores:', error);
     return res.render('home/message_error', {
       message: '¡Algo ha salido mal!',
       message2: 'No fue posible cargar el registro de monitores.',

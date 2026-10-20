@@ -27,8 +27,25 @@ test('ensureOperationalRoleAssignmentsSchema creates table and indexes once per 
   const callCountAfterFirstRun = executor.calls.length;
   await ensureOperationalRoleAssignmentsSchema(executor);
 
-  assert.equal(callCountAfterFirstRun, 4);
-  assert.equal(executor.calls.length, 4);
+  assert.equal(callCountAfterFirstRun, 5);
+  assert.equal(executor.calls.length, 5);
+});
+
+test('ensureOperationalRoleAssignmentsSchema skips DDL when the table is already provisioned', async () => {
+  const modulePath = require.resolve('../../../src/libs/operational-role-assignments');
+  delete require.cache[modulePath];
+  const { ensureOperationalRoleAssignmentsSchema: ensureFresh } = require(modulePath);
+  const executor = createExecutor([{ rows: [{ tabla: 'milab.usuario_ual_rol_operativo' }] }]);
+
+  await ensureFresh(executor);
+  await ensureFresh(executor);
+
+  assert.equal(executor.calls.length, 1);
+  assert.match(executor.calls[0].sql, /to_regclass\('milab\.usuario_ual_rol_operativo'\)/);
+  assert.equal(
+    executor.calls.some((call) => /CREATE\s+(TABLE|INDEX)/i.test(call.sql)),
+    false
+  );
 });
 
 test('fetchOperationalRoleAssignmentsByUserId returns empty for invalid inputs', async () => {

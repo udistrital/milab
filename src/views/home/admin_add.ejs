@@ -22,6 +22,7 @@
               class="form-control"
               id="documento_lookup"
               name="documento"
+              maxlength="50"
               placeholder="Ej: 90000000"
               value="<%= lookupDocumento || '' %>"
             >
@@ -47,7 +48,7 @@
 
         <div class="col-md-6">
           <label for="nombre" class="form-label">Nombre completo</label>
-          <input type="text" class="form-control" id="nombre" name="nombre" value="<%= formData?.nombre || '' %>" required>
+          <input type="text" class="form-control" id="nombre" name="nombre" maxlength="200" value="<%= formData?.nombre || '' %>" required>
         </div>
 
         <div class="col-md-6">
@@ -58,6 +59,7 @@
             class="form-control"
             id="documento"
             name="documento"
+            maxlength="50"
             value="<%= formData?.documento || '' %>"
             required
           >
@@ -65,7 +67,7 @@
 
         <div class="col-md-12">
           <label for="correo" class="form-label">Correo institucional</label>
-          <input type="email" class="form-control" id="correo" name="correo" value="<%= formData?.correo || '' %>" required>
+          <input type="email" class="form-control" id="correo" name="correo" maxlength="255" value="<%= formData?.correo || '' %>" required>
         </div>
 
         <% if (error) { %>

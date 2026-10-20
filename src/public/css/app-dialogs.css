@@ -1,0 +1,37 @@
+dialog#appDialog {
+  position: fixed;
+  inset: 0;
+  width: min(32rem, calc(100% - 2rem));
+  height: fit-content;
+  max-height: calc(100% - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+  color: inherit;
+}
+
+dialog#appDialog[open] {
+  display: block;
+}
+
+dialog#appDialog::backdrop {
+  background: rgb(0 0 0 / 50%);
+}
+
+body.app-shell dialog#appDialog .modal-dialog,
+dialog#appDialog .modal-dialog {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+dialog#appDialog .modal-content {
+  border: 0;
+}
+
+dialog#appDialog #appDialogMessage {
+  white-space: pre-line;
+}

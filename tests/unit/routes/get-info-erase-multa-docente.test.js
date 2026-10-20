@@ -1,6 +1,124 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const express = require('express');
+const request = require('supertest');
+
+const routePath = path.resolve(
+  __dirname,
+  '../../../src/routes/api/get-info-erase-multa-docente.js'
+);
+const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
+const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
+const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
+const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const multaConfigPath = path.resolve(__dirname, '../../../src/libs/multa-config.js');
+const { createSanctionPersonLookup } = require('../../../src/libs/sanction-person-lookup');
+
+function loadRoute() {
+  const originals = new Map();
+  let oatiRequestCount = 0;
+  const stubs = [
+    [
+      dbPath,
+      {
+        query: async (sql) => {
+          if (sql.includes('SELECT COUNT(*) AS multado FROM multa')) {
+            return { rows: [{ multado: '1' }] };
+          }
+          if (sql.includes('SELECT m.*')) {
+            return {
+              rows: [
+                {
+                  id: 1,
+                  ual_id: 21,
+                  laboratorista_documento_id: '1024467835',
+                  con_estado_multa: 'ACTIVA',
+                },
+              ],
+            };
+          }
+          if (sql.includes('FROM laboratorista WHERE documento = $1 OR n_usuario = $1')) {
+            return { rows: [{ documento: '1024467835' }] };
+          }
+          if (sql.includes('FROM laboratorista_ual WHERE laboratorista_documento_id = $1')) {
+            return { rows: [{ ual_id: 21 }] };
+          }
+          return { rows: [] };
+        },
+      },
+    ],
+    [
+      oatiClientPath,
+      {
+        getAcademicServicePath: (value) => value,
+        requestOati: async () => {
+          oatiRequestCount += 1;
+          return {};
+        },
+      },
+    ],
+    [
+      userIdentityPath,
+      {
+        ensurePerfilDocente: async () => 99,
+      },
+    ],
+    [
+      authPath,
+      {
+        requireRoles: () => (req, res, next) => next(),
+      },
+    ],
+    [
+      multaConfigPath,
+      {
+        resolveMultaConfigForMultaId: async () => ({
+          permite_saldar_multas_directas: false,
+        }),
+      },
+    ],
+  ];
+
+  delete require.cache[routePath];
+  for (const [modulePath, stub] of stubs) {
+    originals.set(modulePath, require.cache[modulePath]);
+    require.cache[modulePath] = {
+      id: modulePath,
+      filename: modulePath,
+      loaded: true,
+      exports: stub,
+    };
+  }
+
+  return {
+    route: require(routePath),
+    get oatiRequestCount() {
+      return oatiRequestCount;
+    },
+    restore() {
+      for (const [modulePath, original] of originals.entries()) {
+        if (original) {
+          require.cache[modulePath] = original;
+        } else {
+          delete require.cache[modulePath];
+        }
+      }
+      delete require.cache[routePath];
+    },
+  };
+}
+
+function buildApp(route, session) {
+  const app = express();
+  app.use((req, res, next) => {
+    req.session = session;
+    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    next();
+  });
+  app.use('/', route);
+  return app;
+}
 
 test('get-info-erase-multa-docente exports an Express router with handlers', () => {
   const modulePath = path.resolve(
@@ -14,4 +132,33 @@ test('get-info-erase-multa-docente exports an Express router with handlers', () 
   assert.equal(typeof router.use, 'function');
   assert.equal(Array.isArray(router.stack), true);
   assert.equal(router.stack.length > 0, true);
+});
+
+test('get-info-erase-multa-docente reuses the session lookup without querying OATI', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const session = {
+      user: {
+        tipo: 'laboratorista',
+        documento: '1024467835',
+      },
+    };
+    const lookupToken = createSanctionPersonLookup({ session }, 'docente', {
+      usuarioId: 99,
+      estado: 'ACTIVO',
+      documento: '79520182',
+      nombre: 'Docente Prueba',
+    });
+    const app = buildApp(loaded.route, session);
+    const response = await request(app).post('/').type('form').send({ lookup_token: lookupToken });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/reg_multa_erase_docente');
+    assert.equal(response.body.locals.con_documento, '79520182');
+    assert.deepEqual(response.body.locals.laboratoristaUalIds, [21]);
+    assert.equal(loaded.oatiRequestCount, 0);
+  } finally {
+    loaded.restore();
+  }
 });

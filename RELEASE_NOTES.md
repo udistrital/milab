@@ -1,5 +1,11 @@
 # Release Notes
 
+## Hotfix 2026-10-15 - Registro en prueba académica
+
+Se permite que estudiantes con estado `B` (prueba académica y activo) completen
+la validación de registro e ingresen a MILab. Los estados no habilitados, como
+egresado e inactivo, continúan bloqueados.
+
 ## 2.7.0 - 2026-09-16
 
 Resumen rápido:

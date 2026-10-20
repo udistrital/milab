@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const express = require('express');
+const multer = require('multer');
+const request = require('supertest');
 
 const {
   csrfTokenMiddleware,
@@ -45,6 +48,7 @@ test('verifyCsrfToken rejects POST without token', () => {
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 403);
   assert.equal(res.rendered.view, 'home/message_error');
+  assert.equal(res.rendered.payload.status, 403);
   assert.match(res.rendered.payload.message, /Solicitud no válida/i);
 });
 
@@ -165,6 +169,57 @@ test('createCsrfVerifier allows configured exempt API path', () => {
   assert.equal(nextCalled, true);
   assert.equal(res.rendered, null);
   assert.equal(res.jsonPayload, null);
+});
+
+test('createCsrfVerifier allows the multipart inventory route to validate CSRF after parsing', () => {
+  const verifyCsrfWithMultipartRouteExemption = createCsrfVerifier({
+    skipPaths: ['/inventarios/cargas/previsualizar'],
+  });
+  const req = {
+    method: 'POST',
+    path: '/inventarios/cargas/previsualizar',
+    session: { csrfToken: 'csrf-token-123' },
+    body: {},
+    headers: {},
+  };
+  const res = createResponse();
+  let nextCalled = false;
+
+  verifyCsrfWithMultipartRouteExemption(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, true);
+  assert.equal(res.rendered, null);
+});
+
+test('mounted multipart inventory route validates its parsed CSRF field', async () => {
+  const csrfToken = 'inventory-csrf-token';
+  const app = express();
+  const upload = multer({ storage: multer.memoryStorage() }).single('archivo');
+
+  app.use((req, res, next) => {
+    req.session = { csrfToken };
+    res.render = (view, payload) => res.status(res.statusCode).json({ view, payload });
+    next();
+  });
+  app.use('/milab', createCsrfVerifier({ skipPaths: ['/inventarios/cargas/previsualizar'] }));
+  app.post('/milab/inventarios/cargas/previsualizar', upload, verifyCsrfToken, (req, res) =>
+    res.json({ csrfToken: req.body._csrf })
+  );
+
+  const validRequest = await request(app)
+    .post('/milab/inventarios/cargas/previsualizar')
+    .field('_csrf', csrfToken)
+    .attach('archivo', Buffer.from('excel'), 'inventario.xlsx');
+  assert.equal(validRequest.status, 200);
+  assert.equal(validRequest.body.csrfToken, csrfToken);
+
+  const invalidRequest = await request(app)
+    .post('/milab/inventarios/cargas/previsualizar')
+    .attach('archivo', Buffer.from('excel'), 'inventario.xlsx');
+  assert.equal(invalidRequest.status, 403);
+  assert.equal(invalidRequest.body.payload.status, 403);
 });
 
 test('csrfTokenMiddleware injects token into locals', () => {

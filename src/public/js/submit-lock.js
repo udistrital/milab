@@ -9,6 +9,21 @@
   var DATA_SUBMIT_LOCK = 'data-submit-lock';
   var DATA_LOCK_TIMEOUT = 'data-lock-timeout-id';
   var SAFETY_TIMEOUT_MS = 15000;
+  var submitterFields = new WeakMap();
+
+  function preserveSubmitter(form, submitter) {
+    var previous = submitterFields.get(form);
+    if (previous) previous.remove();
+    submitterFields.delete(form);
+    if (!submitter || !submitter.name || submitter.disabled) return;
+    // Disabled submit buttons are excluded from the browser's form data.
+    var field = document.createElement('input');
+    field.type = 'hidden';
+    field.name = submitter.name;
+    field.value = submitter.value;
+    form.appendChild(field);
+    submitterFields.set(form, field);
+  }
 
   function isAllowedActionTag(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -107,6 +122,13 @@
       }
 
       restoreText(el);
+      var form = getClosestForm(el);
+      if (form && !form.querySelector('.' + LOCKED_CLASS)) {
+        delete form.dataset.submitting;
+        var field = submitterFields.get(form);
+        if (field) field.remove();
+        submitterFields.delete(form);
+      }
     } catch {
       /* no-op */
     }
@@ -146,14 +168,12 @@
   function documentSubmitHandler(e) {
     try {
       var form = e.target;
-      if (!form || form.tagName !== 'FORM') return;
+      if (!form || form.tagName !== 'FORM' || e.defaultPrevented) return;
       if (form.dataset.submitting === '1') {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      form.dataset.submitting = '1';
-
       var submits = form.querySelectorAll(
         'button[' +
           DATA_SUBMIT_LOCK +
@@ -165,6 +185,11 @@
           DATA_SUBMIT_LOCK +
           '="true"]'
       );
+      if (!submits.length) return;
+      form.dataset.submitting = '1';
+      if (Array.prototype.includes.call(submits, e.submitter) && !e.submitter.disabled) {
+        preserveSubmitter(form, e.submitter);
+      }
       for (var i = 0; i < submits.length; i++) {
         lock(submits[i]);
       }
@@ -185,6 +210,7 @@
     SAFETY_TIMEOUT_MS: SAFETY_TIMEOUT_MS,
     lock: lock,
     release: release,
+    preserveSubmitter: preserveSubmitter,
     runQuickCheck: runQuickCheck,
   };
 
@@ -201,7 +227,7 @@
 
   function attachHandlers() {
     document.addEventListener('click', documentClickHandler, true);
-    document.addEventListener('submit', documentSubmitHandler, true);
+    document.addEventListener('submit', documentSubmitHandler);
   }
 
   if (document.readyState === 'loading') {

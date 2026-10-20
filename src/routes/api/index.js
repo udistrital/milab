@@ -50,6 +50,7 @@ router.use('/profile', require('./profile'));
 router.use('/admin/menus', require('./admin/menus'));
 router.use('/admin/roles', require('./admin/roles'));
 router.use('/admin/sanciones', require('./admin/sanciones'));
+router.use('/admin/esquema-bd', require('./admin/esquema-bd'));
 
 // Módulo Capacitación y Certificación EDX
 router.use('/certificacion-edx', require('./certificacion-edx'));

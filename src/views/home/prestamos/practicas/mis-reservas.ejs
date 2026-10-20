@@ -202,7 +202,7 @@
     document.querySelectorAll('.js-cancel-practice').forEach(function(button) {
       button.addEventListener('click', async function() {
         var reservationId = button.getAttribute('data-reservation-id');
-        if (!reservationId || !window.confirm('¿Deseas cancelar esta practica?')) return;
+        if (!reservationId || !(await window.MiLabDialogs.confirm('¿Deseas cancelar esta practica?'))) return;
 
         button.disabled = true;
 
