@@ -63,10 +63,6 @@ CREATE INDEX IF NOT EXISTS idx_equipo_especializado_equipo
 CREATE INDEX IF NOT EXISTS idx_equipo_especializado_activo
     ON equipo_especializado(activo);
 
-DROP TRIGGER IF EXISTS trg_validar_facultad_curso_laboratorio
-    ON curso_laboratorio;
-DROP FUNCTION IF EXISTS validar_facultad_curso_laboratorio();
-
 -- ============================================================
 -- MODULO CAPACITACION SOLICITUDES / SESIONES / CERTIFICACIONES
 --
@@ -361,10 +357,6 @@ CREATE INDEX IF NOT EXISTS idx_certificacion_usuario_solicitud_prestamo
 CREATE INDEX IF NOT EXISTS idx_certificacion_usuario_entrega_equipo
     ON certificacion_usuario(entrega_equipo_id);
 
-
-DROP TRIGGER IF EXISTS trg_validar_facultad_sesion_capacitacion
-    ON sesion_capacitacion;
-DROP FUNCTION IF EXISTS validar_facultad_sesion_capacitacion();
 
 -- ============================================================
 -- SUBMODULO ENCUENTROS
