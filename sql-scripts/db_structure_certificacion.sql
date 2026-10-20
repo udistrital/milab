@@ -63,43 +63,9 @@ CREATE INDEX IF NOT EXISTS idx_equipo_especializado_equipo
 CREATE INDEX IF NOT EXISTS idx_equipo_especializado_activo
     ON equipo_especializado(activo);
 
-CREATE OR REPLACE FUNCTION validar_facultad_curso_laboratorio()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    facultad_curso INT;
-    facultad_laboratorio INT;
-BEGIN
-    SELECT id_facultad
-    INTO facultad_curso
-    FROM cursos
-    WHERE codigo_curso = NEW.codigo_curso;
-
-    SELECT facultad_id
-    INTO facultad_laboratorio
-    FROM ual
-    WHERE ual_id = NEW.id_laboratorio;
-
-    IF facultad_curso IS DISTINCT FROM facultad_laboratorio THEN
-        RAISE EXCEPTION
-            'El laboratorio % no pertenece a la facultad del curso %',
-            NEW.id_laboratorio,
-            NEW.codigo_curso;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
 DROP TRIGGER IF EXISTS trg_validar_facultad_curso_laboratorio
     ON curso_laboratorio;
-
-CREATE TRIGGER trg_validar_facultad_curso_laboratorio
-BEFORE INSERT OR UPDATE OF codigo_curso, id_laboratorio
-ON curso_laboratorio
-FOR EACH ROW
-EXECUTE FUNCTION validar_facultad_curso_laboratorio();
+DROP FUNCTION IF EXISTS validar_facultad_curso_laboratorio();
 
 -- ============================================================
 -- MODULO CAPACITACION SOLICITUDES / SESIONES / CERTIFICACIONES
@@ -396,54 +362,9 @@ CREATE INDEX IF NOT EXISTS idx_certificacion_usuario_entrega_equipo
     ON certificacion_usuario(entrega_equipo_id);
 
 
--- ============================================================
--- TRIGGER: sesion_capacitacion valida que UAL pertenece
--- a la MISMA facultad del curso (igual a curso_laboratorio).
--- ============================================================
-
-CREATE OR REPLACE FUNCTION validar_facultad_sesion_capacitacion()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    facultad_curso INT;
-    facultad_ual INT;
-BEGIN
-    SELECT id_facultad
-    INTO facultad_curso
-    FROM cursos
-    WHERE codigo_curso = NEW.codigo_curso;
-
-    SELECT facultad_id
-    INTO facultad_ual
-    FROM ual
-    WHERE ual_id = NEW.ual_id;
-
-    IF facultad_curso IS DISTINCT FROM facultad_ual THEN
-        RAISE EXCEPTION
-            'La UAL/Laboratorio % (facultad %) no coincide con la facultad (%) del curso %',
-            NEW.ual_id,
-            COALESCE(facultad_ual::TEXT,'NULL'),
-            COALESCE(facultad_curso::TEXT,'NULL'),
-            NEW.codigo_curso;
-    END IF;
-
-    IF NEW.facultad_id IS DISTINCT FROM facultad_curso THEN
-        NEW.facultad_id := COALESCE(facultad_curso, NEW.facultad_id);
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
 DROP TRIGGER IF EXISTS trg_validar_facultad_sesion_capacitacion
     ON sesion_capacitacion;
-
-CREATE TRIGGER trg_validar_facultad_sesion_capacitacion
-BEFORE INSERT OR UPDATE OF codigo_curso, ual_id, facultad_id
-ON sesion_capacitacion
-FOR EACH ROW
-EXECUTE FUNCTION validar_facultad_sesion_capacitacion();
+DROP FUNCTION IF EXISTS validar_facultad_sesion_capacitacion();
 
 -- ============================================================
 -- SUBMODULO ENCUENTROS

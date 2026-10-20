@@ -198,17 +198,23 @@ async function resolveLaboratoristaScope(req) {
          u.nombre AS nombre_laboratorio,
          u.codigo_abreviacion,
          u.facultad_id,
-         f.nombre AS nombre_facultad
+         CASE
+           WHEN padre.dependencia_facultad_id IS NULL THEN dependencia.nombre
+           ELSE padre.nombre || ' / ' || dependencia.nombre
+         END AS nombre_facultad
        FROM laboratorista_ual lu
        JOIN ual u
          ON u.ual_id = lu.ual_id
         AND u.activo = TRUE
-       JOIN facultad f
-         ON f.facultad_id = u.facultad_id
-        AND f.activo = TRUE
+       JOIN dependencia_facultad dependencia
+         ON dependencia.dependencia_facultad_id = u.facultad_id
+        AND dependencia.activo = TRUE
+       LEFT JOIN dependencia_facultad padre
+         ON padre.dependencia_facultad_id = dependencia.padre_id
+        AND padre.activo = TRUE
        WHERE lu.laboratorista_documento_id = $1
          AND lu.activo = TRUE
-       ORDER BY f.nombre ASC, u.nombre ASC`,
+       ORDER BY nombre_facultad ASC, u.nombre ASC`,
       [labDocumento]
     );
   } catch (err) {
