@@ -7,13 +7,12 @@ const {
 } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
 const {
-  SANCTION_TYPES,
   normalizeSanctionType,
   isValidSanctionType,
   fetchMultaConfigsForFacultyIds,
-  upsertConfigForFacultyId,
-  logConfigChangeToAuditoria,
 } = require('../../libs/multa-config');
+// La implementación previa también importaba SANCTION_TYPES, upsertConfigForFacultyId,
+// y logConfigChangeToAuditoria para renderizar la vista y guardar sus toggles.
 const { wantsJson } = require('../middlewares/error-handler');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
@@ -35,6 +34,12 @@ const requireCoordinadorApprovalAccess = requireRoles('coordinador', {
 const requireCoordinadorApprovalAction = requireRoles('coordinador', {
   message: 'No autorizado',
   message2: 'Tu sesión no tiene permisos suficientes.',
+  limit: 'noSession',
+});
+
+const requireDirectStateChange = requireRoles('laboratorista', {
+  message: 'No autorizado',
+  message2: 'Solo los laboratoristas pueden actualizar directamente estas sanciones.',
   limit: 'noSession',
 });
 
@@ -145,7 +150,8 @@ async function resolveLaboratoristaDocument(userDocument) {
   return result.rows[0]?.documento || null;
 }
 
-async function resolveApprovalActionScope(req, multaId, requiredFlagForLaboratorista) {
+// Antes recibía requiredFlagForLaboratorista y condicionaba la acción a la autorización vigente.
+async function resolveApprovalActionScope(req, multaId) {
   const role = String(req.session?.user?.tipo || '').toLowerCase();
 
   if (role === 'coordinador') {
@@ -226,6 +232,7 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
     };
   }
 
+  /*
   const configMap = await fetchMultaConfigsForFacultyIds([facultadId]);
   const config = configMap.get(facultadId);
   if (config?.[requiredFlagForLaboratorista] !== true) {
@@ -233,16 +240,15 @@ async function resolveApprovalActionScope(req, multaId, requiredFlagForLaborator
       requiredFlagForLaboratorista === 'permite_saldar_multas_directas'
         ? 'La facultad no tiene habilitada por el coordinador la funcionalidad para desactivar sanciones directamente.'
         : 'La facultad no tiene habilitada por el coordinador la funcionalidad para activar sanciones directamente.';
-    return {
-      allowed: false,
-      message2: detailMessage,
-    };
+    return { allowed: false, message2: detailMessage };
   }
+  */
 
   return {
     allowed: true,
     actorDocument: laboratoristaDocument,
     facultyIds: [facultadId],
+    ualIds: [Number(multaScope.ual_id)],
     role,
   };
 }
@@ -350,13 +356,11 @@ async function resolveAplazamientoActionScope(req, multaId) {
   };
 }
 
-// GET: Vista de aprobación de multas
+/*
 router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
   res.setHeader('Cache-Control', 'no-store');
-
   try {
     const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
-
     if (!scope.coordinatorDocument) {
       return res.render('home/message_error', {
         message: 'No se encontró información del coordinador.',
@@ -430,9 +434,8 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
       });
     }
 
-    res.set('Cache-Control', 'no-store');
     return res.render('home/aprobacion_multa', {
-      multas: multasPendientes,
+      multas: result.rows,
       nombreCoordinador: req.session.user.nombre,
       SANCTION_TYPES,
       facultadesParaAutorizar,
@@ -447,9 +450,15 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
     });
   }
 });
+*/
+router.get('/', requireCoordinadorApprovalAccess, (_req, res) =>
+  res.redirect('/milab/api/get_list_multas')
+);
 
 // POST: Activar sanción (de Pendiente a ACTIVA)
-router.post('/activar', requireApprovalAction, async function (req, res) {
+// Antes: se usaba requireApprovalAction y resolveApprovalActionScope(req, multa_id,
+// 'permite_crear_multas_activas_directas') para permitir esta acción solo con flag activo.
+router.post('/activar', requireDirectStateChange, async function (req, res) {
   const body = req.body || {};
   const multa_id = Number(body.multa_id);
   const tipo_sancion = normalizeSanctionType(body.tipo_sancion);
@@ -471,11 +480,7 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
   }
 
   try {
-    const scope = await resolveApprovalActionScope(
-      req,
-      multa_id,
-      'permite_crear_multas_activas_directas'
-    );
+    const scope = await resolveApprovalActionScope(req, multa_id);
 
     if (!scope?.allowed) {
       return res.render('home/message_error', {
@@ -569,7 +574,9 @@ router.post('/activar', requireApprovalAction, async function (req, res) {
 });
 
 // POST: Marcar sanción como SALDADA (de POR SALDAR a SALDADA)
-router.post('/saldar', requireApprovalAction, async function (req, res) {
+// Antes: se usaba requireApprovalAction y resolveApprovalActionScope(req, multa_id,
+// 'permite_saldar_multas_directas') para exigir autorización de saldo directo.
+router.post('/saldar', requireDirectStateChange, async function (req, res) {
   const body = req.body || {};
   const multa_id = Number(body.multa_id);
 
@@ -582,7 +589,7 @@ router.post('/saldar', requireApprovalAction, async function (req, res) {
   }
 
   try {
-    const scope = await resolveApprovalActionScope(req, multa_id, 'permite_saldar_multas_directas');
+    const scope = await resolveApprovalActionScope(req, multa_id);
 
     if (!scope?.allowed) {
       return res.render('home/message_error', {
@@ -807,6 +814,7 @@ router.post('/reactivar', requireApprovalAction, async function (req, res) {
   }
 });
 
+/*
 function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, descripcionBase) {
   return async function (req, res) {
     try {
@@ -843,74 +851,72 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
         const msg = {
           message: 'No autorizado',
           message2: 'No puedes gestionar la configuración de esta facultad.',
-        };
-        return req.accepts('json')
-          ? res.status(403).json({ ok: false, ...msg })
-          : res.render('home/message_error', { ...msg, limit: null });
+          limit: null,
+        });
       }
-      const unidadResult = await pool.query(
-        'SELECT padre_id FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
-        [facultadIdParam]
-      );
-      if (unidadResult.rows[0]?.padre_id != null) {
-        const msg = {
-          message: 'Operación no válida',
-          message2: 'La configuración de autorizaciones se gestiona a nivel de facultad.',
-        };
-        return req.accepts('json')
-          ? res.status(400).json({ ok: false, ...msg })
-          : res.render('home/message_error', { ...msg, limit: null });
-      }
-      const currentCfg = scope.facultyIds?.length
-        ? (await fetchMultaConfigsForFacultyIds([facultadIdParam])).get(facultadIdParam)
-        : null;
-      const currentValue = Boolean(currentCfg?.[flag]);
-      const nextValue = !currentValue;
+
+      const facultadId = Number(req.params.facultad_id);
+      const currentCfg = (await fetchMultaConfigsForFacultyIds([facultadId])).get(facultadId);
+      const nextValue = !Boolean(currentCfg?.[flag]);
       const accionAudit = nextValue ? accionHabilitar : accionDeshabilitar;
-      const descripcion = nextValue
-        ? `${descripcionBase} habilitada para facultad ${facultadIdParam}`
-        : `${descripcionBase} deshabilitada para facultad ${facultadIdParam}`;
+      const descripcion = `${descripcionBase} ${nextValue ? 'habilitada' : 'deshabilitada'} para facultad ${facultadId}`;
+
       await upsertConfigForFacultyId(
-        facultadIdParam,
+        facultadId,
         { [flag]: nextValue },
         scope.coordinatorDocument,
         accionAudit
       );
-      await logConfigChangeToAuditoria(pool, scope.coordinatorDocument, accionAudit, descripcion, {
-        facultad_id: facultadIdParam,
-        flag,
-        nuevo_valor: nextValue,
-      });
-      await pool.query(
-        `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
-        [req.session.user.tipo, scope.coordinatorDocument, accionAudit, String(facultadIdParam)]
+      await logConfigChangeToAuditoria(
+        pool,
+        scope.coordinatorDocument,
+        accionAudit,
+        descripcion,
+        { facultad_id: facultadId, flag, nuevo_valor: nextValue }
       );
-      const payload = {
-        ok: true,
-        flag,
-        nextValue,
-        facultad_id: facultadIdParam,
-        fecha_modificacion: new Date().toISOString(),
-        documento_autorizador: scope.coordinatorDocument,
-        accion_ultima: accionAudit,
-      };
-      if (req.accepts('json')) {
-        return res.json(payload);
-      }
-      return res.redirect('/milab/api/aprobacion_multa');
+      await pool.query(
+        'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+        [req.session.user.tipo, scope.coordinatorDocument, accionAudit, String(facultadId)]
+      );
+      return req.accepts('json')
+        ? res.json({ ok: true, flag, nextValue, facultad_id: facultadId })
+        : res.redirect('/milab/api/aprobacion_multa');
     } catch (error) {
       console.error('Error al cambiar configuración de facultad:', error);
-      const msg = {
+      return res.status(500).render('home/message_error', {
         message: 'Error al actualizar configuración.',
         message2: 'Por favor, intenta nuevamente.',
-      };
-      return req.accepts('json')
-        ? res.status(500).json({ ok: false, ...msg })
-        : res.render('home/message_error', { ...msg, limit: null });
+        limit: null,
+      });
     }
   };
 }
+*/
 
+function rejectDisabledAuthorizationSettings(req, res) {
+  const payload = {
+    message: 'Funcionalidad desactivada',
+    message2: 'Las sanciones ya no requieren autorización por facultad.',
+  };
+  if (req.accepts('json')) {
+    return res.status(410).json({ ok: false, ...payload });
+  }
+  return res.status(410).render('home/message_error', { ...payload, limit: null });
+}
+
+router.post(
+  '/configuracion/:facultad_id/toggle-crear-directa',
+  requireCoordinadorApprovalAction,
+  rejectDisabledAuthorizationSettings
+);
+
+router.post(
+  '/configuracion/:facultad_id/toggle-saldar-directa',
+  requireCoordinadorApprovalAction,
+  rejectDisabledAuthorizationSettings
+);
+
+/*
 router.post(
   '/configuracion/:facultad_id/toggle-crear-directa',
   requireCoordinadorApprovalAction,
@@ -921,7 +927,6 @@ router.post(
     'Autorización de creación de sanciones activas directas'
   )
 );
-
 router.post(
   '/configuracion/:facultad_id/toggle-saldar-directa',
   requireCoordinadorApprovalAction,
@@ -932,5 +937,6 @@ router.post(
     'Autorización de saldo directo de sanciones'
   )
 );
+*/
 
 module.exports = router;

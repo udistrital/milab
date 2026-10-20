@@ -9,7 +9,6 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
-const multaConfigPath = path.resolve(__dirname, '../../../src/libs/multa-config.js');
 
 function buildApp(route, user = { tipo: 'coordinador', documento: 'coord-user' }) {
   const app = express();
@@ -74,12 +73,6 @@ function loadRoute({ queryImpl, resolveScopeImpl } = {}) {
       authPath,
       {
         requireRoles: () => (req, res, next) => next(),
-      },
-    ],
-    [
-      multaConfigPath,
-      {
-        resolveMultaConfigForMultaId: async () => ({ permite_saldar_multas_directas: false }),
       },
     ],
   ];
@@ -192,6 +185,55 @@ test('quitar-multa laboratorista fails when not assigned to multa UAL', async ()
   }
 });
 
+test('quitar-multa laboratorista salda assigned sanctions directly', async () => {
+  let updateParams;
+  const loaded = loadRoute({
+    queryImpl: async (sql, params) => {
+      if (sql.includes('SELECT m.usuario_sancionado_id')) {
+        return {
+          rows: [
+            {
+              usuario_sancionado_id: 88,
+              con_estado_multa: 'ACTIVA',
+              ual_id: 22,
+              facultad_id: 7,
+            },
+          ],
+        };
+      }
+
+      if (sql.includes('SELECT documento FROM laboratorista')) {
+        return { rows: [{ documento: 'lab-1' }] };
+      }
+
+      if (sql.includes('FROM laboratorista_ual')) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+
+      if (sql.includes('UPDATE multa SET con_estado_multa')) {
+        updateParams = params;
+        return { rows: [], rowCount: 1 };
+      }
+
+      return { rows: [], rowCount: 1 };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: 'lab-user' });
+    const response = await request(app)
+      .post('/')
+      .type('form')
+      .send({ con_id: '9', source: 'listado' });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=saldada');
+    assert.deepEqual(updateParams, ['SALDADA', 9]);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('quitar-multa coordinator succeeds with valid faculty scope', async () => {
   const loaded = loadRoute({
     queryImpl: async (sql) => {
@@ -263,7 +305,7 @@ test('quitar-multa from listado redirects back to sanctions list', async () => {
       .send({ con_id: '9', source: 'listado' });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/milab/api/get_list_multas');
+    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=saldada');
   } finally {
     loaded.restore();
   }
