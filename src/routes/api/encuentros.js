@@ -310,6 +310,7 @@ async function createCertificate(eventId, participantId, req) {
             p.documento,
             p.documento_normalizado,
             p.correo,
+            p.rol,
             p.facultad,
             p.laboratorio,
             a.entrada_en,
@@ -364,13 +365,13 @@ async function createCertificate(eventId, participantId, req) {
         nombre: participant.nombre,
         documento: participant.documento,
         correo: participant.correo,
+        rol: participant.rol,
         facultad: participant.facultad,
         laboratorio: participant.laboratorio,
         evento: participant.evento,
         fecha_evento: formatDateForDisplay(participant.fecha_evento),
         lugar: participant.lugar,
         organizador: participant.organizador,
-        rol: '',
         fecha_emision: emittedAt,
         codigo_certificado: code,
       };
@@ -701,7 +702,7 @@ async function fetchEventDetail(eventId) {
   const participantsResult = await pool.query(
     `
       SELECT
-        p.id, p.nombre, p.documento, p.correo, p.facultad, p.laboratorio,
+        p.id, p.nombre, p.documento, p.correo, p.rol, p.facultad, p.laboratorio,
         a.entrada_en, a.salida_en,
         CASE
           WHEN a.salida_en IS NOT NULL THEN 'completada'
@@ -804,6 +805,7 @@ router.post(
         nombre: 'Nombre de prueba',
         documento: '00000000',
         correo: 'participante@example.edu',
+        rol: 'Cargo de prueba',
         facultad: 'Facultad de prueba',
         laboratorio: 'Laboratorio de prueba',
         evento: 'Encuentro de prueba',
@@ -813,7 +815,6 @@ router.post(
         }).format(new Date()),
         lugar: 'Sede de prueba',
         organizador: 'MiLab',
-        rol: 'Participante',
         fecha_emision: new Intl.DateTimeFormat('es-CO', {
           dateStyle: 'long',
           timeZone: 'America/Bogota',
@@ -1374,10 +1375,10 @@ router.post('/api/eventos/:eventId/participantes/importar', requireManager, asyn
         const inserted = await client.query(
           `
             INSERT INTO encuentro_participante (
-              evento_id, nombre, documento, documento_normalizado, correo,
+              evento_id, nombre, documento, documento_normalizado, correo, rol,
               facultad, laboratorio, usuario_id, creado_por_usuario_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
             RETURNING id
           `,
@@ -1387,6 +1388,7 @@ router.post('/api/eventos/:eventId/participantes/importar', requireManager, asyn
             row.participante.documento,
             row.participante.documento_normalizado,
             row.participante.correo,
+            row.participante.rol,
             row.participante.facultad,
             row.participante.laboratorio,
             userId,
@@ -1455,10 +1457,10 @@ router.post('/api/eventos/:eventId/participantes', requireManager, async (req, r
       const inserted = await client.query(
         `
           INSERT INTO encuentro_participante (
-            evento_id, nombre, documento, documento_normalizado, correo,
+            evento_id, nombre, documento, documento_normalizado, correo, rol,
             facultad, laboratorio, usuario_id, creado_por_usuario_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
           RETURNING id
         `,
@@ -1468,6 +1470,7 @@ router.post('/api/eventos/:eventId/participantes', requireManager, async (req, r
           validation.participante.documento,
           validation.participante.documento_normalizado,
           validation.participante.correo,
+          validation.participante.rol,
           validation.participante.facultad,
           validation.participante.laboratorio,
           userId,

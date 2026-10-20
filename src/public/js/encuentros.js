@@ -146,6 +146,7 @@
   }
 
   function setFormMode(event = null) {
+    window.EncounterTemplateEditor.reset();
     eventForm.reset();
     document.getElementById('event-id').value = event?.id || '';
     document.getElementById('event-form-title').textContent = event
@@ -156,14 +157,7 @@
       : 'Guardar evento';
     document.getElementById('event-template').required = !event;
     document.getElementById('template-required').classList.toggle('d-none', Boolean(event));
-    document.getElementById('template-config').value = event
-      ? JSON.stringify(event.plantilla_config, null, 2)
-      : `{
-  "nombre": {"x": 420, "y": 280, "fontSize": 24, "align": "center"},
-  "evento": {"x": 420, "y": 235, "fontSize": 16, "align": "center"},
-  "fecha_evento": {"x": 420, "y": 205, "fontSize": 12, "align": "center"},
-  "qr_verificacion": {"x": 690, "y": 35, "width": 70, "type": "qr"}
-}`;
+    window.EncounterTemplateEditor.setConfig(event?.plantilla_config || {});
     if (event) {
       document.getElementById('event-name').value = event.nombre || '';
       document.getElementById('event-organizer').value = event.organizador || '';
@@ -175,6 +169,14 @@
     }
     eventFormCard.classList.remove('d-none');
     eventFormCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (event?.id) {
+      window.EncounterTemplateEditor.loadUrl(`${apiBase}/eventos/${event.id}/plantilla-pdf`).catch(
+        (error) => {
+          console.error('[encuentros:load-template]', error);
+          showAlert(error.message || 'No fue posible cargar la plantilla PDF.', 'danger');
+        }
+      );
+    }
   }
 
   async function editEvent(eventId) {
@@ -220,7 +222,9 @@
       'Participante',
       'Documento',
       'Correo',
-      'Facultad / Laboratorio',
+      'Cargo',
+      'Facultad',
+      'Unidad Académica de Laboratorio (UAL)',
       'Asistencia',
       'Entrada',
       'Salida',
@@ -232,11 +236,13 @@
     participants.forEach((participant) => {
       const row = element('tr');
       row.dataset.search =
-        `${participant.nombre} ${participant.documento} ${participant.correo}`.toLowerCase();
+        `${participant.nombre} ${participant.documento} ${participant.correo} ${participant.rol} ${participant.facultad} ${participant.laboratorio}`.toLowerCase();
       addCell(row, participant.nombre);
       addCell(row, participant.documento);
       addCell(row, participant.correo);
-      addCell(row, `${participant.facultad} / ${participant.laboratorio}`);
+      addCell(row, participant.rol);
+      addCell(row, participant.facultad);
+      addCell(row, participant.laboratorio);
       addCell(row, participant.estado_asistencia.replaceAll('_', ' '));
       addCell(row, formatTimestamp(participant.entrada_en));
       addCell(row, formatTimestamp(participant.salida_en));
@@ -428,8 +434,9 @@
       <div class="col-12 col-md-4"><label class="form-label">Nombre completo<input name="nombre" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-4"><label class="form-label">Documento<input name="documento" class="form-control form-control-sm" required maxlength="50"></label></div>
       <div class="col-12 col-md-4"><label class="form-label">Correo<input name="correo" type="email" class="form-control form-control-sm" required maxlength="255"></label></div>
+      <div class="col-12 col-md-4"><label class="form-label">Cargo<input name="rol" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Facultad<input name="facultad" class="form-control form-control-sm" required maxlength="255"></label></div>
-      <div class="col-12 col-md-5"><label class="form-label">Laboratorio<input name="laboratorio" class="form-control form-control-sm" required maxlength="255"></label></div>`;
+      <div class="col-12 col-md-5"><label class="form-label">Unidad Académica de Laboratorio (UAL)<input name="laboratorio" class="form-control form-control-sm" required maxlength="255"></label></div>`;
     const button = element(
       'button',
       'Agregar participante',
@@ -642,8 +649,11 @@
         });
       }
       if (!templateFile) throw new Error('Selecciona una plantilla PDF para previsualizar.');
+      if (!window.EncounterTemplateEditor.hasQrPlacement()) {
+        throw new Error('Ubica el código QR de verificación antes de previsualizar.');
+      }
       formData.append('plantilla_pdf', templateFile);
-      formData.append('plantilla_config', document.getElementById('template-config').value);
+      formData.append('plantilla_config', window.EncounterTemplateEditor.getConfigJson());
       const response = await fetch(`${apiBase}/plantillas/previsualizar`, {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrfToken },
@@ -694,18 +704,37 @@
       )
     );
     const table = element('table', undefined, 'table table-sm');
+    const head = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    [
+      'Fila',
+      'Nombre completo',
+      'Número de documento',
+      'Correo electrónico',
+      'Cargo',
+      'Facultad',
+      'Unidad Académica de Laboratorio (UAL)',
+      'Validación',
+    ].forEach((label) => headerRow.appendChild(element('th', label)));
+    head.appendChild(headerRow);
     const body = document.createElement('tbody');
     result.filas.forEach((row) => {
       const tr = document.createElement('tr');
       addCell(tr, `Fila ${row.fila}`);
       addCell(tr, row.participante.nombre);
       addCell(tr, row.participante.documento);
+      addCell(tr, row.participante.correo);
+      addCell(tr, row.participante.rol);
+      addCell(tr, row.participante.facultad);
+      addCell(tr, row.participante.laboratorio);
       addCell(tr, row.errores.length ? row.errores.join(' ') : 'Válido');
       if (row.errores.length) tr.classList.add('table-danger');
       body.appendChild(tr);
     });
-    table.appendChild(body);
-    container.appendChild(table);
+    table.append(head, body);
+    const tableWrap = element('div', undefined, 'table-responsive');
+    tableWrap.appendChild(table);
+    container.appendChild(tableWrap);
     if (result.resumen.validos > 0) {
       container.appendChild(
         actionButton('Confirmar importación', 'btn-primary btn-sm', importParticipants)
@@ -733,12 +762,14 @@
   }
 
   document.getElementById('btn-nuevo-evento').addEventListener('click', () => setFormMode());
-  document
-    .getElementById('btn-cerrar-form-evento')
-    .addEventListener('click', () => eventFormCard.classList.add('d-none'));
-  document
-    .getElementById('btn-cancelar-evento')
-    .addEventListener('click', () => eventFormCard.classList.add('d-none'));
+  function closeEventForm() {
+    eventFormCard.classList.add('d-none');
+    eventForm.reset();
+    window.EncounterTemplateEditor.reset();
+  }
+
+  document.getElementById('btn-cerrar-form-evento').addEventListener('click', closeEventForm);
+  document.getElementById('btn-cancelar-evento').addEventListener('click', closeEventForm);
   document.getElementById('event-filters').addEventListener('submit', (event) => {
     event.preventDefault();
     pageState.page = 1;
@@ -756,15 +787,14 @@
   eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!eventForm.reportValidity()) return;
-    const eventId = document.getElementById('event-id').value;
-    const formData = new FormData(eventForm);
-    formData.delete('eventId');
-    try {
-      JSON.parse(formData.get('plantilla_config'));
-    } catch {
-      showAlert('La configuración de la plantilla debe ser JSON válido.', 'danger');
+    if (!window.EncounterTemplateEditor.hasQrPlacement()) {
+      showAlert('Ubica el código QR de verificación en la plantilla antes de guardar.', 'danger');
       return;
     }
+    const eventId = document.getElementById('event-id').value;
+    window.EncounterTemplateEditor.getConfigJson();
+    const formData = new FormData(eventForm);
+    formData.delete('eventId');
     try {
       await request(eventId ? `/eventos/${eventId}` : '/eventos', {
         method: eventId ? 'PUT' : 'POST',
@@ -773,6 +803,7 @@
       showAlert(eventId ? 'Evento actualizado.' : 'Evento creado.', 'success');
       eventFormCard.classList.add('d-none');
       eventForm.reset();
+      window.EncounterTemplateEditor.reset();
       await loadEvents();
     } catch (error) {
       showAlert(error.message, 'danger');

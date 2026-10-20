@@ -19,27 +19,17 @@ Las URL del QR se generan con `APP_BASE_URL` y la ruta pública `/encuentros/ver
 
 ## Plantillas de certificados
 
-El archivo PDF cargado se conserva sin modificaciones. La configuración JSON del evento ubica texto y QR por página, con coordenadas en puntos PDF desde la esquina inferior izquierda. El eje `x` aumenta hacia la derecha y el eje `y` hacia arriba. `align` puede ser `left`, `center` o `right`; el QR usa `type: "qr"` y un ancho en puntos.
+Carga el PDF en el formulario de Encuentros. El editor muestra sus páginas y permite elegir un campo, hacer clic en el lugar donde debe aparecer y ajustar tamaño, alineación y color del texto. Para un PDF con varias páginas, navega hasta la página deseada antes de ubicar el campo. El QR se configura de la misma forma, indicando su esquina inferior izquierda y su tamaño.
 
-Ejemplo:
-
-```json
-{
-  "nombre": { "x": 420, "y": 280, "fontSize": 24, "align": "center" },
-  "evento": { "x": 420, "y": 235, "fontSize": 16, "align": "center" },
-  "qr_verificacion": { "x": 690, "y": 35, "width": 70, "type": "qr" }
-}
-```
-
-El QR `qr_verificacion` es obligatorio y solo sirve para verificación pública. La asistencia se registra manualmente por documento. Si una plantilla cambia, se debe actualizar la configuración y previsualizar con un evento de pruebas antes de emitir certificados. Cada certificado guarda su propia versión, sus datos de emisión y el archivo generado.
+El QR `qr_verificacion` es obligatorio y solo sirve para verificación pública. La asistencia se registra manualmente por documento. El archivo cargado se conserva sin modificaciones: el certificado superpone los datos y el QR al PDF; no borra ni reemplaza contenido que ya esté impreso en el fondo. Usa la vista previa del certificado con datos de ejemplo antes de guardar. Cada certificado guarda su propia versión, sus datos de emisión y el archivo generado.
 
 ## Participantes Excel
 
 Descargar la plantilla desde el detalle del evento y conservar estos encabezados:
 
-`Nombre completo`, `Número de documento`, `Correo electrónico`, `Facultad`, `Laboratorio`
+`Nombre completo`, `Número de documento`, `Correo electrónico`, `Cargo`, `Facultad`, `Unidad Académica de Laboratorio (UAL)`
 
-La columna del documento usa formato de texto. Los documentos ingresados como número se rechazan para evitar perder ceros iniciales. La importación admite hasta 2000 filas por archivo y requiere confirmar la vista previa.
+Todos los campos son obligatorios. `Cargo` alimenta el campo `rol` del certificado; `Facultad` y `Unidad Académica de Laboratorio (UAL)` alimentan sus campos homónimos. La columna del documento usa formato de texto. Los documentos ingresados como número se rechazan para evitar perder ceros iniciales. La importación admite hasta 2000 filas por archivo y requiere confirmar la vista previa.
 
 ## Validación
 
