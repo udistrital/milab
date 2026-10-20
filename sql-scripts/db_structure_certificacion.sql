@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS cursos (
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_cursos PRIMARY KEY (codigo_curso),
     CONSTRAINT fk_cursos_facultad FOREIGN KEY (id_facultad)
-        REFERENCES facultad(facultad_id) ON DELETE RESTRICT,
+        REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE RESTRICT,
     CONSTRAINT ck_codigo_curso_cursos CHECK (BTRIM(codigo_curso) <> ''),
     CONSTRAINT ck_nombre_curso_cursos CHECK (BTRIM(nombre_curso) <> ''),
     CONSTRAINT ck_url_edx_cursos CHECK (BTRIM(url_edx) <> '')
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS sesion_capacitacion (
     CONSTRAINT fk_sesion_capacitacion_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE RESTRICT,
     CONSTRAINT fk_sesion_capacitacion_facultad FOREIGN KEY (facultad_id)
-        REFERENCES facultad(facultad_id) ON DELETE RESTRICT,
+        REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE RESTRICT,
     CONSTRAINT ck_estado_sesion_capacitacion CHECK (
         estado IN ('programada','en_curso','realizada','cancelada')
     ),
@@ -201,6 +201,19 @@ BEGIN
     END IF;
 END $$;
 
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+         WHERE constraint_name = 'uq_codigo_curso_usuario_documento_certificacion_usuario'
+           AND table_name = 'certificacion_usuario'
+           AND table_schema = current_schema()
+    ) THEN
+        ALTER TABLE certificacion_usuario
+            DROP CONSTRAINT uq_codigo_curso_usuario_documento_certificacion_usuario;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
     id BIGSERIAL NOT NULL,
     codigo_curso VARCHAR(100) NOT NULL,
@@ -230,7 +243,7 @@ CREATE TABLE IF NOT EXISTS solicitud_capacitacion (
     CONSTRAINT fk_solicitud_capacitacion_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE SET NULL,
     CONSTRAINT fk_solicitud_capacitacion_facultad FOREIGN KEY (facultad_id)
-        REFERENCES facultad(facultad_id) ON DELETE SET NULL,
+        REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE SET NULL,
     CONSTRAINT fk_solicitud_capacitacion_sesion_capacitacion FOREIGN KEY (sesion_capacitacion_id)
         REFERENCES sesion_capacitacion(id) ON DELETE SET NULL,
     CONSTRAINT ck_estado_solicitud_capacitacion CHECK (
@@ -352,7 +365,7 @@ CREATE TABLE IF NOT EXISTS certificacion_usuario (
     CONSTRAINT fk_certificacion_usuario_ual FOREIGN KEY (ual_id)
         REFERENCES ual(ual_id) ON DELETE SET NULL,
     CONSTRAINT fk_certificacion_usuario_facultad FOREIGN KEY (facultad_id)
-        REFERENCES facultad(facultad_id) ON DELETE SET NULL,
+        REFERENCES dependencia_facultad(dependencia_facultad_id) ON DELETE SET NULL,
     CONSTRAINT fk_certificacion_usuario_usuario FOREIGN KEY (usuario_id)
         REFERENCES usuario(id) ON DELETE SET NULL,
     CONSTRAINT fk_certificacion_usuario_solicitud_prestamo FOREIGN KEY (solicitud_prestamo_id)
