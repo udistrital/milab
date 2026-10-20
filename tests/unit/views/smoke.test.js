@@ -282,6 +282,8 @@ test('hojas-vida ver view renders the read-only detail with documents and action
   assert.match(html, /data-testid="hv-estado">Activa/);
   assert.match(html, /data-testid="action-imprimir-hv"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/imprimir/);
+  assert.match(html, /data-testid="action-agregar-mantenimiento-hv"/);
+  assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/mantenimientos\/nuevo/);
   assert.match(html, /data-testid="hv-ver-campo-marca"[\s\S]*?MarcaX/);
   assert.match(html, /data-testid="hv-documento"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/42\/documento\/5/);
