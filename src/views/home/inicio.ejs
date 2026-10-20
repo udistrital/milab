@@ -7,6 +7,28 @@
   const navigation = locals.appNavigation || {};
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const quickLinks = primaryLinks.filter((link) => link && link.href !== '/milab/inicio').slice(0, 3);
+  const bannerAudience = new Set([
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador',
+    'coordinador_facultad',
+    'coordinador de facultad',
+    'coordinador_general',
+    'coordinador general',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+    'laboratorista ud',
+    'laboratoristaud',
+  ]);
+  const userRoles = [
+    ...(Array.isArray(locals.roles) ? locals.roles : []),
+    locals.tipo || navigation.role || '',
+  ];
+  const canViewEncounterBanner = userRoles.some((role) =>
+    bannerAudience.has((role || '').toString().trim().toLowerCase())
+  );
   const newsItems = [
     {
       title: 'Reorganización del menú por módulos',
@@ -101,6 +123,7 @@
   </section>
 </main>
 
+<% if (canViewEncounterBanner) { %>
 <div class="app-home-banner-overlay" data-home-banner role="presentation">
   <section
     class="app-home-banner-dialog"
@@ -166,6 +189,7 @@
     closeButton.focus({ preventScroll: true });
   })();
 </script>
+<% } %>
 
 <script nonce="<%= cspNonce %>">
   (function () {
