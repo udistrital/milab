@@ -49,6 +49,9 @@ function setup({ deferCloseEvent = false } = {}) {
   const accept = element();
   const cancel = element();
   const close = element();
+  const inputContainer = element('DIV');
+  const input = element('TEXTAREA');
+  const inputLabel = element('LABEL');
   const modal = element('DIV');
   modal.showModal = () => {
     modal.open = true;
@@ -64,6 +67,9 @@ function setup({ deferCloseEvent = false } = {}) {
       '[data-dialog-accept]': accept,
       '[data-dialog-cancel]': cancel,
       '[data-dialog-close]': close,
+      '[data-dialog-input-container]': inputContainer,
+      '[data-dialog-input]': input,
+      '[data-dialog-input-label]': inputLabel,
     })[selector];
   const document = {
     readyState: 'complete',
@@ -144,6 +150,9 @@ function setup({ deferCloseEvent = false } = {}) {
     message,
     title,
     cancel,
+    input,
+    inputContainer,
+    inputLabel,
     accept: () => accept.listeners.click(),
     dismiss: () => modal.close(),
     flushClose: () => modal.listeners.close(),
@@ -256,6 +265,21 @@ test('shared dialogs render messages as text, queue notices and dismiss confirma
   assert.equal(h.cancel.hidden, true);
   h.accept();
   assert.equal(await notice, true);
+});
+
+test('prompt dialog returns entered text and resolves cancellation with null', async () => {
+  const h = setup();
+  const accepted = h.window.MiLabDialogs.prompt('Indica el motivo:', 'Motivo');
+  assert.equal(h.inputContainer.hidden, false);
+  assert.equal(h.inputLabel.textContent, 'Motivo');
+  h.input.value = 'Datos incorrectos';
+  h.accept();
+  assert.equal(await accepted, 'Datos incorrectos');
+  assert.equal(h.input.value, '');
+
+  const cancelled = h.window.MiLabDialogs.prompt('Indica el motivo:', 'Motivo');
+  h.dismiss();
+  assert.equal(await cancelled, null);
 });
 
 test('facultad deletion forms use the same shared confirmation', async () => {

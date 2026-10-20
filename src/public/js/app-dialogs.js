@@ -8,30 +8,49 @@
   const accept = element.querySelector('[data-dialog-accept]');
   const cancel = element.querySelector('[data-dialog-cancel]');
   const close = element.querySelector('[data-dialog-close]');
+  const inputContainer = element.querySelector('[data-dialog-input-container]');
+  const input = element.querySelector('[data-dialog-input]');
+  const inputLabel = element.querySelector('[data-dialog-input-label]');
   const queue = [];
   let active = null;
 
   function showNext() {
     if (active || !queue.length) return;
     active = queue.shift();
-    title.textContent = active.confirmation ? 'Confirmar acción' : 'Información';
+    const prompting = Boolean(active.inputLabel);
+    title.textContent = prompting
+      ? 'Ingrese información'
+      : active.confirmation
+        ? 'Confirmar acción'
+        : 'Información';
     message.textContent = active.message;
-    cancel.hidden = !active.confirmation;
-    accept.textContent = active.confirmation ? 'Confirmar' : 'Aceptar';
+    inputContainer.hidden = !prompting;
+    if (prompting) {
+      inputLabel.textContent = active.inputLabel;
+      input.value = '';
+    }
+    cancel.hidden = !active.confirmation && !prompting;
+    accept.textContent = prompting ? 'Guardar' : active.confirmation ? 'Confirmar' : 'Aceptar';
     const parentModal = document.querySelector('.modal.show');
     // Keep an existing Bootstrap modal's focus trap and form state intact.
     if (parentModal) parentModal.appendChild(element);
     element.showModal();
-    (active.confirmation ? cancel : accept).focus();
+    (prompting ? input : active.confirmation ? cancel : accept).focus();
   }
 
   function finish() {
     if (!active || element.open) return;
     const completed = active;
+    const result = completed.inputLabel
+      ? completed.accepted === true
+        ? input.value
+        : null
+      : completed.accepted === true;
+    if (completed.inputLabel) input.value = '';
     if (element.parentElement !== home) home.appendChild(element);
     active = null;
     completed.trigger?.focus();
-    completed.resolve(completed.accepted === true);
+    completed.resolve(result);
     showNext();
   }
 
@@ -54,7 +73,7 @@
   });
   element.addEventListener('close', finish);
 
-  function open(message, confirmation) {
+  function open(message, confirmation, inputLabel = null) {
     const trigger = document.activeElement;
     if (
       [active, ...queue].some(
@@ -64,7 +83,7 @@
       return Promise.resolve(false);
     }
     return new Promise((resolve) => {
-      queue.push({ message: String(message), confirmation, resolve, trigger });
+      queue.push({ message: String(message), confirmation, inputLabel, resolve, trigger });
       showNext();
     });
   }
@@ -72,6 +91,7 @@
   window.MiLabDialogs = {
     confirm: (message) => open(message, true),
     alert: (message) => open(message, false),
+    prompt: (message, label = 'Respuesta') => open(message, false, label),
   };
 
   const confirmedForms = new WeakSet();
