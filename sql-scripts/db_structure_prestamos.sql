@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS inventario (
     id SERIAL NOT NULL,
     serie VARCHAR(100),
     placa VARCHAR(100),
-    nombre_bien VARCHAR(255) NOT NULL,
+    nombre_bien VARCHAR(1000) NOT NULL,
     grupo_inventario VARCHAR(100),
     nivel_inventario VARCHAR(50),
     funcionario_doc VARCHAR(50),
@@ -66,10 +66,7 @@ CREATE TABLE IF NOT EXISTS horario_equipo (
     CONSTRAINT ck_hora_inicio_horario_equipo CHECK (hora_inicio < hora_fin)
 );
 
-CREATE INDEX IF NOT EXISTS idx_equipo_codigo ON equipo(codigo);
-CREATE INDEX IF NOT EXISTS idx_equipo_categoria ON equipo(categoria);
 CREATE INDEX IF NOT EXISTS idx_equipo_estado ON equipo(estado);
-CREATE INDEX IF NOT EXISTS idx_equipo_facultad ON equipo(facultad);
 CREATE INDEX IF NOT EXISTS idx_horario_equipo_equipo ON horario_equipo(equipo_id);
 CREATE INDEX IF NOT EXISTS idx_horario_equipo_fecha ON horario_equipo(fecha);
 

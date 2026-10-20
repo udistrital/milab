@@ -749,7 +749,17 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
     if (sql.includes('FROM ual WHERE facultad_id = $1')) {
       return {
         rows: [
-          { ual_id: 10, nombre: 'Lab Física' },
+          {
+            ual_id: 10,
+            nombre: 'Lab Física',
+            coordinador_encargado: {
+              documento: '2001',
+              nombre: 'Coordinadora Facultad',
+              activo: true,
+              carga_id: 8,
+              fecha_asignacion: '2026-10-15T03:00:00Z',
+            },
+          },
           { ual_id: 11, nombre: 'Lab Química' },
         ],
       };
@@ -787,6 +797,7 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
             asignacion_activa: true,
             heredado: true,
             asignado_en: 'Facultad de Ingeniería',
+            laboratorios_encargados: 'Lab Física',
           },
         ],
       };
@@ -806,6 +817,12 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
     assert.equal(response.body.uals[0].laboratoristas[1].activo, false);
     assert.equal(response.body.coordinadores.length, 1);
     assert.equal(response.body.coordinadores[0].heredado, true);
+    assert.equal(response.body.uals[0].coordinador_encargado.documento, '2001');
+    assert.equal(response.body.uals[0].coordinador_encargado.carga_id, 8);
+    assert.equal(response.body.coordinadores[0].laboratorios_encargados, 'Lab Física');
+    const ualQuery = loaded.queryCalls.find(({ sql }) => sql.includes('AS coordinador_encargado'));
+    assert.match(ualQuery.sql, /FROM coordinador_ual_encargado e/);
+    assert.match(ualQuery.sql, /WHERE e\.ual_id = ual\.ual_id/);
 
     const coordQuery = loaded.queryCalls.find(({ sql }) =>
       sql.includes('FROM coordinador_facultad_alcance cfa')

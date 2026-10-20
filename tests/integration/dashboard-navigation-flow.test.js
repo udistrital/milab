@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ejs = require('ejs');
 const request = require('supertest');
 
 const { buildApp, resolveRepoPath } = require('./helpers/build-test-app');
@@ -9,6 +11,8 @@ const routePath = resolveRepoPath('src/routes/api/dashboard.js');
 const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
 const facultyScopePath = resolveRepoPath('src/libs/faculty-scope.js');
+const dashboardViewPath = resolveRepoPath('src/views/home/dashboard.ejs');
+const dashboardStylesPath = resolveRepoPath('src/public/css/styles.css');
 
 function createDashboardClient(scopeRows = {}) {
   return {
@@ -91,6 +95,57 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
     purgePaths: [routePath],
   });
 }
+
+test('inventory dashboard is an in-page tab beside platform and peace-and-clearance tabs', () => {
+  const template = fs.readFileSync(dashboardViewPath, 'utf8');
+  const tabsStart = template.indexOf('<nav class="dashboard-section-tabs"');
+  const tabsEnd = template.indexOf('</nav>', tabsStart);
+
+  assert.notEqual(tabsStart, -1);
+  assert.notEqual(tabsEnd, -1);
+
+  const tabs = template.slice(tabsStart, tabsEnd);
+  assert.match(tabs, /class="dashboard-section-tablist" role="tablist"/);
+  assert.match(
+    tabs,
+    /<button[^>]*id="dashboardTabInventarios"[^>]*role="tab"[^>]*data-dashboard-section="inventarios"/
+  );
+  assert.match(template, /id="dashboardSectionInventarios"[^>]*data-dashboard-inventory-panel/);
+  assert.match(
+    template,
+    /data-dashboard-inventory-url="\/milab\/api\/dashboard\/inventarios\?fragment=1"/
+  );
+  assert.doesNotMatch(tabs, /href="\/milab\/api\/dashboard\/inventarios"/);
+  assert.doesNotMatch(template, /dashboard-section-tab-link/);
+  assert.doesNotThrow(() => ejs.compile(template, { filename: dashboardViewPath }));
+});
+
+test('inventory dashboard tab constrains its content to the available width', () => {
+  const styles = fs.readFileSync(dashboardStylesPath, 'utf8');
+
+  assert.match(
+    styles,
+    /body\.app-shell \.dashboard-section-panel\[data-dashboard-inventory-panel\]\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*min-width:\s*0;/s
+  );
+  assert.match(
+    styles,
+    /body\.app-shell \.dashboard-inventory-content\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s
+  );
+});
+
+test('inventory dashboard page route returns to its tab in the shared dashboard', async () => {
+  const loaded = loadDashboardApp({
+    user: createUser({ tipo: 'admin', roles: ['admin'] }),
+  });
+
+  try {
+    const response = await request(loaded.app).get('/inventarios');
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/dashboard#inventarios');
+  } finally {
+    loaded.restore();
+  }
+});
 
 test('dashboard flow renders admin summary from mounted HTTP handler', async () => {
   const loaded = loadDashboardApp({

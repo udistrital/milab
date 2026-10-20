@@ -1,0 +1,262 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Hojas de Vida y Mantenimientos</h1>
+    <p class="app-page-subtitle">Gestiona la informacion documental, tecnica e historica de los equipos del inventario.</p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-0">Buscar equipo</h5>
+      </div>
+    </div>
+    <div class="card-body">
+      <form id="hv-search-form" class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label for="hv-buscar" class="form-label">Busqueda general</label>
+          <input type="text" class="form-control" id="hv-buscar" name="buscar" placeholder="Codigo, nombre, marca, modelo..." />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-codigo-inventario" class="form-label">Codigo inventario</label>
+          <input type="text" class="form-control" id="hv-codigo-inventario" name="codigo_inventario" placeholder="Placa inventario" />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-codigo-interno" class="form-label">Codigo interno</label>
+          <input type="text" class="form-control" id="hv-codigo-interno" name="codigo_interno" placeholder="Codigo equipo" />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-numero-serie" class="form-label">Numero de serie</label>
+          <input type="text" class="form-control" id="hv-numero-serie" name="numero_serie" placeholder="Serie" />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-nombre-equipo" class="form-label">Nombre del equipo</label>
+          <input type="text" class="form-control" id="hv-nombre-equipo" name="nombre_equipo" placeholder="Nombre" />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-marca" class="form-label">Marca</label>
+          <input type="text" class="form-control" id="hv-marca" name="marca" placeholder="Marca" />
+        </div>
+        <div class="col-md-4">
+          <label for="hv-referencia-modelo" class="form-label">Modelo / Referencia</label>
+          <input type="text" class="form-control" id="hv-referencia-modelo" name="referencia_modelo" placeholder="Modelo" />
+        </div>
+        <div class="col-md-12 d-flex gap-2">
+          <button type="submit" class="btn btn-perso" data-submit-lock="true">
+            <i class="bi bi-search"></i>
+            <span>Buscar</span>
+          </button>
+          <button type="reset" class="btn btn-outline-secondary" id="hv-reset-btn">
+            <i class="bi bi-arrow-counterclockwise"></i>
+            <span>Limpiar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-0">Equipos</h5>
+      </div>
+      <span id="hv-count" class="badge bg-secondary">0 equipos</span>
+    </div>
+    <div class="card-body">
+      <div id="hv-loading" class="alert alert-info mb-0">
+        <i class="bi bi-hourglass-split me-2"></i>Cargando equipos...
+      </div>
+      <div id="hv-error" class="alert alert-danger mb-0 d-none" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <span id="hv-error-message">No fue posible cargar los equipos.</span>
+      </div>
+      <div id="hv-empty" class="alert alert-warning mb-0 d-none" role="alert">
+        <i class="bi bi-info-circle me-2"></i>No se encontraron equipos con los criterios seleccionados.
+      </div>
+      <div id="hv-table-wrapper" class="table-responsive d-none">
+        <table id="hv-grid" class="table table-bordered table-striped app-table-compact js-data-grid" data-grid-page-length="25" data-grid-scroll-x="true">
+          <thead class="text-light">
+            <tr>
+              <th>Codigo inventario</th>
+              <th>Codigo interno</th>
+              <th>Numero serie</th>
+              <th>Nombre</th>
+              <th>Marca</th>
+              <th>Modelo</th>
+              <th>Estado HV</th>
+              <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="hv-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var ENDPOINT = '/milab/api/hojas-vida/equipos';
+    var loadingEl = document.getElementById('hv-loading');
+    var errorEl = document.getElementById('hv-error');
+    var errorMsgEl = document.getElementById('hv-error-message');
+    var emptyEl = document.getElementById('hv-empty');
+    var tableWrapper = document.getElementById('hv-table-wrapper');
+    var tbodyEl = document.getElementById('hv-tbody');
+    var countEl = document.getElementById('hv-count');
+    var formEl = document.getElementById('hv-search-form');
+    var resetBtn = document.getElementById('hv-reset-btn');
+
+    function showOnly(target) {
+      if (loadingEl) loadingEl.classList.add('d-none');
+      if (errorEl) errorEl.classList.add('d-none');
+      if (emptyEl) emptyEl.classList.add('d-none');
+      if (tableWrapper) tableWrapper.classList.add('d-none');
+      if (target) target.classList.remove('d-none');
+    }
+
+    function escapeHtml(str) {
+      var s = str == null ? '' : String(str);
+      return s.replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function estadoBadge(equipo) {
+      if (equipo.tiene_hoja_vida && equipo.hoja_vida_estado === 'PENDIENTE_CONFIRMACION') {
+        return '<span class="badge bg-warning text-dark" data-testid="estado-hv-pendiente">Pendiente de confirmación</span>';
+      }
+      if (equipo.tiene_hoja_vida && equipo.tiene_mantenimientos) {
+        return '<span class="badge bg-primary" data-testid="estado-con-hv-mto">Con HV y mantenimientos</span>';
+      }
+      if (equipo.tiene_hoja_vida) {
+        return '<span class="badge bg-success" data-testid="estado-con-hv">Con HV</span>';
+      }
+      return '<span class="badge bg-secondary" data-testid="estado-sin-hv">Sin hoja de vida</span>';
+    }
+
+    function buildRowData(equipo) {
+      var base = '/milab/prestamos/hojas-vida';
+      var accionesHtml;
+      if (!equipo.tiene_hoja_vida) {
+        accionesHtml = '<a class="btn btn-success btn-sm" data-testid="action-cargar-hv" href="' + base + '/' + equipo.equipo_id + '/cargar"><i class="bi bi-upload"></i> <span>Cargar Hoja de Vida</span></a>';
+      } else if (equipo.hoja_vida_estado === 'PENDIENTE_CONFIRMACION') {
+        accionesHtml = '<a class="btn btn-success btn-sm" data-testid="action-confirmar-hv" href="' + base + '/' + equipo.hoja_vida_id + '/confirmar"><i class="bi bi-check-circle"></i> <span>Confirmar Hoja de Vida</span></a>';
+      } else {
+        accionesHtml = '<div class="d-flex gap-1 flex-wrap">' +
+          '<a class="btn btn-outline-info btn-sm" href="' + base + '/' + equipo.equipo_id + '"><i class="bi bi-eye"></i> <span>Ver HV</span></a>' +
+          '<a class="btn btn-outline-warning btn-sm" href="' + base + '/' + equipo.equipo_id + '/editar"><i class="bi bi-pencil"></i> <span>Editar HV</span></a>' +
+          '<a class="btn btn-outline-primary btn-sm" href="' + base + '/' + equipo.equipo_id + '/mantenimientos/nuevo"><i class="bi bi-tools"></i> <span>Agregar Mantenimiento</span></a>' +
+          '<a class="btn btn-outline-secondary btn-sm" href="' + base + '/' + equipo.equipo_id + '/historial"><i class="bi bi-clock-history"></i> <span>Ver Historial</span></a>' +
+          '<a class="btn btn-outline-dark btn-sm" href="' + base + '/' + equipo.equipo_id + '/imprimir" target="_blank" rel="noopener noreferrer"><i class="bi bi-printer"></i> <span>Imprimir</span></a>' +
+          '</div>';
+      }
+      return [
+        escapeHtml(equipo.codigo_inventario) || '-',
+        escapeHtml(equipo.codigo_interno) || '-',
+        escapeHtml(equipo.numero_serie) || '-',
+        escapeHtml(equipo.nombre_equipo) || '-',
+        escapeHtml(equipo.marca) || '-',
+        escapeHtml(equipo.referencia_modelo) || '-',
+        estadoBadge(equipo),
+        accionesHtml
+      ];
+    }
+
+    function renderEquipos(equipos) {
+      if (!Array.isArray(equipos) || equipos.length === 0) {
+        if (countEl) countEl.textContent = '0 equipos';
+        showOnly(emptyEl);
+        return;
+      }
+      if (countEl) countEl.textContent = String(equipos.length) + ' equipo' + (equipos.length === 1 ? '' : 's');
+      showOnly(tableWrapper);
+      if (window.jQuery && window.jQuery.fn.DataTable) {
+        var dt = window.jQuery('#hv-grid').DataTable();
+        var rowsData = equipos.map(buildRowData);
+        dt.clear();
+        dt.rows.add(rowsData);
+        dt.draw();
+      } else {
+        tbodyEl.innerHTML = '';
+        var frag = document.createDocumentFragment();
+        equipos.forEach(function (eq) {
+          var tr = document.createElement('tr');
+          buildRowData(eq).forEach(function (cell) {
+            var td = document.createElement('td');
+            td.className = 'text-light';
+            td.innerHTML = cell;
+            tr.appendChild(td);
+          });
+          frag.appendChild(tr);
+        });
+        tbodyEl.appendChild(frag);
+      }
+    }
+
+    function renderError(message) {
+      if (errorMsgEl) errorMsgEl.textContent = message || 'Error desconocido.';
+      showOnly(errorEl);
+    }
+
+    function getQueryParams() {
+      var fd = new FormData(formEl);
+      var params = new URLSearchParams();
+      ['buscar', 'codigo_inventario', 'codigo_interno', 'numero_serie', 'nombre_equipo', 'marca', 'referencia_modelo'].forEach(function (key) {
+        var val = String(fd.get(key) || '').trim();
+        if (val) params.append(key, val);
+      });
+      return params.toString();
+    }
+
+    function cargarEquipos() {
+      showOnly(loadingEl);
+      tbodyEl.innerHTML = '';
+      var qs = getQueryParams();
+      var url = qs ? (ENDPOINT + '?' + qs) : ENDPOINT;
+      fetch(url, { method: 'GET', credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok && data && data.ok === true, status: res.status, data: data };
+          }).catch(function () {
+            return { ok: false, status: res.status, data: null };
+          });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            renderEquipos(result.data && result.data.data ? result.data.data : []);
+            return;
+          }
+          var msg = result.data && result.data.message ? result.data.message : 'HTTP ' + (result.status || 'desconocido');
+          renderError(msg);
+        })
+        .catch(function () {
+          renderError('No se pudo conectar con el servidor. Verifica tu conexion e intenta nuevamente.');
+        });
+    }
+
+    formEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      cargarEquipos();
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        setTimeout(cargarEquipos, 0);
+      });
+    }
+
+    cargarEquipos();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

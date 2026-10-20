@@ -17,17 +17,17 @@
         <p class="app-page-subtitle mb-2"><em>- Verifique sus datos - </em></p>
     <div class="col-md-6">
       <label for="con_nombre" class="form-label">Nombre</label>
-      <input type="text" value="<%= con_nombre %>" class="form-control" id="con_nombre" name="con_nombre" readonly>
+      <input type="text" value="<%= con_nombre %>" class="form-control" id="con_nombre" name="con_nombre" maxlength="200" readonly>
     </div>
   
         <div class="col-md-6">
           <label for="con_documento" class="form-label">Documento del sancionado</label>
-          <input type="text" value="<%= con_documento %>" class="form-control" id="con_documento" name="con_documento" readonly>
+          <input type="text" value="<%= con_documento %>" class="form-control" id="con_documento" name="con_documento" maxlength="50" readonly>
         </div>
     
     <div class="col-md-6">
       <label for="con_estado" class="form-label">Estado del docente</label>
-      <input type="text" value="<%= con_estado %>" class="form-control" id="con_estado" name="con_estado" readonly>
+      <input type="text" value="<%= con_estado %>" class="form-control" id="con_estado" name="con_estado" maxlength="20" readonly>
     </div>
   
    
@@ -42,7 +42,7 @@
     <% if (locals.tipo === 'laboratorista') { %>
     <div class="col-md-6">
       <label for="nombre_laboratorista" class="form-label">Nombre de laboratorista:</label>
-      <input type="text" value="<%= nombre_lab %>" class="form-control" id="nombre_laboratorista" name="nombre_laboratorista" readonly>
+      <input type="text" value="<%= nombre_lab %>" class="form-control" id="nombre_laboratorista" name="nombre_laboratorista" maxlength="100" readonly>
     </div>
     <div class="col-md-6">
       <label for="cc_laboratorista" class="form-label">CC de laboratorista:</label>
@@ -69,7 +69,7 @@
           <% }) %>
         </select>
       <% } else { %>
-        <input type="text" value="No Aplica" class="form-control" name="ual_id" readonly>
+        <input type="text" value="No Aplica" class="form-control" name="ual_id" maxlength="10" readonly>
       <% } %>
     </div>
 
@@ -90,7 +90,7 @@
     </div>
     <div class="col-md-6">
       <label for="obs_multa" class="form-label">Observaciones de la Sanción:</label>
-      <input type="text" class="form-control" id="obs_multa" name="obs_multa">
+      <input type="text" class="form-control" id="obs_multa" name="obs_multa" maxlength="500">
     </div>
     <div class="col-md-6">
       <label for="con_estado_multa" class="form-label">El estado de esta Sanción será:</label>

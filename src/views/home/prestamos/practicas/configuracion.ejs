@@ -179,7 +179,7 @@
           <div class="row g-3 mb-4">
             <div class="col-md-4">
               <label for="schemaFieldName" class="form-label">Nombre del campo</label>
-              <input type="text" class="form-control" id="schemaFieldName" placeholder="Ej. Voltaje utilizado">
+              <input type="text" class="form-control" id="schemaFieldName" maxlength="255" placeholder="Ej. Voltaje utilizado">
             </div>
             <div class="col-md-3">
               <label for="schemaFieldType" class="form-label">Tipo</label>
@@ -195,7 +195,7 @@
             </div>
             <div class="col-md-3">
               <label for="schemaFieldOptions" class="form-label">Opciones</label>
-              <input type="text" class="form-control" id="schemaFieldOptions" placeholder="Opcion 1, Opcion 2">
+              <input type="text" class="form-control" id="schemaFieldOptions" maxlength="2000" placeholder="Opcion 1, Opcion 2">
             </div>
             <div class="col-md-2">
               <label class="form-label d-block">Obligatorio</label>
@@ -205,11 +205,11 @@
             </div>
             <div class="col-md-6">
               <label for="schemaFieldPlaceholder" class="form-label">Placeholder</label>
-              <input type="text" class="form-control" id="schemaFieldPlaceholder" placeholder="Ayuda breve para diligenciar">
+              <input type="text" class="form-control" id="schemaFieldPlaceholder" maxlength="255" placeholder="Ayuda breve para diligenciar">
             </div>
             <div class="col-md-6">
               <label for="schemaFieldHelp" class="form-label">Ayuda</label>
-              <input type="text" class="form-control" id="schemaFieldHelp" placeholder="Instruccion corta para el usuario">
+              <input type="text" class="form-control" id="schemaFieldHelp" maxlength="2000" placeholder="Instruccion corta para el usuario">
             </div>
             <div class="col-12 d-flex justify-content-end">
               <button type="button" class="btn btn-outline-info" id="addSchemaFieldBtn" <%= selectedUalId ? '' : 'disabled' %>>Agregar campo</button>
@@ -238,7 +238,7 @@
 
           <div>
             <label for="dynamicSchemaPreview" class="form-label">Resumen de la configuracion</label>
-            <textarea class="form-control font-monospace" id="dynamicSchemaPreview" rows="10" readonly></textarea>
+            <textarea class="form-control font-monospace" id="dynamicSchemaPreview" maxlength="2000" rows="10" readonly></textarea>
           </div>
         </div>
       </section>
@@ -263,11 +263,11 @@
 
             <div class="col-md-4">
               <label for="practiceNameInput" class="form-label">Nombre de la practica *</label>
-              <input type="text" class="form-control" id="practiceNameInput" required <%= selectedUalId ? '' : 'disabled' %>>
+              <input type="text" class="form-control" id="practiceNameInput" maxlength="255" required <%= selectedUalId ? '' : 'disabled' %>>
             </div>
             <div class="col-md-4">
               <label for="practiceTypeInput" class="form-label">Tipo de practica *</label>
-              <input type="text" class="form-control" id="practiceTypeInput" placeholder="Ej. Experimental, demostrativa" required <%= selectedUalId ? '' : 'disabled' %>>
+              <input type="text" class="form-control" id="practiceTypeInput" maxlength="120" placeholder="Ej. Experimental, demostrativa" required <%= selectedUalId ? '' : 'disabled' %>>
             </div>
             <div class="col-md-4">
               <label for="practiceStatusInput" class="form-label">Estado *</label>
@@ -280,7 +280,7 @@
 
             <div class="col-12">
               <label for="practiceDescriptionInput" class="form-label">Descripcion</label>
-              <textarea class="form-control" id="practiceDescriptionInput" rows="3" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceDescriptionInput" maxlength="2000" rows="3" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
 
             <div class="col-md-4">
@@ -289,38 +289,38 @@
             </div>
             <div class="col-md-4">
               <label for="practiceRecommendationsInput" class="form-label">Recomendaciones</label>
-              <textarea class="form-control" id="practiceRecommendationsInput" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceRecommendationsInput" maxlength="2000" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
             <div class="col-md-4">
               <label for="practiceObservationsInput" class="form-label">Observaciones</label>
-              <textarea class="form-control" id="practiceObservationsInput" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceObservationsInput" maxlength="2000" rows="2" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
 
             <div class="col-md-6">
               <label for="practiceSuppliesInput" class="form-label">Insumos requeridos</label>
-              <textarea class="form-control" id="practiceSuppliesInput" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceSuppliesInput" maxlength="2000" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
             <div class="col-md-6">
               <label for="practiceEquipmentInput" class="form-label">Equipos necesarios</label>
-              <textarea class="form-control" id="practiceEquipmentInput" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceEquipmentInput" maxlength="2000" rows="4" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
 
             <div class="col-md-6">
               <label for="practiceCompetenciasInput" class="form-label">Competencias</label>
-              <textarea class="form-control" id="practiceCompetenciasInput" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceCompetenciasInput" maxlength="2000" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
             <div class="col-md-6">
               <label for="practiceGuiasInput" class="form-label">Guias de trabajo</label>
-              <textarea class="form-control" id="practiceGuiasInput" rows="3" placeholder="Una URL o nombre por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceGuiasInput" maxlength="2000" rows="3" placeholder="Una URL o nombre por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
 
             <div class="col-md-6">
               <label for="practiceSecurityInput" class="form-label">Recomendaciones de seguridad</label>
-              <textarea class="form-control" id="practiceSecurityInput" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceSecurityInput" maxlength="2000" rows="3" placeholder="Una por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
             <div class="col-md-6">
               <label for="practiceEvaluationInput" class="form-label">Parametros especificos de evaluacion</label>
-              <textarea class="form-control" id="practiceEvaluationInput" rows="3" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
+              <textarea class="form-control" id="practiceEvaluationInput" maxlength="2000" rows="3" placeholder="Uno por linea" <%= selectedUalId ? '' : 'disabled' %>></textarea>
             </div>
 
             <div class="col-12">
@@ -503,11 +503,11 @@
       row.innerHTML =
         '<div class="col-md-4">' +
           '<label class="form-label">Codigo *</label>' +
-          '<input type="text" class="form-control js-subject-code">' +
+          '<input type="text" class="form-control js-subject-code" maxlength="80">' +
         '</div>' +
         '<div class="col-md-7">' +
           '<label class="form-label">Nombre *</label>' +
-          '<input type="text" class="form-control js-subject-name">' +
+          '<input type="text" class="form-control js-subject-name" maxlength="255">' +
         '</div>' +
         '<div class="col-md-1 d-grid">' +
           '<button type="button" class="btn btn-outline-danger js-remove-row">X</button>' +
@@ -526,7 +526,7 @@
       row.innerHTML =
         '<div class="col-md-11">' +
           '<label class="form-label">URL del PDF</label>' +
-          '<input type="url" class="form-control js-document-url" placeholder="https://.../guia.pdf">' +
+          '<input type="url" class="form-control js-document-url" maxlength="2000" placeholder="https://.../guia.pdf">' +
         '</div>' +
         '<div class="col-md-1 d-grid">' +
           '<button type="button" class="btn btn-outline-danger js-remove-row">X</button>' +
@@ -590,13 +590,13 @@
         var inputHtml = '';
 
         if (field.tipo === 'textarea') {
-          inputHtml = '<textarea class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" rows="3" ' + (field.placeholder ? 'placeholder="' + field.placeholder + '"' : '') + '>' + currentValue + '</textarea>';
+          inputHtml = '<textarea class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" maxlength="2000" rows="3" ' + (field.placeholder ? 'placeholder="' + field.placeholder + '"' : '') + '>' + currentValue + '</textarea>';
         } else if (field.tipo === 'number') {
           inputHtml = '<input type="number" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
         } else if (field.tipo === 'date') {
           inputHtml = '<input type="date" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '">';
         } else if (field.tipo === 'url') {
-          inputHtml = '<input type="url" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
+          inputHtml = '<input type="url" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" maxlength="2000" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
         } else if (field.tipo === 'select') {
           inputHtml = '<select class="form-select js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '"><option value="">Selecciona...</option>' +
             (field.valores || []).map(function(option) {
@@ -606,7 +606,7 @@
         } else if (field.tipo === 'checkbox') {
           inputHtml = '<div class="form-check form-switch pt-2"><input type="checkbox" class="form-check-input js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '"' + (currentValue ? ' checked' : '') + '></div>';
         } else {
-          inputHtml = '<input type="text" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
+          inputHtml = '<input type="text" class="form-control js-dynamic-field" id="dynamic_' + field.key + '" data-key="' + field.key + '" maxlength="2000" value="' + currentValue + '"' + (field.placeholder ? ' placeholder="' + field.placeholder + '"' : '') + '>';
         }
 
         wrapper.innerHTML = label + inputHtml + help;

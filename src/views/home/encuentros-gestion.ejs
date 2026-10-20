@@ -1,0 +1,243 @@
+<%- include('../partials/header'); -%>
+
+<main class="container app-page-shell" id="encuentros-shell" data-can-annul="<%= Boolean(canAnnulCertificates) %>">
+  <section class="app-page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <h1 class="app-page-title">Encuentros</h1>
+        <p class="app-page-subtitle">Administra eventos, participantes, asistencia y certificados institucionales.</p>
+      </div>
+      <button class="btn btn-primary" type="button" id="btn-nuevo-evento">
+        <i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Crear evento
+      </button>
+    </div>
+  </section>
+
+  <div id="encuentros-alert" class="alert d-none" role="status" aria-live="polite"></div>
+
+  <section class="card mb-4 d-none" id="event-form-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 class="h5 mb-0" id="event-form-title">Crear evento</h2>
+      <button type="button" class="btn-close" id="btn-cerrar-form-evento" aria-label="Cerrar"></button>
+    </div>
+    <div class="card-body">
+      <form id="event-form" enctype="multipart/form-data" novalidate>
+        <input type="hidden" name="eventId" id="event-id">
+        <div class="row g-3">
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="event-name">Nombre del evento *</label>
+            <input class="form-control" id="event-name" name="nombre" maxlength="255" required>
+          </div>
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="event-organizer">Organizador *</label>
+            <input class="form-control" id="event-organizer" name="organizador" maxlength="255" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="event-description">Descripción</label>
+            <textarea class="form-control" id="event-description" name="descripcion" rows="2" maxlength="5000"></textarea>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label" for="event-date">Fecha *</label>
+            <input class="form-control" id="event-date" name="fecha" type="date" required>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label" for="event-start">Hora de inicio *</label>
+            <input class="form-control" id="event-start" name="hora_inicio" type="time" required>
+          </div>
+          <div class="col-6 col-md-4">
+            <label class="form-label" for="event-end">Hora de finalización *</label>
+            <input class="form-control" id="event-end" name="hora_fin" type="time" required>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="event-place">Lugar *</label>
+            <input class="form-control" id="event-place" name="lugar" maxlength="255" required>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="event-banner">Banner (PNG/JPEG, máximo 3 MB)</label>
+            <input class="form-control" id="event-banner" name="banner" type="file" accept="image/png,image/jpeg">
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="event-template">Plantilla PDF (máximo 8 MB) <span id="template-required">*</span></label>
+            <input class="form-control" id="event-template" name="plantilla_pdf" type="file" accept="application/pdf">
+            <div class="form-text">La plantilla original se conserva. Después de cargarla, selecciona cada dato y haz clic en el lugar donde debe aparecer.</div>
+          </div>
+          <input type="hidden" id="template-config" name="plantilla_config">
+          <div class="col-12 d-none" id="template-editor">
+            <div class="alert alert-info py-2" role="status">
+              Elige un campo y haz clic en un espacio libre para ubicarlo; arrastra una caja
+              existente para moverla. Puedes cambiar de página para las plantillas de varias páginas.
+              Los datos y el QR se superponen; el PDF original no se modifica.
+            </div>
+            <div class="row g-3">
+              <div class="col-12 col-xl-8">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                  <button class="btn btn-sm btn-outline-secondary" type="button" id="template-page-prev" aria-label="Página anterior">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <span class="small fw-semibold" id="template-page-label" aria-live="polite">Página 0 de 0</span>
+                  <button class="btn btn-sm btn-outline-secondary" type="button" id="template-page-next" aria-label="Página siguiente">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                  </button>
+                </div>
+                <div class="template-preview-surface" id="template-preview-surface">
+                  <div class="template-preview-canvas-wrap" id="template-preview-canvas-wrap">
+                    <canvas id="template-preview-canvas" aria-label="Vista previa de la plantilla PDF"></canvas>
+                    <canvas id="template-preview-overlay" aria-label="Campos superpuestos; arrastra para moverlos"></canvas>
+                  </div>
+                </div>
+                <div class="small text-muted mt-2" id="template-editor-status" role="status" aria-live="polite">
+                  Carga una plantilla PDF para comenzar.
+                </div>
+              </div>
+              <div class="col-12 col-xl-4">
+                <label class="form-label" for="template-field-select">Campo que vas a ubicar</label>
+                <select class="form-select" id="template-field-select">
+                  <option value="nombre">Nombre del participante</option>
+                  <option value="documento">Número de documento</option>
+                  <option value="correo">Correo electrónico</option>
+                  <option value="facultad">Facultad</option>
+                  <option value="laboratorio">Laboratorio</option>
+                  <option value="evento">Nombre del evento</option>
+                  <option value="fecha_evento">Fecha del evento</option>
+                  <option value="lugar">Lugar</option>
+                  <option value="organizador">Organizador</option>
+                  <option value="rol">Cargo</option>
+                  <option value="fecha_emision">Fecha de emisión</option>
+                  <option value="codigo_certificado">Código del certificado</option>
+                  <option value="qr_verificacion">Código QR de verificación</option>
+                </select>
+                <div id="template-text-options" class="row g-2 mt-1">
+                  <div class="col-4">
+                    <label class="form-label small" for="template-field-font-size">Tamaño</label>
+                    <input class="form-control form-control-sm" id="template-field-font-size" type="number" min="6" max="96" value="18">
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label small" for="template-field-align">Alineación</label>
+                    <select class="form-select form-select-sm" id="template-field-align">
+                      <option value="left">Izquierda</option>
+                      <option value="center" selected>Centro</option>
+                      <option value="right">Derecha</option>
+                    </select>
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label small" for="template-field-color">Color</label>
+                    <input class="form-control form-control-color form-control-sm w-100" id="template-field-color" type="color" value="#000000" title="Color del texto">
+                  </div>
+                </div>
+                <div id="template-qr-options" class="mt-2 d-none">
+                  <label class="form-label small" for="template-qr-width">Tamaño del QR (puntos)</label>
+                  <input class="form-control form-control-sm" id="template-qr-width" type="number" min="24" max="500" value="70">
+                </div>
+                <button class="btn btn-sm btn-outline-danger mt-2" type="button" id="template-remove-field" disabled>
+                  Quitar campo seleccionado
+                </button>
+                <h3 class="h6 mt-4">Campos ubicados</h3>
+                <ul class="list-group list-group-flush" id="template-placement-list" aria-live="polite"></ul>
+                <div class="form-text mt-2">
+                  Debes ubicar el QR de verificación. Haz clic en un espacio libre para colocar el
+                  campo; arrastra una caja para moverla. Quitar una caja no elimina texto impreso en
+                  el PDF original.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-outline-primary mt-3" type="button" id="btn-preview-template">
+          <i class="bi bi-eye me-1" aria-hidden="true"></i>Previsualizar certificado de ejemplo
+        </button>
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+          <button class="btn btn-outline-secondary" type="button" id="btn-cancelar-evento">Cancelar</button>
+          <button class="btn btn-primary" type="submit" id="btn-guardar-evento">Guardar evento</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Eventos registrados</h2>
+    </div>
+    <div class="card-body">
+      <form id="event-filters" class="row g-2 align-items-end mb-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="filter-search">Nombre</label>
+          <input class="form-control form-control-sm" id="filter-search" type="search" placeholder="Buscar evento">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="filter-date">Fecha</label>
+          <input class="form-control form-control-sm" id="filter-date" type="date">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="filter-organizer">Organizador</label>
+          <input class="form-control form-control-sm" id="filter-organizer" type="search">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="filter-state">Estado</label>
+          <select class="form-select form-select-sm" id="filter-state">
+            <option value="">Todos</option>
+            <option value="programado">Programado</option>
+            <option value="en_curso">En curso</option>
+            <option value="finalizado">Finalizado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-1">
+          <label class="form-label" for="filter-sort">Ordenar</label>
+          <select class="form-select form-select-sm" id="filter-sort">
+            <option value="fecha">Fecha</option>
+            <option value="nombre">Nombre</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-1">
+          <label class="form-label" for="filter-direction">Dirección</label>
+          <select class="form-select form-select-sm" id="filter-direction">
+            <option value="desc">Desc.</option>
+            <option value="asc">Asc.</option>
+          </select>
+        </div>
+        <div class="col-4 col-md-1 d-grid">
+          <button class="btn btn-sm btn-outline-primary" type="submit" aria-label="Buscar"><i class="bi bi-search"></i></button>
+        </div>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Evento</th><th>Fecha</th><th>Horario</th><th>Lugar</th>
+              <th>Organizador</th><th>Estado</th><th>Participantes</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="event-rows">
+            <tr><td colspan="8" class="text-center text-muted py-4">Cargando eventos…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="small text-muted" id="event-pagination-label"></span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Paginación de eventos">
+          <button class="btn btn-outline-secondary" id="event-page-prev" type="button">Anterior</button>
+          <button class="btn btn-outline-secondary" id="event-page-next" type="button">Siguiente</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal fade" id="event-detail-modal" tabindex="-1" aria-labelledby="event-detail-title" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="event-detail-title">Detalle del evento</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="event-detail-body">
+        <p class="text-muted">Selecciona un evento para consultar su detalle.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="/milab/public/css/encuentros-template-editor.css">
+<script src="/milab/public/js/encuentros-template-editor.js"></script>
+<script src="/milab/public/js/encuentros.js"></script>
+<%- include('../partials/footer'); -%>

@@ -5,6 +5,8 @@ const { Pool } = require('pg');
 
 const { buildApp, resolveRepoPath } = require('./build-test-app');
 const { createSessionHarness, createUser } = require('./session-fixtures');
+const { config } = require('../../../src/config/config');
+const { resolveDatabaseCredentials } = require('../../../src/libs/db-credentials');
 
 const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
@@ -29,11 +31,31 @@ function migrationForSchema(schema) {
 async function createPostgresFixture(
   databaseUrl = process.env.MILAB_CAPACITACION_TEST_DATABASE_URL
 ) {
-  if (!databaseUrl) {
-    throw new Error('MILAB_CAPACITACION_TEST_DATABASE_URL is required for PostgreSQL regressions.');
+  const useApplicationDatabase = process.env.MILAB_CAPACITACION_TEST_USE_APP_DB === 'true';
+  if (!databaseUrl && !useApplicationDatabase) {
+    throw new Error(
+      'Set MILAB_CAPACITACION_TEST_DATABASE_URL or explicitly enable the dedicated application test database.'
+    );
   }
 
-  const pool = new Pool({ connectionString: databaseUrl, max: 8 });
+  let pool;
+  if (databaseUrl) {
+    pool = new Pool({ connectionString: databaseUrl, max: 8 });
+  } else {
+    const { user, password } = await resolveDatabaseCredentials();
+    if (!config.dbHost || !config.dbPort || !config.dbName) {
+      throw new Error('DB_HOST, DB_PORT, and DB_NAME are required for PostgreSQL regressions.');
+    }
+    pool = new Pool({
+      host: config.dbHost,
+      port: config.dbPort,
+      user,
+      password,
+      database: config.dbName,
+      options: config.options,
+      max: 8,
+    });
+  }
   const schema = 'capacitacion_regression_' + randomBytes(6).toString('hex');
   let setupClient;
   let setupClientReleased = false;
@@ -56,6 +78,25 @@ async function createPostgresFixture(
         activo BOOLEAN NOT NULL DEFAULT TRUE
       );
       CREATE TABLE equipo (id INT PRIMARY KEY);
+      CREATE VIEW equipo_catalogo AS
+      SELECT
+        id,
+        NULL::VARCHAR(50) AS codigo,
+        NULL::TEXT AS nombre,
+        NULL::TEXT AS descripcion,
+        NULL::JSONB AS especificaciones,
+        NULL::TEXT AS categoria,
+        NULL::TEXT AS laboratorio,
+        NULL::TEXT AS facultad,
+        NULL::TEXT AS area_conocimiento,
+        NULL::TEXT AS estado,
+        NULL::TEXT AS ubicacion,
+        NULL::JSONB AS ubicacion_prestamo,
+        TRUE AS activo,
+        CURRENT_TIMESTAMP AS fecha_creacion,
+        CURRENT_TIMESTAMP AS fecha_modificacion,
+        NULL::INT AS inventario_id
+      FROM equipo;
       CREATE TABLE usuario (
         id INT PRIMARY KEY,
         documento VARCHAR(50) NOT NULL UNIQUE,
@@ -168,9 +209,18 @@ async function createPostgresFixture(
       },
     };
   } catch (error) {
-    if (setupClient && !setupClientReleased) setupClient.release();
+    if (setupClient && !setupClientReleased) {
+      try {
+        await setupClient.query('ROLLBACK');
+        setupClient.release();
+      } catch (rollbackError) {
+        setupClient.release(rollbackError);
+      }
+    }
     try {
       await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    } catch (cleanupError) {
+      console.error('[capacitacion-postgres-fixture:cleanup]', cleanupError);
     } finally {
       await pool.end();
     }
@@ -184,6 +234,7 @@ function buildManagementApp(db, user, { scope = { isAdmin: true }, authModule } 
       tipo: user.tipo || 'estudiante',
       roles: user.roles || ['estudiante'],
       documento: user.documento,
+      documento_real: user.documento_real || user.documento,
       id: user.id,
       nombre: user.nombre || 'Usuario de prueba',
     }),

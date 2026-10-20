@@ -31,7 +31,7 @@
         <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
             <%- include('../partials/csrf_field') %>
             <label class="lead" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
-            <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" required>
+            <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" maxlength="1038" required>
             <button type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
         </form>
         <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>

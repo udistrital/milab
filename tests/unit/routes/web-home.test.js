@@ -52,6 +52,24 @@ test('web home protects inicio and canonical auth/login routes', async () => {
   assert.equal(response.headers.location, '/milab/inicio');
 });
 
+test('authenticated monitoring roles land on the existing dashboard from inicio', async () => {
+  delete require.cache[routePath];
+  const app = buildApp({ tipo: 'coordinador' });
+  const response = await request(app).get('/inicio');
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/api/dashboard');
+});
+
+test('authenticated users without monitoring access retain their welcome page', async () => {
+  delete require.cache[routePath];
+  const app = buildApp({ tipo: 'estudiante' });
+  const response = await request(app).get('/inicio');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.view, 'home/inicio');
+});
+
 test('web home redirects public aliases to canonical routes', async () => {
   delete require.cache[routePath];
   const app = buildApp(null);

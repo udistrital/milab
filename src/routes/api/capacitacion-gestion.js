@@ -83,24 +83,48 @@ function handleSchemaMissing(res, error) {
 }
 
 function okJson(res, data, status = 200) {
+  setCacheDynamic(res);
   return res.status(status).json(Object.assign({ ok: true }, data || {}));
 }
 
+function setCacheDynamic(res) {
+  try {
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, private, proxy-revalidate'
+    );
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  } catch {
+    /* ignore if headers already sent */
+  }
+}
+
+router.use(function setCapacitacionGestionNoCache(req, res, next) {
+  setCacheDynamic(res);
+  next();
+});
+
 function badRequest(res, message, details) {
+  setCacheDynamic(res);
   const body = { ok: false, message };
   if (details) body.details = details;
   return res.status(400).json(body);
 }
 
 function forbidden(res, message) {
+  setCacheDynamic(res);
   return res.status(403).json({ ok: false, message });
 }
 
 function notFound(res, message) {
+  setCacheDynamic(res);
   return res.status(404).json({ ok: false, message });
 }
 
 function serverError(res, error, fallbackMessage) {
+  setCacheDynamic(res);
   const schemaResp = handleSchemaMissing(res, error);
   if (schemaResp) return schemaResp;
   const body = {
@@ -118,7 +142,12 @@ function serverError(res, error, fallbackMessage) {
 }
 
 function getSessionDocument(req) {
-  const doc = req?.session?.user?.documento || req?.session?.user?.codigo || null;
+  const doc =
+    req?.session?.user?.documento_real ||
+    req?.session?.user?.documento ||
+    req?.session?.user?.codigo ||
+    req?.session?.user?.id_documento ||
+    null;
   return doc ? String(doc).trim() : '';
 }
 
@@ -197,7 +226,7 @@ router.post('/solicitar', requireEstudianteODocente, async function (req, res) {
     if (!doc) return badRequest(res, 'No se pudo identificar el documento del usuario.');
     if (!uid) return badRequest(res, 'Usuario de sesión inválido (falta id).');
 
-    const codigoCurso = truncate(req.body?.codigo_curso, 80);
+    const codigoCurso = truncate(req.body?.codigo_curso, 100);
     const motivo = truncate(req.body?.motivo, 500);
     const mensajeSolicitante = truncate(req.body?.mensaje || req.body?.mensaje_solicitante, 1000);
     const ualIdRaw = req.body?.ual_id_solicitud;
@@ -404,7 +433,7 @@ router.get('/gestion/solicitudes', requireLaboratoristaOAdmin, async function (r
 router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async function (req, res) {
   try {
     const scope = await resolveLaboratoristaScope(req);
-    const cursoCodigo = truncate(req.body?.codigo_curso, 80);
+    const cursoCodigo = truncate(req.body?.codigo_curso, 100);
     const ualIdRaw = req.body?.ual_id;
     const fechaInicioRaw = req.body?.fecha_inicio || req.body?.fechaInicio;
     const fechaFinRaw = req.body?.fecha_fin || req.body?.fechaFin;
@@ -571,7 +600,7 @@ router.post('/gestion/sesiones/programar', requireLaboratoristaOAdmin, async fun
                 )
                 SELECT DISTINCT ON (dt.documento)
                        dt.documento,
-                       COALESCE(NULLIF(dt.nombre_snapshot,''), u.nombre, u.nombres || ' ' || u.apellidos, 'Usuario MiLab') AS usuario_nombre,
+                       COALESCE(NULLIF(dt.nombre_snapshot,''), u.nombre, 'Usuario MiLab') AS usuario_nombre,
                        u.correo AS correo
                 FROM documentos_target dt
                 LEFT JOIN usuario u ON u.documento = dt.documento OR CAST(u.id AS TEXT) = dt.documento
@@ -1142,7 +1171,7 @@ router.post('/gestion/asistencia/marcar', requireLaboratoristaOAdmin, async func
   try {
     const scope = await resolveLaboratoristaScope(req);
     const sesionId = parsePosInt(req.body?.sesion_id, 'sesion_id');
-    const documento = truncate(req.body?.usuario_documento || req.body?.documento || '', 30);
+    const documento = truncate(req.body?.usuario_documento || req.body?.documento || '', 50);
     if (!documento) return badRequest(res, 'El documento de usuario es obligatorio.');
     const asistio =
       req.body?.asistio == null ? true : req.body.asistio !== false && req.body.asistio !== 'false';
@@ -1277,9 +1306,31 @@ router.get(
       SELECT a.id, a.sesion_capacitacion_id, a.inscripcion_sesion_capacitacion_id, a.usuario_documento,
              a.asistio, a.metodo, a.fecha_registro, a.registrado_por_laboratorista_doc,
              i.usuario_nombre, i.estado AS inscripcion_estado, i.fecha_inscripcion,
-             u.codigo AS usuario_codigo_estudiante
+             u.codigo AS usuario_codigo_estudiante,
+             EXISTS (
+               SELECT 1 FROM certificacion_usuario c
+                WHERE c.codigo_curso = check_ses.codigo_curso
+                  AND c.usuario_documento = a.usuario_documento
+                  AND c.activo = TRUE
+                  AND c.fecha_vencimiento > CURRENT_TIMESTAMP
+             ) AS tiene_cert_vigente,
+             (SELECT c.fecha_emision
+                FROM certificacion_usuario c
+               WHERE c.codigo_curso = check_ses.codigo_curso
+                 AND c.usuario_documento = a.usuario_documento
+                 AND c.activo = TRUE
+               ORDER BY c.fecha_emision DESC LIMIT 1
+             ) AS cert_fecha_ultima_emision,
+             (SELECT c.id
+                FROM certificacion_usuario c
+               WHERE c.codigo_curso = check_ses.codigo_curso
+                 AND c.usuario_documento = a.usuario_documento
+                 AND c.activo = TRUE
+               ORDER BY c.fecha_emision DESC LIMIT 1
+             ) AS cert_ultimo_id
         FROM asistencia_capacitacion a
         JOIN inscripcion_sesion_capacitacion i ON i.id = a.inscripcion_sesion_capacitacion_id
+        JOIN (SELECT codigo_curso FROM sesion_capacitacion WHERE id = $1) AS check_ses ON TRUE
         LEFT JOIN usuario u ON u.documento = a.usuario_documento
        WHERE a.sesion_capacitacion_id = $1
        ORDER BY a.fecha_registro ASC, i.usuario_nombre ASC
@@ -1575,9 +1626,18 @@ router.post(
       let certificados = [];
       let rechazados = [];
 
-      for (const row of asistentes.rows) {
+      for (let i = 0; i < asistentes.rows.length; i++) {
+        const row = asistentes.rows[i];
         const doc = String(row.usuario_documento || '').trim();
         if (!doc) continue;
+
+        const spName = 'sp_cert_u_' + i;
+        try {
+          await client.query('SAVEPOINT ' + spName);
+        } catch {
+          /* ignore */
+        }
+
         try {
           const userInfo = await client.query(
             `SELECT id, documento, tipo FROM usuario WHERE documento = $1 LIMIT 1`,
@@ -1597,65 +1657,108 @@ router.post(
             [sesion.codigo_curso, doc]
           );
 
-          const upsert = await client.query(
-            `
-        INSERT INTO certificacion_usuario (
-            codigo_curso,
-            nombre_curso_snapshot,
-            facultad_id,
-            usuario_documento,
-            usuario_id,
-            usuario_nombre,
-            modalidad,
-            fecha_emision,
-            fecha_vencimiento,
-            vigencia_meses,
-            sesion_capacitacion_id,
-            ual_id,
-            certificado_por_laboratorista_doc,
-            certificado_por_laboratorista_nombre,
-            notas
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, 'programada',
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
-            $7, $8, $9, $10, $11, $12
-          )
-        ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
-        RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
-        `,
-            [
-              sesion.codigo_curso,
-              sesion.nombre_curso_snapshot,
-              sesion.facultad_id,
-              doc,
-              usuarioId,
-              usuarioNombre,
-              vigenciaMeses,
-              sesionId,
-              sesion.ual_id,
-              labDoc,
-              labNombre,
-              notas,
-            ]
+          const existenteVigente = await client.query(
+            `SELECT id, fecha_emision, fecha_vencimiento, vigencia_meses
+               FROM certificacion_usuario
+              WHERE codigo_curso = $1
+                AND usuario_documento = $2
+                AND activo = TRUE
+              ORDER BY fecha_emision DESC LIMIT 1`,
+            [sesion.codigo_curso, doc]
           );
-          if (upsert.rows.length > 0) {
-            certificados.push(upsert.rows[0]);
-          } else {
-            const existente = await client.query(
-              `SELECT id, fecha_vencimiento FROM certificacion_usuario
-            WHERE codigo_curso = $1 AND usuario_documento = $2 AND activo = TRUE LIMIT 1`,
-              [sesion.codigo_curso, doc]
-            );
+          if (existenteVigente.rows.length > 0) {
             rechazados.push({
               usuario_documento: doc,
               usuario_nombre: usuarioNombre,
               motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
-              id_cert_existente: existente.rows[0]?.id || null,
-              vencimiento_existente: existente.rows[0]?.fecha_vencimiento || null,
+              id_cert_existente: existenteVigente.rows[0].id,
+              vencimiento_existente: existenteVigente.rows[0].fecha_vencimiento,
+            });
+            try {
+              await client.query('RELEASE SAVEPOINT ' + spName);
+            } catch {
+              /* ignore */
+            }
+            continue;
+          }
+
+          const insertSql = `
+            INSERT INTO certificacion_usuario (
+              codigo_curso,
+              nombre_curso_snapshot,
+              facultad_id,
+              usuario_documento,
+              usuario_id,
+              usuario_nombre,
+              modalidad,
+              fecha_emision,
+              fecha_vencimiento,
+              vigencia_meses,
+              sesion_capacitacion_id,
+              ual_id,
+              certificado_por_laboratorista_doc,
+              certificado_por_laboratorista_nombre,
+              notas
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'programada',
+              CURRENT_TIMESTAMP,
+              CURRENT_TIMESTAMP + (INTERVAL '1 month' * $7),
+              $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (codigo_curso, usuario_documento) WHERE activo = TRUE DO NOTHING
+            RETURNING id, codigo_curso, nombre_curso_snapshot, usuario_documento, fecha_emision, fecha_vencimiento, vigencia_meses
+          `;
+          const insertParams = [
+            sesion.codigo_curso,
+            sesion.nombre_curso_snapshot,
+            sesion.facultad_id,
+            doc,
+            usuarioId,
+            usuarioNombre,
+            vigenciaMeses,
+            sesionId,
+            sesion.ual_id,
+            labDoc,
+            labNombre,
+            notas,
+          ];
+          const inserted = await client.query(insertSql, insertParams);
+          if (inserted.rows.length > 0) {
+            certificados.push(inserted.rows[0]);
+          } else {
+            const existente = await client.query(
+              `SELECT id, fecha_vencimiento
+                 FROM certificacion_usuario
+                WHERE codigo_curso = $1
+                  AND usuario_documento = $2
+                  AND activo = TRUE
+                ORDER BY fecha_emision DESC
+                LIMIT 1`,
+              [sesion.codigo_curso, doc]
+            );
+            if (existente.rows.length === 0) {
+              throw new Error(
+                'No fue posible confirmar la certificación existente después de un conflicto de emisión.'
+              );
+            }
+            rechazados.push({
+              usuario_documento: doc,
+              usuario_nombre: usuarioNombre,
+              motivo: 'Ya tenía una certificación activa vigente para este curso (no se duplicó).',
+              id_cert_existente: existente.rows[0].id,
+              vencimiento_existente: existente.rows[0].fecha_vencimiento,
             });
           }
+          try {
+            await client.query('RELEASE SAVEPOINT ' + spName);
+          } catch {
+            /* ignore */
+          }
         } catch (errUsuario) {
+          try {
+            await client.query('ROLLBACK TO SAVEPOINT ' + spName);
+            await client.query('RELEASE SAVEPOINT ' + spName);
+          } catch {
+            /* ignore */
+          }
           rechazados.push({
             usuario_documento: doc,
             usuario_nombre: row.usuario_nombre || null,
@@ -1669,10 +1772,33 @@ router.post(
       const finalizarSesion =
         String(req.body?.finalizar_sesion || 'true').toLowerCase() !== 'false';
       if (finalizarSesion && sesion.estado !== 'realizada') {
-        await client.query(
-          `UPDATE sesion_capacitacion SET estado = 'realizada', fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $1`,
-          [sesionId]
-        );
+        const spFin = 'sp_cert_fin_sesion';
+        try {
+          await client.query('SAVEPOINT ' + spFin);
+          await client.query(
+            `UPDATE sesion_capacitacion SET estado = 'realizada', fecha_modificacion = CURRENT_TIMESTAMP WHERE id = $1`,
+            [sesionId]
+          );
+          try {
+            await client.query('RELEASE SAVEPOINT ' + spFin);
+          } catch {
+            /* ignore */
+          }
+        } catch (errFin) {
+          try {
+            await client.query('ROLLBACK TO SAVEPOINT ' + spFin);
+            await client.query('RELEASE SAVEPOINT ' + spFin);
+          } catch {
+            /* ignore */
+          }
+          rechazados.push({
+            usuario_documento: '__sesion__',
+            usuario_nombre: 'Marcar sesión Realizada',
+            motivo:
+              'No se pudo marcar la sesión como Realizada (los certificados SÍ fueron emitidos): ' +
+              (errFin && errFin.message ? String(errFin.message) : String(errFin)),
+          });
+        }
       }
 
       await client.query('COMMIT');
@@ -1811,18 +1937,18 @@ function buildReporteAggregateSql(clauses, params, extraLimit) {
            f.nombre AS facultad_nombre,
            s.ual_id,
            u.nombre AS ual_nombre,
-           u.codigo_unidad AS ual_codigo,
+           u.codigo_abreviacion AS ual_codigo,
            s.fecha_inicio,
            s.fecha_fin,
            s.cupo_maximo,
            s.lugar,
            s.estado,
-           COALESCE(s.evidencia_path, s.evidencia_ruta_rel) AS evidencia_path,
-           COALESCE(s.evidencia_mime, s.evidencia_mime_type) AS evidencia_mime,
+           s.evidencia_path,
+           s.evidencia_mime,
            s.evidencia_nombre_original,
            s.evidencia_fecha_subida,
-           COALESCE(s.laboratorista_responsable_doc, s.laboratorista_documento) AS laboratorista_doc,
-           COALESCE(s.laboratorista_responsable_nombre, s.laboratorista_nombre) AS laboratorista_nombre,
+           s.laboratorista_responsable_doc AS laboratorista_doc,
+           s.laboratorista_responsable_nombre AS laboratorista_nombre,
            (SELECT COUNT(*)::int
               FROM inscripcion_sesion_capacitacion i
              WHERE i.sesion_capacitacion_id = s.id
@@ -1983,6 +2109,7 @@ router.get('/gestion/reporte.csv', requireLaboratoristaOAdmin, async function (r
       pad(now.getHours()) +
       pad(now.getMinutes());
     const filename = `reporte_capacitaciones_${stamp}.csv`;
+    setCacheDynamic(res);
 
     res
       .status(200)
@@ -2003,6 +2130,70 @@ router.get('/gestion/reporte.csv', requireLaboratoristaOAdmin, async function (r
       res,
       err,
       'No fue posible generar el archivo CSV del reporte de capacitaciones.',
+      (function () {
+        try {
+          return { query_params: req?.query || {} };
+        } catch {
+          return {};
+        }
+      })()
+    );
+  }
+});
+
+router.get('/gestion/reporte.json', requireLaboratoristaOAdmin, async function (req, res) {
+  try {
+    const { scope, clauses, params, filtrosAplicados } = await buildReporteFiltrosYScope(req);
+    const sql = buildReporteAggregateSql(clauses, params, 100000);
+    const rs = await pool.query(sql, params);
+
+    const payload = {
+      nombre_reporte: 'reporte_capacitaciones',
+      generado_en: new Date().toISOString(),
+      filas: rs.rows.length,
+      filtros_aplicados: filtrosAplicados || null,
+      scope: {
+        is_admin: scope.isAdmin,
+        ual_ids: scope.ualIds,
+        faculty_ids: scope.facultyIds,
+        resolved_from: scope.resolvedFrom,
+      },
+      reporte: rs.rows,
+    };
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp =
+      now.getFullYear() +
+      pad(now.getMonth() + 1) +
+      pad(now.getDate()) +
+      '_' +
+      pad(now.getHours()) +
+      pad(now.getMinutes());
+    const filename = `reporte_capacitaciones_${stamp}.json`;
+    const body = JSON.stringify(payload, null, 2);
+    setCacheDynamic(res);
+
+    res
+      .status(200)
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="' + filename + '"')
+      .header('X-Reporte-Filas', String(rs.rows.length))
+      .header('X-Scope-Is-Admin', scope.isAdmin ? '1' : '0')
+      .send(body);
+  } catch (err) {
+    if (err && err.status === 400) {
+      return res
+        .status(400)
+        .header('Content-Type', 'application/json; charset=utf-8')
+        .send(
+          JSON.stringify({ ok: false, error: err.message || 'Parámetros inválidos.' }, null, 2)
+        );
+    }
+    return serverError(
+      res,
+      err,
+      'No fue posible generar el archivo JSON del reporte de capacitaciones.',
       (function () {
         try {
           return { query_params: req?.query || {} };

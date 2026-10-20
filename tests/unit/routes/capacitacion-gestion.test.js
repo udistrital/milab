@@ -31,6 +31,7 @@ function loadRoute({
       documento: 'student-1',
       nombre: 'Estudiante Prueba',
       ...user,
+      documento_real: user.documento_real || user.documento || 'student-1',
     }),
   });
   return buildApp({
@@ -254,10 +255,16 @@ test('an existing active enrollment returns conflict and rolls back', async () =
   }
 });
 
-test('current-certification filter returns only non-expired active certificates', async () => {
+test('current-certification filter prefers the real session document and excludes expired certificates', async () => {
   let queryParams;
   let querySql;
   const loaded = loadRoute({
+    user: {
+      tipo: 'estudiante',
+      roles: ['estudiante'],
+      documento: 'legacy-document',
+      documento_real: 'student-1',
+    },
     query: async (sql, params) => {
       querySql = sql;
       queryParams = params;
@@ -333,7 +340,7 @@ test('a laboratorista cannot mark attendance for a session outside their UAL sco
 });
 
 test('JSON and CSV reports constrain laboratorista rows to their assigned scope', async () => {
-  for (const endpoint of ['/gestion/reporte', '/gestion/reporte.csv']) {
+  for (const endpoint of ['/gestion/reporte', '/gestion/reporte.csv', '/gestion/reporte.json']) {
     const queries = [];
     const loaded = loadRoute({
       query: async (sql, params) => {
@@ -354,6 +361,11 @@ test('JSON and CSV reports constrain laboratorista rows to their assigned scope'
       assert.match(queries[0].sql, /s\.facultad_id = ANY\(\$2::int\[\]\)/);
       if (endpoint.endsWith('.csv')) {
         assert.match(response.text, /Sesion ID/);
+      } else if (endpoint.endsWith('.json')) {
+        assert.equal(response.body.nombre_reporte, 'reporte_capacitaciones');
+        assert.deepEqual(response.body.scope.ual_ids, [11]);
+        assert.deepEqual(response.body.scope.faculty_ids, [2]);
+        assert.match(response.headers['content-disposition'], /\.json"/);
       } else {
         assert.equal(response.body.filas, 0);
       }

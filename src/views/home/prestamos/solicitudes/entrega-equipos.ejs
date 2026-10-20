@@ -257,6 +257,7 @@
             <textarea
               class="form-control"
               id="entregaCondicion"
+              maxlength="2000"
               rows="4"
               required
               placeholder="Describe el estado del equipo y los elementos entregados."
@@ -298,6 +299,7 @@
             <textarea
               class="form-control"
               id="incidenciaDescripcion"
+              maxlength="2000"
               rows="4"
               required
               placeholder="Describe lo sucedido y el estado actual del equipo."
@@ -340,6 +342,7 @@
               type="text"
               class="form-control"
               id="ultimaHoraDocumento"
+              maxlength="50"
               required
               placeholder="Ej.: 1000..."
             >
@@ -373,6 +376,7 @@
             <textarea
               class="form-control"
               id="devolucionCondicion"
+              maxlength="2000"
               rows="4"
               required
               placeholder="Describe el estado en que se recibe el equipo."
@@ -384,6 +388,7 @@
               type="text"
               class="form-control"
               id="devolucionComponentes"
+              maxlength="2000"
               placeholder="Ej: cargador, mouse, cable HDMI"
             >
           </div>
@@ -471,7 +476,10 @@
     async function postForm(url, formData) {
       var response = await fetch(url, {
         method: 'POST',
-        headers: { 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
+        headers: {
+          Accept: 'application/json',
+          'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %>,
+        },
         body: formData,
       });
 

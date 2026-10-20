@@ -105,6 +105,7 @@ function loadRoute({ connectQueryImpl, poolQueryImpl, findConflictImpl } = {}) {
               con_soporte_resolucion: 'https://sgral.udistrital.edu.co/r/001-2025',
               facultad_nombre: 'Facultad de Ingenieria',
               dependencia_nombre: 'Toda la facultad',
+              laboratorios_encargados: 'Laboratorio Uno, Laboratorio Dos',
               facultad_ids: [1],
               tipo: 'coordinador',
             },
@@ -242,6 +243,15 @@ test('coordinadores_registrados lists registered coordinators', async () => {
     assert.equal(response.body.locals.coordinadores.length, 1);
     assert.equal(response.body.locals.coordinadores[0].facultad_nombre, 'Facultad de Ingenieria');
     assert.equal(response.body.locals.coordinadores[0].dependencia_nombre, 'Toda la facultad');
+    assert.equal(
+      response.body.locals.coordinadores[0].laboratorios_encargados,
+      'Laboratorio Uno, Laboratorio Dos'
+    );
+    const query = loaded
+      .getClientCalls()
+      .find(({ sql }) => sql.includes('AS laboratorios_encargados'));
+    assert.match(query.sql, /FROM coordinador_ual_encargado e/);
+    assert.match(query.sql, /WHERE e\.coordinador_documento = c\.documento/);
   } finally {
     loaded.restore();
   }

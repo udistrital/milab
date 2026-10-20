@@ -361,33 +361,58 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
-    if (!scope.coordinatorDocument || !hasCoordinatorScope(scope)) {
+    if (!scope.coordinatorDocument) {
       return res.render('home/message_error', {
-        message: 'No hay información o alcance asociado al coordinador.',
-        message2: 'Verifique su cuenta o contacte al administrador.',
+        message: 'No se encontró información del coordinador.',
+        message2: 'Verifique su cuenta',
+        limit: null,
+      });
+    }
+
+    if (!hasCoordinatorScope(scope)) {
+      return res.render('home/message_error', {
+        message: 'No hay UALs, dependencias ni facultades asociadas al coordinador.',
+        message2: 'Contacte al administrador',
         limit: null,
       });
     }
 
     const scopeFilter = buildMultaScopeFilter(scope, 1);
+    const configuracionDisponible = scope.ualIds.length === 0;
+
     const result = await pool.query(
-      `SELECT m.id, m.usuario_sancionado_id, m.cat_multa, m.fecha_multa,
-              m.con_estado_multa, m.obs_multa, m.tipo_sancion,
-              u.nombre AS ual, l.nombre AS nombre_laboratorista,
-              COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
-              COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado
-       FROM multa m
-       INNER JOIN ual u ON u.ual_id = m.ual_id
-       LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
-       LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
-       LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
-       LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
-       WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
-         AND ${scopeFilter.sql}`,
+      `SELECT 
+        m.id,
+        COALESCE(pe.documento, pd.documento, us.documento) AS documento_sancionado,
+        m.usuario_sancionado_id,
+        CASE WHEN pd.usuario_id IS NOT NULL THEN 'docente' ELSE 'estudiante' END AS tipo_sancionado,
+        COALESCE(pe.nombre, pd.nombre, us.nombre, '') AS nombre_sancionado,
+        COALESCE(pe.codigo::text, us.codigo::text, '') AS codigo_sancionado,
+        l.nombre AS nombre_laboratorista,
+        m.cat_multa,
+        u.nombre AS ual,
+        COALESCE(facultad.nombre, unidad.nombre) AS laboratorio_facultad,
+        CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS laboratorio_dependencia,
+        m.fecha_multa,
+        TO_CHAR(m.fecha_multa, 'YYYY-MM-DD') AS fecha_multa_formateada,
+        m.con_estado_multa, 
+        m.obs_multa,
+        m.tipo_sancion
+      FROM multa m
+      INNER JOIN ual u ON u.ual_id = m.ual_id
+      LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
+      LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
+      LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id
+        LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id
+        LEFT JOIN perfil_estudiante pe ON pe.usuario_id = m.usuario_sancionado_id
+        LEFT JOIN perfil_docente pd ON pd.usuario_id = m.usuario_sancionado_id
+      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
+        AND ${scopeFilter.sql}`,
       [scopeFilter.value]
     );
 
-    const configuracionDisponible = scope.ualIds.length === 0;
+    const multasPendientes = result.rows;
+
     let facultadesParaAutorizar = [];
     if (configuracionDisponible) {
       const facultadesResult = await pool.query(
@@ -395,11 +420,18 @@ router.get('/', requireCoordinadorApprovalAccess, async function (req, res) {
         [scope.facultyIds]
       );
       const configMap = await fetchMultaConfigsForFacultyIds(scope.facultyIds);
-      facultadesParaAutorizar = facultadesResult.rows.map((row) => ({
-        facultad_id: Number(row.facultad_id),
-        nombre: row.nombre,
-        ...configMap.get(Number(row.facultad_id)),
-      }));
+      facultadesParaAutorizar = facultadesResult.rows.map((row) => {
+        const cfg = configMap.get(Number(row.facultad_id)) || {};
+        return {
+          facultad_id: Number(row.facultad_id),
+          nombre: row.nombre,
+          permite_crear_multas_activas_directas: Boolean(cfg.permite_crear_multas_activas_directas),
+          permite_saldar_multas_directas: Boolean(cfg.permite_saldar_multas_directas),
+          fecha_ultima_modificacion: cfg.fecha_ultima_modificacion || null,
+          documento_ultimo_autorizador: cfg.documento_ultimo_autorizador || null,
+          accion_ultima: cfg.accion_ultima || 'inicial',
+        };
+      });
     }
 
     return res.render('home/aprobacion_multa', {
@@ -788,14 +820,35 @@ function buildToggleConfigHandler(flag, accionHabilitar, accionDeshabilitar, des
     try {
       const scope = await resolveCoordinatorAuthorizationScope(pool, getSessionDocument(req));
       if (!scope.coordinatorDocument || !hasCoordinatorScope(scope)) {
-        return res.status(401).render('home/message_error', {
+        const msg = {
           message: 'No autorizado',
           message2: 'La cuenta no tiene UALs, dependencias ni facultades asociadas.',
-          limit: null,
-        });
+        };
+        return req.accepts('json')
+          ? res.status(401).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
       }
-      if (scope.ualIds.length > 0 || !scope.facultyIds.includes(Number(req.params.facultad_id))) {
-        return res.status(403).render('home/message_error', {
+      if (scope.ualIds.length > 0) {
+        const msg = {
+          message: 'No autorizado',
+          message2: 'La configuración de facultad no aplica a coordinadores asignados por UAL.',
+        };
+        return req.accepts('json')
+          ? res.status(403).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
+      }
+      const facultadIdParam = Number(req.params.facultad_id);
+      if (!Number.isFinite(facultadIdParam)) {
+        const msg = {
+          message: 'Facultad inválida',
+          message2: 'No se pudo interpretar el identificador de la facultad.',
+        };
+        return req.accepts('json')
+          ? res.status(400).json({ ok: false, ...msg })
+          : res.render('home/message_error', { ...msg, limit: null });
+      }
+      if (!scope.facultyIds.includes(facultadIdParam)) {
+        const msg = {
           message: 'No autorizado',
           message2: 'No puedes gestionar la configuración de esta facultad.',
           limit: null,

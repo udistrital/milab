@@ -90,6 +90,7 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
   try {
     const req = {
+      path: '/milab/api/dashboard',
       session: {
         user: {
           tipo: 'coordinador',
@@ -106,6 +107,7 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
 
     assert.equal(nextCalled, true);
     assert.equal(res.locals.tipo, 'coordinador');
+    assert.equal(res.locals.navigationCurrentPath, '/milab/api/dashboard');
     assert.deepEqual(res.locals.roles, ['coordinador']);
     assert.equal(res.locals.appNavigation.primaryLinks[0].href, '/custom/panel');
     assert.equal(
@@ -175,6 +177,53 @@ test('navigationMiddleware no longer queries authorization counts', async () => 
     );
   } finally {
     loaded.restore();
+  }
+});
+
+test('navigationMiddleware counts inventory approvals using the same role scope as the queue', async () => {
+  for (const scenario of [
+    { role: 'admin', global: true, document: 'admin-1' },
+    { role: 'coordinador_general', global: true, document: 'general-1' },
+    { role: 'coordinador', global: false, document: 'coord-1' },
+  ]) {
+    const loaded = loadNavigationModule({
+      scopeImpl: async () => ({ coordinatorDocument: 'coord-1', facultyIds: [4] }),
+      queryImpl: async (sql) =>
+        sql.includes('FROM inventario_carga c') ? { rows: [{ total: 3 }] } : { rows: [] },
+    });
+    try {
+      const res = { locals: {} };
+      await loaded.navigationMiddleware(
+        {
+          session: {
+            user: {
+              tipo: scenario.role,
+              roles: [scenario.role],
+              documento: scenario.document,
+            },
+          },
+        },
+        res,
+        (error) => assert.ifError(error)
+      );
+
+      assert.equal(res.locals.pendingInventoryApprovalsCount, 3);
+      const approvalsQuery = loaded
+        .getQueryCalls()
+        .find(({ sql }) => sql.includes('FROM inventario_carga c'));
+      assert.ok(approvalsQuery);
+      assert.match(approvalsQuery.sql, /c\.estado = 'pendiente_aprobacion'/);
+      assert.deepEqual(approvalsQuery.params, [scenario.global, scenario.document]);
+      if (!scenario.global) {
+        assert.match(
+          approvalsQuery.sql,
+          /COALESCE\(encargado\.coordinador_documento, c\.coordinador_documento\) = \$2/
+        );
+        assert.match(approvalsQuery.sql, /ca\.facultad_id = u\.facultad_id/);
+      }
+    } finally {
+      loaded.restore();
+    }
   }
 });
 
@@ -290,6 +339,7 @@ test('navigationMiddleware does not query authorization counts for laboratorista
 
     assert.equal(nextCalled, true);
     assert.equal(res.locals.pendingSanctionsCount, undefined);
+    assert.equal(res.locals.pendingInventoryApprovalsCount, 0);
     assert.ok(
       !loaded
         .getQueryCalls()
@@ -298,6 +348,10 @@ test('navigationMiddleware does not query authorization counts for laboratorista
             call.sql.includes('FROM multa m') && call.sql.includes("IN ('Pendiente', 'POR SALDAR')")
         ),
       'no debe consultar el conteo de autorizaciones para un laboratorista'
+    );
+    assert.ok(
+      !loaded.getQueryCalls().some((call) => call.sql.includes('FROM inventario_carga c')),
+      'no debe contar aprobaciones de inventario para un laboratorista'
     );
     assert.equal(res.locals.claimNotifications.count, 0);
   } finally {

@@ -28,17 +28,17 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label" for="coordinadorEditorName">Nombre</label>
-              <input type="text" class="form-control" id="coordinadorEditorName" readonly data-coordinador-editor-name="true">
+              <input type="text" class="form-control" id="coordinadorEditorName" maxlength="255" readonly data-coordinador-editor-name="true">
             </div>
 
             <div class="col-md-6">
               <label class="form-label" for="coordinadorEditorDocument">Documento</label>
-              <input type="text" class="form-control" id="coordinadorEditorDocument" readonly data-coordinador-editor-document="true">
+              <input type="text" class="form-control" id="coordinadorEditorDocument" maxlength="50" readonly data-coordinador-editor-document="true">
             </div>
 
             <div class="col-md-6">
               <label class="form-label" for="coordinadorEditorCurrent">Correo actual</label>
-              <input type="text" class="form-control" id="coordinadorEditorCurrent" readonly data-coordinador-editor-current="true">
+              <input type="text" class="form-control" id="coordinadorEditorCurrent" maxlength="255" readonly data-coordinador-editor-current="true">
             </div>
 
             <div class="col-md-6">
@@ -48,6 +48,7 @@
                 class="form-control"
                 id="coordinadorEditorInput"
                 name="correo"
+                maxlength="255"
                 required
                 autocomplete="off"
                 pattern="^[a-zA-Z0-9._%+\-]+@udistrital\.edu\.co$"
@@ -63,6 +64,7 @@
                 class="form-control"
                 id="coordinadorEditorNumeroResolucion"
                 name="numero_resolucion_coordinador"
+                maxlength="100"
                 autocomplete="off"
                 data-coordinador-editor-numero-resolucion="true"
               >
@@ -76,6 +78,7 @@
                 class="form-control"
                 id="coordinadorEditorSoporteResolucion"
                 name="soporte_resolucion"
+                maxlength="1000"
                 autocomplete="off"
                 pattern="^https?://.+"
                 placeholder="https://..."
@@ -116,6 +119,7 @@
                 type="search"
                 class="form-control mb-2"
                 id="coordinadorEditorDependencySearch"
+                maxlength="255"
                 placeholder="Filtrar dependencias..."
                 autocomplete="off"
                 data-coordinador-editor-dependency-search="true"

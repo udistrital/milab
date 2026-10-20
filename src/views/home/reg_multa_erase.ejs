@@ -182,7 +182,7 @@
             <div class="alert alert-info mb-3" role="alert">La sanción pasará inmediatamente a SALDADA.</div>
             <form action="/milab/api/quitar-multa" method="post" class="row g-3" data-submit-once="true">
               <%- include('../partials/csrf_field') %>
-              <input type="text" name="con_id" data-detail-input="con_id" class="d-none" readonly>
+              <input type="text" name="con_id" data-detail-input="con_id" class="d-none" maxlength="10" readonly>
               <input type="hidden" name="source" value="estudiante">
               <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>

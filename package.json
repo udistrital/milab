@@ -1,16 +1,18 @@
 {
   "name": "milabud",
-  "version": "2.9.17",
+  "version": "3.0.0",
   "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:coverage": "npm test",
-    "test:unit": "node --test $(find tests/unit -type f -name '*.test.js' | sort)",
-    "test:integration": "node --test $(find tests/integration -type f -name '*.test.js' | sort)",
+    "test:coverage": "node --experimental-test-coverage --test --test-concurrency=1 $(find tests/unit -type f -name '*.test.js' | sort) && node --experimental-test-coverage --test --test-concurrency=1 $(find tests/integration -type f -name '*.test.js' | sort) && npm run test:coverage:thresholds",
+    "test:coverage:thresholds": "node scripts/ci/check-coverage-targets.js",
+    "test:unit": "node --test --test-concurrency=1 $(find tests/unit -type f -name '*.test.js' | sort)",
+    "test:integration": "node --test --test-concurrency=1 $(find tests/integration -type f -name '*.test.js' | sort)",
+    "test:integration:postgres": "node scripts/ci/require-capacitacion-test-database.js && node --test --test-concurrency=1 $(find tests/integration -type f -name '*-postgres-regression.test.js' | sort)",
     "sonar:local": "sh scripts/run-local-sonar.sh",
     "sonar:stop": "sh scripts/run-local-sonar.sh stop",
-    "start": "nodemon src/app",
+    "start": "node --watch src/app.js",
     "lint": "npx eslint .",
     "format": "npx prettier --write . --ignore-unknown",
     "format:check": "npx prettier --check . --ignore-unknown",
@@ -50,6 +52,7 @@
     "passport-oauth2": "^1.7.0",
     "path": "^0.12.7",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "pdfkit": "^0.13.0",
     "pg": "^8.11.2",
     "pino": "^10.3.1",
@@ -58,7 +61,8 @@
     "recaptcha": "^1.2.1",
     "tar": "^7.5.21",
     "util": "^0.12.5",
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
     "qs": "^6.16.0",
@@ -74,7 +78,6 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "globals": "^17.4.0",
-    "nodemon": "^3.1.14",
     "prettier": "^3.8.1",
     "supertest": "^7.2.2"
   }

@@ -363,6 +363,45 @@ async function getPendingSanctionsCount(user, role) {
 }
 */
 
+async function getPendingInventoryApprovalsCount(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const globalViewer = roles.some((role) => ['admin', 'coordinador_general'].includes(role));
+  if (!user || (!globalViewer && !roles.includes('coordinador'))) return 0;
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM inventario_carga c
+        JOIN ual u ON u.ual_id = c.ual_id
+        LEFT JOIN coordinador_ual_encargado encargado ON encargado.ual_id = c.ual_id
+        WHERE c.estado = 'pendiente_aprobacion'
+          AND (
+            $1::boolean
+            OR (
+              COALESCE(encargado.coordinador_documento, c.coordinador_documento) = $2
+              AND EXISTS (
+                SELECT 1
+                FROM coordinador_facultad_alcance ca
+                JOIN coordinador active_coordinator
+                  ON active_coordinator.documento = ca.coordinador_documento_id
+                 AND active_coordinator.activo = TRUE
+                WHERE ca.coordinador_documento_id = $2
+                  AND ca.facultad_id = u.facultad_id
+                  AND ca.activo = TRUE
+              )
+            )
+          )
+      `,
+      [globalViewer, user.documento || null]
+    );
+    return Number(result.rows[0]?.total) || 0;
+  } catch (error) {
+    console.warn('Navegación: no fue posible consultar aprobaciones de inventario:', error.message);
+    return 0;
+  }
+}
+
 async function getActiveSanctionsSummary(user, role) {
   if (!user || !['estudiante', 'docente'].includes(role)) {
     return {
@@ -495,6 +534,7 @@ async function navigationMiddleware(req, res, next) {
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
     // const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
     // Un contador del menú no debe impedir cargar la página.
@@ -512,11 +552,13 @@ async function navigationMiddleware(req, res, next) {
     res.locals.user = sessionUser;
     res.locals.roles = roles;
     res.locals.tipo = primaryRole;
+    res.locals.navigationCurrentPath = req.path || '';
     res.locals.documento = sessionUser?.documento || '';
     res.locals.appNavigation = navigation;
     res.locals.isAuthenticated = navigation.isAuthenticated;
     res.locals.sessionRoleLabel = navigation.roleLabel;
     // res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;
