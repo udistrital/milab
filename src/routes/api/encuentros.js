@@ -154,7 +154,7 @@ function handleServerError(req, res, error, message) {
           ok: false,
           migration_faltante: true,
           message: 'Falta aplicar la migración del submódulo Encuentros.',
-          script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+          script_requerido: 'sql-scripts/prod/db_structure_certificacion.sql',
         },
         error
       )

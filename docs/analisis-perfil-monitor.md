@@ -21,7 +21,7 @@ Hoy el sistema reconoce explicitamente estos roles:
 Esto se observa en:
 
 - `src/libs/roles.js`
-- `sql-scripts/db_seed_system.sql`
+- `sql-scripts/prod/db_seed_system.sql`
 
 El rol `monitor` no existe todavia ni en la capa de autenticacion/autorizacion, ni en semilla de roles, ni en el menu persistido.
 
@@ -129,7 +129,7 @@ Por lo tanto, si se espera que el `monitor` registre solicitudes **en nombre de 
 | Capa | Impacto | Nivel |
 | --- | --- | --- |
 | `src/libs/roles.js` | Agregar `monitor` en prioridad y etiqueta | Bajo |
-| `sql-scripts/db_seed_system.sql` | Crear rol y permisos de menu | Medio |
+| `sql-scripts/prod/db_seed_system.sql` | Crear rol y permisos de menu | Medio |
 | `menu_item` / `rol_permiso` | Asignar menu del monitor | Medio |
 | `src/routes/middlewares/navigation.js` | Agregar menu estatico fallback | Bajo |
 | `src/libs/prestamos-module-access.js` | Resolver alcance del monitor | Medio |
@@ -347,4 +347,3 @@ La viabilidad es alta si se define al monitor como un rol operativo restringido,
 - **Esfuerzo estimado:** medio si solo se limita a entrega/recepcion/incidencias; medio-alto si incluye registro delegado de solicitudes.
 - **Riesgo principal:** darle al monitor permisos demasiado amplios por reutilizar middlewares de `laboratorista`.
 - **Recomendacion:** crear rol `monitor` con alcance propio por UAL y permisos operativos minimos.
-

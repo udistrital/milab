@@ -4,7 +4,7 @@
 
 ## Proposito
 
-Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
+Modelo relacional principal de MILab basado en `sql-scripts/prod/db_structure.sql`.
 
 ## Diagrama (Mermaid)
 
@@ -250,7 +250,7 @@ Modelo relacional principal de MILab basado en `sql-scripts/db_structure.sql`.
 
 ### Proposito
 
-Esquema del módulo de Préstamos (liberado en Préstamos 2.0), definido en `sql-scripts/db_structure_prestamos.sql`. Se documenta aparte del núcleo porque es un dominio independiente que solo referencia `usuario`, `ual` y `facultad` del esquema canónico.
+Esquema del módulo de Préstamos (liberado en Préstamos 2.0), definido en `sql-scripts/prod/db_structure_prestamos.sql`. Se documenta aparte del núcleo porque es un dominio independiente que solo referencia `usuario`, `ual` y `facultad` del esquema canónico.
 
 ### Diagrama (Mermaid)
 

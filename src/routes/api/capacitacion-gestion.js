@@ -15,7 +15,7 @@ router.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
 const CAPACITACION_SCHEMA_MISSING_MESSAGE =
   'Falta aplicar la migración del módulo de Capacitación en la base de datos. ' +
-  'Ejecutar el script sql-scripts/db_structure_certificacion.sql para crear ' +
+  'Ejecutar el script sql-scripts/prod/db_structure_certificacion.sql para crear ' +
   'las tablas solicitud_capacitacion, sesion_capacitacion, inscripcion_sesion_capacitacion, ' +
   'asistencia_capacitacion y certificacion_usuario.';
 
@@ -76,7 +76,7 @@ function handleSchemaMissing(res, error) {
       ok: false,
       migration_faltante: true,
       message: CAPACITACION_SCHEMA_MISSING_MESSAGE,
-      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+      script_requerido: 'sql-scripts/prod/db_structure_certificacion.sql',
     });
   }
   return null;

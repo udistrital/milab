@@ -18,7 +18,7 @@ Este documento describe los pasos recomendados para desplegar la aplicación mil
    - Elige la versión compatible con tu aplicación.
    - Configura el nombre de la base de datos, usuario, contraseña y VPC/subredes.
    - Habilita el acceso solo desde la VPC/subred donde correrá ECS.
-   - Aplica los scripts de estructura y seed si es necesario (`sql-scripts/db_structure.sql`, `db_seed_system.sql`).
+   - Aplica los scripts de estructura y seed si es necesario (`sql-scripts/prod/db_structure.sql`, `sql-scripts/prod/db_seed_system.sql`).
 
 2. **Configura los parámetros de conexión**
    - Obtén el endpoint, puerto, usuario, contraseña y nombre de la base de datos.

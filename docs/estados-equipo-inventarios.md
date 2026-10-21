@@ -15,7 +15,7 @@ El campo `equipo.estado` admite estos valores:
 | `fuera_servicio` | El equipo no está disponible para préstamo porque está fuera de servicio o fue dado de baja del inventario. |
 
 La restricción vigente está definida en
-[`db_structure_prestamos.sql`](../sql-scripts/db_structure_prestamos.sql).
+[`db_structure_prestamos.sql`](../sql-scripts/prod/db_structure_prestamos.sql).
 
 ## Actividad del registro
 
