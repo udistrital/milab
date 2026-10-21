@@ -79,4 +79,26 @@ DO UPDATE SET can_view = EXCLUDED.can_view,
               activo = EXCLUDED.activo,
               fecha_modificacion = CURRENT_TIMESTAMP;
 
+INSERT INTO equipo_especializado (
+    codigo_curso,
+    id_equipo,
+    activo
+)
+SELECT
+    cursos.codigo_curso,
+    equipo.id,
+    TRUE
+FROM cursos
+CROSS JOIN LATERAL (
+    SELECT id
+    FROM equipo_catalogo
+    WHERE activo = TRUE
+    ORDER BY id
+    LIMIT 1
+) AS equipo
+WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
+ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
+SET activo = TRUE,
+    fecha_modificacion = CURRENT_TIMESTAMP;
+
 COMMIT;
