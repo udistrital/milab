@@ -16,6 +16,7 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 - db_structure_certificacion.sql / db_seed_certificacion.sql: estructura y catalogos de certificacion.
 - db_structure_inventarios.sql / db_seed_inventarios.sql: estructura y menus/permisos del modulo de inventarios.
 - [sql/20261021_gestor_laboratorio.sql](../sql/20261021_gestor_laboratorio.sql): inicializa el rol, su acceso administrativo y la gestión global de encuentros en bases existentes.
+- [sql/20261021_coordinador_ual_encargado.sql](../sql/20261021_coordinador_ual_encargado.sql): crea o recupera la relación entre coordinadores encargados y UAL en bases existentes.
 - db_seed_pruebas_ofuscado.sql: datos de prueba derivados del libro ofuscado; se ejecuta solo al reconstruir el ambiente de pruebas, nunca en producción.
 - scripts/generate_ofuscado_seed.py: regenera el seed anterior desde el libro ofuscado y el catalogo del sistema.
 - db_seed_pruebas_local.sql: precarga local de pruebas (NO usar en produccion).
@@ -62,6 +63,15 @@ global de encuentros, aplicar antes del despliegue:
 
 ```sh
 psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261021_gestor_laboratorio.sql
+```
+
+Si el monitoreo muestra `relation "coordinador_ual_encargado" does not exist`, detener la
+aplicación y aplicar la migración idempotente que crea la tabla y recupera las asignaciones
+desde las cargas aprobadas. La estructura de inventarios debe existir previamente:
+
+```sh
+psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261021_coordinador_ual_encargado.sql
+```
 
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
 del ambiente de pruebas. El pipeline no lo ejecuta en despliegues que conservan la base
@@ -105,6 +115,9 @@ asignaciones oficiales. No crea UALs nuevos.
   coordinadores registrados y dashboard. Recupera el encargado de la primera carga aprobada
   de cada UAL (fecha de resolucion e ID), conserva relaciones existentes y dirige las cargas
   pendientes al encargado. Debe ejecutarse antes de iniciar la nueva version de la aplicacion.
+- En bases existentes donde esa tabla aún no exista, la migración
+  `sql/20261021_coordinador_ual_encargado.sql` permite crearla sin volver a ejecutar toda
+  la migración de inventarios.
 - Los scripts son idempotentes en la mayoria de operaciones, pero no sustituyen una
   migracion formal si hay cambios mayores.
 - Si no se permite CREATE EXTENSION pgcrypto, ejecutar la extension como superusuario
