@@ -124,6 +124,12 @@
             event.estado !== 'programado'
           )
         );
+        if (event.estado === 'finalizado') {
+          actions.append(
+            document.createTextNode(' '),
+            actionButton('Ver informe', 'btn-outline-success', () => downloadReport(event.id))
+          );
+        }
         row.appendChild(actions);
         eventRows.appendChild(row);
       });
@@ -149,6 +155,32 @@
     button.disabled = disabled;
     button.addEventListener('click', callback);
     return button;
+  }
+
+  async function downloadReport(eventId) {
+    try {
+      const response = await fetch(`${apiBase}/eventos/${eventId}/informe.pdf`, {
+        credentials: 'same-origin',
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const body = contentType.includes('application/json') ? await response.json() : null;
+      if (!response.ok) {
+        throw new Error(body?.message || `La solicitud falló (${response.status}).`);
+      }
+
+      const url = window.URL.createObjectURL(await response.blob());
+      const link = element('a');
+      link.href = url;
+      link.download = `informe-encuentro-${eventId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+      showAlert('Informe del encuentro descargado.', 'success');
+    } catch (error) {
+      console.error('[encuentros:download-report]', error);
+      showAlert(error.message || 'No fue posible descargar el informe.', 'danger');
+    }
   }
 
   function setFormMode(event = null, templateOnly = false) {
@@ -405,6 +437,12 @@
         );
         stateActions.appendChild(
           actionButton('Cancelar', 'btn-outline-danger', () => updateState(event.id, 'cancelado'))
+        );
+      } else if (event.estado === 'finalizado') {
+        stateActions.appendChild(
+          actionButton('Ver informe del encuentro', 'btn-outline-success', () =>
+            downloadReport(event.id)
+          )
         );
       }
       if (['en_curso', 'finalizado'].includes(event.estado)) {

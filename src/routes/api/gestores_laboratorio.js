@@ -55,6 +55,28 @@ function parseUalIds(rawValue) {
   return Array.from(new Set(parsed));
 }
 
+function normalizeEmail(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function validateNewManager(values) {
+  if (!values.name || !values.document || !values.email) {
+    return 'Nombre, documento y correo institucional son obligatorios.';
+  }
+  if (values.name.length > 200 || values.document.length > 50 || values.email.length > 255) {
+    return 'Verifica la longitud del nombre, documento y correo.';
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+    return 'Ingresa un correo válido.';
+  }
+  if (!values.email.endsWith('@udistrital.edu.co')) {
+    return 'El correo debe ser institucional (@udistrital.edu.co).';
+  }
+  return null;
+}
+
 function requestError(message, status = 400) {
   const error = new Error(message);
   error.status = status;
@@ -143,6 +165,7 @@ async function renderPage(req, res, options = {}) {
       error: options.error || null,
       success: options.success || null,
       formValues: options.formValues || {},
+      newManagerValues: options.newManagerValues || {},
       ...data,
     });
   } catch (error) {
@@ -173,6 +196,109 @@ async function writeAuditLog(client, req, action, document) {
 
 router.get('/', requireAdminOnly, async (req, res) => renderPage(req, res));
 
+router.post('/crear', requireAdminOnly, async (req, res) => {
+  const newManagerValues = {
+    name: String(req.body?.nombre ?? '').trim(),
+    document: String(req.body?.documento ?? '').trim(),
+    email: normalizeEmail(req.body?.correo),
+  };
+  const validationError = validateNewManager(newManagerValues);
+  if (validationError) {
+    return renderPage(req, res, {
+      status: 400,
+      error: validationError,
+      newManagerValues,
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const roleResult = await client.query(
+      'SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1',
+      [ROLE_NAME]
+    );
+    const roleId = parsePositiveInteger(roleResult.rows[0]?.id);
+    if (!roleId) {
+      throw requestError(
+        'El rol Gestor de laboratorio no está configurado. Aplica la migración correspondiente.',
+        503
+      );
+    }
+
+    const existingAccount = await client.query(
+      `
+        SELECT id
+        FROM usuario
+        WHERE documento = $1 OR LOWER(correo) = $2
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [newManagerValues.document, newManagerValues.email]
+    );
+    if (existingAccount.rows.length) {
+      throw requestError(
+        'Ya existe una cuenta con ese documento o correo. Usa la sección para asignar el rol a una cuenta existente.',
+        409
+      );
+    }
+
+    const userResult = await client.query(
+      'INSERT INTO usuario (correo, documento, nombre) VALUES ($1, $2, $3) RETURNING id',
+      [newManagerValues.email, newManagerValues.document, newManagerValues.name]
+    );
+    const userId = parsePositiveInteger(userResult.rows[0]?.id);
+    if (!userId) {
+      throw new Error('No se obtuvo el identificador de la cuenta creada.');
+    }
+
+    await client.query(
+      'INSERT INTO usuario_rol (usuario_id, rol_id, activo) VALUES ($1, $2, TRUE)',
+      [userId, roleId]
+    );
+    await writeAuditLog(
+      client,
+      req,
+      'Crear cuenta y asignar rol Gestor de laboratorio',
+      newManagerValues.document
+    );
+
+    await client.query('COMMIT');
+    return renderPage(req, res, {
+      success: `Se creó la cuenta de ${newManagerValues.name} y se asignó el rol Gestor de laboratorio, sin asociar UAL.`,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo la creación de un gestor de laboratorio:', rollbackError);
+      }
+    }
+
+    if (error.status || error.code === '23505') {
+      return renderPage(req, res, {
+        status: error.status || 409,
+        error:
+          error.message ||
+          'Ya existe una cuenta con ese documento o correo. Usa la sección para asignar el rol a una cuenta existente.',
+        newManagerValues,
+      });
+    }
+
+    console.error('Error creando una cuenta Gestor de laboratorio:', error);
+    return renderPage(req, res, {
+      status: 500,
+      error: 'No fue posible crear la cuenta del gestor de laboratorio.',
+      newManagerValues,
+    });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 router.post('/guardar', requireAdminOnly, async (req, res) => {
   const userId = parsePositiveInteger(req.body?.user_id);
   const ualIds = parseUalIds(req.body?.ual_ids);
@@ -181,13 +307,6 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
     return renderPage(req, res, {
       status: 400,
       error: 'Selecciona una cuenta existente y asignaciones de UAL válidas.',
-    });
-  }
-
-  if (!ualIds.length) {
-    return renderPage(req, res, {
-      status: 400,
-      error: 'Asigna al menos una UAL activa al gestor de laboratorio.',
     });
   }
 
@@ -235,12 +354,14 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
       );
     }
 
-    const validUals = await client.query(
-      'SELECT ual_id FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[])',
-      [ualIds]
-    );
-    if (validUals.rows.length !== ualIds.length) {
-      throw requestError('Todas las UAL seleccionadas deben existir y estar activas.');
+    if (ualIds.length) {
+      const validUals = await client.query(
+        'SELECT ual_id FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[])',
+        [ualIds]
+      );
+      if (validUals.rows.length !== ualIds.length) {
+        throw requestError('Todas las UAL seleccionadas deben existir y estar activas.');
+      }
     }
 
     const existingRole = await client.query(
