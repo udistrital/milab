@@ -47,6 +47,21 @@ test('getMenuForRoles returns empty menu for missing roles', async () => {
   }
 });
 
+test('getMenuForRoles excludes inactive permissions', async () => {
+  let query = '';
+  const loaded = loadMenuModule(async (sql) => {
+    query = sql;
+    return { rows: [] };
+  });
+
+  try {
+    await loaded.getMenuForRoles(['gestor_laboratorio']);
+    assert.match(query, /rp\.activo\s*=\s*TRUE/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('getMenuForRoles builds menu by section and parent-child hierarchy', async () => {
   const loaded = loadMenuModule(async () => ({
     rows: [

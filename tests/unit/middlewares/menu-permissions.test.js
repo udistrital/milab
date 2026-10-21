@@ -72,6 +72,41 @@ test('admin catalog mutations resolve their menu parent and respect can_use perm
   }
 });
 
+test('inactive rol_permiso records do not authorize menu routes', async () => {
+  let permissionSql = '';
+  const loaded = loadMiddleware({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM menu_item')) {
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
+      }
+      permissionSql = sql;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const res = createResponse();
+    let nextCalled = false;
+    await loaded.menuPermissionMiddleware(
+      {
+        method: 'GET',
+        originalUrl: '/milab/api/get_list_multas',
+        session: { user: { tipo: 'admin' } },
+      },
+      res,
+      () => {
+        nextCalled = true;
+      }
+    );
+
+    assert.match(permissionSql, /rp\.activo\s*=\s*TRUE/i);
+    assert.equal(nextCalled, false);
+    assert.equal(res.rendered.view, 'home/message_error');
+  } finally {
+    loaded.restore();
+  }
+});
+
 function createResponse() {
   return {
     rendered: null,

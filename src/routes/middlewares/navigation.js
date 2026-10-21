@@ -582,10 +582,18 @@ async function navigationMiddleware(req, res, next) {
     } else {
       result = await pool.query(
         `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN multa m ON m.id = r.multa_id
          JOIN laboratorista l ON l.documento = r.responsable_documento_id
          WHERE r.fecha_respuesta IS NULL
            AND (l.documento = $1 OR l.n_usuario = $1)
-           AND l.activo = TRUE`,
+           AND l.activo = TRUE
+           AND EXISTS (
+             SELECT 1
+             FROM laboratorista_ual lu
+             WHERE lu.laboratorista_documento_id = l.documento
+               AND lu.ual_id = m.ual_id
+               AND lu.activo = TRUE
+           )`,
         [document]
       );
     }

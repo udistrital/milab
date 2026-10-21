@@ -27,6 +27,7 @@ router.use('/verifica_multa_docente', require('./verifica_multa_docente'));
 router.use('/quitar-multa', require('./quitar-multa'));
 router.use('/register_labs', require('./register_labs'));
 router.use('/register_monitor', require('./register_monitor'));
+router.use('/gestores_laboratorio', require('./gestores_laboratorio'));
 router.use('/estudiantes_registrados', require('./estudiantes_registrados'));
 router.use('/laboratoristas_registrados', require('./laboratoristas_registrados'));
 router.use('/monitores_registrados', require('./monitores_registrados'));

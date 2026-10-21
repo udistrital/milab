@@ -5,7 +5,13 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const canAnnulCertificates =
     document.getElementById('encuentros-shell').dataset.canAnnul === 'true';
-  const pageState = { page: 1, pageSize: 20, eventId: null, previewRows: [] };
+  const pageState = {
+    page: 1,
+    pageSize: 20,
+    eventId: null,
+    previewRows: [],
+    templateOnly: false,
+  };
   const eventFormCard = document.getElementById('event-form-card');
   const eventForm = document.getElementById('event-form');
   const eventRows = document.getElementById('event-rows');
@@ -118,6 +124,12 @@
             event.estado !== 'programado'
           )
         );
+        if (event.estado === 'finalizado') {
+          actions.append(
+            document.createTextNode(' '),
+            actionButton('Ver informe', 'btn-outline-success', () => downloadReport(event.id))
+          );
+        }
         row.appendChild(actions);
         eventRows.appendChild(row);
       });
@@ -145,18 +157,53 @@
     return button;
   }
 
-  function setFormMode(event = null) {
+  async function downloadReport(eventId) {
+    try {
+      const response = await fetch(`${apiBase}/eventos/${eventId}/informe.pdf`, {
+        credentials: 'same-origin',
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const body = contentType.includes('application/json') ? await response.json() : null;
+      if (!response.ok) {
+        throw new Error(body?.message || `La solicitud falló (${response.status}).`);
+      }
+
+      const url = window.URL.createObjectURL(await response.blob());
+      const link = element('a');
+      link.href = url;
+      link.download = `informe-encuentro-${eventId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+      showAlert('Informe del encuentro descargado.', 'success');
+    } catch (error) {
+      console.error('[encuentros:download-report]', error);
+      showAlert(error.message || 'No fue posible descargar el informe.', 'danger');
+    }
+  }
+
+  function setFormMode(event = null, templateOnly = false) {
     window.EncounterTemplateEditor.reset();
     eventForm.reset();
+    pageState.templateOnly = Boolean(event && templateOnly);
     document.getElementById('event-id').value = event?.id || '';
-    document.getElementById('event-form-title').textContent = event
-      ? 'Editar evento'
-      : 'Crear evento';
-    document.getElementById('btn-guardar-evento').textContent = event
-      ? 'Guardar cambios'
-      : 'Guardar evento';
+    document.getElementById('event-form-title').textContent = pageState.templateOnly
+      ? 'Editar plantilla del certificado'
+      : event
+        ? 'Editar evento'
+        : 'Crear evento';
+    document.getElementById('btn-guardar-evento').textContent = pageState.templateOnly
+      ? 'Guardar plantilla'
+      : event
+        ? 'Guardar cambios'
+        : 'Guardar evento';
     document.getElementById('event-template').required = !event;
     document.getElementById('template-required').classList.toggle('d-none', Boolean(event));
+    document
+      .getElementById('event-details-fields')
+      .classList.toggle('d-none', pageState.templateOnly);
+    document.getElementById('event-template-fields').classList.remove('d-none');
     window.EncounterTemplateEditor.setConfig(event?.plantilla_config || {});
     if (event) {
       document.getElementById('event-name').value = event.nombre || '';
@@ -192,6 +239,20 @@
     }
   }
 
+  async function editTemplate(eventId) {
+    try {
+      const data = await request(`/eventos/${eventId}`);
+      if (!['en_curso', 'finalizado'].includes(data.evento.estado)) {
+        showAlert('La plantilla puede editarse después de iniciar el evento.', 'warning');
+        return;
+      }
+      detailModal.hide();
+      setFormMode(data.evento, true);
+    } catch (error) {
+      showAlert(error.message, 'danger');
+    }
+  }
+
   async function openDetail(eventId) {
     pageState.eventId = eventId;
     document
@@ -201,10 +262,35 @@
     await refreshDetail();
   }
 
-  function statCard(title, value) {
-    const col = element('div', undefined, 'col-6 col-md-3');
-    const card = element('div', undefined, 'border rounded p-3 h-100');
-    card.append(element('div', title, 'small text-muted'), element('strong', value, 'fs-5'));
+  function miniMetricCard(title, numerator, denominator, percentage, detail) {
+    const col = element('div', undefined, 'col-12 col-sm-6 col-lg-4');
+    const card = element('div', undefined, 'border rounded p-2 h-100');
+    const safePercentage = Math.min(100, Math.max(0, Number(percentage) || 0));
+    const summary = element(
+      'div',
+      undefined,
+      'd-flex justify-content-between align-items-baseline'
+    );
+    summary.append(
+      element('strong', `${numerator} / ${denominator}`, 'fs-6'),
+      element('span', `${safePercentage}%`, 'small fw-semibold')
+    );
+    const progress = element('div', undefined, 'progress mt-2');
+    progress.setAttribute('role', 'progressbar');
+    progress.setAttribute('aria-label', title);
+    progress.setAttribute('aria-valuemin', '0');
+    progress.setAttribute('aria-valuemax', '100');
+    progress.setAttribute('aria-valuenow', String(safePercentage));
+    const bar = element('div', undefined, 'progress-bar');
+    bar.style.width = `${safePercentage}%`;
+    bar.setAttribute('aria-hidden', 'true');
+    progress.appendChild(bar);
+    card.append(
+      element('div', title, 'small text-muted'),
+      summary,
+      progress,
+      element('div', detail, 'small text-muted mt-2')
+    );
     col.appendChild(card);
     return col;
   }
@@ -352,6 +438,19 @@
         stateActions.appendChild(
           actionButton('Cancelar', 'btn-outline-danger', () => updateState(event.id, 'cancelado'))
         );
+      } else if (event.estado === 'finalizado') {
+        stateActions.appendChild(
+          actionButton('Ver informe del encuentro', 'btn-outline-success', () =>
+            downloadReport(event.id)
+          )
+        );
+      }
+      if (['en_curso', 'finalizado'].includes(event.estado)) {
+        stateActions.appendChild(
+          actionButton('Editar plantilla del certificado', 'btn-outline-secondary', () =>
+            editTemplate(event.id)
+          )
+        );
       }
       overview.appendChild(stateActions);
       body.appendChild(overview);
@@ -364,21 +463,43 @@
         body.appendChild(banner);
       }
 
-      const statsRow = element('div', undefined, 'row g-2 mt-2');
+      const totalParticipants = Number(stats.total_participantes) || 0;
+      const generatedCertificates = Number(stats.certificados_generados) || 0;
+      const sentCertificates = Number(stats.certificados_enviados) || 0;
+      const sentPercentage = generatedCertificates
+        ? Number(((sentCertificates / generatedCertificates) * 100).toFixed(2))
+        : 0;
+      const statistics = element('section', undefined, 'mt-3');
+      const statisticsTitle = element('h3', 'Resumen visual', 'h6 mb-2');
+      statisticsTitle.id = 'event-statistics-title';
+      statistics.setAttribute('aria-labelledby', 'event-statistics-title');
+      statistics.appendChild(statisticsTitle);
+      const statsRow = element('div', undefined, 'row g-2');
       [
-        ['Participantes', stats.total_participantes],
-        ['Con entrada', stats.entradas],
-        ['Con salida', stats.salidas],
-        ['Sin entrada', stats.sin_entrada],
-        ['Dentro sin salida', stats.dentro_sin_salida],
-        ['Certificados generados', stats.certificados_generados],
-        ['Correos enviados', stats.certificados_enviados],
-        ['Pendientes de envío', stats.certificados_pendientes],
-        ['Errores de correo', stats.certificados_con_error],
-        ['Asistencia', `${stats.porcentaje_asistencia}%`],
-        ['Participación completada', `${stats.porcentaje_completado}%`],
-      ].forEach(([label, value]) => statsRow.appendChild(statCard(label, value ?? 0)));
-      body.appendChild(statsRow);
+        miniMetricCard(
+          'Asistencia con entrada',
+          stats.entradas,
+          totalParticipants,
+          stats.porcentaje_asistencia,
+          `Sin entrada: ${stats.sin_entrada} · Dentro sin salida: ${stats.dentro_sin_salida}`
+        ),
+        miniMetricCard(
+          'Participación completada',
+          stats.salidas,
+          totalParticipants,
+          stats.porcentaje_completado,
+          'Participantes con salida registrada'
+        ),
+        miniMetricCard(
+          'Correos de certificados enviados',
+          sentCertificates,
+          generatedCertificates,
+          sentPercentage,
+          `Pendientes: ${stats.certificados_pendientes} · Errores: ${stats.certificados_con_error}`
+        ),
+      ].forEach((metric) => statsRow.appendChild(metric));
+      statistics.appendChild(statsRow);
+      body.appendChild(statistics);
 
       const participantActions = element('section', undefined, 'border-top mt-4 pt-3');
       participantActions.appendChild(element('h3', 'Participantes', 'h6'));
@@ -770,10 +891,13 @@
   }
 
   document.getElementById('btn-nuevo-evento').addEventListener('click', () => setFormMode());
-  function closeEventForm() {
+  function closeEventForm(returnToDetail = true) {
+    const wasTemplateOnly = pageState.templateOnly;
     eventFormCard.classList.add('d-none');
     eventForm.reset();
+    pageState.templateOnly = false;
     window.EncounterTemplateEditor.reset();
+    if (wasTemplateOnly && returnToDetail) detailModal.show();
   }
 
   document.getElementById('btn-cerrar-form-evento').addEventListener('click', closeEventForm);
@@ -794,25 +918,48 @@
   document.getElementById('btn-preview-template').addEventListener('click', previewTemplate);
   eventForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!eventForm.reportValidity()) return;
+    const templateOnly = pageState.templateOnly;
+    if (!templateOnly && !eventForm.reportValidity()) return;
     if (!window.EncounterTemplateEditor.hasQrPlacement()) {
       showAlert('Ubica el código QR de verificación en la plantilla antes de guardar.', 'danger');
       return;
     }
     const eventId = document.getElementById('event-id').value;
-    window.EncounterTemplateEditor.getConfigJson();
-    const formData = new FormData(eventForm);
-    formData.delete('eventId');
     try {
-      await request(eventId ? `/eventos/${eventId}` : '/eventos', {
-        method: eventId ? 'PUT' : 'POST',
-        body: formData,
-      });
-      showAlert(eventId ? 'Evento actualizado.' : 'Evento creado.', 'success');
-      eventFormCard.classList.add('d-none');
-      eventForm.reset();
-      window.EncounterTemplateEditor.reset();
+      const configJson = window.EncounterTemplateEditor.getConfigJson();
+      const formData = templateOnly ? new FormData() : new FormData(eventForm);
+      if (templateOnly) {
+        formData.append('plantilla_config', configJson);
+        const templateFile = document.getElementById('event-template').files[0];
+        if (templateFile) formData.append('plantilla_pdf', templateFile);
+      } else {
+        formData.delete('eventId');
+      }
+      await request(
+        templateOnly
+          ? `/eventos/${eventId}/plantilla`
+          : eventId
+            ? `/eventos/${eventId}`
+            : '/eventos',
+        {
+          method: templateOnly ? 'PATCH' : eventId ? 'PUT' : 'POST',
+          body: formData,
+        }
+      );
+      showAlert(
+        templateOnly
+          ? 'Plantilla actualizada. Los certificados ya emitidos se conservaron sin cambios.'
+          : eventId
+            ? 'Evento actualizado.'
+            : 'Evento creado.',
+        'success'
+      );
+      closeEventForm(false);
       await loadEvents();
+      if (templateOnly) {
+        detailModal.show();
+        await refreshDetail();
+      }
     } catch (error) {
       showAlert(error.message, 'danger');
     }

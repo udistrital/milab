@@ -17,6 +17,9 @@
     <div class="card-body">
       <form method="post" action="/milab/api/submit" class="row g-3 mx-auto d-flex justify-content-center app-form-grid" data-submit-once="true">
         <%- include('../partials/csrf_field') %>
+        <% if (locals.lookupToken) { %>
+          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+        <% } %>
         <div class="col-12 text-center mb-2">
           <p class="app-home-welcome-kicker mb-2">Validacion previa</p>
           <h2 class="app-panel-title mb-2">Confirma la informacion del estudiante</h2>

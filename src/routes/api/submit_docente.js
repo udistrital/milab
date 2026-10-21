@@ -12,6 +12,7 @@ const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -70,9 +71,17 @@ function isDuplicateSubmission(req, fingerprint) {
 
 router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
   const requestBody = req.body || {};
-  const { cat_multa: rawCategory, con_documento, ual_id, fecha_multa, obs_multa } = requestBody;
+  const {
+    cat_multa: rawCategory,
+    con_documento,
+    ual_id,
+    fecha_multa,
+    obs_multa,
+    lookup_token: rawLookupToken,
+  } = requestBody;
   // const { con_estado_multa } = requestBody; // Se usaba con el flujo anterior por facultad.
   const cat_multa = typeof rawCategory === 'string' ? rawCategory.trim() : '';
+  const lookupToken = String(rawLookupToken || '').trim();
   const today = new Date().toISOString().slice(0, 10);
 
   try {
@@ -337,6 +346,11 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, logActorDocumento, accionLogFinal, con_documento]
     );
+
+    const personReturnPath = buildSanctionPersonReturnPath(lookupToken, 'registrada', 'docente');
+    if (personReturnPath) {
+      return res.redirect(303, personReturnPath);
+    }
 
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',

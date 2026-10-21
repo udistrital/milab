@@ -6,6 +6,7 @@ const ROLE_PRIORITY = [
   'monitor',
   'docente',
   'estudiante',
+  'gestor_laboratorio',
 ];
 
 const ROLE_LABELS = {
@@ -13,6 +14,7 @@ const ROLE_LABELS = {
   coordinador_general: 'Coordinador General',
   coordinador: 'Coordinador',
   laboratorista: 'Laboratorista',
+  gestor_laboratorio: 'Gestor de laboratorio',
   monitor: 'Monitor',
   estudiante: 'Estudiante',
   docente: 'Docente',

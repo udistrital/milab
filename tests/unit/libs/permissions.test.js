@@ -18,6 +18,10 @@ test('getPermissionsForRoles grants all permissions to coordinador_general', () 
   assert.deepEqual(getPermissionsForRoles(['coordinador_general']), ALL_PERMISSIONS.slice().sort());
 });
 
+test('gestor_laboratorio has no application permissions by default', () => {
+  assert.deepEqual(getPermissionsForRoles(['gestor_laboratorio']), []);
+});
+
 test('getPermissionsForRoles merges roles without duplicates and keeps monitor restrictions', () => {
   const permissions = getPermissionsForRoles(['monitor', 'laboratorista', 'monitor']);
 

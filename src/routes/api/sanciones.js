@@ -119,7 +119,16 @@ router.get('/reclamaciones', requireInbox, async (req, res) => {
        LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = unidad.padre_id
        JOIN laboratorista responsable ON responsable.documento = r.responsable_documento_id
        LEFT JOIN laboratorista respondiente ON respondiente.documento = r.respondido_por_id
-       WHERE ($1::text IS NULL OR r.responsable_documento_id = $1)
+       WHERE ($1::text IS NULL OR (
+         r.responsable_documento_id = $1
+         AND EXISTS (
+           SELECT 1
+           FROM laboratorista_ual lu
+           WHERE lu.laboratorista_documento_id = $1
+             AND lu.ual_id = m.ual_id
+             AND lu.activo = TRUE
+         )
+       ))
        ORDER BY (r.fecha_respuesta IS NULL) DESC, r.fecha_creacion DESC`,
       [document]
     );

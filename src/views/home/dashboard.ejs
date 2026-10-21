@@ -20,10 +20,12 @@
   <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
   <nav class="dashboard-section-tabs" aria-label="Navegación del dashboard">
     <div class="dashboard-section-tablist" role="tablist" aria-label="Secciones de monitoreo">
-      <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
-        <i class="bi bi-grid-1x2" aria-hidden="true"></i>
-        <span>Toda la plataforma</span>
-      </button>
+      <% if (canViewPlatformMonitoring) { %>
+        <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
+          <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+          <span>Toda la plataforma</span>
+        </button>
+      <% } %>
       <% if (hasPazYSalvo) { %>
         <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
           <i class="bi bi-patch-check" aria-hidden="true"></i>
@@ -37,6 +39,7 @@
     </div>
   </nav>
 
+  <% if (canViewPlatformMonitoring) { %>
   <div id="dashboardSectionGeneral" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabGeneral">
     <% const overview = typeof generalOverview !== 'undefined' && generalOverview ? generalOverview : null; %>
     <% const overviewHints = overview ? overview.hints : {}; %>
@@ -386,6 +389,7 @@
       </div>
     </section>
   </div>
+  <% } %>
 
   <% if (hasPazYSalvo) { %>
     <div id="dashboardSectionPys" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabPys" hidden>
