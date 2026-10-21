@@ -8,7 +8,7 @@
 <main class="container app-page-shell app-bulk-query-page">
     <section class="app-page-header">
         <h1 class="app-page-title">Consulta masiva de estudiantes</h1>
-        <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y UAL asociada.</p>
+        <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y el laboratorio o dependencia que las reportó.</p>
     </section>
 
 <%
@@ -62,7 +62,7 @@
                             <th>Fecha de la sanción</th>
                             <th>Observación</th>
                             <th>Nombre del laboratorista</th>
-                            <th>UAL</th>
+                            <th>Laboratorio / dependencia</th>
                             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                         </tr>
                     </thead>
@@ -133,6 +133,7 @@
                                                         data-detalle-observacion="<%= multa.obs_multa || 'Sin observaciones' %>"
                                                         data-detalle-laboratorista="<%= multa.nombre_laboratorista || '-' %>"
                                                         data-detalle-ual="<%= multa.ual || '-' %>"
+                                                        data-detalle-codigo-sga="<%= multa.codigo_ubicacion_sga || '' %>"
                                                         data-detalle-facultad="<%= multa.laboratorio_facultad || '' %>"
                                                         data-detalle-dependencia="<%= multa.laboratorio_dependencia || '' %>"
                                                     >
@@ -207,8 +208,12 @@
                         <div class="fw-semibold" data-detail-field="laboratorista"></div>
                     </div>
                     <div class="col-md-6">
-                        <div class="text-muted small">UAL</div>
+                        <div class="text-muted small">Laboratorio / dependencia</div>
                         <div class="fw-semibold" data-detail-field="ual"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Código de concepto SGA</div>
+                        <div class="fw-semibold" data-detail-field="codigo-sga"></div>
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted small">Facultad</div>
@@ -257,6 +262,7 @@
             observacion: trigger.getAttribute('data-detalle-observacion'),
             laboratorista: trigger.getAttribute('data-detalle-laboratorista'),
             ual: trigger.getAttribute('data-detalle-ual'),
+            'codigo-sga': trigger.getAttribute('data-detalle-codigo-sga'),
             facultad: trigger.getAttribute('data-detalle-facultad'),
             dependencia: trigger.getAttribute('data-detalle-dependencia'),
         };

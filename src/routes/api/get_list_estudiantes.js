@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
-const { sgaDebtService } = require('../../libs/oati-debts');
+const { sgaDebtService, resolveSgaConceptName } = require('../../libs/oati-debts');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const bp = require('body-parser');
@@ -25,6 +25,11 @@ const requireBulkStudentQueryAccess = requireRoles(['admin', 'laboratorista', 'c
 });
 
 function mapSgaDebtToMulta(debt, student) {
+  const conceptCode = String(debt.DEU_CPTO_COD || '').trim();
+  const conceptName =
+    debt.DEU_CPTO_NOMBRE ||
+    resolveSgaConceptName(conceptCode) ||
+    (conceptCode ? `Código SGA ${conceptCode}` : 'No reportado por SGA');
   const details = [
     debt.DEU_MULTA ? `Valor SGA: ${debt.DEU_MULTA}` : '',
     debt.DEU_ANO || debt.DEU_PER ? `Periodo: ${debt.DEU_ANO || '-'} / ${debt.DEU_PER || '-'}` : '',
@@ -38,7 +43,8 @@ function mapSgaDebtToMulta(debt, student) {
     fecha_multa: debt.DEU_FECHA || null,
     obs_multa: details.join('; ') || 'Multa activa reportada por SGA.',
     nombre_laboratorista: '-',
-    ual: 'SGA',
+    ual: conceptName,
+    codigo_ubicacion_sga: conceptCode || null,
     documento: student.documento || null,
     codigo: debt.DEU_EST_COD || student.codigo || null,
   };
@@ -86,7 +92,9 @@ function buildPdfTableRows(students) {
         multa.cat_multa || '-',
         multa.fecha_multa || '',
         multa.obs_multa || '',
-        multa.ual || '',
+        multa.codigo_ubicacion_sga
+          ? `${multa.ual || '-'} (código SGA ${multa.codigo_ubicacion_sga})`
+          : multa.ual || '',
       ]);
     });
   });
@@ -386,7 +394,7 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
       'Motivo Multa',
       'Fecha de la Multa',
       'Observación',
-      'UAL',
+      'Laboratorio / dependencia',
     ]; //'Estado Multa'
     const tableRows = buildPdfTableRows(sampleData1);
 

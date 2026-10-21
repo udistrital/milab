@@ -1,5 +1,7 @@
 <small class="d-block text-muted app-sanction-location">
-  <% if (sanction.laboratorio_facultad || sanction.laboratorio_dependencia) { %>
+  <% if (sanction.origen === 'SGA') { %>
+    Código SGA: <%= sanction.codigo_ubicacion_sga || 'No disponible' %>
+  <% } else if (sanction.laboratorio_facultad || sanction.laboratorio_dependencia) { %>
     Facultad: <%= sanction.laboratorio_facultad || 'No disponible' %><br>
     Dependencia: <%= sanction.laboratorio_dependencia || 'Toda la facultad' %>
   <% } else { %>

@@ -862,25 +862,25 @@
           'start'
         ),
         createStep(
-          ['[data-guide="account-menu"]', '[data-guide="account-menu-mobile"]'],
+          ['[data-guide="account-menu"]'],
           'Cuenta del usuario',
-          'Este bloque te permite consultar tu informacion, cambiar la contrasena y cerrar sesion.',
-          'bottom',
-          'end'
+          'Desde este boton puedes consultar tu informacion, tus sanciones y los accesos de tu cuenta.',
+          'right',
+          'start'
         ),
         createStep(
-          ['[data-guide="help-manuals"]', '[data-guide="help-manuals-mobile"]'],
+          ['[data-guide="help-manuals"]'],
           'Centro de ayuda',
           'Desde este menu puedes volver a abrir el tour guiado o consultar la carpeta de manuales en PDF.',
-          'bottom',
-          'center'
+          'right',
+          'start'
         ),
         createStep(
           ['[data-guide="logout-action"]'],
           'Cerrar sesion',
           'Utiliza esta opcion para salir de forma segura cuando termines de usar la plataforma.',
-          'left',
-          'center'
+          'right',
+          'start'
         ),
         createStep(
           ['.app-frame', '.dashboard-page', '.app-page-shell', '.container'],

@@ -3,6 +3,68 @@ const { XMLParser } = require('fast-xml-parser');
 const { config } = require('../config/config');
 const { getAcademicServicePath, requestOati, requestOatiPost } = require('./oati-client');
 
+const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
+  1: 'BIBLIOTECA INGENIERÍA',
+  2: 'LAB. TOPOGRAFIA (MAC.A)',
+  3: 'LABORATORIO DE FISICA',
+  4: 'LABORATORIO DE QUIMICA',
+  5: 'LABORATORIO DE BIOLOGIA',
+  6: 'LAB. ELECTRON. (SED. CENTRAL)',
+  7: 'AUDIOVISUALES',
+  8: 'LABORATORIO DE FOTOGRAMETRIA (VIVERO)',
+  9: 'BIENESTAR UNIVERSITARIO',
+  10: 'BIBLIOTECA VIVERO',
+  11: 'BIBLIOTECA MAC. A.',
+  12: 'BIBLIOTECA MAC B',
+  13: 'BIBLIOTECA TECNOLOGICA',
+  14: 'CENTRO INVEST. GEOG. CIGER',
+  15: 'BIBLIOTECA ILUD',
+  16: 'LAB. INVERNADERO -VIVERO-',
+  17: 'LAB. TOPOGRAFIA -VIVERO-',
+  18: 'LAB. BIOLOGIA -VIVERO-',
+  19: 'CALIDAD DE AGUAS -VIVERO-',
+  20: 'FOTOINTERPRETACION -VIVERO-',
+  21: 'DEPORTES - VIVERO',
+  30: 'COORD. LABORATORIO VIVERO',
+  31: 'LAB. MICROBIOLOGIA-VIVERO',
+  32: 'LAB. SILVICULTURA VIVERO',
+  33: 'LAB. SUELOS VIVERO',
+  34: 'LAB. CARPINTERIA VIVERO',
+  35: 'XILOTECA VIVERO',
+  36: 'BIBLIOTECA ASAB',
+  37: 'SALAS GEOMATICA - VIVERO',
+  38: 'SALA CARTOGRAFIA - VIVERO',
+  39: 'LAB. TECNOLOGIA EN MADERAS VIV',
+  40: 'LABORATORIO CIVILES - TECNO',
+  41: 'LAB. SANIDAD FORESTAL - VIVERO',
+  42: 'LAB. SERVICIOS PUBLICOS - VIV.',
+  43: 'LAB. QUIMICA - VIVERO',
+  44: 'AUDIOVISUALES - VIVERO',
+  45: 'HERBARIO - FORESTAL VIVERO',
+  46: 'LAB. ELECTRONICA (TECNO)',
+  47: 'LAB. ELECTRICIDAD (TECNO)',
+  48: 'LAB. INDUSTRIAL (TECNO)',
+  49: 'LAB. SISTEMAS (TECNO)',
+  50: 'LAB. MECANICA (TECNO)',
+  51: 'LAB. CIENCIAS BASICAS (TECNO)',
+  52: 'BIBLIOTECA ADUANILLA DE PAIBA',
+  53: 'LABORATORIO DE TECNOLOGIAS LIMPIAS (FAMARENA)',
+  54: 'LABORATORIO CALIDAD DE AIRE (FAMARENA)',
+  55: 'ZOONOSIS (FAMARENA)',
+  56: 'CENTRO DE DOCUMENTACION SOCIALES',
+  57: 'BIBLIOTECA POSGRADOS',
+  58: 'BIBLIOTECA PORVENIR',
+  59: 'LABORATORIO DE BIOLOGIA MOLECULAR (VIVERO)',
+  72: 'LAB. QUIMICA ORGANICA (BOSA)',
+});
+
+function resolveSgaConceptName(rawCode) {
+  const code = String(rawCode ?? '').trim();
+  if (!code) return null;
+  const normalizedCode = /^\d+$/.test(code) ? String(Number(code)) : code;
+  return SGA_DEBT_CONCEPT_NAMES[code] || SGA_DEBT_CONCEPT_NAMES[normalizedCode] || null;
+}
+
 class SgaDebtService {
   constructor({
     serviceConfig = config,
@@ -128,7 +190,14 @@ class SgaDebtService {
     }
 
     const debts = await this.fetchDebtsByStudentCode(codigoEstudiante);
-    return debts.filter((debt) => this.isBlockingDebt(debt));
+    return debts
+      .filter((debt) => this.isBlockingDebt(debt))
+      .map((debt) => {
+        const conceptName = resolveSgaConceptName(debt?.DEU_CPTO_COD);
+        return conceptName && !debt.DEU_CPTO_NOMBRE
+          ? { ...debt, DEU_CPTO_NOMBRE: conceptName }
+          : debt;
+      });
   }
 }
 
@@ -137,4 +206,5 @@ const sgaDebtService = new SgaDebtService();
 module.exports = {
   SgaDebtService,
   sgaDebtService,
+  resolveSgaConceptName,
 };

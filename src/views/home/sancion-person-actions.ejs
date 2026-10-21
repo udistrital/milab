@@ -179,6 +179,15 @@
                           <dd class="mb-0 fw-semibold"><%= [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / ') || 'No disponible' %></dd>
                         </div>
                         <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Laboratorio / dependencia</dt>
+                          <dd class="mb-0 fw-semibold">
+                            <%= debt.DEU_CPTO_NOMBRE || (debt.DEU_CPTO_COD ? `Código SGA ${debt.DEU_CPTO_COD}` : 'No reportado por SGA') %>
+                            <% if (debt.DEU_CPTO_NOMBRE && debt.DEU_CPTO_COD) { %>
+                              <small class="d-block text-muted">Código SGA: <%= debt.DEU_CPTO_COD %></small>
+                            <% } %>
+                          </dd>
+                        </div>
+                        <div class="col-12 col-md-6">
                           <dt class="text-muted small">Fecha de pago</dt>
                           <dd class="mb-0 fw-semibold"><%= debt.DEU_FECHA_PAGO || 'Pendiente' %></dd>
                         </div>

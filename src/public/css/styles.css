@@ -633,9 +633,10 @@ body.app-shell .app-sidebar {
   position: sticky;
   top: 1rem;
   align-self: start;
+  z-index: 1020;
   height: calc(100vh - 8rem);
   max-height: calc(100vh - 8rem);
-  overflow: hidden;
+  overflow: visible;
   padding: 0.85rem 0.7rem;
   border: 1px solid var(--app-border);
   border-radius: 18px;
@@ -670,9 +671,260 @@ body.app-shell .app-sidebar-footer .app-sidebar-link > i {
   font-size: 1.15rem;
 }
 
+body.app-shell .app-sidebar-footer [data-sidebar-action='profile'] {
+  --app-sidebar-action-color: #477d8a;
+  --app-sidebar-action-background: rgba(71, 125, 138, 0.12);
+  --app-sidebar-action-border: rgba(71, 125, 138, 0.28);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='medals'] {
+  --app-sidebar-action-color: #aa7b2d;
+  --app-sidebar-action-background: rgba(170, 123, 45, 0.13);
+  --app-sidebar-action-border: rgba(170, 123, 45, 0.3);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='help'] {
+  --app-sidebar-action-color: #5879a5;
+  --app-sidebar-action-background: rgba(88, 121, 165, 0.12);
+  --app-sidebar-action-border: rgba(88, 121, 165, 0.28);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='logout'] {
+  --app-sidebar-action-color: #657b83;
+  --app-sidebar-action-background: rgba(101, 123, 131, 0.12);
+  --app-sidebar-action-border: rgba(101, 123, 131, 0.28);
+}
+
+body.app-shell .app-sidebar-footer-dropdown {
+  min-width: 0;
+}
+
+body.app-shell .app-sidebar-footer .dropdown-toggle::after {
+  display: none;
+}
+
+body.app-shell .app-sidebar-footer-dropdown > .app-sidebar-link {
+  position: relative;
+}
+
+body.app-shell .app-sidebar-footer .dropdown-menu {
+  z-index: 1080;
+  width: min(20rem, calc(100vw - 1.5rem));
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(70vh, 38rem);
+  overflow-y: auto;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface-strong);
+  box-shadow: var(--app-shadow);
+}
+
+body.app-shell .app-sidebar .app-sidebar-profile-menu {
+  padding: 0.55rem 0;
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action] {
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action] > i,
+body.app-shell .app-sidebar-footer .app-sidebar-action-icon {
+  flex: 0 0 auto;
+  color: var(--app-sidebar-action-color);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action]:hover,
+body.app-shell .app-sidebar-footer [data-sidebar-action]:focus-visible,
+body.app-shell .app-sidebar-footer .show > [data-sidebar-action] {
+  border-color: var(--app-sidebar-action-border);
+  background: var(--app-sidebar-action-background);
+  color: var(--app-sidebar-action-color) !important;
+  box-shadow: 0 5px 14px rgba(40, 70, 80, 0.12);
+  transform: translateY(-1px);
+}
+
+body.app-shell .app-sidebar-footer .app-sidebar-link.is-active {
+  border-color: var(--app-sidebar-action-border);
+  background: var(--app-sidebar-action-background);
+  box-shadow: none;
+  color: var(--app-text-main) !important;
+}
+
+body.app-shell .app-sidebar-footer .app-sidebar-link.is-active > i {
+  color: var(--app-sidebar-action-color);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='medals'] > i {
+  transition: transform 0.2s ease;
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='medals']:hover > i,
+body.app-shell .app-sidebar-footer [data-sidebar-action='medals']:focus-visible > i {
+  transform: translateY(-2px) rotate(-8deg);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='help'] > i {
+  transition: transform 0.2s ease;
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='help']:hover > i,
+body.app-shell .app-sidebar-footer [data-sidebar-action='help']:focus-visible > i {
+  transform: rotate(12deg);
+}
+
+body.app-shell .app-sidebar-avatar {
+  display: inline-flex;
+  width: 1.35rem;
+  height: 1.35rem;
+  align-items: center;
+  justify-content: center;
+}
+
+body.app-shell .app-sidebar-avatar svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.55;
+}
+
+body.app-shell .app-sidebar-avatar-mouth {
+  transform-origin: center;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+body.app-shell .app-sidebar-avatar-mouth--neutral {
+  opacity: 1;
+}
+
+body.app-shell .app-sidebar-avatar-mouth--smile {
+  opacity: 0;
+  transform: translateY(1px);
+}
+
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='profile']:hover
+  .app-sidebar-avatar-mouth--neutral,
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='profile']:focus-visible
+  .app-sidebar-avatar-mouth--neutral,
+body.app-shell
+  .app-sidebar-footer
+  .show
+  > [data-sidebar-action='profile']
+  .app-sidebar-avatar-mouth--neutral {
+  opacity: 0;
+  transform: translateY(-1px);
+}
+
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='profile']:hover
+  .app-sidebar-avatar-mouth--smile,
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='profile']:focus-visible
+  .app-sidebar-avatar-mouth--smile,
+body.app-shell
+  .app-sidebar-footer
+  .show
+  > [data-sidebar-action='profile']
+  .app-sidebar-avatar-mouth--smile {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+body.app-shell .app-sidebar-door {
+  position: relative;
+  display: inline-flex;
+  width: 1.35rem;
+  height: 1.35rem;
+  align-items: center;
+  justify-content: center;
+}
+
+body.app-shell .app-sidebar-door > i {
+  position: absolute;
+  font-size: 1.15rem;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+body.app-shell .app-sidebar-door-closed {
+  opacity: 0;
+  transform: scale(0.78);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='logout']:hover .app-sidebar-door-open,
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='logout']:focus-visible
+  .app-sidebar-door-open {
+  opacity: 0;
+  transform: scale(0.78);
+}
+
+body.app-shell .app-sidebar-footer [data-sidebar-action='logout']:hover .app-sidebar-door-closed,
+body.app-shell
+  .app-sidebar-footer
+  [data-sidebar-action='logout']:focus-visible
+  .app-sidebar-door-closed {
+  opacity: 1;
+  transform: scale(1);
+}
+
 body.app-shell .app-sidebar-logout {
   font: inherit;
   cursor: pointer;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-footer [data-sidebar-action='profile'] {
+  --app-sidebar-action-color: #9bcbd4;
+  --app-sidebar-action-background: rgba(155, 203, 212, 0.13);
+  --app-sidebar-action-border: rgba(155, 203, 212, 0.3);
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-footer [data-sidebar-action='medals'] {
+  --app-sidebar-action-color: #e3bd70;
+  --app-sidebar-action-background: rgba(227, 189, 112, 0.13);
+  --app-sidebar-action-border: rgba(227, 189, 112, 0.3);
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-footer [data-sidebar-action='help'] {
+  --app-sidebar-action-color: #aabde2;
+  --app-sidebar-action-background: rgba(170, 189, 226, 0.13);
+  --app-sidebar-action-border: rgba(170, 189, 226, 0.3);
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-footer [data-sidebar-action='logout'] {
+  --app-sidebar-action-color: #bac8cd;
+  --app-sidebar-action-background: rgba(186, 200, 205, 0.12);
+  --app-sidebar-action-border: rgba(186, 200, 205, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.app-shell .app-sidebar-footer [data-sidebar-action],
+  body.app-shell .app-sidebar-footer [data-sidebar-action] > i,
+  body.app-shell .app-sidebar-footer .app-sidebar-action-icon,
+  body.app-shell .app-sidebar-avatar-mouth,
+  body.app-shell .app-sidebar-door > i {
+    transition: none;
+    transform: none;
+  }
 }
 
 body.app-shell .app-sidebar-heading {
