@@ -13,7 +13,11 @@ const {
   replaceOperationalRoleAssignments,
 } = require('../../libs/operational-role-assignments');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  enrichErrorPayloadForAdmin,
+  renderApplicationError,
+  wantsJson,
+} = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -53,6 +57,12 @@ async function resolveExistingColumn(tableName, candidateColumns) {
   }
 }
 
+function isMissingCoordinatorUalAssignmentsTable(error) {
+  return (
+    error?.code === '42P01' && String(error.message || '').includes('coordinador_ual_encargado')
+  );
+}
+
 router.get('/', requireAdminCoordinadoresView, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -60,16 +70,21 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
 
   try {
     client = await pool.connect();
-    const query = `
+    const buildQuery = (includeUalAssignments) => {
+      const assignedLabs = includeUalAssignments
+        ? `(SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+            FROM coordinador_ual_encargado e
+            JOIN ual u ON u.ual_id = e.ual_id
+            WHERE e.coordinador_documento = c.documento)`
+        : 'NULL::text';
+
+      return `
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
-             (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
-              FROM coordinador_ual_encargado e
-              JOIN ual u ON u.ual_id = e.ual_id
-              WHERE e.coordinador_documento = c.documento) AS laboratorios_encargados,
+             ${assignedLabs} AS laboratorios_encargados,
              STRING_AGG(
                DISTINCT COALESCE(facultad.nombre, f.nombre),
                ', '
@@ -115,7 +130,23 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
        AND ual_row.activo = TRUE
       GROUP BY c.nombre, c.documento, c.correo, c.numero_resolucion_coordinador, c.soporte_resolucion, role_state.activo
     `;
-    const result = await client.query(query);
+    };
+    let ualAssignmentsAvailable = true;
+    let result;
+    try {
+      result = await client.query(buildQuery(true));
+    } catch (error) {
+      if (!isMissingCoordinatorUalAssignmentsTable(error)) {
+        throw error;
+      }
+
+      console.warn(
+        'Coordinadores registrados: falta coordinador_ual_encargado; se omitirá el dato de laboratorios a cargo.',
+        error.message
+      );
+      result = await client.query(buildQuery(false));
+      ualAssignmentsAvailable = false;
+    }
     const coordinadores = result.rows;
 
     const facultadIdColumn = await resolveExistingColumn('dependencia_facultad', [
@@ -150,24 +181,36 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       facultadesDisponibles,
       dependenciasDisponibles,
       ualesDisponibles,
+      ualAssignmentsAvailable,
     });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
 
     if (wantsJson(req)) {
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible cargar los coordinadores registrados.',
-        message2: 'Intenta nuevamente en unos minutos.',
-      });
+      return res.status(500).json(
+        enrichErrorPayloadForAdmin(
+          req,
+          {
+            ok: false,
+            message: 'No fue posible cargar los coordinadores registrados.',
+            message2: 'Intenta nuevamente en unos minutos.',
+          },
+          error
+        )
+      );
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar los coordinadores registrados.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar los coordinadores registrados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   } finally {
     if (client) client.release();
   }
