@@ -365,6 +365,7 @@ async function fetchPrestamosAllowedMenuRoutes(roles, client = pool) {
         FROM menu_item mi
         JOIN rol_permiso rp
           ON rp.menu_item_id = mi.id
+         AND rp.activo = TRUE
          AND (rp.can_use = TRUE OR rp.can_view = TRUE)
         JOIN rol r
           ON r.id = rp.rol_id
@@ -1420,6 +1421,7 @@ function createMenuPermissionMiddleware(route) {
           JOIN rol r ON r.id = rp.rol_id
           WHERE rp.menu_item_id = ANY($1)
             AND rp.can_view = TRUE
+            AND rp.activo = TRUE
             AND r.nombre = ANY($2::text[])
           LIMIT 1
         `,

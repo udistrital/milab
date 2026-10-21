@@ -7,17 +7,15 @@
   <%
     const isTeacher = personType === 'docente';
     const personKind = isTeacher ? 'docente' : 'estudiante';
+    const successFeedback = locals.successFeedback || null;
     const registrationUrl = isTeacher
       ? '/milab/api/get-info-multa-docente'
       : '/milab/api/get-info-multa';
-    const removalUrl = isTeacher
-      ? '/milab/api/get-info-erase-multa-docente'
-      : '/milab/api/get-info-erase-multa';
     const searchUrl = isTeacher
       ? '/milab/api/get-info-multa-docente/get'
       : '/milab/api/get-info-multa/get';
   %>
-  <main class="container app-page-shell">
+  <main class="container app-page-shell" data-sanction-person-actions-page="true">
     <section class="app-page-header">
       <p class="app-home-welcome-kicker">Paso 2 de 2</p>
       <h1 class="app-page-title">Acciones para <%= personKind %></h1>
@@ -58,7 +56,6 @@
       <%
         const sanctionHistory = locals.sanctionHistory || [];
         const sga = locals.sga || { configured: false, debts: [], failed: false };
-        const successFeedback = locals.successFeedback || null;
       %>
       <section class="mt-4" aria-labelledby="fineActionHeading">
         <% if (successFeedback) { %>
@@ -72,7 +69,9 @@
                         ? ' La sanción se reactivó correctamente.'
                         : successFeedback === 'editada'
                             ? ' La sanción se editó correctamente.'
-                            : ' La sanción se activó correctamente.' %>
+                            : successFeedback === 'registrada'
+                                ? ' La sanción se registró correctamente.'
+                                : ' La sanción se activó correctamente.' %>
           </div>
         <% } %>
 
@@ -82,18 +81,6 @@
             <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
             <button class="btn btn-perso" type="submit" data-submit-lock="true">
               <i class="bi bi-plus-circle" aria-hidden="true"></i> Agregar sanción
-            </button>
-          </form>
-          <form method="POST" action="<%= removalUrl %>">
-            <%- include('../partials/csrf_field') %>
-            <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
-            <button
-              class="btn btn-outline-secondary"
-              type="submit"
-              data-submit-lock="true"
-              <%= activeSanctionCount > 0 ? '' : 'disabled' %>
-            >
-              <i class="bi bi-dash-circle" aria-hidden="true"></i> Retirar sanción
             </button>
           </form>
         </div>
@@ -206,6 +193,11 @@
       <% } %>
     <% } else { %>
     <section class="mt-4" aria-labelledby="fineActionHeading">
+      <% if (successFeedback === 'registrada') { %>
+        <div class="alert alert-success mb-3" role="status" aria-live="polite">
+          <strong>Operación completada.</strong> La sanción se registró correctamente.
+        </div>
+      <% } %>
       <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
         <div>
           <p class="app-home-welcome-kicker mb-1">Selecciona una acción</p>
@@ -228,32 +220,6 @@
             <p class="text-muted">Crear un nuevo registro para esta persona.</p>
             <button class="btn btn-perso w-100" type="submit" data-submit-lock="true">
               Continuar con el registro
-            </button>
-          </div>
-        </form>
-
-        <form method="POST" action="<%= removalUrl %>" class="card app-fine-action-card">
-          <%- include('../partials/csrf_field') %>
-          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
-          <div class="card-body">
-            <div class="app-fine-action-icon app-fine-action-icon--remove" aria-hidden="true">
-              <i class="bi bi-dash-circle"></i>
-            </div>
-            <h3 class="h5 mt-3">Retirar sanción</h3>
-            <p class="text-muted">
-              <% if (activeSanctionCount > 0) { %>
-                Revisar las sanciones activas antes de retirarlas.
-              <% } else { %>
-                Esta persona no tiene sanciones activas para retirar.
-              <% } %>
-            </p>
-            <button
-              class="btn btn-outline-secondary w-100"
-              type="submit"
-              data-submit-lock="true"
-              <%= activeSanctionCount > 0 ? '' : 'disabled' %>
-            >
-              Revisar sanciones activas
             </button>
           </div>
         </form>

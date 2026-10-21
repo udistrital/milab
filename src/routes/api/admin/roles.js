@@ -15,6 +15,7 @@ const SYSTEM_PROTECTED_ROLES = new Set([
   'coordinador_general',
   'coordinador',
   'laboratorista',
+  'gestor_laboratorio',
   'monitor',
   'docente',
   'estudiante',
@@ -80,6 +81,7 @@ async function loadRolesData() {
      LEFT JOIN (
        SELECT rol_permiso.rol_id, COUNT(*) AS total
        FROM rol_permiso
+       WHERE rol_permiso.activo = TRUE
        GROUP BY rol_permiso.rol_id
      ) permission_counts
        ON permission_counts.rol_id = r.id

@@ -8,6 +8,11 @@
   <% if (isAdmin) { %><p>El administrador puede reasignar reclamaciones pendientes a un laboratorista activo. La sanción conserva su creador original.</p><% } %>
   <section class="card app-table-panel">
     <div class="card-body">
+      <% if (!claims.length) { %>
+        <div class="alert alert-info mb-0" role="status">
+          <%= isAdmin || readOnly ? 'No hay reclamaciones para mostrar.' : 'No hay reclamaciones asignadas a las UAL bajo tu responsabilidad.' %>
+        </div>
+      <% } else { %>
       <table class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="false">
         <thead><tr><th>Estudiante</th><th>Sanción y laboratorio</th><th>Fecha de reclamación</th><th>Responsable</th><th>Estado</th><th data-grid-filter="false" data-grid-orderable="false">Acciones</th></tr></thead>
         <tbody>
@@ -39,7 +44,7 @@
           <% }) %>
         </tbody>
       </table>
-      <% if (!claims.length) { %><p class="text-muted">No hay reclamaciones asignadas.</p><% } %>
+      <% } %>
     </div>
   </section>
 </main>

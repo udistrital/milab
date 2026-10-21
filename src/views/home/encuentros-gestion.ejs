@@ -23,7 +23,7 @@
     <div class="card-body">
       <form id="event-form" enctype="multipart/form-data" novalidate>
         <input type="hidden" name="eventId" id="event-id">
-        <div class="row g-3">
+        <div class="row g-3" id="event-details-fields">
           <div class="col-12 col-lg-6">
             <label class="form-label" for="event-name">Nombre del evento *</label>
             <input class="form-control" id="event-name" name="nombre" maxlength="255" required>
@@ -56,6 +56,8 @@
             <label class="form-label" for="event-banner">Banner (PNG/JPEG, máximo 3 MB)</label>
             <input class="form-control" id="event-banner" name="banner" type="file" accept="image/png,image/jpeg">
           </div>
+        </div>
+        <div class="row g-3 mt-1" id="event-template-fields">
           <div class="col-12 col-md-6">
             <label class="form-label" for="event-template">Plantilla PDF (máximo 8 MB) <span id="template-required">*</span></label>
             <input class="form-control" id="event-template" name="plantilla_pdf" type="file" accept="application/pdf">

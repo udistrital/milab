@@ -188,6 +188,7 @@ async function menuPermissionMiddleware(req, res, next) {
         JOIN rol r ON r.id = rp.rol_id
         WHERE rp.menu_item_id = ANY($1)
           AND rp.can_view = TRUE
+          AND rp.activo = TRUE
           AND r.nombre = ANY($2)
         LIMIT 1
       `,

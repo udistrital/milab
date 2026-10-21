@@ -3140,6 +3140,29 @@ html[data-bs-theme='dark'] body.app-shell .admin-permissions-table .admin-module
   background: rgba(255, 191, 0, 0.12);
 }
 
+body.app-shell .admin-menus-page > *,
+body.app-shell .admin-menus-page > .row,
+body.app-shell .admin-menus-page > .row > [class*='col-'],
+body.app-shell .admin-menus-page .admin-modules-card,
+body.app-shell .admin-menus-page .admin-modules-accordion,
+body.app-shell .admin-menus-page .admin-modules-accordion .accordion-item,
+body.app-shell .admin-menus-page .admin-modules-accordion .accordion-body,
+body.app-shell .admin-menus-page .admin-permissions-table {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body.app-shell .admin-menus-page .admin-permissions-table {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.app-shell .admin-menus-page .admin-permissions-table > .table {
+  width: max-content;
+  min-width: 100%;
+}
+
 body.app-shell .table-responsive {
   border-radius: 20px;
 }

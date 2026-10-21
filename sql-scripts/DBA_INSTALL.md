@@ -15,6 +15,7 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 - db_structure_prestamos.sql / db_seed_prestamos.sql: estructura y menus del modulo de prestamos.
 - db_structure_certificacion.sql / db_seed_certificacion.sql: estructura y catalogos de certificacion.
 - db_structure_inventarios.sql / db_seed_inventarios.sql: estructura y menus/permisos del modulo de inventarios.
+- [sql/20261021_gestor_laboratorio.sql](../sql/20261021_gestor_laboratorio.sql): inicializa el rol, su acceso administrativo y la gestión global de encuentros en bases existentes.
 - db_seed_pruebas_ofuscado.sql: datos de prueba derivados del libro ofuscado; se ejecuta solo al reconstruir el ambiente de pruebas, nunca en producción.
 - scripts/generate_ofuscado_seed.py: regenera el seed anterior desde el libro ofuscado y el catalogo del sistema.
 - db_seed_pruebas_local.sql: precarga local de pruebas (NO usar en produccion).
@@ -28,9 +29,9 @@ Ejecutar en este orden:
 3. db_structure_prestamos.sql
 4. db_seed_prestamos.sql
 5. db_structure_inventarios.sql
-6. db_seed_inventarios.sql
-7. db_structure_certificacion.sql
-8. db_seed_certificacion.sql
+6. db_structure_certificacion.sql
+7. db_seed_certificacion.sql
+8. db_seed_inventarios.sql
 9. db_seed_pruebas_ofuscado.sql (solo al reconstruir el ambiente de pruebas)
 
 ## Comandos recomendados (psql)
@@ -50,10 +51,17 @@ psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure_prestamos.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_seed_prestamos.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure_inventarios.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_structure_certificacion.sql
 psql -h <host> -p <port> -U <user> -d <db> -f db_seed_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
 psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f db_seed_pruebas_ofuscado.sql
+```
+
+Para actualizar una base existente con el rol Gestor de laboratorio y habilitar su gestión
+global de encuentros, aplicar antes del despliegue:
+
+```sh
+psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261021_gestor_laboratorio.sql
 
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
 del ambiente de pruebas. El pipeline no lo ejecuta en despliegues que conservan la base
@@ -84,6 +92,11 @@ asignaciones oficiales. No crea UALs nuevos.
   de inventarios necesita los roles y menus base creados por db_seed_system.sql.
 - db_structure_inventarios.sql migra los campos descriptivos antiguos de equipo a
   inventario y crea equipo_catalogo. Debe ejecutarse antes de db_seed_certificacion.sql.
+- db_seed_inventarios.sql se ejecuta despues de db_seed_certificacion.sql porque
+  crea relaciones de equipo especializado para los cursos de prueba.
+- En una base existente, aplique `sql/20261021_gestor_laboratorio.sql` antes de
+  desplegar la aplicacion. El script de instalacion completa ya crea el rol y su
+  opcion administrativa desde `db_seed_system.sql`.
 - equipo conserva su id y solo los datos operativos; consultas descriptivas deben usar
   la vista equipo_catalogo, que proyecta la informacion canonica de inventario.
 - En una base existente, detenga la aplicacion antes de ejecutar db_structure_inventarios.sql;

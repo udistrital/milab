@@ -8,6 +8,7 @@ const routePath = path.resolve(__dirname, '../../../src/routes/api/dashboard.js'
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const normalizeRoleListForMatch = require(authPath).normalizeRoleListForMatch;
 const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
@@ -87,6 +88,7 @@ function loadDashboardRoute({
     [
       authPath,
       {
+        normalizeRoleListForMatch,
         requireRoles: (roles, options) => {
           requireRolesCalls.push({ roles, options });
           return (req, res, next) => next();
@@ -322,6 +324,10 @@ test('dashboard renders default admin chart set when there is no data', async ()
     assert.equal(response.body.locals.availableCharts.length >= 1, true);
     assert.equal(response.body.locals.coberturaOperativa.totales.porcentajeCubierto, null);
     assert.equal(response.body.locals.actividadPlataforma.acciones30, 0);
+
+    const chartResponse = await request(app).get('/?grafico=estudiantes');
+    assert.equal(chartResponse.status, 200, JSON.stringify(chartResponse.body));
+    assert.equal(chartResponse.body.locals.selectedChart, 'estudiantes');
   } finally {
     loaded.restore();
   }
@@ -1267,8 +1273,17 @@ test('dashboard scopes coordinator certificates by the faculty encoded in the st
 
 test('dashboard laboratorista scope reads the UAL faculty column from ual', async () => {
   const ualQueries = [];
+  const inventoryQueries = [];
+  const platformQueries = [];
   const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      platformQueries.push(sql);
+      return { rows: [] };
+    },
     clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('u.ual_id = ANY($1::int[])')) {
+        inventoryQueries.push({ sql, params });
+      }
       if (sql.includes('FROM information_schema.columns')) {
         return { rows: [{ column_name: params[1][0] }] };
       }
@@ -1292,8 +1307,40 @@ test('dashboard laboratorista scope reads the UAL faculty column from ual', asyn
 
     assert.equal(response.status, 200);
     assert.equal(response.body.locals.dashboardRole, 'laboratorista');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, false);
+    assert.deepEqual(response.body.locals.availableCharts, []);
+    assert.equal(response.body.locals.generalOverview, null);
+    assert.equal(
+      platformQueries.some(
+        (sql) => sql.includes('WITH usuarios_base AS') || sql.includes('FROM laboratorista l')
+      ),
+      false
+    );
     assert.match(ualQueries[0], /facultad_id AS facultad_id/);
     assert.doesNotMatch(ualQueries[0], /dependencia_facultad_id/);
+
+    const deniedChartResponse = await request(app).get('/?grafico=estudiantes');
+    assert.equal(deniedChartResponse.status, 403);
+    assert.match(deniedChartResponse.body.locals.message2, /no tienes permisos/i);
+
+    const deniedSectionResponse = await request(app).get('/?section=general');
+    assert.equal(deniedSectionResponse.status, 403);
+    assert.equal(
+      loaded.route.__private.getDashboardRole({ roles: ['laboratorista_ual'] }),
+      'laboratorista'
+    );
+    const legacyLabApp = buildApp(loaded.route, { roles: ['laboratorista_ual'] });
+    const deniedLegacyRoleResponse = await request(legacyLabApp).get('/?grafico=estudiantes');
+    assert.equal(deniedLegacyRoleResponse.status, 403);
+
+    const inventoryResponse = await request(app).get('/inventarios?fragment=1');
+    assert.equal(inventoryResponse.status, 200);
+    assert.equal(inventoryResponse.body.view, 'home/dashboard/inventarios');
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.ual_id = ANY\(\$1::int\[\]\)/);
+      assert.deepEqual(params, [[7]]);
+    });
   } finally {
     loaded.restore();
   }

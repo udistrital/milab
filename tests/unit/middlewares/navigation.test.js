@@ -250,9 +250,37 @@ test('claim notification badges reflect unread student answers and assigned pend
         query.sql,
         role === 'estudiante' ? /fecha_lectura IS NULL/ : /fecha_respuesta IS NULL/
       );
+      if (role === 'laboratorista') {
+        assert.match(query.sql, /lu\.laboratorista_documento_id = l\.documento/);
+        assert.match(query.sql, /lu\.ual_id = m\.ual_id/);
+        assert.match(query.sql, /lu\.activo = TRUE/);
+      }
     } finally {
       loaded.restore();
     }
+  }
+});
+
+test('laboratorista retains the claims link when no requests are pending', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) =>
+      sql.includes('reclamacion_sancion') ? { rows: [{ total: 0 }] } : { rows: [] },
+  });
+  try {
+    const res = { locals: {} };
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'laboratorista', documento: '456' } } },
+      res,
+      (error) => assert.ifError(error)
+    );
+    assert.equal(res.locals.claimNotifications.count, 0);
+    assert.ok(
+      res.locals.appNavigation.primaryLinks.some(
+        (link) => link.href === '/milab/api/sanciones/reclamaciones'
+      )
+    );
+  } finally {
+    loaded.restore();
   }
 });
 

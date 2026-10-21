@@ -201,7 +201,7 @@ test('responsible laboratorista submits a final response and the student is noti
   }
 });
 
-test('unassigned or already answered claims cannot be answered again', async () => {
+test('a forged cross-UAL claim ID or an already answered claim cannot be answered', async () => {
   const fixture = setup({ user: lab, updateAllowed: false });
   try {
     assert.equal(
@@ -213,6 +213,11 @@ test('unassigned or already answered claims cannot be answered again', async () 
       ).status,
       409
     );
+    const update = fixture.calls.find((call) => call.sql.includes('UPDATE reclamacion_sancion'));
+    assert.match(update.sql, /r\.id = \$4/);
+    assert.match(update.sql, /lu\.laboratorista_documento_id = \$3/);
+    assert.match(update.sql, /lu\.ual_id = m\.ual_id/);
+    assert.match(update.sql, /lu\.activo = TRUE/);
     assert.equal(fixture.notifications.length, 0);
     assert.ok(!fixture.calls.some((call) => call.sql === 'COMMIT'));
   } finally {
@@ -270,10 +275,35 @@ test('inbox is restricted to assigned claims; admin and general coordinator can 
       assert.equal(response.body.view, 'home/reclamaciones_sanciones');
       const query = fixture.calls.find((call) => call.sql.includes('SELECT r.*'));
       assert.deepEqual(query.params, [document]);
+      if (user === lab) {
+        assert.match(query.sql, /r\.responsable_documento_id = \$1/);
+        assert.match(query.sql, /lu\.laboratorista_documento_id = \$1/);
+        assert.match(query.sql, /lu\.ual_id = m\.ual_id/);
+        assert.match(query.sql, /lu\.activo = TRUE/);
+      } else {
+        assert.match(query.sql, /\$1::text IS NULL OR/);
+      }
       assert.equal(response.body.locals.readOnly, user.tipo === 'coordinador_general');
     } finally {
       fixture.restore();
     }
+  }
+});
+
+test('laboratorista can open the claims form with no claims and receives an empty result', async () => {
+  const fixture = setup({ user: lab });
+  try {
+    const response = await request(fixture.app).get('/reclamaciones');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/reclamaciones_sanciones');
+    assert.deepEqual(response.body.locals.claims, []);
+    const query = fixture.calls.find((call) => call.sql.includes('SELECT r.*'));
+    assert.deepEqual(query.params, ['456']);
+    assert.match(query.sql, /EXISTS[\s\S]*FROM laboratorista_ual lu/);
+    assert.match(query.sql, /lu\.ual_id = m\.ual_id/);
+    assert.doesNotMatch(query.sql, /lu\.ual_id = \$\d/);
+  } finally {
+    fixture.restore();
   }
 });
 

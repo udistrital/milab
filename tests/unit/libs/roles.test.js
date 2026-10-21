@@ -36,11 +36,17 @@ test('formatRoleLabel returns Invitado for empty roles and formatted labels for 
   assert.equal(formatRoleLabel([]), 'Invitado');
   assert.equal(formatRoleLabel(['coordinador', 'docente']), 'Coordinador · Docente');
   assert.equal(formatRoleLabel(['coordinador_general']), 'Coordinador General');
+  assert.equal(formatRoleLabel(['gestor_laboratorio']), 'Gestor de laboratorio');
 });
 
 test('coordinador_general has higher priority than coordinador', () => {
   const normalized = normalizeRoles(['coordinador', 'coordinador_general', 'docente']);
   assert.deepEqual(normalized, ['coordinador_general', 'coordinador', 'docente']);
+});
+
+test('adding gestor_laboratorio preserves existing primary-role priority', () => {
+  assert.equal(getPrimaryRole(['gestor_laboratorio', 'estudiante']), 'estudiante');
+  assert.equal(getPrimaryRole(['gestor_laboratorio']), 'gestor_laboratorio');
 });
 
 test('hasAnyRole detects intersections between user and required roles', () => {

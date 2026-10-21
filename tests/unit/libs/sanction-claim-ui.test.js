@@ -81,6 +81,25 @@ test('sanction detail distinguishes an empty history from loading and HTTP error
   assert.equal(failed.panel.getAttribute('role'), 'alert');
 });
 
+test('empty laboratorista claims inbox is clear and does not show an empty table', async () => {
+  const html = await ejs.renderFile(
+    path.resolve(__dirname, '../../../src/views/home/reclamaciones_sanciones.ejs'),
+    {
+      tipo: 'laboratorista',
+      cspNonce: 'test',
+      csrfToken: 'token',
+      feedback: null,
+      claims: [],
+      laboratoristas: [],
+      isAdmin: false,
+      readOnly: false,
+    }
+  );
+  assert.match(html, /No hay reclamaciones asignadas a las UAL bajo tu responsabilidad/);
+  assert.match(html, /class="alert alert-info mb-0" role="status"/);
+  assert.doesNotMatch(html, /<table class="table/);
+});
+
 test('detail renders student claim, final response, decision and responsible names as text', async () => {
   const fixture = setup(async () => ({
     ok: true,

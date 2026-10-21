@@ -30,6 +30,7 @@ async function getMenuForRoles(roles) {
       JOIN rol_permiso rp
         ON rp.menu_item_id = mi.id
        AND rp.can_view = TRUE
+        AND rp.activo = TRUE
       JOIN rol r
         ON r.id = rp.rol_id
       WHERE r.nombre = ANY($1)

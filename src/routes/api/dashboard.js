@@ -17,7 +17,11 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
-const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
+const {
+  normalizeRoleListForMatch,
+  requireJsonRoles,
+  requireRoles,
+} = require('../middlewares/auth');
 const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -143,12 +147,28 @@ const CHART_DEFINITIONS = {
 };
 
 function getDashboardRole(user) {
-  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const roles = normalizeRoleListForMatch(user?.roles || user?.tipo);
   if (roles.includes('admin')) return 'admin';
   if (roles.includes('coordinador_general')) return 'coordinador_general';
   if (roles.includes('coordinador')) return 'coordinador';
   if (roles.includes('laboratorista')) return 'laboratorista';
   return '';
+}
+
+function requirePlatformMonitoringAccess(req, res, next) {
+  const dashboardRole = getDashboardRole(req.session?.user);
+  const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
+  const requestedPlatformSection = req.query.section === 'general';
+
+  if (dashboardRole !== 'laboratorista' || (!requestedChart && !requestedPlatformSection)) {
+    return next();
+  }
+
+  return res.status(403).render('home/message_error', {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para ver el monitoreo de toda la plataforma.',
+    limit: 'loginOnly',
+  });
 }
 
 function isGlobalDashboardRole(role) {
@@ -2715,7 +2735,7 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
   }
 });
 
-router.get('/', requireDashboardAccess, async (req, res) => {
+router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
   const filtro = ['dia', 'semana', 'mes', 'anio'].includes(req.query.filtro)
@@ -2723,6 +2743,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     : 'dia';
   const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
   const dashboardRole = getDashboardRole(req.session?.user);
+  const canViewPlatformMonitoring = dashboardRole !== 'laboratorista';
 
   let labelFormat = 'Día';
   if (filtro === 'semana') labelFormat = 'Semana';
@@ -2800,10 +2821,10 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       }
     }
 
-    const availableChartIds = getAvailableChartIds(dashboardRole);
+    const availableChartIds = canViewPlatformMonitoring ? getAvailableChartIds(dashboardRole) : [];
     const selectedChart = availableChartIds.includes(requestedChart)
       ? requestedChart
-      : availableChartIds[0];
+      : availableChartIds[0] || null;
 
     const needsUsuariosByRole =
       availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
@@ -2815,7 +2836,9 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const teacherCertRows = isGlobalDashboardRole(dashboardRole)
       ? await fetchTeacherCertificateRows()
       : [];
-    const laboratoristaRows = await fetchLaboratoristaRows();
+    const laboratoristaRows = availableChartIds.includes('laboratoristas')
+      ? await fetchLaboratoristaRows()
+      : [];
     const coordinatorRows = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
       : [];
@@ -2894,13 +2917,15 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     });
 
     const scopePresentation = buildScopePresentation(dashboardRole, scope);
-    const generalOverview = buildGeneralOverview(availableChartIds, {
-      estudiantes: filteredEstudiantes,
-      docentes: filteredDocentes,
-      laboratoristas: filteredLaboratoristas,
-      coordinadores: filteredCoordinators,
-      usuariosRegistrados: usuariosRegistradosRows,
-    });
+    const generalOverview = canViewPlatformMonitoring
+      ? buildGeneralOverview(availableChartIds, {
+          estudiantes: filteredEstudiantes,
+          docentes: filteredDocentes,
+          laboratoristas: filteredLaboratoristas,
+          coordinadores: filteredCoordinators,
+          usuariosRegistrados: usuariosRegistradosRows,
+        })
+      : null;
 
     const coberturaOperativa = isGlobalRole
       ? await safeIndicator('la cobertura operativa', () => fetchOperationalCoverage(client))
@@ -2936,6 +2961,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       selectedChart,
       availableCharts,
       dashboardRole,
+      canViewPlatformMonitoring,
       scopePresentation,
       chartsData,
       tablesData,

@@ -61,27 +61,28 @@ ON CONFLICT (codigo_curso, id_laboratorio) DO UPDATE
 SET activo = TRUE,
     fecha_modificacion = CURRENT_TIMESTAMP;
 
-INSERT INTO equipo_especializado (
-    codigo_curso,
-    id_equipo,
-    activo
-)
-SELECT
-    cursos.codigo_curso,
-    equipo.id,
-    TRUE
-FROM cursos
-CROSS JOIN LATERAL (
-    SELECT id
-    FROM equipo_catalogo
-    WHERE activo = TRUE
-    ORDER BY id
-    LIMIT 1
-) AS equipo
-WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
-ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
-SET activo = TRUE,
-    fecha_modificacion = CURRENT_TIMESTAMP;
+-- Se traslada a db_seed_inventarios.sql para desplegar en la version 4.0.0.
+-- INSERT INTO equipo_especializado (
+--     codigo_curso,
+--     id_equipo,
+--     activo
+-- )
+-- SELECT
+--     cursos.codigo_curso,
+--     equipo.id,
+--     TRUE
+-- FROM cursos
+-- CROSS JOIN LATERAL (
+--     SELECT id
+--     FROM equipo_catalogo
+--     WHERE activo = TRUE
+--     ORDER BY id
+--     LIMIT 1
+-- ) AS equipo
+-- WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
+-- ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
+-- SET activo = TRUE,
+--     fecha_modificacion = CURRENT_TIMESTAMP;
 
 -- ==============================================================
 -- === Menú y Permisos RBAC - Módulo CAPACITACIÓN            ===
@@ -349,11 +350,23 @@ WHERE LOWER(TRIM(r.nombre)) IN (
         'admin', 'administrador', 'administradora', 'coordinador_general',
         'coordinador general', 'coordinador', 'coordinador_facultad',
         'coordinador de facultad', 'laboratorista',
-        'laboratorista_ud', 'laboratorista_ual'
+        'laboratorista_ud', 'laboratorista_ual', 'gestor_laboratorio'
     )
   AND mi.section = 'secondary'
   AND mi.label = 'Encuentros'
   AND mi.parent_id IS NULL
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) = 'gestor_laboratorio'
+  AND mi.route = '/milab/encuentros/gestion'
 ON CONFLICT (rol_id, menu_item_id) DO UPDATE
     SET can_view = TRUE,
         can_use = TRUE,

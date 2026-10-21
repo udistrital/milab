@@ -205,11 +205,12 @@ test('submit rejects when sanctioned user is not found', async () => {
   }
 });
 
-test('submit inserts fine and log when request is valid', async () => {
+test('submit inserts once and redirects to the person information screen when lookup context exists', async () => {
   const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route);
+    const lookupToken = 'a'.repeat(64);
     const response = await request(app).post('/').type('form').send({
       cat_multa: 'Uso indebido',
       identificador: '2024100001',
@@ -219,11 +220,14 @@ test('submit inserts fine and log when request is valid', async () => {
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',
       tipo_sancion: 'Firma de compromiso de buen uso',
+      lookup_token: lookupToken,
     });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.view, 'home/message_success');
-    assert.match(response.body.locals.message, /Multa registrada correctamente/i);
+    assert.equal(response.status, 303);
+    assert.equal(
+      response.headers.location,
+      `/milab/api/get-info-multa/persona?lookup_token=${lookupToken}&success=registrada`
+    );
 
     const executedQueries = loaded.getExecutedQueries();
     const queries = executedQueries.map((item) => item.sql);
@@ -231,14 +235,14 @@ test('submit inserts fine and log when request is valid', async () => {
     assert.equal(multaInsert.params[5], 'ACTIVA');
     assert.equal(multaInsert.params[7], 'Firma de compromiso de buen uso');
     assert.equal(
-      queries.some((sql) => sql.includes('INSERT INTO multa')),
-      true,
-      'debe insertar en multa'
+      queries.filter((sql) => sql.includes('INSERT INTO multa')).length,
+      1,
+      'debe insertar la sanción exactamente una vez'
     );
     assert.equal(
-      queries.some((sql) => sql.includes('INSERT INTO log')),
-      true,
-      'debe insertar en log'
+      queries.filter((sql) => sql.includes('INSERT INTO log')).length,
+      1,
+      'debe insertar el registro de auditoría exactamente una vez'
     );
   } finally {
     loaded.restore();
