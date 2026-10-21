@@ -651,11 +651,23 @@ body.app-shell .app-sidebar-navigation {
 
 body.app-shell .app-sidebar-footer {
   display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   flex: 0 0 auto;
-  gap: 0.22rem;
+  gap: 0.35rem;
   margin-top: auto;
   padding-top: 0.75rem;
   border-top: 1px solid var(--app-border);
+}
+
+body.app-shell .app-sidebar-footer .app-sidebar-link {
+  justify-content: center;
+  min-width: 0;
+  padding: 0.65rem 0.25rem;
+}
+
+body.app-shell .app-sidebar-footer .app-sidebar-link > i {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
 }
 
 body.app-shell .app-sidebar-logout {

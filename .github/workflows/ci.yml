@@ -469,7 +469,20 @@ jobs:
             exit 1
           fi
 
-          echo 'Esquema de inventarios, asignaciones de UAL y rol Gestor de laboratorio aplicados correctamente.'
+          encounters_permissions_migration=/opt/milab/sql/20261021_encuentros_permissions.sql
+          if [ ! -r "$encounters_permissions_migration" ]; then
+            echo "No se encontró la migración requerida: $encounters_permissions_migration" >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$encounters_permissions_migration"; then
+            echo 'Falló la migración de permisos de Encuentros; se intentará recuperar el servicio anterior.' >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          echo 'Esquema de inventarios, asignaciones de UAL, rol Gestor de laboratorio y permisos de Encuentros aplicados correctamente.'
 
       - name: Desplegar sin recrear ambiente
         if: steps.estrategia.outputs.recreate != 'true'
