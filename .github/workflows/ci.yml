@@ -130,15 +130,17 @@ jobs:
           base_dir=/opt/milab/sql-scripts
 
           for required_file in \
-            "$base_dir/db_structure.sql" \
-            "$base_dir/db_seed_system.sql" \
-            "$base_dir/db_structure_prestamos.sql" \
-            "$base_dir/db_seed_prestamos.sql" \
-            "$base_dir/db_structure_inventarios.sql" \
-            "$base_dir/db_structure_certificacion.sql" \
-            "$base_dir/db_seed_certificacion.sql" \
-            "$base_dir/db_seed_inventarios.sql" \
-            "$base_dir/db_seed_pruebas_ofuscado.sql"
+            "$base_dir/prod/db_structure.sql" \
+            "$base_dir/prod/db_seed_system.sql" \
+            "$base_dir/prod/db_structure_prestamos.sql" \
+            "$base_dir/prod/db_seed_prestamos.sql" \
+            "$base_dir/preprod/db_structure_inventarios.sql" \
+            "$base_dir/prod/db_structure_certificacion.sql" \
+            "$base_dir/prod/db_seed_certificacion.sql" \
+            "$base_dir/preprod/db_seed_inventarios.sql" \
+            "$base_dir/preprod/db_seed_pruebas_ofuscado.sql" \
+            "$base_dir/preprod/db_structure_hojas_vida.sql" \
+            "$base_dir/preprod/db_seed_hojas_vida.sql"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido: $required_file" >&2
@@ -147,15 +149,17 @@ jobs:
           done
 
           echo "Secuencia de reset BD validada:"
-          echo "1) $base_dir/db_structure.sql"
-          echo "2) $base_dir/db_seed_system.sql"
-          echo "3) $base_dir/db_structure_prestamos.sql"
-          echo "4) $base_dir/db_seed_prestamos.sql"
-          echo "5) $base_dir/db_structure_inventarios.sql"
-          echo "6) $base_dir/db_structure_certificacion.sql"
-          echo "7) $base_dir/db_seed_certificacion.sql"
-          echo "8) $base_dir/db_seed_inventarios.sql"
-          echo "9) $base_dir/db_seed_pruebas_ofuscado.sql (solo al recrear pruebas)"
+          echo "1) $base_dir/prod/db_structure.sql"
+          echo "2) $base_dir/prod/db_seed_system.sql"
+          echo "3) $base_dir/prod/db_structure_prestamos.sql"
+          echo "4) $base_dir/prod/db_seed_prestamos.sql"
+          echo "5) $base_dir/preprod/db_structure_inventarios.sql"
+          echo "6) $base_dir/prod/db_structure_certificacion.sql"
+          echo "7) $base_dir/prod/db_seed_certificacion.sql"
+          echo "8) $base_dir/preprod/db_seed_inventarios.sql"
+          echo "9) $base_dir/preprod/db_seed_pruebas_ofuscado.sql (solo al recrear pruebas)"
+          echo "10) $base_dir/preprod/db_structure_hojas_vida.sql"
+          echo "11) $base_dir/preprod/db_seed_hojas_vida.sql"
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
@@ -266,15 +270,17 @@ jobs:
           sudo mv "$sql_dir" "$sql_run_dir"
           sudo mkdir -p "$sql_dir"
 
-          db_structure_script="$sql_run_dir/db_structure.sql"
-            db_seed_script="$sql_run_dir/db_seed_system.sql"
-          db_structure_prestamos_script="$sql_run_dir/db_structure_prestamos.sql"
-          db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
-          db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
-          db_seed_certificacion_script="$sql_run_dir/db_seed_certificacion.sql"
-          db_seed_pruebas_ofuscado_script="$sql_run_dir/db_seed_pruebas_ofuscado.sql"
-          db_structure_inventarios_script="$sql_run_dir/db_structure_inventarios.sql"
-          db_seed_inventarios_script="$sql_run_dir/db_seed_inventarios.sql"
+          db_structure_script="$sql_run_dir/prod/db_structure.sql"
+          db_seed_script="$sql_run_dir/prod/db_seed_system.sql"
+          db_structure_prestamos_script="$sql_run_dir/prod/db_structure_prestamos.sql"
+          db_seed_prestamos_script="$sql_run_dir/prod/db_seed_prestamos.sql"
+          db_structure_certificacion_script="$sql_run_dir/prod/db_structure_certificacion.sql"
+          db_seed_certificacion_script="$sql_run_dir/prod/db_seed_certificacion.sql"
+          db_seed_pruebas_ofuscado_script="$sql_run_dir/preprod/db_seed_pruebas_ofuscado.sql"
+          db_structure_inventarios_script="$sql_run_dir/preprod/db_structure_inventarios.sql"
+          db_seed_inventarios_script="$sql_run_dir/preprod/db_seed_inventarios.sql"
+          db_structure_hojas_vida_script="$sql_run_dir/preprod/db_structure_hojas_vida.sql"
+          db_seed_hojas_vida_script="$sql_run_dir/preprod/db_seed_hojas_vida.sql"
 
           for required_file in \
             "$db_structure_script" \
@@ -285,7 +291,9 @@ jobs:
             "$db_structure_certificacion_script" \
             "$db_seed_certificacion_script" \
             "$db_seed_inventarios_script" \
-            "$db_seed_pruebas_ofuscado_script"
+            "$db_seed_pruebas_ofuscado_script" \
+            "$db_structure_hojas_vida_script" \
+            "$db_seed_hojas_vida_script"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido para reset de BD: $required_file" >&2
@@ -339,6 +347,8 @@ jobs:
           echo "7) $db_seed_certificacion_script"
           echo "8) $db_seed_inventarios_script"
           echo "9) $db_seed_pruebas_ofuscado_script"
+          echo "10) $db_structure_hojas_vida_script"
+          echo "11) $db_seed_hojas_vida_script"
 
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
@@ -360,6 +370,8 @@ jobs:
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_certificacion_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_inventarios_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_pruebas_ofuscado_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_hojas_vida_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_hojas_vida_script"
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
@@ -425,7 +437,7 @@ jobs:
           fi
 
           sudo docker compose --env-file /opt/.env stop milabud
-          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure_inventarios.sql; then
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/preprod/db_structure_inventarios.sql; then
             echo 'Falló la migración canónica de inventarios; se intentará recuperar el servicio anterior.' >&2
             sudo docker compose --env-file /opt/.env up -d milabud || true
             exit 1

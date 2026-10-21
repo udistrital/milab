@@ -551,7 +551,8 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
   selectedFacultad: selectedFacultad,
   selectedPadreId: selectedPadreId,
   uals: uals,
-  ualAssignmentsAvailable: ualAssignmentsAvailable
+  ualAssignmentsAvailable:
+    typeof ualAssignmentsAvailable === 'undefined' ? true : ualAssignmentsAvailable
 }).replace(/</g, '\\u003c') %></script>
 
 <script nonce="<%= cspNonce %>">
