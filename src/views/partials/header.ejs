@@ -737,28 +737,31 @@
             <a
               class="app-sidebar-link <%= isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'is-active' : '' %>"
               href="/milab/api/profile"
+              aria-label="Perfil de usuario"
+              title="Perfil de usuario"
               <%- isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'aria-current="page"' : '' %>
             >
               <i class="bi bi-person-circle" aria-hidden="true"></i>
-              <span>Perfil de usuario</span>
             </a>
             <a
               class="app-sidebar-link <%= isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'is-active' : '' %>"
               href="/milab/encuentros/mis-logros"
+              aria-label="Mis medallas"
+              title="Mis medallas"
               <%- isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'aria-current="page"' : '' %>
               data-guide="nav-mis-logros"
             >
               <i class="bi bi-award" aria-hidden="true"></i>
-              <span>Mis medallas</span>
             </a>
             <a
               class="app-sidebar-link"
               href="<%= helpManualsUrl %>"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Centro de ayuda"
+              title="Centro de ayuda"
             >
               <i class="bi bi-question-circle" aria-hidden="true"></i>
-              <span>Centro de ayuda</span>
             </a>
             <button
               class="app-sidebar-link app-sidebar-logout"
@@ -766,9 +769,9 @@
               data-logout-trigger="true"
               data-guide="logout-action"
               aria-label="Cerrar sesión"
+              title="Cerrar sesión"
             >
               <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
-              <span>Cerrar sesión</span>
             </button>
           </nav>
         <% } %>
