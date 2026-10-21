@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const ejs = require('ejs');
 
 const viewsPath = path.resolve(__dirname, '../../../src/views');
 const headerPath = path.join(viewsPath, 'partials/header.ejs');
@@ -17,20 +18,44 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
   assert.notEqual(footerEnd, -1);
 
   const footer = header.slice(footerStart, footerEnd);
-  const actions = [...footer.matchAll(/<(?:a|button)\b[\s\S]*?<\/(?:a|button)>/g)];
+  const profileMenu = fs.readFileSync(path.join(viewsPath, 'partials/profile-menu.ejs'), 'utf8');
   const styles = fs.readFileSync(stylesPath, 'utf8');
 
-  assert.equal(actions.length, 4);
+  assert.equal((footer.match(/data-sidebar-action="/g) || []).length, 4);
   ['Perfil de usuario', 'Mis medallas', 'Centro de ayuda', 'Cerrar sesión'].forEach((label) => {
     assert.match(footer, new RegExp(`aria-label="${label}"`));
     assert.match(footer, new RegExp(`title="${label}"`));
   });
-  assert.equal((footer.match(/<i class="bi /g) || []).length, 4);
-  assert.doesNotMatch(footer, /<span>/);
+  assert.match(footer, /include\('\.\/profile-menu',/);
+  assert.match(footer, /app-sidebar-avatar-mouth--neutral/);
+  assert.match(footer, /app-sidebar-avatar-mouth--smile/);
+  assert.match(footer, /bi-door-open/);
+  assert.match(footer, /bi-door-closed/);
+  ['Nombre', 'Documento', 'Roles'].forEach((label) => assert.match(profileMenu, new RegExp(label)));
+  assert.doesNotMatch(profileMenu, /data-logout-trigger|Mis medallas|Centro de ayuda/);
+  const renderedProfileMenu = ejs.render(profileMenu, {
+    sessionName: 'Andres Mendez',
+    sessionDocument: '1024467835',
+    sessionRole: 'Admin',
+    shouldShowAvatarSanctionsBadge: false,
+    activeSanctionsCount: 0,
+    activeSanctionsSummary: { items: [] },
+    sanctionsActionHref: '/milab/api/sanciones/mis-sanciones',
+    studentUsageSummary: null,
+    activeRole: 'admin',
+    accountLinks: [],
+  });
+  ['Andres Mendez', '1024467835', 'Admin'].forEach((value) =>
+    assert.match(renderedProfileMenu, new RegExp(value))
+  );
+  assert.doesNotMatch(footer, /<span class="visually-hidden">/);
   assert.match(
     styles,
     /app-sidebar-footer\s*\{[^}]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/
   );
+  assert.match(styles, /app-sidebar-profile-menu/);
+  assert.match(styles, /max-height: min\(70vh, 38rem\)/);
+  assert.match(styles, /prefers-reduced-motion: reduce/);
 });
 
 test('logout click delegation opens confirmation and completes logout for later-rendered actions', () => {
