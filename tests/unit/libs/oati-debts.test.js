@@ -6,7 +6,11 @@ const {
   resolveSgaDebtorsServiceName,
   SGA_DEBTORS_SERVICE_NAMES,
 } = require('../../../src/config/sga-services');
-const { SgaDebtService, sgaDebtService } = require('../../../src/libs/oati-debts');
+const {
+  SgaDebtService,
+  sgaDebtService,
+  resolveSgaConceptName,
+} = require('../../../src/libs/oati-debts');
 
 function createService({ serviceName = 'academica_pruebas', studentResponse, debtResponse } = {}) {
   const calls = { academic: [], post: [] };
@@ -47,6 +51,13 @@ test('SgaDebtService parses repeated SGA estudiante records', () => {
   assert.equal(result[0].DEU_EST_COD, '2024100001');
   assert.equal(result[0].DEU_MULTA, '650100');
   assert.equal(result[1].DEU_ESTADO, '3');
+});
+
+test('SGA concept codes resolve to the laboratory or dependency names from the catalog', () => {
+  assert.equal(resolveSgaConceptName('4'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaConceptName('04'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaConceptName('999'), null);
+  assert.equal(resolveSgaConceptName(''), null);
 });
 
 test('SgaDebtService returns an empty list for a valid no-debts response', () => {
@@ -96,6 +107,7 @@ test('SgaDebtService includes the state-1 XML debt with nil fields reported by S
           <DEU_FECHA>2026-08-28T00:00:00.000+00:00</DEU_FECHA>
           <DEU_ANO>2026</DEU_ANO>
           <DEU_MULTA>1</DEU_MULTA>
+          <DEU_CPTO_COD>4</DEU_CPTO_COD>
           <DEU_ID>111957</DEU_ID>
           <DEU_EST_COD>20262109003</DEU_EST_COD>
         </estudiantes>
@@ -109,6 +121,7 @@ test('SgaDebtService includes the state-1 XML debt with nil fields reported by S
   assert.equal(debts[0].DEU_ID, '111957');
   assert.equal(debts[0].DEU_ESTADO, '1');
   assert.equal(debts[0].DEU_MULTA, '1');
+  assert.equal(debts[0].DEU_CPTO_NOMBRE, 'LABORATORIO DE QUIMICA');
   assert.equal(debts[0].DEU_MATERIAL, 'Vaso precipitado 100 mL OMSONS');
   assert.equal(debts[0].DEU_FECHA_PAGO, '');
   assert.equal(calls.post[0][0], service.buildServicePath('20262109003'));

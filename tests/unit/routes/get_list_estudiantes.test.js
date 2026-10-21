@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
-const { SgaDebtService } = require('../../../src/libs/oati-debts');
+const { SgaDebtService, resolveSgaConceptName } = require('../../../src/libs/oati-debts');
 
 const debtService = new SgaDebtService();
 
@@ -67,6 +67,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
+        resolveSgaConceptName,
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
           resolveStudentCode: async ({ codigo, documento, identificador }) => {
@@ -214,12 +215,14 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
           DEU_ESTADO: '2',
           DEU_MATERIAL: 'Tablet pendiente',
           DEU_MULTA: '650100',
+          DEU_CPTO_COD: '4',
         },
         {
           DEU_EST_COD: '2024100001',
           DEU_ESTADO: '1',
           DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
           DEU_MULTA: '1',
+          DEU_CPTO_COD: '999',
         },
         { DEU_EST_COD: '2024100001', DEU_ESTADO: '3' },
       ];
@@ -240,8 +243,11 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
       ['MILab', 'SGA', 'SGA']
     );
     assert.equal(multas[1].cat_multa, 'Tablet pendiente');
+    assert.equal(multas[1].ual, 'LABORATORIO DE QUIMICA');
+    assert.equal(multas[1].codigo_ubicacion_sga, '4');
     assert.match(multas[1].obs_multa, /Valor SGA: 650100/);
     assert.equal(multas[2].cat_multa, 'Tubo de ensayo omsons 15x150mm');
+    assert.equal(multas[2].ual, 'Código SGA 999');
     assert.equal(multas[2].con_estado_multa, 'ACTIVA (estado SGA 1)');
     assert.match(multas[2].obs_multa, /Valor SGA: 1/);
   } finally {
@@ -345,7 +351,8 @@ test('get_list_estudiantes buildPdfTableRows keeps SGA fines and failures in the
             cat_multa: 'Tablet',
             fecha_multa: '2026-02-01',
             obs_multa: 'y',
-            ual: 'SGA',
+            ual: 'LABORATORIO DE QUIMICA',
+            codigo_ubicacion_sga: '4',
           },
           'sga-error',
         ],
@@ -355,7 +362,14 @@ test('get_list_estudiantes buildPdfTableRows keeps SGA fines and failures in the
     ]);
 
     assert.deepEqual(rows[0], ['2024100001', 'MILab', 'Daño', '2026-01-01', 'x', 'L1']);
-    assert.deepEqual(rows[1], ['2024100001', 'SGA', 'Tablet', '2026-02-01', 'y', 'SGA']);
+    assert.deepEqual(rows[1], [
+      '2024100001',
+      'SGA',
+      'Tablet',
+      '2026-02-01',
+      'y',
+      'LABORATORIO DE QUIMICA (código SGA 4)',
+    ]);
     assert.equal(rows[2][1], 'SGA');
     assert.equal(rows[2][2], 'No fue posible verificar el estado en SGA.');
     assert.notEqual(rows[2][4], 'El estudiante está a paz y salvo');
