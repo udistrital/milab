@@ -310,6 +310,49 @@ test('dashboard keeps sanctions out of the platform tab for coordinador scope', 
   }
 });
 
+test('coordinator dashboard omits UAL assignments when their relation is missing', async () => {
+  const queries = [];
+  const missingRelation = new Error('relation "coordinador_ual_encargado" does not exist');
+  missingRelation.code = '42P01';
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      queries.push(sql);
+      if (sql.includes('coordinador_ual_encargado')) throw missingRelation;
+      return { rows: [{ documento: '900', laboratorios_encargados: null }] };
+    },
+  });
+
+  try {
+    const result = await loaded.route.__private.fetchCoordinatorRows();
+
+    assert.equal(result.ualAssignmentsAvailable, false);
+    assert.equal(result.rows[0].laboratorios_encargados, null);
+    assert.equal(queries.length, 2);
+    assert.doesNotMatch(queries[1], /coordinador_ual_encargado/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinator dashboard rethrows database errors unrelated to the optional UAL relation', async () => {
+  const permissionError = new Error('permission denied for table coordinador');
+  permissionError.code = '42501';
+  let queryCount = 0;
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async () => {
+      queryCount += 1;
+      throw permissionError;
+    },
+  });
+
+  try {
+    await assert.rejects(loaded.route.__private.fetchCoordinatorRows, permissionError);
+    assert.equal(queryCount, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard renders default admin chart set when there is no data', async () => {
   const loaded = loadDashboardRoute();
 

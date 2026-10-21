@@ -17,6 +17,12 @@
     </div>
   </section>
 
+  <% if (typeof coordinatorUalAssignmentsAvailable !== 'undefined' && !coordinatorUalAssignmentsAvailable) { %>
+    <div class="alert alert-warning mt-3" role="status">
+      El monitoreo sigue disponible, pero no se pudieron cargar los laboratorios a cargo de los coordinadores porque falta actualizar el esquema de inventarios.
+    </div>
+  <% } %>
+
   <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
   <nav class="dashboard-section-tabs" aria-label="Navegación del dashboard">
     <div class="dashboard-section-tablist" role="tablist" aria-label="Secciones de monitoreo">
