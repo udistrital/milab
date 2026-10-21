@@ -306,12 +306,12 @@ La inicialización de base para recreación completa del entorno de pruebas usa 
 3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
 4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
 5. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
-6. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
-7. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
-8. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
+6. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
+7. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
+8. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
 9. [sql-scripts/db_seed_pruebas_ofuscado.sql](sql-scripts/db_seed_pruebas_ofuscado.sql)
 
-La recreación en CI aplica los nueve scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. El seed ofuscado queda al final y se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los nueve scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. La estructura de inventarios se instala antes de certificación porque crea la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`; el seed de inventarios se aplica después del seed de certificación para crear las relaciones de equipos especializados de los cursos de prueba. El seed ofuscado queda al final y se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 

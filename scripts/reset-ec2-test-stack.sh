@@ -75,9 +75,9 @@ for required_file in \
   db_structure_prestamos.sql \
   db_seed_prestamos.sql \
   db_structure_inventarios.sql \
-  db_seed_inventarios.sql \
   db_structure_certificacion.sql \
   db_seed_certificacion.sql \
+  db_seed_inventarios.sql \
   db_seed_pruebas_ofuscado.sql
 do
   if [ ! -f "$SQL_DIR/$required_file" ]; then
@@ -139,9 +139,9 @@ sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$D
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_prestamos.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_prestamos.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_inventarios.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_inventarios.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_certificacion.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_certificacion.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_inventarios.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_pruebas_ofuscado.sql"
 
 sudo docker compose up -d --build milabud

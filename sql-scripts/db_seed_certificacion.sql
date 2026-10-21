@@ -61,27 +61,28 @@ ON CONFLICT (codigo_curso, id_laboratorio) DO UPDATE
 SET activo = TRUE,
     fecha_modificacion = CURRENT_TIMESTAMP;
 
-INSERT INTO equipo_especializado (
-    codigo_curso,
-    id_equipo,
-    activo
-)
-SELECT
-    cursos.codigo_curso,
-    equipo.id,
-    TRUE
-FROM cursos
-CROSS JOIN LATERAL (
-    SELECT id
-    FROM equipo_catalogo
-    WHERE activo = TRUE
-    ORDER BY id
-    LIMIT 1
-) AS equipo
-WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
-ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
-SET activo = TRUE,
-    fecha_modificacion = CURRENT_TIMESTAMP;
+-- Se traslada a db_seed_inventarios.sql para desplegar en la version 4.0.0.
+-- INSERT INTO equipo_especializado (
+--     codigo_curso,
+--     id_equipo,
+--     activo
+-- )
+-- SELECT
+--     cursos.codigo_curso,
+--     equipo.id,
+--     TRUE
+-- FROM cursos
+-- CROSS JOIN LATERAL (
+--     SELECT id
+--     FROM equipo_catalogo
+--     WHERE activo = TRUE
+--     ORDER BY id
+--     LIMIT 1
+-- ) AS equipo
+-- WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
+-- ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
+-- SET activo = TRUE,
+--     fecha_modificacion = CURRENT_TIMESTAMP;
 
 -- ==============================================================
 -- === Menú y Permisos RBAC - Módulo CAPACITACIÓN            ===
