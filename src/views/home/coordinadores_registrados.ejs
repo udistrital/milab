@@ -6,6 +6,12 @@
     <p class="app-page-subtitle">Administra el estado operativo de los coordinadores y consulta su asignación institucional.</p>
   </section>
 
+  <% if (typeof ualAssignmentsAvailable !== 'undefined' && ualAssignmentsAvailable === false) { %>
+    <div class="alert alert-warning" role="alert">
+      La asignación de laboratorios a cargo no está disponible temporalmente. Se muestran los coordinadores sin ese dato.
+    </div>
+  <% } %>
+
   <section class="card app-table-panel">
     <div class="card-header text-center">
       <h5>Equipo de coordinación</h5>

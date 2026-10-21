@@ -1823,7 +1823,10 @@ test('subsequent inventory confirmations and declarations reject a forged non-ow
 });
 
 test('coordinator ownership migration is unique, preserves existing owners and backfills the first approval', () => {
-  const sql = fs.readFileSync(resolveRepoPath('sql-scripts/db_structure_inventarios.sql'), 'utf8');
+  const sql = fs.readFileSync(
+    resolveRepoPath('sql-scripts/preprod/db_structure_inventarios.sql'),
+    'utf8'
+  );
   assert.match(
     sql,
     /CREATE TABLE IF NOT EXISTS coordinador_ual_encargado \(\s+ual_id INT PRIMARY KEY REFERENCES ual/
@@ -2040,11 +2043,11 @@ test('approved inventory management keeps only the detailed inventory grid', () 
 
 test('inventory migration drops the compatibility view before altering its source column', () => {
   const migration = fs.readFileSync(
-    resolveRepoPath('sql-scripts/db_structure_inventarios.sql'),
+    resolveRepoPath('sql-scripts/preprod/db_structure_inventarios.sql'),
     'utf8'
   );
   const baseStructure = fs.readFileSync(
-    resolveRepoPath('sql-scripts/db_structure_prestamos.sql'),
+    resolveRepoPath('sql-scripts/prod/db_structure_prestamos.sql'),
     'utf8'
   );
   const dropViewIndex = migration.indexOf('DROP VIEW IF EXISTS equipo_catalogo');

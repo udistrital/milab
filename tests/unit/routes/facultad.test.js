@@ -832,3 +832,60 @@ test('facultad ual json includes laboratoristas per UAL and inherited coordinato
     loaded.restore();
   }
 });
+
+test('facultad ual json loads UALs when coordinator assignments table is missing', async () => {
+  const loaded = loadRoute((sql) => {
+    if (
+      sql.includes('FROM dependencia_facultad') &&
+      sql.includes('WHERE dependencia_facultad_id = $1')
+    ) {
+      return { rows: [{ facultad_id: 140, nombre: 'Facultad de prueba', padre_id: null }] };
+    }
+    if (sql.includes('information_schema.columns')) {
+      return {
+        rows: [
+          { column_name: 'codigo_abreviacion' },
+          { column_name: 'descripcion' },
+          { column_name: 'sal_id_espacio' },
+          { column_name: 'sal_ocupantes' },
+          { column_name: 'activo' },
+        ],
+      };
+    }
+    if (sql.includes('coordinador_ual_encargado')) {
+      const error = new Error('relation "coordinador_ual_encargado" does not exist');
+      error.code = '42P01';
+      throw error;
+    }
+    if (sql.includes('FROM ual WHERE facultad_id = $1')) {
+      return {
+        rows: [{ ual_id: 300, nombre: 'UAL de prueba', coordinador_encargado: null }],
+      };
+    }
+    if (sql.includes('FROM coordinador_facultad_alcance cfa')) {
+      return {
+        rows: [
+          { documento: '2001', nombre: 'Coordinador de prueba', laboratorios_encargados: null },
+        ],
+      };
+    }
+    return null;
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route)).get('/ual/json?facultad_id=140');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.facultad.facultad_id, 140);
+    assert.equal(response.body.ualAssignmentsAvailable, false);
+    assert.equal(response.body.uals[0].nombre, 'UAL de prueba');
+    assert.equal(response.body.uals[0].coordinador_encargado, null);
+    assert.equal(response.body.coordinadores[0].laboratorios_encargados, null);
+    assert.equal(
+      loaded.queryCalls.filter(({ sql }) => sql.includes('coordinador_ual_encargado')).length,
+      2
+    );
+  } finally {
+    loaded.restore();
+  }
+});

@@ -294,6 +294,9 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
           <div id="ual-legacy-alert" class="alert alert-warning py-2" role="status" hidden>
             Estas UAL están asignadas directamente a la facultad. Usa «Asignar a dependencia» en cada fila para organizarlas sin modificar sus datos.
           </div>
+          <div id="ual-coordinator-warning" class="alert alert-warning py-2" role="status" hidden>
+            Los datos de coordinador encargado y laboratorios a cargo no están disponibles temporalmente.
+          </div>
           <% if (locals.tipo === 'admin') { %>
           <div id="ual-bulk-toolbar" class="d-flex d-none flex-wrap align-items-center gap-2 mb-3" hidden>
             <button type="button" class="btn btn-sm btn-outline-info" id="btn-select-filtered-uals">Seleccionar todas las filtradas</button>
@@ -547,7 +550,9 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
   dependencias: dependencias,
   selectedFacultad: selectedFacultad,
   selectedPadreId: selectedPadreId,
-  uals: uals
+  uals: uals,
+  ualAssignmentsAvailable:
+    typeof ualAssignmentsAvailable === 'undefined' ? true : ualAssignmentsAvailable
 }).replace(/</g, '\\u003c') %></script>
 
 <script nonce="<%= cspNonce %>">
@@ -560,6 +565,10 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
   var dependencias = data.dependencias || [];
   var byId = {};
   facultades.concat(dependencias).forEach(function (row) { byId[String(row.facultad_id)] = row; });
+  var ualCoordinatorWarning = document.getElementById('ual-coordinator-warning');
+  if (ualCoordinatorWarning) {
+    ualCoordinatorWarning.hidden = data.ualAssignmentsAvailable === false ? false : true;
+  }
 
   var levels = {
     facultades: document.getElementById('fac-level-facultades'),
@@ -932,6 +941,7 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
     updateUalSelection();
     currentCoordinadores = [];
     g('ual-coordinadores').innerHTML = '';
+    if (ualCoordinatorWarning) ualCoordinatorWarning.hidden = true;
     level.classList.add('loading');
     showLevel('uals');
     syncUrl();
@@ -945,6 +955,9 @@ body.app-shell .fac-level .app-table-panel .table tbody td:first-child {
         if (seq !== ualRequestSeq) return;
         currentUals = payload.uals || [];
         currentCoordinadores = payload.coordinadores || [];
+        if (ualCoordinatorWarning) {
+          ualCoordinatorWarning.hidden = payload.ualAssignmentsAvailable !== false;
+        }
         renderCoordinadores(currentCoordinadores);
         renderUals(currentUals, unitId);
         level.classList.remove('loading');

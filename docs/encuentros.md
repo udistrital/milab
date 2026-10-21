@@ -4,8 +4,8 @@ Encuentros forma parte de Certificación y reutiliza la sesión, roles, correo y
 
 ## Instalación controlada
 
-1. Aplicar `sql-scripts/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
-2. Aplicar `sql-scripts/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
+1. Aplicar `sql-scripts/prod/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
+2. Aplicar `sql-scripts/prod/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
 3. Usar el procedimiento institucional de migraciones y aprobación para promover ambos scripts. No ejecutarlos directamente en producción sin revisión y respaldo de DBA.
 4. Configurar el almacenamiento de archivos descrito abajo antes de habilitar cargas y generación de certificados.
 

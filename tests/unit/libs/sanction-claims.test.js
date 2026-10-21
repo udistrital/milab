@@ -193,7 +193,7 @@ test('migration and fresh schema enforce one claim, text boundaries and complete
     'utf8'
   );
   const structure = fs.readFileSync(
-    path.resolve(__dirname, '../../../sql-scripts/db_structure.sql'),
+    path.resolve(__dirname, '../../../sql-scripts/prod/db_structure.sql'),
     'utf8'
   );
   const table = (sql) =>

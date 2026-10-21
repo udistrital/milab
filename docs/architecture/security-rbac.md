@@ -96,7 +96,7 @@ Indicadores disponibles:
 | `/milab/prestamos/solicitar`          | `requireRoles(['estudiante', 'docente'])` (autoservicio)                                | `src/routes/api/prestamos.js`                                        |
 ## Menú Persistido Y Menú De Respaldo
 
-El estado canónico del menú lo define `sql-scripts/db_seed_system.sql` mediante:
+El estado canónico del menú lo define `sql-scripts/prod/db_seed_system.sql` mediante:
 
 - `menu_item`
 - `rol_permiso`
@@ -109,4 +109,4 @@ Cuando la BD no puede resolver el menú, `src/routes/middlewares/navigation.js` 
 - `src/routes/middlewares/menu-permissions.js`
 - `src/routes/middlewares/navigation.js`
 - `src/routes/api/dashboard.js`
-- `sql-scripts/db_seed_system.sql`
+- `sql-scripts/prod/db_seed_system.sql`

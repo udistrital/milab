@@ -628,16 +628,39 @@ body.app-shell .app-workspace {
 }
 
 body.app-shell .app-sidebar {
+  display: flex;
+  flex-direction: column;
   position: sticky;
   top: 1rem;
   align-self: start;
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
+  height: calc(100vh - 8rem);
+  max-height: calc(100vh - 8rem);
+  overflow: hidden;
   padding: 0.85rem 0.7rem;
   border: 1px solid var(--app-border);
   border-radius: 18px;
   background: var(--app-surface);
   box-shadow: var(--app-shadow);
+}
+
+body.app-shell .app-sidebar-navigation {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+body.app-shell .app-sidebar-footer {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.22rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--app-border);
+}
+
+body.app-shell .app-sidebar-logout {
+  font: inherit;
+  cursor: pointer;
 }
 
 body.app-shell .app-sidebar-heading {
@@ -5207,12 +5230,18 @@ body.app-shell footer.footer a:hover {
   body.app-shell .app-sidebar {
     position: relative;
     top: auto;
+    height: auto;
     max-height: none;
     overflow: visible;
   }
 
   body.app-shell .app-sidebar-navigation {
+    overflow: visible;
     padding-top: 0.25rem;
+  }
+
+  body.app-shell .app-sidebar-footer {
+    margin-top: 0.75rem;
   }
 }
 
