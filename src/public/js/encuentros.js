@@ -31,6 +31,12 @@
     const contentType = response.headers.get('content-type') || '';
     const body = contentType.includes('application/json') ? await response.json() : null;
     if (!response.ok || body?.ok === false) {
+      if (body?.adminErrorDetail) {
+        window.console.error(
+          'Detalle técnico del servidor (administrador):',
+          body.adminErrorDetail
+        );
+      }
       throw new Error(body?.message || `La solicitud falló (${response.status}).`);
     }
     return body;

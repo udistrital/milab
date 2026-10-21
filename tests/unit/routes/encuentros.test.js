@@ -130,6 +130,30 @@ test('Gestor de laboratorio can list events globally with database-backed pagina
   }
 });
 
+test('event list returns technical diagnostics only to administrators', async () => {
+  const setup = buildTestApp(async () => {
+    const error = new Error('Database operation failed');
+    error.code = 'XX000';
+    throw error;
+  });
+
+  try {
+    const adminResponse = await request(setup.app)
+      .get('/encuentros/api/eventos')
+      .set('x-test-role', 'admin');
+    assert.equal(adminResponse.status, 500);
+    assert.match(adminResponse.body.adminErrorDetail, /Database operation failed/);
+
+    const managerResponse = await request(setup.app)
+      .get('/encuentros/api/eventos')
+      .set('x-test-role', 'gestor_laboratorio');
+    assert.equal(managerResponse.status, 500);
+    assert.equal(managerResponse.body.adminErrorDetail, undefined);
+  } finally {
+    setup.restore();
+  }
+});
+
 test('Gestor de laboratorio cannot correct attendance or annul certificates', async () => {
   let queries = 0;
   const setup = buildTestApp(async () => {

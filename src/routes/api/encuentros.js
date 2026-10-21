@@ -10,6 +10,7 @@ const mail = require('../../libs/mail');
 const { buildAppUrl } = require('../../libs/app-url');
 const { logger } = require('../../libs/logger');
 const { requireJsonRoles, requireRoles, requireUser } = require('../middlewares/auth');
+const { enrichErrorPayloadForAdmin } = require('../middlewares/error-handler');
 const {
   buildParticipantTemplateBuffer,
   generateCertificatePdf,
@@ -146,17 +147,20 @@ function logFailure(req, error, action) {
 function handleServerError(req, res, error, message) {
   logFailure(req, error, 'encuentros_request');
   if (error?.code === '42P01' || error?.code === '42703') {
-    return res.status(503).json({
-      ok: false,
-      migration_faltante: true,
-      message: 'Falta aplicar la migración del submódulo Encuentros.',
-      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
-    });
+    return res.status(503).json(
+      enrichErrorPayloadForAdmin(
+        req,
+        {
+          ok: false,
+          migration_faltante: true,
+          message: 'Falta aplicar la migración del submódulo Encuentros.',
+          script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+        },
+        error
+      )
+    );
   }
-  return res.status(500).json({
-    ok: false,
-    message,
-  });
+  return res.status(500).json(enrichErrorPayloadForAdmin(req, { ok: false, message }, error));
 }
 
 async function withTransaction(callback) {
