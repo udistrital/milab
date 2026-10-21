@@ -1100,8 +1100,15 @@
 
   document.addEventListener('shown.bs.tab', adjustTablesInTab);
   window.addEventListener('pageshow', function (event) {
-    if (event.persisted && document.querySelector('table[data-grid-refresh-on-restore="true"]')) {
-      window.location.reload();
-    }
+    if (!event.persisted) return;
+
+    const shouldRefreshSanctionActions = document.querySelector(
+      '[data-sanction-person-actions-page="true"]'
+    );
+    const shouldRefreshDataGrid = document.querySelector(
+      'table[data-grid-refresh-on-restore="true"]'
+    );
+
+    if (shouldRefreshSanctionActions || shouldRefreshDataGrid) window.location.reload();
   });
 })(window, document);

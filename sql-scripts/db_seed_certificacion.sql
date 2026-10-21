@@ -350,11 +350,23 @@ WHERE LOWER(TRIM(r.nombre)) IN (
         'admin', 'administrador', 'administradora', 'coordinador_general',
         'coordinador general', 'coordinador', 'coordinador_facultad',
         'coordinador de facultad', 'laboratorista',
-        'laboratorista_ud', 'laboratorista_ual'
+        'laboratorista_ud', 'laboratorista_ual', 'gestor_laboratorio'
     )
   AND mi.section = 'secondary'
   AND mi.label = 'Encuentros'
   AND mi.parent_id IS NULL
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) = 'gestor_laboratorio'
+  AND mi.route = '/milab/encuentros/gestion'
 ON CONFLICT (rol_id, menu_item_id) DO UPDATE
     SET can_view = TRUE,
         can_use = TRUE,

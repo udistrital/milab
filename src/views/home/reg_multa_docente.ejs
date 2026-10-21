@@ -14,6 +14,9 @@
     <div class="card-body">
       <form method="post" action="/milab/api/submit_docente" class="row g-3 mx-auto d-flex justify-content-center app-form-grid" data-submit-once="true">
         <%- include('../partials/csrf_field') %>
+        <% if (locals.lookupToken) { %>
+          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+        <% } %>
         <p class="app-page-subtitle mb-2"><em>- Verifique sus datos - </em></p>
     <div class="col-md-6">
       <label for="con_nombre" class="form-label">Nombre</label>

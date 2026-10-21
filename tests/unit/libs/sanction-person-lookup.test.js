@@ -19,6 +19,10 @@ test('return path to the person actions step carries the lookup token and option
     buildSanctionPersonReturnPath(token, 'saldada'),
     `${SANCTION_PERSON_ACTIONS_PATH}?lookup_token=${token}&success=saldada`
   );
+  assert.equal(
+    buildSanctionPersonReturnPath(token, 'registrada', 'docente'),
+    `/milab/api/get-info-multa-docente/persona?lookup_token=${token}&success=registrada`
+  );
 });
 
 test('return path rejects malformed lookup tokens', () => {

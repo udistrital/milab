@@ -41,6 +41,7 @@ const MANAGER_ROLES = [
   'laboratorista',
   'laboratorista_ud',
   'laboratorista_ual',
+  'gestor_laboratorio',
 ];
 const requireAuthenticatedJson = (req, res, next) => {
   if (!req.session?.user) {
@@ -1253,6 +1254,96 @@ router.get('/api/eventos/:eventId/plantilla-pdf', requireManager, async (req, re
     return handleServerError(req, res, error, 'No fue posible consultar la plantilla PDF.');
   }
 });
+
+router.patch(
+  '/api/eventos/:eventId/plantilla',
+  requireManager,
+  withUpload(upload.fields([{ name: 'plantilla_pdf', maxCount: 1 }])),
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    if (!eventId)
+      return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+
+    const files = req.files || {};
+    const fileError = validateUploadedEventFiles(files);
+    if (fileError) return res.status(400).json({ ok: false, message: fileError });
+
+    const config = readTemplateConfig(req.body?.plantilla_config);
+    const configErrors = validateTemplateConfig(config);
+    if (configErrors.length) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Revisa la configuración de la plantilla.',
+        errores: configErrors,
+      });
+    }
+
+    const pdf = files.plantilla_pdf?.[0];
+    if (pdf) {
+      try {
+        await validatePdfTemplate(pdf.buffer);
+      } catch {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'La plantilla no es un PDF válido o está protegida.' });
+      }
+    }
+
+    let newPdfPath;
+    try {
+      if (pdf) newPdfPath = await saveUpload(pdf, 'templates', 'pdf');
+      const result = await withTransaction(async (client) => {
+        const existing = await client.query(
+          'SELECT id, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+          [eventId]
+        );
+        if (!existing.rows[0]) return { error: 'not_found' };
+        if (!['en_curso', 'finalizado'].includes(existing.rows[0].estado)) {
+          return { error: 'not_started' };
+        }
+
+        await client.query(
+          `
+            UPDATE encuentro_evento
+            SET plantilla_pdf_path = COALESCE($2, plantilla_pdf_path),
+                plantilla_pdf_nombre = COALESCE($3, plantilla_pdf_nombre),
+                plantilla_config = $4::jsonb,
+                modificado_por_usuario_id = $5,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND activo = TRUE
+          `,
+          [
+            eventId,
+            newPdfPath || null,
+            pdf ? path.basename(pdf.originalname).slice(0, 255) : null,
+            JSON.stringify(config),
+            getSessionUserId(req),
+          ]
+        );
+        await writeAudit(client, req, 'plantilla de certificado modificada', eventId);
+        return { updated: true };
+      });
+      if (result.error === 'not_found') {
+        if (newPdfPath) await removeStoredFile(newPdfPath);
+        return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+      }
+      if (result.error === 'not_started') {
+        if (newPdfPath) await removeStoredFile(newPdfPath);
+        return res.status(409).json({
+          ok: false,
+          message: 'La plantilla solo puede modificarse después de iniciar el evento.',
+        });
+      }
+      return res.json({
+        ok: true,
+        message: 'La plantilla de certificados se actualizó. Los certificados emitidos no cambian.',
+      });
+    } catch (error) {
+      if (newPdfPath) await removeStoredFile(newPdfPath);
+      return handleServerError(req, res, error, 'No fue posible actualizar la plantilla.');
+    }
+  }
+);
 
 router.post(
   '/api/eventos/:eventId/participantes/previsualizar',

@@ -932,6 +932,7 @@ VALUES
     ('coordinador_general'),
     ('coordinador'),
     ('laboratorista'),
+    ('gestor_laboratorio'),
     ('monitor'),
     ('docente'),
     ('estudiante')
@@ -1132,6 +1133,12 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
 SELECT 'secondary', parent.id, 'Registro de monitores', '/milab/api/register_monitor/load_info', 'bi-person-badge', 3
+FROM menu_item parent
+WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.parent_id IS NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Gestores de laboratorio', '/milab/api/gestores_laboratorio', 'bi-person-gear', 4
 FROM menu_item parent
 WHERE parent.section = 'secondary' AND parent.label = 'Registro' AND parent.parent_id IS NULL
 ON CONFLICT DO NOTHING;
@@ -1490,6 +1497,7 @@ WHERE (
         'Registro de coordinadores',
         'Registro de laboratoristas',
         'Registro de monitores',
+        'Gestores de laboratorio',
         'Registro de Admin',
         'Consulta y control',
         'Certificados',

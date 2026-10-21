@@ -95,11 +95,22 @@ async function respondToSanctionClaim(client, user, claimId, text, decision) {
   }
   const documento = await resolveClaimLaboratorista(client, user);
   const result = await client.query(
-    `UPDATE reclamacion_sancion
+    `UPDATE reclamacion_sancion r
      SET respuesta = $1, decision = $2, fecha_respuesta = CURRENT_TIMESTAMP,
          respondido_por_id = $3
-     WHERE id = $4 AND responsable_documento_id = $3 AND fecha_respuesta IS NULL
-     RETURNING id`,
+     FROM multa m
+     WHERE m.id = r.multa_id
+       AND r.id = $4
+       AND r.responsable_documento_id = $3
+       AND r.fecha_respuesta IS NULL
+       AND EXISTS (
+         SELECT 1
+         FROM laboratorista_ual lu
+         WHERE lu.laboratorista_documento_id = $3
+           AND lu.ual_id = m.ual_id
+           AND lu.activo = TRUE
+       )
+     RETURNING r.id`,
     [respuesta, decision, documento, validateClaimId(claimId)]
   );
   if (!result.rows.length) {

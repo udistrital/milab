@@ -12,6 +12,7 @@ const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -79,7 +80,9 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     ual_id,
     fecha_multa,
     obs_multa,
+    lookup_token: rawLookupToken,
   } = requestBody;
+  const lookupToken = String(rawLookupToken || '').trim();
   // const { con_estado_multa } = requestBody; // Se usaba con el flujo anterior por facultad.
   const cat_multa = typeof rawCategory === 'string' ? rawCategory.trim() : '';
 
@@ -367,6 +370,11 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, logActorDocumento, accionLogFinal, referenciaSancionado]
     );
+
+    const personReturnPath = buildSanctionPersonReturnPath(lookupToken, 'registrada');
+    if (personReturnPath) {
+      return res.redirect(303, personReturnPath);
+    }
 
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',

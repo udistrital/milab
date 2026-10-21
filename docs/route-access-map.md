@@ -30,7 +30,7 @@ Base API: `/milab/api/`
 
 | Ruta                                    | Métodos       | Roles permitidos                        | Alcance actual                                                                       | Archivo                                          |
 | --------------------------------------- | ------------- | --------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `/dashboard`                            | `GET`         | `admin`, `coordinador`, `laboratorista` | `admin`: global; `coordinador`: facultades asignadas; `laboratorista`: UAL asignadas | `src/routes/api/dashboard.js`                    |
+| `/dashboard`                            | `GET`         | `admin`, `coordinador_general`, `coordinador`, `laboratorista` | Admin/coordinador general: global; coordinador: facultades asignadas; laboratorista: tabs autorizadas por UAL, sin el resumen de plataforma | `src/routes/api/dashboard.js` |
 | `/aprobacion_multa`                     | `GET`         | `coordinador`                           | Facultades del coordinador                                                           | `src/routes/api/aprobacion_multa.js`             |
 | `/aprobacion_multa/activar`             | `POST`        | `coordinador`                           | Facultades del coordinador                                                           | `src/routes/api/aprobacion_multa.js`             |
 | `/aprobacion_multa/saldar`              | `POST`        | `coordinador`                           | Facultades del coordinador                                                           | `src/routes/api/aprobacion_multa.js`             |
@@ -73,7 +73,7 @@ La ruta `/milab/api/dashboard` ya no es admin-only.
 | --------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `admin`         | Global               | `estudiantes`, `docentes`, `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas`, `coordinadores`, `usuariosRegistrados` |
 | `coordinador`   | Facultades asignadas | `estudiantes`, `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas`, `coordinadores`, `usuariosRegistrados`             |
-| `laboratorista` | UAL asignadas        | `sanciones`, `sancionesActivas`, `sancionesSaldadas`, `laboratoristas`                                                                    |
+| `laboratorista` | Tabs autorizadas por UAL; sin «Toda la plataforma» | Paz y salvos e inventarios limitados a sus UAL |
 
 El alcance operativo se resuelve con:
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../../../libs/db');
+const { normalizeLogDocument } = require('../../../libs/account-email');
 const {
   listPrestamosFacultyAccess,
   updatePrestamosFacultyAccess,
@@ -40,7 +41,9 @@ async function loadMenuData() {
   ).rows;
 
   const permissions = (
-    await pool.query('SELECT rol_id AS role_id, menu_item_id, can_view, can_use FROM rol_permiso')
+    await pool.query(
+      'SELECT rol_id AS role_id, menu_item_id, can_view, can_use FROM rol_permiso WHERE activo = TRUE'
+    )
   ).rows;
 
   return { roles, menuItems, permissions };
@@ -260,32 +263,95 @@ router.post('/permissions', requireAdmin, async (req, res) => {
   const menuItemId = Number(menuItemIdRaw);
   const isEnabled = enabled === true || enabled === 'true' || enabled === 'on' || enabled === 1;
 
-  if (!roleId || !menuItemId) {
+  if (
+    !Number.isInteger(roleId) ||
+    roleId <= 0 ||
+    !Number.isInteger(menuItemId) ||
+    menuItemId <= 0
+  ) {
     return res.status(400).json({ ok: false, message: 'Parametros invalidos.' });
   }
 
+  let client;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const itemResult = await client.query(
+      `
+        SELECT r.nombre AS role_name, mi.label, mi.route
+        FROM rol r
+        CROSS JOIN menu_item mi
+        WHERE r.id = $1
+          AND mi.id = $2
+      `,
+      [roleId, menuItemId]
+    );
+    const item = itemResult.rows[0];
+    if (!item) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'No existe el rol o el ítem de menú.' });
+    }
+
+    let changed = true;
     if (isEnabled) {
-      await pool.query(
+      await client.query(
         `
           INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use)
           VALUES ($1, $2, TRUE, TRUE)
           ON CONFLICT (rol_id, menu_item_id) DO UPDATE
-          SET can_view = TRUE, can_use = TRUE
+          SET can_view = TRUE,
+              can_use = TRUE,
+              activo = TRUE,
+              fecha_modificacion = CURRENT_TIMESTAMP
         `,
         [roleId, menuItemId]
       );
     } else {
-      await pool.query('DELETE FROM rol_permiso WHERE rol_id = $1 AND menu_item_id = $2', [
-        roleId,
-        menuItemId,
-      ]);
+      const result = await client.query(
+        `
+          UPDATE rol_permiso
+          SET activo = FALSE,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE rol_id = $1
+            AND menu_item_id = $2
+            AND activo = TRUE
+        `,
+        [roleId, menuItemId]
+      );
+      changed = result.rowCount > 0;
     }
 
+    if (changed) {
+      const user = req.session?.user || {};
+      const actor = String(user.tipo || 'admin').trim() || 'admin';
+      const document = normalizeLogDocument(user.documento_real || user.documento || '');
+      const action = isEnabled ? 'Habilitar permiso de menu' : 'Deshabilitar permiso de menu';
+      const person = `${item.role_name} - ${item.label}${item.route ? ` (${item.route})` : ''}`;
+
+      await client.query(
+        `
+          INSERT INTO log (nombre, documento, accion, persona)
+          VALUES ($1, $2, $3, $4)
+        `,
+        [actor, document || null, action, person]
+      );
+    }
+
+    await client.query('COMMIT');
     return res.json({ ok: true });
   } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo permisos de menú:', rollbackError);
+      }
+    }
     console.error('Error actualizando permisos:', error);
     return res.status(500).json({ ok: false, message: 'No fue posible actualizar permisos.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
