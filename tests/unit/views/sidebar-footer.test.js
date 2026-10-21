@@ -56,6 +56,41 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
   assert.match(styles, /app-sidebar-profile-menu/);
   assert.match(styles, /max-height: min\(70vh, 38rem\)/);
   assert.match(styles, /prefers-reduced-motion: reduce/);
+  assert.match(
+    styles,
+    /body\.app-shell \.app-sidebar\s*\{[^}]*height: auto;[^}]*max-height: calc\(100vh - 2rem\)/
+  );
+});
+
+test('guided tour introduction offers dynamic modules and an all-modules route', () => {
+  const introPath = path.join(viewsPath, 'partials/guided-tour-intro.ejs');
+  const intro = ejs.render(fs.readFileSync(introPath, 'utf8'));
+  const scripts = fs.readFileSync(
+    path.resolve(__dirname, '../../../src/public/js/scripts.js'),
+    'utf8'
+  );
+
+  assert.match(intro, /modal-dialog modal-dialog-centered/);
+  assert.match(intro, /id="milabTourModuleSelect"/);
+  assert.match(intro, /data-guide-start="module"/);
+  assert.match(intro, /data-guide-start="all"/);
+  assert.match(scripts, /getAvailableGuideModules/);
+  assert.match(scripts, /scrollGuideTargetIntoView/);
+  assert.match(scripts, /syncGuideDropdownForTarget/);
+});
+
+test('app footer follows the workspace without fixed blank spacers', () => {
+  const footerPath = path.join(viewsPath, 'partials/footer.ejs');
+  const footer = fs.readFileSync(footerPath, 'utf8');
+  const styles = fs.readFileSync(stylesPath, 'utf8');
+
+  assert.doesNotMatch(footer, /<br\s*\/?>\s*<br\s*\/?>/);
+  assert.match(styles, /body\.app-shell \.app-frame\s*\{[^}]*padding-bottom:\s*0;/);
+  assert.match(
+    styles,
+    /body\.app-shell \.app-workspace\s*\{[^}]*padding:\s*1\.25rem 1rem 0\.5rem;/
+  );
+  assert.match(styles, /body\.app-shell footer\.footer\s*\{\s*margin:\s*0\.5rem auto 0;/);
 });
 
 test('logout click delegation opens confirmation and completes logout for later-rendered actions', () => {

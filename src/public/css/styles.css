@@ -455,7 +455,7 @@ body.app-shell[data-non-production='true'] {
 
 body.app-shell .app-frame {
   position: relative;
-  padding-bottom: 2rem;
+  padding-bottom: 0;
 }
 
 body.app-shell .app-header {
@@ -624,7 +624,7 @@ body.app-shell .app-workspace {
   gap: 1.25rem;
   width: min(100%, 1900px);
   margin: 0 auto;
-  padding: 1.25rem 1rem 2rem;
+  padding: 1.25rem 1rem 0.5rem;
 }
 
 body.app-shell .app-sidebar {
@@ -634,8 +634,8 @@ body.app-shell .app-sidebar {
   top: 1rem;
   align-self: start;
   z-index: 1020;
-  height: calc(100vh - 8rem);
-  max-height: calc(100vh - 8rem);
+  height: auto;
+  max-height: calc(100vh - 2rem);
   overflow: visible;
   padding: 0.85rem 0.7rem;
   border: 1px solid var(--app-border);
@@ -1432,6 +1432,129 @@ html[data-bs-theme='dark'] body.app-shell .app-user-menu-logout:hover i,
 html[data-bs-theme='dark'] body.app-shell .app-user-menu-logout:focus i {
   color: #f2b7b2;
   background: rgba(242, 183, 178, 0.16);
+}
+
+body.app-shell .app-tour-intro-modal .modal-dialog {
+  max-width: 38rem;
+}
+
+body.app-shell .app-tour-intro-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 24px;
+  background: var(--app-surface-strong);
+  box-shadow: var(--app-shadow);
+  color: var(--app-text-main);
+}
+
+body.app-shell .app-tour-intro-modal .modal-header,
+body.app-shell .app-tour-intro-modal .modal-body,
+body.app-shell .app-tour-intro-modal .modal-footer {
+  padding-right: clamp(1.25rem, 5vw, 2.25rem);
+  padding-left: clamp(1.25rem, 5vw, 2.25rem);
+}
+
+body.app-shell .app-tour-intro-modal .modal-header {
+  align-items: flex-start;
+  padding-top: 1.5rem;
+}
+
+body.app-shell .app-tour-intro-icon {
+  display: inline-flex;
+  width: 3rem;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(71, 125, 138, 0.2);
+  border-radius: 16px;
+  background: rgba(71, 125, 138, 0.1);
+  color: #477d8a;
+  font-size: 1.4rem;
+}
+
+body.app-shell .app-tour-intro-eyebrow {
+  margin-bottom: 0.35rem;
+  color: var(--app-text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+body.app-shell .app-tour-intro-modal .modal-title {
+  margin-bottom: 0.75rem;
+  color: var(--app-text-main);
+  font-family: var(--app-font-display);
+  font-size: clamp(1.45rem, 3vw, 1.9rem);
+  font-weight: 800;
+}
+
+body.app-shell .app-tour-intro-description {
+  margin-bottom: 1.5rem;
+  color: var(--app-text-muted);
+  line-height: 1.65;
+}
+
+body.app-shell .app-tour-intro-modal .form-select {
+  border-color: var(--app-border);
+  background-color: var(--app-surface);
+  color: var(--app-text-main);
+}
+
+body.app-shell .app-tour-intro-modal .form-select:focus {
+  border-color: #477d8a;
+  box-shadow: 0 0 0 0.2rem rgba(71, 125, 138, 0.18);
+}
+
+body.app-shell .app-tour-intro-modal .btn-primary {
+  border-color: #477d8a;
+  background-color: #477d8a;
+  color: #fff;
+}
+
+body.app-shell .app-tour-intro-modal .btn-primary:hover,
+body.app-shell .app-tour-intro-modal .btn-primary:focus-visible {
+  border-color: #356a77;
+  background-color: #356a77;
+}
+
+body.app-shell .app-tour-intro-modal .btn-outline-primary {
+  border-color: rgba(71, 125, 138, 0.42);
+  color: #356a77;
+}
+
+body.app-shell .app-tour-intro-modal .btn-outline-primary:hover,
+body.app-shell .app-tour-intro-modal .btn-outline-primary:focus-visible {
+  border-color: #477d8a;
+  background-color: rgba(71, 125, 138, 0.1);
+  color: #2f5d68;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-icon {
+  border-color: rgba(155, 203, 212, 0.24);
+  background: rgba(155, 203, 212, 0.1);
+  color: #9bcbd4;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-modal .form-select {
+  color-scheme: dark;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-modal .btn-primary {
+  border-color: #6ba5b2;
+  background-color: #6ba5b2;
+  color: #112a30;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-modal .btn-outline-primary {
+  border-color: rgba(155, 203, 212, 0.42);
+  color: #9bcbd4;
+}
+
+@media (max-width: 575.98px) {
+  body.app-shell .app-tour-intro-modal .modal-footer > .btn {
+    width: 100%;
+  }
 }
 
 body.app-shell .driver-popover {
@@ -5338,7 +5461,7 @@ html[data-bs-theme='dark'] body.app-shell .dashboard-stat-card.tone-users {
 }
 
 body.app-shell footer.footer {
-  margin: 1rem auto 0;
+  margin: 0.5rem auto 0;
   max-width: calc(100% - 2rem);
   background: var(--app-surface) !important;
   color: var(--app-text-main) !important;

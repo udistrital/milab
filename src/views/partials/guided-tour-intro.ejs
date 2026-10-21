@@ -1,0 +1,42 @@
+<div
+  class="modal fade app-tour-intro-modal"
+  id="milabTourIntroModal"
+  tabindex="-1"
+  aria-labelledby="milabTourIntroTitle"
+  aria-describedby="milabTourIntroDescription"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <div class="app-tour-intro-icon" aria-hidden="true">
+          <i class="bi bi-compass"></i>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p class="app-tour-intro-eyebrow">Tour guiado de MiLab</p>
+        <h2 class="modal-title" id="milabTourIntroTitle">Explora MiLab a tu ritmo</h2>
+        <p class="app-tour-intro-description" id="milabTourIntroDescription">
+          Puedes recorrer los módulos disponibles para tu perfil o elegir uno específico. Durante el tour, el menú se desplazará hasta cada opción.
+        </p>
+        <label class="form-label fw-semibold" for="milabTourModuleSelect">Módulo que quieres explorar</label>
+        <select class="form-select" id="milabTourModuleSelect" aria-describedby="milabTourModuleHelp">
+          <option value="">Selecciona un módulo disponible</option>
+        </select>
+        <div class="form-text" id="milabTourModuleHelp">
+          La lista se adapta a las opciones que tienes habilitadas.
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Ahora no</button>
+        <button type="button" class="btn btn-outline-primary" data-guide-start="module" disabled>
+          Explorar módulo
+        </button>
+        <button type="button" class="btn btn-primary" data-guide-start="all">
+          Recorrer todo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
