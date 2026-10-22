@@ -11,6 +11,7 @@ router.use(bp.json());
 router.use(bp.urlencoded({ extended: true }));
 
 const path = require('path');
+const MAX_BULK_QUERY_CODES = 20;
 
 const requireAdminStudentsListAccess = requireRoles('admin', {
   message: '¡Algo ha salido mal!',
@@ -207,10 +208,14 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
     .map((item) => item.trim())
     .filter(Boolean);
 
-  if (entries.length > 20) {
-    res.render('home/consulta_masiva', {
-      sampleData1: 0,
-      error: 'Has excedido el límite de 20 estudiantes, inténtalo nuevamente.',
+  if (entries.length > MAX_BULK_QUERY_CODES) {
+    const message = `Has excedido el límite de ${MAX_BULK_QUERY_CODES} estudiantes, inténtalo nuevamente.`;
+    if (wantsJson(req)) {
+      return res.status(400).json({ ok: false, message });
+    }
+    return res.render('home/consulta_masiva', {
+      sampleData1: [],
+      error: message,
       sgaConsultaOmitida: !sgaDebtService.isConfigured(),
     });
   } else {
@@ -318,6 +323,19 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
   const PDFDocument = require('pdfkit');
 
   const sampleData1 = JSON.parse(req.query.data || '[]');
+  if (!Array.isArray(sampleData1) || sampleData1.length > MAX_BULK_QUERY_CODES) {
+    const message = Array.isArray(sampleData1)
+      ? `No se puede generar un informe con más de ${MAX_BULK_QUERY_CODES} estudiantes.`
+      : 'Los datos del informe no son válidos.';
+    if (wantsJson(req)) {
+      return res.status(400).json({ ok: false, message });
+    }
+    return res.status(400).render('home/message_error', {
+      message,
+      message2: 'Verifica la consulta e inténtalo nuevamente.',
+      limit: null,
+    });
+  }
 
   if (sampleData1.length > 0) {
     const doc = new PDFDocument();

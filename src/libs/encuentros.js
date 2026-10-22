@@ -461,7 +461,7 @@ async function generateCertificatePdf({ templateBuffer, templateConfig, values, 
       continue;
     }
 
-    const text = String(values?.[key] ?? '');
+    const text = String(values?.[key] ?? '').toLocaleUpperCase('es-CO');
     if (!text) continue;
     const fontSize = Number(field.fontSize || 18);
     const textWidth = font.widthOfTextAtSize(text, fontSize);

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light only">
+    <meta name="supported-color-schemes" content="light only">
+    <title>Certificado de participación</title>
+  </head>
+  <body style="margin:0;padding:20px 10px;background-color:#f5f6f7;font-family:Arial,sans-serif;color:#202124;">
+    <table width="600" align="center" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;">
+      <%- buildEmailHeaderHtml() %>
+      <tr>
+        <td style="padding:28px 30px 24px;">
+          <h1 style="margin:0;font-size:22px;">Tu certificado de participación</h1>
+          <p style="font-size:15px;line-height:1.6;margin:18px 0 0;">Hola <strong><%= participanteNombre %></strong>,</p>
+          <p style="font-size:15px;line-height:1.6;margin:12px 0 0;">
+            Tu participación en <strong><%= eventoNombre %></strong> ha sido confirmada.
+            Adjuntamos tu certificado personalizado.
+          </p>
+        </td>
+      </tr>
+      <%- buildNoReplyNoticeHtml() %>
+      <%- buildEmailFooterHtml('<p style="font-size:14px;color:rgba(255,255,255,0.92);margin:0;text-align:center;line-height:1.6;">Equipo de la Coordinación General de Laboratorios · MILab</p>') %>
+    </table>
+  </body>
+</html>
