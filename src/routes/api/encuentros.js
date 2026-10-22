@@ -4,6 +4,8 @@ const fs = require('fs/promises');
 const path = require('path');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
+const rateLimit = require('express-rate-limit');
 
 const pool = require('../../libs/db');
 const { buildAppUrl } = require('../../libs/app-url');
@@ -1123,6 +1125,260 @@ router.post(
   }
 );
 
+const QR_TIPOS = ['ingreso', 'salida'];
+
+// Varios asistentes pueden compartir la misma IP (red del auditorio), por eso el límite es amplio.
+const registroQrLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, message: 'Demasiadas solicitudes. Inténtalo nuevamente en un momento.' },
+});
+
+function buildRegistrationLinks(eventId) {
+  return Object.fromEntries(
+    QR_TIPOS.map((tipo) => [
+      tipo,
+      {
+        registro_url: buildAppUrl(`/encuentros/registro/${tipo}/${eventId}`),
+        proyeccion_url: buildAppUrl(`/encuentros/proyeccion/${tipo}/${eventId}`),
+      },
+    ])
+  );
+}
+
+async function writePublicAudit(client, action, eventId, documento) {
+  const numericDocument = /^\d{1,16}$/.test(documento) ? documento : null;
+  await client.query(
+    'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+    [
+      'Registro público QR',
+      numericDocument,
+      `Encuentros: ${action}`.slice(0, 500),
+      `Evento #${eventId}`.slice(0, 255),
+    ]
+  );
+}
+
+async function registerPublicAttendance(eventId, tipo, documento) {
+  return withTransaction(async (client) => {
+    const participantResult = await client.query(
+      `
+        SELECT p.id, p.nombre, e.estado AS estado_evento
+        FROM encuentro_participante p
+        JOIN encuentro_evento e ON e.id = p.evento_id
+        WHERE p.evento_id = $1
+          AND p.documento_normalizado = $2
+          AND p.activo = TRUE
+          AND e.activo = TRUE
+        FOR UPDATE OF p, e
+      `,
+      [eventId, documento]
+    );
+    const participant = participantResult.rows[0];
+    if (!participant) return { status: 'not_enrolled' };
+    if (participant.estado_evento !== 'en_curso') return { status: 'event_not_open' };
+    const nombre = String(participant.nombre || '').toLocaleUpperCase('es-CO');
+
+    if (tipo === 'ingreso') {
+      const inserted = await client.query(
+        `
+          INSERT INTO encuentro_asistencia (evento_id, participante_id, entrada_en, entrada_metodo)
+          VALUES ($1, $2, CURRENT_TIMESTAMP, 'manual')
+          ON CONFLICT (participante_id) DO NOTHING
+          RETURNING entrada_en
+        `,
+        [eventId, participant.id]
+      );
+      if (!inserted.rows[0]) return { status: 'already_registered', nombre };
+      await writePublicAudit(client, 'entrada registrada por QR', eventId, documento);
+      return { status: 'registered', nombre };
+    }
+
+    const attendance = await client.query(
+      `
+        SELECT entrada_en, salida_en
+        FROM encuentro_asistencia
+        WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
+        FOR UPDATE
+      `,
+      [eventId, participant.id]
+    );
+    const current = attendance.rows[0];
+    if (!current?.entrada_en) return { status: 'no_entry', nombre };
+    if (current.salida_en) return { status: 'already_out', nombre };
+    await client.query(
+      `
+        UPDATE encuentro_asistencia
+        SET salida_en = CURRENT_TIMESTAMP, fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
+      `,
+      [eventId, participant.id]
+    );
+    await writePublicAudit(client, 'salida registrada por QR', eventId, documento);
+    return { status: 'registered', nombre };
+  });
+}
+
+const PUBLIC_REGISTRO_MESSAGES = {
+  registered: {
+    ingreso: (nombre) => `${nombre}, su registro de ingreso fue exitoso.`,
+    salida: (nombre) => `${nombre}, su registro de salida fue exitoso.`,
+  },
+  already_registered: (nombre) => `${nombre}, su registro de ingreso ya estaba registrado.`,
+  already_out: (nombre) => `${nombre}, su registro de salida ya estaba registrado.`,
+  no_entry: (nombre) =>
+    `${nombre}, no tiene registro de ingreso en este evento. Por favor acérquese con los organizadores.`,
+  not_enrolled: (documento) =>
+    `Su documento ${documento} no fue encontrado en la base de registro del evento. Por favor acérquese con los organizadores.`,
+  event_not_open: 'El registro no está disponible porque el evento no se encuentra en curso.',
+};
+
+function buildPublicRegistroMessage(result, tipo, documento) {
+  if (result.status === 'registered')
+    return PUBLIC_REGISTRO_MESSAGES.registered[tipo](result.nombre);
+  if (result.status === 'not_enrolled') return PUBLIC_REGISTRO_MESSAGES.not_enrolled(documento);
+  if (result.status === 'event_not_open') return PUBLIC_REGISTRO_MESSAGES.event_not_open;
+  return PUBLIC_REGISTRO_MESSAGES[result.status](result.nombre);
+}
+
+function renderInvalidQrLink(res) {
+  return res.status(404).render('home/message_error', {
+    status: 404,
+    message: 'Enlace no válido',
+    message2: 'El enlace de registro no existe. Verifica la dirección con los organizadores.',
+    limit: null,
+  });
+}
+
+async function fetchPublicEvent(eventId) {
+  const result = await pool.query(
+    'SELECT id, nombre, fecha, lugar, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+    [eventId]
+  );
+  return result.rows[0] || null;
+}
+
+router.get('/registro/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) return renderInvalidQrLink(res);
+  try {
+    const evento = await fetchPublicEvent(eventId);
+    if (!evento) return renderInvalidQrLink(res);
+    return res.render('home/encuentros-registro', {
+      tipo,
+      evento,
+      disponible: evento.estado === 'en_curso',
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_registration_page');
+    return res.status(503).render('home/message_error', {
+      status: 503,
+      message: 'Registro no disponible',
+      message2: 'No fue posible cargar el registro. Intenta nuevamente más tarde.',
+      limit: null,
+    });
+  }
+});
+
+router.post('/registro/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) {
+    return res.status(404).json({ ok: false, message: 'Enlace de registro no válido.' });
+  }
+  const documento = normalizeDocument(req.body?.documento);
+  if (!documento || documento.length > 16) {
+    return res.status(400).json({ ok: false, message: 'Ingresa un número de documento válido.' });
+  }
+  try {
+    const result = await registerPublicAttendance(eventId, tipo, documento);
+    const ok =
+      result.status === 'registered' ||
+      result.status === 'already_registered' ||
+      result.status === 'already_out';
+    return res.json({
+      ok,
+      status: result.status,
+      nombre: result.nombre || null,
+      message: buildPublicRegistroMessage(result, tipo, documento),
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_registration');
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible registrar la asistencia. Intenta nuevamente.',
+    });
+  }
+});
+
+router.get('/proyeccion/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) return renderInvalidQrLink(res);
+  try {
+    const evento = await fetchPublicEvent(eventId);
+    if (!evento) return renderInvalidQrLink(res);
+    const registroUrl = buildAppUrl(`/encuentros/registro/${tipo}/${eventId}`);
+    const qrDataUrl = await QRCode.toDataURL(registroUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 900,
+    });
+    return res.render('home/encuentros-proyeccion', {
+      tipo,
+      evento,
+      disponible: evento.estado === 'en_curso',
+      qrDataUrl,
+      registroUrl,
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_projection');
+    return res.status(503).render('home/message_error', {
+      status: 503,
+      message: 'Proyección no disponible',
+      message2: 'No fue posible generar el código QR. Intenta nuevamente más tarde.',
+      limit: null,
+    });
+  }
+});
+
+router.get('/api/eventos/:eventId/certificados/pendientes', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const result = await pool.query(
+      `
+        SELECT p.id AS participante_id, p.nombre, p.correo, c.id AS certificado_id, c.email_estado
+        FROM encuentro_participante p
+        JOIN encuentro_evento e ON e.id = p.evento_id AND e.activo = TRUE
+        JOIN encuentro_asistencia a
+          ON a.participante_id = p.id AND a.evento_id = p.evento_id
+        LEFT JOIN encuentro_certificado c
+          ON c.participante_id = p.id AND c.evento_id = p.evento_id
+        WHERE p.evento_id = $1
+          AND p.activo = TRUE
+          AND a.entrada_en IS NOT NULL
+          AND a.salida_en IS NOT NULL
+          AND (c.id IS NULL OR (c.estado = 'valido' AND c.email_estado <> 'enviado'))
+        ORDER BY p.nombre
+      `,
+      [eventId]
+    );
+    return res.json({ ok: true, total: result.rows.length, participantes: result.rows });
+  } catch (error) {
+    return handleServerError(
+      req,
+      res,
+      error,
+      'No fue posible consultar los certificados pendientes.'
+    );
+  }
+});
+
 router.get('/api/eventos', requireManager, async (req, res) => {
   try {
     const page = Math.max(1, Math.min(Number.parseInt(req.query.page, 10) || 1, 100000));
@@ -1483,7 +1739,7 @@ router.get('/api/eventos/:eventId', requireManager, async (req, res) => {
   try {
     const detail = await fetchEventDetail(eventId);
     if (!detail) return res.status(404).json({ ok: false, message: 'El evento no existe.' });
-    return res.json({ ok: true, ...detail });
+    return res.json({ ok: true, ...detail, enlaces_registro: buildRegistrationLinks(eventId) });
   } catch (error) {
     return handleServerError(req, res, error, 'No fue posible consultar el detalle del evento.');
   }

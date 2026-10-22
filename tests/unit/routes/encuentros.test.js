@@ -29,6 +29,12 @@ function buildTestApp(query, { interceptPageRender = false } = {}) {
   const app = express();
   app.set('views', path.join(root, 'src/views'));
   app.set('view engine', 'ejs');
+  app.use(express.json());
+  app.use((_req, res, next) => {
+    res.locals.csrfToken = 'test-csrf-token';
+    res.locals.cspNonce = 'test-nonce';
+    next();
+  });
   app.use((req, _res, next) => {
     const role = req.get('x-test-role');
     req.session = role
@@ -58,6 +64,190 @@ function buildTestApp(query, { interceptPageRender = false } = {}) {
     },
   };
 }
+
+function publicQrQuery({
+  evento = null,
+  participante = null,
+  asistencia = null,
+  insertRow = null,
+} = {}) {
+  return async (sql) => {
+    if (sql.includes('FROM encuentro_evento WHERE id')) return { rows: evento ? [evento] : [] };
+    if (sql.includes('FROM encuentro_participante p'))
+      return { rows: participante ? [participante] : [] };
+    if (sql.includes('INSERT INTO encuentro_asistencia'))
+      return { rows: insertRow ? [insertRow] : [] };
+    if (sql.includes('FROM encuentro_asistencia') && sql.includes('FOR UPDATE')) {
+      return { rows: asistencia ? [asistencia] : [] };
+    }
+    return { rows: [] };
+  };
+}
+
+const evento_en_curso = {
+  id: 7,
+  nombre: 'Encuentro de prueba',
+  fecha: '2026-10-20',
+  lugar: 'Sede',
+  estado: 'en_curso',
+};
+
+test('public QR registration page renders the document-only form while the event is in progress', async () => {
+  const setup = buildTestApp(publicQrQuery({ evento: evento_en_curso }));
+  try {
+    const response = await request(setup.app).get('/encuentros/registro/ingreso/7');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /id="registro-form"/);
+    assert.match(response.text, /name="documento"/);
+    assert.match(response.text, /name="csrf-token" content="test-csrf-token"/);
+    assert.doesNotMatch(response.text, /name="nombre"|name="correo"/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR registration page blocks registration when the event is not in progress', async () => {
+  const setup = buildTestApp(
+    publicQrQuery({ evento: { ...evento_en_curso, estado: 'programado' } })
+  );
+  try {
+    const response = await request(setup.app).get('/encuentros/registro/salida/7');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /no se encuentra en curso/);
+    assert.doesNotMatch(response.text, /id="registro-form"/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR links reject unknown types and unknown events', async () => {
+  const setup = buildTestApp(publicQrQuery({ evento: null }));
+  try {
+    const invalidType = await request(setup.app).get('/encuentros/registro/otro/7');
+    assert.equal(invalidType.status, 404);
+    const unknownEvent = await request(setup.app).get('/encuentros/registro/ingreso/999');
+    assert.equal(unknownEvent.status, 404);
+    assert.match(unknownEvent.text, /Enlace no válido/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR registration reports documents that are not enrolled in the event', async () => {
+  const setup = buildTestApp(publicQrQuery({ participante: null }));
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/registro/ingreso/7')
+      .send({ documento: '1020304050' });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.status, 'not_enrolled');
+    assert.match(response.body.message, /1020304050 no fue encontrado/);
+    assert.match(response.body.message, /acérquese con los organizadores/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR ingreso registers attendance and answers with the uppercase name', async () => {
+  const setup = buildTestApp(
+    publicQrQuery({
+      participante: { id: 21, nombre: 'Ana Pérez', estado_evento: 'en_curso' },
+      insertRow: { entrada_en: new Date().toISOString() },
+    })
+  );
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/registro/ingreso/7')
+      .send({ documento: '1020304050' });
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.status, 'registered');
+    assert.equal(response.body.message, 'ANA PÉREZ, su registro de ingreso fue exitoso.');
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR salida is rejected when the attendee has no ingreso yet', async () => {
+  const setup = buildTestApp(
+    publicQrQuery({
+      participante: { id: 21, nombre: 'Ana Pérez', estado_evento: 'en_curso' },
+      asistencia: null,
+    })
+  );
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/registro/salida/7')
+      .send({ documento: '1020304050' });
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.status, 'no_entry');
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR registration validates the document before querying', async () => {
+  let queries = 0;
+  const setup = buildTestApp(async () => {
+    queries += 1;
+    return { rows: [] };
+  });
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/registro/ingreso/7')
+      .send({ documento: '' });
+    assert.equal(response.status, 400);
+    assert.equal(queries, 0);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('public QR projection renders a centered QR image for the registration link', async () => {
+  const setup = buildTestApp(publicQrQuery({ evento: evento_en_curso }));
+  try {
+    const response = await request(setup.app).get('/encuentros/proyeccion/ingreso/7');
+    assert.equal(response.status, 200);
+    assert.match(response.text, /src="data:image\/png;base64,/);
+    assert.match(response.text, /Escanea el código con tu celular/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('pending certificates endpoint lists attendees with attendance but no sent certificate', async () => {
+  const setup = buildTestApp(async (sql) => {
+    if (sql.includes("c.email_estado <> 'enviado'") || sql.includes("email_estado <> 'enviado'")) {
+      return {
+        rows: [
+          {
+            participante_id: 21,
+            nombre: 'Ana Pérez',
+            correo: 'ana@example.com',
+            certificado_id: null,
+            email_estado: null,
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
+  try {
+    const response = await request(setup.app)
+      .get('/encuentros/api/eventos/7/certificados/pendientes')
+      .set('x-test-role', 'gestor_laboratorio');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.total, 1);
+    assert.equal(response.body.participantes[0].participante_id, 21);
+
+    const student = await request(setup.app)
+      .get('/encuentros/api/eventos/7/certificados/pendientes')
+      .set('x-test-role', 'estudiante');
+    assert.equal(student.status, 403);
+  } finally {
+    setup.restore();
+  }
+});
 
 test('Encuentros management endpoints reject unauthenticated and unauthorized users', async () => {
   let queries = 0;

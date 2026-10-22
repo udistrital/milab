@@ -439,7 +439,7 @@
         );
       } else if (event.estado === 'en_curso') {
         stateActions.appendChild(
-          actionButton('Finalizar evento', 'btn-primary', () => updateState(event.id, 'finalizado'))
+          actionButton('Finalizar evento', 'btn-primary', () => finalizeEvent(event.id))
         );
         stateActions.appendChild(
           actionButton('Cancelar', 'btn-outline-danger', () => updateState(event.id, 'cancelado'))
@@ -460,6 +460,7 @@
       }
       overview.appendChild(stateActions);
       body.appendChild(overview);
+      body.appendChild(registrationLinksSection(event.id, data.enlaces_registro));
       if (event.banner_path) {
         const banner = document.createElement('img');
         banner.src = `${apiBase}/eventos/${event.id}/banner`;
@@ -738,6 +739,154 @@
     } catch (error) {
       showAlert(error.message, 'danger');
     }
+  }
+
+  function registrationLinksSection(eventId, enlaces) {
+    const section = element('div', undefined, 'card border-0 bg-light my-3');
+    const cardBody = element('div', undefined, 'card-body');
+    cardBody.appendChild(element('h3', 'Registro por código QR', 'h6 fw-bold mb-1'));
+    cardBody.appendChild(
+      element(
+        'p',
+        'Estos enlaces solo registran asistencia mientras el evento esté en curso. Proyecta el QR para que los asistentes lo escaneen.',
+        'text-muted small mb-3'
+      )
+    );
+    [
+      ['ingreso', 'Registro de ingreso'],
+      ['salida', 'Registro de salida'],
+    ].forEach(([tipo, label]) => {
+      const enlace = enlaces?.[tipo];
+      if (!enlace) return;
+      const row = element('div', undefined, 'mb-3');
+      row.appendChild(element('p', label, 'fw-semibold mb-1'));
+      row.appendChild(element('code', enlace.registro_url, 'd-block text-break small mb-2'));
+      const buttons = element('div', undefined, 'd-flex flex-wrap gap-2');
+      buttons.appendChild(
+        actionButton('Copiar enlace', 'btn-outline-secondary btn-sm', () =>
+          copyRegistrationLink(enlace.registro_url)
+        )
+      );
+      buttons.appendChild(
+        actionButton('Abrir QR para proyectar', 'btn-outline-primary btn-sm', () =>
+          window.open(enlace.proyeccion_url, '_blank', 'noopener')
+        )
+      );
+      row.appendChild(buttons);
+      cardBody.appendChild(row);
+    });
+    section.appendChild(cardBody);
+    return section;
+  }
+
+  async function copyRegistrationLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      showAlert('Enlace copiado.', 'success');
+    } catch {
+      showAlert(`No fue posible copiar automáticamente. Enlace: ${url}`, 'warning');
+    }
+  }
+
+  async function finalizeEvent(eventId) {
+    if (
+      !(await window.MiLabDialogs.confirm(
+        '¿Confirmas finalizar este evento? Después se enviarán uno a uno los certificados pendientes.'
+      ))
+    ) {
+      return;
+    }
+    try {
+      await request(`/eventos/${eventId}/estado`, {
+        method: 'PATCH',
+        body: JSON.stringify({ estado: 'finalizado' }),
+      });
+    } catch (error) {
+      showAlert(error.message, 'danger');
+      return;
+    }
+    let pendientes;
+    try {
+      const data = await request(`/eventos/${eventId}/certificados/pendientes`);
+      pendientes = data.participantes || [];
+    } catch (error) {
+      showAlert(
+        `El evento fue finalizado, pero no se pudieron consultar los certificados pendientes: ${error.message}`,
+        'warning'
+      );
+      await refreshDetail();
+      await loadEvents();
+      return;
+    }
+    await runCertificateDispatch(eventId, pendientes);
+  }
+
+  async function runCertificateDispatch(eventId, pendientes) {
+    const modalEl = document.getElementById('close-event-modal');
+    const closeModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const summary = document.getElementById('close-event-summary');
+    const progress = document.getElementById('close-event-progress');
+    const progressWrap = progress.parentElement;
+    const status = document.getElementById('close-event-status');
+    const failuresBox = document.getElementById('close-event-failures');
+    const doneButton = document.getElementById('close-event-done');
+    const total = pendientes.length;
+
+    progress.style.width = '0%';
+    progressWrap.setAttribute('aria-valuenow', '0');
+    status.textContent = '';
+    failuresBox.classList.add('d-none');
+    failuresBox.replaceChildren();
+    doneButton.classList.add('d-none');
+    summary.textContent = `Cerrando evento: se identificaron ${total} certificados pendientes por enviar.`;
+    closeModal.show();
+
+    const failures = [];
+    for (let index = 0; index < total; index += 1) {
+      const participante = pendientes[index];
+      status.textContent = `Envío ${index + 1} de ${total}: ${participante.nombre}`;
+      try {
+        const result = await request(
+          `/eventos/${eventId}/participantes/${participante.participante_id}/certificado/generar`,
+          { method: 'POST', body: '{}' }
+        );
+        if (result.estado_envio !== 'sent') {
+          failures.push(`${participante.nombre}: el correo no fue confirmado.`);
+        }
+      } catch (error) {
+        failures.push(`${participante.nombre}: ${error.message}`);
+      }
+      const percent = Math.round(((index + 1) / total) * 100);
+      progress.style.width = `${percent}%`;
+      progressWrap.setAttribute('aria-valuenow', String(percent));
+    }
+
+    const enviados = total - failures.length;
+    if (total === 0) {
+      status.textContent = 'No hay certificados pendientes por enviar.';
+    } else if (failures.length === 0) {
+      status.textContent = `Se confirmó el envío de los ${total} certificados.`;
+    } else {
+      status.textContent = `Proceso terminado: ${enviados} enviados, ${failures.length} con error.`;
+      failuresBox.classList.remove('d-none');
+      failuresBox.appendChild(
+        element(
+          'p',
+          'Revisa estos certificados desde el detalle del participante:',
+          'mb-1 fw-semibold'
+        )
+      );
+      const list = element('ul', undefined, 'mb-0');
+      failures.forEach((message) => list.appendChild(element('li', message)));
+      failuresBox.appendChild(list);
+    }
+
+    doneButton.classList.remove('d-none');
+    doneButton.onclick = async () => {
+      closeModal.hide();
+      detailModal.hide();
+      await loadEvents();
+    };
   }
 
   async function updateState(eventId, state) {
