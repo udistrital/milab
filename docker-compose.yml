@@ -11,6 +11,8 @@ services:
     restart: always
     depends_on:
       - dbpostgres
+    volumes:
+      - ./private/encuentros:/usr/src/app/private/encuentros
     #labels:
     #- "traefik.enable=true"
     #- "traefik.docker.network=proxy"
