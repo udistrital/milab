@@ -34,6 +34,33 @@ Descargar la plantilla desde el detalle del evento y conservar estos encabezados
 
 Todos los campos son obligatorios. `Cargo` alimenta el campo `rol` del certificado; `Facultad` y `Unidad Académica de Laboratorio (UAL)` alimentan sus campos homónimos. La plantilla configura el documento como texto. Los documentos guardados como números enteros seguros se convierten a texto y generan una advertencia para revisar ceros iniciales; los valores no enteros o que exceden la precisión segura se rechazan. La importación admite hasta 2000 filas por archivo y requiere confirmar la vista previa.
 
+## Registro por QR (ingreso y salida)
+
+Cada evento tiene dos enlaces públicos, visibles en su detalle:
+
+- `/encuentros/registro/ingreso/:eventoId` y `/encuentros/registro/salida/:eventoId`: formulario móvil que pide solo el número de documento. Al registrar, responde con el nombre del participante en mayúsculas y el resultado.
+- `/encuentros/proyeccion/ingreso/:eventoId` y `/encuentros/proyeccion/salida/:eventoId`: página de MiLab con el QR centrado para proyectar a los asistentes. Apunta al enlace de registro correspondiente.
+
+Reglas:
+
+- Los enlaces solo registran mientras el evento está `en_curso`.
+- Ingreso: registra la entrada una sola vez. Si ya estaba registrada, responde que la asistencia ya fue registrada.
+- Salida: requiere una entrada previa y registra `salida_en` una sola vez.
+- Documentos no inscritos responden que no fueron encontrados y piden acercarse con los organizadores.
+- Cada registro público queda en `log` con nombre `Registro público QR` y acción `Encuentros: entrada registrada por QR` o `Encuentros: salida registrada por QR`.
+- Los endpoints públicos tienen un límite de 120 solicitudes por minuto por IP.
+
+**Riesgo aceptado:** el enlace usa el identificador numérico del evento, sin token. Los identificadores son secuenciales, por lo que cualquier persona que adivine un enlace y conozca un documento inscrito puede registrar ingreso o salida. Si se requiere mayor protección, usar un token aleatorio por evento.
+
+## Cierre del evento y envío de certificados
+
+Al finalizar un evento, el sistema:
+
+1. Cambia el estado a `finalizado`.
+2. Identifica los participantes con entrada y salida registradas que aún no tienen su certificado enviado (`GET /encuentros/api/eventos/:eventoId/certificados/pendientes`).
+3. Muestra cuántos certificados quedaron pendientes y los envía uno a uno con `POST /encuentros/api/eventos/:eventoId/participantes/:participanteId/certificado/generar`, esperando la respuesta de cada envío antes del siguiente.
+4. Al terminar, confirma cuántos se enviaron y lista los que tuvieron error. Los errores pueden reintentarse desde el detalle del participante.
+
 ## Validación
 
 Ejecutar pruebas focalizadas con:

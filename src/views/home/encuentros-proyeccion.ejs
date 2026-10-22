@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR de <%= tipo === 'salida' ? 'salida' : 'ingreso' %> - MiLab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/milab/public/css/styles.css">
+  <style>
+    body.proyeccion-qr {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--app-bg);
+      color: var(--app-text-main);
+      font-family: 'Manrope', sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    .proyeccion-qr header {
+      background: var(--app-accent);
+      color: #fff;
+      text-align: center;
+      padding: 1.5vh 2vw;
+      border-bottom: 0.8vh solid var(--app-highlight);
+    }
+    .proyeccion-qr header small {
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      font-weight: 700;
+      font-size: 1.6vh;
+    }
+    .proyeccion-qr h1 {
+      font-family: 'Sora', sans-serif;
+      font-weight: 800;
+      font-size: 4vh;
+      margin: .4vh 0 0;
+    }
+    .proyeccion-qr main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2vh 2vw;
+      text-align: center;
+    }
+    .proyeccion-qr .evento-nombre {
+      font-family: 'Sora', sans-serif;
+      font-weight: 700;
+      font-size: 3.2vh;
+      margin-bottom: 2vh;
+    }
+    .proyeccion-qr .qr-caja {
+      background: #fff;
+      border-radius: 2vh;
+      padding: 2.5vh;
+      box-shadow: 0 1vh 3vh rgba(23, 23, 23, .12);
+      border: 0.6vh solid var(--app-accent);
+    }
+    .proyeccion-qr .qr-caja img {
+      display: block;
+      width: min(70vh, 80vw);
+      height: min(70vh, 80vw);
+    }
+    .proyeccion-qr .instruccion {
+      margin-top: 2.5vh;
+      font-size: 3.2vh;
+      font-weight: 700;
+      color: var(--app-accent-deep);
+    }
+    .proyeccion-qr .aviso {
+      font-size: 2.4vh;
+      color: #555;
+    }
+    .proyeccion-qr .no-disponible {
+      background: #fff;
+      border-left: 0.8vh solid var(--app-highlight);
+      padding: 3vh 3vw;
+      border-radius: 1.5vh;
+      font-size: 3vh;
+      max-width: 90vw;
+    }
+  </style>
+</head>
+<body class="proyeccion-qr">
+  <header>
+    <small>MiLab · Universidad Distrital</small>
+    <h1><%= tipo === 'salida' ? 'Registro de salida' : 'Registro de ingreso' %></h1>
+  </header>
+
+  <main>
+    <% if (disponible) { %>
+      <p class="evento-nombre"><%= evento.nombre %></p>
+      <div class="qr-caja">
+        <img src="<%= qrDataUrl %>" alt="Código QR para registrar <%= tipo === 'salida' ? 'la salida' : 'el ingreso' %>">
+      </div>
+      <p class="instruccion">Escanea el código con tu celular</p>
+      <p class="aviso">Ingresa tu número de documento para registrar tu <%= tipo === 'salida' ? 'salida' : 'ingreso' %>.</p>
+    <% } else { %>
+      <div class="no-disponible" role="status">
+        El registro no está disponible porque el evento no se encuentra en curso.
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>
