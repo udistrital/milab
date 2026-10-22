@@ -16,7 +16,7 @@ La migración de permisos es transaccional e idempotente; toma como referencia e
 
 ## Archivos y configuración de correo
 
-`ENCUENTROS_STORAGE_DIR` es opcional. Si no se define, MiLab guarda los archivos en `private/encuentros` bajo el directorio de trabajo. En despliegues con contenedores, configurar esta variable a un volumen persistente, privado y con permisos de lectura/escritura para el proceso de Node.js. No publicar este directorio como contenido estático.
+`ENCUENTROS_STORAGE_DIR` es opcional. Si no se define, MiLab guarda los archivos en `private/encuentros` bajo el directorio de trabajo. En despliegues con contenedores, montar almacenamiento persistente, privado y con permisos de lectura/escritura para el proceso de Node.js en `/usr/src/app/private/encuentros`; no publicar este directorio como contenido estático. En EC2 de pruebas se usa `/opt/milab-data/encuentros`, fuera del árbol `/opt/milab` que CI sincroniza con `rsync --delete`, y tanto CI como el script de reset configuran ese montaje.
 
 Las URL del QR se generan con `APP_BASE_URL` y la ruta pública `/encuentros/verificar/:token`. Enviar certificados usa el transportador institucional configurado mediante las variables de correo existentes (`EMAIL_USER`, `EMAIL_PASSWORD` y `EMAIL_HOST` o `EMAIL_SERVICE`). Las pruebas unitarias no envían correo.
 

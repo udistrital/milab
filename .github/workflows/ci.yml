@@ -166,9 +166,11 @@ jobs:
           set -eu
           if command -v sudo >/dev/null 2>&1; then
             sudo mkdir -p /opt/milab/Docker
+            sudo mkdir -p /opt/milab-data/encuentros
             sudo ln -sfn /opt/.env /opt/milab/Docker/.env
           else
             mkdir -p /opt/milab/Docker
+            mkdir -p /opt/milab-data/encuentros
             ln -sfn /opt/.env /opt/milab/Docker/.env
           fi
 
@@ -179,6 +181,8 @@ jobs:
             milabud:
               environment:
                 DB_SCHEMA: milab
+              volumes:
+                - /opt/milab-data/encuentros:/usr/src/app/private/encuentros
           YAML
 
       - name: Validar flags sensibles en entorno
