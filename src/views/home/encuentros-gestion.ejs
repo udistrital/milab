@@ -239,6 +239,27 @@
   </div>
 </div>
 
+<div class="modal fade" id="close-event-modal" tabindex="-1" aria-labelledby="close-event-title" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="close-event-title">Cerrando evento</h2>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3" id="close-event-summary">Consultando certificados pendientes…</p>
+        <div class="progress mb-2" role="progressbar" aria-label="Avance del envío de certificados" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="progress-bar" id="close-event-progress" style="width: 0%"></div>
+        </div>
+        <p class="small text-muted mb-0" id="close-event-status" aria-live="polite"></p>
+        <div class="alert alert-warning mt-3 mb-0 d-none" id="close-event-failures" role="alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary d-none" id="close-event-done">Aceptar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <link rel="stylesheet" href="/milab/public/css/encuentros-template-editor.css">
 <script src="/milab/public/js/encuentros-template-editor.js"></script>
 <script src="/milab/public/js/encuentros.js"></script>
