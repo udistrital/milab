@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
@@ -8,6 +9,8 @@ const { SgaDebtService, resolveSgaConceptName } = require('../../../src/libs/oat
 const debtService = new SgaDebtService();
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/get_list_estudiantes.js');
+const bulkQueryViewPath = path.resolve(__dirname, '../../../src/views/home/consulta_masiva.ejs');
+const headerViewPath = path.resolve(__dirname, '../../../src/views/partials/header.ejs');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
@@ -128,6 +131,20 @@ function loadRoute({
   };
 }
 
+test('bulk student query modal uses the shared Bootstrap 5 runtime', async () => {
+  const [bulkQueryView, headerView] = await Promise.all([
+    fs.readFile(bulkQueryViewPath, 'utf8'),
+    fs.readFile(headerViewPath, 'utf8'),
+  ]);
+
+  assert.match(headerView, /bootstrap@5\.3\.0-alpha3\/dist\/js\/bootstrap\.bundle\.min\.js/);
+  assert.match(bulkQueryView, /data-bs-dismiss="modal"/);
+  assert.doesNotMatch(bulkQueryView, /bootstrap(?:@|\/)4(?:\.|\/)/i);
+  assert.doesNotMatch(bulkQueryView, /jquery-3\.5\.1\.slim|popperjs\/core/i);
+  assert.match(bulkQueryView, /data-max-codes="20"/);
+  assert.match(bulkQueryView, /id="consultaMasivaCount"/);
+});
+
 test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo', async () => {
   const loaded = loadRoute({
     queryImpl: async () => ({ rows: [{ id: 1, tipo_registro: 'estudiante' }] }),
@@ -147,7 +164,13 @@ test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo'
 });
 
 test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', async () => {
-  const loaded = loadRoute();
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
@@ -159,6 +182,54 @@ test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', as
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/consulta_masiva');
     assert.match(response.body.locals.error, /límite de 20 estudiantes/i);
+    assert.equal(queryCount, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_estudiantes consulta_masiva accepts exactly 20 identifiers', async () => {
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const values = Array.from({ length: 20 }, (_, i) => `${1000 + i}`).join(',');
+    const response = await request(app).post('/consulta_masiva').type('form').send({
+      consulta_masiva: values,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/consulta_masiva');
+    assert.equal(queryCount, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_pdf rejects more than 20 student records', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const data = Array.from({ length: 21 }, (_, i) => ({
+      identificador: `${1000 + i}`,
+      multas: [null],
+    }));
+    const response = await request(app)
+      .get('/generate_pdf')
+      .query({
+        data: JSON.stringify(data),
+      });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /más de 20 estudiantes/i);
   } finally {
     loaded.restore();
   }

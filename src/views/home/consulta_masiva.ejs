@@ -28,11 +28,12 @@
 
 <section class="card app-form-panel app-bulk-query-panel justify-content-center mx-auto">
     <div class="card-body text-light mt-2 mx-auto">
-        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
+        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-max-codes="20" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
             <%- include('../partials/csrf_field') %>
             <label class="lead" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
             <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" maxlength="1038" required>
-            <button type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
+            <div id="consultaMasivaCount" class="form-text text-muted" aria-live="polite">0 / 20 códigos</div>
+            <button id="consultaMasivaSubmit" type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
         </form>
         <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
         <% if (error) {%>
@@ -240,10 +241,6 @@
     </div>
 </div>
 <br>
-<!-- Include Bootstrap JS and jQuery -->
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script nonce="<%= cspNonce %>">
     document.addEventListener('click', function (event) {
         const trigger = event.target.closest('.app-detail-button');
@@ -275,33 +272,54 @@
         });
     });
 
-    function verificarEntrada() {
-    var input = document.getElementById("consulta_masiva").value;
-    var mensajeError = document.getElementById("mensajeError");
-    mensajeError.classList.add("d-none");
-    mensajeError.innerHTML = "";
+    const consultaForm = document.querySelector('.app-bulk-query-form');
+    const consultaInput = document.getElementById('consulta_masiva');
+    const consultaCounter = document.getElementById('consultaMasivaCount');
+    const consultaButton = document.getElementById('consultaMasivaSubmit');
+    const mensajeError = document.getElementById('mensajeError');
+    const maxCodigos = Number(consultaForm.dataset.maxCodes) || 20;
 
-    const numeros = input.split(",");
-    for (let i = 0; i < numeros.length; i++) {
-        if (isNaN(numeros[i])){
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Los códigos deben contener solamente números</p>";
-            return false;
-        }
-        if(parseFloat(numeros[i]) < 0) {
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Los códigos no pueden ser negativos</p>";
-            return false;
-        }
+    function obtenerCodigos() {
+        return consultaInput.value
+            .split(',')
+            .map(function (codigo) { return codigo.trim(); })
+            .filter(Boolean);
     }
-    const max = input.split(',').map(Number);
-        if (max.length > 20) {
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Has excedido el límite de 20 estudiantes, Intentalo nuevamente</p>";
+
+    function actualizarContador() {
+        const codigos = obtenerCodigos();
+        const excedeLimite = codigos.length > maxCodigos;
+        consultaCounter.textContent = `${codigos.length} / ${maxCodigos} códigos`;
+        consultaCounter.classList.toggle('text-danger', excedeLimite);
+        consultaButton.disabled = excedeLimite;
+
+        if (excedeLimite) {
+            mensajeError.textContent = `El máximo permitido es de ${maxCodigos} códigos por consulta.`;
+            mensajeError.classList.remove('d-none');
+        } else {
+            mensajeError.textContent = '';
+            mensajeError.classList.add('d-none');
+        }
+
+        return codigos;
+    }
+
+    consultaInput.addEventListener('input', actualizarContador);
+    actualizarContador();
+
+    function verificarEntrada() {
+        const codigos = actualizarContador();
+        if (codigos.length > maxCodigos) {
             return false;
         }
-    return true;
-}
+
+        if (codigos.some(function (codigo) { return !/^\d+$/.test(codigo); })) {
+            mensajeError.textContent = 'Los códigos deben contener solamente números.';
+            mensajeError.classList.remove('d-none');
+            return false;
+        }
+        return true;
+    }
 </script>
   
  
