@@ -100,6 +100,29 @@ test('notification delivery is independent of audit record failures', async () =
       },
     });
     assert.match(sentMessages[3].html, /Mis sanciones en MILab/);
+
+    await sendEmailNotification({
+      sourceSystem: 'encuentros',
+      templateName: 'encuentros/certificado-participacion',
+      recipient: 'participante@udistrital.edu.co',
+      subject: 'Tu certificado de participación: Encuentro de prueba',
+      variables: {
+        participanteNombre: 'Persona <script>',
+        eventoNombre: 'Encuentro de prueba',
+      },
+      attachments: [
+        {
+          filename: 'certificado-55.pdf',
+          path: '/tmp/certificado-55.pdf',
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    assert.equal(sentMessages[4].to, 'participante@udistrital.edu.co');
+    assert.match(sentMessages[4].html, /Persona &lt;script&gt;/);
+    assert.match(sentMessages[4].html, /Equipo de la Coordinación General de Laboratorios/);
+    assert.equal(sentMessages[4].attachments[0].filename, 'certificado-55.pdf');
+    assert.equal(sentMessages[4].attachments.length, 3);
   } finally {
     console.error = previousConsoleError;
     [modulePath, dbPath, mailPath].forEach((modulePath, index) => {

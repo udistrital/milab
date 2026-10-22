@@ -6,8 +6,8 @@ const multer = require('multer');
 const PDFDocument = require('pdfkit');
 
 const pool = require('../../libs/db');
-const mail = require('../../libs/mail');
 const { buildAppUrl } = require('../../libs/app-url');
+const { sendEmailNotification } = require('../../libs/email-notifications');
 const { logger } = require('../../libs/logger');
 const { requireJsonRoles, requireRoles, requireUser } = require('../middlewares/auth');
 const { enrichErrorPayloadForAdmin } = require('../middlewares/error-handler');
@@ -253,36 +253,11 @@ function formatDateForDisplay(value) {
   return year && month && day ? `${day}/${month}/${year}` : date;
 }
 
-function emailEscape(value) {
-  return String(value || '').replace(/[&<>"']/g, (character) => {
-    const entities = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return entities[character];
-  });
-}
-
 function sanitizeDeliveryError(error) {
   return String(error?.message || 'El servicio de correo no confirmó el envío.')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[correo oculto]')
     .replace(/\b\d{6,}\b/g, '[identificador oculto]')
     .slice(0, 1000);
-}
-
-function buildEmailHtml(name, eventName) {
-  return `<!doctype html>
-    <html lang="es">
-      <body style="font-family:Arial,sans-serif;color:#202124">
-        <p>Hola ${emailEscape(name)},</p>
-        <p>Tu participación en <strong>${emailEscape(eventName)}</strong> ha sido confirmada.
-        Adjuntamos tu certificado personalizado.</p>
-        <p>Atentamente,<br>Equipo MiLab</p>
-      </body>
-    </html>`;
 }
 
 async function getRegisteredUserMatch(client, normalizedDocument) {
@@ -586,12 +561,16 @@ async function deliverCertificate(certificateId, req) {
   }
 
   try {
-    await mail.sendMail({
-      from: process.env.EMAIL_USER,
-      to: claim.current.correo,
+    const notification = await sendEmailNotification({
+      sourceSystem: 'encuentros',
+      templateName: 'encuentros/certificado-participacion',
+      recipient: claim.current.correo,
       subject: `Tu certificado de participación: ${claim.current.evento}`,
-      text: `Hola ${claim.current.participante_nombre},\n\nAdjuntamos tu certificado del evento ${claim.current.evento}.\n\nEquipo MiLab`,
-      html: buildEmailHtml(claim.current.participante_nombre, claim.current.evento),
+      variables: {
+        participanteNombre: claim.current.participante_nombre,
+        eventoNombre: claim.current.evento,
+      },
+      correlationId: String(certificateId),
       attachments: [
         {
           filename: `certificado-${certificateId}.pdf`,
@@ -600,6 +579,9 @@ async function deliverCertificate(certificateId, req) {
         },
       ],
     });
+    if (notification.status !== 'SENT') {
+      throw new Error(notification.error || 'El servicio de correo no confirmó el envío.');
+    }
 
     await withTransaction(async (client) => {
       await client.query(
