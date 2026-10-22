@@ -540,7 +540,27 @@
       };
     }
 
-    function expandNavigationForGuide() {
+    function resolveGuideModule(element) {
+      const group = element.closest('.app-sidebar-group');
+      const groupTitle = group
+        ?.querySelector('.app-sidebar-group-toggle > span')
+        ?.textContent.replace(/\s+/g, ' ')
+        .trim();
+
+      if (groupTitle) {
+        return groupTitle;
+      }
+
+      const primaryLink = element.closest('.app-sidebar-primary .app-sidebar-link');
+      const primaryTitle = primaryLink
+        ?.querySelector('span')
+        ?.textContent.replace(/\s+/g, ' ')
+        .trim();
+
+      return primaryTitle || 'General';
+    }
+
+    function expandNavigationForGuide(moduleId) {
       const expandedState = {
         collapses: [],
         dropdowns: [],
@@ -550,6 +570,13 @@
         const toggle = collapse.id
           ? document.querySelector(`[data-bs-target="#${collapse.id}"]`)
           : null;
+        const group = collapse.closest('.app-sidebar-group');
+        const groupLabel = group
+          ?.querySelector('.app-sidebar-group-toggle > span')
+          ?.textContent.trim();
+        const shouldExpand =
+          collapse.id === 'appSidebarNavigation' || !moduleId || groupLabel === moduleId;
+
         expandedState.collapses.push({
           element: collapse,
           wasShown: collapse.classList.contains('show'),
@@ -557,37 +584,84 @@
           previousExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
         });
 
-        if (!collapse.classList.contains('show')) {
+        if (shouldExpand && !collapse.classList.contains('show')) {
           collapse.classList.add('show');
         }
 
-        if (toggle) {
+        if (shouldExpand && toggle) {
           toggle.setAttribute('aria-expanded', 'true');
         }
       });
 
-      document.querySelectorAll('.app-user-tools .dropdown').forEach(function (dropdown) {
-        const toggle = dropdown.querySelector('[data-bs-toggle="dropdown"]');
-        const menu = dropdown.querySelector('.dropdown-menu');
+      return expandedState;
+    }
 
-        if (!toggle || !menu) {
-          return;
+    function restoreGuideDropdown(entry) {
+      if (!entry.toggleWasShown) {
+        entry.toggle.classList.remove('show');
+      }
+
+      if (!entry.menuWasShown) {
+        entry.menu.classList.remove('show');
+      }
+
+      if (entry.previousExpanded === null) {
+        entry.toggle.removeAttribute('aria-expanded');
+      } else {
+        entry.toggle.setAttribute('aria-expanded', entry.previousExpanded);
+      }
+    }
+
+    function syncGuideDropdownForTarget(target, expandedState) {
+      const dropdown = target ? target.closest('.dropdown') : null;
+      const toggle = dropdown?.querySelector('[data-bs-toggle="dropdown"]');
+      const menu = dropdown?.querySelector('.dropdown-menu');
+      const activeDropdown = toggle && menu ? dropdown : null;
+
+      expandedState.dropdowns.slice().forEach(function (entry) {
+        if (entry.dropdown !== activeDropdown) {
+          restoreGuideDropdown(entry);
+          expandedState.dropdowns.splice(expandedState.dropdowns.indexOf(entry), 1);
         }
+      });
 
-        expandedState.dropdowns.push({
+      if (!activeDropdown) {
+        return;
+      }
+
+      let entry = expandedState.dropdowns.find(function (item) {
+        return item.dropdown === activeDropdown;
+      });
+
+      if (!entry) {
+        entry = {
+          dropdown: activeDropdown,
           toggle,
           menu,
           toggleWasShown: toggle.classList.contains('show'),
           menuWasShown: menu.classList.contains('show'),
           previousExpanded: toggle.getAttribute('aria-expanded'),
-        });
+        };
+        expandedState.dropdowns.push(entry);
+      }
 
-        toggle.classList.add('show');
-        toggle.setAttribute('aria-expanded', 'true');
-        menu.classList.add('show');
+      toggle.classList.add('show');
+      toggle.setAttribute('aria-expanded', 'true');
+      menu.classList.add('show');
+    }
+
+    function scrollGuideTargetIntoView(element) {
+      if (!element || typeof element.scrollIntoView !== 'function') {
+        return;
+      }
+
+      const prefersReducedMotion =
+        window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      element.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
       });
-
-      return expandedState;
     }
 
     function restoreNavigationAfterGuide(expandedState) {
@@ -610,23 +684,11 @@
       });
 
       expandedState.dropdowns.forEach(function (entry) {
-        if (!entry.toggleWasShown) {
-          entry.toggle.classList.remove('show');
-        }
-
-        if (!entry.menuWasShown) {
-          entry.menu.classList.remove('show');
-        }
-
-        if (entry.previousExpanded === null) {
-          entry.toggle.removeAttribute('aria-expanded');
-        } else {
-          entry.toggle.setAttribute('aria-expanded', entry.previousExpanded);
-        }
+        restoreGuideDropdown(entry);
       });
     }
 
-    function buildSteps() {
+    function buildSteps(moduleId) {
       const candidateSteps = [
         createStep(
           ['[data-guide="main-navigation"]'],
@@ -895,12 +957,18 @@
         .map(function (step) {
           const element = resolveStepElement(step.selectors);
 
-          if (!element) {
+          if (!element || !step.popover.title.trim() || !step.popover.description.trim()) {
+            return null;
+          }
+
+          const module = resolveGuideModule(element);
+          if (moduleId && module !== moduleId) {
             return null;
           }
 
           return {
             element,
+            module,
             popover: step.popover,
           };
         })
@@ -909,16 +977,17 @@
 
     function startGuide(options) {
       const settings = options || {};
-      const url = new window.URL(window.location.href);
       const forceGuide = Boolean(settings.force);
-      const steps = buildSteps();
-      let expandedNavigationState = null;
 
       if (!forceGuide && hasSeenGuide()) {
         return;
       }
 
+      const expandedNavigationState = expandNavigationForGuide(settings.module);
+      const steps = buildSteps(settings.module);
+
       if (steps.length === 0) {
+        restoreNavigationAfterGuide(expandedNavigationState);
         return;
       }
 
@@ -931,10 +1000,9 @@
         prevBtnText: 'Anterior',
         doneBtnText: 'Finalizar',
         steps,
-        onHighlighted: function () {
-          if (!expandedNavigationState) {
-            expandedNavigationState = expandNavigationForGuide();
-          }
+        onHighlighted: function (element) {
+          syncGuideDropdownForTarget(element, expandedNavigationState);
+          scrollGuideTargetIntoView(element);
         },
         onDestroyStarted: function () {
           markGuideAsSeen();
@@ -943,8 +1011,7 @@
         onDestroyed: function () {
           restoreNavigationAfterGuide(expandedNavigationState);
           if (settings.cleanUrl) {
-            url.searchParams.delete('tour');
-            window.history.replaceState({}, document.title, url.toString());
+            cleanTourParameter();
           }
         },
       });
@@ -955,27 +1022,141 @@
       }, settings.delay || 350);
     }
 
+    function cleanTourParameter() {
+      const url = new window.URL(window.location.href);
+      url.searchParams.delete('tour');
+      window.history.replaceState({}, document.title, url.toString());
+    }
+
+    function getAvailableGuideModules() {
+      return Array.from(
+        new Set(
+          buildSteps()
+            .map(function (step) {
+              return step.module;
+            })
+            .filter(Boolean)
+        )
+      );
+    }
+
+    let introModalInstance = null;
+    let introSettings = null;
+    let pendingGuideOptions = null;
+
+    function showGuideIntro(options) {
+      const modalElement = document.getElementById('milabTourIntroModal');
+      const moduleSelect = modalElement?.querySelector('#milabTourModuleSelect');
+      const moduleButton = modalElement?.querySelector('[data-guide-start="module"]');
+      const allButton = modalElement?.querySelector('[data-guide-start="all"]');
+
+      if (
+        !modalElement ||
+        !moduleSelect ||
+        !moduleButton ||
+        !allButton ||
+        !window.bootstrap ||
+        !window.bootstrap.Modal
+      ) {
+        startGuide({ ...(options || {}), force: true });
+        return;
+      }
+
+      const modules = getAvailableGuideModules();
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Selecciona un módulo disponible';
+      moduleSelect.replaceChildren(placeholder);
+
+      modules.forEach(function (module) {
+        const option = document.createElement('option');
+        option.value = module;
+        option.textContent = module;
+        moduleSelect.appendChild(option);
+      });
+
+      moduleSelect.disabled = modules.length === 0;
+      moduleButton.disabled = true;
+      allButton.disabled = modules.length === 0;
+
+      if (!modalElement.hasAttribute('data-guide-intro-bound')) {
+        modalElement.setAttribute('data-guide-intro-bound', 'true');
+
+        moduleSelect.addEventListener('change', function () {
+          moduleButton.disabled = !moduleSelect.value;
+        });
+
+        modalElement.addEventListener('click', function (event) {
+          const actionButton = event.target.closest('[data-guide-start]');
+          if (!actionButton) {
+            return;
+          }
+
+          const mode = actionButton.getAttribute('data-guide-start');
+          const moduleId = mode === 'module' ? moduleSelect.value : null;
+          if (mode === 'module' && !moduleId) {
+            return;
+          }
+
+          event.preventDefault();
+          pendingGuideOptions = {
+            force: true,
+            module: moduleId,
+            cleanUrl: Boolean(introSettings && introSettings.cleanUrl),
+            delay: (introSettings && introSettings.delay) || 350,
+          };
+          introModalInstance.hide();
+        });
+
+        modalElement.addEventListener('hidden.bs.modal', function () {
+          const guideOptions = pendingGuideOptions;
+          const settings = introSettings || {};
+          pendingGuideOptions = null;
+          introSettings = null;
+
+          if (guideOptions) {
+            startGuide(guideOptions);
+            return;
+          }
+
+          markGuideAsSeen();
+          if (settings.cleanUrl) {
+            cleanTourParameter();
+          }
+        });
+      }
+
+      introSettings = options || {};
+      introModalInstance = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+      introModalInstance.show();
+    }
+
     window.MiLabGuide = {
-      start: startGuide,
+      start: showGuideIntro,
+      run: startGuide,
     };
 
     document.addEventListener('click', function (event) {
-      const trigger = event.target.closest('[data-guide-restart="true"]');
+      const trigger = event.target.closest?.('[data-guide-restart="true"]');
 
       if (!trigger) {
         return;
       }
 
       event.preventDefault();
-      startGuide({ force: true, delay: 120 });
+      showGuideIntro({ force: true, delay: 120 });
     });
 
     if (new window.URL(window.location.href).searchParams.get('tour') === '1') {
-      startGuide({ force: true, cleanUrl: true });
+      showGuideIntro({ force: true, cleanUrl: true });
       return;
     }
 
-    startGuide();
+    if (!hasSeenGuide()) {
+      window.setTimeout(function () {
+        showGuideIntro();
+      }, 350);
+    }
   }
 
   function initializeOatiLoadingIndicator() {
