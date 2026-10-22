@@ -152,7 +152,13 @@ async function createNotificationRecord(payload, throwOnError) {
   }
 }
 
-async function sendNotificationEmail(templateName, variables, recipient, subject) {
+async function sendNotificationEmail(
+  templateName,
+  variables,
+  recipient,
+  subject,
+  extraAttachments
+) {
   const html = await renderTemplate(templateName, variables || {});
 
   await transporter.sendMail({
@@ -164,7 +170,7 @@ async function sendNotificationEmail(templateName, variables, recipient, subject
     to: recipient,
     subject,
     html,
-    attachments: buildBrandedEmailAttachments(),
+    attachments: buildBrandedEmailAttachments(extraAttachments),
   });
 }
 
@@ -186,6 +192,7 @@ async function sendEmailNotification({
   recipient,
   subject,
   variables,
+  attachments = [],
   correlationId,
   throwOnError = false,
 }) {
@@ -214,7 +221,7 @@ async function sendEmailNotification({
   const id = creationResult.ok ? creationResult.id : null;
 
   try {
-    await sendNotificationEmail(templateName, variables, recipient, subject);
+    await sendNotificationEmail(templateName, variables, recipient, subject, attachments);
   } catch (error) {
     await markFailedSafely(id, error);
     throwIfRequired(error, throwOnError);

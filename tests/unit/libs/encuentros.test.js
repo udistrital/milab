@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { inflateSync } = require('node:zlib');
 const ExcelJS = require('exceljs');
 const { PDFDocument } = require('pdf-lib');
 
@@ -177,12 +178,18 @@ test('validates and personalizes a PDF using configured text and QR coordinates'
   const output = await generateCertificatePdf({
     templateBuffer,
     templateConfig: certificateConfig,
-    values: { nombre: 'Participante de prueba' },
+    values: { nombre: 'Participante áéíóúñü de prueba' },
     verificationUrl: 'https://example.edu/milab/encuentros/verificar/abc',
   });
   const generatedPdf = await PDFDocument.load(output);
   assert.equal(generatedPdf.getPageCount(), 1);
   assert.ok(output.length > templateBuffer.length);
+  const contentStream = generatedPdf.context.lookup(generatedPdf.getPage(0).node.Contents().get(0));
+  const pageContent = inflateSync(Buffer.from(contentStream.getContents())).toString('latin1');
+  const encodedUppercaseName = Buffer.from('PARTICIPANTE ÁÉÍÓÚÑÜ DE PRUEBA', 'latin1')
+    .toString('hex')
+    .toUpperCase();
+  assert.ok(pageContent.includes(encodedUppercaseName));
   await assert.rejects(
     generateCertificatePdf({
       templateBuffer,
