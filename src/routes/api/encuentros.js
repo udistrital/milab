@@ -3,12 +3,14 @@ const express = require('express');
 const fs = require('fs/promises');
 const path = require('path');
 const multer = require('multer');
+const PDFDocument = require('pdfkit');
 
 const pool = require('../../libs/db');
 const mail = require('../../libs/mail');
 const { buildAppUrl } = require('../../libs/app-url');
 const { logger } = require('../../libs/logger');
 const { requireJsonRoles, requireRoles, requireUser } = require('../middlewares/auth');
+const { enrichErrorPayloadForAdmin } = require('../middlewares/error-handler');
 const {
   buildParticipantTemplateBuffer,
   generateCertificatePdf,
@@ -145,17 +147,20 @@ function logFailure(req, error, action) {
 function handleServerError(req, res, error, message) {
   logFailure(req, error, 'encuentros_request');
   if (error?.code === '42P01' || error?.code === '42703') {
-    return res.status(503).json({
-      ok: false,
-      migration_faltante: true,
-      message: 'Falta aplicar la migración del submódulo Encuentros.',
-      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
-    });
+    return res.status(503).json(
+      enrichErrorPayloadForAdmin(
+        req,
+        {
+          ok: false,
+          migration_faltante: true,
+          message: 'Falta aplicar la migración del submódulo Encuentros.',
+          script_requerido: 'sql-scripts/prod/db_structure_certificacion.sql',
+        },
+        error
+      )
+    );
   }
-  return res.status(500).json({
-    ok: false,
-    message,
-  });
+  return res.status(500).json(enrichErrorPayloadForAdmin(req, { ok: false, message }, error));
 }
 
 async function withTransaction(callback) {
@@ -739,6 +744,298 @@ async function fetchEventDetail(eventId) {
   };
 }
 
+async function fetchEventReportData(eventId) {
+  const eventResult = await pool.query(
+    `
+      SELECT
+        e.id, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
+        e.lugar, e.organizador, e.estado,
+        COUNT(DISTINCT p.id)::int AS total_participantes,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.entrada_en IS NOT NULL)::int AS entradas,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.salida_en IS NOT NULL)::int AS salidas,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.id IS NOT NULL AND a.entrada_en IS NULL
+        )::int AS sin_entrada,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE a.entrada_en IS NOT NULL AND a.salida_en IS NULL
+        )::int AS dentro_sin_salida,
+        COUNT(DISTINCT c.id)::int AS certificados_generados,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'enviado')::int AS certificados_enviados,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.email_estado IN ('pendiente', 'enviando')
+        )::int AS certificados_pendientes,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'error')::int AS certificados_con_error
+      FROM encuentro_evento e
+      LEFT JOIN encuentro_participante p ON p.evento_id = e.id AND p.activo = TRUE
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = e.id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = e.id AND c.activo = TRUE
+      WHERE e.id = $1 AND e.activo = TRUE
+      GROUP BY e.id
+    `,
+    [eventId]
+  );
+  const event = eventResult.rows[0];
+  if (!event) return null;
+  if (event.estado !== 'finalizado') return { event, faculties: [] };
+
+  const facultiesResult = await pool.query(
+    `
+      SELECT
+        COALESCE(NULLIF(BTRIM(p.facultad), ''), 'Facultad no especificada') AS facultad,
+        COUNT(DISTINCT p.id)::int AS registrados,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.entrada_en IS NOT NULL)::int AS con_entrada,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.salida_en IS NOT NULL)::int AS completaron
+      FROM encuentro_participante p
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE
+      GROUP BY COALESCE(NULLIF(BTRIM(p.facultad), ''), 'Facultad no especificada')
+      ORDER BY registrados ASC, facultad ASC
+    `,
+    [eventId]
+  );
+
+  return { event, faculties: facultiesResult.rows || [] };
+}
+
+function formatReportNumber(value) {
+  return new Intl.NumberFormat('es-CO').format(Number(value) || 0);
+}
+
+function formatReportPercent(value, total) {
+  const percentage = total ? (Number(value) / Number(total)) * 100 : 0;
+  return `${new Intl.NumberFormat('es-CO', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(percentage)} %`;
+}
+
+function formatReportDate(value) {
+  const date =
+    value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : date || 'No disponible';
+}
+
+function renderEventReportPdf({ event, faculties }) {
+  return new Promise((resolve, reject) => {
+    const pdf = new PDFDocument({
+      size: 'A4',
+      margin: 42,
+      info: { Title: `Informe de encuentro - ${event.nombre}`, Author: 'MiLab' },
+    });
+    const chunks = [];
+    pdf.on('data', (chunk) => chunks.push(chunk));
+    pdf.on('end', () => resolve(Buffer.concat(chunks)));
+    pdf.on('error', reject);
+
+    const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+    const bottomLimit = () => pdf.page.height - pdf.page.margins.bottom;
+    const ensureSpace = (height) => {
+      if (pdf.y + height > bottomLimit()) pdf.addPage();
+    };
+    const total = Number(event.total_participantes) || 0;
+    const metrics = [
+      { label: 'Registrados activos', value: formatReportNumber(total) },
+      {
+        label: 'Con entrada registrada',
+        value: formatReportNumber(event.entradas),
+        detail: `${formatReportPercent(event.entradas, total)} de los registrados`,
+      },
+      {
+        label: 'Participación completada',
+        value: formatReportNumber(event.salidas),
+        detail: `${formatReportPercent(event.salidas, total)} de los registrados`,
+      },
+      { label: 'Sin entrada', value: formatReportNumber(event.sin_entrada) },
+      { label: 'Dentro sin salida', value: formatReportNumber(event.dentro_sin_salida) },
+      {
+        label: 'Certificados enviados',
+        value: `${formatReportNumber(event.certificados_enviados)} / ${formatReportNumber(event.certificados_generados)}`,
+      },
+      {
+        label: 'Certificados pendientes',
+        value: formatReportNumber(event.certificados_pendientes),
+      },
+      { label: 'Certificados con error', value: formatReportNumber(event.certificados_con_error) },
+    ];
+
+    pdf.font('Helvetica-Bold').fontSize(21).fillColor('#173B5E').text('Informe del encuentro');
+    pdf.moveDown(0.25);
+    pdf.font('Helvetica-Bold').fontSize(15).fillColor('#243447').text(event.nombre);
+    pdf.moveDown(0.6);
+
+    const startTime = String(event.hora_inicio || '').slice(0, 5);
+    const endTime = String(event.hora_fin || '').slice(0, 5);
+    const generatedAt = new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'America/Bogota',
+    }).format(new Date());
+    pdf
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor('#334155')
+      .text(`Fecha: ${formatReportDate(event.fecha)}    Horario: ${startTime} - ${endTime}`)
+      .text(`Lugar: ${event.lugar || 'No especificado'}`)
+      .text(`Organizador: ${event.organizador || 'No especificado'}`)
+      .text(`Estado: Finalizado    Informe generado: ${generatedAt}`);
+    pdf.moveDown(0.8);
+
+    pdf.font('Helvetica-Bold').fontSize(12).fillColor('#173B5E').text('Resumen del encuentro');
+    pdf.moveDown(0.4);
+    const cardGap = 10;
+    const cardWidth = (contentWidth - cardGap) / 2;
+    const cardHeight = 48;
+    for (let index = 0; index < metrics.length; index += 2) {
+      ensureSpace(cardHeight + 10);
+      const rowY = pdf.y;
+      [metrics[index], metrics[index + 1]].forEach((metric, columnIndex) => {
+        if (!metric) return;
+        const x = pdf.page.margins.left + columnIndex * (cardWidth + cardGap);
+        pdf.save().fillColor('#F2F6FA').rect(x, rowY, cardWidth, cardHeight).fill().restore();
+        pdf
+          .save()
+          .strokeColor('#D7E0E9')
+          .lineWidth(0.7)
+          .rect(x, rowY, cardWidth, cardHeight)
+          .stroke()
+          .restore();
+        pdf
+          .font('Helvetica')
+          .fontSize(8)
+          .fillColor('#526273')
+          .text(metric.label, x + 9, rowY + 6, { width: cardWidth - 18 });
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(14)
+          .fillColor('#173B5E')
+          .text(metric.value, x + 9, rowY + 18, { width: cardWidth - 18 });
+        if (metric.detail) {
+          pdf
+            .font('Helvetica')
+            .fontSize(7)
+            .fillColor('#526273')
+            .text(metric.detail, x + 9, rowY + 35, { width: cardWidth - 18 });
+        }
+      });
+      pdf.y = rowY + cardHeight + 10;
+    }
+
+    ensureSpace(60);
+    pdf.font('Helvetica-Bold').fontSize(12).fillColor('#173B5E').text('Participación por facultad');
+    pdf
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor('#526273')
+      .text(
+        'Ordenada de menor a mayor por número de inscritos activos. Los porcentajes se calculan sobre los registros de cada facultad.'
+      );
+    pdf.moveDown(0.5);
+
+    const columns = [
+      { label: 'Facultad', width: 165, align: 'left' },
+      { label: 'Inscritos', width: 60, align: 'right' },
+      { label: 'Con entrada', width: 72, align: 'right' },
+      { label: 'Completaron', width: 72, align: 'right' },
+      { label: '% entrada', width: 70, align: 'right' },
+      { label: '% completa', width: 72, align: 'right' },
+    ];
+    const tableX = pdf.page.margins.left;
+    const headerHeight = 24;
+    const drawTableHeader = () => {
+      const y = pdf.y;
+      pdf.save().fillColor('#173B5E').rect(tableX, y, contentWidth, headerHeight).fill().restore();
+      let x = tableX;
+      columns.forEach((column) => {
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(7.5)
+          .fillColor('#FFFFFF')
+          .text(column.label, x + 4, y + 7, {
+            width: column.width - 8,
+            align: column.align,
+            lineBreak: false,
+          });
+        x += column.width;
+      });
+      pdf.y = y + headerHeight;
+    };
+    drawTableHeader();
+
+    if (!faculties.length) {
+      pdf
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor('#526273')
+        .text('No hay participantes registrados activos.');
+    } else {
+      faculties.forEach((faculty, index) => {
+        const facultyName = faculty.facultad || 'Facultad no especificada';
+        pdf.font('Helvetica').fontSize(8);
+        const rowHeight = Math.max(
+          22,
+          pdf.heightOfString(facultyName, { width: columns[0].width - 10 }) + 8
+        );
+        if (pdf.y + rowHeight > bottomLimit()) {
+          pdf.addPage();
+          drawTableHeader();
+        }
+        const rowY = pdf.y;
+        if (index % 2 === 1) {
+          pdf
+            .save()
+            .fillColor('#F6F8FA')
+            .rect(tableX, rowY, contentWidth, rowHeight)
+            .fill()
+            .restore();
+        }
+        const values = [
+          facultyName,
+          formatReportNumber(faculty.registrados),
+          formatReportNumber(faculty.con_entrada),
+          formatReportNumber(faculty.completaron),
+          formatReportPercent(faculty.con_entrada, faculty.registrados),
+          formatReportPercent(faculty.completaron, faculty.registrados),
+        ];
+        let x = tableX;
+        columns.forEach((column, columnIndex) => {
+          pdf
+            .font('Helvetica')
+            .fontSize(8)
+            .fillColor('#263445')
+            .text(values[columnIndex], x + 4, rowY + 5, {
+              width: column.width - 8,
+              height: rowHeight - 8,
+              align: column.align,
+            });
+          x += column.width;
+        });
+        pdf
+          .moveTo(tableX, rowY + rowHeight)
+          .lineTo(tableX + contentWidth, rowY + rowHeight)
+          .strokeColor('#D7E0E9')
+          .lineWidth(0.5)
+          .stroke();
+        pdf.y = rowY + rowHeight;
+      });
+    }
+
+    ensureSpace(42);
+    pdf.moveDown(0.7);
+    pdf
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor('#526273')
+      .text(
+        'Este informe contiene cifras agregadas de participantes activos; no incluye datos personales.'
+      );
+    pdf.end();
+  });
+}
+
 router.get('/gestion', requireEncounterManagerPage, (req, res) => {
   return res.render('home/encuentros-gestion', {
     canAnnulCertificates: canAdministerCertificates(req),
@@ -1207,6 +1504,31 @@ router.get('/api/eventos/:eventId', requireManager, async (req, res) => {
     return res.json({ ok: true, ...detail });
   } catch (error) {
     return handleServerError(req, res, error, 'No fue posible consultar el detalle del evento.');
+  }
+});
+
+router.get('/api/eventos/:eventId/informe.pdf', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+
+  try {
+    const report = await fetchEventReportData(eventId);
+    if (!report) return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (report.event.estado !== 'finalizado') {
+      return res.status(409).json({
+        ok: false,
+        message: 'El informe solo está disponible cuando el encuentro haya finalizado.',
+      });
+    }
+
+    const pdf = await renderEventReportPdf(report);
+    res.type('application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="informe-encuentro-${eventId}.pdf"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    return res.send(pdf);
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible generar el informe del encuentro.');
   }
 });
 

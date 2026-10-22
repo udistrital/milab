@@ -82,7 +82,7 @@ El alcance operativo se resuelve con:
 
 ## Menú Persistido En BD
 
-El seed canónico actual en `sql-scripts/db_seed_system.sql` deja esta estructura principal:
+El seed canónico actual en `sql-scripts/prod/db_seed_system.sql` deja esta estructura principal:
 
 - `primary`
   - `Inicio` para todos los roles autenticados.

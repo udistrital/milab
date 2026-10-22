@@ -466,7 +466,7 @@ test('course listing reports a missing capacitacion schema as a service error', 
 
     assert.equal(response.status, 503);
     assert.equal(response.body.migration_faltante, true);
-    assert.equal(response.body.script_requerido, 'sql-scripts/db_structure_certificacion.sql');
+    assert.equal(response.body.script_requerido, 'sql-scripts/prod/db_structure_certificacion.sql');
   } finally {
     loaded.restore();
   }

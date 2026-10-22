@@ -1,13 +1,14 @@
 <%- include('../partials/header'); -%>
 <% const values = formValues || {}; %>
+<% const newManager = newManagerValues || {}; %>
 <% const selectedUalIds = new Set((values.ualIds || []).map(String)); %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Gestores de laboratorio</h1>
     <p class="app-page-subtitle">
-      Asigna cuentas existentes a una o varias UAL. El rol no recibe permisos de menú por defecto;
-      configúralos desde «Permisos y menús» según las funciones autorizadas.
+      Crea cuentas nuevas con el rol Gestor o asigna el rol a una cuenta existente. La asociación
+      a UAL es opcional.
     </p>
   </section>
 
@@ -29,9 +30,68 @@
 
       <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
-          <h2 class="h5">Asignar o actualizar un gestor</h2>
+          <h2 class="h5">Crear un nuevo gestor</h2>
           <p class="text-muted">
-            Selecciona una cuenta activa ya registrada en MiLab; esta operación no crea usuarios ni credenciales.
+            Diligencia los datos de la cuenta institucional. Se asignará el rol automáticamente y no
+            se asociará ninguna UAL; el ingreso se realiza con la cuenta institucional.
+          </p>
+
+          <form method="POST" action="/milab/api/gestores_laboratorio/crear" class="row g-3">
+            <%- include('../partials/csrf_field') %>
+            <div class="col-12 col-md-6">
+              <label for="newManagerName" class="form-label">Nombre completo</label>
+              <input
+                id="newManagerName"
+                name="nombre"
+                class="form-control"
+                maxlength="200"
+                value="<%= newManager.name || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label for="newManagerDocument" class="form-label">Número de documento</label>
+              <input
+                id="newManagerDocument"
+                name="documento"
+                class="form-control"
+                maxlength="50"
+                value="<%= newManager.document || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12">
+              <label for="newManagerEmail" class="form-label">Correo institucional</label>
+              <input
+                id="newManagerEmail"
+                name="correo"
+                type="email"
+                class="form-control"
+                maxlength="255"
+                value="<%= newManager.email || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12 text-end">
+              <button type="submit" class="btn btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
+                Crear y enrolar como gestor
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5">Asignar o actualizar una cuenta existente</h2>
+          <p class="text-muted">
+            Usa esta opción para una cuenta ya registrada. Puedes guardar el rol sin asignarle UAL.
           </p>
 
           <form method="POST" action="/milab/api/gestores_laboratorio/guardar" class="row g-3">
@@ -49,14 +109,13 @@
             </div>
 
             <div class="col-12 col-lg-7">
-              <label for="managerUals" class="form-label">UAL asignadas</label>
+              <label for="managerUals" class="form-label">UAL asignadas (opcional)</label>
               <select
                 id="managerUals"
                 name="ual_ids"
                 class="form-select"
                 multiple
                 size="5"
-                required
                 <%= roleConfigured ? '' : 'disabled' %>
                 aria-describedby="managerUalsHelp"
               >
@@ -66,12 +125,14 @@
                   </option>
                 <% }); %>
               </select>
-              <div id="managerUalsHelp" class="form-text">Usa Ctrl/Cmd para seleccionar varias UAL.</div>
+              <div id="managerUalsHelp" class="form-text">
+                Usa Ctrl/Cmd para seleccionar varias. Si no seleccionas ninguna, el gestor queda sin UAL.
+              </div>
             </div>
 
             <div class="col-12 text-end">
               <button type="submit" class="btn btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
-                Asignar / guardar asignaciones
+                Asignar / guardar gestor
               </button>
             </div>
           </form>
@@ -129,7 +190,6 @@
                           class="form-select form-select-sm"
                           multiple
                           size="4"
-                          required
                           <%= roleConfigured ? '' : 'disabled' %>
                         >
                           <% (ualOptions || []).forEach(function(ual) { %>
@@ -141,6 +201,9 @@
                         <button type="submit" class="btn btn-sm btn-outline-primary align-self-start" <%= roleConfigured && manager.cuenta_activa ? '' : 'disabled' %>>
                           Guardar / activar
                         </button>
+                        <% if (!activeAssignments.length) { %>
+                          <small class="text-muted">Sin UAL asignadas.</small>
+                        <% } %>
                         <% if (manager.asignaciones && manager.asignaciones.length) { %>
                           <small class="text-muted">
                             Historial:

@@ -185,6 +185,107 @@ test('gestores_laboratorio assigns an existing account and scoped UALs without c
   }
 });
 
+test('gestores_laboratorio creates a new account and assigns the role without UALs', async () => {
+  const loaded = loadRoute({
+    clientQueryImpl: async (sql) => {
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
+      if (sql.includes('SELECT id FROM rol WHERE nombre')) return { rows: [{ id: 8 }] };
+      if (sql.includes('SELECT id') && sql.includes('LOWER(correo)')) return { rows: [] };
+      if (sql.includes('INSERT INTO usuario (correo, documento, nombre)')) {
+        return { rows: [{ id: 20 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 3,
+      tipo: 'admin',
+      documento_real: '900',
+    });
+    const response = await request(app).post('/crear').type('form').send({
+      nombre: 'Gestora Nueva',
+      documento: '12345',
+      correo: 'GESTORA@UDISTRITAL.EDU.CO',
+    });
+
+    assert.equal(response.status, 200);
+    assert.match(response.body.locals.success, /sin asociar UAL/i);
+    const createUser = loaded.clientCalls.find((call) =>
+      call.sql.includes('INSERT INTO usuario (correo, documento, nombre)')
+    );
+    assert.deepEqual(createUser.params, ['gestora@udistrital.edu.co', '12345', 'Gestora Nueva']);
+    assert.equal(
+      loaded.clientCalls.some((call) => call.sql.includes('INSERT INTO usuario_rol')),
+      true
+    );
+    assert.equal(
+      loaded.clientCalls.some((call) => /usuario_ual_rol_operativo/i.test(call.sql)),
+      false
+    );
+    assert.equal(
+      loaded.clientCalls.some((call) => call.sql.includes('INSERT INTO log')),
+      true
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('gestores_laboratorio directs duplicate identities to the existing-account flow', async () => {
+  const loaded = loadRoute({
+    clientQueryImpl: async (sql) => {
+      if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rows: [] };
+      if (sql.includes('SELECT id FROM rol WHERE nombre')) return { rows: [{ id: 8 }] };
+      if (sql.includes('SELECT id') && sql.includes('LOWER(correo)')) {
+        return { rows: [{ id: 44 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin' });
+    const response = await request(app).post('/crear').type('form').send({
+      nombre: 'Gestora Existente',
+      documento: '12345',
+      correo: 'gestora@udistrital.edu.co',
+    });
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.locals.error, /cuenta existente/i);
+    assert.equal(
+      loaded.clientCalls.some((call) => call.sql.includes('INSERT INTO usuario (correo')),
+      false
+    );
+    assert.equal(
+      loaded.clientCalls.some((call) => call.sql.includes('INSERT INTO usuario_rol')),
+      false
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('gestores_laboratorio allows assigning an existing account without UALs', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, {
+      id: 3,
+      tipo: 'admin',
+      documento_real: '900',
+    });
+    const response = await request(app).post('/guardar').type('form').send({ user_id: '20' });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(loaded.assignmentCalls[0].ualIds, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('gestores_laboratorio does not assign a manager role to an account with privileged roles', async () => {
   const loaded = loadRoute({
     clientQueryImpl: async (sql) => {

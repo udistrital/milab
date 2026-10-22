@@ -4,12 +4,15 @@ Encuentros forma parte de Certificación y reutiliza la sesión, roles, correo y
 
 ## Instalación controlada
 
-1. Aplicar `sql-scripts/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
-2. Aplicar `sql-scripts/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
+1. Aplicar `sql-scripts/prod/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
+2. Aplicar `sql-scripts/prod/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
 3. Usar el procedimiento institucional de migraciones y aprobación para promover ambos scripts. No ejecutarlos directamente en producción sin revisión y respaldo de DBA.
-4. Configurar el almacenamiento de archivos descrito abajo antes de habilitar cargas y generación de certificados.
+4. En bases existentes, aplicar [`sql/20261021_encuentros_permissions.sql`](../sql/20261021_encuentros_permissions.sql) con un DBA o propietario de los objetos para conceder a la aplicación los privilegios correspondientes sobre las tablas y secuencias de Encuentros.
+5. Configurar el almacenamiento de archivos descrito abajo antes de habilitar cargas y generación de certificados.
 
 Los scripts son idempotentes para las tablas, índices y accesos de Encuentros. No crean cuentas de MiLab a partir de participantes importados.
+
+La migración de permisos es transaccional e idempotente; toma como referencia el propietario y los privilegios actuales de `milab.multa`. No es necesario volver a crear las tablas ni reiniciar la base.
 
 ## Archivos y configuración de correo
 

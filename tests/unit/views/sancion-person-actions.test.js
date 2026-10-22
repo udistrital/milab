@@ -84,6 +84,8 @@ function renderDocente() {
 const sampleDebt = {
   DEU_MATERIAL: 'Reposición de insumos',
   DEU_MULTA: '50000',
+  DEU_CPTO_COD: '4',
+  DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
   DEU_FECHA: '2024-06-04',
   DEU_ESTADO: 'PENDIENTE',
   DEU_ANO: '2024',
@@ -120,6 +122,9 @@ test('paso 2 shows the SGA counter and popup only when SGA has sanctions', async
   assert.match(html, /data-bs-target="#sgaSancionesPersonaModal"/);
   assert.match(html, /id="sgaSancionesPersonaModal"/);
   assert.match(html, /Reposición de insumos/);
+  assert.match(html, /Laboratorio \/ dependencia/);
+  assert.match(html, /LABORATORIO DE QUIMICA/);
+  assert.match(html, /Código SGA: 4/);
   assert.match(html, /50000/);
   assert.match(html, /PENDIENTE/);
 });

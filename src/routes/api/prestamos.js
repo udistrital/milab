@@ -3376,7 +3376,7 @@ function normalizeEquipmentForView(item = {}) {
 
 function resolveDbErrorMessage(error, fallbackMessage) {
   if (error?.code === '42P01') {
-    return 'La tabla inventario no existe aun. Actualiza la base con la definicion de inventario en sql-scripts/db_structure.sql.';
+    return 'La tabla inventario no existe aun. Actualiza la base con la definicion de inventario en sql-scripts/preprod/db_structure_inventarios.sql.';
   }
 
   if (error?.code === '23505') {
@@ -3414,7 +3414,7 @@ function resolveDbErrorMessage(error, fallbackMessage) {
 
 function resolveEquipmentDbErrorMessage(error, fallbackMessage) {
   if (error?.code === '42P01') {
-    return 'La tabla equipo no existe aun. Actualiza la base con la definicion de equipos en sql-scripts/db_structure.sql.';
+    return 'La tabla equipo no existe aun. Actualiza la base con la definicion de equipos en sql-scripts/prod/db_structure_prestamos.sql.';
   }
 
   if (error?.code === '23505') {
@@ -3446,7 +3446,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('parametrizacion')
     ) {
-      return 'La tabla parametrizacion no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla parametrizacion no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3454,7 +3454,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('parametro_practica_facultad')
     ) {
-      return 'La tabla parametro_practica_facultad no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla parametro_practica_facultad no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3462,7 +3462,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('esquema_practica_ual')
     ) {
-      return 'La tabla esquema_practica_ual no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla esquema_practica_ual no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3470,7 +3470,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('cola_solicitud')
     ) {
-      return 'La tabla cola_solicitud no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla cola_solicitud no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3478,7 +3478,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('incidencia')
     ) {
-      return 'La tabla incidencia no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla incidencia no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3486,7 +3486,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('reserva_practica')
     ) {
-      return 'La tabla reserva_practica no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla reserva_practica no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3494,7 +3494,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('entrega_equipo')
     ) {
-      return 'La tabla entrega_equipo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla entrega_equipo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3502,7 +3502,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('horario_sala')
     ) {
-      return 'La tabla horario_sala no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla horario_sala no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
     if (
@@ -3510,10 +3510,10 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('sala')
     ) {
-      return 'La tabla sala no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+      return 'La tabla sala no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
-    return 'La tabla solicitud_prestamo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/db_structure.sql.';
+    return 'La tabla solicitud_prestamo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
   }
 
   if (error?.code === '23502') {
@@ -3558,18 +3558,18 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
   if (error?.code === '42703') {
     const message = String(error?.message || '').toLowerCase();
     if (message.includes('reserva_practica')) {
-      return 'La tabla reserva_practica en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/db_structure.sql.';
+      return 'La tabla reserva_practica en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/prod/db_structure_prestamos.sql.';
     }
     if (message.includes('solicitud_prestamo')) {
-      return 'La tabla solicitud_prestamo en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/db_structure.sql.';
+      return 'La tabla solicitud_prestamo en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/prod/db_structure_prestamos.sql.';
     }
     if (message.includes('entrega_equipo')) {
-      return 'La tabla entrega_equipo en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/db_structure.sql.';
+      return 'La tabla entrega_equipo en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/prod/db_structure_prestamos.sql.';
     }
     if (message.includes('parametrizacion')) {
-      return 'La tabla parametrizacion en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/db_structure.sql.';
+      return 'La tabla parametrizacion en esta base aun no tiene todas las columnas nuevas del modulo. Actualiza la estructura con sql-scripts/prod/db_structure_prestamos.sql.';
     }
-    return 'La base de datos aun no tiene todas las columnas nuevas del modulo de prestamos. Actualiza la estructura con sql-scripts/db_structure.sql.';
+    return 'La base de datos aun no tiene todas las columnas nuevas del modulo de prestamos. Actualiza la estructura con sql-scripts/prod/db_structure_prestamos.sql.';
   }
 
   return fallbackMessage;

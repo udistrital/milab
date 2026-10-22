@@ -123,6 +123,12 @@ async function loadSgaDebtsForStudent(sanctionId, isConfigured) {
       const fields = document.createElement('div');
       fields.className = 'sanction-sga-grid';
       addSgaDebtField(fields, 'Código', debt.DEU_EST_COD);
+      addSgaDebtField(
+        fields,
+        'Laboratorio / dependencia',
+        debt.DEU_CPTO_NOMBRE ||
+          (debt.DEU_CPTO_COD ? `Código SGA ${debt.DEU_CPTO_COD}` : 'No reportado por SGA')
+      );
       addSgaDebtField(fields, 'Estado SGA', debt.DEU_ESTADO);
       addSgaDebtField(fields, 'Fecha', debt.DEU_FECHA);
       addSgaDebtField(fields, 'Periodo', [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / '));

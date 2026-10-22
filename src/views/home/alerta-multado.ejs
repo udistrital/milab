@@ -81,6 +81,7 @@
                   <th>Estudiante</th>
                   <th>Código</th>
                   <th>Detalle reportado</th>
+                  <th>Laboratorio / dependencia</th>
                   <th>Fecha</th>
                   <th>Periodo</th>
                   <th>Valor reportado</th>
@@ -93,6 +94,12 @@
                     <td><%= data.DEU_DEUDOR_NOMBRE || '-' %></td>
                     <td><%= data.DEU_EST_COD || '-' %></td>
                     <td><%= data.DEU_MATERIAL || '-' %></td>
+                    <td>
+                      <%= data.DEU_CPTO_NOMBRE || (data.DEU_CPTO_COD ? `Código SGA ${data.DEU_CPTO_COD}` : 'No reportado por SGA') %>
+                      <% if (data.DEU_CPTO_NOMBRE && data.DEU_CPTO_COD) { %>
+                        <small class="d-block text-muted">Código SGA: <%= data.DEU_CPTO_COD %></small>
+                      <% } %>
+                    </td>
                     <td><%= data.DEU_FECHA || '-' %></td>
                     <td><%= data.DEU_ANO || '-' %> / <%= data.DEU_PER || '-' %></td>
                     <td><%= data.DEU_MULTA || '-' %></td>
@@ -112,7 +119,7 @@
     <h4>Información de la sanción</h4>
   
     <p>
-      Para poder saldar su estado, acérquese a la Unidad Académica de Laboratorio (UAL) y Facultad donde fue Sancionado y solucione su situación.
+      Para las sanciones de MILab, acérquese a la UAL y Facultad indicadas. Para las multas de SGA, consulte el laboratorio o dependencia que aparece en el reporte y siga el trámite institucional correspondiente.
     </p>
     <button class="btn btn-primary" onclick="goBack()">Volver Atrás</button>
   </div>

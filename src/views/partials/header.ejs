@@ -219,6 +219,7 @@
         </div>
       </div>
 
+      <% if ((claimNotifications && claimNotifications.count > 0) || !isAuthenticated) { %>
       <nav class="navbar app-navbar app-header-tools" aria-label="Herramientas de usuario">
         <div class="container-fluid app-navbar-inner">
           <div class="app-navbar-actions">
@@ -228,7 +229,7 @@
                 <span class="app-nav-badge"><%= claimNotifications.count %></span>
               </a>
             <% } %>
-            <% if (isAuthenticated) { %>
+            <% if (false && isAuthenticated) { %>
               <div class="app-user-tools d-none d-xl-flex">
                 <div class="dropdown">
                   <button
@@ -618,11 +619,13 @@
           </div>
         </div>
       </nav>
+      <% } %>
     </div>
   </header>
 
   <% if (isAuthenticated) { %>
     <%- include('../home/logout') %>
+    <%- include('./guided-tour-intro') %>
   <% } %>
 
   <div class="app-frame">
@@ -731,6 +734,106 @@
             <% } %>
           </nav>
         </div>
+
+        <% if (isAuthenticated) { %>
+          <nav class="app-sidebar-footer" aria-label="Opciones de usuario">
+            <div class="dropdown dropup app-sidebar-footer-dropdown">
+              <button
+                class="app-sidebar-link dropdown-toggle <%= isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'is-active' : '' %>"
+                id="appSidebarProfileMenuToggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Perfil de usuario"
+                title="Perfil de usuario"
+                data-sidebar-action="profile"
+                data-guide="account-menu"
+                <%- isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'aria-current="page"' : '' %>
+              >
+                <span class="app-sidebar-action-icon app-sidebar-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <circle class="app-sidebar-avatar-frame" cx="12" cy="12" r="9.25"></circle>
+                    <circle class="app-sidebar-avatar-head" cx="12" cy="8.7" r="3.1"></circle>
+                    <path class="app-sidebar-avatar-eyes" d="M10.8 8.2h.01m2.38 0h.01"></path>
+                    <path class="app-sidebar-avatar-mouth app-sidebar-avatar-mouth--neutral" d="M10.8 10.5h2.4"></path>
+                    <path class="app-sidebar-avatar-mouth app-sidebar-avatar-mouth--smile" d="M10.6 10.3q1.4 1.3 2.8 0"></path>
+                    <path class="app-sidebar-avatar-shoulders" d="M5.5 19c.7-3 3.1-4.5 6.5-4.5s5.8 1.5 6.5 4.5"></path>
+                  </svg>
+                </span>
+                <% if (shouldShowAvatarSanctionsBadge && activeSanctionsCount > 0) { %>
+                  <span class="app-avatar-alert-badge" aria-label="Sanciones activas"><%= activeSanctionsCount %></span>
+                <% } %>
+              </button>
+              <%- include('./profile-menu', {
+                sessionName,
+                sessionDocument,
+                sessionRole,
+                shouldShowAvatarSanctionsBadge,
+                activeSanctionsCount,
+                activeSanctionsSummary,
+                formatSanctionDate: locals.formatSanctionDate,
+                sanctionsActionHref,
+                studentUsageSummary,
+                formatUsageHours: locals.formatUsageHours,
+                activeRole,
+                accountLinks,
+              }) %>
+            </div>
+            <a
+              class="app-sidebar-link <%= isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'is-active' : '' %>"
+              href="/milab/encuentros/mis-logros"
+              aria-label="Mis medallas"
+              title="Mis medallas"
+              data-sidebar-action="medals"
+              <%- isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'aria-current="page"' : '' %>
+              data-guide="nav-mis-logros"
+            >
+              <i class="bi bi-award" aria-hidden="true"></i>
+            </a>
+            <div class="dropdown dropup app-sidebar-footer-dropdown">
+              <button
+                class="app-sidebar-link dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Centro de ayuda"
+                title="Centro de ayuda"
+                data-sidebar-action="help"
+                data-guide="help-manuals"
+              >
+                <i class="bi bi-question-circle" aria-hidden="true"></i>
+              </button>
+              <ul class="dropdown-menu app-user-menu-dropdown app-help-menu-dropdown">
+                <li>
+                  <button class="dropdown-item" type="button" data-guide-restart="true">
+                    <i class="bi bi-stars" aria-hidden="true"></i>
+                    <span>Ver tour guiado</span>
+                  </button>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="<%= helpManualsUrl %>" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-journal-text" aria-hidden="true"></i>
+                    <span><%= helpManualsLabel %></span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <button
+              class="app-sidebar-link app-sidebar-logout"
+              type="button"
+              data-logout-trigger="true"
+              data-guide="logout-action"
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              data-sidebar-action="logout"
+            >
+              <span class="app-sidebar-action-icon app-sidebar-door" aria-hidden="true">
+                <i class="bi bi-door-open app-sidebar-door-open"></i>
+                <i class="bi bi-door-closed app-sidebar-door-closed"></i>
+              </span>
+            </button>
+          </nav>
+        <% } %>
       </aside>
       <div class="app-main-content">
 

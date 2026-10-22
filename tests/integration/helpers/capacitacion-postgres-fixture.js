@@ -12,7 +12,7 @@ const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
 const scopePath = resolveRepoPath('src/libs/capacitacion-scope.js');
 const notificationsPath = resolveRepoPath('src/libs/email-notifications.js');
-const migrationPath = resolveRepoPath('sql-scripts/db_structure_certificacion.sql');
+const migrationPath = resolveRepoPath('sql-scripts/prod/db_structure_certificacion.sql');
 const routePath = resolveRepoPath('src/routes/api/capacitacion-gestion.js');
 
 const allowJsonRoles = () => (req, res, next) => next();

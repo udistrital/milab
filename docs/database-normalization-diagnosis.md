@@ -4,9 +4,9 @@
 
 Este documento resume el estado actual del modelo de datos de MILab, identifica la deuda de normalización que sigue vigente y separa los problemas ya resueltos de los que todavía requieren trabajo.
 
-La referencia principal es el esquema canónico en `sql-scripts/db_structure.sql`.
+La referencia principal es el esquema canónico en `sql-scripts/prod/db_structure.sql`.
 
-> **Alcance:** este diagnóstico cubre el núcleo histórico de identidad, sanciones y certificados (`sql-scripts/db_structure.sql`). No cubre el esquema del módulo de Préstamos (`sql-scripts/db_structure_prestamos.sql`: `equipo`, `solicitud_prestamo`, `incidencia`, `practica`, `reserva_practica`, `sala`, etc.), documentado en [docs/architecture/erd.md](architecture/erd.md).
+> **Alcance:** este diagnóstico cubre el núcleo histórico de identidad, sanciones y certificados (`sql-scripts/prod/db_structure.sql`). No cubre el esquema del módulo de Préstamos (`sql-scripts/prod/db_structure_prestamos.sql`: `equipo`, `solicitud_prestamo`, `incidencia`, `practica`, `reserva_practica`, `sala`, etc.), documentado en [docs/architecture/erd.md](architecture/erd.md).
 
 ## Resumen Ejecutivo
 

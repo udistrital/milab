@@ -448,8 +448,15 @@ async function fetchLaboratoristaRows() {
 }
 
 async function fetchCoordinatorRows() {
-  const result = await pool.query(
-    `SELECT
+  const buildQuery = (includeUalAssignments) => {
+    const assignedLabs = includeUalAssignments
+      ? `(SELECT STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre)
+          FROM coordinador_ual_encargado encargado
+          JOIN ual ON ual.ual_id = encargado.ual_id
+          WHERE encargado.coordinador_documento = c.documento)`
+      : 'NULL::text';
+
+    return `SELECT
        c.fecha_creacion,
        c.nombre,
        c.documento,
@@ -458,10 +465,7 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id,
-       (SELECT STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre)
-        FROM coordinador_ual_encargado encargado
-        JOIN ual ON ual.ual_id = encargado.ual_id
-        WHERE encargado.coordinador_documento = c.documento) AS laboratorios_encargados,
+       ${assignedLabs} AS laboratorios_encargados,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf
@@ -475,9 +479,27 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id
-     ORDER BY c.fecha_creacion DESC NULLS LAST`
-  );
-  return result.rows;
+     ORDER BY c.fecha_creacion DESC NULLS LAST`;
+  };
+
+  try {
+    const result = await pool.query(buildQuery(true));
+    return { rows: result.rows, ualAssignmentsAvailable: true };
+  } catch (error) {
+    if (
+      error?.code !== '42P01' ||
+      !String(error.message || '').includes('coordinador_ual_encargado')
+    ) {
+      throw error;
+    }
+
+    console.warn(
+      'Dashboard: falta la tabla coordinador_ual_encargado; se omitirá el dato de laboratorios a cargo.',
+      error.message
+    );
+    const result = await pool.query(buildQuery(false));
+    return { rows: result.rows, ualAssignmentsAvailable: false };
+  }
 }
 
 async function fetchUsuarioRows() {
@@ -2839,9 +2861,10 @@ router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (
     const laboratoristaRows = availableChartIds.includes('laboratoristas')
       ? await fetchLaboratoristaRows()
       : [];
-    const coordinatorRows = availableChartIds.includes('coordinadores')
+    const coordinatorData = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
-      : [];
+      : { rows: [], ualAssignmentsAvailable: true };
+    const coordinatorRows = coordinatorData.rows;
     const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
     const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
     const isGlobalRole = isGlobalDashboardRole(dashboardRole);
@@ -2972,6 +2995,7 @@ router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (
       coberturaOperativa,
       actividadPlataforma,
       usuarioTableColumns: usuariosRegistradosColumns,
+      coordinatorUalAssignmentsAvailable: coordinatorData.ualAssignmentsAvailable,
     });
   } catch (error) {
     console.error('Error en dashboard:', error);

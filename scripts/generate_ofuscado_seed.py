@@ -1056,8 +1056,8 @@ FROM multa WHERE obs_multa LIKE '[SEED-OFUSCADO:%';
 def main():
     parser = argparse.ArgumentParser(description='Genera el seed de pruebas desde el libro ofuscado.')
     parser.add_argument('--input', default='docs/data_ofuscada_pruebas.xlsx')
-    parser.add_argument('--catalog', default='sql-scripts/db_seed_system.sql')
-    parser.add_argument('--output', default='sql-scripts/db_seed_pruebas_ofuscado.sql')
+    parser.add_argument('--catalog', default='sql-scripts/prod/db_seed_system.sql')
+    parser.add_argument('--output', default='sql-scripts/preprod/db_seed_pruebas_ofuscado.sql')
     args = parser.parse_args()
     source = Path(args.input)
     catalog = Path(args.catalog)

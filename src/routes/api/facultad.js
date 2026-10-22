@@ -3,6 +3,7 @@ const express = require('express');
 const pool = require('../../libs/db');
 const { normalizeLogDocument } = require('../../libs/account-email');
 const { requireRoles } = require('../middlewares/auth');
+const { enrichErrorPayloadForAdmin } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -73,6 +74,19 @@ async function resolveExistingUalColumns() {
   return new Set(result.rows.map((row) => row.column_name));
 }
 
+function isMissingCoordinatorUalAssignmentsTable(error) {
+  return (
+    error?.code === '42P01' && String(error.message || '').includes('coordinador_ual_encargado')
+  );
+}
+
+function warnMissingCoordinatorUalAssignments(error) {
+  console.warn(
+    'Facultades y UAL: falta coordinador_ual_encargado; se omitirán los datos de encargados.',
+    error.message
+  );
+}
+
 async function fetchUalsByFacultyId(facultadId) {
   const existingColumns = await resolveExistingUalColumns();
   const missingColumns = OPTIONAL_UAL_COLUMNS.filter((column) => !existingColumns.has(column));
@@ -87,16 +101,34 @@ async function fetchUalsByFacultyId(facultadId) {
     existingColumns.has(column) ? column : OPTIONAL_UAL_FALLBACKS[column]
   ).join(', ');
 
-  const query = `SELECT ual_id, nombre, ${selectOptionalColumns},
-      (SELECT json_build_object(
-         'documento', c.documento, 'nombre', c.nombre, 'correo', c.correo,
-         'activo', c.activo, 'fecha_asignacion', e.fecha_asignacion, 'carga_id', e.carga_id
-       )
-       FROM coordinador_ual_encargado e
-       JOIN coordinador c ON c.documento = e.coordinador_documento
-       WHERE e.ual_id = ual.ual_id) AS coordinador_encargado
-    FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
-  return pool.query(query, [facultadId]);
+  const buildQuery = (includeUalAssignments) => {
+    const coordinatorAssignment = includeUalAssignments
+      ? `(SELECT json_build_object(
+           'documento', c.documento, 'nombre', c.nombre, 'correo', c.correo,
+           'activo', c.activo, 'fecha_asignacion', e.fecha_asignacion, 'carga_id', e.carga_id
+         )
+         FROM coordinador_ual_encargado e
+         JOIN coordinador c ON c.documento = e.coordinador_documento
+         WHERE e.ual_id = ual.ual_id)`
+      : 'NULL::json';
+
+    return `SELECT ual_id, nombre, ${selectOptionalColumns},
+        ${coordinatorAssignment} AS coordinador_encargado
+      FROM ual WHERE facultad_id = $1 ORDER BY nombre ASC`;
+  };
+
+  try {
+    const result = await pool.query(buildQuery(true), [facultadId]);
+    return { rows: result.rows, ualAssignmentsAvailable: true };
+  } catch (error) {
+    if (!isMissingCoordinatorUalAssignmentsTable(error)) {
+      throw error;
+    }
+
+    warnMissingCoordinatorUalAssignments(error);
+    const result = await pool.query(buildQuery(false), [facultadId]);
+    return { rows: result.rows, ualAssignmentsAvailable: false };
+  }
 }
 
 function fetchUalLaboratoristas(facultadId) {
@@ -118,19 +150,23 @@ function fetchUalLaboratoristas(facultadId) {
 
 // Incluye los coordinadores heredados de la facultad padre (vista de alcance).
 function fetchUnitCoordinadores(facultadId) {
-  return pool.query(
-    `SELECT * FROM (
+  const buildQuery = (includeUalAssignments) => {
+    const assignedLabs = includeUalAssignments
+      ? `(SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+           FROM coordinador_ual_encargado e
+           JOIN ual u ON u.ual_id = e.ual_id
+           WHERE e.coordinador_documento = c.documento
+             AND u.facultad_id = $1)`
+      : 'NULL::text';
+
+    return `SELECT * FROM (
        SELECT DISTINCT ON (c.documento)
               c.documento,
               c.nombre,
               c.correo,
               c.activo,
               cfa.activo AS asignacion_activa,
-              (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
-               FROM coordinador_ual_encargado e
-               JOIN ual u ON u.ual_id = e.ual_id
-               WHERE e.coordinador_documento = c.documento
-                 AND u.facultad_id = $1) AS laboratorios_encargados,
+              ${assignedLabs} AS laboratorios_encargados,
               (cfa.facultad_asignada_id <> cfa.facultad_id) AS heredado,
               fa.nombre AS asignado_en
        FROM coordinador_facultad_alcance cfa
@@ -139,9 +175,21 @@ function fetchUnitCoordinadores(facultadId) {
        WHERE cfa.facultad_id = $1
        ORDER BY c.documento, (cfa.facultad_asignada_id <> cfa.facultad_id) ASC
      ) coordinadores
-     ORDER BY heredado ASC, nombre ASC`,
-    [facultadId]
-  );
+     ORDER BY heredado ASC, nombre ASC`;
+  };
+
+  return pool
+    .query(buildQuery(true), [facultadId])
+    .then((result) => ({ rows: result.rows, ualAssignmentsAvailable: true }))
+    .catch(async (error) => {
+      if (!isMissingCoordinatorUalAssignmentsTable(error)) {
+        throw error;
+      }
+
+      warnMissingCoordinatorUalAssignments(error);
+      const result = await pool.query(buildQuery(false), [facultadId]);
+      return { rows: result.rows, ualAssignmentsAvailable: false };
+    });
 }
 
 router.use(requireAdminFacultyAccess);
@@ -259,10 +307,16 @@ router.get('/ual/json', async (req, res) => {
       laboratoristas: labsByUal.get(String(ual.ual_id)) || [],
     }));
 
-    return res.json({ facultad, uals, coordinadores: coordRes.rows });
+    return res.json({
+      facultad,
+      uals,
+      coordinadores: coordRes.rows,
+      ualAssignmentsAvailable: ualRes.ualAssignmentsAvailable && coordRes.ualAssignmentsAvailable,
+    });
   } catch (error) {
     console.error('Error en /ual/json:', error);
-    return res.status(500).json({ error: 'Error interno' });
+    const payload = enrichErrorPayloadForAdmin(req, { ok: false, message: 'Error interno' }, error);
+    return res.status(500).json({ ...payload, error: 'Error interno' });
   }
 });
 
@@ -297,12 +351,14 @@ router.get('/', async (req, res) => {
     const dependencias = hierarchy.filter((row) => row.padre_id);
     let selectedFacultad = null;
     let uals = [];
+    let ualAssignmentsAvailable = true;
 
     if (facultadId) {
       selectedFacultad = hierarchy.find((row) => Number(row.facultad_id) === facultadId) || null;
       if (selectedFacultad) {
         const ualRes = await fetchUalsByFacultyId(facultadId);
         uals = ualRes.rows;
+        ualAssignmentsAvailable = ualRes.ualAssignmentsAvailable;
       }
     }
 
@@ -318,6 +374,7 @@ router.get('/', async (req, res) => {
       uals,
       selectedFacultad,
       selectedPadreId,
+      ualAssignmentsAvailable,
     });
   } catch (error) {
     console.error('Error cargando facultades/UALs:', error);

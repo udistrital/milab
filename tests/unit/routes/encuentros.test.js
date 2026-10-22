@@ -130,6 +130,30 @@ test('Gestor de laboratorio can list events globally with database-backed pagina
   }
 });
 
+test('event list returns technical diagnostics only to administrators', async () => {
+  const setup = buildTestApp(async () => {
+    const error = new Error('Database operation failed');
+    error.code = 'XX000';
+    throw error;
+  });
+
+  try {
+    const adminResponse = await request(setup.app)
+      .get('/encuentros/api/eventos')
+      .set('x-test-role', 'admin');
+    assert.equal(adminResponse.status, 500);
+    assert.match(adminResponse.body.adminErrorDetail, /Database operation failed/);
+
+    const managerResponse = await request(setup.app)
+      .get('/encuentros/api/eventos')
+      .set('x-test-role', 'gestor_laboratorio');
+    assert.equal(managerResponse.status, 500);
+    assert.equal(managerResponse.body.adminErrorDetail, undefined);
+  } finally {
+    setup.restore();
+  }
+});
+
 test('Gestor de laboratorio cannot correct attendance or annul certificates', async () => {
   let queries = 0;
   const setup = buildTestApp(async () => {
@@ -342,6 +366,119 @@ test('event detail returns database-backed statistics for the visual summary', a
     assert.equal(response.body.estadisticas.porcentaje_completado, 50);
     assert.equal(response.body.estadisticas.certificados_enviados, 1);
     assert.equal(response.body.estadisticas.certificados_con_error, 1);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('finalized encounter report downloads an aggregate PDF grouped by faculty', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('FROM encuentro_evento e')) {
+      return {
+        rows: [
+          {
+            id: 14,
+            nombre: 'Encuentro de prueba',
+            fecha: '2026-10-20',
+            hora_inicio: '09:00',
+            hora_fin: '10:00',
+            lugar: 'Sede',
+            organizador: 'MiLab',
+            estado: 'finalizado',
+            total_participantes: 4,
+            entradas: 3,
+            salidas: 2,
+            sin_entrada: 1,
+            dentro_sin_salida: 1,
+            certificados_generados: 2,
+            certificados_enviados: 1,
+            certificados_pendientes: 0,
+            certificados_con_error: 1,
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM encuentro_participante p')) {
+      return {
+        rows: [
+          {
+            facultad: 'Facultad con menor participación',
+            registrados: 1,
+            con_entrada: 1,
+            completaron: 1,
+          },
+          {
+            facultad: 'Facultad con mayor participación',
+            registrados: 3,
+            con_entrada: 2,
+            completaron: 1,
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .get('/encuentros/api/eventos/14/informe.pdf')
+      .set('x-test-role', 'gestor_laboratorio');
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/pdf/);
+    assert.match(response.headers['content-disposition'], /informe-encuentro-14\.pdf/);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.equal(response.body.subarray(0, 5).toString(), '%PDF-');
+    assert.equal(statements.length, 2);
+    assert.match(statements[1].sql, /ORDER BY registrados ASC, facultad ASC/);
+
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(response.body),
+      verbosity: 0,
+    }).promise;
+    try {
+      let reportText = '';
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        reportText += ` ${content.items.map((item) => item.str).join(' ')}`;
+      }
+      assert.match(reportText, /Informe del encuentro/);
+      assert.match(reportText, /Registrados activos/);
+      assert.match(reportText, /Participación por facultad/);
+      assert.ok(
+        reportText.indexOf('Facultad con menor participación') <
+          reportText.indexOf('Facultad con mayor participación')
+      );
+    } finally {
+      await pdf.destroy();
+    }
+  } finally {
+    setup.restore();
+  }
+});
+
+test('encounter report is unavailable before the event is finalized', async () => {
+  let queries = 0;
+  const setup = buildTestApp(async (sql) => {
+    queries += 1;
+    if (sql.includes('FROM encuentro_evento e')) {
+      return { rows: [{ id: 14, estado: 'en_curso' }] };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .get('/encuentros/api/eventos/14/informe.pdf')
+      .set('x-test-role', 'gestor_laboratorio');
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /cuando el encuentro haya finalizado/i);
+    assert.equal(queries, 1);
   } finally {
     setup.restore();
   }
