@@ -161,7 +161,7 @@ async function loadRelationDetail(relation) {
     pool.query(
       `
         WITH secuencia AS (
-          SELECT pg_get_serial_sequence(format('%I.%I', $1, $2), 'id') AS nombre
+          SELECT pg_get_serial_sequence(format('%I.%I', $1::text, $2::text), 'id') AS nombre
         )
         SELECT nombre,
                has_sequence_privilege(nombre, 'USAGE') AS uso_permitido,
