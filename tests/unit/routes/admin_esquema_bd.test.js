@@ -9,7 +9,8 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 
 const DATABASE_INFO = {
   base_datos: 'milab',
-  usuario_app: 'milab_app',
+  usuario_conexion: 'milab_app',
+  usuario_efectivo: 'milab_app',
   search_path: 'milab',
 };
 
@@ -156,6 +157,8 @@ test('esquema-bd lists relations for admin and escapes the filter', async () => 
     assert.equal(response.body.view, 'home/admin_esquema_bd');
     assert.equal(response.body.locals.relaciones.length, 1);
     assert.equal(response.body.locals.baseDatos.base_datos, 'milab');
+    assert.equal(response.body.locals.baseDatos.usuario_conexion, 'milab_app');
+    assert.equal(response.body.locals.baseDatos.usuario_efectivo, 'milab_app');
     assert.equal(response.body.locals.detalle, null);
 
     const listCall = loaded
