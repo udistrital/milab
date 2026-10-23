@@ -221,6 +221,11 @@ test('esquema-bd returns columns, constraints and indexes for an existing table'
     assert.equal(detalle.restricciones[0].nombre, 'pk_x');
     assert.equal(detalle.indices[0].nombre, 'idx_x');
 
+    const sequenceCall = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('pg_get_serial_sequence'));
+    assert.match(sequenceCall.sql, /format\('%I\.%I', \$1::text, \$2::text\)/);
+
     const columnCall = loaded.getPoolCalls().find((call) => call.sql.includes('FROM pg_attribute'));
     assert.deepEqual(columnCall.params, ['16400']);
   } finally {
