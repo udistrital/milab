@@ -13,8 +13,10 @@
           <dl class="row mb-0 small">
             <dt class="col-sm-3">Base de datos</dt>
             <dd class="col-sm-9"><%= baseDatos.base_datos %></dd>
-            <dt class="col-sm-3">Usuario de la aplicación</dt>
-            <dd class="col-sm-9"><%= baseDatos.usuario_app %></dd>
+            <dt class="col-sm-3">Usuario de conexión a la BD</dt>
+            <dd class="col-sm-9"><code><%= baseDatos.usuario_conexion %></code></dd>
+            <dt class="col-sm-3">Rol efectivo en la BD</dt>
+            <dd class="col-sm-9"><code><%= baseDatos.usuario_efectivo %></code></dd>
             <dt class="col-sm-3">search_path</dt>
             <dd class="col-sm-9"><code><%= baseDatos.search_path %></code></dd>
           </dl>

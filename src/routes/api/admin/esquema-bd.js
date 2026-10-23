@@ -42,7 +42,8 @@ function escapeLike(value) {
 async function loadDatabaseInfo() {
   const result = await pool.query(`
     SELECT current_database() AS base_datos,
-           current_user AS usuario_app,
+           session_user AS usuario_conexion,
+           current_user AS usuario_efectivo,
            current_setting('search_path') AS search_path
   `);
   return result.rows[0] || {};
