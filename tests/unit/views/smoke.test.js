@@ -504,6 +504,8 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
   assert.match(html, /id="hv-editar-btn"/);
   assert.match(html, /data-testid="hv-editar-foto-actual"/);
   assert.match(html, /data-testid="hv-editar-foto-actual"[\s\S]*?\/documento\/6/);
+  assert.match(html, /data-testid="hv-editar-foto-eliminar-wrap"/);
+  assert.match(html, /name="eliminar_foto"/);
   assert.match(html, /value="MarcaX"/);
   assert.match(html, /var hojaVidaId = 42;/);
   assert.match(html, /var equipoId = 7;/);

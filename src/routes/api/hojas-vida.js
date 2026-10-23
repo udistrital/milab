@@ -885,6 +885,28 @@ router.post(
         });
       }
 
+      // Fotografia vigente (para reemplazo o eliminacion)
+      const fotoResult = await pool.query(
+        `
+          SELECT id, nombre_archivo
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1
+            AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+            AND activo = TRUE
+          ORDER BY fecha_carga DESC NULLS LAST, id DESC
+          LIMIT 1
+        `,
+        [hojaVidaId]
+      );
+      const fotoActiva = fotoResult.rows[0] || null;
+      const valorEliminarFoto = String(req.body?.eliminar_foto || '')
+        .trim()
+        .toLowerCase();
+      const eliminarFoto =
+        (valorEliminarFoto === '1' || valorEliminarFoto === 'true') &&
+        !req.file &&
+        Boolean(fotoActiva);
+
       // Detectar cambios reales comparando valor anterior y nuevo
       const cambios = [];
       Object.keys(datos).forEach(function (campo) {
@@ -898,7 +920,7 @@ router.post(
 
       const usuario = req.session?.user?.id || null;
       const equipoId = Number(hvActual.equipo_id);
-      const tieneCambios = cambios.length > 0 || Boolean(req.file);
+      const tieneCambios = cambios.length > 0 || Boolean(req.file) || eliminarFoto;
 
       if (!tieneCambios) {
         return res.status(200).json({
@@ -933,7 +955,7 @@ router.post(
           values
         );
 
-        if (req.file) {
+        if (req.file || eliminarFoto) {
           await cliente.query(
             `
               UPDATE hoja_vida_documento
@@ -946,7 +968,9 @@ router.post(
             `,
             [hojaVidaId, usuario]
           );
+        }
 
+        if (req.file) {
           await cliente.query(
             `
               INSERT INTO hoja_vida_documento (
@@ -959,14 +983,24 @@ router.post(
 
           cambios.push({
             campo: 'fotografia',
-            anterior: 'Anterior',
+            anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
             nuevo: req.file.originalname,
+            descripcion: 'Actualizacion de la fotografia del equipo.',
+          });
+        } else if (eliminarFoto) {
+          cambios.push({
+            campo: 'fotografia',
+            anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
+            nuevo: 'Sin fotografia',
+            descripcion: 'Eliminacion de la fotografia del equipo.',
           });
         }
 
         for (const cambio of cambios) {
           const definicion = CAMPOS_HOJA_VIDA_POR_NOMBRE.get(cambio.campo) || {};
           const etiqueta = definicion.etiqueta || cambio.campo;
+          const descripcion =
+            cambio.descripcion || `Edición de la hoja de vida: campo "${etiqueta}" actualizado.`;
           await cliente.query(
             `
               INSERT INTO hoja_vida_historial (
@@ -980,7 +1014,7 @@ router.post(
               cambio.campo,
               cambio.anterior,
               cambio.nuevo,
-              `Edición de la hoja de vida: campo "${etiqueta}" actualizado.`,
+              descripcion,
               usuario,
             ]
           );
@@ -995,7 +1029,8 @@ router.post(
             hoja_vida_id: hojaVidaId,
             cambios: cambios.map((cambio) => cambio.campo),
             total_cambios: cambios.length,
-            tiene_fotografia: Boolean(req.file),
+            tiene_fotografia: req.file ? true : eliminarFoto ? false : Boolean(fotoActiva),
+            foto_eliminada: eliminarFoto,
             view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
           },
         });

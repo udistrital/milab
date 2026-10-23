@@ -110,6 +110,21 @@
               style="max-height: 220px;"
             />
           </div>
+          <div class="form-check mb-3" data-testid="hv-editar-foto-eliminar-wrap">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              value="1"
+              id="hv-eliminar-foto"
+              name="eliminar_foto"
+            />
+            <label class="form-check-label" for="hv-eliminar-foto">
+              Eliminar la fotografia actual
+            </label>
+            <div class="form-text text-muted">
+              Si seleccionas una imagen nueva, se reemplazara en lugar de eliminarse.
+            </div>
+          </div>
         <% } %>
         <input type="file" class="form-control" id="hv-foto" name="foto" accept="image/*" />
         <div class="form-text text-muted">
