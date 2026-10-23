@@ -26,7 +26,6 @@ const {
   etiquetaTipoMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,
-  esEstadoMantenimientoEditable,
 } = require('../../libs/hojas-vida-mantenimientos');
 const {
   fetchUserByEmail,
@@ -8233,7 +8232,7 @@ function formatearValorHojaVidaPdf(valor, tipo) {
 
 const HV_PDF_META = {
   sistema: 'FORMATO',
-  codigo1: 'Codigo: GL-PR-002-FR-007',
+  codigo1: 'Codigo: GDTH-PG-003-027',
   codigo2: '',
   macroproceso: 'Macroproceso: Gestion de Recursos',
   version: 'Version: 01',
@@ -8241,25 +8240,7 @@ const HV_PDF_META = {
   fechaAprobacion: '10/08/2022',
 };
 
-const HV_PDF_TITULO = 'HOJA DE VIDA DE EQUIPOS';
-
-/**
- * Normaliza los mantenimientos de una hoja de vida para su impresion.
- * No altera el orden recibido (la consulta los entrega cronologicamente, CA03).
- */
-function prepararMantenimientosPdf(mantenimientos) {
-  return (mantenimientos || []).map((mantenimiento) => ({
-    id: mantenimiento.id,
-    item: sanitizeText(mantenimiento.item) || '-',
-    tipo: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento) || '-',
-    fecha: formatearValorHojaVidaPdf(mantenimiento.fecha_realizacion, 'date'),
-    estado: etiquetaEstadoMantenimiento(mantenimiento.estado) || '-',
-    responsable: sanitizeText(mantenimiento.responsable) || '-',
-    cierre: mantenimiento.fecha_cierre
-      ? formatearFechaHoraHojaVida(mantenimiento.fecha_cierre)
-      : '-',
-  }));
-}
+const HV_PDF_TITULO = 'HOJA DE VIDA DE EQUIPOS O MAQUINARIA';
 
 function aplicarFuentePdf(doc, fuente) {
   try {
@@ -8269,80 +8250,7 @@ function aplicarFuentePdf(doc, fuente) {
   }
 }
 
-function dibujarHistorialMantenimientosPdf(doc, filas) {
-  const izquierda = doc.page.margins.left;
-  const util = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const limiteInferior = doc.page.height - doc.page.margins.bottom;
-  const alturaFila = 18;
-  const columnas = [
-    { etiqueta: 'Item', ancho: util * 0.3, valor: (fila) => fila.item },
-    { etiqueta: 'Tipo', ancho: util * 0.14, valor: (fila) => fila.tipo },
-    { etiqueta: 'Fecha', ancho: util * 0.13, valor: (fila) => fila.fecha },
-    { etiqueta: 'Estado', ancho: util * 0.14, valor: (fila) => fila.estado },
-    { etiqueta: 'Responsable', ancho: util * 0.17, valor: (fila) => fila.responsable },
-    { etiqueta: 'Cierre', ancho: util * 0.12, valor: (fila) => fila.cierre },
-  ];
-
-  function dibujarEncabezado(y) {
-    aplicarFuentePdf(doc, PDF_FONT_BOLD);
-    doc.fontSize(9).fillColor('#021c27');
-    let x = izquierda;
-    columnas.forEach((columna) => {
-      doc.rect(x, y, columna.ancho, alturaFila).stroke('#000000');
-      doc.text(columna.etiqueta, x + 3, y + 5, { width: columna.ancho - 6 });
-      x += columna.ancho;
-    });
-    return y + alturaFila;
-  }
-
-  if (doc.y > limiteInferior - 80) {
-    doc.addPage();
-    doc.y = doc.page.margins.top;
-    doc.x = izquierda;
-  }
-
-  aplicarFuentePdf(doc, PDF_FONT_BOLD);
-  doc.fontSize(11).fillColor('#021c27').text('Historial de mantenimientos', izquierda, doc.y);
-  doc.moveDown(0.4);
-
-  if (!filas || filas.length === 0) {
-    aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-    doc.fontSize(10).fillColor('#000000').text('Sin mantenimientos registrados.', izquierda, doc.y);
-    doc.moveDown();
-    return;
-  }
-
-  let y = dibujarEncabezado(doc.y);
-
-  aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-  filas.forEach((fila) => {
-    if (y + alturaFila > limiteInferior) {
-      doc.addPage();
-      doc.y = doc.page.margins.top;
-      doc.x = izquierda;
-      y = dibujarEncabezado(doc.y);
-      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-    }
-
-    doc.fontSize(8).fillColor('#000000');
-    let x = izquierda;
-    columnas.forEach((columna) => {
-      doc.rect(x, y, columna.ancho, alturaFila).stroke('#000000');
-      doc.text(String(columna.valor(fila) || '-'), x + 3, y + 3, {
-        width: columna.ancho - 6,
-        height: alturaFila - 4,
-        ellipsis: true,
-      });
-      x += columna.ancho;
-    });
-    y += alturaFila;
-  });
-
-  doc.y = y + 6;
-  doc.x = izquierda;
-}
-
-function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
+function sendHojaVidaPdf(res, hojaVida, equipo, foto) {
   const doc = new PDFDocument({ margin: 50 });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
@@ -8360,19 +8268,6 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
   doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || '-'}`);
   doc.moveDown();
 
-  if (foto && foto.archivo) {
-    aplicarFuentePdf(doc, PDF_FONT_BOLD);
-    doc.fontSize(11).fillColor('#021c27').text('Fotografia del equipo');
-    const imagen = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
-    try {
-      doc.image(imagen, { fit: [220, 220] });
-    } catch {
-      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-      doc.fontSize(10).fillColor('#000000').text('(No fue posible incrustar la imagen)');
-    }
-    doc.moveDown();
-  }
-
   CAMPOS_POR_SECCION.forEach((seccion) => {
     aplicarFuentePdf(doc, PDF_FONT_BOLD);
     doc.fontSize(11).fillColor('#021c27').text(seccion.seccion);
@@ -8385,19 +8280,17 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     doc.moveDown(0.5);
   });
 
-  dibujarHistorialMantenimientosPdf(doc, prepararMantenimientosPdf(mantenimientos));
-
-  aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-  doc
-    .fontSize(8)
-    .fillColor('#555555')
-    .text(
-      `Documento generado desde MiLab con la informacion vigente del equipo. ` +
-        `Fecha de impresion: ${formatearFechaHoraHojaVida(new Date())}.`,
-      doc.page.margins.left,
-      doc.y,
-      { width: doc.page.width - doc.page.margins.left - doc.page.margins.right }
-    );
+  if (foto && foto.archivo) {
+    aplicarFuentePdf(doc, PDF_FONT_BOLD);
+    doc.fontSize(11).fillColor('#021c27').text('Fotografia del equipo');
+    const imagen = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
+    try {
+      doc.image(imagen, { fit: [220, 220] });
+    } catch {
+      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+      doc.fontSize(10).fillColor('#000000').text('(No fue posible incrustar la imagen)');
+    }
+  }
 
   doc.end();
 }
@@ -8543,24 +8436,7 @@ router.get(
         [datos.hojaVida.id]
       );
 
-      const mantenimientosResult = await pool.query(
-        `
-          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
-                 responsable, fecha_cierre
-          FROM mantenimiento
-          WHERE hoja_vida_id = $1 AND activo = TRUE
-          ORDER BY fecha_realizacion ASC NULLS LAST, id ASC
-        `,
-        [datos.hojaVida.id]
-      );
-
-      return sendHojaVidaPdf(
-        res,
-        datos.hojaVida,
-        datos.equipo,
-        fotoResult.rows[0] || null,
-        mantenimientosResult.rows
-      );
+      return sendHojaVidaPdf(res, datos.hojaVida, datos.equipo, fotoResult.rows[0] || null);
     } catch (error) {
       console.error('[prestamos] Error generando PDF de hoja de vida:', error);
       return res.redirect(
@@ -8756,7 +8632,7 @@ router.get(
           SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
                  responsable, datos_empresa_contratada, tiempo_garantia,
                  especificaciones_mantenimiento, observaciones_repuestos,
-                 fecha_creacion, fecha_cierre
+                 fecha_creacion
           FROM mantenimiento
           WHERE hoja_vida_id = $1 AND activo = TRUE
           ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
@@ -8770,14 +8646,10 @@ router.get(
           tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
           estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
           estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
-          editable: esEstadoMantenimientoEditable(mantenimiento.estado),
           fecha_realizacion_display: formatearValorHojaVidaPdf(
             mantenimiento.fecha_realizacion,
             'date'
           ),
-          fecha_cierre_display: mantenimiento.fecha_cierre
-            ? formatearFechaHoraHojaVida(mantenimiento.fecha_cierre)
-            : null,
           fecha_creacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_creacion),
         };
       });
@@ -8793,75 +8665,6 @@ router.get(
       console.error('[prestamos] Error cargando mantenimientos HV:', error);
       return res.redirect(
         '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20los%20mantenimientos'
-      );
-    }
-  }
-);
-
-router.get(
-  '/hojas-vida/:equipoId/mantenimientos/:mantenimientoId/editar',
-  requireInventarioAuthorized,
-  async function editarMantenimientoHVView(req, res) {
-    try {
-      const equipoId = Number(req.params.equipoId);
-      const mantenimientoId = Number(req.params.mantenimientoId);
-      if (
-        !Number.isInteger(equipoId) ||
-        equipoId <= 0 ||
-        !Number.isInteger(mantenimientoId) ||
-        mantenimientoId <= 0
-      ) {
-        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
-      }
-
-      const datos = await cargarHojaVidaPorEquipo(equipoId);
-      if (!datos) {
-        return res.redirect(
-          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
-        );
-      }
-
-      const mantenimientoResult = await pool.query(
-        `
-          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
-                 responsable, datos_empresa_contratada, tiempo_garantia,
-                 especificaciones_mantenimiento, observaciones_repuestos,
-                 fecha_creacion, fecha_cierre
-          FROM mantenimiento
-          WHERE id = $1 AND hoja_vida_id = $2 AND activo = TRUE
-        `,
-        [mantenimientoId, datos.hojaVida.id]
-      );
-
-      if (mantenimientoResult.rows.length === 0) {
-        return res.redirect(
-          `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20existe`
-        );
-      }
-
-      const mantenimiento = mantenimientoResult.rows[0];
-
-      return res.render('home/prestamos/hojas-vida/mantenimiento-editar', {
-        hojaVida: datos.hojaVida,
-        equipo: datos.equipo,
-        mantenimiento,
-        editable: esEstadoMantenimientoEditable(mantenimiento.estado),
-        estadoEtiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
-        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
-        tiposMantenimiento: TIPOS_MANTENIMIENTO,
-        fechaRealizacionValor: mantenimiento.fecha_realizacion
-          ? String(mantenimiento.fecha_realizacion).slice(0, 10)
-          : '',
-        fechaCierreDisplay: mantenimiento.fecha_cierre
-          ? formatearFechaHoraHojaVida(mantenimiento.fecha_cierre)
-          : null,
-        successMessage: sanitizeText(req.query.success),
-        errorMessage: sanitizeText(req.query.error),
-      });
-    } catch (error) {
-      console.error('[prestamos] Error cargando formulario de edicion de mantenimiento:', error);
-      return res.redirect(
-        `/milab/prestamos/hojas-vida/${req.params.equipoId}/mantenimientos?error=No%20fue%20posible%20cargar%20el%20mantenimiento`
       );
     }
   }
@@ -17106,9 +16909,6 @@ router.__private = {
   buildAcademicPracticePayload,
   validateAcademicPracticePayload,
   normalizePracticeDocumentList,
-  HV_PDF_META,
-  HV_PDF_TITULO,
-  prepararMantenimientosPdf,
 };
 
 module.exports = router;
