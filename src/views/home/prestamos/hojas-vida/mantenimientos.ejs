@@ -75,6 +75,8 @@
                 <th>Fecha</th>
                 <th>Estado</th>
                 <th>Responsable</th>
+                <th>Cierre</th>
+                <th class="text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +89,32 @@
                     <span class="badge bg-<%= mantenimiento.estado_clase %>"><%= mantenimiento.estado_etiqueta %></span>
                   </td>
                   <td><%= mantenimiento.responsable || '—' %></td>
+                  <td><%= mantenimiento.fecha_cierre_display || '—' %></td>
+                  <td class="text-center">
+                    <% if (mantenimiento.editable) { %>
+                      <div class="d-inline-flex gap-2">
+                        <a
+                          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/editar"
+                          class="btn btn-outline-info btn-sm"
+                          data-testid="hv-mto-editar"
+                        >
+                          <i class="bi bi-pencil"></i> Editar
+                        </a>
+                        <button
+                          type="button"
+                          class="btn btn-outline-success btn-sm js-mto-cerrar"
+                          data-mantenimiento-id="<%= mantenimiento.id %>"
+                          data-testid="hv-mto-cerrar"
+                        >
+                          <i class="bi bi-check2-circle"></i> Cerrar
+                        </button>
+                      </div>
+                    <% } else { %>
+                      <span class="text-muted small" data-testid="hv-mto-cerrado">
+                        <i class="bi bi-lock"></i> Cerrado
+                      </span>
+                    <% } %>
+                  </td>
                 </tr>
               <% }); %>
             </tbody>
@@ -96,5 +124,65 @@
     </div>
   </section>
 </main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var equipoId = <%- Number(hojaVida.equipo_id) %>;
+
+    document.querySelectorAll('.js-mto-cerrar').forEach(function (boton) {
+      boton.addEventListener('click', function () {
+        var mantenimientoId = Number(boton.getAttribute('data-mantenimiento-id'));
+        if (!mantenimientoId) {
+          return;
+        }
+
+        if (!window.confirm('¿Confirmas cerrar este mantenimiento como "Cumplido"? Esta accion no se puede deshacer.')) {
+          return;
+        }
+
+        boton.disabled = true;
+
+        var cuerpo = new URLSearchParams();
+        cuerpo.append('estado', 'CUMPLIDO');
+
+        fetch('/milab/api/hojas-vida/' + equipoId + '/mantenimientos/' + mantenimientoId + '/estado', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          },
+          body: cuerpo.toString(),
+        })
+          .then(function (res) {
+            return res
+              .json()
+              .then(function (body) {
+                return { ok: res.ok && body && body.ok === true, body: body };
+              })
+              .catch(function () {
+                return { ok: false, body: null };
+              });
+          })
+          .then(function (result) {
+            if (result.ok) {
+              window.location.reload();
+              return;
+            }
+            boton.disabled = false;
+            window.alert(
+              result.body && result.body.message
+                ? result.body.message
+                : 'No fue posible cerrar el mantenimiento.'
+            );
+          })
+          .catch(function () {
+            boton.disabled = false;
+            window.alert('No se pudo conectar con el servidor. Intenta nuevamente.');
+          });
+      });
+    });
+  })();
+</script>
 
 <%- include('../../../partials/footer'); -%>
