@@ -23,9 +23,13 @@ const {
   TIPOS_MANTENIMIENTO,
   ESTADOS_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
+  esEstadoEditableMantenimiento,
   etiquetaTipoMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,
+  situacionMantenimiento,
+  diasRestantesMantenimiento,
+  DIAS_ALERTA_VENCIMIENTO_DEFAULT,
 } = require('../../libs/hojas-vida-mantenimientos');
 const {
   fetchUserByEmail,
@@ -8327,11 +8331,73 @@ router.get(
         };
       });
 
+      const diasAlerta = await obtenerDiasAlertaVencimientoWeb();
+      const mantenimientosResult = await pool.query(
+        `
+          SELECT id, item, tipo_mantenimiento, estado, fecha_realizacion, costo,
+                 responsable, datos_empresa_contratada, especificaciones_mantenimiento,
+                 observaciones_repuestos, fecha_cierre
+          FROM mantenimiento
+          WHERE hoja_vida_id = $1 AND activo = TRUE
+          ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+        `,
+        [datos.hojaVida.id]
+      );
+
+      const severidad = {
+        EN_EJECUCION: 4,
+        VENCIDO: 3,
+        PROXIMO_VENCER: 2,
+        VIGENTE: 1,
+      };
+      let alertaHojaVida = null;
+      let costoMantenimiento = 0;
+      const mantenimientos = mantenimientosResult.rows.map(function (mantenimiento) {
+        const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+        costoMantenimiento += Number(mantenimiento.costo || 0);
+        const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
+        if (estadoCodigo !== 'CUMPLIDO' && estadoCodigo !== 'CANCELADO') {
+          const nivel = severidad[situacion.codigo] || 0;
+          if (!alertaHojaVida || nivel > (severidad[alertaHojaVida.codigo] || 0)) {
+            alertaHojaVida = {
+              codigo: situacion.codigo,
+              etiqueta: situacion.etiqueta,
+              clase: situacion.clase,
+            };
+          }
+        }
+        return {
+          ...mantenimiento,
+          tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
+          estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+          estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+          situacion_etiqueta: situacion.etiqueta,
+          situacion_clase: situacion.clase,
+          fecha_realizacion_display: formatearValorHojaVidaPdf(
+            mantenimiento.fecha_realizacion,
+            'date'
+          ),
+          fecha_cierre_display: formatearFechaHoraHojaVida(mantenimiento.fecha_cierre),
+          costo_display: formatearMonedaCOP(mantenimiento.costo),
+        };
+      });
+
+      const prestamosTotal = await contarPrestamosEquipo(equipoId, null, null);
+
       return res.render('home/prestamos/hojas-vida/ver', {
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
         secciones: CAMPOS_POR_SECCION,
         documentos,
+        mantenimientos,
+        resumen: {
+          dias_alerta_vencimiento: diasAlerta,
+          alerta: alertaHojaVida,
+          mantenimientos_total: mantenimientos.length,
+          costo_mantenimiento: costoMantenimiento,
+          costo_mantenimiento_display: formatearMonedaCOP(costoMantenimiento),
+          prestamos_total: prestamosTotal,
+        },
         successMessage: sanitizeText(req.query.success),
         errorMessage: sanitizeText(req.query.error),
       });
@@ -8497,6 +8563,61 @@ function formatearFechaHoraHojaVida(valor) {
   )}:${pad(fecha.getMinutes())}`;
 }
 
+/**
+ * Formatea un valor monetario para las vistas de mantenimiento.
+ */
+function formatearMonedaCOP(valor) {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  const num = Number(valor);
+  if (!Number.isFinite(num)) return '—';
+  return '$ ' + num.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
+ * Dias de anticipacion configurados para las alertas de vencimiento.
+ */
+async function obtenerDiasAlertaVencimientoWeb() {
+  try {
+    const result = await pool.query(
+      `
+        SELECT dias_alerta_vencimiento
+        FROM mantenimiento_config
+        WHERE activo = TRUE
+        ORDER BY id ASC
+        LIMIT 1
+      `
+    );
+    const dias = Number(result.rows[0]?.dias_alerta_vencimiento);
+    return Number.isFinite(dias) ? dias : DIAS_ALERTA_VENCIMIENTO_DEFAULT;
+  } catch {
+    return DIAS_ALERTA_VENCIMIENTO_DEFAULT;
+  }
+}
+
+// Estados de solicitud de prestamo que cuentan como prestamo efectivamente
+// realizado sobre el activo.
+const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
+
+/**
+ * Cuenta los prestamos efectivamente realizados de un equipo en un rango
+ * opcional de fechas.
+ */
+async function contarPrestamosEquipo(equipoId, fechaDesde, fechaHasta) {
+  const result = await pool.query(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM solicitud_prestamo
+      WHERE equipo_id = $1
+        AND activo = TRUE
+        AND estado = ANY($2::text[])
+        AND ($3::date IS NULL OR fecha_inicio::date >= $3::date)
+        AND ($4::date IS NULL OR fecha_inicio::date <= $4::date)
+    `,
+    [equipoId, ESTADOS_PRESTAMO_COMPUTABLES, fechaDesde || null, fechaHasta || null]
+  );
+  return Number(result.rows[0]?.total || 0);
+}
+
 router.get(
   '/hojas-vida/:equipoId/historial',
   requireInventarioAuthorized,
@@ -8609,6 +8730,62 @@ router.get(
 );
 
 router.get(
+  '/hojas-vida/reportes/mantenimientos',
+  requireInventarioAuthorized,
+  async function reporteMantenimientosHVView(req, res) {
+    try {
+      return res.render('home/prestamos/hojas-vida/reportes-mantenimientos', {
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando reporte de mantenimientos:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20reporte'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/reportes/alertas',
+  requireInventarioAuthorized,
+  async function reporteAlertasHVView(req, res) {
+    try {
+      return res.render('home/prestamos/hojas-vida/reportes-alertas', {
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando reporte de alertas:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20reporte'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/reportes/utilizacion',
+  requireInventarioAuthorized,
+  async function reporteUtilizacionHVView(req, res) {
+    try {
+      return res.render('home/prestamos/hojas-vida/reportes-utilizacion', {
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando reporte de utilizacion:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20reporte'
+      );
+    }
+  }
+);
+
+router.get(
   '/hojas-vida/:equipoId/mantenimientos',
   requireInventarioAuthorized,
   async function listarMantenimientosHVView(req, res) {
@@ -8627,10 +8804,12 @@ router.get(
 
       const mantenimientosResult = await pool.query(
         `
-          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado,
+          SELECT id, item, tipo_mantenimiento, fecha_realizacion, estado, costo,
                  responsable, datos_empresa_contratada, tiempo_garantia,
                  especificaciones_mantenimiento, observaciones_repuestos,
-                 fecha_creacion
+                 fecha_cierre, usuario_cierre,
+                 fecha_creacion, usuario_creacion,
+                 fecha_modificacion, usuario_modificacion
           FROM mantenimiento
           WHERE hoja_vida_id = $1 AND activo = TRUE
           ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
@@ -8638,24 +8817,44 @@ router.get(
         [datos.hojaVida.id]
       );
 
+      const diasAlerta = await obtenerDiasAlertaVencimientoWeb();
+
       const mantenimientos = mantenimientosResult.rows.map(function (mantenimiento) {
+        const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
+        const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
         return {
           ...mantenimiento,
           tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
           estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
           estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+          situacion: situacion.codigo,
+          situacion_etiqueta: situacion.etiqueta,
+          situacion_clase: situacion.clase,
+          dias_restantes: diasRestantesMantenimiento(mantenimiento, new Date()),
+          es_editable: esEstadoEditableMantenimiento(estadoCodigo),
           fecha_realizacion_display: formatearValorHojaVidaPdf(
             mantenimiento.fecha_realizacion,
             'date'
           ),
           fecha_creacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_creacion),
+          fecha_modificacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_modificacion),
+          fecha_cierre_display: formatearFechaHoraHojaVida(mantenimiento.fecha_cierre),
+          costo_display: formatearMonedaCOP(mantenimiento.costo),
         };
       });
+
+      const costoAcumulado = mantenimientos.reduce(function (acc, item) {
+        return acc + Number(item.costo || 0);
+      }, 0);
 
       return res.render('home/prestamos/hojas-vida/mantenimientos', {
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
         mantenimientos,
+        diasAlerta,
+        costoAcumulado,
+        costoAcumuladoDisplay: formatearMonedaCOP(costoAcumulado),
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
         successMessage: sanitizeText(req.query.success),
         errorMessage: sanitizeText(req.query.error),
       });
@@ -8663,6 +8862,84 @@ router.get(
       console.error('[prestamos] Error cargando mantenimientos HV:', error);
       return res.redirect(
         '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20los%20mantenimientos'
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/:mantenimientoId/editar',
+  requireInventarioAuthorized,
+  async function editarMantenimientoHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      const mantenimientoId = Number(req.params.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const mantenimientoResult = await pool.query(
+        `
+          SELECT *
+          FROM mantenimiento
+          WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+          LIMIT 1
+        `,
+        [mantenimientoId, equipoId]
+      );
+
+      if (mantenimientoResult.rows.length === 0) {
+        return res.redirect(
+          `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20existe`
+        );
+      }
+
+      const mantenimiento = mantenimientoResult.rows[0];
+      const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+      if (!esEstadoEditableMantenimiento(estadoCodigo)) {
+        return res.redirect(
+          `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos?error=` +
+            encodeURIComponent(
+              'El mantenimiento ya fue cerrado y no puede modificarse mediante la edición ordinaria.'
+            )
+        );
+      }
+
+      const estadosPermitidos = ESTADOS_MANTENIMIENTO.filter(function (estado) {
+        return estado.codigo === estadoCodigo;
+      });
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-editar', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimiento: {
+          ...mantenimiento,
+          fecha_realizacion_display: formatearValorHojaVidaPdf(
+            mantenimiento.fecha_realizacion,
+            'date'
+          ),
+        },
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: estadosPermitidos,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando edicion de mantenimiento:', error);
+      return res.redirect(
+        '/milab/prestamos/hojas-vida?error=No%20fue%20posible%20cargar%20el%20mantenimiento'
       );
     }
   }
@@ -9501,6 +9778,26 @@ router.get(
   }
 );
 
+/**
+ * CA06/CA07: determina si un equipo tiene al menos un mantenimiento en
+ * ejecucion, en cuyo caso el activo no puede prestarse.
+ */
+async function equipoBloqueadoPorMantenimiento(cliente, equipoId) {
+  const result = await cliente.query(
+    `
+      SELECT 1
+      FROM mantenimiento
+      WHERE equipo_id = $1 AND activo = TRUE AND estado = 'EN_EJECUCION'
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+  return result.rows.length > 0;
+}
+
+const MENSAJE_EQUIPO_EN_MANTENIMIENTO =
+  'Equipo no disponible para préstamo. El activo tiene un mantenimiento en ejecución.';
+
 router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (req, res) {
   const payload = buildLoanRequestPayload(req.body);
   const validationError = validateLoanRequestPayload(payload);
@@ -9581,6 +9878,13 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       return res.status(404).json({
         success: false,
         message: 'El equipo no existe.',
+      });
+    }
+
+    if (await equipoBloqueadoPorMantenimiento(pool, payload.equipo_id)) {
+      return res.status(409).json({
+        success: false,
+        message: MENSAJE_EQUIPO_EN_MANTENIMIENTO,
       });
     }
 
@@ -10947,6 +11251,14 @@ router.post(
           return res.status(404).json({
             success: false,
             message: 'La solicitud de ultima hora no existe o ya fue procesada.',
+          });
+        }
+
+        if (await equipoBloqueadoPorMantenimiento(client, cola.equipo_id)) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            success: false,
+            message: MENSAJE_EQUIPO_EN_MANTENIMIENTO,
           });
         }
 

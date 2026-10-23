@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
     especificaciones_mantenimiento  TEXT,
     responsable                     VARCHAR(150),
     observaciones_repuestos         TEXT,
+    costo                           NUMERIC(14,2),
     estado                          VARCHAR(30)             NOT NULL,
     fecha_cierre                    TIMESTAMPTZ,
     usuario_cierre                  VARCHAR(50),
@@ -78,13 +79,42 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
     usuario_modificacion            VARCHAR(50),
     CONSTRAINT pk_mantenimiento PRIMARY KEY (id),
     CONSTRAINT ck_estado_mantenimiento CHECK (
-        estado IN ('EN_EJECUCION','CUMPLIDO','CANCELADO','PENDIENTE')
+        estado IN ('PENDIENTE','EN_EJECUCION','CUMPLIDO','VENCIDO','CANCELADO')
     ),
+    CONSTRAINT ck_costo_mantenimiento CHECK (costo IS NULL OR costo >= 0),
     CONSTRAINT fk_mantenimiento_hoja_vida FOREIGN KEY (hoja_vida_id)
         REFERENCES hoja_vida(id) ON DELETE CASCADE,
     CONSTRAINT fk_mantenimiento_equipo FOREIGN KEY (equipo_id)
         REFERENCES equipo(id) ON DELETE RESTRICT
 );
+
+-- Ajustes idempotentes para bases ya creadas
+ALTER TABLE mantenimiento ADD COLUMN IF NOT EXISTS costo NUMERIC(14,2);
+ALTER TABLE mantenimiento DROP CONSTRAINT IF EXISTS ck_estado_mantenimiento;
+ALTER TABLE mantenimiento ADD CONSTRAINT ck_estado_mantenimiento CHECK (
+    estado IN ('PENDIENTE','EN_EJECUCION','CUMPLIDO','VENCIDO','CANCELADO')
+);
+ALTER TABLE mantenimiento DROP CONSTRAINT IF EXISTS ck_costo_mantenimiento;
+ALTER TABLE mantenimiento ADD CONSTRAINT ck_costo_mantenimiento CHECK (
+    costo IS NULL OR costo >= 0
+);
+
+-- Parametrizacion del modulo de mantenimientos (alertas de vencimiento)
+CREATE TABLE IF NOT EXISTS mantenimiento_config (
+    id                      BIGSERIAL,
+    dias_alerta_vencimiento INT                     NOT NULL DEFAULT 30,
+    activo                  BOOLEAN                 NOT NULL DEFAULT TRUE,
+    fecha_creacion          TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion      TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuario_creacion        VARCHAR(50),
+    usuario_modificacion    VARCHAR(50),
+    CONSTRAINT pk_mantenimiento_config PRIMARY KEY (id),
+    CONSTRAINT ck_dias_alerta_vencimiento CHECK (dias_alerta_vencimiento BETWEEN 1 AND 365)
+);
+
+INSERT INTO mantenimiento_config (dias_alerta_vencimiento)
+SELECT 30
+WHERE NOT EXISTS (SELECT 1 FROM mantenimiento_config);
 
 
 CREATE TABLE IF NOT EXISTS hoja_vida_documento (
@@ -166,6 +196,12 @@ CREATE INDEX IF NOT EXISTS idx_mantenimiento_equipo_id
 
 CREATE INDEX IF NOT EXISTS idx_mantenimiento_estado
     ON mantenimiento (estado);
+
+CREATE INDEX IF NOT EXISTS idx_mantenimiento_fecha_realizacion
+    ON mantenimiento (fecha_realizacion);
+
+CREATE INDEX IF NOT EXISTS idx_mantenimiento_activo
+    ON mantenimiento (activo);
 
 CREATE INDEX IF NOT EXISTS idx_hoja_vida_documento_hoja_vida_id
     ON hoja_vida_documento (hoja_vida_id);

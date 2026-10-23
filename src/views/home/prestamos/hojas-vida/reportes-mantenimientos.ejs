@@ -1,0 +1,364 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell" data-testid="reportes-mantenimientos">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/prestamos/hojas-vida" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Reporte de Mantenimientos</h1>
+    <p class="app-page-subtitle">
+      Consolidado de mantenimientos con filtros y costos por equipo, laboratorio, periodo y tipo.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Filtros</h5>
+    </div>
+    <div class="card-body">
+      <form id="rm-filtros" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label for="rm-facultad" class="form-label">Facultad</label>
+          <input type="text" class="form-control" id="rm-facultad" name="facultad" />
+        </div>
+        <div class="col-md-3">
+          <label for="rm-laboratorio" class="form-label">Laboratorio</label>
+          <input type="text" class="form-control" id="rm-laboratorio" name="laboratorio" />
+        </div>
+        <div class="col-md-2">
+          <label for="rm-equipo" class="form-label">Equipo (ID)</label>
+          <input type="number" min="1" class="form-control" id="rm-equipo" name="equipo_id" />
+        </div>
+        <div class="col-md-2">
+          <label for="rm-tipo" class="form-label">Tipo</label>
+          <select class="form-select" id="rm-tipo" name="tipo_mantenimiento">
+            <option value="">Todos</option>
+            <% tiposMantenimiento.forEach(function (tipo) { %>
+              <option value="<%= tipo.codigo %>"><%= tipo.etiqueta %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="rm-estado" class="form-label">Estado</label>
+          <select class="form-select" id="rm-estado" name="estado">
+            <option value="">Todos</option>
+            <% estadosMantenimiento.forEach(function (estado) { %>
+              <option value="<%= estado.codigo %>"><%= estado.etiqueta %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="rm-desde" class="form-label">Desde</label>
+          <input type="date" class="form-control" id="rm-desde" name="fecha_desde" />
+        </div>
+        <div class="col-md-2">
+          <label for="rm-hasta" class="form-label">Hasta</label>
+          <input type="date" class="form-control" id="rm-hasta" name="fecha_hasta" />
+        </div>
+        <div class="col-md-8 d-flex gap-2">
+          <button type="submit" class="btn btn-perso" data-submit-lock="true">
+            <i class="bi bi-search"></i>
+            <span>Generar reporte</span>
+          </button>
+          <button type="reset" class="btn btn-outline-secondary" id="rm-reset">
+            <i class="bi bi-arrow-counterclockwise"></i>
+            <span>Limpiar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div id="rm-loading" class="alert alert-info">
+    <i class="bi bi-hourglass-split me-2"></i>Cargando reporte...
+  </div>
+
+  <div id="rm-error" class="alert alert-danger d-none" role="alert">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span id="rm-error-msg">No fue posible generar el reporte.</span>
+  </div>
+
+  <section id="rm-resumen" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Resumen</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Total de mantenimientos</span>
+          <strong data-testid="rm-total">0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Costo total</span>
+          <strong data-testid="rm-costo-total">$0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Costo promedio</span>
+          <strong data-testid="rm-costo-promedio">$0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Por estado</span>
+          <span id="rm-por-estado" class="d-flex gap-1 flex-wrap"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="rm-equipos-panel" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Costo por equipo</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-dark table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Equipo</th>
+              <th>Laboratorio</th>
+              <th>Facultad</th>
+              <th>Mantenimientos</th>
+              <th>Costo</th>
+            </tr>
+          </thead>
+          <tbody id="rm-equipos-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="rm-laboratorios-panel" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Costo por laboratorio</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-dark table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Laboratorio</th>
+              <th>Facultad</th>
+              <th>Mantenimientos</th>
+              <th>Costo</th>
+            </tr>
+          </thead>
+          <tbody id="rm-laboratorios-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="rm-periodo-panel" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Costo por periodo y tipo</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <h6 class="text-muted">Por periodo</h6>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Periodo</th>
+                  <th>Mantenimientos</th>
+                  <th>Costo</th>
+                </tr>
+              </thead>
+              <tbody id="rm-periodo-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <h6 class="text-muted">Por tipo de mantenimiento</h6>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Mantenimientos</th>
+                  <th>Costo</th>
+                </tr>
+              </thead>
+              <tbody id="rm-tipo-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var ENDPOINT = '/milab/api/hojas-vida/reportes/mantenimientos';
+    var formEl = document.getElementById('rm-filtros');
+    var resetBtn = document.getElementById('rm-reset');
+    var loadingEl = document.getElementById('rm-loading');
+    var errorEl = document.getElementById('rm-error');
+    var errorMsgEl = document.getElementById('rm-error-msg');
+    var resumenEl = document.getElementById('rm-resumen');
+
+    function escapeHtml(str) {
+      var s = str == null ? '' : String(str);
+      return s.replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function moneda(valor) {
+      try {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          maximumFractionDigits: 0,
+        }).format(Number(valor || 0));
+      } catch (e) {
+        return '$' + Number(valor || 0);
+      }
+    }
+
+    function toggle(panel, visible) {
+      if (!panel) return;
+      if (visible) panel.classList.remove('d-none');
+      else panel.classList.add('d-none');
+    }
+
+    function llenarTabla(id, filas, columnas) {
+      var tbody = document.getElementById(id);
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      filas.forEach(function (fila) {
+        var tr = document.createElement('tr');
+        columnas.forEach(function (col) {
+          var td = document.createElement('td');
+          td.innerHTML = col.valor(fila);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function render(data) {
+      var resumen = (data && data.resumen) || {};
+      document.querySelector('[data-testid="rm-total"]').textContent = String(resumen.total || 0);
+      document.querySelector('[data-testid="rm-costo-total"]').textContent = moneda(resumen.costo_total);
+      document.querySelector('[data-testid="rm-costo-promedio"]').textContent = moneda(
+        resumen.costo_promedio
+      );
+
+      var porEstadoEl = document.getElementById('rm-por-estado');
+      porEstadoEl.innerHTML = '';
+      var porEstado = resumen.por_estado || {};
+      Object.keys(porEstado).forEach(function (clave) {
+        var span = document.createElement('span');
+        span.className = 'badge bg-secondary';
+        span.textContent = clave + ': ' + porEstado[clave];
+        porEstadoEl.appendChild(span);
+      });
+
+      var porEquipo = data.por_equipo || [];
+      toggle(document.getElementById('rm-equipos-panel'), porEquipo.length > 0);
+      llenarTabla('rm-equipos-tbody', porEquipo, [
+        { valor: function (f) { return escapeHtml(f.equipo_nombre) + ' <small class="text-muted">(' + escapeHtml(f.equipo_codigo) + ')</small>'; } },
+        { valor: function (f) { return escapeHtml(f.laboratorio) || '-'; } },
+        { valor: function (f) { return escapeHtml(f.facultad) || '-'; } },
+        { valor: function (f) { return escapeHtml(f.total); } },
+        { valor: function (f) { return escapeHtml(moneda(f.costo)); } },
+      ]);
+
+      var porLaboratorio = data.por_laboratorio || [];
+      toggle(document.getElementById('rm-laboratorios-panel'), porLaboratorio.length > 0);
+      llenarTabla('rm-laboratorios-tbody', porLaboratorio, [
+        { valor: function (f) { return escapeHtml(f.laboratorio); } },
+        { valor: function (f) { return escapeHtml(f.facultad) || '-'; } },
+        { valor: function (f) { return escapeHtml(f.total); } },
+        { valor: function (f) { return escapeHtml(moneda(f.costo)); } },
+      ]);
+
+      var porPeriodo = data.por_periodo || [];
+      var porTipo = data.por_tipo || [];
+      toggle(document.getElementById('rm-periodo-panel'), porPeriodo.length > 0 || porTipo.length > 0);
+      llenarTabla('rm-periodo-tbody', porPeriodo, [
+        { valor: function (f) { return escapeHtml(f.periodo); } },
+        { valor: function (f) { return escapeHtml(f.total); } },
+        { valor: function (f) { return escapeHtml(moneda(f.costo)); } },
+      ]);
+      llenarTabla('rm-tipo-tbody', porTipo, [
+        { valor: function (f) { return escapeHtml(f.etiqueta || f.tipo); } },
+        { valor: function (f) { return escapeHtml(f.total); } },
+        { valor: function (f) { return escapeHtml(moneda(f.costo)); } },
+      ]);
+
+      toggle(resumenEl, true);
+    }
+
+    function cargar() {
+      loadingEl.classList.remove('d-none');
+      errorEl.classList.add('d-none');
+      toggle(resumenEl, false);
+
+      var formData = new FormData(formEl);
+      var params = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        var val = String(value || '').trim();
+        if (val) params.append(key, val);
+      });
+      var qs = params.toString();
+      var url = qs ? ENDPOINT + '?' + qs : ENDPOINT;
+
+      fetch(url, { method: 'GET', credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (res) {
+          return res
+            .json()
+            .then(function (body) {
+              return { ok: res.ok && body && body.ok === true, body: body };
+            })
+            .catch(function () {
+              return { ok: false, body: null };
+            });
+        })
+        .then(function (result) {
+          loadingEl.classList.add('d-none');
+          if (result.ok) {
+            render(result.body.data || {});
+            return;
+          }
+          errorMsgEl.textContent =
+            result.body && result.body.message
+              ? result.body.message
+              : 'No fue posible generar el reporte.';
+          errorEl.classList.remove('d-none');
+        })
+        .catch(function () {
+          loadingEl.classList.add('d-none');
+          errorMsgEl.textContent = 'No se pudo conectar con el servidor. Intenta nuevamente.';
+          errorEl.classList.remove('d-none');
+        });
+    }
+
+    formEl.addEventListener('submit', function (event) {
+      event.preventDefault();
+      cargar();
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        setTimeout(cargar, 0);
+      });
+    }
+
+    cargar();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

@@ -4,6 +4,29 @@
   <section class="app-page-header">
     <h1 class="app-page-title">Hojas de Vida y Mantenimientos</h1>
     <p class="app-page-subtitle">Gestiona la informacion documental, tecnica e historica de los equipos del inventario.</p>
+      <div class="d-flex gap-2 flex-wrap mt-3">
+      <a
+        href="/milab/prestamos/hojas-vida/reportes/mantenimientos"
+        class="btn btn-outline-primary btn-sm"
+        data-testid="action-reporte-mantenimientos"
+      >
+        <i class="bi bi-clipboard-data"></i> Reporte de mantenimientos
+      </a>
+      <a
+        href="/milab/prestamos/hojas-vida/reportes/alertas"
+        class="btn btn-outline-warning btn-sm"
+        data-testid="action-reporte-alertas"
+      >
+        <i class="bi bi-exclamation-triangle"></i> Equipos con alertas
+      </a>
+      <a
+        href="/milab/prestamos/hojas-vida/reportes/utilizacion"
+        class="btn btn-outline-info btn-sm"
+        data-testid="action-reporte-utilizacion"
+      >
+        <i class="bi bi-graph-up"></i> Reporte de utilizacion
+      </a>
+    </div>
   </section>
 
   <% if (successMessage) { %>
@@ -93,6 +116,8 @@
               <th>Marca</th>
               <th>Modelo</th>
               <th>Estado HV</th>
+              <th>Alerta mantenimiento</th>
+              <th>Prestamos</th>
               <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
             </tr>
           </thead>
@@ -144,6 +169,24 @@
       return '<span class="badge bg-secondary" data-testid="estado-sin-hv">Sin hoja de vida</span>';
     }
 
+    function alertaBadge(equipo) {
+      if (!equipo.tiene_mantenimientos) {
+        return '<span class="text-muted">-</span>';
+      }
+      if (!equipo.alerta) {
+        return '<span class="badge bg-success" data-testid="alerta-vigente">Mantenimiento vigente</span>';
+      }
+      var dias = equipo.alerta.dias_restantes;
+      var detalle = '';
+      if (dias !== null && dias !== undefined) {
+        detalle = dias >= 0
+          ? '<small class="d-block text-muted">' + dias + ' dia(s) restantes</small>'
+          : '<small class="d-block text-muted">' + Math.abs(dias) + ' dia(s) de vencimiento</small>';
+      }
+      return '<span class="badge bg-' + escapeHtml(equipo.alerta.clase) + '" data-testid="alerta-mantenimiento">' +
+        escapeHtml(equipo.alerta.etiqueta) + '</span>' + detalle;
+    }
+
     function buildRowData(equipo) {
       var base = '/milab/prestamos/hojas-vida';
       var accionesHtml;
@@ -168,6 +211,8 @@
         escapeHtml(equipo.marca) || '-',
         escapeHtml(equipo.referencia_modelo) || '-',
         estadoBadge(equipo),
+        alertaBadge(equipo),
+        escapeHtml(equipo.prestamos_total || 0),
         accionesHtml
       ];
     }

@@ -1,0 +1,330 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell" data-testid="reportes-utilizacion">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/prestamos/hojas-vida" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Reporte de Utilizacion de Equipos</h1>
+    <p class="app-page-subtitle">
+      Cantidad de prestamos por equipo y su relacion con los mantenimientos y sus costos.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Filtros</h5>
+    </div>
+    <div class="card-body">
+      <form id="ru-filtros" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label for="ru-facultad" class="form-label">Facultad</label>
+          <input type="text" class="form-control" id="ru-facultad" name="facultad" />
+        </div>
+        <div class="col-md-3">
+          <label for="ru-laboratorio" class="form-label">Laboratorio / UAL</label>
+          <input type="text" class="form-control" id="ru-laboratorio" name="laboratorio" />
+        </div>
+        <div class="col-md-2">
+          <label for="ru-equipo" class="form-label">Equipo (ID)</label>
+          <input type="number" min="1" class="form-control" id="ru-equipo" name="equipo_id" />
+        </div>
+        <div class="col-md-2">
+          <label for="ru-desde" class="form-label">Desde</label>
+          <input type="date" class="form-control" id="ru-desde" name="fecha_desde" />
+        </div>
+        <div class="col-md-2">
+          <label for="ru-hasta" class="form-label">Hasta</label>
+          <input type="date" class="form-control" id="ru-hasta" name="fecha_hasta" />
+        </div>
+        <div class="col-md-12 d-flex gap-2">
+          <button type="submit" class="btn btn-perso" data-submit-lock="true">
+            <i class="bi bi-search"></i>
+            <span>Generar reporte</span>
+          </button>
+          <button type="reset" class="btn btn-outline-secondary" id="ru-reset">
+            <i class="bi bi-arrow-counterclockwise"></i>
+            <span>Limpiar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div id="ru-loading" class="alert alert-info">
+    <i class="bi bi-hourglass-split me-2"></i>Cargando reporte...
+  </div>
+
+  <div id="ru-error" class="alert alert-danger d-none" role="alert">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span id="ru-error-msg">No fue posible generar el reporte.</span>
+  </div>
+
+  <section id="ru-resumen" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Resumen</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Equipos</span>
+          <strong data-testid="ru-equipos">0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Total de prestamos</span>
+          <strong data-testid="ru-prestamos">0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Promedio por equipo</span>
+          <strong data-testid="ru-promedio">0</strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Equipos sin prestamos</span>
+          <strong data-testid="ru-sin-prestamos">0</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ru-panel" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Utilizacion y mantenimiento por equipo</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-dark table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Equipo</th>
+              <th>Laboratorio / UAL</th>
+              <th>Facultad</th>
+              <th>Prestamos</th>
+              <th>Mantenimientos</th>
+              <th>Costo mantenimiento</th>
+            </tr>
+          </thead>
+          <tbody id="ru-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="ru-ranking-panel" class="card app-table-panel text-light mb-4 d-none">
+    <div class="card-header">
+      <h5 class="mb-0">Ranking de utilizacion</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <h6 class="text-muted">Equipos mas utilizados</h6>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Equipo</th>
+                  <th>Prestamos</th>
+                </tr>
+              </thead>
+              <tbody id="ru-mas-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <h6 class="text-muted">Equipos menos utilizados</h6>
+          <div class="table-responsive">
+            <table class="table table-dark table-striped align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Equipo</th>
+                  <th>Prestamos</th>
+                </tr>
+              </thead>
+              <tbody id="ru-menos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var UTILIZACION_ENDPOINT = '/milab/api/hojas-vida/reportes/utilizacion';
+    var MANTENIMIENTO_ENDPOINT = '/milab/api/hojas-vida/reportes/mantenimientos';
+    var formEl = document.getElementById('ru-filtros');
+    var resetBtn = document.getElementById('ru-reset');
+    var loadingEl = document.getElementById('ru-loading');
+    var errorEl = document.getElementById('ru-error');
+    var errorMsgEl = document.getElementById('ru-error-msg');
+
+    function escapeHtml(str) {
+      var s = str == null ? '' : String(str);
+      return s.replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function moneda(valor) {
+      try {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          maximumFractionDigits: 0,
+        }).format(Number(valor || 0));
+      } catch (e) {
+        return '$' + Number(valor || 0);
+      }
+    }
+
+    function toggle(panel, visible) {
+      if (!panel) return;
+      if (visible) panel.classList.remove('d-none');
+      else panel.classList.add('d-none');
+    }
+
+    function fetchJson(url) {
+      return fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      }).then(function (res) {
+        return res
+          .json()
+          .then(function (body) {
+            return { ok: res.ok && body && body.ok === true, body: body };
+          })
+          .catch(function () {
+            return { ok: false, body: null };
+          });
+      });
+    }
+
+    function construirParams() {
+      var formData = new FormData(formEl);
+      var params = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        var val = String(value || '').trim();
+        if (val) params.append(key, val);
+      });
+      return params.toString();
+    }
+
+    function llenarRanking(id, filas) {
+      var tbody = document.getElementById(id);
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      filas.forEach(function (fila) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + (escapeHtml(fila.nombre) || '-') + '</td>' +
+          '<td>' + escapeHtml(fila.prestamos) + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function render(utilizacion, costosPorEquipo) {
+      var resumen = utilizacion.resumen || {};
+      document.querySelector('[data-testid="ru-equipos"]').textContent = String(
+        resumen.equipos_total || 0
+      );
+      document.querySelector('[data-testid="ru-prestamos"]').textContent = String(
+        resumen.prestamos_total || 0
+      );
+      document.querySelector('[data-testid="ru-promedio"]').textContent = String(
+        Math.round((Number(resumen.promedio_prestamos) || 0) * 100) / 100
+      );
+      document.querySelector('[data-testid="ru-sin-prestamos"]').textContent = String(
+        resumen.equipos_sin_prestamos || 0
+      );
+
+      var porEquipo = utilizacion.por_equipo || [];
+      var tbody = document.getElementById('ru-tbody');
+      tbody.innerHTML = '';
+      porEquipo.forEach(function (fila) {
+        var costoInfo = costosPorEquipo[Number(fila.equipo_id)] || { total: 0, costo: 0 };
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-testid', 'ru-item');
+        tr.innerHTML =
+          '<td>' + (escapeHtml(fila.nombre) || '-') + ' <small class="text-muted">(' +
+          escapeHtml(fila.codigo) + ')</small></td>' +
+          '<td>' + (escapeHtml(fila.laboratorio) || '-') + '</td>' +
+          '<td>' + (escapeHtml(fila.facultad) || '-') + '</td>' +
+          '<td>' + escapeHtml(fila.prestamos) + '</td>' +
+          '<td>' + escapeHtml(costoInfo.total || 0) + '</td>' +
+          '<td>' + escapeHtml(moneda(costoInfo.costo)) + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      llenarRanking('ru-mas-tbody', utilizacion.mas_utilizados || []);
+      llenarRanking('ru-menos-tbody', utilizacion.menos_utilizados || []);
+
+      toggle(document.getElementById('ru-resumen'), true);
+      toggle(document.getElementById('ru-panel'), porEquipo.length > 0);
+      toggle(document.getElementById('ru-ranking-panel'), porEquipo.length > 0);
+    }
+
+    function cargar() {
+      loadingEl.classList.remove('d-none');
+      errorEl.classList.add('d-none');
+      toggle(document.getElementById('ru-resumen'), false);
+
+      var qs = construirParams();
+      var urlUtilizacion = qs ? UTILIZACION_ENDPOINT + '?' + qs : UTILIZACION_ENDPOINT;
+      var urlMantenimiento = qs ? MANTENIMIENTO_ENDPOINT + '?' + qs : MANTENIMIENTO_ENDPOINT;
+
+      Promise.all([fetchJson(urlUtilizacion), fetchJson(urlMantenimiento)])
+        .then(function (resultados) {
+          loadingEl.classList.add('d-none');
+          var utilizacion = resultados[0];
+          if (!utilizacion.ok) {
+            errorMsgEl.textContent =
+              utilizacion.body && utilizacion.body.message
+                ? utilizacion.body.message
+                : 'No fue posible generar el reporte.';
+            errorEl.classList.remove('d-none');
+            return;
+          }
+
+          var costosPorEquipo = {};
+          if (resultados[1].ok && resultados[1].body && resultados[1].body.data) {
+            (resultados[1].body.data.por_equipo || []).forEach(function (fila) {
+              costosPorEquipo[Number(fila.equipo_id)] = { total: fila.total, costo: fila.costo };
+            });
+          }
+
+          render(utilizacion.body.data || {}, costosPorEquipo);
+        })
+        .catch(function () {
+          loadingEl.classList.add('d-none');
+          errorMsgEl.textContent = 'No se pudo conectar con el servidor. Intenta nuevamente.';
+          errorEl.classList.remove('d-none');
+        });
+    }
+
+    formEl.addEventListener('submit', function (event) {
+      event.preventDefault();
+      cargar();
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        setTimeout(cargar, 0);
+      });
+    }
+
+    cargar();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>
