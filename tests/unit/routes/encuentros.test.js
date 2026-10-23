@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
+const ExcelJS = require('exceljs');
 const { PDFDocument } = require('pdf-lib');
 const request = require('supertest');
 
@@ -561,6 +562,280 @@ test('event detail returns database-backed statistics for the visual summary', a
   }
 });
 
+test('participant export includes attendance, certificate, and linked medal data', async () => {
+  const setup = buildTestApp(async (sql) => {
+    assert.match(sql, /LEFT JOIN encuentro_logro/);
+    return {
+      rows: [
+        {
+          nombre: 'Ana Pérez',
+          documento: '000123',
+          correo: 'ana@example.edu',
+          rol: 'Docente',
+          facultad: 'Ingeniería',
+          laboratorio: 'Lab 1',
+          fecha_inscripcion: new Date('2026-10-01T14:00:00.000Z'),
+          entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+          salida_en: new Date('2026-10-20T16:00:00.000Z'),
+          estado_asistencia: 'completada',
+          codigo_certificado: 'CERT-123',
+          estado_certificado: 'enviado',
+          validez_certificado: 'valido',
+          fecha_emision: new Date('2026-10-20T17:00:00.000Z'),
+          email_enviado_en: new Date('2026-10-20T17:01:00.000Z'),
+          medalla_vinculada: true,
+        },
+      ],
+    };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .get('/encuentros/api/eventos/14/participantes.xlsx')
+      .set('x-test-role', 'gestor_laboratorio')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /spreadsheetml\.sheet/);
+    assert.match(response.headers['content-disposition'], /participantes-encuentro-14\.xlsx/);
+    assert.ok(Buffer.isBuffer(response.body));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(response.body);
+    const sheet = workbook.worksheets[0];
+    const headers = sheet.getRow(1).values.slice(1);
+    assert.ok(headers.includes('Entrada'));
+    assert.ok(headers.includes('Salida'));
+    assert.ok(headers.includes('Número de certificado'));
+    assert.ok(headers.includes('Estado del certificado'));
+    assert.ok(headers.includes('Medalla vinculada'));
+    assert.equal(sheet.getRow(2).getCell(2).value, '000123');
+    assert.equal(sheet.getRow(2).getCell(11).value, 'CERT-123');
+    assert.equal(sheet.getRow(2).getCell(16).value, true);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('historical participation import records timestamps only for finalized events', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('SELECT estado FROM encuentro_evento')) {
+      return { rows: [{ estado: 'finalizado' }] };
+    }
+    if (sql.includes('FROM usuario')) return { rows: [] };
+    if (sql.includes('INSERT INTO encuentro_participante')) return { rows: [{ id: 31 }] };
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participaciones/importar')
+      .set('x-test-role', 'gestor_laboratorio')
+      .send({
+        filas: [
+          {
+            fila: 2,
+            participante: {
+              nombre: 'Ana Pérez',
+              documento: '000123',
+              correo: 'ana@example.edu',
+              rol: 'Docente',
+              facultad: 'Ingeniería',
+              laboratorio: 'Lab 1',
+            },
+            entrada_en: '2026-10-20T14:00:00.000Z',
+            salida_en: '2026-10-20T16:00:00.000Z',
+          },
+        ],
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.resumen.importados, 1);
+    assert.equal(response.body.resumen.certificados_eligibles, 1);
+    assert.deepEqual(response.body.participantes_importados, [
+      { participante_id: 31, nombre: 'Ana Pérez', completada: true },
+    ]);
+    const attendanceInsert = statements.find(({ sql }) =>
+      sql.includes('INSERT INTO encuentro_asistencia')
+    );
+    assert.deepEqual(attendanceInsert.values, [
+      14,
+      31,
+      '2026-10-20T14:00:00.000Z',
+      '2026-10-20T16:00:00.000Z',
+      12,
+    ]);
+    assert.match(attendanceInsert.sql, /entrada_por_usuario_id, salida_por_usuario_id/);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('historical event creation stores the event as finalized', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-historical-event-test-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const pdfDocument = await PDFDocument.create();
+  pdfDocument.addPage([300, 200]);
+  const pdfBuffer = Buffer.from(await pdfDocument.save());
+  let insertValues;
+  let insertSql;
+  let alreadyEnded = true;
+  let insertCount = 0;
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql, values) => {
+      if (sql.includes('AS ya_finalizado')) return { rows: [{ ya_finalizado: alreadyEnded }] };
+      if (sql.includes('INSERT INTO encuentro_evento')) {
+        insertValues = values;
+        insertSql = sql;
+        insertCount += 1;
+        return { rows: [{ id: 55 }] };
+      }
+      return { rows: [] };
+    });
+    const submitEvent = () =>
+      request(setup.app)
+        .post('/encuentros/api/eventos')
+        .set('x-test-role', 'admin')
+        .field('nombre', 'Encuentro histórico')
+        .field('organizador', 'MiLab')
+        .field('fecha', '2026-10-20')
+        .field('hora_inicio', '09:00')
+        .field('hora_fin', '10:00')
+        .field('lugar', 'Sede')
+        .field('evento_historico', 'true')
+        .field(
+          'plantilla_config',
+          JSON.stringify({ qr_verificacion: { type: 'qr', x: 12, y: 12, width: 40 } })
+        )
+        .attach('plantilla_pdf', pdfBuffer, {
+          filename: 'certificado.pdf',
+          contentType: 'application/pdf',
+        });
+    const response = await submitEvent();
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.evento_id, 55);
+    assert.equal(response.body.estado, 'finalizado');
+    assert.equal(insertValues[11], true);
+    assert.match(insertSql, /CASE WHEN \$12::boolean THEN 'finalizado' ELSE 'programado' END/);
+
+    alreadyEnded = false;
+    const futureEvent = await submitEvent();
+    assert.equal(futureEvent.status, 400);
+    assert.match(futureEvent.body.message, /fecha y hora de finalización ya transcurridas/i);
+    assert.equal(insertCount, 1);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('certificate generation can omit email while still linking the participation medal', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-no-email-test-${process.pid}`);
+  const templatePath = path.join(storageRoot, 'templates', 'template.pdf');
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const pdfDocument = await PDFDocument.create();
+  pdfDocument.addPage([300, 200]);
+  const templateBuffer = Buffer.from(await pdfDocument.save());
+  const templateConfig = {
+    qr_verificacion: { type: 'qr', x: 12, y: 12, width: 40 },
+  };
+  const participant = {
+    participante_id: 31,
+    evento_id: 14,
+    nombre: 'Ana Pérez',
+    documento: '000123',
+    documento_normalizado: '000123',
+    correo: 'ana@example.edu',
+    rol: 'Docente',
+    facultad: 'Ingeniería',
+    laboratorio: 'Lab 1',
+    evento: 'Encuentro histórico',
+    fecha_evento: '2026-10-20',
+    lugar: 'Sede',
+    organizador: 'MiLab',
+    plantilla_pdf_path: 'templates/template.pdf',
+    plantilla_config: templateConfig,
+    entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+    salida_en: new Date('2026-10-20T16:00:00.000Z'),
+  };
+  const statements = [];
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    await fs.mkdir(path.dirname(templatePath), { recursive: true });
+    await fs.writeFile(templatePath, templateBuffer);
+    setup = buildTestApp(async (sql, values) => {
+      statements.push({ sql, values });
+      if (sql.includes('FOR UPDATE OF p, e')) return { rows: [participant] };
+      if (sql.includes('SELECT 1') && sql.includes('FROM encuentro_participante p')) {
+        return { rows: [{ id: 31 }] };
+      }
+      if (
+        sql.includes('SELECT id, estado, email_estado FROM encuentro_certificado') &&
+        !sql.includes('FOR UPDATE')
+      ) {
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO encuentro_certificado')) {
+        return { rows: [{ id: 88, estado: 'valido', email_estado: 'pendiente' }] };
+      }
+      if (sql.includes('FROM encuentro_certificado c') && sql.includes('FOR UPDATE OF c')) {
+        return {
+          rows: [
+            {
+              certificado_id: 88,
+              evento_id: 14,
+              participante_id: 31,
+              documento_normalizado: '000123',
+              entrada_en: participant.entrada_en,
+              salida_en: participant.salida_en,
+              certificado_estado: 'valido',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM usuario')) return { rows: [{ id: 12 }] };
+      if (sql.includes('UPDATE encuentro_participante') && sql.includes('RETURNING usuario_id')) {
+        return { rows: [{ usuario_id: 12 }] };
+      }
+      if (sql.includes('INSERT INTO encuentro_logro')) return { rows: [{ id: 77 }] };
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes/31/certificado/generar')
+      .set('x-test-role', 'admin')
+      .send({ enviar_correo: false });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.certificado_id, 88);
+    assert.equal(response.body.correo_omitido, true);
+    assert.equal(response.body.medalla_otorgada, true);
+    assert.ok(statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_logro')));
+    assert.ok(
+      !statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_envio_certificado'))
+    );
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test('finalized encounter report downloads an aggregate PDF grouped by faculty', async () => {
   const statements = [];
   const setup = buildTestApp(async (sql, values) => {
@@ -594,7 +869,7 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
       return {
         rows: [
           {
-            facultad: 'Facultad con menor participación',
+            facultad: 'Facultad de Ciencias Matemáticas, Naturales y Educación',
             registrados: 1,
             con_entrada: 1,
             completaron: 1,
@@ -631,16 +906,23 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
     }).promise;
     try {
       let reportText = '';
+      let firstPageText = '';
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         const page = await pdf.getPage(pageNumber);
         const content = await page.getTextContent();
-        reportText += ` ${content.items.map((item) => item.str).join(' ')}`;
+        const pageText = content.items.map((item) => item.str).join(' ');
+        reportText += ` ${pageText}`;
+        if (pageNumber === 1) firstPageText = pageText;
       }
       assert.match(reportText, /Informe del encuentro/);
       assert.match(reportText, /Registrados activos/);
-      assert.match(reportText, /Participación por facultad/);
+      assert.match(reportText, /Resumen de participantes\s+por facultad/);
+      assert.match(firstPageText, /Registrados activos/);
+      assert.match(firstPageText, /Resumen de participantes\s+por facultad/);
+      assert.match(firstPageText, /Facultad de Ciencias Matemáticas, Naturales y\s+Educación/);
+      assert.match(firstPageText, /Facultad con mayor participación/);
       assert.ok(
-        reportText.indexOf('Facultad con menor participación') <
+        reportText.indexOf('Facultad de Ciencias Matemáticas, Naturales y') <
           reportText.indexOf('Facultad con mayor participación')
       );
     } finally {

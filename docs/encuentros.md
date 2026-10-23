@@ -54,12 +54,15 @@ Reglas:
 
 ## Cierre del evento y envío de certificados
 
-Al finalizar un evento, el sistema:
+Al finalizar un evento, puedes elegir entre enviar de inmediato los certificados pendientes a todas las participaciones completadas o hacerlo manualmente desde el detalle. En el modo manual, selecciona los asistentes que recibirán certificado y marca si deseas enviarles el correo. Los certificados generados sin correo quedan disponibles para descarga y su medalla se enlaza cuando el documento coincide con una cuenta MiLab activa.
 
-1. Cambia el estado a `finalizado`.
-2. Identifica los participantes con entrada y salida registradas que aún no tienen su certificado enviado (`GET /encuentros/api/eventos/:eventoId/certificados/pendientes`).
-3. Muestra cuántos certificados quedaron pendientes y los envía uno a uno con `POST /encuentros/api/eventos/:eventoId/participantes/:participanteId/certificado/generar`, esperando la respuesta de cada envío antes del siguiente.
-4. Al terminar, confirma cuántos se enviaron y lista los que tuvieron error. Los errores pueden reintentarse desde el detalle del participante.
+El informe PDF reúne en su primera página las estadísticas y el resumen de participantes por facultad. Desde el detalle también puedes descargar un Excel con los datos de participantes, documento, correo, cargo, facultad, UAL, entrada, salida, estado de participación, código y estado del certificado, fechas de emisión/envío y estado de la medalla.
+
+## Eventos históricos
+
+Al crear un evento que ya se realizó, marca **El evento ya se realizó**. El sistema valida que su fecha y hora de finalización ya hayan pasado en `America/Bogota`. El evento quedará finalizado y su detalle permitirá descargar la plantilla de participaciones históricas. Completa las seis columnas de participante y añade `Entrada (ISO 8601)` y `Salida (ISO 8601)`; las fechas deben incluir zona horaria, por ejemplo `2026-10-20T09:00:00-05:00`. La salida no puede existir sin entrada ni ser anterior a ella.
+
+Previsualiza el archivo antes de importarlo. Después puedes elegir si se envían correos a quienes tengan entrada y salida. Los certificados se generan para esas participaciones completadas; participantes sin ambas marcas se importan, pero no reciben certificado en ese proceso.
 
 ## Validación
 
