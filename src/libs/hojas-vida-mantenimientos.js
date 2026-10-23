@@ -34,6 +34,9 @@ const ESTADO_MANTENIMIENTO_DEFAULT = 'PENDIENTE';
 
 // Estados que permiten edicion ordinaria y cierre.
 const ESTADOS_MANTENIMIENTO_EDITABLES = ['PENDIENTE', 'EN_EJECUCION'];
+// Estados terminales: al llegar a ellos se registra el cierre y el mantenimiento
+// deja de ser editable.
+const ESTADOS_MANTENIMIENTO_CIERRE = ['CUMPLIDO', 'CANCELADO'];
 
 const DIAS_ALERTA_VENCIMIENTO_DEFAULT = 30;
 
@@ -48,7 +51,13 @@ function esEstadoMantenimientoValido(codigo) {
 function esEstadoEditableMantenimiento(codigo) {
   return ESTADOS_MANTENIMIENTO_EDITABLES.indexOf(codigo) !== -1;
 }
+function esEstadoMantenimientoEditable(codigo) {
+  return ESTADOS_MANTENIMIENTO_EDITABLES.indexOf(codigo) !== -1;
+}
 
+function esEstadoMantenimientoCierre(codigo) {
+  return ESTADOS_MANTENIMIENTO_CIERRE.indexOf(codigo) !== -1;
+}
 function etiquetaTipoMantenimiento(codigo) {
   const tipo = TIPOS_MANTENIMIENTO.find((item) => item.codigo === codigo);
   return tipo ? tipo.etiqueta : codigo;
@@ -146,6 +155,9 @@ module.exports = {
   esTipoMantenimientoValido,
   esEstadoMantenimientoValido,
   esEstadoEditableMantenimiento,
+  ESTADOS_MANTENIMIENTO_CIERRE,
+  esEstadoMantenimientoEditable,
+  esEstadoMantenimientoCierre,
   etiquetaTipoMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,
