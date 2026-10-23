@@ -1,4 +1,5 @@
--- Corrige permisos de las tablas y secuencias del submódulo Encuentros.
+-- Concede permisos de lectura y escritura de Encuentros a los roles de aplicación
+-- identificados por su acceso a milab.multa y al propietario de esa tabla.
 -- Ejecutar como DBA o propietario de los objetos, con:
 -- psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/20261021_encuentros_permissions.sql
 
@@ -15,13 +16,12 @@ BEGIN
     END IF;
 
     FOR acceso IN
-        SELECT pg_get_userbyid(c.relowner) AS usuario, 'ALL' AS privilegios, TRUE AS escribe
+        SELECT pg_get_userbyid(c.relowner) AS usuario, 'ALL' AS privilegios
         FROM pg_class c
         WHERE c.oid = 'milab.multa'::regclass
         UNION
         SELECT pg_get_userbyid(a.grantee),
-               string_agg(DISTINCT a.privilege_type, ', '),
-               bool_or(a.privilege_type IN ('INSERT', 'UPDATE'))
+               'SELECT, INSERT, UPDATE'
         FROM pg_class c
         CROSS JOIN LATERAL aclexplode(c.relacl) a
         WHERE c.oid = 'milab.multa'::regclass
@@ -48,8 +48,7 @@ BEGIN
             secuencia := pg_get_serial_sequence(format('milab.%I', objeto), 'id');
             IF secuencia IS NOT NULL THEN
                 EXECUTE format(
-                    'GRANT %s ON SEQUENCE %s TO %I',
-                    CASE WHEN acceso.escribe THEN 'USAGE, SELECT, UPDATE' ELSE 'SELECT' END,
+                    'GRANT USAGE, SELECT ON SEQUENCE %s TO %I',
                     secuencia,
                     acceso.usuario
                 );

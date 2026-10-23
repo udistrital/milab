@@ -17,6 +17,7 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 - db_structure_inventarios.sql / db_seed_inventarios.sql: estructura y menus/permisos del modulo de inventarios.
 - [sql/20261021_gestor_laboratorio.sql](../sql/20261021_gestor_laboratorio.sql): inicializa el rol, su acceso administrativo y la gestión global de encuentros en bases existentes.
 - [sql/20261021_coordinador_ual_encargado.sql](../sql/20261021_coordinador_ual_encargado.sql): crea o recupera la relación entre coordinadores encargados y UAL en bases existentes.
+- [sql/20261023_encuentros_app_permissions.sql](../sql/20261023_encuentros_app_permissions.sql): garantiza permisos de lectura y escritura para el usuario PostgreSQL `milab_app` en las tablas de Encuentros.
 - db_seed_pruebas_ofuscado.sql: datos de prueba derivados del libro ofuscado; se ejecuta solo al reconstruir el ambiente de pruebas, nunca en producción.
 - scripts/generate_ofuscado_seed.py: regenera el seed anterior desde el libro ofuscado y el catalogo del sistema.
 - db_seed_pruebas_local.sql: precarga local de pruebas (NO usar en produccion).
@@ -71,6 +72,16 @@ desde las cargas aprobadas. La estructura de inventarios debe existir previament
 
 ```sh
 psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261021_coordinador_ual_encargado.sql
+```
+
+Si el usuario de conexión de la aplicación no puede crear o actualizar eventos de Encuentros,
+aplique esta migración como DBA o propietario de los objetos. Concede `SELECT`, `INSERT` y
+`UPDATE` sobre sus tablas y `USAGE`/`SELECT` sobre las secuencias `id`; no concede `DELETE`
+ni privilegios de propietario. El nombre `milab_app` debe coincidir con el usuario que muestra
+el diagnóstico de producción:
+
+```sh
+psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261023_encuentros_app_permissions.sql
 ```
 
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
