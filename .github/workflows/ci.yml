@@ -179,14 +179,9 @@ jobs:
           set -eu
           target_dir=/home/ubuntu/prod
           target_file="$target_dir/docker-compose.override.yml"
+          temp_file="$(mktemp)"
 
-          if command -v sudo >/dev/null 2>&1; then
-            sudo mkdir -p "$target_dir"
-            sudo tee "$target_file" > /dev/null <<'YAML'
-          else
-            mkdir -p "$target_dir"
-            tee "$target_file" > /dev/null <<'YAML'
-          fi
+          cat > "$temp_file" <<'YAML'
           services:
             milabud:
               environment:
@@ -194,6 +189,16 @@ jobs:
               volumes:
                 - /opt/milab-data/encuentros:/usr/src/app/private/encuentros
           YAML
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p "$target_dir"
+            sudo cp "$temp_file" "$target_file"
+          else
+            mkdir -p "$target_dir"
+            cp "$temp_file" "$target_file"
+          fi
+
+          rm -f "$temp_file"
 
       - name: Validar flags sensibles en entorno
         run: |
