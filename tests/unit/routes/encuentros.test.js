@@ -899,6 +899,10 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
             certificados_enviados: 1,
             certificados_pendientes: 0,
             certificados_con_error: 1,
+            registros_post_cierre: 1,
+            salidas_post_cierre: 1,
+            certificados_enviados_post_cierre: 1,
+            participantes_con_gestion_post_cierre: 2,
           },
         ],
       };
@@ -935,6 +939,9 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
             laboratorio: 'Lab 1',
             estado_asistencia: 'completada',
             estado_certificado: 'enviado',
+            registro_post_cierre: false,
+            salida_post_cierre: true,
+            certificado_enviado_post_cierre: true,
           },
           {
             nombre: 'Bruno Díaz',
@@ -944,6 +951,9 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
             laboratorio: 'Lab 2',
             estado_asistencia: 'en_curso',
             estado_certificado: 'pendiente',
+            registro_post_cierre: true,
+            salida_post_cierre: false,
+            certificado_enviado_post_cierre: false,
           },
         ],
       };
@@ -966,6 +976,8 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
       /ORDER BY registrados ASC, facultad ASC/.test(sql)
     );
     assert.ok(facultiesQuery);
+    const reportQuery = statements[0].sql;
+    assert.match(reportQuery, /AT TIME ZONE 'America\/Bogota'/);
 
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const pdf = await pdfjs.getDocument({
@@ -986,8 +998,11 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
       assert.match(reportText, /Registrados activos/);
       assert.match(reportText, /Resumen de participantes\s+por facultad/);
       assert.match(reportText, /Anexo\s+·\s+Listado/);
+      assert.match(reportText, /Gestiones posteriores al cierre/);
+      assert.match(reportText, /Post-cierre/);
       assert.match(firstPageText, /Registrados activos/);
       assert.match(firstPageText, /Resumen de participantes\s+por facultad/);
+      assert.match(firstPageText, /Gestiones posteriores al cierre/);
       assert.match(firstPageText, /Facultad de Ciencias Matemáticas, Naturales y\s+Educación/);
       assert.match(reportText, /Facultad con mayor participación/);
       assert.ok(
