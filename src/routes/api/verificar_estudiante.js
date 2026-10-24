@@ -5,7 +5,6 @@ const { sgaDebtService } = require('../../libs/oati-debts');
 const { ensurePerfilEstudiante, resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const {
   collectStudentCodigos,
-  getActiveSgaDebtsForStudent,
   selectStudentRecordForDocumento,
 } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
@@ -215,10 +214,15 @@ router.post('/', requireVerificationAction, async (req, res) => {
 
     if (sgaDebtService.isConfigured()) {
       try {
-        sgaMultaInfo = await getActiveSgaDebtsForStudent(sgaDebtService, {
+        const sgaResult = await sgaDebtService.queryStudent({
+          codigo: con_codigo,
           codigos: codigosPersona.length ? codigosPersona : collectStudentCodigos([], con_codigo),
           documento,
         });
+        sgaMultaInfo = sgaResult.debts;
+        if (!['found', 'clear'].includes(sgaResult.status)) {
+          sgaLookupError = `${sgaResult.message} El certificado no podrá generarse hasta completar la consulta.`;
+        }
       } catch (sgaError) {
         if (sgaError?.code === 'OATI_UNAVAILABLE') {
           return respondOatiUnavailable(req, res);

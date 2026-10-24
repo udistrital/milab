@@ -15,7 +15,6 @@ const {
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const {
   collectStudentCodigos,
-  getActiveSgaDebtsForStudent,
   selectStudentRecordForDocumento,
 } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
@@ -845,10 +844,19 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   async function consultarMultasSga() {
     if (!sgaDebtService.isConfigured()) return [];
 
-    return getActiveSgaDebtsForStudent(sgaDebtService, {
+    const result = await sgaDebtService.queryStudent({
+      codigo: con_codigo,
       codigos: con_codigos.length ? con_codigos : collectStudentCodigos([], con_codigo),
       documento: con_documento,
     });
+    if (!['found', 'clear'].includes(result.status)) {
+      const error = new Error(
+        'El estado de las sanciones de laboratorio en SGA no pudo confirmarse completamente.'
+      );
+      error.code = 'SGA_QUERY_INCOMPLETE';
+      throw error;
+    }
+    return result.debts;
   }
 
   consultarEndpointAnidado();

@@ -1,7 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
-const { sgaDebtService, resolveSgaConceptName } = require('../../libs/oati-debts');
+const {
+  getSgaConceptName,
+  resolveSgaConceptName,
+  sgaDebtService,
+} = require('../../libs/oati-debts');
+const { renderBulkSanctionReport } = require('../../libs/bulk-sanction-report');
 const {
   renderApplicationError,
   respondOatiUnavailable,
@@ -11,10 +16,9 @@ const {
 const bp = require('body-parser');
 
 const pool = require('../../libs/db');
-router.use(bp.json());
-router.use(bp.urlencoded({ extended: true }));
+router.use(bp.json({ limit: '512kb' }));
+router.use(bp.urlencoded({ extended: true, limit: '512kb' }));
 
-const path = require('path');
 const MAX_BULK_QUERY_CODES = 20;
 
 const requireAdminStudentsListAccess = requireRoles('admin', {
@@ -30,28 +34,40 @@ const requireBulkStudentQueryAccess = requireRoles(['admin', 'laboratorista', 'c
 });
 
 function mapSgaDebtToMulta(debt, student) {
-  const conceptCode = String(debt.DEU_CPTO_COD || '').trim();
+  const conceptCode = String(debt.codigo_concepto || debt.DEU_CPTO_COD || '').trim();
   const conceptName =
-    debt.DEU_CPTO_NOMBRE ||
+    debt.nombre_concepto ||
+    getSgaConceptName(debt) ||
     resolveSgaConceptName(conceptCode) ||
     (conceptCode ? `Código SGA ${conceptCode}` : 'No reportado por SGA');
+  const amount = debt.valor ?? debt.DEU_MULTA;
   const details = [
-    debt.DEU_MULTA ? `Valor SGA: ${debt.DEU_MULTA}` : '',
-    debt.DEU_ANO || debt.DEU_PER ? `Periodo: ${debt.DEU_ANO || '-'} / ${debt.DEU_PER || '-'}` : '',
-    debt.DEU_FECHA_PAGO ? `Fecha de pago: ${debt.DEU_FECHA_PAGO}` : '',
+    amount !== null && amount !== undefined && amount !== '' ? `Valor SGA: ${amount}` : '',
+    debt.anio || debt.DEU_ANO || debt.periodo || debt.DEU_PER
+      ? `Periodo: ${debt.anio || debt.DEU_ANO || '-'} / ${debt.periodo || debt.DEU_PER || '-'}`
+      : '',
+    debt.fecha_pago || debt.DEU_FECHA_PAGO
+      ? `Fecha de pago: ${debt.fecha_pago || debt.DEU_FECHA_PAGO}`
+      : '',
   ].filter(Boolean);
 
   return {
     origen: 'SGA',
-    cat_multa: debt.DEU_MATERIAL || 'Multa reportada por SGA',
-    con_estado_multa: `ACTIVA (estado SGA ${String(debt.DEU_ESTADO || '2').trim()})`,
-    fecha_multa: debt.DEU_FECHA || null,
+    id_sga: debt.id_sga || debt.DEU_ID || null,
+    cat_multa: debt.categoria || debt.DEU_MATERIAL || 'Multa reportada por SGA',
+    con_estado_multa: `ACTIVA (estado SGA ${String(debt.estado || debt.DEU_ESTADO || '2').trim()})`,
+    fecha_multa: debt.fecha || debt.DEU_FECHA || null,
     obs_multa: details.join('; ') || 'Multa activa reportada por SGA.',
     nombre_laboratorista: '-',
     ual: conceptName,
     codigo_ubicacion_sga: conceptCode || null,
     documento: student.documento || null,
-    codigo: debt.DEU_EST_COD || student.codigo || null,
+    codigo: debt.codigo_estudiante || debt.DEU_EST_COD || student.codigo || null,
+    tipo_concepto: debt.tipo_concepto || debt.CPTO_TIPO || debt.DEU_CPTO_TIPO || null,
+    valor_sga: amount ?? null,
+    periodo_sga: debt.periodo || debt.DEU_PER || null,
+    anio_sga: debt.anio || debt.DEU_ANO || null,
+    fecha_pago_sga: debt.fecha_pago || debt.DEU_FECHA_PAGO || null,
   };
 }
 
@@ -210,10 +226,14 @@ router.get('/get_consulta', requireBulkStudentQueryAccess, async function (req, 
 router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   const rawInput = String(req.body.consulta_masiva || '');
-  const entries = rawInput
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const entries = [
+    ...new Set(
+      rawInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
 
   if (entries.length > MAX_BULK_QUERY_CODES) {
     const message = `Has excedido el límite de ${MAX_BULK_QUERY_CODES} estudiantes, inténtalo nuevamente.`;
@@ -230,8 +250,10 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
       const query = `
                   SELECT
                   t.identificador,
+                  MAX(pe.nombre) AS nombre,
                   MAX(pe.documento) AS documento,
                   MAX(pe.codigo::text) AS codigo,
+                  MAX(pe.programa::text) AS programa,
                     json_agg(
                         CASE 
                             WHEN m.id IS NOT NULL
@@ -270,8 +292,16 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
       const sgaConfigurado = sgaDebtService.isConfigured();
       const filteredData = sampleData1.rows.map((row) => ({
         identificador: row.identificador,
+        nombre: row.nombre || null,
         documento: row.documento || null,
         codigo: row.codigo || null,
+        programa: row.programa || null,
+        sgaStatus: sgaConfigurado ? 'pending' : 'not_configured',
+        sgaMessage: sgaConfigurado
+          ? 'La consulta de SGA está pendiente.'
+          : 'El servicio SGA no está configurado en este ambiente.',
+        sgaCodes: [],
+        sgaSummary: null,
         multas: (Array.isArray(row.multas) ? row.multas : [])
           .filter((multa) => multa !== null)
           .map((multa) => ({ ...multa, origen: 'MILab' })),
@@ -279,39 +309,36 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
 
       await Promise.all(
         filteredData.map(async (row) => {
-          const tieneMultasMilab = row.multas.length > 0;
-          let codigoEstudiante = String(row.codigo || '').trim();
-
-          if (!codigoEstudiante && (!tieneMultasMilab || sgaConfigurado)) {
-            codigoEstudiante =
-              (await sgaDebtService.resolveStudentCode({
-                documento: row.documento,
-                identificador: row.identificador,
-              })) || '';
-            if (!codigoEstudiante && !tieneMultasMilab) {
-              row.multas = ['unknown'];
-              return;
-            }
-
-            row.codigo = codigoEstudiante || row.codigo;
-          }
-
           if (sgaConfigurado) {
-            if (!codigoEstudiante) {
-              row.multas.push('sga-error');
-              return;
+            const sgaResult = await sgaDebtService.queryStudent({
+              codigo: row.codigo,
+              documento: row.documento,
+              identificador: row.codigo || row.documento ? undefined : row.identificador,
+            });
+            row.sgaStatus = sgaResult.status;
+            row.sgaMessage = sgaResult.message;
+            row.sgaCodes = sgaResult.codes;
+            row.sgaSummary = {
+              nonLaboratoryCount: sgaResult.nonLaboratoryCount,
+              unclassifiedCount: sgaResult.unclassifiedCount,
+            };
+            if (sgaResult.document && !row.documento) row.documento = sgaResult.document;
+            if (!row.codigo && sgaResult.studentRecord?.codigo) {
+              row.codigo = String(sgaResult.studentRecord.codigo);
+            } else if (!row.codigo && sgaResult.codes.length) {
+              row.codigo = sgaResult.codes[0];
             }
+            if (!row.nombre) {
+              row.nombre =
+                sgaResult.studentRecord?.nombre || sgaResult.studentRecord?.nombre_completo || null;
+            }
+            if (!row.programa) {
+              row.programa =
+                sgaResult.studentRecord?.carrera || sgaResult.studentRecord?.programa || null;
+            }
+            row.multas.push(...sgaResult.debts.map((debt) => mapSgaDebtToMulta(debt, row)));
 
-            try {
-              const activeSgaDebts = await sgaDebtService.getActiveDebts({
-                codigo: codigoEstudiante,
-              });
-              row.multas.push(...activeSgaDebts.map((debt) => mapSgaDebtToMulta(debt, row)));
-            } catch (error) {
-              if (error?.code === 'OATI_UNAVAILABLE') {
-                throw error;
-              }
-              console.error(`Error consultando multas SGA para ${codigoEstudiante}:`, error);
+            if (['partial', 'error', 'unresolved'].includes(sgaResult.status)) {
               row.multas.push('sga-error');
             }
           }
@@ -348,11 +375,18 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
   }
 });
 
-router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, res) {
+async function generateBulkSanctionPdf(req, res) {
   res.set('Cache-Control', 'no-store');
   const PDFDocument = require('pdfkit');
 
-  const sampleData1 = JSON.parse(req.query.data || '[]');
+  let sampleData1;
+  try {
+    const serializedData = req.method === 'GET' ? req.query.data : req.body?.data;
+    sampleData1 = JSON.parse(serializedData || '[]');
+  } catch {
+    sampleData1 = null;
+  }
+
   if (!Array.isArray(sampleData1) || sampleData1.length > MAX_BULK_QUERY_CODES) {
     const message = Array.isArray(sampleData1)
       ? `No se puede generar un informe con más de ${MAX_BULK_QUERY_CODES} estudiantes.`
@@ -367,163 +401,54 @@ router.get('/generate_pdf', requireBulkStudentQueryAccess, async function (req, 
     });
   }
 
-  if (sampleData1.length > 0) {
-    const doc = new PDFDocument();
-    const fileName = 'consulta_estudiantes.pdf';
-
-    try {
-      //  imagen izquierda
-      const leftImagePath = path.join(__dirname, '../../public/img/Logo_Laboratorioss.png');
-      doc.image(leftImagePath, 20, 20, { width: 100, height: 100 });
-
-      //  imagen derecha
-      const rightImagePath = path.join(__dirname, '../../public/img/Logo_Escudo_Verticall.jpg');
-      doc.image(rightImagePath, doc.page.width - 120, 20, { width: 100, height: 100 });
-    } catch (error) {
-      console.error('Error al cargar la imagen:', error);
-
-      if (wantsJson(req)) {
-        return res.status(500).json({
-          ok: false,
-          message: 'No fue posible generar el PDF de consulta masiva.',
-          message2: 'Intenta nuevamente en unos minutos.',
-        });
-      }
-
-      return renderApplicationError(res, {
-        status: 500,
-        message: 'No fue posible generar el PDF de consulta masiva.',
-        message2: 'Intenta nuevamente en unos minutos.',
-        limit: null,
-      });
-    }
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
-    doc.pipe(res);
-
-    doc.fontSize(16).text('Universidad Distrital Francisco José de Caldas', { align: 'center' });
-
-    doc.fontSize(14).text('COORDINACIÓN GENERAL DE LABORATORIOS', { align: 'center' }).moveDown(1);
-
-    const textYPosition = 140;
-    const tableWidth = doc.page.width - 40;
-    doc
-      .fontSize(12)
-      .text(
-        'Este es un informe masivo del estado de los estudiantes en las unidades académicas de laboratorios de la Universidad Distrital Francisco José de Caldas. A continuación, se listan los estudiantes consultados por código o documento (los estudiantes sin ningún problema aparecerán a paz y salvo).',
-        20,
-        textYPosition,
-        { width: tableWidth, align: 'justify' }
-      )
-      .moveDown(1);
-
-    //  fila de encabezado  columnas
-    const numberOfColumns = 6;
-    const cellWidth = (doc.page.width - 40) / numberOfColumns;
-    const startX = 20; // Posición de inicio con margen
-    let y = doc.y;
-
-    //  encabezado tabla
-    doc.fontSize(14).font('Helvetica-Bold');
-    doc.rect(startX, y, cellWidth * numberOfColumns, 30).fillAndStroke('black', 'black');
-    doc.fillColor('white');
-    doc.text('Consulta de Estudiantes', startX, y + 5, {
-      width: cellWidth * numberOfColumns,
-      align: 'center',
-    });
-    y += 30;
-
-    doc.fillColor('black');
-
-    const tableHeaders = [
-      'Código/Documento Estudiante',
-      'Origen',
-      'Motivo Multa',
-      'Fecha de la Multa',
-      'Observación',
-      'Laboratorio / dependencia',
-    ]; //'Estado Multa'
-    const tableRows = buildPdfTableRows(sampleData1);
-
-    //  encabezados tabla
-    doc.fontSize(12).font('Helvetica');
-    tableHeaders.forEach((header, idx) => {
-      doc.rect(startX + idx * cellWidth, y, cellWidth, 30).fillAndStroke('gray', 'black');
-      doc.fillColor('black');
-      doc.text(header, startX + idx * cellWidth + 5, y + 5, {
-        width: cellWidth - 10,
-        align: 'center',
-      });
-    });
-    y += 30;
-
-    //  filas tabla   máximo de 3 filas
-    doc.fontSize(12).font('Helvetica');
-    let rowCount = 0;
-    tableRows.forEach((row) => {
-      let maxHeight = 30; // Altura mínima de una fila
-      row.forEach((cell) => {
-        const textHeight = doc.heightOfString(cell, { width: cellWidth - 10 });
-        maxHeight = Math.max(maxHeight, textHeight + 10);
-      });
-
-      // Verificar  altura
-      if (rowCount >= 3 || y + maxHeight > doc.page.height - 40) {
-        // 40 para el margen inferior
-        doc.addPage();
-        y = 40;
-        rowCount = 0;
-
-        //  encabezados nueva página
-        doc.fontSize(12).font('Helvetica');
-        tableHeaders.forEach((header, i) => {
-          doc.rect(startX + i * cellWidth, y, cellWidth, 30).fillAndStroke('gray', 'black');
-          doc.fillColor('black');
-          doc.text(header, startX + i * cellWidth + 5, y + 5, {
-            width: cellWidth - 10,
-            align: 'center',
-          });
-        });
-        y += 30;
-      }
-
-      //  celdas de la fila en la tabla
-      row.forEach((cell, i) => {
-        doc.rect(startX + i * cellWidth, y, cellWidth, maxHeight).stroke();
-        doc.text(cell, startX + i * cellWidth + 5, y + 5, {
-          width: cellWidth - 10,
-          align: 'center',
-        });
-      });
-      y += maxHeight;
-      rowCount++;
-    });
-
-    const currentDate = new Date().toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    doc
-      .fontSize(10)
-      .text(
-        `Se emite en Bogotá D.C. a través de MILab de la Coordinación General de Laboratorios de la Universidad Distrital Francisco José de Caldas el ${currentDate}`,
-        startX,
-        y + 10,
-        { align: 'center' }
-      );
-
-    doc.end();
-  } else {
-    res.render('home/message_error', {
-      message: '¡Algo ha salido mal!',
-      message2: 'Inténtalo nuevamente',
+  if (!sampleData1.length) {
+    return res.status(400).render('home/message_error', {
+      message: 'No hay estudiantes para incluir en el informe.',
+      message2: 'Realiza una consulta masiva antes de generar el PDF.',
       limit: null,
     });
   }
-});
+
+  try {
+    const doc = new PDFDocument({ size: 'LETTER', margin: 40, bufferPages: true });
+    const chunks = [];
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      try {
+        renderBulkSanctionReport(doc, sampleData1);
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=consulta_estudiantes.pdf');
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generando el informe PDF de consulta masiva:', error);
+    if (wantsJson(req)) {
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible generar el PDF de consulta masiva.',
+        message2: 'Intenta nuevamente en unos minutos.',
+      });
+    }
+
+    return renderApplicationError(res, {
+      status: 500,
+      message: 'No fue posible generar el PDF de consulta masiva.',
+      message2: 'Intenta nuevamente en unos minutos.',
+      limit: null,
+    });
+  }
+}
+
+router.get('/generate_pdf', requireBulkStudentQueryAccess, generateBulkSanctionPdf);
+router.post('/generate_pdf', requireBulkStudentQueryAccess, generateBulkSanctionPdf);
 
 module.exports = router;
 module.exports.buildPdfTableRows = buildPdfTableRows;

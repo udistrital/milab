@@ -92,20 +92,30 @@
           <% if (sga.configured) { %>
             <div class="mt-2">
               <% if (sga.failed) { %>
-                <span class="badge rounded-pill text-bg-secondary">No fue posible consultar SGA</span>
-              <% } else if (sga.debts.length > 0) { %>
+                <span class="badge rounded-pill text-bg-warning">Consulta SGA no concluyente</span>
+              <% } %>
+              <% if (sga.debts.length > 0) { %>
                 <button
                   type="button"
                   class="badge rounded-pill text-bg-danger border-0"
                   data-bs-toggle="modal"
                   data-bs-target="#sgaSancionesPersonaModal"
                 >
-                  <%= sga.debts.length %> sanciones en SGA · Ver detalle
+                  <%= sga.debts.length %>
+                  <%= sga.debts.length === 1 ? 'multa' : 'multas' %> de laboratorio en SGA ·
+                  Ver detalle
                 </button>
-              <% } else { %>
-                <span class="badge rounded-pill text-bg-light">0 sanciones en SGA</span>
+              <% } else if (!sga.failed) { %>
+                <span class="badge rounded-pill text-bg-light">0 multas de laboratorio en SGA</span>
               <% } %>
             </div>
+            <% if (sga.failed && sga.message) { %>
+              <div class="alert alert-warning mt-2 mb-0" role="status"><%= sga.message %></div>
+            <% } else if (sga.failed) { %>
+              <div class="alert alert-warning mt-2 mb-0" role="status">
+                No fue posible consultar SGA. El estado de las multas no está verificado.
+              </div>
+            <% } %>
           <% } %>
         </div>
 
@@ -160,23 +170,43 @@
                 <% sga.debts.forEach(function (debt) { %>
                   <article class="card mb-3">
                     <div class="card-body">
-                      <h3 class="h6 mb-3"><%= debt.DEU_MATERIAL || 'Sanción reportada por SGA' %></h3>
+                      <h3 class="h6 mb-3"><%= debt.categoria || debt.DEU_MATERIAL || 'Multa reportada por SGA' %></h3>
                       <dl class="row g-2 mb-0">
                         <div class="col-12 col-md-6">
-                          <dt class="text-muted small">Valor</dt>
-                          <dd class="mb-0 fw-semibold"><%= debt.DEU_MULTA || 'No disponible' %></dd>
+                          <dt class="text-muted small">Código académico consultado</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.codigo_estudiante || debt.DEU_EST_COD || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Concepto de laboratorio</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.nombre_concepto || debt.CPTO_NOMBRE || debt.DEU_CPTO_NOMBRE || 'No reportado por SGA' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Identificador SGA</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.id_sga || debt.DEU_ID || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Tipo de concepto</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.tipo_concepto || debt.CPTO_TIPO || debt.DEU_CPTO_TIPO || 'No reportado por SGA' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Valor reportado</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.valor ?? debt.DEU_MULTA ?? 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Estado SGA</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.estado || debt.DEU_ESTADO || 'No disponible' %></dd>
                         </div>
                         <div class="col-12 col-md-6">
                           <dt class="text-muted small">Fecha</dt>
-                          <dd class="mb-0 fw-semibold"><%= debt.DEU_FECHA || 'No disponible' %></dd>
-                        </div>
-                        <div class="col-12 col-md-6">
-                          <dt class="text-muted small">Estado</dt>
-                          <dd class="mb-0 fw-semibold"><%= debt.DEU_ESTADO || 'No disponible' %></dd>
+                          <dd class="mb-0 fw-semibold"><%= debt.fecha || debt.DEU_FECHA || 'No disponible' %></dd>
                         </div>
                         <div class="col-12 col-md-6">
                           <dt class="text-muted small">Periodo</dt>
-                          <dd class="mb-0 fw-semibold"><%= [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / ') || 'No disponible' %></dd>
+                          <dd class="mb-0 fw-semibold"><%= [debt.anio || debt.DEU_ANO, debt.periodo || debt.DEU_PER].filter(Boolean).join(' / ') || 'No disponible' %></dd>
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <dt class="text-muted small">Fecha de pago</dt>
+                          <dd class="mb-0 fw-semibold"><%= debt.fecha_pago || debt.DEU_FECHA_PAGO || 'Pendiente' %></dd>
                         </div>
                         <div class="col-12 col-md-6">
                           <dt class="text-muted small">Laboratorio / dependencia</dt>

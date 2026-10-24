@@ -93,18 +93,23 @@ async function buildStudentSanctionPanel(req, { usuarioId, person }) {
     history = await sanctionListHelpers.addLaboratoristaActions(pool, rows, req);
   }
 
-  const sga = { configured: sgaDebtService.isConfigured(), debts: [], failed: false };
+  const sga = { configured: sgaDebtService.isConfigured(), debts: [], failed: false, status: null };
   if (sga.configured) {
     try {
-      sga.debts = await sgaDebtService.getActiveDebts({
+      const result = await sgaDebtService.queryStudent({
         codigo: person.codigo,
         documento: person.documento,
       });
+      sga.debts = result.debts;
+      sga.status = result.status;
+      sga.message = result.message;
+      sga.failed = !['found', 'clear'].includes(result.status);
     } catch (error) {
       if (error?.code === 'OATI_UNAVAILABLE') {
         throw error;
       }
       sga.failed = true;
+      sga.message = 'No fue posible consultar las multas activas de laboratorio en SGA.';
       console.error('Error consultando sanciones SGA en Paso 2:', error);
     }
   }

@@ -31,6 +31,28 @@ function loadRoute({
   sgaDebtServiceImpl,
 } = {}) {
   const originals = new Map();
+  const rawSgaDebtService = sgaDebtServiceImpl || {
+    isConfigured: () => false,
+    async getActiveDebts() {
+      return [];
+    },
+  };
+  const sgaDebtService = {
+    ...rawSgaDebtService,
+    queryStudent:
+      rawSgaDebtService.queryStudent ||
+      (async (args) => {
+        const debts = await rawSgaDebtService.getActiveDebts(args);
+        return {
+          status: debts.length ? 'found' : 'clear',
+          debts,
+          codes: args.codigo ? [args.codigo] : [],
+          message: '',
+          nonLaboratoryCount: 0,
+          unclassifiedCount: 0,
+        };
+      }),
+  };
   const client = {
     release() {},
     async query(sql, params = []) {
@@ -82,12 +104,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
-        sgaDebtService: sgaDebtServiceImpl || {
-          isConfigured: () => false,
-          async getActiveDebts() {
-            return [];
-          },
-        },
+        sgaDebtService,
       },
     ],
   ];
@@ -600,6 +617,10 @@ test('get_list_multas queries SGA debts for a student only when detail is reques
       ok: true,
       configured: true,
       supported: true,
+      status: 'found',
+      codes: ['2024100001'],
+      summary: { nonLaboratoryCount: 0, unclassifiedCount: 0 },
+      message: '',
       multas: [activeDebt],
     });
   } finally {

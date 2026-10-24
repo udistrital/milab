@@ -59,19 +59,22 @@ function collectStudentCodigos(records, ...extraCodigos) {
 }
 
 /**
- * Consulta deudas SGA para todos los códigos de la misma persona: una deuda con un código
- * anterior (otro programa) también bloquea el paz y salvo. Si SGA falla para cualquier código,
- * se propaga el error para no emitir certificados sin confirmar el estado.
+ * Compatibilidad para los flujos que requieren una respuesta concluyente antes de continuar.
+ * La consulta centraliza códigos históricos, filtro de laboratorios y deduplicación.
  */
-async function getActiveSgaDebtsForStudent(debtService, { codigos = [], documento } = {}) {
-  if (!codigos.length) {
-    return debtService.getActiveDebts({ documento });
+async function getActiveSgaDebtsForStudent(debtService, { codigo, codigos = [], documento } = {}) {
+  const query = { codigos, documento };
+  if (codigo) query.codigo = codigo;
+  const result = await debtService.queryStudent(query);
+  if (!['found', 'clear'].includes(result.status)) {
+    const error = new Error(
+      'No fue posible confirmar completamente las sanciones de laboratorio en SGA.'
+    );
+    error.code = 'SGA_QUERY_INCOMPLETE';
+    error.result = result;
+    throw error;
   }
-
-  const debtsByCodigo = await Promise.all(
-    codigos.map((codigo) => debtService.getActiveDebts({ codigo, documento }))
-  );
-  return debtsByCodigo.flat();
+  return result.debts;
 }
 
 module.exports = {
