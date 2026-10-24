@@ -11,6 +11,12 @@ const PARTICIPANT_HEADERS = [
   'Unidad Académica de Laboratorio (UAL)',
 ];
 
+const HISTORICAL_PARTICIPATION_HEADERS = [
+  ...PARTICIPANT_HEADERS,
+  'Entrada (ISO 8601)',
+  'Salida (ISO 8601)',
+];
+
 const CERTIFICATE_VARIABLES = new Set([
   'nombre',
   'documento',
@@ -331,6 +337,92 @@ async function buildParticipantTemplateBuffer() {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+async function buildHistoricalParticipationTemplateBuffer() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Participaciones');
+  sheet.addRow(HISTORICAL_PARTICIPATION_HEADERS);
+  sheet.getRow(1).font = { bold: true };
+  sheet.columns = [
+    { width: 32 },
+    { width: 24, style: { numFmt: '@' } },
+    { width: 36 },
+    { width: 32 },
+    { width: 32 },
+    { width: 46 },
+    { width: 30, style: { numFmt: '@' } },
+    { width: 30, style: { numFmt: '@' } },
+  ];
+  sheet.getColumn(2).numFmt = '@';
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+function parseHistoricalTimestamp(value) {
+  if (value === null || value === undefined || value === '') {
+    return { value: null, error: null };
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return { value: null, error: 'La fecha no es válida.' };
+    const bogotaWallTime = Date.UTC(
+      value.getUTCFullYear(),
+      value.getUTCMonth(),
+      value.getUTCDate(),
+      value.getUTCHours() + 5,
+      value.getUTCMinutes(),
+      value.getUTCSeconds(),
+      value.getUTCMilliseconds()
+    );
+    return { value: new Date(bogotaWallTime).toISOString(), error: null };
+  }
+
+  const text = getCellText(value);
+  const match = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-](\d{2}):(\d{2}))$/i
+  );
+  if (!match) {
+    return {
+      value: null,
+      error: 'Usa una fecha ISO 8601 con zona horaria, por ejemplo 2026-10-20T09:00:00-05:00.',
+    };
+  }
+
+  const [
+    ,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second = '0',
+    fraction = '',
+    zone,
+    offsetHour,
+    offsetMinute,
+  ] = match;
+  const calendarDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (
+    calendarDate.getUTCFullYear() !== Number(year) ||
+    calendarDate.getUTCMonth() + 1 !== Number(month) ||
+    calendarDate.getUTCDate() !== Number(day) ||
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    Number(second) > 59 ||
+    (offsetHour !== undefined &&
+      (Number(offsetHour) > 14 ||
+        Number(offsetMinute) > 59 ||
+        (Number(offsetHour) === 14 && Number(offsetMinute) !== 0)))
+  ) {
+    return { value: null, error: 'La fecha u hora no es válida.' };
+  }
+
+  const normalized = `${year}-${month}-${day}T${hour}:${minute}:${second}${fraction ? `.${fraction}` : ''}${zone}`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime()))
+    return { value: null, error: 'La fecha u hora no es válida.' };
+  return { value: parsed.toISOString(), error: null };
+}
+
 async function previewParticipantWorkbook(buffer) {
   if (!isSafeXlsxArchive(buffer)) {
     throw new Error('El archivo Excel está incompleto o no es seguro para procesar.');
@@ -420,6 +512,107 @@ async function previewParticipantWorkbook(buffer) {
   return { filas, errores_estructura: [] };
 }
 
+async function previewHistoricalParticipationWorkbook(buffer) {
+  if (!isSafeXlsxArchive(buffer)) {
+    throw new Error('El archivo Excel está incompleto o no es seguro para procesar.');
+  }
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet || sheet.rowCount < 1) {
+    return {
+      filas: [],
+      errores_estructura: ['El archivo no contiene una hoja de participaciones.'],
+    };
+  }
+
+  const actualHeaders = HISTORICAL_PARTICIPATION_HEADERS.map((_, index) =>
+    normalizeHeader(getCellText(sheet.getRow(1).getCell(index + 1).value))
+  );
+  const expectedHeaders = HISTORICAL_PARTICIPATION_HEADERS.map(normalizeHeader);
+  const headersMatch = expectedHeaders.every(
+    (header, index) =>
+      actualHeaders[index] === header ||
+      (index === 5 && actualHeaders[index] === normalizeHeader('Laboratorio'))
+  );
+  if (!headersMatch || sheet.getRow(1).cellCount !== HISTORICAL_PARTICIPATION_HEADERS.length) {
+    return {
+      filas: [],
+      errores_estructura: [
+        `Los encabezados deben ser: ${HISTORICAL_PARTICIPATION_HEADERS.join(', ')}.`,
+      ],
+    };
+  }
+
+  if (sheet.rowCount > 2001) {
+    return {
+      filas: [],
+      errores_estructura: ['El archivo supera el máximo de 2000 participaciones.'],
+    };
+  }
+
+  const filas = [];
+  const firstRowByDocument = new Map();
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    const values = HISTORICAL_PARTICIPATION_HEADERS.map((_, index) => row.getCell(index + 1).value);
+    if (values.every((value) => value === null || value === undefined || value === '')) continue;
+
+    const documentCell = row.getCell(2);
+    const documentValue = documentCell.value;
+    const validation = validateParticipant({
+      nombre: getCellText(values[0]),
+      documento: getDocumentCellText(documentCell),
+      correo: getCellText(values[2]),
+      rol: getCellText(values[3]),
+      facultad: getCellText(values[4]),
+      laboratorio: getCellText(values[5]),
+    });
+    const advertencias = [];
+    if (typeof documentValue === 'number') {
+      if (!Number.isSafeInteger(documentValue) || String(Math.abs(documentValue)).length > 15) {
+        validation.errores.push(
+          'El documento numérico supera el rango de precisión segura. Corrija la celda y guárdela como texto antes de importar.'
+        );
+      } else {
+        advertencias.push(
+          'El documento estaba guardado como número y se convertirá a texto; verifique que conserve los ceros iniciales antes de confirmar.'
+        );
+      }
+    }
+
+    const normalizedDocument = validation.participante.documento_normalizado;
+    if (normalizedDocument && firstRowByDocument.has(normalizedDocument)) {
+      validation.errores.push(
+        `Documento duplicado en las filas ${firstRowByDocument.get(normalizedDocument)} y ${rowNumber}.`
+      );
+    } else if (normalizedDocument) {
+      firstRowByDocument.set(normalizedDocument, rowNumber);
+    }
+
+    const entry = parseHistoricalTimestamp(values[6]);
+    const exit = parseHistoricalTimestamp(values[7]);
+    if (entry.error) validation.errores.push(`Entrada: ${entry.error}`);
+    if (exit.error) validation.errores.push(`Salida: ${exit.error}`);
+    if (exit.value && !entry.value) {
+      validation.errores.push('No se puede registrar una salida sin una entrada.');
+    } else if (entry.value && exit.value && Date.parse(exit.value) < Date.parse(entry.value)) {
+      validation.errores.push('La salida no puede ser anterior a la entrada.');
+    }
+
+    filas.push({
+      fila: rowNumber,
+      participante: validation.participante,
+      entrada_en: entry.value,
+      salida_en: exit.value,
+      errores: validation.errores,
+      advertencias,
+    });
+  }
+
+  return { filas, errores_estructura: [] };
+}
+
 function hexToRgb(value) {
   const normalized = String(value || '#000000').replace('#', '');
   return rgb(
@@ -496,12 +689,16 @@ async function validatePdfTemplate(buffer) {
 module.exports = {
   CERTIFICATE_VARIABLES,
   EMAIL_PATTERN,
+  HISTORICAL_PARTICIPATION_HEADERS,
   PARTICIPANT_HEADERS,
+  buildHistoricalParticipationTemplateBuffer,
   buildParticipantTemplateBuffer,
   generateCertificatePdf,
   hasFileSignature,
   isSafeXlsxArchive,
   normalizeDocument,
+  parseHistoricalTimestamp,
+  previewHistoricalParticipationWorkbook,
   previewParticipantWorkbook,
   validatePdfTemplate,
   validateEventInput,

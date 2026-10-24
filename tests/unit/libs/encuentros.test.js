@@ -5,11 +5,14 @@ const ExcelJS = require('exceljs');
 const { PDFDocument } = require('pdf-lib');
 
 const {
+  HISTORICAL_PARTICIPATION_HEADERS,
+  buildHistoricalParticipationTemplateBuffer,
   buildParticipantTemplateBuffer,
   generateCertificatePdf,
   hasFileSignature,
   isSafeXlsxArchive,
   normalizeDocument,
+  previewHistoricalParticipationWorkbook,
   previewParticipantWorkbook,
   validateEventInput,
   validateParticipant,
@@ -114,6 +117,56 @@ test('creates an Excel participant template with the expected headings', async (
   assert.equal(workbook.worksheets[0].getColumn(2).numFmt, '@');
   assert.deepEqual((await previewParticipantWorkbook(template)).errores_estructura, []);
   assert.equal(isSafeXlsxArchive(Buffer.from([0x50, 0x4b, 0x03, 0x04])), false);
+});
+
+test('previews historical participation files with timezone-aware attendance', async () => {
+  const template = await buildHistoricalParticipationTemplateBuffer();
+  const templateWorkbook = new ExcelJS.Workbook();
+  await templateWorkbook.xlsx.load(template);
+  assert.deepEqual(
+    templateWorkbook.worksheets[0].getRow(1).values.slice(1),
+    HISTORICAL_PARTICIPATION_HEADERS
+  );
+  assert.equal(templateWorkbook.worksheets[0].getColumn(2).numFmt, '@');
+  assert.deepEqual((await previewHistoricalParticipationWorkbook(template)).errores_estructura, []);
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Participaciones');
+  sheet.addRow(HISTORICAL_PARTICIPATION_HEADERS);
+  sheet.addRow([
+    'Persona Uno',
+    '0000123',
+    'uno@example.edu',
+    'Docente',
+    'Ingeniería',
+    'Lab 1',
+    '2026-10-20T09:00:00-05:00',
+    '2026-10-20T10:00:00-05:00',
+  ]);
+  sheet.addRow([
+    'Persona Dos',
+    '0000124',
+    'dos@example.edu',
+    'Docente',
+    'Ingeniería',
+    'Lab 2',
+    '2026-02-30T09:00:00-05:00',
+    '2026-10-20T08:00:00-05:00',
+  ]);
+
+  const preview = await previewHistoricalParticipationWorkbook(
+    Buffer.from(await workbook.xlsx.writeBuffer())
+  );
+  assert.deepEqual(preview.errores_estructura, []);
+  assert.equal(preview.filas.length, 2);
+  assert.equal(preview.filas[0].entrada_en, '2026-10-20T14:00:00.000Z');
+  assert.equal(preview.filas[0].salida_en, '2026-10-20T15:00:00.000Z');
+  assert.deepEqual(preview.filas[0].errores, []);
+  assert.match(preview.filas[1].errores.join(' '), /Entrada: La fecha u hora no es válida/);
+  assert.match(
+    preview.filas[1].errores.join(' '),
+    /No se puede registrar una salida sin una entrada/
+  );
 });
 
 test('accepts the previous Laboratorio header as a UAL alias', async () => {
