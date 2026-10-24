@@ -176,7 +176,17 @@ jobs:
 
       - name: Crear override de compose para pruebas
         run: |
-          cat > /home/ubuntu/prod/docker-compose.override.yml <<'YAML'
+          set -eu
+          target_dir=/home/ubuntu/prod
+          target_file="$target_dir/docker-compose.override.yml"
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p "$target_dir"
+            sudo tee "$target_file" > /dev/null <<'YAML'
+          else
+            mkdir -p "$target_dir"
+            tee "$target_file" > /dev/null <<'YAML'
+          fi
           services:
             milabud:
               environment:
