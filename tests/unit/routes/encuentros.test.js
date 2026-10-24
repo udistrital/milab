@@ -677,6 +677,44 @@ test('historical participation import records timestamps only for finalized even
   }
 });
 
+test('manual participant registration is allowed for finalized events', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('SELECT estado FROM encuentro_evento')) {
+      return { rows: [{ estado: 'finalizado' }] };
+    }
+    if (sql.includes('FROM usuario')) return { rows: [] };
+    if (sql.includes('INSERT INTO encuentro_participante')) return { rows: [{ id: 77 }] };
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes')
+      .set('x-test-role', 'gestor_laboratorio')
+      .send({
+        nombre: 'Participante finalizado',
+        documento: '123456789',
+        correo: 'participante@udistrital.edu.co',
+        rol: 'Docente',
+        facultad: 'Ingeniería',
+        laboratorio: 'Lab principal',
+      });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.participante_id, 77);
+
+    const insertParticipant = statements.find(({ sql }) =>
+      sql.includes('INSERT INTO encuentro_participante')
+    );
+    assert.ok(insertParticipant);
+  } finally {
+    setup.restore();
+  }
+});
+
 test('historical event creation stores the event as finalized', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-historical-event-test-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
@@ -865,7 +903,10 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
         ],
       };
     }
-    if (sql.includes('FROM encuentro_participante p')) {
+    if (
+      sql.includes('FROM encuentro_participante p') &&
+      sql.includes('GROUP BY COALESCE(NULLIF(BTRIM(p.facultad)')
+    ) {
       return {
         rows: [
           {
@@ -883,6 +924,30 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
         ],
       };
     }
+    if (sql.includes('FROM encuentro_participante p') && sql.includes('p.laboratorio')) {
+      return {
+        rows: [
+          {
+            nombre: 'Ana Pérez',
+            documento: '000123',
+            correo: 'ana@example.edu',
+            facultad: 'Facultad de Ciencias Matemáticas, Naturales y Educación',
+            laboratorio: 'Lab 1',
+            estado_asistencia: 'completada',
+            estado_certificado: 'enviado',
+          },
+          {
+            nombre: 'Bruno Díaz',
+            documento: '000124',
+            correo: 'bruno@example.edu',
+            facultad: 'Facultad con mayor participación',
+            laboratorio: 'Lab 2',
+            estado_asistencia: 'en_curso',
+            estado_certificado: 'pendiente',
+          },
+        ],
+      };
+    }
     return { rows: [] };
   });
 
@@ -896,8 +961,11 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
     assert.match(response.headers['content-disposition'], /informe-encuentro-14\.pdf/);
     assert.ok(Buffer.isBuffer(response.body));
     assert.equal(response.body.subarray(0, 5).toString(), '%PDF-');
-    assert.equal(statements.length, 2);
-    assert.match(statements[1].sql, /ORDER BY registrados ASC, facultad ASC/);
+    assert.equal(statements.length, 3);
+    const facultiesQuery = statements.find(({ sql }) =>
+      /ORDER BY registrados ASC, facultad ASC/.test(sql)
+    );
+    assert.ok(facultiesQuery);
 
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const pdf = await pdfjs.getDocument({
@@ -917,10 +985,11 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
       assert.match(reportText, /Informe del encuentro/);
       assert.match(reportText, /Registrados activos/);
       assert.match(reportText, /Resumen de participantes\s+por facultad/);
+      assert.match(reportText, /Anexo\s+·\s+Listado/);
       assert.match(firstPageText, /Registrados activos/);
       assert.match(firstPageText, /Resumen de participantes\s+por facultad/);
       assert.match(firstPageText, /Facultad de Ciencias Matemáticas, Naturales y\s+Educación/);
-      assert.match(firstPageText, /Facultad con mayor participación/);
+      assert.match(reportText, /Facultad con mayor participación/);
       assert.ok(
         reportText.indexOf('Facultad de Ciencias Matemáticas, Naturales y') <
           reportText.indexOf('Facultad con mayor participación')

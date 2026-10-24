@@ -306,10 +306,44 @@
   function buildParticipantTable(participants, event) {
     const allowSelection = event.estado === 'finalizado';
     const wrap = element('div', undefined, 'table-responsive mt-3');
-    const search = element('input', undefined, 'form-control form-control-sm mb-2');
+    const filters = element('div', undefined, 'row g-2 mb-2');
+    const searchCol = element('div', undefined, 'col-12 col-lg-6');
+    const attendanceCol = element('div', undefined, 'col-12 col-md-6 col-lg-3');
+    const certificateCol = element('div', undefined, 'col-12 col-md-6 col-lg-3');
+    const search = element('input', undefined, 'form-control form-control-sm');
     search.type = 'search';
     search.placeholder = 'Buscar por documento, nombre o correo';
     search.setAttribute('aria-label', 'Buscar participantes');
+    const attendanceFilter = element('select', undefined, 'form-select form-select-sm');
+    attendanceFilter.setAttribute('aria-label', 'Filtrar por estado de asistencia');
+    [
+      ['all', 'Asistencia: todos'],
+      ['sin_entrada', 'Asistencia: sin entrada'],
+      ['en_curso', 'Asistencia: en curso'],
+      ['completada', 'Asistencia: completada'],
+    ].forEach(([value, label]) => {
+      const option = element('option', label);
+      option.value = value;
+      attendanceFilter.appendChild(option);
+    });
+    const certificateFilter = element('select', undefined, 'form-select form-select-sm');
+    certificateFilter.setAttribute('aria-label', 'Filtrar por estado de certificado');
+    [
+      ['all', 'Certificado: todos'],
+      ['sin_certificado', 'Certificado: sin generar'],
+      ['enviado', 'Certificado: enviado'],
+      ['pendiente', 'Certificado: pendiente de envío'],
+      ['error', 'Certificado: con error'],
+      ['anulado', 'Certificado: anulado'],
+    ].forEach(([value, label]) => {
+      const option = element('option', label);
+      option.value = value;
+      certificateFilter.appendChild(option);
+    });
+    searchCol.appendChild(search);
+    attendanceCol.appendChild(attendanceFilter);
+    certificateCol.appendChild(certificateFilter);
+    filters.append(searchCol, attendanceCol, certificateCol);
     const table = element('table', undefined, 'table table-sm table-hover align-middle');
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
@@ -347,6 +381,15 @@
       const row = element('tr');
       row.dataset.search =
         `${participant.nombre} ${participant.documento} ${participant.correo} ${participant.rol} ${participant.facultad} ${participant.laboratorio}`.toLowerCase();
+      row.dataset.attendanceState = participant.estado_asistencia || 'sin_entrada';
+      const certificateState = participant.certificado_id
+        ? participant.validez_certificado === 'anulado'
+          ? 'anulado'
+          : ['pendiente', 'enviando'].includes(participant.estado_certificado)
+            ? 'pendiente'
+            : participant.estado_certificado || 'pendiente'
+        : 'sin_certificado';
+      row.dataset.certificateState = certificateState;
       if (allowSelection) {
         const selectCell = document.createElement('td');
         const select = element('input');
@@ -423,14 +466,24 @@
       row.appendChild(actions);
       body.appendChild(row);
     });
-    search.addEventListener('input', () => {
+    const applyParticipantFilters = () => {
       const term = search.value.trim().toLowerCase();
+      const attendanceValue = attendanceFilter.value;
+      const certificateValue = certificateFilter.value;
       Array.from(body.rows).forEach((row) => {
-        row.hidden = !row.dataset.search.includes(term);
+        const matchesTerm = row.dataset.search.includes(term);
+        const matchesAttendance =
+          attendanceValue === 'all' || row.dataset.attendanceState === attendanceValue;
+        const matchesCertificate =
+          certificateValue === 'all' || row.dataset.certificateState === certificateValue;
+        row.hidden = !(matchesTerm && matchesAttendance && matchesCertificate);
       });
-    });
+    };
+    search.addEventListener('input', applyParticipantFilters);
+    attendanceFilter.addEventListener('change', applyParticipantFilters);
+    certificateFilter.addEventListener('change', applyParticipantFilters);
     table.append(head, body);
-    wrap.append(search);
+    wrap.append(filters);
     if (allowSelection) {
       const controls = element('div', undefined, 'd-flex flex-wrap align-items-center gap-3 mb-2');
       const emailLabel = element('label', undefined, 'form-check mb-0');
@@ -611,7 +664,7 @@
         importPreview.id = 'import-preview';
         participantActions.appendChild(importPreview);
       }
-      if (['programado', 'en_curso'].includes(event.estado)) {
+      if (['programado', 'en_curso', 'finalizado'].includes(event.estado)) {
         participantActions.appendChild(buildManualParticipantForm(event.id));
       }
       if (event.estado === 'en_curso') {
@@ -698,6 +751,15 @@
       <div class="col-12 col-md-4"><label class="form-label">Cargo<input name="rol" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Facultad<input name="facultad" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Unidad Académica de Laboratorio (UAL)<input name="laboratorio" class="form-control form-control-sm" required maxlength="255"></label></div>`;
+    if (pageState.participants?.length && pageState.participants[0]?.estado_evento === 'finalizado') {
+      form.appendChild(
+        element(
+          'p',
+          'Nota: en encuentros finalizados, este formulario solo agrega el participante. La asistencia (entrada/salida) debe cargarse con la plantilla de participaciones.',
+          'col-12 small text-muted mb-1'
+        )
+      );
+    }
     const button = element(
       'button',
       'Agregar participante',

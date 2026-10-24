@@ -767,7 +767,7 @@ async function fetchEventReportData(eventId) {
   );
   const event = eventResult.rows[0];
   if (!event) return null;
-  if (event.estado !== 'finalizado') return { event, faculties: [] };
+  if (event.estado !== 'finalizado') return { event, faculties: [], participants: [] };
 
   const facultiesResult = await pool.query(
     `
@@ -786,7 +786,43 @@ async function fetchEventReportData(eventId) {
     [eventId]
   );
 
-  return { event, faculties: facultiesResult.rows || [] };
+  const participantsResult = await pool.query(
+    `
+      SELECT
+        p.nombre,
+        p.documento,
+        p.correo,
+        p.facultad,
+        p.laboratorio,
+        CASE
+          WHEN a.salida_en IS NOT NULL THEN 'completada'
+          WHEN a.entrada_en IS NOT NULL THEN 'en_curso'
+          ELSE 'sin_entrada'
+        END AS estado_asistencia,
+        CASE
+          WHEN c.id IS NULL THEN 'sin_certificado'
+          WHEN c.estado = 'anulado' THEN 'anulado'
+          WHEN c.email_estado IN ('pendiente', 'enviando') THEN 'pendiente'
+          WHEN c.email_estado = 'error' THEN 'error'
+          WHEN c.email_estado = 'enviado' THEN 'enviado'
+          ELSE COALESCE(c.email_estado, 'pendiente')
+        END AS estado_certificado
+      FROM encuentro_participante p
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = p.evento_id AND c.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE
+      ORDER BY p.nombre, p.id
+    `,
+    [eventId]
+  );
+
+  return {
+    event,
+    faculties: facultiesResult.rows || [],
+    participants: participantsResult.rows || [],
+  };
 }
 
 function formatReportNumber(value) {
@@ -794,7 +830,9 @@ function formatReportNumber(value) {
 }
 
 function formatReportPercent(value, total) {
-  const percentage = total ? (Number(value) / Number(total)) * 100 : 0;
+  const numerator = Number(value) || 0;
+  const denominator = Number(total) || 0;
+  const percentage = denominator ? (numerator / denominator) * 100 : 0;
   return `${new Intl.NumberFormat('es-CO', {
     maximumFractionDigits: 1,
     minimumFractionDigits: 1,
@@ -808,7 +846,7 @@ function formatReportDate(value) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : date || 'No disponible';
 }
 
-function renderEventReportPdf({ event, faculties }) {
+function renderEventReportPdf({ event, faculties, participants = [] }) {
   return new Promise((resolve, reject) => {
     const pdf = new PDFDocument({
       size: 'A4',
@@ -820,116 +858,246 @@ function renderEventReportPdf({ event, faculties }) {
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
 
+    const palette = {
+      primary: '#173B5E',
+      accent: '#2E6EEB',
+      text: '#1E293B',
+      muted: '#526273',
+      border: '#D7E0E9',
+      surface: '#F2F6FA',
+      surfaceAlt: '#F8FAFC',
+      white: '#FFFFFF',
+    };
     const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
     const bottomLimit = () => pdf.page.height - pdf.page.margins.bottom;
-    const ensureSpace = (height) => {
-      if (pdf.y + height > bottomLimit()) pdf.addPage();
+    const contentTop = () => pdf.page.margins.top + 62;
+    const drawProgressBar = (x, y, width, ratio) => {
+      const normalized = Math.max(0, Math.min(1, Number(ratio) || 0));
+      pdf
+        .save()
+        .fillColor('#E8EEF7')
+        .roundedRect(x, y, width, 8, 4)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .fillColor(palette.accent)
+        .roundedRect(x, y, width * normalized, 8, 4)
+        .fill()
+        .restore();
     };
+
+    let pageNumber = 1;
+    const drawPageChrome = () => {
+      const topY = 22;
+      const footerY = pdf.page.height - pdf.page.margins.bottom - 10;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(pdf.page.margins.left, topY, contentWidth, 24)
+        .fill()
+        .restore();
+      pdf
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .fillColor(palette.white)
+        .text('MILab · Coordinación General de Laboratorios', pdf.page.margins.left + 10, topY + 7);
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.muted)
+        .text(
+          `Página ${pageNumber}`,
+          pdf.page.width - pdf.page.margins.right - 60,
+          footerY,
+          { width: 60, align: 'right', lineBreak: false, ellipsis: true }
+        );
+      pdf
+        .font('Helvetica')
+        .fontSize(7.3)
+        .fillColor(palette.muted)
+        .text(
+          'Reporte generado por MiLab. Uso interno institucional.',
+          pdf.page.margins.left,
+          footerY,
+          { width: contentWidth - 64, lineBreak: false, ellipsis: true }
+        );
+    };
+    const addPageWithChrome = () => {
+      pdf.addPage();
+      pageNumber += 1;
+      drawPageChrome();
+      pdf.y = contentTop();
+    };
+    const ensureSpace = (height) => {
+      if (pdf.y + height > bottomLimit()) addPageWithChrome();
+    };
+    drawPageChrome();
+
     const total = Number(event.total_participantes) || 0;
-    const metrics = [
-      { label: 'Registrados activos', value: formatReportNumber(total) },
+    const completionRate = total ? Number(event.salidas) / total : 0;
+    const entryRate = total ? Number(event.entradas) / total : 0;
+    const sentRate = Number(event.certificados_generados)
+      ? Number(event.certificados_enviados) / Number(event.certificados_generados)
+      : 0;
+    const medalsRate = total ? Number(event.medallas_otorgadas) / total : 0;
+    const summaryCards = [
       {
-        label: 'Con entrada registrada',
-        value: formatReportNumber(event.entradas),
-        detail: `${formatReportPercent(event.entradas, total)} de los registrados`,
+        label: 'Asistencia con entrada',
+        value: `${formatReportNumber(event.entradas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.entradas, total),
+        ratio: entryRate,
+        detail: `Sin entrada: ${formatReportNumber(event.sin_entrada)} · Dentro sin salida: ${formatReportNumber(event.dentro_sin_salida)}`,
       },
       {
         label: 'Participación completada',
-        value: formatReportNumber(event.salidas),
-        detail: `${formatReportPercent(event.salidas, total)} de los registrados`,
+        value: `${formatReportNumber(event.salidas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.salidas, total),
+        ratio: completionRate,
+        detail: 'Participantes con salida registrada',
       },
-      { label: 'Sin entrada', value: formatReportNumber(event.sin_entrada) },
-      { label: 'Dentro sin salida', value: formatReportNumber(event.dentro_sin_salida) },
       {
-        label: 'Certificados enviados',
+        label: 'Correos de certificados enviados',
         value: `${formatReportNumber(event.certificados_enviados)} / ${formatReportNumber(event.certificados_generados)}`,
+        percentage: formatReportPercent(event.certificados_enviados, event.certificados_generados),
+        ratio: sentRate,
+        detail: `Pendientes: ${formatReportNumber(event.certificados_pendientes)} · Errores: ${formatReportNumber(event.certificados_con_error)}`,
       },
       {
-        label: 'Certificados pendientes',
-        value: formatReportNumber(event.certificados_pendientes),
+        label: 'Medallas enlazadas',
+        value: `${formatReportNumber(event.medallas_otorgadas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.medallas_otorgadas, total),
+        ratio: medalsRate,
+        detail: 'Logros asociados a cuentas MiLab',
       },
-      { label: 'Certificados con error', value: formatReportNumber(event.certificados_con_error) },
-      { label: 'Medallas enlazadas', value: formatReportNumber(event.medallas_otorgadas) },
     ];
-
-    pdf.font('Helvetica-Bold').fontSize(21).fillColor('#173B5E').text('Informe del encuentro');
-    pdf.moveDown(0.25);
-    pdf.font('Helvetica-Bold').fontSize(15).fillColor('#243447').text(event.nombre);
-    pdf.moveDown(0.6);
-
-    const startTime = String(event.hora_inicio || '').slice(0, 5);
-    const endTime = String(event.hora_fin || '').slice(0, 5);
     const generatedAt = new Intl.DateTimeFormat('es-CO', {
       dateStyle: 'long',
       timeStyle: 'short',
       timeZone: 'America/Bogota',
     }).format(new Date());
+    const startTime = String(event.hora_inicio || '').slice(0, 5);
+    const endTime = String(event.hora_fin || '').slice(0, 5);
+
+    pdf.y = contentTop();
+    pdf.font('Helvetica-Bold').fontSize(22).fillColor(palette.primary).text('Informe del encuentro');
+    pdf.moveDown(0.2);
+    pdf.font('Helvetica-Bold').fontSize(15).fillColor(palette.text).text(event.nombre);
+    pdf.moveDown(0.45);
+
     pdf
       .font('Helvetica')
       .fontSize(9)
-      .fillColor('#334155')
+      .fillColor(palette.muted)
       .text(`Fecha: ${formatReportDate(event.fecha)}    Horario: ${startTime} - ${endTime}`)
       .text(`Lugar: ${event.lugar || 'No especificado'}`)
       .text(`Organizador: ${event.organizador || 'No especificado'}`)
       .text(`Estado: Finalizado    Informe generado: ${generatedAt}`);
     pdf.moveDown(0.8);
 
-    pdf.font('Helvetica-Bold').fontSize(12).fillColor('#173B5E').text('Resumen del encuentro');
-    pdf.moveDown(0.4);
-    const cardGap = 8;
-    const cardColumns = 3;
+    pdf.font('Helvetica-Bold').fontSize(12).fillColor(palette.primary).text('Resumen del encuentro');
+    pdf
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor(palette.muted)
+      .text(`Registrados activos: ${formatReportNumber(total)}`);
+    pdf.moveDown(0.35);
+
+    pdf.font('Helvetica-Bold').fontSize(12).fillColor(palette.primary).text('Resumen visual');
+    pdf.moveDown(0.35);
+    const cardGap = 10;
+    const cardColumns = 2;
     const cardWidth = (contentWidth - cardGap * (cardColumns - 1)) / cardColumns;
-    const cardHeight = 45;
-    for (let index = 0; index < metrics.length; index += cardColumns) {
+    const cardHeight = 66;
+    for (let index = 0; index < summaryCards.length; index += cardColumns) {
       ensureSpace(cardHeight + 8);
       const rowY = pdf.y;
-      metrics.slice(index, index + cardColumns).forEach((metric, columnIndex) => {
+      summaryCards.slice(index, index + cardColumns).forEach((metric, columnIndex) => {
         if (!metric) return;
         const x = pdf.page.margins.left + columnIndex * (cardWidth + cardGap);
-        pdf.save().fillColor('#F2F6FA').rect(x, rowY, cardWidth, cardHeight).fill().restore();
+        pdf.save().fillColor(palette.surface).rect(x, rowY, cardWidth, cardHeight).fill().restore();
         pdf
           .save()
-          .strokeColor('#D7E0E9')
+          .strokeColor(palette.border)
           .lineWidth(0.7)
           .rect(x, rowY, cardWidth, cardHeight)
           .stroke()
           .restore();
         pdf
           .font('Helvetica')
-          .fontSize(7)
-          .fillColor('#526273')
-          .text(metric.label, x + 8, rowY + 5, { width: cardWidth - 16, height: 11 });
+          .fontSize(8)
+          .fillColor(palette.muted)
+          .text(metric.label, x + 8, rowY + 6, { width: cardWidth - 16, lineBreak: false, ellipsis: true });
+        pdf
+          .font('Helvetica')
+          .font('Helvetica-Bold')
+          .fontSize(14)
+          .fillColor(palette.text)
+          .text(metric.value, x + 8, rowY + 21, { width: cardWidth - 90, lineBreak: false, ellipsis: true });
         pdf
           .font('Helvetica-Bold')
-          .fontSize(13)
-          .fillColor('#173B5E')
-          .text(metric.value, x + 8, rowY + 17, { width: cardWidth - 16 });
-        if (metric.detail) {
-          pdf
-            .font('Helvetica')
-            .fontSize(6.5)
-            .fillColor('#526273')
-            .text(metric.detail, x + 8, rowY + 33, {
-              width: cardWidth - 16,
-              height: 9,
-              lineBreak: false,
-              ellipsis: true,
-            });
-        }
+          .fontSize(11)
+          .fillColor(palette.text)
+          .text(metric.percentage, x + cardWidth - 78, rowY + 21, { width: 70, align: 'right' });
+        drawProgressBar(x + 8, rowY + 40, cardWidth - 16, metric.ratio);
+        pdf
+          .font('Helvetica')
+          .fontSize(7.2)
+          .fillColor(palette.muted)
+          .text(metric.detail, x + 8, rowY + 52, {
+            width: cardWidth - 16,
+            lineBreak: false,
+            ellipsis: true,
+          });
       });
       pdf.y = rowY + cardHeight + 8;
     }
 
-    ensureSpace(48);
+    const sortedFaculties = [...faculties].sort((left, right) => right.registrados - left.registrados);
+    const topFaculty = sortedFaculties[0];
+    if (topFaculty) {
+      ensureSpace(34);
+      pdf
+        .save()
+        .fillColor(palette.surfaceAlt)
+        .rect(pdf.page.margins.left, pdf.y, contentWidth, 26)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .strokeColor(palette.border)
+        .lineWidth(0.7)
+        .rect(pdf.page.margins.left, pdf.y, contentWidth, 26)
+        .stroke()
+        .restore();
+      pdf
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(palette.primary)
+        .text('Hallazgo destacado', pdf.page.margins.left + 8, pdf.y + 6, { lineBreak: false });
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.text)
+        .text(
+          `La facultad con mayor participación registró ${formatReportNumber(topFaculty.registrados)} inscritos y ${formatReportPercent(topFaculty.completaron, topFaculty.registrados)} de participación completada.`,
+          pdf.page.margins.left + 102,
+          pdf.y + 6,
+          { width: contentWidth - 110, lineBreak: false, ellipsis: true }
+        );
+      pdf.y += 34;
+    }
+
+    ensureSpace(52);
     pdf
       .font('Helvetica-Bold')
       .fontSize(11)
-      .fillColor('#173B5E')
+      .fillColor(palette.primary)
       .text('Resumen de participantes por facultad');
     pdf
       .font('Helvetica')
       .fontSize(7)
-      .fillColor('#526273')
+      .fillColor(palette.muted)
       .text(
         'Inscritos activos, entradas y participaciones completadas; porcentajes calculados sobre los inscritos de cada facultad.'
       );
@@ -947,13 +1115,13 @@ function renderEventReportPdf({ event, faculties }) {
     const headerHeight = 19;
     const drawTableHeader = () => {
       const y = pdf.y;
-      pdf.save().fillColor('#173B5E').rect(tableX, y, contentWidth, headerHeight).fill().restore();
+      pdf.save().fillColor(palette.primary).rect(tableX, y, contentWidth, headerHeight).fill().restore();
       let x = tableX;
       columns.forEach((column) => {
         pdf
           .font('Helvetica-Bold')
           .fontSize(6.8)
-          .fillColor('#FFFFFF')
+          .fillColor(palette.white)
           .text(column.label, x + 4, y + 7, {
             width: column.width - 8,
             align: column.align,
@@ -969,7 +1137,7 @@ function renderEventReportPdf({ event, faculties }) {
       pdf
         .font('Helvetica')
         .fontSize(9)
-        .fillColor('#526273')
+        .fillColor(palette.muted)
         .text('No hay participantes registrados activos.');
     } else {
       faculties.forEach((faculty, index) => {
@@ -980,14 +1148,14 @@ function renderEventReportPdf({ event, faculties }) {
           pdf.heightOfString(facultyName, { width: columns[0].width - 10 }) + 6
         );
         if (pdf.y + rowHeight > bottomLimit()) {
-          pdf.addPage();
+          addPageWithChrome();
           drawTableHeader();
         }
         const rowY = pdf.y;
         if (index % 2 === 1) {
           pdf
             .save()
-            .fillColor('#F6F8FA')
+            .fillColor(palette.surfaceAlt)
             .rect(tableX, rowY, contentWidth, rowHeight)
             .fill()
             .restore();
@@ -1005,7 +1173,7 @@ function renderEventReportPdf({ event, faculties }) {
           pdf
             .font('Helvetica')
             .fontSize(7)
-            .fillColor('#263445')
+            .fillColor(palette.text)
             .text(values[columnIndex], x + 4, rowY + 5, {
               width: column.width - 8,
               height: rowHeight - 6,
@@ -1016,19 +1184,162 @@ function renderEventReportPdf({ event, faculties }) {
         pdf
           .moveTo(tableX, rowY + rowHeight)
           .lineTo(tableX + contentWidth, rowY + rowHeight)
-          .strokeColor('#D7E0E9')
+          .strokeColor(palette.border)
           .lineWidth(0.5)
           .stroke();
         pdf.y = rowY + rowHeight;
       });
     }
 
-    ensureSpace(42);
+    ensureSpace(70);
+    pdf.moveDown(0.7);
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .fillColor(palette.primary)
+      .text('Siguientes mejoras sugeridas para el informe');
+    pdf.moveDown(0.25);
+    const suggestions = [
+      'Agregar anexo opcional con listado total de participantes (nombre, documento y estado de asistencia).',
+      'Incluir comparativo contra encuentros anteriores del mismo organizador (tendencia de asistencia).',
+      'Destacar alertas operativas automáticas: participantes sin salida y certificados con error.',
+      'Agregar ranking Top 5 de UAL con mayor participación completada.',
+    ];
+    suggestions.forEach((suggestion) => {
+      ensureSpace(14);
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.text)
+        .text(`• ${suggestion}`);
+    });
+    pdf.moveDown(0.5);
+    ensureSpace(34);
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .fillColor(palette.primary)
+      .text('Anexo · Listado total de participantes');
+    pdf
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(palette.muted)
+      .text(
+        'Detalle operativo para validación interna. Incluye asistencia y estado de certificado por participante.'
+      );
+    pdf.moveDown(0.35);
+
+    const participantColumns = [
+      { label: 'Participante', width: 126, key: 'nombre', align: 'left' },
+      { label: 'Documento', width: 60, key: 'documento', align: 'left' },
+      { label: 'Correo', width: 124, key: 'correo', align: 'left' },
+      { label: 'Facultad / UAL', width: 118, key: 'facultadLaboratorio', align: 'left' },
+      { label: 'Asistencia', width: 56, key: 'estado_asistencia', align: 'left' },
+      { label: 'Certificado', width: 58, key: 'estado_certificado', align: 'left' },
+    ];
+    const participantHeaderHeight = 18;
+    const participantRowHeight = 14;
+    const participantTableX = pdf.page.margins.left;
+
+    const normalizeAttendanceLabel = (status) =>
+      status === 'en_curso'
+        ? 'en curso'
+        : status === 'sin_entrada'
+          ? 'sin entrada'
+          : status || 'sin entrada';
+    const normalizeCertificateLabel = (status) =>
+      status === 'sin_certificado' ? 'sin generar' : status || 'sin generar';
+
+    const drawParticipantHeader = () => {
+      const y = pdf.y;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(participantTableX, y, contentWidth, participantHeaderHeight)
+        .fill()
+        .restore();
+      let x = participantTableX;
+      participantColumns.forEach((column) => {
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(6.4)
+          .fillColor(palette.white)
+          .text(column.label, x + 4, y + 6, {
+            width: column.width - 8,
+            align: column.align,
+            lineBreak: false,
+            ellipsis: true,
+          });
+        x += column.width;
+      });
+      pdf.y = y + participantHeaderHeight;
+    };
+
+    drawParticipantHeader();
+    if (!participants.length) {
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.muted)
+        .text('No hay participantes registrados para este encuentro.');
+    } else {
+      participants.forEach((participant, index) => {
+        if (pdf.y + participantRowHeight > bottomLimit()) {
+          addPageWithChrome();
+          pdf
+            .font('Helvetica-Bold')
+            .fontSize(10)
+            .fillColor(palette.primary)
+            .text(`Anexo · Listado total de participantes (continuación)`);
+          pdf.moveDown(0.25);
+          drawParticipantHeader();
+        }
+        const rowY = pdf.y;
+        if (index % 2 === 1) {
+          pdf
+            .save()
+            .fillColor(palette.surfaceAlt)
+            .rect(participantTableX, rowY, contentWidth, participantRowHeight)
+            .fill()
+            .restore();
+        }
+        const values = [
+          participant.nombre || 'Sin nombre',
+          participant.documento || '—',
+          participant.correo || '—',
+          `${participant.facultad || 'Sin facultad'} / ${participant.laboratorio || 'Sin UAL'}`,
+          normalizeAttendanceLabel(participant.estado_asistencia),
+          normalizeCertificateLabel(participant.estado_certificado),
+        ];
+        let x = participantTableX;
+        participantColumns.forEach((column, columnIndex) => {
+          pdf
+            .font('Helvetica')
+            .fontSize(6.5)
+            .fillColor(palette.text)
+            .text(values[columnIndex], x + 4, rowY + 4, {
+              width: column.width - 8,
+              align: column.align,
+              lineBreak: false,
+              ellipsis: true,
+            });
+          x += column.width;
+        });
+        pdf
+          .moveTo(participantTableX, rowY + participantRowHeight)
+          .lineTo(participantTableX + contentWidth, rowY + participantRowHeight)
+          .strokeColor(palette.border)
+          .lineWidth(0.35)
+          .stroke();
+        pdf.y = rowY + participantRowHeight;
+      });
+    }
+
     pdf.moveDown(0.7);
     pdf
       .font('Helvetica')
       .fontSize(8)
-      .fillColor('#526273')
+      .fillColor(palette.muted)
       .text(
         'Este informe contiene cifras agregadas de participantes activos; no incluye datos personales.'
       );
@@ -2474,7 +2785,7 @@ router.post('/api/eventos/:eventId/participantes', requireManager, async (req, r
         [eventId]
       );
       if (!eventResult.rows[0]) return { error: 'not_found' };
-      if (!['programado', 'en_curso'].includes(eventResult.rows[0].estado)) {
+      if (!['programado', 'en_curso', 'finalizado'].includes(eventResult.rows[0].estado)) {
         return { error: 'invalid_state' };
       }
       const userId = await getRegisteredUserMatch(
