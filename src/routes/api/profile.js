@@ -5,6 +5,7 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
 const { startSessionLifetime } = require('../../libs/session-policy');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -351,6 +352,7 @@ async function lookupEligibleStudentRecords(documento, signal) {
           estado = estadoData?.estado?.nombre || estado;
         } catch (error) {
           if (signal.aborted) throw error;
+          if (error?.code === 'OATI_UNAVAILABLE') throw error;
           console.warn('No se pudo resolver el estado del estudiante en OATI:', error.code);
         }
       }
@@ -369,6 +371,7 @@ async function lookupEligibleStudentRecords(documento, signal) {
       carrera = carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '';
     } catch (error) {
       if (signal.aborted) throw error;
+      if (error?.code === 'OATI_UNAVAILABLE') throw error;
       console.warn('No se pudo resolver el programa del estudiante en OATI:', error.code);
       // Se usa el código de carrera de OATI si no se puede resolver el nombre.
     }
@@ -890,6 +893,9 @@ async function identifyProfile(req, res) {
     docente = teacherLookup.docente;
     states = [...studentLookup.states, ...teacherLookup.states];
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando OATI durante el registro:', {
       code: error.code,
       status: error.response?.status,
@@ -973,6 +979,7 @@ async function identifyProfile(req, res) {
       startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
       req.session.registroPendiente = null;
+      req.session.showOatiLoginWarning = true;
     }
     return res.redirect('/milab/inicio');
   };

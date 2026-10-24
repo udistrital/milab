@@ -304,12 +304,48 @@
   }
 
   function buildParticipantTable(participants, event) {
-    const allowSelection = event.estado === 'finalizado';
+    const allowCertificateSelection = event.estado === 'finalizado';
+    const allowExitSelection = event.estado === 'en_curso';
+    const allowSelection = allowCertificateSelection || allowExitSelection;
     const wrap = element('div', undefined, 'table-responsive mt-3');
-    const search = element('input', undefined, 'form-control form-control-sm mb-2');
+    const filters = element('div', undefined, 'row g-2 mb-2');
+    const searchCol = element('div', undefined, 'col-12 col-lg-6');
+    const attendanceCol = element('div', undefined, 'col-12 col-md-6 col-lg-3');
+    const certificateCol = element('div', undefined, 'col-12 col-md-6 col-lg-3');
+    const search = element('input', undefined, 'form-control form-control-sm');
     search.type = 'search';
     search.placeholder = 'Buscar por documento, nombre o correo';
     search.setAttribute('aria-label', 'Buscar participantes');
+    const attendanceFilter = element('select', undefined, 'form-select form-select-sm');
+    attendanceFilter.setAttribute('aria-label', 'Filtrar por estado de asistencia');
+    [
+      ['all', 'Asistencia: todos'],
+      ['sin_entrada', 'Asistencia: sin entrada'],
+      ['en_curso', 'Asistencia: en curso'],
+      ['completada', 'Asistencia: completada'],
+    ].forEach(([value, label]) => {
+      const option = element('option', label);
+      option.value = value;
+      attendanceFilter.appendChild(option);
+    });
+    const certificateFilter = element('select', undefined, 'form-select form-select-sm');
+    certificateFilter.setAttribute('aria-label', 'Filtrar por estado de certificado');
+    [
+      ['all', 'Certificado: todos'],
+      ['sin_certificado', 'Certificado: sin generar'],
+      ['enviado', 'Certificado: enviado'],
+      ['pendiente', 'Certificado: pendiente de envío'],
+      ['error', 'Certificado: con error'],
+      ['anulado', 'Certificado: anulado'],
+    ].forEach(([value, label]) => {
+      const option = element('option', label);
+      option.value = value;
+      certificateFilter.appendChild(option);
+    });
+    searchCol.appendChild(search);
+    attendanceCol.appendChild(attendanceFilter);
+    certificateCol.appendChild(certificateFilter);
+    filters.append(searchCol, attendanceCol, certificateCol);
     const table = element('table', undefined, 'table table-sm table-hover align-middle');
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
@@ -324,7 +360,9 @@
         table
           .querySelectorAll('input[name="selected-participant"]:not(:disabled)')
           .forEach((input) => {
-            input.checked = selectAll.checked;
+            if (!input.closest('tr')?.hidden) {
+              input.checked = selectAll.checked;
+            }
           });
       });
     }
@@ -347,16 +385,29 @@
       const row = element('tr');
       row.dataset.search =
         `${participant.nombre} ${participant.documento} ${participant.correo} ${participant.rol} ${participant.facultad} ${participant.laboratorio}`.toLowerCase();
+      row.dataset.attendanceState = participant.estado_asistencia || 'sin_entrada';
+      const certificateState = participant.certificado_id
+        ? participant.validez_certificado === 'anulado'
+          ? 'anulado'
+          : ['pendiente', 'enviando'].includes(participant.estado_certificado)
+            ? 'pendiente'
+            : participant.estado_certificado || 'pendiente'
+        : 'sin_certificado';
+      row.dataset.certificateState = certificateState;
       if (allowSelection) {
         const selectCell = document.createElement('td');
         const select = element('input');
         select.type = 'checkbox';
         select.name = 'selected-participant';
         select.value = String(participant.id);
-        select.disabled =
-          !participant.salida_en ||
-          participant.validez_certificado === 'anulado' ||
-          participant.estado_certificado === 'enviado';
+        if (allowCertificateSelection) {
+          select.disabled =
+            !participant.salida_en ||
+            participant.validez_certificado === 'anulado' ||
+            participant.estado_certificado === 'enviado';
+        } else if (allowExitSelection) {
+          select.disabled = !participant.entrada_en || Boolean(participant.salida_en);
+        }
         select.setAttribute('aria-label', `Seleccionar certificado de ${participant.nombre}`);
         selectCell.appendChild(select);
         row.appendChild(selectCell);
@@ -423,31 +474,59 @@
       row.appendChild(actions);
       body.appendChild(row);
     });
-    search.addEventListener('input', () => {
+    const applyParticipantFilters = () => {
       const term = search.value.trim().toLowerCase();
+      const attendanceValue = attendanceFilter.value;
+      const certificateValue = certificateFilter.value;
       Array.from(body.rows).forEach((row) => {
-        row.hidden = !row.dataset.search.includes(term);
+        const matchesTerm = row.dataset.search.includes(term);
+        const matchesAttendance =
+          attendanceValue === 'all' || row.dataset.attendanceState === attendanceValue;
+        const matchesCertificate =
+          certificateValue === 'all' || row.dataset.certificateState === certificateValue;
+        row.hidden = !(matchesTerm && matchesAttendance && matchesCertificate);
       });
-    });
+    };
+    search.addEventListener('input', applyParticipantFilters);
+    attendanceFilter.addEventListener('change', applyParticipantFilters);
+    certificateFilter.addEventListener('change', applyParticipantFilters);
     table.append(head, body);
-    wrap.append(search);
+    wrap.append(filters);
     if (allowSelection) {
       const controls = element('div', undefined, 'd-flex flex-wrap align-items-center gap-3 mb-2');
-      const emailLabel = element('label', undefined, 'form-check mb-0');
-      const sendEmail = element('input', undefined, 'form-check-input');
-      sendEmail.type = 'checkbox';
-      sendEmail.checked = true;
-      sendEmail.id = 'send-selected-certificates';
-      const emailText = element(
-        'span',
-        'Enviar los certificados seleccionados por correo',
-        'form-check-label'
-      );
-      emailLabel.append(sendEmail, emailText);
-      const generateButton = actionButton('Generar certificados seleccionados', 'btn-primary', () =>
-        generateSelectedCertificates(event.id, table, sendEmail, generateButton)
-      );
-      controls.append(emailLabel, generateButton);
+      if (allowCertificateSelection) {
+        const emailLabel = element('label', undefined, 'form-check mb-0');
+        const sendEmail = element('input', undefined, 'form-check-input');
+        sendEmail.type = 'checkbox';
+        sendEmail.checked = true;
+        sendEmail.id = 'send-selected-certificates';
+        const emailText = element(
+          'span',
+          'Enviar los certificados seleccionados por correo',
+          'form-check-label'
+        );
+        emailLabel.append(sendEmail, emailText);
+        const generateButton = actionButton(
+          'Generar certificados seleccionados',
+          'btn-primary',
+          () => generateSelectedCertificates(event.id, table, sendEmail, generateButton)
+        );
+        controls.append(emailLabel, generateButton);
+      } else if (allowExitSelection) {
+        controls.append(
+          element(
+            'span',
+            'Selecciona participantes con entrada registrada para marcar su salida.',
+            'small text-muted'
+          )
+        );
+        const registerExitButton = actionButton(
+          'Registrar salida a seleccionados',
+          'btn-outline-primary',
+          () => registerSelectedExits(event.id, table, registerExitButton)
+        );
+        controls.append(registerExitButton);
+      }
       wrap.appendChild(controls);
     }
     wrap.appendChild(table);
@@ -611,7 +690,7 @@
         importPreview.id = 'import-preview';
         participantActions.appendChild(importPreview);
       }
-      if (['programado', 'en_curso'].includes(event.estado)) {
+      if (['programado', 'en_curso', 'finalizado'].includes(event.estado)) {
         participantActions.appendChild(buildManualParticipantForm(event.id));
       }
       if (event.estado === 'en_curso') {
@@ -698,6 +777,18 @@
       <div class="col-12 col-md-4"><label class="form-label">Cargo<input name="rol" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Facultad<input name="facultad" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Unidad Académica de Laboratorio (UAL)<input name="laboratorio" class="form-control form-control-sm" required maxlength="255"></label></div>`;
+    if (
+      pageState.participants?.length &&
+      pageState.participants[0]?.estado_evento === 'finalizado'
+    ) {
+      form.appendChild(
+        element(
+          'p',
+          'Nota: en encuentros finalizados, este formulario solo agrega el participante. La asistencia (entrada/salida) debe cargarse con la plantilla de participaciones.',
+          'col-12 small text-muted mb-1'
+        )
+      );
+    }
     const button = element(
       'button',
       'Agregar participante',
@@ -919,6 +1010,61 @@
       }
     }
     return { completed, failed };
+  }
+
+  async function registerSelectedExits(eventId, table, button) {
+    const selectedIds = new Set(
+      Array.from(table.querySelectorAll('input[name="selected-participant"]:checked')).map(
+        (input) => Number(input.value)
+      )
+    );
+    const participants = (pageState.participants || []).filter(
+      (participant) =>
+        selectedIds.has(Number(participant.id)) && participant.entrada_en && !participant.salida_en
+    );
+
+    if (!participants.length) {
+      showAlert('Selecciona al menos un participante con entrada y sin salida.', 'warning');
+      return;
+    }
+
+    if (
+      !(await window.MiLabDialogs.confirm(
+        `Se registrará salida para ${participants.length} participante(s) seleccionados.`
+      ))
+    ) {
+      return;
+    }
+
+    button.disabled = true;
+    let successful = 0;
+    const failed = [];
+    try {
+      for (const participant of participants) {
+        try {
+          await request(`/eventos/${eventId}/asistencia/salida`, {
+            method: 'POST',
+            body: JSON.stringify({ documento: participant.documento }),
+          });
+          successful += 1;
+        } catch (error) {
+          failed.push(`${participant.nombre}: ${error.message}`);
+        }
+      }
+      const summary = `Salidas registradas: ${successful}/${participants.length}.`;
+      if (failed.length) {
+        showAlert(
+          `${summary} Fallaron ${failed.length}. ${failed.slice(0, 2).join(' | ')}`,
+          'warning'
+        );
+      } else {
+        showAlert(summary, 'success');
+      }
+      await refreshDetail();
+      await loadEvents();
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function annulCertificate(certificateId) {

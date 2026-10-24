@@ -4,18 +4,20 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-**Versión en curso:** `2.7.0`
+**Versión en curso:** `3.0.11`
 
 ## Release Notes
 
 - Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
 
-## Cambios recientes (2.7.0)
+## Cambios recientes (3.0.11)
 
 - **Edición de correos en dashboard:** el formulario libera el bloqueo de envío al terminar cada intento, incluidos los errores de validación o del servicio. Permite editar varias cuentas consecutivamente sin recargar la página y conserva la confirmación obligatoria y la protección contra envíos simultáneos.
 - **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
+- **Bypass automático ante caída de OATI:** el inicio de sesión con Microsoft permite entrar únicamente a usuarios ya registrados en MiLab usando sus roles guardados en BD, sin crear registros nuevos cuando OATI no responde. Al recuperarse OATI, las consultas académicas vuelven a operar sin activar/desactivar parámetros manuales.
+- **Aviso unificado por indisponibilidad OATI:** las respuestas API que dependen de OATI reportan `503` con `code: OATI_UNAVAILABLE` y `X-Oati-Unavailable: 1`; el cliente compartido muestra un popup informativo para evitar fallas silenciosas.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
 - **Registro de coordinadores y laboratoristas:** el coordinador queda asignado a una sola facultad, con alcance en toda ella o en dependencias específicas. El selector de coordinador permite buscar por nombre/documento y el listado de laboratorios se puede filtrar y seleccionar de forma ordenada.
 - **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/prod/db_structure_certificacion.sql](sql-scripts/prod/db_structure_certificacion.sql) y [sql-scripts/prod/db_seed_certificacion.sql](sql-scripts/prod/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
@@ -275,7 +277,7 @@ Notas operativas:
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.7.0`.
+- `APP_VERSION`: versión visible de la aplicación. Para este release usar `3.0.11`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.

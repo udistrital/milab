@@ -19,6 +19,7 @@ const {
   selectStudentRecordForDocumento,
 } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 // Variables de entorno
 require('dotenv').config();
@@ -345,6 +346,9 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       try {
         sgaMultaInfo = await consultarMultasSga();
       } catch (sgaError) {
+        if (sgaError?.code === 'OATI_UNAVAILABLE') {
+          return respondOatiUnavailable(req, res);
+        }
         console.error(
           'Error consultando multas SGA al generar certificado de estudiante:',
           sgaError
@@ -423,6 +427,9 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         });
       }
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error(error);
       return res.render('home/message_error', {
         message: '¡Algo ha salido mal!',

@@ -19,6 +19,7 @@ const { body, validationResult } = require('express-validator');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const {
   ensureOperationalRoleAssignmentsSchema,
   fetchActiveUalOptions,
@@ -267,7 +268,8 @@ async function lookupTeacherByDocumento(documento) {
       nombre: docente.nombre || '',
       correo: resolveOatiEmail(docente),
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -288,7 +290,8 @@ async function lookupStudentByDocumento(documento) {
       nombre: item.nombre || '',
       correo: resolveOatiEmail(item),
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -437,6 +440,9 @@ router.get('/load_info', requireAdminCoordinatorRegistration, async function (re
       lookupDocumento: documentoQuery,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/message_error', {
       message: '¡Algo ha salido mal!',

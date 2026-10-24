@@ -3,6 +3,7 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const router = express.Router();
 
 router.use(express.json());
@@ -115,6 +116,9 @@ router.post('/', requireTeacherVerificationAction, async (req, res) => {
       });
     }
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error en verificar_docente:', error);
     return res.render('home/verificar_docente', {
       error: 'Ocurrió un error al verificar el docente. Por favor intente nuevamente.',

@@ -165,3 +165,29 @@ test('requestOati cancels retry backoff within the caller deadline', async () =>
     loaded.restore();
   }
 });
+
+test('requestOati marks OATI unavailable and fails fast during cooldown window', async () => {
+  let postCalls = 0;
+  let getCalls = 0;
+  const loaded = loadOatiClient({
+    postImpl: async () => {
+      postCalls += 1;
+      return { data: { access_token: 'test-token', expires_in: 300 } };
+    },
+    getImpl: async () => {
+      getCalls += 1;
+      const error = new Error('connect ETIMEDOUT');
+      error.code = 'ETIMEDOUT';
+      throw error;
+    },
+  });
+
+  try {
+    await assert.rejects(loaded.oatiClient.requestOati('test'), { code: 'OATI_UNAVAILABLE' });
+    await assert.rejects(loaded.oatiClient.requestOati('test'), { code: 'OATI_UNAVAILABLE' });
+    assert.equal(postCalls, 1);
+    assert.equal(getCalls, 4);
+  } finally {
+    loaded.restore();
+  }
+});

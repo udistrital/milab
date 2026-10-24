@@ -142,7 +142,7 @@ test('microsoft callback stores authenticated user in session and redirects home
   }
 });
 
-test('microsoft callback keeps pending profile identification flow for first-time users', async () => {
+test('microsoft callback denies access for first-time users not registered in MiLab', async () => {
   const loaded = loadMilabApp({
     sessionState: {},
     microsoftUser: {
@@ -156,21 +156,10 @@ test('microsoft callback keeps pending profile identification flow for first-tim
   try {
     const callbackResponse = await request(loaded.app).get('/auth/microsoft/callback');
 
-    assert.equal(callbackResponse.status, 302);
-    assert.equal(callbackResponse.headers.location, '/milab/api/profile/identify');
-    assert.deepEqual(
-      loaded.sessionHarness.state.microsoftProfile,
-      createMicrosoftProfile({
-        nombre: 'Persona Microsoft',
-        correo: 'nueva@udistrital.edu.co',
-        microsoftId: 'ms-456',
-      })
-    );
-
-    const identifyResponse = await request(loaded.app).get('/api/profile/identify');
-    assert.equal(identifyResponse.status, 200);
-    assert.equal(identifyResponse.body.view, 'home/profile_identify');
-    assert.equal(identifyResponse.body.locals.correo, 'nueva@udistrital.edu.co');
+    assert.equal(callbackResponse.status, 200);
+    assert.equal(callbackResponse.body.view, 'home/message_error');
+    assert.match(callbackResponse.body.locals.message, /acceso denegado/i);
+    assert.equal(loaded.sessionHarness.state.microsoftProfile, null);
   } finally {
     loaded.restore();
   }

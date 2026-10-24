@@ -5,6 +5,7 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { resolveSanctionPersonLookup } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 // const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
 require('dotenv').config();
@@ -221,6 +222,9 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
       laboratoristaUalIds,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error durante la consulta:', error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
