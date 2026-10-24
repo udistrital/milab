@@ -7,12 +7,12 @@ Encuentros forma parte de Certificación y reutiliza la sesión, roles, correo y
 1. Aplicar `sql-scripts/prod/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
 2. Aplicar `sql-scripts/prod/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
 3. Usar el procedimiento institucional de migraciones y aprobación para promover ambos scripts. No ejecutarlos directamente en producción sin revisión y respaldo de DBA.
-4. En bases existentes, aplicar [`sql/20261021_encuentros_permissions.sql`](../sql/20261021_encuentros_permissions.sql) con un DBA o propietario de los objetos para conceder a la aplicación los privilegios correspondientes sobre las tablas y secuencias de Encuentros.
+4. En bases existentes, confirmar el usuario PostgreSQL con el que se conecta la aplicación. Si es `milab_app`, aplicar [`sql/20261023_encuentros_app_permissions.sql`](../sql/20261023_encuentros_app_permissions.sql) con un DBA o propietario de los objetos.
 5. Configurar el almacenamiento de archivos descrito abajo antes de habilitar cargas y generación de certificados.
 
 Los scripts son idempotentes para las tablas, índices y accesos de Encuentros. No crean cuentas de MiLab a partir de participantes importados.
 
-La migración de permisos es transaccional e idempotente; toma como referencia el propietario y los privilegios actuales de `milab.multa`. No es necesario volver a crear las tablas ni reiniciar la base.
+La migración `20261023_encuentros_app_permissions.sql` es transaccional e idempotente y concede permisos al rol PostgreSQL `milab_app`; solo sirve si ese es el usuario configurado en `DB_USER` o en el secreto de Secrets Manager. La migración anterior `20261021_encuentros_permissions.sql` toma como referencia el propietario y los privilegios directos de `milab.multa`, por lo que no garantiza permisos para un usuario de aplicación distinto. Estos `GRANT` de PostgreSQL tampoco asignan roles ni accesos de MiLab: para eso se requiere `db_seed_certificacion.sql` y que la cuenta tenga un rol de gestión de Encuentros.
 
 ## Archivos y configuración de correo
 
