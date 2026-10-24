@@ -8,7 +8,7 @@
 <main class="container app-page-shell app-bulk-query-page">
     <section class="app-page-header">
         <h1 class="app-page-title">Consulta masiva de estudiantes</h1>
-        <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y el laboratorio o dependencia que las reportó.</p>
+        <p class="app-page-subtitle">Consulta hasta 20 estudiantes. Se muestran las sanciones de MILab y las multas activas de SGA cuyo concepto identifica un laboratorio.</p>
     </section>
 
 <%
@@ -24,6 +24,45 @@
 
         return `${texto.slice(0, limite).trim()}...`;
     }
+
+    function estadoSga(status) {
+        const labels = {
+            found: 'Multas de laboratorio',
+            clear: 'Consulta completa · sin multas de laboratorio',
+            partial: 'Consulta parcial',
+            error: 'Error de consulta',
+            unresolved: 'Identidad no verificada',
+            not_configured: 'SGA no configurado',
+            pending: 'Pendiente',
+        };
+        return labels[status] || 'Sin verificar';
+    }
+
+    const resultados = Array.isArray(sampleData1) ? sampleData1 : [];
+    const estudiantesConSanciones = resultados.filter((item) =>
+        (Array.isArray(item.multas) ? item.multas : []).some(
+            (multa) => multa && typeof multa === 'object'
+        )
+    ).length;
+    const estudiantesNoConcluyentes = resultados.filter((item) =>
+        ['partial', 'error', 'unresolved'].includes(item.sgaStatus)
+    ).length;
+    const totalSancionesMilab = resultados.reduce(
+        (total, item) =>
+            total +
+            (Array.isArray(item.multas)
+                ? item.multas.filter((multa) => multa?.origen === 'MILab').length
+                : 0),
+        0
+    );
+    const totalMultasSga = resultados.reduce(
+        (total, item) =>
+            total +
+            (Array.isArray(item.multas)
+                ? item.multas.filter((multa) => multa?.origen === 'SGA').length
+                : 0),
+        0
+    );
 %>
 
 <section class="card app-form-panel app-bulk-query-panel justify-content-center mx-auto">
@@ -47,16 +86,47 @@
         </div>
         <% } %>
     </div>
+    <% if (resultados.length > 0) { %>
+    <div class="row g-3 px-3 pt-2" aria-label="Resumen de consulta masiva">
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Estudiantes consultados</div>
+                <div class="h3 mb-0"><%= resultados.length %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Estudiantes con sanciones</div>
+                <div class="h3 mb-0"><%= estudiantesConSanciones %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Sanciones MILab / multas SGA</div>
+                <div class="h3 mb-0"><%= totalSancionesMilab %> / <%= totalMultasSga %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Consultas SGA no concluyentes</div>
+                <div class="h3 mb-0"><%= estudiantesNoConcluyentes %></div>
+            </div>
+        </div>
+    </div>
+    <% } %>
     <div class="card-header app-bulk-query-results-heading mt-3 text-center">
-        <h5>Resultados del lote</h5>
+        <h5>Resultados detallados del lote</h5>
     </div>
     <div class="card-body app-bulk-query-results pt-0">
             <div class="app-bulk-query-grid-wrap">
                 <table id="myTable" class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="true">
                     <thead class="text-light">
                         <tr>
+                            <th>Estudiante</th>
                             <th>Documento</th>
                             <th>Código</th>
+                            <th>Programa</th>
+                            <th>Estado de consulta SGA</th>
                             <th>Origen</th>
                             <th>Motivo de sanción</th>
                             <th>Estado de la sanción</th>
@@ -68,17 +138,26 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <% if(sampleData1.length > 0) {
-                            sampleData1.forEach(function(data) { %>
+                        <% if(resultados.length > 0) {
+                            resultados.forEach(function(data) { %>
                                 <% data.multas.forEach(function(multa) { %>
                                 <tr>
-                                    
+                                        <td class="text-light"><%= data.nombre || '-' %></td>
                                         <td class="text-light"><%= data.documento || '-' %></td>
                                         <td class="text-light"><%= data.codigo || data.identificador || '-' %></td>
+                                        <td class="text-light"><%= data.programa || '-' %></td>
+                                        <td class="text-light">
+                                            <span class="badge text-bg-<%= data.sgaStatus === 'found' ? 'danger' : data.sgaStatus === 'clear' ? 'success' : data.sgaStatus === 'not_configured' ? 'secondary' : 'warning' %>">
+                                                <%= estadoSga(data.sgaStatus) %>
+                                            </span>
+                                            <% if (['partial', 'error', 'unresolved'].includes(data.sgaStatus) && data.sgaMessage) { %>
+                                                <small class="d-block mt-1"><%= resumirTexto(data.sgaMessage, 100) %></small>
+                                            <% } %>
+                                        </td>
                                         <% if (multa === null) { %>
                                             <td class="text-light">-</td>
                                             <td class="text-light">
-                                                <em>El estudiante no tiene multas</em>
+                                                <em>No se encontraron sanciones de MILab ni multas de laboratorio en SGA.</em>
                                             </td>
                                             <td></td>
                                             <td></td>
@@ -89,7 +168,7 @@
                                             <% } else if (multa === 'unknown') { %>
                                                     <td class="text-light">-</td>
                                                 <td class="text-light">
-                                                    <em>Este código no se encuentra registrado</em>
+                                                        <em>No se encontró una identidad académica verificable.</em>
                                                 </td>
                                                 <td></td>
                                                 <td></td>
@@ -99,7 +178,7 @@
                                                 <td class="text-center">-</td>
                                                 <% } else if (multa === 'sga-error') { %>
                                                     <td class="text-light">SGA</td>
-                                                    <td class="text-light"><em>No fue posible verificar las multas en SGA.</em></td>
+                                                    <td class="text-light"><em><%= data.sgaMessage || 'La consulta SGA quedó incompleta; el resultado no es concluyente.' %></em></td>
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
@@ -127,6 +206,9 @@
                                                         data-bs-target="#detalleConsultaMasivaModal"
                                                         data-detalle-documento="<%= data.documento || '-' %>"
                                                         data-detalle-codigo="<%= data.codigo || data.identificador || '-' %>"
+                                                        data-detalle-programa="<%= data.programa || '-' %>"
+                                                        data-detalle-estado-consulta="<%= estadoSga(data.sgaStatus) %>"
+                                                        data-detalle-codigos-sga="<%= (data.sgaCodes || []).join(', ') %>"
                                                         data-detalle-origen="<%= multa.origen || 'MILab' %>"
                                                         data-detalle-categoria="<%= multa.cat_multa || '-' %>"
                                                         data-detalle-estado="<%= multa.con_estado_multa || '-' %>"
@@ -137,6 +219,12 @@
                                                         data-detalle-codigo-sga="<%= multa.codigo_ubicacion_sga || '' %>"
                                                         data-detalle-facultad="<%= multa.laboratorio_facultad || '' %>"
                                                         data-detalle-dependencia="<%= multa.laboratorio_dependencia || '' %>"
+                                                        data-detalle-id-sga="<%= multa.id_sga || '' %>"
+                                                        data-detalle-tipo-concepto="<%= multa.tipo_concepto || '' %>"
+                                                        data-detalle-valor-sga="<%= multa.valor_sga ?? '' %>"
+                                                        data-detalle-anio-sga="<%= multa.anio_sga || '' %>"
+                                                        data-detalle-periodo-sga="<%= multa.periodo_sga || '' %>"
+                                                        data-detalle-fecha-pago-sga="<%= multa.fecha_pago_sga || '' %>"
                                                     >
                                                         Ver detalle
                                                     </button>
@@ -148,25 +236,17 @@
                             <% });
                         } else { %>
                             <tr>
-                                <td class="text-center">No hay registros en la base de datos</td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
+                                <td class="text-center" colspan="13">No hay registros para mostrar.</td>
                             </tr>
                         <% } %>
                     </tbody>
                 </table>
-                <% if(sampleData1.length > 0) { %>
-                    <div class="justify-content-center d-flex">
-                        
-                    <a href="/milab/api/get_list_estudiantes/generate_pdf?data=<%= encodeURIComponent(JSON.stringify(sampleData1)) %>" class="btn btn-perso mt-2 mb-2 col-md-11">Generar PDF</a>
-                    </div>
+                <% if(resultados.length > 0) { %>
+                    <form action="/milab/api/get_list_estudiantes/generate_pdf" method="post" class="justify-content-center d-flex">
+                        <%- include('../partials/csrf_field') %>
+                        <input type="hidden" name="data" value="<%= JSON.stringify(resultados) %>">
+                        <button type="submit" class="btn btn-perso mt-2 mb-2 col-md-11">Generar informe PDF</button>
+                    </form>
                 <% } %>
 
             </div>
@@ -193,6 +273,18 @@
                         <div class="fw-semibold" data-detail-field="codigo"></div>
                     </div>
                     <div class="col-md-6">
+                        <div class="text-muted small">Programa</div>
+                        <div class="fw-semibold" data-detail-field="programa"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Estado de consulta SGA</div>
+                        <div class="fw-semibold" data-detail-field="estado-consulta"></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Códigos académicos consultados en SGA</div>
+                        <div class="fw-semibold" data-detail-field="codigos-sga"></div>
+                    </div>
+                    <div class="col-md-6">
                         <div class="text-muted small">Origen</div>
                         <div class="fw-semibold" data-detail-field="origen"></div>
                     </div>
@@ -215,6 +307,26 @@
                     <div class="col-md-6">
                         <div class="text-muted small">Código de concepto SGA</div>
                         <div class="fw-semibold" data-detail-field="codigo-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Identificador SGA</div>
+                        <div class="fw-semibold" data-detail-field="id-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Tipo de concepto</div>
+                        <div class="fw-semibold" data-detail-field="tipo-concepto"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Valor reportado por SGA</div>
+                        <div class="fw-semibold" data-detail-field="valor-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Año / periodo SGA</div>
+                        <div class="fw-semibold" data-detail-field="periodo-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Fecha de pago SGA</div>
+                        <div class="fw-semibold" data-detail-field="fecha-pago-sga"></div>
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted small">Facultad</div>
@@ -252,6 +364,9 @@
         const fields = {
             documento: trigger.getAttribute('data-detalle-documento'),
             codigo: trigger.getAttribute('data-detalle-codigo'),
+            programa: trigger.getAttribute('data-detalle-programa'),
+            'estado-consulta': trigger.getAttribute('data-detalle-estado-consulta'),
+            'codigos-sga': trigger.getAttribute('data-detalle-codigos-sga'),
             origen: trigger.getAttribute('data-detalle-origen'),
             categoria: trigger.getAttribute('data-detalle-categoria'),
             estado: trigger.getAttribute('data-detalle-estado'),
@@ -260,6 +375,16 @@
             laboratorista: trigger.getAttribute('data-detalle-laboratorista'),
             ual: trigger.getAttribute('data-detalle-ual'),
             'codigo-sga': trigger.getAttribute('data-detalle-codigo-sga'),
+            'id-sga': trigger.getAttribute('data-detalle-id-sga'),
+            'tipo-concepto': trigger.getAttribute('data-detalle-tipo-concepto'),
+            'valor-sga': trigger.getAttribute('data-detalle-valor-sga'),
+            'periodo-sga': [
+                trigger.getAttribute('data-detalle-anio-sga'),
+                trigger.getAttribute('data-detalle-periodo-sga'),
+            ]
+                .filter(Boolean)
+                .join(' / '),
+            'fecha-pago-sga': trigger.getAttribute('data-detalle-fecha-pago-sga'),
             facultad: trigger.getAttribute('data-detalle-facultad'),
             dependencia: trigger.getAttribute('data-detalle-dependencia'),
         };

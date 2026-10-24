@@ -115,11 +115,17 @@ function loadRoute({
     exports: {
       sgaDebtService: {
         isConfigured: () => sgaServiceConfigured,
-        getActiveDebts: async ({ codigo }) => {
+        queryStudent: async ({ codigo }) => {
           sgaCalls += 1;
           sgaCode = codigo;
           if (sgaError) throw sgaError;
-          return sgaMultaActiva ? [{ DEU_ESTADO: '2' }] : [];
+          const debts = sgaMultaActiva ? [{ DEU_ESTADO: '2' }] : [];
+          return {
+            status: sgaMultaActiva ? 'found' : 'clear',
+            debts,
+            message: '',
+            errors: [],
+          };
         },
       },
     },
@@ -229,8 +235,12 @@ test('consulta-invit rejects invalid recaptcha without querying the multa API', 
   }
 });
 
-test('consulta-invit renders estado when recaptcha and API lookup succeed', async () => {
-  const loaded = loadRoute({ usuarioIdResult: 'fake-user-id', multaActiva: false });
+test('consulta-invit renders estado when recaptcha and SGA lookup succeed', async () => {
+  const loaded = loadRoute({
+    usuarioIdResult: 'fake-user-id',
+    multaActiva: false,
+    sgaServiceConfigured: true,
+  });
 
   try {
     const app = buildApp(loaded.route);
@@ -270,7 +280,7 @@ test('consulta-invit reports MULTADO when SGA has an active fine', async () => {
   }
 });
 
-test('consulta-invit skips SGA when its service is not configured', async () => {
+test('consulta-invit does not report paz y salvo when SGA is not configured', async () => {
   const loaded = loadRoute({ sgaServiceConfigured: false });
 
   try {
@@ -280,8 +290,9 @@ test('consulta-invit skips SGA when its service is not configured', async () => 
       'g-recaptcha-response': 'token',
     });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.locals.estadoSinFormato, 'PAZ_Y_SALVO');
+    assert.equal(response.status, 503);
+    assert.equal(response.body.locals.estadoSinFormato, null);
+    assert.match(response.body.locals.error, /no está configurado/i);
     assert.equal(loaded.sgaCalls(), 0);
   } finally {
     loaded.restore();
@@ -301,9 +312,9 @@ test('consulta-invit does not report paz y salvo when the configured SGA lookup 
       'g-recaptcha-response': 'token',
     });
 
-    assert.equal(response.status, 500);
+    assert.equal(response.status, 503);
     assert.equal(response.body.locals.estadoSinFormato, null);
-    assert.match(response.body.locals.error, /no fue posible consultar las multas en SGA/i);
+    assert.match(response.body.locals.error, /no fue posible confirmar las sanciones/i);
   } finally {
     loaded.restore();
   }

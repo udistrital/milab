@@ -102,6 +102,7 @@ router.post('/', async (req, res) => {
     }
 
     let estado = 'PAZ_Y_SALVO';
+    let errorConsultaSga = null;
     try {
       const result = await pool.query(
         `SELECT 1 FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA' LIMIT 1`,
@@ -111,25 +112,32 @@ router.post('/', async (req, res) => {
 
       if (sgaDebtService.isConfigured()) {
         try {
-          const sgaMultas = await sgaDebtService.getActiveDebts({ codigo: documento });
-          sgaMultaActiva = sgaMultas.length > 0;
+          const sgaResult = await sgaDebtService.queryStudent({ codigo: documento });
+          sgaMultaActiva = sgaResult.debts.length > 0;
+          if (!['found', 'clear'].includes(sgaResult.status)) {
+            errorConsultaSga = sgaResult.message;
+          }
         } catch (sgaError) {
           if (sgaError?.code === 'OATI_UNAVAILABLE') {
             return respondOatiUnavailable(req, res);
           }
           console.error('Error consultando multas SGA en consulta anónima:', sgaError.message);
-          if (result.rows.length === 0) {
-            return res.status(500).render('home/consulta-invit', {
-              siteKey: process.env.RECAPTCHA_SITE_KEY,
-              error: 'No fue posible consultar las multas en SGA.',
-              estadoResultado: null,
-              estadoSinFormato: null,
-            });
-          }
+          errorConsultaSga = 'No fue posible confirmar las sanciones de laboratorio en SGA.';
         }
+      } else {
+        errorConsultaSga =
+          'El servicio SGA no está configurado; no es posible confirmar el estado completo.';
       }
 
       if (result.rows.length > 0 || sgaMultaActiva) estado = 'MULTADO';
+      if (errorConsultaSga && result.rows.length === 0 && !sgaMultaActiva) {
+        return res.status(503).render('home/consulta-invit', {
+          siteKey: process.env.RECAPTCHA_SITE_KEY,
+          error: errorConsultaSga,
+          estadoResultado: null,
+          estadoSinFormato: null,
+        });
+      }
     } catch (err) {
       // Si hay error en la consulta de multas, mostrar error controlado
       console.error('Error consultando multas:', err.message);
@@ -145,7 +153,7 @@ router.post('/', async (req, res) => {
       siteKey: process.env.RECAPTCHA_SITE_KEY,
       estadoResultado: `El estudiante está: ${estado}`,
       estadoSinFormato: estado,
-      error: null,
+      error: errorConsultaSga,
     });
   } catch (error) {
     if (error?.code === 'OATI_UNAVAILABLE') {
