@@ -751,7 +751,10 @@
       <div class="col-12 col-md-4"><label class="form-label">Cargo<input name="rol" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Facultad<input name="facultad" class="form-control form-control-sm" required maxlength="255"></label></div>
       <div class="col-12 col-md-5"><label class="form-label">Unidad Académica de Laboratorio (UAL)<input name="laboratorio" class="form-control form-control-sm" required maxlength="255"></label></div>`;
-    if (pageState.participants?.length && pageState.participants[0]?.estado_evento === 'finalizado') {
+    if (
+      pageState.participants?.length &&
+      pageState.participants[0]?.estado_evento === 'finalizado'
+    ) {
       form.appendChild(
         element(
           'p',

@@ -873,12 +873,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     const contentTop = () => pdf.page.margins.top + 62;
     const drawProgressBar = (x, y, width, ratio) => {
       const normalized = Math.max(0, Math.min(1, Number(ratio) || 0));
-      pdf
-        .save()
-        .fillColor('#E8EEF7')
-        .roundedRect(x, y, width, 8, 4)
-        .fill()
-        .restore();
+      pdf.save().fillColor('#E8EEF7').roundedRect(x, y, width, 8, 4).fill().restore();
       pdf
         .save()
         .fillColor(palette.accent)
@@ -906,12 +901,12 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
         .font('Helvetica')
         .fontSize(8)
         .fillColor(palette.muted)
-        .text(
-          `Página ${pageNumber}`,
-          pdf.page.width - pdf.page.margins.right - 60,
-          footerY,
-          { width: 60, align: 'right', lineBreak: false, ellipsis: true }
-        );
+        .text(`Página ${pageNumber}`, pdf.page.width - pdf.page.margins.right - 60, footerY, {
+          width: 60,
+          align: 'right',
+          lineBreak: false,
+          ellipsis: true,
+        });
       pdf
         .font('Helvetica')
         .fontSize(7.3)
@@ -980,7 +975,11 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     const endTime = String(event.hora_fin || '').slice(0, 5);
 
     pdf.y = contentTop();
-    pdf.font('Helvetica-Bold').fontSize(22).fillColor(palette.primary).text('Informe del encuentro');
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(22)
+      .fillColor(palette.primary)
+      .text('Informe del encuentro');
     pdf.moveDown(0.2);
     pdf.font('Helvetica-Bold').fontSize(15).fillColor(palette.text).text(event.nombre);
     pdf.moveDown(0.45);
@@ -995,7 +994,11 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       .text(`Estado: Finalizado    Informe generado: ${generatedAt}`);
     pdf.moveDown(0.8);
 
-    pdf.font('Helvetica-Bold').fontSize(12).fillColor(palette.primary).text('Resumen del encuentro');
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor(palette.primary)
+      .text('Resumen del encuentro');
     pdf
       .font('Helvetica')
       .fontSize(8)
@@ -1027,13 +1030,21 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
           .font('Helvetica')
           .fontSize(8)
           .fillColor(palette.muted)
-          .text(metric.label, x + 8, rowY + 6, { width: cardWidth - 16, lineBreak: false, ellipsis: true });
+          .text(metric.label, x + 8, rowY + 6, {
+            width: cardWidth - 16,
+            lineBreak: false,
+            ellipsis: true,
+          });
         pdf
           .font('Helvetica')
           .font('Helvetica-Bold')
           .fontSize(14)
           .fillColor(palette.text)
-          .text(metric.value, x + 8, rowY + 21, { width: cardWidth - 90, lineBreak: false, ellipsis: true });
+          .text(metric.value, x + 8, rowY + 21, {
+            width: cardWidth - 90,
+            lineBreak: false,
+            ellipsis: true,
+          });
         pdf
           .font('Helvetica-Bold')
           .fontSize(11)
@@ -1053,7 +1064,9 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       pdf.y = rowY + cardHeight + 8;
     }
 
-    const sortedFaculties = [...faculties].sort((left, right) => right.registrados - left.registrados);
+    const sortedFaculties = [...faculties].sort(
+      (left, right) => right.registrados - left.registrados
+    );
     const topFaculty = sortedFaculties[0];
     if (topFaculty) {
       ensureSpace(34);
@@ -1115,7 +1128,12 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     const headerHeight = 19;
     const drawTableHeader = () => {
       const y = pdf.y;
-      pdf.save().fillColor(palette.primary).rect(tableX, y, contentWidth, headerHeight).fill().restore();
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(tableX, y, contentWidth, headerHeight)
+        .fill()
+        .restore();
       let x = tableX;
       columns.forEach((column) => {
         pdf
@@ -1207,11 +1225,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     ];
     suggestions.forEach((suggestion) => {
       ensureSpace(14);
-      pdf
-        .font('Helvetica')
-        .fontSize(8)
-        .fillColor(palette.text)
-        .text(`• ${suggestion}`);
+      pdf.font('Helvetica').fontSize(8).fillColor(palette.text).text(`• ${suggestion}`);
     });
     pdf.moveDown(0.5);
     ensureSpace(34);
