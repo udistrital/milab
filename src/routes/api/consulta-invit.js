@@ -4,6 +4,7 @@ const { verifyRecaptchaToken } = require('../../libs/recaptcha');
 const pool = require('../../libs/db');
 const { resolveUsuarioIdForStudent } = require('../../libs/user-identity');
 const { sgaDebtService } = require('../../libs/oati-debts');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 const secretKey = process.env.RECAPTCHA_SECRET_KEY;
 
@@ -69,6 +70,9 @@ router.post('/', async (req, res) => {
     try {
       usuarioId = await resolveUsuarioIdForStudent({ documento: null, codigo: documento });
     } catch (err) {
+      if (err?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       // Si el error es 404 o similar, mostrar mensaje controlado
       if (err && (err.status === 404 || (err.response && err.response.status === 404))) {
         return res.render('home/consulta-invit', {
@@ -110,6 +114,9 @@ router.post('/', async (req, res) => {
           const sgaMultas = await sgaDebtService.getActiveDebts({ codigo: documento });
           sgaMultaActiva = sgaMultas.length > 0;
         } catch (sgaError) {
+          if (sgaError?.code === 'OATI_UNAVAILABLE') {
+            return respondOatiUnavailable(req, res);
+          }
           console.error('Error consultando multas SGA en consulta anónima:', sgaError.message);
           if (result.rows.length === 0) {
             return res.status(500).render('home/consulta-invit', {
@@ -141,6 +148,9 @@ router.post('/', async (req, res) => {
       error: null,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     // Si el error es 404 o similar, mostrar mensaje controlado
     if (error && (error.status === 404 || (error.response && error.response.status === 404))) {
       return res.render('home/consulta-invit', {

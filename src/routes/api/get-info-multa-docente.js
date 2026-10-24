@@ -12,6 +12,7 @@ const { requireRoles } = require('../middlewares/auth');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
 // const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 require('dotenv').config();
 
@@ -181,6 +182,9 @@ router.get('/persona', requireTeacherFineInfoView, async function (req, res) {
       successFeedback,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
@@ -202,6 +206,9 @@ router.get('/registrar', requireTeacherFineInfoView, async function (req, res) {
   try {
     return await renderTeacherSanctionRegistration(req, res, { lookupToken, person });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
@@ -300,6 +307,9 @@ router.post('/', requireTeacherFineInfoView, async function (req, res) {
       message: 'No fue posible cargar la información del docente.',
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error durante la consulta o procesamiento:', error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',

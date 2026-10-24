@@ -15,6 +15,7 @@ const {
 const { APP_PERMISSIONS } = require('../../libs/permissions');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { requirePermissions } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const limiter = require('../middlewares/limiter');
 const { securityLogger } = require('../middlewares/security-logger');
 
@@ -136,7 +137,10 @@ async function lookupActiveStudentByDocumento(documento) {
         '',
       estado: student.estado || 'A',
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      throw error;
+    }
     return null;
   }
 }
@@ -365,6 +369,9 @@ router.get('/load_info', requireMonitorRegistrationAccess, async function (req, 
       ...viewContext,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error cargando el registro de monitores:', error);
     return res.render('home/message_error', {
       message: '¡Algo ha salido mal!',
@@ -630,6 +637,9 @@ router.post(
         ...viewContext,
       });
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error('Error registrando monitor:', error);
       return renderRegisterMonitorWithError(
         req,

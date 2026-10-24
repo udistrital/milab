@@ -14,6 +14,7 @@ const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { selectStudentRecordForDocumento } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
 const { normalizeRoles } = require('../../libs/roles');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 // Variables de entorno
 require('dotenv').config();
@@ -338,6 +339,9 @@ router.post('/', requireStudentCertificateAccess, async function (req, res) {
 
       salvar(con_codigo, emailFeedback);
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error(error);
       return res.render('home/message_error', {
         message: '¡Algo ha salido mal!',

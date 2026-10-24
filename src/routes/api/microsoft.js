@@ -7,6 +7,7 @@ const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity
 const { startSessionLifetime } = require('../../libs/session-policy');
 
 const router = Router();
+const MICROSOFT_OATI_LOOKUP_TIMEOUT_MS = 4000;
 
 function extractMicrosoftEmail(profile) {
   return (
@@ -40,7 +41,9 @@ function isActiveStudentRecord(record) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
+    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`), {
+      signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS),
+    });
 
     const rawDocentes = data?.docentesCollection?.docente;
     let docentes = [];
@@ -60,7 +63,8 @@ async function lookupTeacherByDocumento(documento) {
 async function lookupStudentByDocumento(documento) {
   try {
     const data = await requestOati(
-      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`),
+      { signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS) }
     );
 
     const collection = data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
@@ -284,14 +288,15 @@ router.get(
 
       await regenerateSession(req);
       if (req.session) {
-        req.session.microsoftProfile = {
-          nombre: req.user?.displayName || req.user?._json?.displayName || '',
-          correo,
-          microsoftId: req.user?.id || req.user?._json?.oid || '',
-        };
+        req.session.microsoftProfile = null;
       }
 
-      return res.redirect('/milab/api/profile/identify');
+      return res.render('home/message_error', {
+        message: '¡Acceso denegado!',
+        message2:
+          'Tu cuenta institucional no está registrada en MiLab. Comunícate con administración para habilitar el acceso.',
+        limit: null,
+      });
     } catch (error) {
       console.error('Error en callback de Microsoft:', error);
       return res.render('home/message_error', {

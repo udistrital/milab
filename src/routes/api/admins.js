@@ -3,6 +3,7 @@ const { requestOati, getAcademicServicePath } = require('../../libs/oati-client'
 
 const pool = require('../../libs/db');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 require('dotenv').config();
 
@@ -49,7 +50,8 @@ async function lookupTeacherByDocumento(documento) {
       nombre: docente.nombre || '',
       correo: resolveOatiEmail(docente),
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -70,7 +72,8 @@ async function lookupStudentByDocumento(documento) {
       nombre: item.nombre || '',
       correo: resolveOatiEmail(item),
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -182,28 +185,35 @@ router.get('/load_info', requireAdminAccess, async (req, res) => {
     return res.render('home/admin_add', buildViewContext());
   }
 
-  const lookupData = await lookupAdminByDocumento(documentoQuery);
-  if (lookupData) {
+  try {
+    const lookupData = await lookupAdminByDocumento(documentoQuery);
+    if (lookupData) {
+      return res.render(
+        'home/admin_add',
+        buildViewContext({
+          lookupDocumento: documentoQuery,
+          lookupData,
+          lookupMessage: 'Datos precargados desde OATI.',
+          lookupStatus: 'success',
+        })
+      );
+    }
+
     return res.render(
       'home/admin_add',
       buildViewContext({
         lookupDocumento: documentoQuery,
-        lookupData,
-        lookupMessage: 'Datos precargados desde OATI.',
-        lookupStatus: 'success',
+        lookupData: { documento: documentoQuery, nombre: '', correo: '' },
+        lookupMessage: 'No se encontró información en OATI. Completa el formulario manualmente.',
+        lookupStatus: 'warning',
       })
     );
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
+    throw error;
   }
-
-  return res.render(
-    'home/admin_add',
-    buildViewContext({
-      lookupDocumento: documentoQuery,
-      lookupData: { documento: documentoQuery, nombre: '', correo: '' },
-      lookupMessage: 'No se encontró información en OATI. Completa el formulario manualmente.',
-      lookupStatus: 'warning',
-    })
-  );
 });
 
 router.post('/', requireAdminAccess, async (req, res) => {

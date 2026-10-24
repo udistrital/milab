@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
 const { sgaDebtService, resolveSgaConceptName } = require('../../libs/oati-debts');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  renderApplicationError,
+  respondOatiUnavailable,
+  wantsJson,
+} = require('../middlewares/error-handler');
 
 const bp = require('body-parser');
 
@@ -172,6 +176,9 @@ router.get('/', requireAdminStudentsListAccess, async (req, res) => {
       selectedType,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
 
     if (wantsJson(req)) {
@@ -219,6 +226,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
       sgaConsultaOmitida: !sgaDebtService.isConfigured(),
     });
   } else {
+    try {
     const query = `
                   SELECT
                   t.identificador,
@@ -300,6 +308,9 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
             });
             row.multas.push(...activeSgaDebts.map((debt) => mapSgaDebtToMulta(debt, row)));
           } catch (error) {
+            if (error?.code === 'OATI_UNAVAILABLE') {
+              throw error;
+            }
             console.error(`Error consultando multas SGA para ${codigoEstudiante}:`, error);
             row.multas.push('sga-error');
           }
@@ -310,11 +321,30 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
         }
       })
     );
-    res.render('home/consulta_masiva', {
+      res.render('home/consulta_masiva', {
       sampleData1: filteredData,
       error: null,
       sgaConsultaOmitida: !sgaConfigurado,
     });
+    } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
+      console.error(error);
+      if (wantsJson(req)) {
+        return res.status(500).json({
+          ok: false,
+          message: 'No fue posible completar la consulta masiva.',
+          message2: 'Intenta nuevamente en unos minutos.',
+        });
+      }
+      return renderApplicationError(res, {
+        status: 500,
+        message: 'No fue posible completar la consulta masiva.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      });
+    }
   }
 });
 
