@@ -21,6 +21,7 @@ const {
   hasFileSignature,
   isSafeXlsxArchive,
   normalizeDocument,
+  PARTICIPANT_EXPORT_HEADERS,
   parseHistoricalTimestamp,
   previewHistoricalParticipationWorkbook,
   previewParticipantWorkbook,
@@ -887,27 +888,34 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       margin: 42,
       info: { Title: `Informe de encuentro - ${event.nombre}`, Author: 'MiLab' },
     });
+    const universityLogoPath = path.join(
+      __dirname,
+      '../../public/img/Logo_Escudo_Acreditacion_Horizontal.png'
+    );
+    const milabLogoPath = path.join(__dirname, '../../public/img/milab_logo.png');
     const chunks = [];
     pdf.on('data', (chunk) => chunks.push(chunk));
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
 
     const palette = {
-      primary: '#173B5E',
-      accent: '#2E6EEB',
-      text: '#1E293B',
-      muted: '#526273',
-      border: '#D7E0E9',
-      surface: '#F2F6FA',
-      surfaceAlt: '#F8FAFC',
+      primary: '#172A47',
+      accent: '#DF1B1B',
+      highlight: '#FFBF00',
+      text: '#211D1C',
+      muted: '#62584D',
+      border: '#E7DCC7',
+      surface: '#FFF9EB',
+      surfaceAlt: '#FAF6ED',
+      track: '#EFE5D3',
       white: '#FFFFFF',
     };
     const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
     const bottomLimit = () => pdf.page.height - pdf.page.margins.bottom;
-    const contentTop = () => pdf.page.margins.top + 62;
+    const contentTop = () => pdf.page.margins.top + 88;
     const drawProgressBar = (x, y, width, ratio) => {
       const normalized = Math.max(0, Math.min(1, Number(ratio) || 0));
-      pdf.save().fillColor('#E8EEF7').roundedRect(x, y, width, 8, 4).fill().restore();
+      pdf.save().fillColor(palette.track).roundedRect(x, y, width, 8, 4).fill().restore();
       pdf
         .save()
         .fillColor(palette.accent)
@@ -918,19 +926,62 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
 
     let pageNumber = 1;
     const drawPageChrome = () => {
-      const topY = 22;
+      const topY = 18;
+      const headerHeight = 72;
       const footerY = pdf.page.height - pdf.page.margins.bottom - 10;
       pdf
         .save()
+        .fillColor(palette.white)
+        .rect(pdf.page.margins.left, topY, contentWidth, headerHeight)
+        .fill()
+        .restore();
+      pdf.image(universityLogoPath, pdf.page.margins.left, topY + 5, {
+        fit: [220, 58],
+        align: 'left',
+        valign: 'center',
+      });
+      pdf.image(milabLogoPath, pdf.page.width - pdf.page.margins.right - 126, topY + 2, {
+        fit: [126, 68],
+        align: 'right',
+        valign: 'center',
+      });
+      pdf
+        .font('Helvetica-Bold')
+        .fontSize(8)
         .fillColor(palette.primary)
-        .rect(pdf.page.margins.left, topY, contentWidth, 24)
+        .text('COORDINACIÓN GENERAL\nDE LABORATORIOS', pdf.page.margins.left + 188, topY + 25, {
+          width: 192,
+          align: 'center',
+          lineGap: 2,
+        });
+      const headerBottom = topY + headerHeight + 2;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(pdf.page.margins.left, headerBottom, contentWidth, 1.5)
         .fill()
         .restore();
       pdf
-        .font('Helvetica-Bold')
-        .fontSize(10)
-        .fillColor(palette.white)
-        .text('MILab · Coordinación General de Laboratorios', pdf.page.margins.left + 10, topY + 7);
+        .save()
+        .fillColor(palette.accent)
+        .rect(pdf.page.margins.left, headerBottom, contentWidth * 0.12, 3)
+        .fill()
+        .fillColor(palette.highlight)
+        .rect(pdf.page.margins.left + contentWidth * 0.12, headerBottom, contentWidth * 0.08, 3)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(pdf.page.margins.left, footerY - 8, contentWidth, 1)
+        .fill()
+        .fillColor(palette.accent)
+        .rect(pdf.page.margins.left, footerY - 9, 22, 2)
+        .fill()
+        .fillColor(palette.highlight)
+        .rect(pdf.page.margins.left + 22, footerY - 9, 18, 2)
+        .fill()
+        .restore();
       pdf
         .font('Helvetica')
         .fontSize(8)
@@ -956,12 +1007,14 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       pdf.addPage();
       pageNumber += 1;
       drawPageChrome();
+      pdf.x = pdf.page.margins.left;
       pdf.y = contentTop();
     };
     const ensureSpace = (height) => {
       if (pdf.y + height > bottomLimit()) addPageWithChrome();
     };
     drawPageChrome();
+    pdf.x = pdf.page.margins.left;
 
     const total = Number(event.total_participantes) || 0;
     const completionRate = total ? Number(event.salidas) / total : 0;
@@ -1018,6 +1071,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     const endTime = String(event.hora_fin || '').slice(0, 5);
 
     pdf.y = contentTop();
+    pdf.x = pdf.page.margins.left;
     pdf
       .font('Helvetica-Bold')
       .fontSize(22)
@@ -1070,6 +1124,15 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
           .stroke()
           .restore();
         pdf
+          .save()
+          .fillColor(palette.accent)
+          .rect(x, rowY, cardWidth * 0.72, 3)
+          .fill()
+          .fillColor(palette.highlight)
+          .rect(x + cardWidth * 0.72, rowY, cardWidth * 0.28, 3)
+          .fill()
+          .restore();
+        pdf
           .font('Helvetica')
           .fontSize(8)
           .fillColor(palette.muted)
@@ -1106,6 +1169,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       });
       pdf.y = rowY + cardHeight + 8;
     }
+    pdf.x = pdf.page.margins.left;
 
     const sortedFaculties = [...faculties].sort(
       (left, right) => right.registrados - left.registrados
@@ -1144,12 +1208,15 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       pdf.y += 34;
     }
 
+    pdf.x = pdf.page.margins.left;
     ensureSpace(52);
     pdf
       .font('Helvetica-Bold')
       .fontSize(11)
       .fillColor(palette.primary)
-      .text('Resumen de participantes por facultad');
+      .text('Resumen de participantes por facultad', pdf.page.margins.left, pdf.y, {
+        width: contentWidth,
+      });
     pdf
       .font('Helvetica')
       .fontSize(7)
@@ -1191,6 +1258,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
         x += column.width;
       });
       pdf.y = y + headerHeight;
+      pdf.x = tableX;
     };
     drawTableHeader();
 
@@ -1252,31 +1320,17 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       });
     }
 
-    ensureSpace(70);
-    pdf.moveDown(0.7);
-    pdf
-      .font('Helvetica-Bold')
-      .fontSize(10)
-      .fillColor(palette.primary)
-      .text('Siguientes mejoras sugeridas para el informe');
-    pdf.moveDown(0.25);
-    const suggestions = [
-      'Agregar anexo opcional con listado total de participantes (nombre, documento y estado de asistencia).',
-      'Incluir comparativo contra encuentros anteriores del mismo organizador (tendencia de asistencia).',
-      'Destacar alertas operativas automáticas: participantes sin salida y certificados con error.',
-      'Agregar ranking Top 5 de UAL con mayor participación completada.',
-    ];
-    suggestions.forEach((suggestion) => {
-      ensureSpace(14);
-      pdf.font('Helvetica').fontSize(8).fillColor(palette.text).text(`• ${suggestion}`);
-    });
-    pdf.moveDown(0.5);
+    pdf.x = tableX;
     ensureSpace(34);
+    pdf.moveDown(0.7);
+    pdf.x = tableX;
     pdf
       .font('Helvetica-Bold')
       .fontSize(11)
       .fillColor(palette.primary)
-      .text('Anexo · Listado total de participantes');
+      .text('Anexo · Listado total de participantes', tableX, pdf.y, {
+        width: contentWidth,
+      });
     pdf
       .font('Helvetica')
       .fontSize(7)
@@ -1338,6 +1392,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
         x += column.width;
       });
       pdf.y = y + participantHeaderHeight;
+      pdf.x = participantTableX;
     };
 
     drawParticipantHeader();
@@ -1402,6 +1457,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       });
     }
 
+    pdf.x = participantTableX;
     pdf.moveDown(0.7);
     pdf
       .font('Helvetica')
@@ -2248,30 +2304,40 @@ router.get('/api/eventos/:eventId/participantes.xlsx', requireManager, async (re
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Participantes');
     sheet.columns = [
-      { header: 'Nombre completo', key: 'nombre', width: 32 },
-      { header: 'Número de documento', key: 'documento', width: 24 },
-      { header: 'Correo electrónico', key: 'correo', width: 36 },
-      { header: 'Cargo', key: 'rol', width: 28 },
-      { header: 'Facultad', key: 'facultad', width: 32 },
-      { header: 'Unidad Académica de Laboratorio (UAL)', key: 'laboratorio', width: 42 },
-      { header: 'Fecha de inscripción', key: 'fecha_inscripcion', width: 22 },
-      { header: 'Entrada', key: 'entrada_en', width: 22 },
-      { header: 'Salida', key: 'salida_en', width: 22 },
-      { header: 'Estado de participación', key: 'estado_asistencia', width: 24 },
-      { header: 'Número de certificado', key: 'codigo_certificado', width: 28 },
-      { header: 'Estado del certificado', key: 'estado_certificado', width: 22 },
-      { header: 'Validez del certificado', key: 'validez_certificado', width: 22 },
-      { header: 'Fecha de emisión', key: 'fecha_emision', width: 22 },
-      { header: 'Fecha de envío', key: 'email_enviado_en', width: 22 },
-      { header: 'Medalla vinculada', key: 'medalla_vinculada', width: 20 },
+      { header: PARTICIPANT_EXPORT_HEADERS[0], key: 'nombre', width: 32 },
+      { header: PARTICIPANT_EXPORT_HEADERS[1], key: 'documento', width: 24 },
+      { header: PARTICIPANT_EXPORT_HEADERS[2], key: 'correo', width: 36 },
+      { header: PARTICIPANT_EXPORT_HEADERS[3], key: 'rol', width: 28 },
+      { header: PARTICIPANT_EXPORT_HEADERS[4], key: 'facultad', width: 32 },
+      { header: PARTICIPANT_EXPORT_HEADERS[5], key: 'laboratorio', width: 42 },
+      { header: PARTICIPANT_EXPORT_HEADERS[6], key: 'fecha_inscripcion', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[7], key: 'entrada_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[8], key: 'salida_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[9], key: 'estado_asistencia', width: 24 },
+      { header: PARTICIPANT_EXPORT_HEADERS[10], key: 'codigo_certificado', width: 28 },
+      { header: PARTICIPANT_EXPORT_HEADERS[11], key: 'estado_certificado', width: 22 },
+      { header: PARTICIPANT_EXPORT_HEADERS[12], key: 'validez_certificado', width: 22 },
+      { header: PARTICIPANT_EXPORT_HEADERS[13], key: 'fecha_emision', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[14], key: 'email_enviado_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[15], key: 'medalla_vinculada', width: 20 },
     ];
     sheet.getRow(1).font = { bold: true };
     sheet.getColumn(2).numFmt = '@';
-    for (const row of result.rows) {
-      if (row.nombre) sheet.addRow(row);
-    }
     for (const column of [7, 8, 9, 14, 15]) {
-      sheet.getColumn(column).numFmt = 'dd/mm/yyyy hh:mm';
+      sheet.getColumn(column).numFmt = '@';
+    }
+    const timestampToIso = (value) => (value ? new Date(value).toISOString() : null);
+    for (const row of result.rows) {
+      if (row.nombre) {
+        sheet.addRow({
+          ...row,
+          fecha_inscripcion: timestampToIso(row.fecha_inscripcion),
+          entrada_en: timestampToIso(row.entrada_en),
+          salida_en: timestampToIso(row.salida_en),
+          fecha_emision: timestampToIso(row.fecha_emision),
+          email_enviado_en: timestampToIso(row.email_enviado_en),
+        });
+      }
     }
     sheet.views = [{ state: 'frozen', ySplit: 1 }];
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
@@ -2709,9 +2775,11 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
   const firstRowByDocument = new Map();
   rows.forEach((row, index) => {
     const validation = validateParticipant(row?.participante || row);
+    const registration = parseHistoricalTimestamp(row?.fecha_inscripcion);
     const entry = parseHistoricalTimestamp(row?.entrada_en);
     const exit = parseHistoricalTimestamp(row?.salida_en);
     const errors = [...validation.errores];
+    if (registration.error) errors.push(`Fecha de inscripción: ${registration.error}`);
     if (entry.error) errors.push(`Entrada: ${entry.error}`);
     if (exit.error) errors.push(`Salida: ${exit.error}`);
     if (exit.value && !entry.value)
@@ -2734,6 +2802,7 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
       validRows.push({
         fila: row?.fila || index + 1,
         participante: validation.participante,
+        fecha_inscripcion: registration.value,
         entrada_en: entry.value,
         salida_en: exit.value,
       });
@@ -2758,9 +2827,9 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
           `
             INSERT INTO encuentro_participante (
               evento_id, nombre, documento, documento_normalizado, correo, rol,
-              facultad, laboratorio, usuario_id, creado_por_usuario_id
+              facultad, laboratorio, fecha_inscripcion, usuario_id, creado_por_usuario_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, CURRENT_TIMESTAMP), $10, $11)
             ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
             RETURNING id
           `,
@@ -2773,6 +2842,7 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
             row.participante.rol,
             row.participante.facultad,
             row.participante.laboratorio,
+            row.fecha_inscripcion,
             userId,
             getSessionUserId(req),
           ]
@@ -2988,7 +3058,9 @@ router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (re
       );
       const participant = participantResult.rows[0];
       if (!participant) return { error: 'not_enrolled' };
-      if (participant.estado_evento !== 'en_curso') return { error: 'event_not_open' };
+      if (!['en_curso', 'finalizado'].includes(participant.estado_evento)) {
+        return { error: 'event_not_open' };
+      }
 
       const updated = await client.query(
         `
@@ -3019,6 +3091,7 @@ router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (re
       return {
         participante_id: updated.rows[0].participante_id,
         salida_en: updated.rows[0].salida_en,
+        estado_evento: participant.estado_evento,
       };
     });
     if (attendance.error === 'not_enrolled')
@@ -3026,9 +3099,10 @@ router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (re
         .status(404)
         .json({ ok: false, message: 'El participante no está inscrito en este evento.' });
     if (attendance.error === 'event_not_open')
-      return res
-        .status(409)
-        .json({ ok: false, message: 'El evento no está habilitado para registrar salidas.' });
+      return res.status(409).json({
+        ok: false,
+        message: 'El evento no permite registrar salidas en su estado actual.',
+      });
     if (attendance.error === 'no_entry')
       return res
         .status(409)
@@ -3039,6 +3113,15 @@ router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (re
       return res
         .status(409)
         .json({ ok: false, message: 'La salida no puede ser anterior a la entrada.' });
+
+    if (attendance.estado_evento === 'finalizado') {
+      return res.json({
+        ok: true,
+        salida_registrada: true,
+        certificado_generado: false,
+        message: 'Salida registrada. Ahora puedes generar y enviar el certificado desde Acciones.',
+      });
+    }
 
     let certificate;
     try {

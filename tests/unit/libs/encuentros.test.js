@@ -6,6 +6,7 @@ const { PDFDocument } = require('pdf-lib');
 
 const {
   HISTORICAL_PARTICIPATION_HEADERS,
+  PARTICIPANT_EXPORT_HEADERS,
   buildHistoricalParticipationTemplateBuffer,
   buildParticipantTemplateBuffer,
   generateCertificatePdf,
@@ -125,7 +126,7 @@ test('previews historical participation files with timezone-aware attendance', a
   await templateWorkbook.xlsx.load(template);
   assert.deepEqual(
     templateWorkbook.worksheets[0].getRow(1).values.slice(1),
-    HISTORICAL_PARTICIPATION_HEADERS
+    PARTICIPANT_EXPORT_HEADERS
   );
   assert.equal(templateWorkbook.worksheets[0].getColumn(2).numFmt, '@');
   assert.deepEqual((await previewHistoricalParticipationWorkbook(template)).errores_estructura, []);
@@ -167,6 +168,40 @@ test('previews historical participation files with timezone-aware attendance', a
     preview.filas[1].errores.join(' '),
     /No se puede registrar una salida sin una entrada/
   );
+});
+
+test('previews participant exports for migration with registration and attendance timestamps', async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Participantes');
+  sheet.addRow(PARTICIPANT_EXPORT_HEADERS);
+  sheet.addRow([
+    'Persona Migrada',
+    '0000123',
+    'migrada@example.edu',
+    'Docente',
+    'Ingeniería',
+    'Lab 1',
+    new Date('2026-10-01T14:00:00.000Z'),
+    new Date('2026-10-20T14:00:00.000Z'),
+    new Date('2026-10-20T16:00:00.000Z'),
+    'completada',
+    'TEST-CERT-123',
+    'enviado',
+    'valido',
+    new Date('2026-10-20T17:00:00.000Z'),
+    new Date('2026-10-20T17:01:00.000Z'),
+    true,
+  ]);
+
+  const preview = await previewHistoricalParticipationWorkbook(
+    Buffer.from(await workbook.xlsx.writeBuffer())
+  );
+  assert.deepEqual(preview.errores_estructura, []);
+  assert.equal(preview.filas.length, 1);
+  assert.equal(preview.filas[0].fecha_inscripcion, '2026-10-01T14:00:00.000Z');
+  assert.equal(preview.filas[0].entrada_en, '2026-10-20T14:00:00.000Z');
+  assert.equal(preview.filas[0].salida_en, '2026-10-20T16:00:00.000Z');
+  assert.deepEqual(preview.filas[0].errores, []);
 });
 
 test('accepts the previous Laboratorio header as a UAL alias', async () => {

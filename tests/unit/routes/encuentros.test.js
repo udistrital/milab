@@ -6,6 +6,10 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const { PDFDocument } = require('pdf-lib');
 const request = require('supertest');
+const {
+  PARTICIPANT_EXPORT_HEADERS,
+  previewHistoricalParticipationWorkbook,
+} = require('../../../src/libs/encuentros');
 
 const root = path.resolve(__dirname, '../../..');
 const routePath = path.join(root, 'src/routes/api/encuentros.js');
@@ -616,6 +620,14 @@ test('participant export includes attendance, certificate, and linked medal data
     assert.equal(sheet.getRow(2).getCell(2).value, '000123');
     assert.equal(sheet.getRow(2).getCell(11).value, 'CERT-123');
     assert.equal(sheet.getRow(2).getCell(16).value, true);
+    assert.deepEqual(headers, PARTICIPANT_EXPORT_HEADERS);
+    assert.equal(sheet.getRow(2).getCell(7).value, '2026-10-01T14:00:00.000Z');
+    assert.equal(sheet.getRow(2).getCell(8).value, '2026-10-20T14:00:00.000Z');
+    const preview = await previewHistoricalParticipationWorkbook(response.body);
+    assert.deepEqual(preview.errores_estructura, []);
+    assert.equal(preview.filas[0].fecha_inscripcion, '2026-10-01T14:00:00.000Z');
+    assert.equal(preview.filas[0].entrada_en, '2026-10-20T14:00:00.000Z');
+    assert.equal(preview.filas[0].salida_en, '2026-10-20T16:00:00.000Z');
   } finally {
     setup.restore();
   }
@@ -649,6 +661,7 @@ test('historical participation import records timestamps only for finalized even
               facultad: 'Ingeniería',
               laboratorio: 'Lab 1',
             },
+            fecha_inscripcion: '2026-10-01T14:00:00.000Z',
             entrada_en: '2026-10-20T14:00:00.000Z',
             salida_en: '2026-10-20T16:00:00.000Z',
           },
@@ -672,6 +685,13 @@ test('historical participation import records timestamps only for finalized even
       12,
     ]);
     assert.match(attendanceInsert.sql, /entrada_por_usuario_id, salida_por_usuario_id/);
+
+    const participantInsert = statements.find(({ sql }) =>
+      sql.includes('INSERT INTO encuentro_participante')
+    );
+    assert.equal(participantInsert.values[8], '2026-10-01T14:00:00.000Z');
+    assert.equal(participantInsert.values[9], null);
+    assert.equal(participantInsert.values[10], 12);
   } finally {
     setup.restore();
   }
@@ -710,6 +730,45 @@ test('manual participant registration is allowed for finalized events', async ()
       sql.includes('INSERT INTO encuentro_participante')
     );
     assert.ok(insertParticipant);
+  } finally {
+    setup.restore();
+  }
+});
+
+test('manager can register a missing exit after finalization and issue the certificate separately', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('SELECT p.id, e.estado AS estado_evento')) {
+      return { rows: [{ id: 31, estado_evento: 'finalizado' }] };
+    }
+    if (sql.includes('UPDATE encuentro_asistencia')) {
+      return {
+        rows: [{ participante_id: 31, salida_en: '2026-10-24T20:00:00.000Z' }],
+      };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/asistencia/salida')
+      .set('x-test-role', 'gestor_laboratorio')
+      .send({ documento: '000123' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.salida_registrada, true);
+    assert.equal(response.body.certificado_generado, false);
+    assert.match(response.body.message, /generar y enviar el certificado desde Acciones/i);
+    assert.equal(
+      statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_certificado')),
+      false
+    );
+    assert.equal(
+      statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_envio_certificado')),
+      false
+    );
   } finally {
     setup.restore();
   }
@@ -971,6 +1030,8 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
     assert.match(response.headers['content-disposition'], /informe-encuentro-14\.pdf/);
     assert.ok(Buffer.isBuffer(response.body));
     assert.equal(response.body.subarray(0, 5).toString(), '%PDF-');
+    const imageObjects = response.body.toString('latin1').match(/\/Subtype\s*\/Image/g) || [];
+    assert.ok(imageObjects.length >= 2, 'PDF should embed the MiLab and university logos');
     assert.equal(statements.length, 3);
     const facultiesQuery = statements.find(({ sql }) =>
       /ORDER BY registrados ASC, facultad ASC/.test(sql)
@@ -1000,6 +1061,10 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
       assert.match(reportText, /Anexo\s+·\s+Listado/);
       assert.match(reportText, /Gestiones posteriores al cierre/);
       assert.match(reportText, /Post-cierre/);
+      assert.doesNotMatch(
+        reportText,
+        /Siguientes mejoras|Agregar anexo opcional|Incluir comparativo|Destacar alertas operativas|ranking Top 5/i
+      );
       assert.match(firstPageText, /Registrados activos/);
       assert.match(firstPageText, /Resumen de participantes\s+por facultad/);
       assert.match(firstPageText, /Gestiones posteriores al cierre/);
