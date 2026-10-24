@@ -602,11 +602,23 @@ router.get('/:multaId/sga-multas', requireMultasAccess, async (req, res) => {
       return res.json({ ok: true, configured: true, supported: false, multas: [] });
     }
 
-    const multas = await sgaDebtService.getActiveDebts({
+    const sgaResult = await sgaDebtService.queryStudent({
       codigo: sanction.codigo_sancionado,
       documento: sanction.documento_sancionado,
     });
-    return res.json({ ok: true, configured: true, supported: true, multas });
+    return res.json({
+      ok: true,
+      configured: true,
+      supported: true,
+      status: sgaResult.status,
+      codes: sgaResult.codes,
+      summary: {
+        nonLaboratoryCount: sgaResult.nonLaboratoryCount,
+        unclassifiedCount: sgaResult.unclassifiedCount,
+      },
+      message: sgaResult.message,
+      multas: sgaResult.debts,
+    });
   } catch (error) {
     if (client) client.release();
     if (error?.code === 'OATI_UNAVAILABLE') {

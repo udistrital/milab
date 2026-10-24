@@ -17,6 +17,20 @@ const HISTORICAL_PARTICIPATION_HEADERS = [
   'Salida (ISO 8601)',
 ];
 
+const PARTICIPANT_EXPORT_HEADERS = [
+  ...PARTICIPANT_HEADERS,
+  'Fecha de inscripción',
+  'Entrada',
+  'Salida',
+  'Estado de participación',
+  'Número de certificado',
+  'Estado del certificado',
+  'Validez del certificado',
+  'Fecha de emisión',
+  'Fecha de envío',
+  'Medalla vinculada',
+];
+
 const CERTIFICATE_VARIABLES = new Set([
   'nombre',
   'documento',
@@ -340,7 +354,7 @@ async function buildParticipantTemplateBuffer() {
 async function buildHistoricalParticipationTemplateBuffer() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Participaciones');
-  sheet.addRow(HISTORICAL_PARTICIPATION_HEADERS);
+  sheet.addRow(PARTICIPANT_EXPORT_HEADERS);
   sheet.getRow(1).font = { bold: true };
   sheet.columns = [
     { width: 32 },
@@ -351,8 +365,19 @@ async function buildHistoricalParticipationTemplateBuffer() {
     { width: 46 },
     { width: 30, style: { numFmt: '@' } },
     { width: 30, style: { numFmt: '@' } },
+    { width: 30, style: { numFmt: '@' } },
+    { width: 24 },
+    { width: 28 },
+    { width: 22 },
+    { width: 22 },
+    { width: 30, style: { numFmt: '@' } },
+    { width: 30, style: { numFmt: '@' } },
+    { width: 20 },
   ];
   sheet.getColumn(2).numFmt = '@';
+  for (const column of [7, 8, 9, 14, 15]) {
+    sheet.getColumn(column).numFmt = '@';
+  }
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -526,23 +551,48 @@ async function previewHistoricalParticipationWorkbook(buffer) {
     };
   }
 
-  const actualHeaders = HISTORICAL_PARTICIPATION_HEADERS.map((_, index) =>
-    normalizeHeader(getCellText(sheet.getRow(1).getCell(index + 1).value))
-  );
-  const expectedHeaders = HISTORICAL_PARTICIPATION_HEADERS.map(normalizeHeader);
-  const headersMatch = expectedHeaders.every(
-    (header, index) =>
-      actualHeaders[index] === header ||
-      (index === 5 && actualHeaders[index] === normalizeHeader('Laboratorio'))
-  );
-  if (!headersMatch || sheet.getRow(1).cellCount !== HISTORICAL_PARTICIPATION_HEADERS.length) {
+  const headerRow = sheet.getRow(1);
+  const headerColumns = new Map();
+  for (let column = 1; column <= headerRow.cellCount; column += 1) {
+    const header = normalizeHeader(getCellText(headerRow.getCell(column).value));
+    if (header && !headerColumns.has(header)) headerColumns.set(header, column);
+  }
+  const findColumn = (...headers) =>
+    headers
+      .map((header) => headerColumns.get(normalizeHeader(header)))
+      .find((column) => column !== undefined);
+  const columns = {
+    nombre: findColumn('Nombre completo'),
+    documento: findColumn('Número de documento'),
+    correo: findColumn('Correo electrónico'),
+    rol: findColumn('Cargo'),
+    facultad: findColumn('Facultad'),
+    laboratorio: findColumn('Unidad Académica de Laboratorio (UAL)', 'Laboratorio'),
+    fecha_inscripcion: findColumn('Fecha de inscripción'),
+    entrada: findColumn('Entrada (ISO 8601)', 'Entrada'),
+    salida: findColumn('Salida (ISO 8601)', 'Salida'),
+  };
+  const requiredColumns = [
+    columns.nombre,
+    columns.documento,
+    columns.correo,
+    columns.rol,
+    columns.facultad,
+    columns.laboratorio,
+    columns.entrada,
+    columns.salida,
+  ];
+  if (requiredColumns.some((column) => column === undefined)) {
     return {
       filas: [],
       errores_estructura: [
-        `Los encabezados deben ser: ${HISTORICAL_PARTICIPATION_HEADERS.join(', ')}.`,
+        `El archivo debe incluir los datos del participante y las columnas "${HISTORICAL_PARTICIPATION_HEADERS[6]}" y "${HISTORICAL_PARTICIPATION_HEADERS[7]}", o usar el formato de descarga de participantes.`,
       ],
     };
   }
+  const isParticipantExport =
+    columns.fecha_inscripcion !== undefined &&
+    headerColumns.has(normalizeHeader('Estado de participación'));
 
   if (sheet.rowCount > 2001) {
     return {
@@ -555,18 +605,21 @@ async function previewHistoricalParticipationWorkbook(buffer) {
   const firstRowByDocument = new Map();
   for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
-    const values = HISTORICAL_PARTICIPATION_HEADERS.map((_, index) => row.getCell(index + 1).value);
+    const values = Array.from(
+      { length: headerRow.cellCount },
+      (_, index) => row.getCell(index + 1).value
+    );
     if (values.every((value) => value === null || value === undefined || value === '')) continue;
 
-    const documentCell = row.getCell(2);
+    const documentCell = row.getCell(columns.documento);
     const documentValue = documentCell.value;
     const validation = validateParticipant({
-      nombre: getCellText(values[0]),
+      nombre: getCellText(row.getCell(columns.nombre).value),
       documento: getDocumentCellText(documentCell),
-      correo: getCellText(values[2]),
-      rol: getCellText(values[3]),
-      facultad: getCellText(values[4]),
-      laboratorio: getCellText(values[5]),
+      correo: getCellText(row.getCell(columns.correo).value),
+      rol: getCellText(row.getCell(columns.rol).value),
+      facultad: getCellText(row.getCell(columns.facultad).value),
+      laboratorio: getCellText(row.getCell(columns.laboratorio).value),
     });
     const advertencias = [];
     if (typeof documentValue === 'number') {
@@ -590,8 +643,20 @@ async function previewHistoricalParticipationWorkbook(buffer) {
       firstRowByDocument.set(normalizedDocument, rowNumber);
     }
 
-    const entry = parseHistoricalTimestamp(values[6]);
-    const exit = parseHistoricalTimestamp(values[7]);
+    const parseWorkbookTimestamp = (value) => {
+      if (isParticipantExport && value instanceof Date) {
+        return Number.isNaN(value.getTime())
+          ? { value: null, error: 'La fecha no es válida.' }
+          : { value: value.toISOString(), error: null };
+      }
+      return parseHistoricalTimestamp(value);
+    };
+    const registration = columns.fecha_inscripcion
+      ? parseWorkbookTimestamp(row.getCell(columns.fecha_inscripcion).value)
+      : { value: null, error: null };
+    const entry = parseWorkbookTimestamp(row.getCell(columns.entrada).value);
+    const exit = parseWorkbookTimestamp(row.getCell(columns.salida).value);
+    if (registration.error) validation.errores.push(`Fecha de inscripción: ${registration.error}`);
     if (entry.error) validation.errores.push(`Entrada: ${entry.error}`);
     if (exit.error) validation.errores.push(`Salida: ${exit.error}`);
     if (exit.value && !entry.value) {
@@ -603,6 +668,7 @@ async function previewHistoricalParticipationWorkbook(buffer) {
     filas.push({
       fila: rowNumber,
       participante: validation.participante,
+      fecha_inscripcion: registration.value,
       entrada_en: entry.value,
       salida_en: exit.value,
       errores: validation.errores,
@@ -691,6 +757,7 @@ module.exports = {
   EMAIL_PATTERN,
   HISTORICAL_PARTICIPATION_HEADERS,
   PARTICIPANT_HEADERS,
+  PARTICIPANT_EXPORT_HEADERS,
   buildHistoricalParticipationTemplateBuffer,
   buildParticipantTemplateBuffer,
   generateCertificatePdf,

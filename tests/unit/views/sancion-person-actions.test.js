@@ -118,7 +118,7 @@ test('paso 2 shows the SGA counter and popup only when SGA has sanctions', async
     sga: { configured: true, debts: [sampleDebt], failed: false },
   });
 
-  assert.match(html, /1 sanciones en SGA · Ver detalle/);
+  assert.match(html, /1\s+multa de laboratorio en SGA ·\s+Ver detalle/);
   assert.match(html, /data-bs-target="#sgaSancionesPersonaModal"/);
   assert.match(html, /id="sgaSancionesPersonaModal"/);
   assert.match(html, /Reposición de insumos/);
@@ -132,7 +132,7 @@ test('paso 2 shows the SGA counter and popup only when SGA has sanctions', async
 test('paso 2 does not open an SGA popup when SGA has no sanctions', async () => {
   const html = await renderPaso2({ sga: { configured: true, debts: [], failed: false } });
 
-  assert.match(html, /0 sanciones en SGA/);
+  assert.match(html, /0 multas de laboratorio en SGA/);
   assert.doesNotMatch(html, /data-bs-target="#sgaSancionesPersonaModal"/);
   assert.doesNotMatch(html, /id="sgaSancionesPersonaModal"/);
 });

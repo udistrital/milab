@@ -8,6 +8,7 @@ const {
 } = require('../../../src/config/sga-services');
 const {
   SgaDebtService,
+  isLaboratoryConceptName,
   sgaDebtService,
   resolveSgaConceptName,
 } = require('../../../src/libs/oati-debts');
@@ -19,11 +20,15 @@ function createService({ serviceName = 'academica_pruebas', studentResponse, deb
     academicServicePath: (servicePath) => servicePath,
     requestAcademicData: async (servicePath) => {
       calls.academic.push(servicePath);
-      return studentResponse || {};
+      return typeof studentResponse === 'function'
+        ? studentResponse(servicePath)
+        : studentResponse || {};
     },
     requestPost: async (...args) => {
       calls.post.push(args);
-      return debtResponse || '<deudas/>';
+      return typeof debtResponse === 'function'
+        ? debtResponse(...args)
+        : debtResponse || '<deudas/>';
     },
   });
 
@@ -152,7 +157,7 @@ test('SgaDebtService resolves a document to student code and fetches active SGA 
 
   assert.equal(activeDebts.length, 1);
   assert.equal(activeDebts[0].DEU_ESTADO, '2');
-  assert.deepEqual(calls.academic, ['datos_basicos_estudiante/79520182']);
+  assert.deepEqual(calls.academic, ['datos_basicos_activos_cedula/79520182']);
   assert.equal(calls.post[0][0], 'wso2eiserver/services/academica_pruebas/deudores/2024100001');
   assert.match(calls.post[0][1], /<xs:codigo_estudiante>2024100001<\/xs:codigo_estudiante>/);
 });
@@ -165,10 +170,7 @@ test('SgaDebtService handles Axios-parsed debts and returns state-1 and state-2 
     debtResponse: { deudas: { estudiantes: [newDebt, activeDebt, paidDebt] } },
   });
 
-  const result = await service.getActiveDebts({
-    codigo: '20161104039',
-    documento: '1089907605',
-  });
+  const result = await service.getActiveDebts({ codigo: '20161104039' });
 
   assert.deepEqual(result, [newDebt, activeDebt]);
 });
@@ -253,4 +255,205 @@ test('SgaDebtService classifies library debts by the reported detail', () => {
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '1', DEU_MATERIAL: 'Osciloscopio' }), true);
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '3', DEU_MATERIAL: 'Osciloscopio' }), false);
   assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Osciloscopio' }), true);
+});
+
+test('laboratory concept matching uses whole words and ignores case and accents', () => {
+  assert.equal(isLaboratoryConceptName('LABORATORIO DE QUÍMICA'), true);
+  assert.equal(isLaboratoryConceptName('Lab. Topografía'), true);
+  assert.equal(isLaboratoryConceptName('AUDIOVISUALES LAB'), true);
+  assert.equal(isLaboratoryConceptName('ELABORADO POR LABORATORIO'), true);
+  assert.equal(isLaboratoryConceptName('ELABORADO'), false);
+  assert.equal(isLaboratoryConceptName('LABORATORIAL'), false);
+  assert.equal(isLaboratoryConceptName(''), false);
+});
+
+test('queryStudent checks historical codes, filters by concept name, and deduplicates SGA debts', async () => {
+  const { service, calls } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [
+          {
+            codigo: '2024100001',
+            documento: '79520182',
+            nombre: 'Estudiante vigente',
+            carrera: 'Ingeniería',
+          },
+          {
+            codigo: '2015100001',
+            documento: '79520182',
+            estado: 'E',
+            nombre: 'Estudiante histórico',
+          },
+        ],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: '111',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '4',
+            CPTO_NOMBRE: 'Laboratorio de Química',
+            DEU_MATERIAL: 'Vaso de precipitados',
+            DEU_MULTA: '650100',
+            DEU_ANO: '2026',
+            DEU_PER: '1',
+          },
+          {
+            DEU_ID: '222',
+            DEU_ESTADO: '1',
+            CPTO_NOMBRE: 'AUDIOVISUALES',
+            DEU_MATERIAL: 'Proyector',
+          },
+          {
+            DEU_ID: '333',
+            DEU_ESTADO: '3',
+            CPTO_NOMBRE: 'LABORATORIO DE FISICA',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    codigo: '2024100001',
+    documento: '79520182',
+  });
+
+  assert.equal(result.status, 'found');
+  assert.deepEqual(result.codes, ['2024100001', '2015100001']);
+  assert.equal(result.studentRecord.nombre, 'Estudiante vigente');
+  assert.equal(result.studentRecord.carrera, 'Ingeniería');
+  assert.equal(result.debts.length, 1);
+  assert.equal(result.debts[0].id_sga, '111');
+  assert.equal(result.debts[0].nombre_concepto, 'Laboratorio de Química');
+  assert.equal(result.debts[0].codigo_estudiante, '2024100001');
+  assert.equal(result.debts[0].valor, '650100');
+  assert.equal(result.nonLaboratoryCount, 2);
+  assert.equal(result.unclassifiedCount, 0);
+  assert.equal(calls.post.length, 2);
+  assert.ok(calls.academic.every((path) => path === 'datos_basicos_activos_cedula/79520182'));
+});
+
+test('queryStudent returns an incomplete result when an active debt has no concept name', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [{ DEU_ID: '1', DEU_ESTADO: '2', DEU_CPTO_COD: '4' }],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    codigo: '2024100001',
+    documento: '79520182',
+  });
+
+  assert.equal(result.status, 'partial');
+  assert.deepEqual(result.debts, []);
+  assert.equal(result.unclassifiedCount, 1);
+});
+
+test('queryStudent does not query SGA when identity lookup is unavailable', async () => {
+  let debtRequests = 0;
+  const { service } = createService({
+    studentResponse: async () => {
+      const error = new Error('OATI offline');
+      error.code = 'OATI_UNAVAILABLE';
+      throw error;
+    },
+    debtResponse: () => {
+      debtRequests += 1;
+      return {
+        deudas: {
+          estudiantes: [
+            {
+              DEU_ID: '1',
+              DEU_EST_COD: '2024100001',
+              DEU_ESTADO: '2',
+              DEU_CPTO_NOMBRE: 'LAB. TOPOGRAFIA',
+            },
+          ],
+        },
+      };
+    },
+  });
+
+  const result = await service.queryStudent({
+    codigo: '2024100001',
+    documento: '79520182',
+  });
+
+  assert.equal(result.status, 'error');
+  assert.deepEqual(result.debts, []);
+  assert.equal(result.errors[0].code, 'OATI_UNAVAILABLE');
+  assert.equal(debtRequests, 0);
+});
+
+test('queryStudent does not query SGA when an identifier cannot be resolved to a student', async () => {
+  const { service, calls } = createService({
+    studentResponse: { datosEstudianteCollection: { datosBasicosEstudiante: [] } },
+  });
+
+  const result = await service.queryStudent({ identificador: '10000000' });
+
+  assert.equal(result.status, 'unresolved');
+  assert.deepEqual(result.codes, []);
+  assert.equal(calls.post.length, 0);
+  assert.deepEqual(calls.academic, [
+    'datos_basicos_estudiante/10000000',
+    'datos_basicos_activos_cedula/10000000',
+  ]);
+});
+
+test('queryStudent does not attribute a supplied code that OAS does not associate with the document', async () => {
+  const { service, calls } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2015100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: '<deudas/>',
+  });
+
+  const result = await service.queryStudent({
+    codigo: '2024100001',
+    documento: '79520182',
+  });
+
+  assert.equal(result.status, 'partial');
+  assert.deepEqual(result.codes, ['2015100001']);
+  assert.equal(result.errors[0].code, 'STUDENT_CODE_DOCUMENT_ASSOCIATION_UNCONFIRMED');
+  assert.deepEqual(
+    calls.post.map(([path]) => path),
+    [service.buildServicePath('2015100001')]
+  );
+});
+
+test('queryStudent rejects an identifier that resolves to two different students', async () => {
+  const { service, calls } = createService({
+    studentResponse: (servicePath) => {
+      const codigoLookup = servicePath.startsWith('datos_basicos_estudiante/');
+      return {
+        datosEstudianteCollection: {
+          datosBasicosEstudiante: codigoLookup
+            ? [{ codigo: '12345', documento: '20001' }]
+            : [{ codigo: '67890', documento: '12345' }],
+        },
+      };
+    },
+  });
+
+  const result = await service.queryStudent({ identificador: '12345' });
+
+  assert.equal(result.status, 'unresolved');
+  assert.deepEqual(result.codes, []);
+  assert.equal(result.errors[0].code, 'AMBIGUOUS_STUDENT_IDENTITY');
+  assert.equal(calls.post.length, 0);
 });

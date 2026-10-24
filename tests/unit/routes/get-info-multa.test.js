@@ -68,6 +68,24 @@ function loadRoute({
   },
 } = {}) {
   const originals = new Map();
+  const debtService = {
+    ...sgaService,
+    queryStudent:
+      sgaService.queryStudent ||
+      (async (student) => {
+        const debts = await sgaService.getActiveDebts(student);
+        return {
+          status: debts.length ? 'found' : 'clear',
+          debts,
+          codes: student.codigo ? [student.codigo] : [],
+          document: student.documento || null,
+          nonLaboratoryCount: 0,
+          unclassifiedCount: 0,
+          message: '',
+          errors: [],
+        };
+      }),
+  };
   const stubs = [
     [
       dbPath,
@@ -128,7 +146,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
-        sgaDebtService: sgaService,
+        sgaDebtService: debtService,
       },
     ],
   ];

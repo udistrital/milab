@@ -60,9 +60,11 @@ El informe PDF reúne en su primera página las estadísticas y el resumen de pa
 
 ## Eventos históricos
 
-Al crear un evento que ya se realizó, marca **El evento ya se realizó**. El sistema valida que su fecha y hora de finalización ya hayan pasado en `America/Bogota`. El evento quedará finalizado y su detalle permitirá descargar la plantilla de participaciones históricas. Completa las seis columnas de participante y añade `Entrada (ISO 8601)` y `Salida (ISO 8601)`; las fechas deben incluir zona horaria, por ejemplo `2026-10-20T09:00:00-05:00`. La salida no puede existir sin entrada ni ser anterior a ella.
+Al crear un evento que ya se realizó, marca **El evento ya se realizó**. El sistema valida que su fecha y hora de finalización ya hayan pasado en `America/Bogota`. El evento quedará finalizado y su detalle permitirá cargar participaciones.
 
-Previsualiza el archivo antes de importarlo. Después puedes elegir si se envían correos a quienes tengan entrada y salida. Los certificados se generan para esas participaciones completadas; participantes sin ambas marcas se importan, pero no reciben certificado en ese proceso.
+Para migrar un piloto de pruebas a producción, crea primero en producción el evento histórico correspondiente. En el evento de pruebas, descarga **Datos de participantes (.xlsx)** y carga ese mismo archivo en la opción de participaciones del evento finalizado en producción. También se acepta la plantilla histórica anterior con `Entrada (ISO 8601)` y `Salida (ISO 8601)`. Previsualiza el archivo antes de confirmar.
+
+Se importan los datos personales, la fecha de inscripción y las marcas de entrada/salida. Los códigos, QR y estados de certificados del archivo de origen no se reutilizan: los certificados se generan en el ambiente destino, para que sus QR validen contra ese ambiente. Puedes elegir si se envían correos a quienes tengan entrada y salida; los participantes sin ambas marcas se importan, pero no reciben certificado en ese proceso.
 
 ## Validación
 

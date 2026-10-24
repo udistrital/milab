@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.1.0 - 2026-10-24
+
+1. La verificación de sanciones SGA consulta los códigos académicos asociados al documento, clasifica las multas de laboratorio por el nombre del concepto y distingue resultados completos de consultas parciales o no verificables.
+2. El informe de consulta masiva incorpora resumen visual, barras por estado, detalle de sanciones y el listado completo de participantes, con identidad visual institucional.
+
 ## Hotfix 2026-10-15 - Registro en prueba académica
 
 Se permite que estudiantes con estado `B` (prueba académica y activo) completen
