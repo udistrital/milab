@@ -98,6 +98,20 @@
       }
     } catch (error) {
       window.console.warn('No fue posible verificar el estado de OATI al iniciar sesión.', error);
+    } finally {
+      const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+      try {
+        await originalFetch('/milab/auth/session/oati-warning/ack', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json', 'X-CSRF-Token': token },
+        });
+      } catch (error) {
+        window.console.warn(
+          'No fue posible confirmar la lectura de la alerta OATI de inicio de sesión.',
+          error
+        );
+      }
     }
   }
 

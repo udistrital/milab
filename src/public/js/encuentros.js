@@ -304,7 +304,9 @@
   }
 
   function buildParticipantTable(participants, event) {
-    const allowSelection = event.estado === 'finalizado';
+    const allowCertificateSelection = event.estado === 'finalizado';
+    const allowExitSelection = event.estado === 'en_curso';
+    const allowSelection = allowCertificateSelection || allowExitSelection;
     const wrap = element('div', undefined, 'table-responsive mt-3');
     const filters = element('div', undefined, 'row g-2 mb-2');
     const searchCol = element('div', undefined, 'col-12 col-lg-6');
@@ -358,7 +360,9 @@
         table
           .querySelectorAll('input[name="selected-participant"]:not(:disabled)')
           .forEach((input) => {
-            input.checked = selectAll.checked;
+            if (!input.closest('tr')?.hidden) {
+              input.checked = selectAll.checked;
+            }
           });
       });
     }
@@ -396,10 +400,14 @@
         select.type = 'checkbox';
         select.name = 'selected-participant';
         select.value = String(participant.id);
-        select.disabled =
-          !participant.salida_en ||
-          participant.validez_certificado === 'anulado' ||
-          participant.estado_certificado === 'enviado';
+        if (allowCertificateSelection) {
+          select.disabled =
+            !participant.salida_en ||
+            participant.validez_certificado === 'anulado' ||
+            participant.estado_certificado === 'enviado';
+        } else if (allowExitSelection) {
+          select.disabled = !participant.entrada_en || Boolean(participant.salida_en);
+        }
         select.setAttribute('aria-label', `Seleccionar certificado de ${participant.nombre}`);
         selectCell.appendChild(select);
         row.appendChild(selectCell);
@@ -486,21 +494,39 @@
     wrap.append(filters);
     if (allowSelection) {
       const controls = element('div', undefined, 'd-flex flex-wrap align-items-center gap-3 mb-2');
-      const emailLabel = element('label', undefined, 'form-check mb-0');
-      const sendEmail = element('input', undefined, 'form-check-input');
-      sendEmail.type = 'checkbox';
-      sendEmail.checked = true;
-      sendEmail.id = 'send-selected-certificates';
-      const emailText = element(
-        'span',
-        'Enviar los certificados seleccionados por correo',
-        'form-check-label'
-      );
-      emailLabel.append(sendEmail, emailText);
-      const generateButton = actionButton('Generar certificados seleccionados', 'btn-primary', () =>
-        generateSelectedCertificates(event.id, table, sendEmail, generateButton)
-      );
-      controls.append(emailLabel, generateButton);
+      if (allowCertificateSelection) {
+        const emailLabel = element('label', undefined, 'form-check mb-0');
+        const sendEmail = element('input', undefined, 'form-check-input');
+        sendEmail.type = 'checkbox';
+        sendEmail.checked = true;
+        sendEmail.id = 'send-selected-certificates';
+        const emailText = element(
+          'span',
+          'Enviar los certificados seleccionados por correo',
+          'form-check-label'
+        );
+        emailLabel.append(sendEmail, emailText);
+        const generateButton = actionButton(
+          'Generar certificados seleccionados',
+          'btn-primary',
+          () => generateSelectedCertificates(event.id, table, sendEmail, generateButton)
+        );
+        controls.append(emailLabel, generateButton);
+      } else if (allowExitSelection) {
+        controls.append(
+          element(
+            'span',
+            'Selecciona participantes con entrada registrada para marcar su salida.',
+            'small text-muted'
+          )
+        );
+        const registerExitButton = actionButton(
+          'Registrar salida a seleccionados',
+          'btn-outline-primary',
+          () => registerSelectedExits(event.id, table, registerExitButton)
+        );
+        controls.append(registerExitButton);
+      }
       wrap.appendChild(controls);
     }
     wrap.appendChild(table);
@@ -984,6 +1010,61 @@
       }
     }
     return { completed, failed };
+  }
+
+  async function registerSelectedExits(eventId, table, button) {
+    const selectedIds = new Set(
+      Array.from(table.querySelectorAll('input[name="selected-participant"]:checked')).map(
+        (input) => Number(input.value)
+      )
+    );
+    const participants = (pageState.participants || []).filter(
+      (participant) =>
+        selectedIds.has(Number(participant.id)) && participant.entrada_en && !participant.salida_en
+    );
+
+    if (!participants.length) {
+      showAlert('Selecciona al menos un participante con entrada y sin salida.', 'warning');
+      return;
+    }
+
+    if (
+      !(await window.MiLabDialogs.confirm(
+        `Se registrará salida para ${participants.length} participante(s) seleccionados.`
+      ))
+    ) {
+      return;
+    }
+
+    button.disabled = true;
+    let successful = 0;
+    const failed = [];
+    try {
+      for (const participant of participants) {
+        try {
+          await request(`/eventos/${eventId}/asistencia/salida`, {
+            method: 'POST',
+            body: JSON.stringify({ documento: participant.documento }),
+          });
+          successful += 1;
+        } catch (error) {
+          failed.push(`${participant.nombre}: ${error.message}`);
+        }
+      }
+      const summary = `Salidas registradas: ${successful}/${participants.length}.`;
+      if (failed.length) {
+        showAlert(
+          `${summary} Fallaron ${failed.length}. ${failed.slice(0, 2).join(' | ')}`,
+          'warning'
+        );
+      } else {
+        showAlert(summary, 'success');
+      }
+      await refreshDetail();
+      await loadEvents();
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function annulCertificate(certificateId) {

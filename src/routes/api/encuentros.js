@@ -752,8 +752,25 @@ async function fetchEventReportData(eventId) {
           WHERE c.email_estado IN ('pendiente', 'enviando')
         )::int AS certificados_pendientes,
         COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'error')::int AS certificados_con_error,
-        COUNT(DISTINCT l.id)::int AS medallas_otorgadas
+        COUNT(DISTINCT l.id)::int AS medallas_otorgadas,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.fecha_inscripcion > cierre.cierre_en
+        )::int AS registros_post_cierre,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE a.salida_en > cierre.cierre_en
+        )::int AS salidas_post_cierre,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.email_estado = 'enviado' AND c.email_enviado_en > cierre.cierre_en
+        )::int AS certificados_enviados_post_cierre,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.fecha_inscripcion > cierre.cierre_en
+            OR a.salida_en > cierre.cierre_en
+            OR (c.email_estado = 'enviado' AND c.email_enviado_en > cierre.cierre_en)
+        )::int AS participantes_con_gestion_post_cierre
       FROM encuentro_evento e
+      CROSS JOIN LATERAL (
+        SELECT (e.fecha + e.hora_fin) AT TIME ZONE 'America/Bogota' AS cierre_en
+      ) cierre
       LEFT JOIN encuentro_participante p ON p.evento_id = e.id AND p.activo = TRUE
       LEFT JOIN encuentro_asistencia a
         ON a.participante_id = p.id AND a.evento_id = e.id AND a.activo = TRUE
@@ -761,7 +778,7 @@ async function fetchEventReportData(eventId) {
         ON c.participante_id = p.id AND c.evento_id = e.id AND c.activo = TRUE
       LEFT JOIN encuentro_logro l ON l.evento_id = e.id AND l.participante_id = p.id
       WHERE e.id = $1 AND e.activo = TRUE
-      GROUP BY e.id
+      GROUP BY e.id, cierre.cierre_en
     `,
     [eventId]
   );
@@ -806,13 +823,30 @@ async function fetchEventReportData(eventId) {
           WHEN c.email_estado = 'error' THEN 'error'
           WHEN c.email_estado = 'enviado' THEN 'enviado'
           ELSE COALESCE(c.email_estado, 'pendiente')
-        END AS estado_certificado
+        END AS estado_certificado,
+        (
+          p.fecha_inscripcion IS NOT NULL
+          AND p.fecha_inscripcion > cierre.cierre_en
+        ) AS registro_post_cierre,
+        (
+          a.salida_en IS NOT NULL
+          AND a.salida_en > cierre.cierre_en
+        ) AS salida_post_cierre,
+        (
+          c.email_estado = 'enviado'
+          AND c.email_enviado_en IS NOT NULL
+          AND c.email_enviado_en > cierre.cierre_en
+        ) AS certificado_enviado_post_cierre
       FROM encuentro_participante p
+      JOIN encuentro_evento e ON e.id = p.evento_id
+      CROSS JOIN LATERAL (
+        SELECT (e.fecha + e.hora_fin) AT TIME ZONE 'America/Bogota' AS cierre_en
+      ) cierre
       LEFT JOIN encuentro_asistencia a
         ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
       LEFT JOIN encuentro_certificado c
         ON c.participante_id = p.id AND c.evento_id = p.evento_id AND c.activo = TRUE
-      WHERE p.evento_id = $1 AND p.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE AND e.activo = TRUE
       ORDER BY p.nombre, p.id
     `,
     [eventId]
@@ -936,6 +970,8 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       ? Number(event.certificados_enviados) / Number(event.certificados_generados)
       : 0;
     const medalsRate = total ? Number(event.medallas_otorgadas) / total : 0;
+    const postClosureParticipants = Number(event.participantes_con_gestion_post_cierre) || 0;
+    const postClosureRate = total ? postClosureParticipants / total : 0;
     const summaryCards = [
       {
         label: 'Asistencia con entrada',
@@ -964,6 +1000,13 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
         percentage: formatReportPercent(event.medallas_otorgadas, total),
         ratio: medalsRate,
         detail: 'Logros asociados a cuentas MiLab',
+      },
+      {
+        label: 'Gestiones posteriores al cierre',
+        value: `${formatReportNumber(postClosureParticipants)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(postClosureParticipants, total),
+        ratio: postClosureRate,
+        detail: `Registros: ${formatReportNumber(event.registros_post_cierre)} · Salidas: ${formatReportNumber(event.salidas_post_cierre)} · Certificados enviados: ${formatReportNumber(event.certificados_enviados_post_cierre)}`,
       },
     ];
     const generatedAt = new Intl.DateTimeFormat('es-CO', {
@@ -1239,17 +1282,18 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       .fontSize(7)
       .fillColor(palette.muted)
       .text(
-        'Detalle operativo para validación interna. Incluye asistencia y estado de certificado por participante.'
+        'Detalle operativo para validación interna. Incluye asistencia, estado de certificado y acciones aplicadas después del cierre.'
       );
     pdf.moveDown(0.35);
 
     const participantColumns = [
-      { label: 'Participante', width: 126, key: 'nombre', align: 'left' },
-      { label: 'Documento', width: 60, key: 'documento', align: 'left' },
-      { label: 'Correo', width: 124, key: 'correo', align: 'left' },
-      { label: 'Facultad / UAL', width: 118, key: 'facultadLaboratorio', align: 'left' },
-      { label: 'Asistencia', width: 56, key: 'estado_asistencia', align: 'left' },
-      { label: 'Certificado', width: 58, key: 'estado_certificado', align: 'left' },
+      { label: 'Participante', width: 78, key: 'nombre', align: 'left' },
+      { label: 'Documento', width: 48, key: 'documento', align: 'left' },
+      { label: 'Correo', width: 87, key: 'correo', align: 'left' },
+      { label: 'Facultad / UAL', width: 85, key: 'facultadLaboratorio', align: 'left' },
+      { label: 'Asistencia', width: 44, key: 'estado_asistencia', align: 'left' },
+      { label: 'Certificado', width: 53, key: 'estado_certificado', align: 'left' },
+      { label: 'Post-cierre', width: 116, key: 'postCierre', align: 'left' },
     ];
     const participantHeaderHeight = 18;
     const participantRowHeight = 14;
@@ -1263,6 +1307,13 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
           : status || 'sin entrada';
     const normalizeCertificateLabel = (status) =>
       status === 'sin_certificado' ? 'sin generar' : status || 'sin generar';
+    const formatPostClosureActions = (participant) => {
+      const actions = [];
+      if (participant.registro_post_cierre) actions.push('registro');
+      if (participant.salida_post_cierre) actions.push('salida');
+      if (participant.certificado_enviado_post_cierre) actions.push('certificado');
+      return actions.length ? actions.join(', ') : '—';
+    };
 
     const drawParticipantHeader = () => {
       const y = pdf.y;
@@ -1324,6 +1375,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
           `${participant.facultad || 'Sin facultad'} / ${participant.laboratorio || 'Sin UAL'}`,
           normalizeAttendanceLabel(participant.estado_asistencia),
           normalizeCertificateLabel(participant.estado_certificado),
+          formatPostClosureActions(participant),
         ];
         let x = participantTableX;
         participantColumns.forEach((column, columnIndex) => {
@@ -1333,6 +1385,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
             .fillColor(palette.text)
             .text(values[columnIndex], x + 4, rowY + 4, {
               width: column.width - 8,
+              height: participantRowHeight - 6,
               align: column.align,
               lineBreak: false,
               ellipsis: true,
@@ -1552,7 +1605,8 @@ async function registerPublicAttendance(eventId, tipo, documento) {
     await client.query(
       `
         UPDATE encuentro_asistencia
-        SET salida_en = CURRENT_TIMESTAMP, fecha_modificacion = CURRENT_TIMESTAMP
+        SET salida_en = CURRENT_TIMESTAMP,
+            fecha_modificacion = CURRENT_TIMESTAMP
         WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
       `,
       [eventId, participant.id]
