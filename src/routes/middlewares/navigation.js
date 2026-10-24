@@ -530,6 +530,10 @@ async function buildNavigation(user) {
 async function navigationMiddleware(req, res, next) {
   try {
     const sessionUser = req.session?.user || null;
+    const showOatiLoginWarning = Boolean(sessionUser && req.session?.showOatiLoginWarning);
+    if (showOatiLoginWarning && req.session) {
+      req.session.showOatiLoginWarning = false;
+    }
     const navigation = await buildNavigation(sessionUser);
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
@@ -562,6 +566,7 @@ async function navigationMiddleware(req, res, next) {
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;
+    res.locals.showOatiLoginWarning = showOatiLoginWarning;
 
     return next();
   } catch (error) {

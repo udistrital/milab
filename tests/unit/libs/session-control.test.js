@@ -9,7 +9,7 @@ const source = fs.readFileSync(
   'utf8'
 );
 
-function createClient() {
+function createClient({ showOatiLoginWarning = false, initialResponse = null } = {}) {
   let now = 0;
   const listeners = new Map();
   const timers = new Map();
@@ -17,9 +17,11 @@ function createClient() {
   const requests = [];
   const redirects = [];
   const errors = [];
+  const warnings = [];
+  const dialogs = [];
   const elements = new Map();
   const xhrListeners = new Map();
-  let response = {
+  let response = initialResponse || {
     status: 200,
     ok: true,
     headers: { get: () => null },
@@ -36,7 +38,11 @@ function createClient() {
   }
   const document = {
     body: {
-      dataset: { isAuthenticated: 'true', sessionExpiresIn: '1800000' },
+      dataset: {
+        isAuthenticated: 'true',
+        sessionExpiresIn: '1800000',
+        showOatiLoginWarning: showOatiLoginWarning ? 'true' : 'false',
+      },
       prepend(element) {
         elements.set(element.id, element);
       },
@@ -63,7 +69,12 @@ function createClient() {
       href: 'https://milab.test/milab/inicio',
       replace: (url) => redirects.push(url),
     },
-    console: { error: (...args) => errors.push(args) },
+    console: { error: (...args) => errors.push(args), warn: (...args) => warnings.push(args) },
+    MiLabDialogs: {
+      alert: async (message) => {
+        dialogs.push(message);
+      },
+    },
     XMLHttpRequest,
     setTimeout: (callback, delay) => {
       const id = Symbol();
@@ -83,6 +94,8 @@ function createClient() {
     requests,
     redirects,
     errors,
+    warnings,
+    dialogs,
     xhrListeners,
     advance: (ms) => {
       now += ms;
@@ -171,4 +184,22 @@ test('network failures are visible and do not masquerade as logout', async () =>
   assert.ok(client.document.getElementById('session-connection-error'));
   assert.equal(client.redirects.length, 0);
   assert.equal([...client.timers.values()].at(-1).delay, 15000);
+});
+
+test('login warning displays a popup when OATI services are confirmed down', async () => {
+  const client = createClient({
+    showOatiLoginWarning: true,
+    initialResponse: {
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      json: async () => ({ servicesAreUp: false }),
+    },
+  });
+
+  await client.flush();
+
+  assert.equal(client.requests[0].url, '/milab/api/check-services');
+  assert.equal(client.dialogs.length, 1);
+  assert.match(client.dialogs[0], /No hay conexión con los sistemas OATI/i);
 });

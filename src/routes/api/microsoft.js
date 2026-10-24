@@ -285,6 +285,7 @@ router.get(
           req.session.user = buildSessionUser(enriched || usuario);
           startSessionLifetime(req.session);
           req.session.microsoftProfile = null;
+          req.session.showOatiLoginWarning = true;
         }
         return res.redirect('/milab/inicio');
       }

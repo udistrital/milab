@@ -176,6 +176,7 @@
   class="app-shell"
   data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
   data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
+  data-show-oati-login-warning="<%= locals.showOatiLoginWarning ? 'true' : 'false' %>"
   data-session-expires-in="<%= locals.sessionExpiresInMs || '' %>"
   data-session-idle-timeout="<%= locals.sessionPolicy ? locals.sessionPolicy.idleTimeoutMs : '' %>"
 >

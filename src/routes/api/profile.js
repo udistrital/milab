@@ -979,6 +979,7 @@ async function identifyProfile(req, res) {
       startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
       req.session.registroPendiente = null;
+      req.session.showOatiLoginWarning = true;
     }
     return res.redirect('/milab/inicio');
   };
