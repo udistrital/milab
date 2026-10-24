@@ -227,7 +227,7 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
     });
   } else {
     try {
-    const query = `
+      const query = `
                   SELECT
                   t.identificador,
                   MAX(pe.documento) AS documento,
@@ -264,68 +264,68 @@ router.post('/consulta_masiva', requireBulkStudentQueryAccess, async function (r
                   GROUP BY
                     t.identificador;
                 `;
-    const values = [entries.join(',')];
-    const sampleData1 = await pool.query(query, values);
+      const values = [entries.join(',')];
+      const sampleData1 = await pool.query(query, values);
 
-    const sgaConfigurado = sgaDebtService.isConfigured();
-    const filteredData = sampleData1.rows.map((row) => ({
-      identificador: row.identificador,
-      documento: row.documento || null,
-      codigo: row.codigo || null,
-      multas: (Array.isArray(row.multas) ? row.multas : [])
-        .filter((multa) => multa !== null)
-        .map((multa) => ({ ...multa, origen: 'MILab' })),
-    }));
+      const sgaConfigurado = sgaDebtService.isConfigured();
+      const filteredData = sampleData1.rows.map((row) => ({
+        identificador: row.identificador,
+        documento: row.documento || null,
+        codigo: row.codigo || null,
+        multas: (Array.isArray(row.multas) ? row.multas : [])
+          .filter((multa) => multa !== null)
+          .map((multa) => ({ ...multa, origen: 'MILab' })),
+      }));
 
-    await Promise.all(
-      filteredData.map(async (row) => {
-        const tieneMultasMilab = row.multas.length > 0;
-        let codigoEstudiante = String(row.codigo || '').trim();
+      await Promise.all(
+        filteredData.map(async (row) => {
+          const tieneMultasMilab = row.multas.length > 0;
+          let codigoEstudiante = String(row.codigo || '').trim();
 
-        if (!codigoEstudiante && (!tieneMultasMilab || sgaConfigurado)) {
-          codigoEstudiante =
-            (await sgaDebtService.resolveStudentCode({
-              documento: row.documento,
-              identificador: row.identificador,
-            })) || '';
-          if (!codigoEstudiante && !tieneMultasMilab) {
-            row.multas = ['unknown'];
-            return;
-          }
-
-          row.codigo = codigoEstudiante || row.codigo;
-        }
-
-        if (sgaConfigurado) {
-          if (!codigoEstudiante) {
-            row.multas.push('sga-error');
-            return;
-          }
-
-          try {
-            const activeSgaDebts = await sgaDebtService.getActiveDebts({
-              codigo: codigoEstudiante,
-            });
-            row.multas.push(...activeSgaDebts.map((debt) => mapSgaDebtToMulta(debt, row)));
-          } catch (error) {
-            if (error?.code === 'OATI_UNAVAILABLE') {
-              throw error;
+          if (!codigoEstudiante && (!tieneMultasMilab || sgaConfigurado)) {
+            codigoEstudiante =
+              (await sgaDebtService.resolveStudentCode({
+                documento: row.documento,
+                identificador: row.identificador,
+              })) || '';
+            if (!codigoEstudiante && !tieneMultasMilab) {
+              row.multas = ['unknown'];
+              return;
             }
-            console.error(`Error consultando multas SGA para ${codigoEstudiante}:`, error);
-            row.multas.push('sga-error');
-          }
-        }
 
-        if (!row.multas.length) {
-          row.multas = [null];
-        }
-      })
-    );
+            row.codigo = codigoEstudiante || row.codigo;
+          }
+
+          if (sgaConfigurado) {
+            if (!codigoEstudiante) {
+              row.multas.push('sga-error');
+              return;
+            }
+
+            try {
+              const activeSgaDebts = await sgaDebtService.getActiveDebts({
+                codigo: codigoEstudiante,
+              });
+              row.multas.push(...activeSgaDebts.map((debt) => mapSgaDebtToMulta(debt, row)));
+            } catch (error) {
+              if (error?.code === 'OATI_UNAVAILABLE') {
+                throw error;
+              }
+              console.error(`Error consultando multas SGA para ${codigoEstudiante}:`, error);
+              row.multas.push('sga-error');
+            }
+          }
+
+          if (!row.multas.length) {
+            row.multas = [null];
+          }
+        })
+      );
       res.render('home/consulta_masiva', {
-      sampleData1: filteredData,
-      error: null,
-      sgaConsultaOmitida: !sgaConfigurado,
-    });
+        sampleData1: filteredData,
+        error: null,
+        sgaConsultaOmitida: !sgaConfigurado,
+      });
     } catch (error) {
       if (error?.code === 'OATI_UNAVAILABLE') {
         return respondOatiUnavailable(req, res);

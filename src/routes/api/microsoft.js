@@ -41,9 +41,12 @@ function isActiveStudentRecord(record) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`), {
-      signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS),
-    });
+    const data = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`),
+      {
+        signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS),
+      }
+    );
 
     const rawDocentes = data?.docentesCollection?.docente;
     let docentes = [];
