@@ -42,7 +42,8 @@ function escapeLike(value) {
 async function loadDatabaseInfo() {
   const result = await pool.query(`
     SELECT current_database() AS base_datos,
-           current_user AS usuario_app,
+           session_user AS usuario_conexion,
+           current_user AS usuario_efectivo,
            current_setting('search_path') AS search_path
   `);
   return result.rows[0] || {};
@@ -91,6 +92,14 @@ async function findRelation(esquema, nombre) {
              END AS tipo,
              pg_get_userbyid(c.relowner) AS propietario,
              has_table_privilege(c.oid, 'SELECT') AS lectura_permitida,
+             has_schema_privilege(n.oid, 'USAGE') AS uso_esquema_permitido,
+             has_schema_privilege(n.oid, 'CREATE') AS creacion_esquema_permitida,
+             has_table_privilege(c.oid, 'INSERT') AS insercion_permitida,
+             has_table_privilege(c.oid, 'UPDATE') AS actualizacion_permitida,
+             has_table_privilege(c.oid, 'DELETE') AS eliminacion_permitida,
+             has_table_privilege(c.oid, 'TRUNCATE') AS vaciado_permitido,
+             has_table_privilege(c.oid, 'REFERENCES') AS referencias_permitidas,
+             has_table_privilege(c.oid, 'TRIGGER') AS disparadores_permitidos,
              obj_description(c.oid, 'pg_class') AS comentario
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -104,7 +113,7 @@ async function findRelation(esquema, nombre) {
 }
 
 async function loadRelationDetail(relation) {
-  const [columnas, restricciones, indices] = await Promise.all([
+  const [columnas, restricciones, indices, secuencia] = await Promise.all([
     pool.query(
       `
         SELECT a.attnum AS posicion,
@@ -149,12 +158,42 @@ async function loadRelationDetail(relation) {
       `,
       [relation.esquema, relation.nombre]
     ),
+    pool.query(
+      `
+        WITH secuencia AS (
+          SELECT pg_get_serial_sequence(format('%I.%I', $1::text, $2::text), 'id') AS nombre
+        )
+        SELECT nombre,
+               has_sequence_privilege(nombre, 'USAGE') AS uso_permitido,
+               has_sequence_privilege(nombre, 'SELECT') AS lectura_permitida,
+               has_sequence_privilege(nombre, 'UPDATE') AS actualizacion_permitida
+        FROM secuencia
+      `,
+      [relation.esquema, relation.nombre]
+    ),
   ]);
 
+  const secuenciaId = secuencia.rows[0];
   return {
     columnas: columnas.rows,
     restricciones: restricciones.rows,
     indices: indices.rows,
+    permisos: {
+      esquema: {
+        uso: relation.uso_esquema_permitido,
+        crear: relation.creacion_esquema_permitida,
+      },
+      tabla: {
+        lectura: relation.lectura_permitida,
+        insercion: relation.insercion_permitida,
+        actualizacion: relation.actualizacion_permitida,
+        eliminacion: relation.eliminacion_permitida,
+        vaciado: relation.vaciado_permitido,
+        referencias: relation.referencias_permitidas,
+        disparadores: relation.disparadores_permitidos,
+      },
+      secuencia: secuenciaId?.nombre ? secuenciaId : null,
+    },
   };
 }
 

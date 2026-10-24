@@ -113,6 +113,7 @@ function buildApp(router, sessionState) {
   const app = express();
   app.use((req, res, next) => {
     req.session = sessionState;
+    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
     next();
   });
   app.use('/', router);
@@ -162,6 +163,32 @@ test('microsoft callback authenticates when email exists in usuario (admin-corre
     assert.deepEqual(fetchedEmails, ['estudiante@udistrital.edu.co']);
     assert.equal(sessionState.user?.correo, 'estudiante@udistrital.edu.co');
     assert.equal(sessionState.user?.tipo, 'estudiante');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('microsoft callback denies non-registered institutional users', async () => {
+  const sessionState = createSessionState();
+
+  const loaded = loadMicrosoftRoute({
+    passportUser: {
+      displayName: 'Persona Nueva',
+      emails: [{ value: 'nueva@udistrital.edu.co' }],
+      id: 'ms-404',
+    },
+    fetchUserByEmailImpl: async () => null,
+  });
+
+  try {
+    const app = buildApp(loaded.router, sessionState);
+    const response = await request(app).get('/microsoft/callback?code=fake&state=fake');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /acceso denegado/i);
+    assert.equal(sessionState.microsoftProfile, null);
+    assert.equal(sessionState.user, undefined);
   } finally {
     loaded.restore();
   }

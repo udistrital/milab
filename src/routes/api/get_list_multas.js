@@ -16,6 +16,7 @@ const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lo
 const {
   renderApplicationError,
   renderModuleError,
+  respondOatiUnavailable,
   wantsJson,
 } = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
@@ -513,6 +514,9 @@ router.get('/resolve_name', requireMultasAccess, async (req, res) => {
     const nombre = await resolveOatiName(documento);
     return res.json({ ok: true, nombre: nombre || '' });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error resolviendo nombre OATI:', error);
     return res.status(500).json({ ok: false, nombre: '' });
   }
@@ -605,6 +609,9 @@ router.get('/:multaId/sga-multas', requireMultasAccess, async (req, res) => {
     return res.json({ ok: true, configured: true, supported: true, multas });
   } catch (error) {
     if (client) client.release();
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando multas SGA desde el detalle de sanción:', error);
     return res.status(502).json({
       ok: false,

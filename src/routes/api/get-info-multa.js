@@ -13,6 +13,7 @@ const { SANCTION_TYPES } = require('../../libs/multa-config');
 // const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
 const { sgaDebtService } = require('../../libs/oati-debts');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const { listingHelpers: sanctionListHelpers } = require('./get_list_multas');
 
 // Variables de entorno
@@ -100,6 +101,9 @@ async function buildStudentSanctionPanel(req, { usuarioId, person }) {
         documento: person.documento,
       });
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        throw error;
+      }
       sga.failed = true;
       console.error('Error consultando sanciones SGA en Paso 2:', error);
     }
@@ -251,6 +255,9 @@ router.get('/registrar', requireFineInfoPageAccess, async function (req, res) {
   try {
     return await renderStudentSanctionRegistration(req, res, { lookupToken, person });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
@@ -283,6 +290,9 @@ router.get('/persona', requireFineInfoPageAccess, async function (req, res) {
           : sanctionListHelpers.normalizeListSuccessFeedback(req.query.success),
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
@@ -405,6 +415,9 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
       message: 'No fue posible cargar la información del estudiante.',
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',

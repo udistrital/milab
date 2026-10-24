@@ -9,6 +9,7 @@ const {
   selectStudentRecordForDocumento,
 } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const router = express.Router();
 
 router.use(express.json());
@@ -128,6 +129,9 @@ router.post('/', requireVerificationAction, async (req, res) => {
             if (seleccion.matchedAssociation) ultimoEstudiante = seleccion.record;
           }
         } catch (lookupError) {
+          if (lookupError?.code === 'OATI_UNAVAILABLE') {
+            throw lookupError;
+          }
           console.error('Error consultando registros OATI por cédula del estudiante:', lookupError);
         }
       }
@@ -167,6 +171,9 @@ router.post('/', requireVerificationAction, async (req, res) => {
         con_estado_nombre = estadoResponse.estado.nombre;
       }
     } catch (apiError) {
+      if (apiError?.code === 'OATI_UNAVAILABLE') {
+        throw apiError;
+      }
       console.error('Error consultando detalles de carrera/estado:', apiError);
       // Continuamos con los códigos si fallan los nombres
     }
@@ -213,6 +220,9 @@ router.post('/', requireVerificationAction, async (req, res) => {
           documento,
         });
       } catch (sgaError) {
+        if (sgaError?.code === 'OATI_UNAVAILABLE') {
+          return respondOatiUnavailable(req, res);
+        }
         console.error('Error consultando multas del estudiante en SGA:', sgaError);
         sgaLookupError =
           'No fue posible verificar las multas en SGA. El estado SGA queda sin confirmar y el certificado no podrá generarse hasta que SGA responda; inténtalo nuevamente en unos minutos.';
@@ -245,6 +255,9 @@ router.post('/', requireVerificationAction, async (req, res) => {
       tipo: req.session.user.tipo,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error en verificar_estudiante:', error);
     return res.render('home/verificar_estudiante', {
       error: 'Ocurrió un error al verificar el estudiante. Por favor intente nuevamente.',

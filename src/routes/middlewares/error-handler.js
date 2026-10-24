@@ -118,6 +118,32 @@ function wantsJson(req) {
   return acceptedType === 'json';
 }
 
+function respondOatiUnavailable(req, res) {
+  const payload = {
+    ok: false,
+    code: 'OATI_UNAVAILABLE',
+    message: 'Servicios académicos no disponibles',
+    message2: 'No hay servicios OATI disponibles en este momento. Inténtalo más tarde.',
+  };
+
+  res.setHeader('X-Oati-Unavailable', '1');
+
+  if (wantsJson(req)) {
+    return res.status(503).json(payload);
+  }
+
+  return renderApplicationError(
+    res,
+    {
+      status: 503,
+      message: payload.message,
+      message2: payload.message2,
+      limit: null,
+    },
+    req
+  );
+}
+
 function renderApplicationError(res, overrides = {}, req = null, error = null) {
   const defaultUserError = buildDefaultUserError();
   const payload = {
@@ -171,6 +197,10 @@ function createApplicationErrorHandler(logger = console) {
       return next(error);
     }
 
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
+
     if (wantsJson(req)) {
       const defaultUserError = buildDefaultUserError();
       return res.status(status).json({
@@ -188,6 +218,7 @@ module.exports = {
   createApplicationErrorHandler,
   enrichErrorPayloadForAdmin,
   normalizeErrorStatus,
+  respondOatiUnavailable,
   renderApplicationError,
   renderModuleError,
   wantsJson,

@@ -10,6 +10,7 @@
     pageSize: 20,
     eventId: null,
     previewRows: [],
+    historicalPreviewRows: [],
     templateOnly: false,
   };
   const eventFormCard = document.getElementById('event-form-card');
@@ -206,6 +207,7 @@
         : 'Guardar evento';
     document.getElementById('event-template').required = !event;
     document.getElementById('template-required').classList.toggle('d-none', Boolean(event));
+    document.getElementById('historical-event-option').classList.toggle('d-none', Boolean(event));
     document
       .getElementById('event-details-fields')
       .classList.toggle('d-none', pageState.templateOnly);
@@ -302,6 +304,7 @@
   }
 
   function buildParticipantTable(participants, event) {
+    const allowSelection = event.estado === 'finalizado';
     const wrap = element('div', undefined, 'table-responsive mt-3');
     const search = element('input', undefined, 'form-control form-control-sm mb-2');
     search.type = 'search';
@@ -310,6 +313,21 @@
     const table = element('table', undefined, 'table table-sm table-hover align-middle');
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
+    if (allowSelection) {
+      const selectCell = document.createElement('th');
+      const selectAll = element('input');
+      selectAll.type = 'checkbox';
+      selectAll.setAttribute('aria-label', 'Seleccionar participantes elegibles');
+      selectCell.appendChild(selectAll);
+      headRow.appendChild(selectCell);
+      selectAll.addEventListener('change', () => {
+        table
+          .querySelectorAll('input[name="selected-participant"]:not(:disabled)')
+          .forEach((input) => {
+            input.checked = selectAll.checked;
+          });
+      });
+    }
     [
       'Participante',
       'Documento',
@@ -329,6 +347,20 @@
       const row = element('tr');
       row.dataset.search =
         `${participant.nombre} ${participant.documento} ${participant.correo} ${participant.rol} ${participant.facultad} ${participant.laboratorio}`.toLowerCase();
+      if (allowSelection) {
+        const selectCell = document.createElement('td');
+        const select = element('input');
+        select.type = 'checkbox';
+        select.name = 'selected-participant';
+        select.value = String(participant.id);
+        select.disabled =
+          !participant.salida_en ||
+          participant.validez_certificado === 'anulado' ||
+          participant.estado_certificado === 'enviado';
+        select.setAttribute('aria-label', `Seleccionar certificado de ${participant.nombre}`);
+        selectCell.appendChild(select);
+        row.appendChild(selectCell);
+      }
       addCell(row, participant.nombre);
       addCell(row, participant.documento);
       addCell(row, participant.correo);
@@ -341,7 +373,7 @@
       const certCell = element(
         'td',
         participant.certificado_id
-          ? `${participant.estado_certificado || 'pendiente'}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}`
+          ? `${participant.estado_certificado || 'pendiente'}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}${participant.medalla_vinculada ? ' · medalla enlazada' : ''}`
           : 'Pendiente'
       );
       if (participant.certificado_id && participant.validez_certificado !== 'anulado') {
@@ -398,7 +430,27 @@
       });
     });
     table.append(head, body);
-    wrap.append(search, table);
+    wrap.append(search);
+    if (allowSelection) {
+      const controls = element('div', undefined, 'd-flex flex-wrap align-items-center gap-3 mb-2');
+      const emailLabel = element('label', undefined, 'form-check mb-0');
+      const sendEmail = element('input', undefined, 'form-check-input');
+      sendEmail.type = 'checkbox';
+      sendEmail.checked = true;
+      sendEmail.id = 'send-selected-certificates';
+      const emailText = element(
+        'span',
+        'Enviar los certificados seleccionados por correo',
+        'form-check-label'
+      );
+      emailLabel.append(sendEmail, emailText);
+      const generateButton = actionButton('Generar certificados seleccionados', 'btn-primary', () =>
+        generateSelectedCertificates(event.id, table, sendEmail, generateButton)
+      );
+      controls.append(emailLabel, generateButton);
+      wrap.appendChild(controls);
+    }
+    wrap.appendChild(table);
     return wrap;
   }
 
@@ -504,6 +556,15 @@
           sentPercentage,
           `Pendientes: ${stats.certificados_pendientes} · Errores: ${stats.certificados_con_error}`
         ),
+        miniMetricCard(
+          'Medallas enlazadas',
+          stats.medallas_otorgadas,
+          totalParticipants,
+          totalParticipants
+            ? Number(((Number(stats.medallas_otorgadas) / totalParticipants) * 100).toFixed(2))
+            : 0,
+          'Logros asociados a cuentas MiLab'
+        ),
       ].forEach((metric) => statsRow.appendChild(metric));
       statistics.appendChild(statsRow);
       body.appendChild(statistics);
@@ -518,6 +579,17 @@
       downloadTemplate.href = `${apiBase}/eventos/${event.id}/plantilla-participantes`;
       downloadTemplate.download = 'plantilla-encuentros.xlsx';
       participantActions.appendChild(downloadTemplate);
+      const exportParticipants = element(
+        'a',
+        'Descargar datos de participantes (.xlsx)',
+        'btn btn-sm btn-outline-success mb-2 me-2'
+      );
+      exportParticipants.href = `${apiBase}/eventos/${event.id}/participantes.xlsx`;
+      exportParticipants.download = `participantes-encuentro-${event.id}.xlsx`;
+      participantActions.appendChild(exportParticipants);
+      if (event.estado === 'finalizado') {
+        participantActions.appendChild(buildHistoricalParticipationImport(event));
+      }
       if (event.estado === 'programado') {
         const fileLabel = element('label', 'Archivo Excel ', 'form-label small mb-0');
         const fileInput = element(
@@ -552,6 +624,67 @@
         .getElementById('event-detail-body')
         .replaceChildren(element('div', error.message, 'alert alert-danger'));
     }
+  }
+
+  function buildHistoricalParticipationImport(event) {
+    const details = element('details', undefined, 'card bg-light border-0 mt-3');
+    const summary = element(
+      'summary',
+      'Cargar participantes y asistencias de un evento ya realizado',
+      'card-header fw-semibold'
+    );
+    const content = element('div', undefined, 'card-body');
+    content.appendChild(
+      element(
+        'p',
+        'Usa la plantilla para importar participantes y marcas de entrada/salida. Solo quienes tengan ambas marcas podrán recibir certificado.',
+        'small text-muted'
+      )
+    );
+    const templateLink = element(
+      'a',
+      'Descargar plantilla de participaciones',
+      'btn btn-sm btn-outline-secondary me-2 mb-2'
+    );
+    templateLink.href = `${apiBase}/eventos/${event.id}/plantilla-participaciones`;
+    templateLink.download = `plantilla-participaciones-encuentro-${event.id}.xlsx`;
+    content.appendChild(templateLink);
+
+    const fileLabel = element('label', 'Archivo Excel ', 'form-label small mb-2');
+    const fileInput = element('input', undefined, 'form-control form-control-sm');
+    fileInput.type = 'file';
+    fileInput.accept = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    fileInput.id = 'historical-participations-xlsx';
+    fileInput.style.maxWidth = '360px';
+    fileLabel.appendChild(fileInput);
+    content.appendChild(fileLabel);
+
+    const emailLabel = element('label', undefined, 'form-check my-2');
+    const sendEmail = element('input', undefined, 'form-check-input');
+    sendEmail.type = 'checkbox';
+    sendEmail.id = 'historical-send-certificates';
+    const emailText = element(
+      'span',
+      'Enviar por correo los certificados de quienes completaron la participación',
+      'form-check-label'
+    );
+    emailLabel.append(sendEmail, emailText);
+    content.appendChild(emailLabel);
+    content.appendChild(
+      actionButton('Previsualizar participación', 'btn-outline-primary btn-sm', () =>
+        previewHistoricalParticipation(event.id)
+      )
+    );
+    const preview = element('div', undefined, 'mt-2');
+    preview.id = 'historical-participation-preview';
+    content.appendChild(preview);
+    const status = element('p', undefined, 'small mt-2');
+    status.id = 'historical-participation-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    content.appendChild(status);
+    details.append(summary, content);
+    return details;
   }
 
   function buildManualParticipantForm(eventId) {
@@ -717,6 +850,77 @@
     }
   }
 
+  async function generateSelectedCertificates(eventId, table, sendEmail, button) {
+    const selectedIds = new Set(
+      Array.from(table.querySelectorAll('input[name="selected-participant"]:checked')).map(
+        (input) => Number(input.value)
+      )
+    );
+    const participants = (pageState.participants || []).filter((participant) =>
+      selectedIds.has(Number(participant.id))
+    );
+    if (!participants.length) {
+      showAlert('Selecciona al menos una participación completada.', 'warning');
+      return;
+    }
+    const send = sendEmail.checked;
+    const deliveryMessage = send
+      ? 'Se generarán los certificados y se enviarán por correo.'
+      : 'Se generarán los certificados sin enviar correos; las medallas se enlazarán cuando haya una cuenta MiLab asociada.';
+    if (
+      !(await window.MiLabDialogs.confirm(
+        `${deliveryMessage} Participantes seleccionados: ${participants.length}.`
+      ))
+    ) {
+      return;
+    }
+
+    button.disabled = true;
+    try {
+      const result = await issueCertificates(eventId, participants, send);
+      const summary = send
+        ? `${result.completed} certificados enviados; ${result.failed.length} con error.`
+        : `${result.completed} certificados generados sin enviar correo.`;
+      showAlert(
+        result.failed.length
+          ? `${summary} Revisa el estado de envío en la tabla de participantes.`
+          : summary,
+        result.failed.length ? 'warning' : 'success'
+      );
+      await refreshDetail();
+    } catch (error) {
+      showAlert(error.message, 'danger');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function issueCertificates(eventId, participants, sendEmail, onProgress = () => {}) {
+    const failed = [];
+    let completed = 0;
+    for (let index = 0; index < participants.length; index += 1) {
+      const participant = participants[index];
+      onProgress(participant, index + 1, participants.length);
+      try {
+        const result = await request(
+          `/eventos/${eventId}/participantes/${participant.participante_id || participant.id}/certificado/generar`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ enviar_correo: sendEmail }),
+          }
+        );
+        if (sendEmail && result.estado_envio !== 'sent') {
+          failed.push(`${participant.nombre}: el correo no fue confirmado.`);
+        } else {
+          completed += 1;
+        }
+      } catch (error) {
+        failed.push(`${participant.nombre}: ${error.message}`);
+      }
+    }
+    return { completed, failed };
+  }
+
   async function annulCertificate(certificateId) {
     const reason = await window.MiLabDialogs.prompt(
       'Indica el motivo de anulación del certificado:',
@@ -791,7 +995,7 @@
   async function finalizeEvent(eventId) {
     if (
       !(await window.MiLabDialogs.confirm(
-        '¿Confirmas finalizar este evento? Después se enviarán uno a uno los certificados pendientes.'
+        '¿Confirmas finalizar este evento? Después podrás elegir a quién generar y enviar certificados.'
       ))
     ) {
       return;
@@ -803,6 +1007,18 @@
       });
     } catch (error) {
       showAlert(error.message, 'danger');
+      return;
+    }
+    const sendAll = await window.MiLabDialogs.confirm(
+      '¿Enviar ahora los certificados pendientes a todas las participaciones completadas? Si eliges No, podrás seleccionar asistentes desde el detalle del evento.'
+    );
+    if (!sendAll) {
+      showAlert(
+        'Evento finalizado. Selecciona participantes para emitir sus certificados.',
+        'success'
+      );
+      await refreshDetail();
+      await loadEvents();
       return;
     }
     let pendientes;
@@ -1045,6 +1261,129 @@
     }
   }
 
+  async function previewHistoricalParticipation(eventId) {
+    const input = document.getElementById('historical-participations-xlsx');
+    if (!input?.files?.[0]) {
+      showAlert('Selecciona un archivo Excel de participaciones.', 'warning');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('archivo', input.files[0]);
+    try {
+      const result = await request(`/eventos/${eventId}/participaciones/previsualizar`, {
+        method: 'POST',
+        body: formData,
+      });
+      pageState.historicalPreviewRows = result.filas;
+      renderHistoricalParticipationPreview(result, eventId);
+    } catch (error) {
+      showAlert(error.message, 'danger');
+    }
+  }
+
+  function renderHistoricalParticipationPreview(result, eventId) {
+    const container = document.getElementById('historical-participation-preview');
+    container.replaceChildren();
+    container.appendChild(
+      element(
+        'p',
+        `${result.resumen.total} filas · ${result.resumen.validos} válidas · ${result.resumen.rechazados} rechazadas`,
+        'small mt-2'
+      )
+    );
+    const table = element('table', undefined, 'table table-sm');
+    const head = document.createElement('thead');
+    const header = document.createElement('tr');
+    ['Fila', 'Nombre', 'Documento', 'Correo', 'Entrada', 'Salida', 'Validación'].forEach((label) =>
+      header.appendChild(element('th', label))
+    );
+    head.appendChild(header);
+    const body = document.createElement('tbody');
+    result.filas.forEach((row) => {
+      const tr = document.createElement('tr');
+      addCell(tr, `Fila ${row.fila}`);
+      addCell(tr, row.participante.nombre);
+      addCell(tr, row.participante.documento);
+      addCell(tr, row.participante.correo);
+      addCell(tr, formatTimestamp(row.entrada_en));
+      addCell(tr, formatTimestamp(row.salida_en));
+      addCell(
+        tr,
+        row.errores.length
+          ? row.errores.join(' ')
+          : row.advertencias?.length
+            ? `Advertencia: ${row.advertencias.join(' ')}`
+            : 'Válido'
+      );
+      if (row.errores.length) tr.classList.add('table-danger');
+      else if (row.advertencias?.length) tr.classList.add('table-warning');
+      body.appendChild(tr);
+    });
+    table.append(head, body);
+    const tableWrap = element('div', undefined, 'table-responsive');
+    tableWrap.appendChild(table);
+    container.appendChild(tableWrap);
+    if (result.resumen.validos > 0) {
+      container.appendChild(
+        actionButton('Importar y generar certificados', 'btn-primary btn-sm', () =>
+          importHistoricalParticipation(eventId)
+        )
+      );
+    }
+  }
+
+  async function importHistoricalParticipation(eventId) {
+    const sendEmail = document.getElementById('historical-send-certificates').checked;
+    const emailMessage = sendEmail
+      ? 'Se enviarán por correo los certificados de las participaciones completadas.'
+      : 'Se generarán los certificados de las participaciones completadas sin enviar correos.';
+    if (!(await window.MiLabDialogs.confirm(`¿Confirmas la importación? ${emailMessage}`))) return;
+
+    const status = document.getElementById('historical-participation-status');
+    status.textContent = 'Importando participantes y asistencias…';
+    try {
+      const result = await request(`/eventos/${eventId}/participaciones/importar`, {
+        method: 'POST',
+        body: JSON.stringify({
+          filas: pageState.historicalPreviewRows,
+        }),
+      });
+      const eligible = (result.participantes_importados || []).filter(
+        (participant) => participant.completada
+      );
+      let certificateResult = { completed: 0, failed: [] };
+      if (eligible.length) {
+        certificateResult = await issueCertificates(
+          eventId,
+          eligible,
+          sendEmail,
+          (participant, index, total) => {
+            status.textContent = `Generando certificados ${index} de ${total}: ${participant.nombre}`;
+          }
+        );
+      }
+      pageState.historicalPreviewRows = [];
+      document.getElementById('historical-participation-preview').replaceChildren();
+      const summary = result.resumen;
+      const emailSummary = sendEmail
+        ? `${certificateResult.completed} certificados enviados`
+        : `${certificateResult.completed} certificados generados sin correo`;
+      const failureSummary = certificateResult.failed.length
+        ? `; ${certificateResult.failed.length} certificados con error`
+        : '';
+      status.textContent = `Importación terminada: ${summary.importados} participantes, ${summary.rechazados} rechazados; ${emailSummary}${failureSummary}.`;
+      showAlert(
+        status.textContent,
+        summary.rechazados || certificateResult.failed.length ? 'warning' : 'success'
+      );
+      await refreshDetail();
+      await loadEvents();
+    } catch (error) {
+      status.textContent = '';
+      showAlert(error.message, 'danger');
+    }
+  }
+
   document.getElementById('btn-nuevo-evento').addEventListener('click', () => setFormMode());
   function closeEventForm(returnToDetail = true) {
     const wasTemplateOnly = pageState.templateOnly;
@@ -1080,6 +1419,8 @@
       return;
     }
     const eventId = document.getElementById('event-id').value;
+    const creatingHistoricalEvent =
+      !templateOnly && !eventId && document.getElementById('event-historical').checked;
     try {
       const configJson = window.EncounterTemplateEditor.getConfigJson();
       const formData = templateOnly ? new FormData() : new FormData(eventForm);
@@ -1090,7 +1431,7 @@
       } else {
         formData.delete('eventId');
       }
-      await request(
+      const saved = await request(
         templateOnly
           ? `/eventos/${eventId}/plantilla`
           : eventId
@@ -1106,7 +1447,9 @@
           ? 'Plantilla actualizada. Los certificados ya emitidos se conservaron sin cambios.'
           : eventId
             ? 'Evento actualizado.'
-            : 'Evento creado.',
+            : creatingHistoricalEvent
+              ? 'Evento histórico creado. Carga ahora sus participantes y asistencias.'
+              : 'Evento creado.',
         'success'
       );
       closeEventForm(false);
@@ -1114,6 +1457,8 @@
       if (templateOnly) {
         detailModal.show();
         await refreshDetail();
+      } else if (creatingHistoricalEvent && saved.evento_id) {
+        await openDetail(saved.evento_id);
       }
     } catch (error) {
       showAlert(error.message, 'danger');

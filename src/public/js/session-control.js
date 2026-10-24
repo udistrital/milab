@@ -6,6 +6,7 @@
   const activityIntervalMs = Math.min(60000, idleTimeoutMs / 4);
   const originalFetch = window.fetch.bind(window);
   let redirecting = false;
+  let oatiUnavailableDialogOpen = false;
   let expiryTimer;
   let pendingActivity = false;
   let activityRequest;
@@ -54,6 +55,20 @@
   function inspectResponse(response) {
     if (response.status === 401 && response.headers.get('X-Session-Expired') === '1') {
       returnHome();
+    } else if (response.status === 503 && response.headers.get('X-Oati-Unavailable') === '1') {
+      if (!oatiUnavailableDialogOpen) {
+        oatiUnavailableDialogOpen = true;
+        const message = 'No hay servicios OATI disponibles en este momento. Inténtalo más tarde.';
+        const dialog = window.MiLabDialogs?.alert;
+        if (typeof dialog === 'function') {
+          dialog(message).finally(() => {
+            oatiUnavailableDialogOpen = false;
+          });
+        } else {
+          window.console.warn('MiLabDialogs.alert no está disponible para notificar OATI.');
+          oatiUnavailableDialogOpen = false;
+        }
+      }
     } else {
       const remaining = response.headers.get('X-Session-Expires-In');
       if (remaining !== null) scheduleExpiry(Number(remaining));

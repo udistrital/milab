@@ -12,6 +12,8 @@ services:
       - docker_default
     depends_on:
       - dbpostgres
+    volumes:
+      - ../private/encuentros:/usr/src/app/private/encuentros
 
   dbpostgres:
     image: postgres:latest

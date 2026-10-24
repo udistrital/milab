@@ -22,7 +22,11 @@ const {
   requireJsonRoles,
   requireRoles,
 } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  renderApplicationError,
+  respondOatiUnavailable,
+  wantsJson,
+} = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -1674,7 +1678,8 @@ async function lookupEnrollmentStudentData(documento) {
           getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
         );
         estadoNombre = estadoData?.estado?.nombre || estadoCodigo;
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         estadoNombre = estadoCodigo;
       }
     }
@@ -1686,7 +1691,8 @@ async function lookupEnrollmentStudentData(documento) {
           carreraData?.carrerasCollection?.carrera?.[0]?.nombre ||
           carreraData?.carrerasCollection?.carrera?.nombre ||
           '';
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         carreraNombre = '';
       }
     }
@@ -1698,7 +1704,8 @@ async function lookupEnrollmentStudentData(documento) {
       estado: String(estadoNombre || '').trim() || 'ACTIVO',
       carrera: String(carreraNombre || '').trim() || null,
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -1739,7 +1746,8 @@ async function resolveOatiCatalogNames(codes, fetchName) {
     uniqueCodes.map(async (code) => {
       try {
         return [code, String((await fetchName(code)) || '').trim() || code];
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         return [code, code];
       }
     })
@@ -2238,6 +2246,9 @@ router.get('/usuarios/:id/oati-registros', requireDashboardAdminJson, async (req
     const registros = await lookupOatiStudentRecordsByDocumento(documento);
     return res.json({ ok: true, usuario, registros });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando registros OATI desde dashboard:', error);
     return res.status(502).json({
       ok: false,
@@ -2282,6 +2293,9 @@ router.post('/usuarios/:id/oati-registro', requireDashboardAdminJson, async (req
     try {
       registros = await lookupOatiStudentRecordsByDocumento(documento);
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error('Error consultando registros OATI para asociar desde dashboard:', error);
       return res.status(502).json({
         ok: false,

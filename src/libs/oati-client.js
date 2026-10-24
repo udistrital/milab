@@ -6,6 +6,10 @@ const { config } = require('../config/config');
 
 let cachedToken = null;
 let cachedTokenExpiresAt = 0;
+let oatiCircuitOpenedAt = 0;
+let hasWarnedAboutTlsFallback = false;
+let hasWarnedAboutCircuit = false;
+const oatiCircuitCooldownMs = Math.max(Number(process.env.OATI_CIRCUIT_COOLDOWN_MS || 90000), 1000);
 const httpsAgent = new https.Agent({
   rejectUnauthorized: config.oatiRejectUnauthorized,
 });
@@ -13,7 +17,17 @@ const insecureHttpsAgent = new https.Agent({
   rejectUnauthorized: false,
 });
 const oatiRetryDelaysMs = [500, 1500, 3000].slice(0, config.oatiMaxRetries);
-let hasWarnedAboutTlsFallback = false;
+
+class OatiUnavailableError extends Error {
+  constructor(message, cause = null) {
+    super(message);
+    this.name = 'OatiUnavailableError';
+    this.code = 'OATI_UNAVAILABLE';
+    if (cause) {
+      this.cause = cause;
+    }
+  }
+}
 
 function ensureOatiCredentials() {
   if (!config.oatiClientId || !config.oatiSecret) {
@@ -41,6 +55,60 @@ function isTlsCertificateError(error) {
       code
     ) || message.includes('certificate has expired')
   );
+}
+
+function isOatiUnavailableCandidate(error) {
+  if (!error) return false;
+  if (error?.code === 'OATI_UNAVAILABLE') return true;
+  if (isRetryableOatiError(error)) return true;
+  if (isTlsCertificateError(error)) return true;
+  return false;
+}
+
+function isOatiUnavailableError(error) {
+  return error?.code === 'OATI_UNAVAILABLE' || error instanceof OatiUnavailableError;
+}
+
+function isOatiCircuitOpen() {
+  return oatiCircuitOpenedAt > 0 && Date.now() - oatiCircuitOpenedAt < oatiCircuitCooldownMs;
+}
+
+function markOatiCircuitFailure(error) {
+  if (!isOatiUnavailableCandidate(error)) {
+    return;
+  }
+
+  oatiCircuitOpenedAt = Date.now();
+  cachedToken = null;
+  cachedTokenExpiresAt = 0;
+
+  if (!hasWarnedAboutCircuit) {
+    hasWarnedAboutCircuit = true;
+    console.warn(
+      `[OATI] External academic services unavailable. Failing fast for ${oatiCircuitCooldownMs}ms.`
+    );
+  }
+}
+
+function clearOatiCircuit() {
+  if (oatiCircuitOpenedAt > 0) {
+    oatiCircuitOpenedAt = 0;
+  }
+}
+
+function throwWhenCircuitOpen() {
+  if (!isOatiCircuitOpen()) {
+    return;
+  }
+
+  throw new OatiUnavailableError('Los servicios OATI no están disponibles temporalmente.');
+}
+
+function wrapAsOatiUnavailable(error) {
+  if (isOatiUnavailableError(error)) {
+    return error;
+  }
+  return new OatiUnavailableError('No fue posible conectar con los servicios OATI.', error);
 }
 
 async function withOatiTlsFallback(operation) {
@@ -84,6 +152,7 @@ async function withOatiRetry(operation, signal) {
 }
 
 async function fetchAccessToken(signal) {
+  throwWhenCircuitOpen();
   ensureOatiCredentials();
 
   const now = Date.now();
@@ -91,45 +160,70 @@ async function fetchAccessToken(signal) {
     return cachedToken;
   }
 
-  const tokenResponse = await withOatiRetry(
-    () =>
-      withOatiTlsFallback((agent) =>
-        axios.post(
-          config.oatiTokenUrl,
-          new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-          {
-            auth: {
-              username: config.oatiClientId,
-              password: config.oatiSecret,
-            },
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            httpsAgent: agent,
-            timeout: config.oatiTokenTimeoutMs,
-            signal,
-          }
-        )
-      ),
-    signal
-  );
+  let tokenResponse;
+  try {
+    tokenResponse = await withOatiRetry(
+      () =>
+        withOatiTlsFallback((agent) =>
+          axios.post(
+            config.oatiTokenUrl,
+            new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+            {
+              auth: {
+                username: config.oatiClientId,
+                password: config.oatiSecret,
+              },
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              httpsAgent: agent,
+              timeout: config.oatiTokenTimeoutMs,
+              signal,
+            }
+          )
+        ),
+      signal
+    );
+  } catch (error) {
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
 
   cachedToken = tokenResponse.data.access_token;
   const expiresInSeconds = Number(tokenResponse.data.expires_in || 300);
   cachedTokenExpiresAt = now + expiresInSeconds * 1000;
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
 
   return cachedToken;
 }
 
 async function requestOatiPublic(pathname, signal) {
+  throwWhenCircuitOpen();
   const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
-  const response = await withOatiTlsFallback((agent) =>
-    axios.get(url, {
-      httpsAgent: agent,
-      timeout: config.oatiRequestTimeoutMs,
-      signal,
-    })
-  );
+  let response;
+
+  try {
+    response = await withOatiTlsFallback((agent) =>
+      axios.get(url, {
+        httpsAgent: agent,
+        timeout: config.oatiRequestTimeoutMs,
+        signal,
+      })
+    );
+  } catch (error) {
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
+
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
   return response.data;
 }
 
@@ -140,42 +234,65 @@ async function requestOati(pathname, { signal } = {}) {
 
   const accessToken = await fetchAccessToken(signal);
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
+  let response;
 
-  const response = await withOatiRetry(
-    () =>
-      withOatiTlsFallback((agent) =>
-        axios.get(url, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          httpsAgent: agent,
-          timeout: config.oatiRequestTimeoutMs,
-          signal,
-        })
-      ),
-    signal
-  );
+  try {
+    response = await withOatiRetry(
+      () =>
+        withOatiTlsFallback((agent) =>
+          axios.get(url, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            httpsAgent: agent,
+            timeout: config.oatiRequestTimeoutMs,
+            signal,
+          })
+        ),
+      signal
+    );
+  } catch (error) {
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
 
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
   return response.data;
 }
 
 async function requestOatiPost(pathname, body, contentType = 'application/json') {
+  throwWhenCircuitOpen();
   const accessToken = await fetchAccessToken();
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
+  let response;
 
-  const response = await withOatiRetry(() =>
-    withOatiTlsFallback((agent) =>
-      axios.post(url, body, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': contentType,
-        },
-        httpsAgent: agent,
-        timeout: config.oatiRequestTimeoutMs,
-      })
-    )
-  );
+  try {
+    response = await withOatiRetry(() =>
+      withOatiTlsFallback((agent) =>
+        axios.post(url, body, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': contentType,
+          },
+          httpsAgent: agent,
+          timeout: config.oatiRequestTimeoutMs,
+        })
+      )
+    );
+  } catch (error) {
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
 
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
   return response.data;
 }
 
@@ -187,4 +304,7 @@ module.exports = {
   requestOati,
   requestOatiPost,
   getAcademicServicePath,
+  OatiUnavailableError,
+  isOatiUnavailableError,
+  isOatiCircuitOpen,
 };

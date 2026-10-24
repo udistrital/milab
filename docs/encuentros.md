@@ -7,16 +7,16 @@ Encuentros forma parte de Certificación y reutiliza la sesión, roles, correo y
 1. Aplicar `sql-scripts/prod/db_structure_certificacion.sql` primero en un ambiente de pruebas y validar las tablas, claves foráneas e índices creados.
 2. Aplicar `sql-scripts/prod/db_seed_certificacion.sql` para registrar los accesos de menú y permisos iniciales.
 3. Usar el procedimiento institucional de migraciones y aprobación para promover ambos scripts. No ejecutarlos directamente en producción sin revisión y respaldo de DBA.
-4. En bases existentes, aplicar [`sql/20261021_encuentros_permissions.sql`](../sql/20261021_encuentros_permissions.sql) con un DBA o propietario de los objetos para conceder a la aplicación los privilegios correspondientes sobre las tablas y secuencias de Encuentros.
+4. En bases existentes, confirmar el usuario PostgreSQL con el que se conecta la aplicación. Si es `milab_app`, aplicar [`sql/20261023_encuentros_app_permissions.sql`](../sql/20261023_encuentros_app_permissions.sql) con un DBA o propietario de los objetos.
 5. Configurar el almacenamiento de archivos descrito abajo antes de habilitar cargas y generación de certificados.
 
 Los scripts son idempotentes para las tablas, índices y accesos de Encuentros. No crean cuentas de MiLab a partir de participantes importados.
 
-La migración de permisos es transaccional e idempotente; toma como referencia el propietario y los privilegios actuales de `milab.multa`. No es necesario volver a crear las tablas ni reiniciar la base.
+La migración `20261023_encuentros_app_permissions.sql` es transaccional e idempotente y concede permisos al rol PostgreSQL `milab_app`; solo sirve si ese es el usuario configurado en `DB_USER` o en el secreto de Secrets Manager. La migración anterior `20261021_encuentros_permissions.sql` toma como referencia el propietario y los privilegios directos de `milab.multa`, por lo que no garantiza permisos para un usuario de aplicación distinto. Estos `GRANT` de PostgreSQL tampoco asignan roles ni accesos de MiLab: para eso se requiere `db_seed_certificacion.sql` y que la cuenta tenga un rol de gestión de Encuentros.
 
 ## Archivos y configuración de correo
 
-`ENCUENTROS_STORAGE_DIR` es opcional. Si no se define, MiLab guarda los archivos en `private/encuentros` bajo el directorio de trabajo. En despliegues con contenedores, configurar esta variable a un volumen persistente, privado y con permisos de lectura/escritura para el proceso de Node.js. No publicar este directorio como contenido estático.
+`ENCUENTROS_STORAGE_DIR` es opcional. Si no se define, MiLab guarda los archivos en `private/encuentros` bajo el directorio de trabajo. En despliegues con contenedores, montar almacenamiento persistente, privado y con permisos de lectura/escritura para el proceso de Node.js en `/usr/src/app/private/encuentros`; no publicar este directorio como contenido estático. En EC2 de pruebas se usa `/opt/milab-data/encuentros`, fuera del árbol `/opt/milab` que CI sincroniza con `rsync --delete`, y tanto CI como el script de reset configuran ese montaje.
 
 Las URL del QR se generan con `APP_BASE_URL` y la ruta pública `/encuentros/verificar/:token`. Enviar certificados usa el transportador institucional configurado mediante las variables de correo existentes (`EMAIL_USER`, `EMAIL_PASSWORD` y `EMAIL_HOST` o `EMAIL_SERVICE`). Las pruebas unitarias no envían correo.
 
@@ -54,12 +54,15 @@ Reglas:
 
 ## Cierre del evento y envío de certificados
 
-Al finalizar un evento, el sistema:
+Al finalizar un evento, puedes elegir entre enviar de inmediato los certificados pendientes a todas las participaciones completadas o hacerlo manualmente desde el detalle. En el modo manual, selecciona los asistentes que recibirán certificado y marca si deseas enviarles el correo. Los certificados generados sin correo quedan disponibles para descarga y su medalla se enlaza cuando el documento coincide con una cuenta MiLab activa.
 
-1. Cambia el estado a `finalizado`.
-2. Identifica los participantes con entrada y salida registradas que aún no tienen su certificado enviado (`GET /encuentros/api/eventos/:eventoId/certificados/pendientes`).
-3. Muestra cuántos certificados quedaron pendientes y los envía uno a uno con `POST /encuentros/api/eventos/:eventoId/participantes/:participanteId/certificado/generar`, esperando la respuesta de cada envío antes del siguiente.
-4. Al terminar, confirma cuántos se enviaron y lista los que tuvieron error. Los errores pueden reintentarse desde el detalle del participante.
+El informe PDF reúne en su primera página las estadísticas y el resumen de participantes por facultad. Desde el detalle también puedes descargar un Excel con los datos de participantes, documento, correo, cargo, facultad, UAL, entrada, salida, estado de participación, código y estado del certificado, fechas de emisión/envío y estado de la medalla.
+
+## Eventos históricos
+
+Al crear un evento que ya se realizó, marca **El evento ya se realizó**. El sistema valida que su fecha y hora de finalización ya hayan pasado en `America/Bogota`. El evento quedará finalizado y su detalle permitirá descargar la plantilla de participaciones históricas. Completa las seis columnas de participante y añade `Entrada (ISO 8601)` y `Salida (ISO 8601)`; las fechas deben incluir zona horaria, por ejemplo `2026-10-20T09:00:00-05:00`. La salida no puede existir sin entrada ni ser anterior a ella.
+
+Previsualiza el archivo antes de importarlo. Después puedes elegir si se envían correos a quienes tengan entrada y salida. Los certificados se generan para esas participaciones completadas; participantes sin ambas marcas se importan, pero no reciben certificado en ese proceso.
 
 ## Validación
 
