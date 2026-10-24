@@ -112,6 +112,7 @@ if (!isDevEnvironment || !isDevLoginEnabled) {
 
     req.session.user = buildSessionUser(usuario);
     startSessionLifetime(req.session);
+    req.session.showOatiLoginWarning = true;
 
     return res.redirect('/milab/inicio');
   });

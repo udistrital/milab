@@ -75,6 +75,32 @@
     }
   }
 
+  async function warnAboutOatiOutageOnLogin() {
+    if (document.body.dataset.showOatiLoginWarning !== 'true') return;
+
+    try {
+      const response = await originalFetch('/milab/api/check-services', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data?.servicesAreUp !== false) return;
+
+      const dialog = window.MiLabDialogs?.alert;
+      const message =
+        'No hay conexión con los sistemas OATI en este momento. Algunas consultas podrían no estar disponibles temporalmente.';
+      if (typeof dialog === 'function') {
+        await dialog(message);
+      } else {
+        window.console.warn('MiLabDialogs.alert no está disponible para notificar caída OATI.');
+      }
+    } catch (error) {
+      window.console.warn('No fue posible verificar el estado de OATI al iniciar sesión.', error);
+    }
+  }
+
   window.fetch = async function sessionAwareFetch(input, options) {
     const response = await originalFetch(input, options);
     if (isMilabRequest(input)) inspectResponse(response);
@@ -137,6 +163,7 @@
   }
 
   if (!authenticated) return;
+  void warnAboutOatiOutageOnLogin();
   scheduleExpiry(Number(document.body.dataset.sessionExpiresIn));
   for (const event of ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel']) {
     document.addEventListener(
