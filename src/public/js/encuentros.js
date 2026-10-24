@@ -377,8 +377,8 @@
       'Entrada',
       'Salida',
       'Certificado',
-      'Acciones',
     ].forEach((label) => headRow.appendChild(element('th', label)));
+    headRow.appendChild(element('th', 'Acciones', 'app-grid-sticky-action'));
     head.appendChild(headRow);
     const body = document.createElement('tbody');
     participants.forEach((participant) => {
@@ -450,27 +450,45 @@
           );
         } else if (!participant.salida_en) {
           actions.appendChild(
-            actionButton('Salida', 'btn-outline-primary', () =>
+            actionButton('Registrar salida', 'btn-outline-primary btn-sm', () =>
               recordAttendance(event, participant, 'salida')
             )
           );
         }
+      } else if (
+        event.estado === 'finalizado' &&
+        participant.entrada_en &&
+        !participant.salida_en
+      ) {
+        actions.appendChild(
+          actionButton('Registrar salida', 'btn-outline-primary btn-sm', () =>
+            recordAttendance(event, participant, 'salida')
+          )
+        );
       }
       if (participant.salida_en && !participant.certificado_id) {
         actions.appendChild(
-          actionButton('Generar certificado', 'btn-outline-primary', () =>
+          actionButton('Generar y enviar certificado', 'btn-outline-primary btn-sm', () =>
             generateCertificate(event.id, participant.id)
           )
         );
       }
-      if (participant.estado_certificado === 'error' && participant.certificado_id) {
+      if (
+        participant.certificado_id &&
+        participant.validez_certificado !== 'anulado' &&
+        ['pendiente', 'error', 'omitido'].includes(participant.estado_certificado)
+      ) {
         if (actions.childNodes.length) actions.appendChild(document.createTextNode(' '));
         actions.appendChild(
-          actionButton('Reintentar correo', 'btn-outline-warning', () =>
-            retryEmail(participant.certificado_id)
+          actionButton(
+            participant.estado_certificado === 'error' ? 'Reintentar correo' : 'Enviar certificado',
+            'btn-outline-warning btn-sm',
+            () => retryEmail(participant.certificado_id)
           )
         );
       }
+      if (!actions.childNodes.length) actions.appendChild(element('span', '—', 'text-muted small'));
+      actions.classList.add('app-grid-sticky-action');
       row.appendChild(actions);
       body.appendChild(row);
     });
@@ -512,6 +530,13 @@
           () => generateSelectedCertificates(event.id, table, sendEmail, generateButton)
         );
         controls.append(emailLabel, generateButton);
+        controls.appendChild(
+          element(
+            'span',
+            'Para salidas pendientes o certificados individuales, usa Acciones en cada fila.',
+            'small text-muted'
+          )
+        );
       } else if (allowExitSelection) {
         controls.append(
           element(
@@ -716,13 +741,13 @@
     content.appendChild(
       element(
         'p',
-        'Usa la plantilla para importar participantes y marcas de entrada/salida. Solo quienes tengan ambas marcas podrán recibir certificado.',
+        'Puedes cargar directamente el Excel de participantes exportado desde otro ambiente. Se importan los datos, la fecha de inscripción y las marcas de entrada/salida. Los códigos y QR de certificados del origen no se reutilizan: se genera un certificado nuevo para este encuentro, con envío opcional.',
         'small text-muted'
       )
     );
     const templateLink = element(
       'a',
-      'Descargar plantilla de participaciones',
+      'Descargar plantilla en el formato de participantes',
       'btn btn-sm btn-outline-secondary me-2 mb-2'
     );
     templateLink.href = `${apiBase}/eventos/${event.id}/plantilla-participaciones`;
@@ -856,13 +881,17 @@
             'small'
           )
         );
-        if (!participant.entrada_en) {
+        if (event.estado === 'en_curso' && !participant.entrada_en) {
           card.appendChild(
             actionButton('Registrar entrada', 'btn-outline-success', () =>
               recordAttendance(event, participant, 'entrada')
             )
           );
-        } else if (!participant.salida_en) {
+        } else if (
+          participant.entrada_en &&
+          !participant.salida_en &&
+          ['en_curso', 'finalizado'].includes(event.estado)
+        ) {
           card.appendChild(
             actionButton('Registrar salida', 'btn-outline-primary', () =>
               recordAttendance(event, participant, 'salida')
@@ -1440,9 +1469,16 @@
     const table = element('table', undefined, 'table table-sm');
     const head = document.createElement('thead');
     const header = document.createElement('tr');
-    ['Fila', 'Nombre', 'Documento', 'Correo', 'Entrada', 'Salida', 'Validación'].forEach((label) =>
-      header.appendChild(element('th', label))
-    );
+    [
+      'Fila',
+      'Nombre',
+      'Documento',
+      'Correo',
+      'Inscripción',
+      'Entrada',
+      'Salida',
+      'Validación',
+    ].forEach((label) => header.appendChild(element('th', label)));
     head.appendChild(header);
     const body = document.createElement('tbody');
     result.filas.forEach((row) => {
@@ -1451,6 +1487,7 @@
       addCell(tr, row.participante.nombre);
       addCell(tr, row.participante.documento);
       addCell(tr, row.participante.correo);
+      addCell(tr, formatTimestamp(row.fecha_inscripcion));
       addCell(tr, formatTimestamp(row.entrada_en));
       addCell(tr, formatTimestamp(row.salida_en));
       addCell(
