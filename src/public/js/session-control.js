@@ -65,7 +65,7 @@
             oatiUnavailableDialogOpen = false;
           });
         } else {
-          window.alert(message);
+          window.console.warn('MiLabDialogs.alert no está disponible para notificar OATI.');
           oatiUnavailableDialogOpen = false;
         }
       }
