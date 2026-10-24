@@ -531,9 +531,6 @@ async function navigationMiddleware(req, res, next) {
   try {
     const sessionUser = req.session?.user || null;
     const showOatiLoginWarning = Boolean(sessionUser && req.session?.showOatiLoginWarning);
-    if (showOatiLoginWarning && req.session) {
-      req.session.showOatiLoginWarning = false;
-    }
     const navigation = await buildNavigation(sessionUser);
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);

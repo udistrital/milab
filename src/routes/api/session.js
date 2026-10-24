@@ -16,5 +16,11 @@ function respondWithSession(req, res, next) {
 
 router.get('/status', respondWithSession);
 router.post('/activity', respondWithSession);
+router.post('/oati-warning/ack', (req, res) => {
+  if (req.session) {
+    req.session.showOatiLoginWarning = false;
+  }
+  return res.set('Cache-Control', 'no-store').json({ ok: true });
+});
 
 module.exports = router;

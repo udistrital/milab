@@ -200,6 +200,8 @@ test('login warning displays a popup when OATI services are confirmed down', asy
   await client.flush();
 
   assert.equal(client.requests[0].url, '/milab/api/check-services');
+  assert.equal(client.requests[1].url, '/milab/auth/session/oati-warning/ack');
+  assert.equal(client.requests[1].options.method, 'POST');
   assert.equal(client.dialogs.length, 1);
   assert.match(client.dialogs[0], /No hay conexión con los sistemas OATI/i);
 });
