@@ -4,8 +4,10 @@
   <section class="dashboard-topbar dashboard-topbar--compact">
     <div class="dashboard-topbar-copy">
       <span class="dashboard-panel-badge dashboard-panel-badge--scope"><%= scopePresentation.badge %></span>
-      <h1 class="dashboard-simple-title"><%= scopePresentation.title %></h1>
-      <p class="dashboard-simple-subtitle"><%= scopePresentation.subtitle %></p>
+      <div class="app-page-header--inline">
+        <h1 class="dashboard-simple-title"><%= scopePresentation.title %></h1>
+        <p class="dashboard-simple-subtitle"><%= scopePresentation.subtitle %></p>
+      </div>
 
       <% if (scopePresentation.chips && scopePresentation.chips.length) { %>
         <div class="dashboard-scope-chip-row">

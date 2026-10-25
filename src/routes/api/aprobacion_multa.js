@@ -16,6 +16,10 @@ const {
 const { wantsJson } = require('../middlewares/error-handler');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const {
+  buildSanctionListReturnPath,
+  SANCTION_LIST_PATH,
+} = require('../../libs/sanction-list-navigation');
+const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
@@ -89,11 +93,11 @@ function resolvePostActionRedirectPath(req) {
 
   const role = getSessionRole(req);
   if (role === 'laboratorista') {
-    return '/milab/api/get_list_multas';
+    return buildSanctionListReturnPath(req.body);
   }
 
   if (source === 'listado') {
-    return '/milab/api/get_list_multas';
+    return buildSanctionListReturnPath(req.body);
   }
 
   return '/milab/api/aprobacion_multa';
@@ -118,7 +122,8 @@ function resolvePostActionFeedbackValue(payload = {}) {
 }
 
 function buildSuccessRedirectPath(req, redirectTo, payload = {}) {
-  const isListRedirect = redirectTo === '/milab/api/get_list_multas';
+  const isListRedirect =
+    redirectTo === SANCTION_LIST_PATH || redirectTo.startsWith(`${SANCTION_LIST_PATH}?`);
   const isPersonaRedirect = redirectTo.startsWith('/milab/api/get-info-multa/persona?');
   if (!isListRedirect && !isPersonaRedirect) {
     return redirectTo;

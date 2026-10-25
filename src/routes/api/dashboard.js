@@ -3303,7 +3303,7 @@ router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (
       keepFullTables
     );
 
-    return res.render('home/dashboard', {
+    const dashboardViewData = {
       filtro,
       labelFormat,
       selectedChart,
@@ -3327,6 +3327,35 @@ router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (
       inventoryDashboardUrl,
       dashboardWarnings,
       canViewInventoryDashboard: !laboratoristaScopeUnavailable,
+    };
+
+    return res.render('home/dashboard', dashboardViewData, (renderError, html) => {
+      if (renderError) {
+        console.error('Error renderizando la vista del dashboard:', renderError);
+        if (wantsJson(req)) {
+          return res.status(500).json({
+            ok: false,
+            message: 'No fue posible cargar el dashboard.',
+            message2: 'Intenta nuevamente en unos minutos.',
+          });
+        }
+
+        return renderApplicationError(
+          res,
+          {
+            status: 500,
+            message: 'No fue posible cargar el dashboard.',
+            message2: 'Intenta nuevamente en unos minutos.',
+            limit: null,
+            error: renderError,
+            adminErrorDetail: '',
+          },
+          req,
+          renderError
+        );
+      }
+
+      return res.send(html);
     });
   } catch (error) {
     console.error('Error en dashboard:', error);

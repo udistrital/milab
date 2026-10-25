@@ -80,7 +80,8 @@
             <%- include('../partials/csrf_field') %>
             <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
             <button class="btn btn-perso" type="submit" data-submit-lock="true">
-              <i class="bi bi-plus-circle" aria-hidden="true"></i> Agregar sanción
+              <i class="bi bi-plus-circle" aria-hidden="true"></i>
+              <%= successFeedback === 'registrada' ? 'Volver al registro' : 'Agregar sanción' %>
             </button>
           </form>
         </div>
@@ -258,7 +259,7 @@
             <h3 class="h5 mt-3">Registrar sanción</h3>
             <p class="text-muted">Crear un nuevo registro para esta persona.</p>
             <button class="btn btn-perso w-100" type="submit" data-submit-lock="true">
-              Continuar con el registro
+              <%= successFeedback === 'registrada' ? 'Volver al registro' : 'Continuar con el registro' %>
             </button>
           </div>
         </form>

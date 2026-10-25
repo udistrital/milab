@@ -257,6 +257,85 @@ router.post('/update', requireAdmin, async (req, res) => {
   }
 });
 
+router.post('/delete', requireAdmin, async (req, res) => {
+  const menuItemId = Number(req.body?.menu_item_id);
+
+  if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
+    return renderAdminMenusPage(res, {
+      error: 'No se pudo identificar el ítem de menú a eliminar.',
+    });
+  }
+
+  let client;
+  let deletedItem;
+  let childCount = 0;
+  let errorMessage = null;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const itemResult = await client.query(
+      `
+        SELECT id, section, label, route
+        FROM menu_item
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [menuItemId]
+    );
+    deletedItem = itemResult.rows[0] || null;
+
+    if (!deletedItem) {
+      await client.query('ROLLBACK');
+      errorMessage = 'El ítem de menú que intentas eliminar ya no existe.';
+    } else {
+      const childrenResult = await client.query(
+        'SELECT COUNT(*)::int AS total FROM menu_item WHERE parent_id = $1',
+        [menuItemId]
+      );
+      childCount = Number(childrenResult.rows[0]?.total || 0);
+
+      await client.query('DELETE FROM menu_item WHERE id = $1', [menuItemId]);
+
+      const user = req.session?.user || {};
+      const actor = sanitizeText(user.tipo) || 'admin';
+      const document = normalizeLogDocument(user.documento_real || user.documento || '');
+      const person = `${deletedItem.section}: ${deletedItem.label}${deletedItem.route ? ` (${deletedItem.route})` : ''}`;
+      await client.query(
+        `
+          INSERT INTO log (nombre, documento, accion, persona)
+          VALUES ($1, $2, $3, $4)
+        `,
+        [actor, document || null, 'Eliminar menu', person]
+      );
+
+      await client.query('COMMIT');
+    }
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo eliminacion de menu:', rollbackError);
+      }
+    }
+    console.error('Error eliminando menu:', error);
+    errorMessage = 'No fue posible eliminar el ítem de menú.';
+  } finally {
+    if (client) client.release();
+  }
+
+  if (errorMessage) {
+    return renderAdminMenusPage(res, { error: errorMessage });
+  }
+
+  const childMessage = childCount ? ` y ${childCount} submenú(s) asociado(s)` : '';
+  return renderAdminMenusPage(res, {
+    success: `Ítem de menú eliminado${childMessage}. También se eliminaron sus permisos asociados.`,
+  });
+});
+
 router.post('/permissions', requireAdmin, async (req, res) => {
   const { role_id: roleIdRaw, menu_item_id: menuItemIdRaw, enabled } = req.body;
   const roleId = Number(roleIdRaw);
@@ -377,14 +456,17 @@ router.post('/prestamos-access', requireAdmin, async (req, res) => {
         FROM dependencia_facultad
         WHERE dependencia_facultad_id = $1
           AND activo = TRUE
-        LIMIT 1
-      `,
+            AND padre_id IS NULL
+          LIMIT 1
+        `,
       [facultadId]
     );
 
     const facultyName = facultyResult.rows[0]?.nombre;
     if (!facultyName) {
-      return res.status(404).json({ ok: false, message: 'La facultad no existe.' });
+      return res
+        .status(404)
+        .json({ ok: false, message: 'La facultad no existe o no es una facultad raíz.' });
     }
 
     await updatePrestamosFacultyAccess(

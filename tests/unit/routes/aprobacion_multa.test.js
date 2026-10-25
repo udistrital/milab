@@ -298,10 +298,17 @@ test('aprobacion_multa activar from listado redirects to sanctions list', async 
       multa_id: '1',
       tipo_sancion: 'Firma de compromiso de buen uso',
       source: 'listado',
+      fecha_desde: '2026-01-01',
+      estado_multa: 'Pendiente',
+      facultad_id: '10',
+      return_url: 'https://attacker.example/',
     });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=activada');
+    assert.equal(
+      response.headers.location,
+      '/milab/api/get_list_multas?fecha_desde=2026-01-01&estado_multa=Pendiente&facultad_id=10&success=activada'
+    );
   } finally {
     loaded.restore();
   }

@@ -410,12 +410,42 @@ test('listPrestamosFacultyAccess returns configured rows and rejects unrelated d
       monitor_permitido: true,
     },
   ];
+  let capturedQuery = '';
   const loaded = loadPrestamosModuleAccess({
-    queryImpl: async () => ({ rows: configuredRows }),
+    queryImpl: async (query) => {
+      capturedQuery = query;
+      return { rows: configuredRows };
+    },
   });
 
   try {
     assert.deepEqual(await loaded.listPrestamosFacultyAccess(), configuredRows);
+    assert.match(capturedQuery, /f\.padre_id IS NULL/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('listPrestamosFacultyAccess filters dependencies in its legacy fallback', async () => {
+  const queries = [];
+  const loaded = loadPrestamosModuleAccess({
+    queryImpl: async (query) => {
+      queries.push(query);
+      if (query.includes('LEFT JOIN facultad_modulo_acceso')) {
+        const error = new Error('missing access metadata');
+        error.code = '42703';
+        throw error;
+      }
+      return { rows: [{ facultad_id: 3, nombre: 'Facultad de Ciencias' }] };
+    },
+  });
+
+  try {
+    assert.deepEqual(await loaded.listPrestamosFacultyAccess(), [
+      { facultad_id: 3, nombre: 'Facultad de Ciencias' },
+    ]);
+    assert.equal(queries.length, 2);
+    assert.match(queries[1], /padre_id IS NULL/);
   } finally {
     loaded.restore();
   }

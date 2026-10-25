@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
+const ejs = require('ejs');
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/dashboard.js');
+const workspaceRoot = path.resolve(__dirname, '../../..');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
@@ -13,18 +15,56 @@ const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 
-function buildApp(route, sessionUser) {
+function buildApp(route, sessionUser, options = {}) {
   const app = express();
   app.use(express.json());
 
   app.use((req, res, next) => {
-    req.session = { user: sessionUser };
-    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    req.session = {
+      user: sessionUser,
+      ...(options.impersonationAdminUser
+        ? { impersonationAdminUser: options.impersonationAdminUser }
+        : {}),
+    };
+    res.render = (view, locals, callback) => {
+      if (typeof options.render === 'function') {
+        return options.render({ view, locals, callback, req, res });
+      }
+      return res.status(res.statusCode || 200).json({ view, locals });
+    };
     next();
   });
   app.use('/', route);
 
   return app;
+}
+
+function renderDashboardTemplate(locals, sessionUser) {
+  return ejs.renderFile(
+    path.join(workspaceRoot, 'src/views/home/dashboard.ejs'),
+    {
+      csrfToken: 'test-token',
+      cspNonce: 'test-nonce',
+      appVersion: 'test',
+      appNavigation: {
+        primaryLinks: [],
+        secondaryGroups: [],
+        accountLinks: [],
+        role: 'laboratorista',
+        roleLabel: 'Laboratorista',
+      },
+      isAuthenticated: true,
+      tipo: sessionUser.tipo,
+      nombre: sessionUser.nombre || 'Usuario Sintético',
+      documento: sessionUser.documento || '',
+      pendingSanctionsCount: 0,
+      pendingInventoryApprovalsCount: 0,
+      environmentName: 'test',
+      isNonProductionEnvironment: true,
+      ...locals,
+    },
+    { views: [path.join(workspaceRoot, 'src/views')] }
+  );
 }
 
 function loadDashboardRoute({
@@ -1478,7 +1518,99 @@ test('dashboard laboratorista scope reads the UAL faculty column from ual', asyn
   }
 });
 
-test('dashboard stays available when a laboratorista assignment table is unavailable', async () => {
+test('dashboard renders for a synthetic masters student with a laboratorista profile', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: 'synthetic-lab-user' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Sintético', facultad_id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+  const sessionUser = {
+    tipo: 'laboratorista',
+    roles: ['laboratorista', 'estudiante'],
+    documento: 'synthetic-lab-user',
+    nombre: 'Usuario Sintético',
+    carrera: 'Maestría en Ingeniería',
+    programa: 'Maestría en Ingeniería',
+  };
+
+  try {
+    const response = await request(buildApp(loaded.route, sessionUser)).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.dashboardRole, 'laboratorista');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, false);
+
+    const html = await renderDashboardTemplate(response.body.locals, sessionUser);
+
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.ok(html.length > 1000);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard render failures include admin diagnostics during impersonation', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: 'synthetic-lab-user' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Sintético', facultad_id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+  const app = buildApp(
+    loaded.route,
+    {
+      tipo: 'laboratorista',
+      roles: ['laboratorista', 'estudiante'],
+      documento: 'synthetic-lab-user',
+    },
+    {
+      impersonationAdminUser: { tipo: 'admin' },
+      render: ({ view, locals, callback, res }) => {
+        if (view === 'home/dashboard') {
+          return callback(new Error('synthetic dashboard EJS failure'));
+        }
+        return res.status(res.statusCode || 200).json({ view, locals });
+      },
+    }
+  );
+
+  try {
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.adminErrorDetail, /synthetic dashboard EJS failure/);
+    assert.match(response.body.locals.adminErrorDetail, /GET \//);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard renders for a masters student with a laboratorista role when assignments are unavailable', async () => {
   const missingAssignments = Object.assign(
     new Error('relation "laboratorista_ual" does not exist'),
     { code: '42P01' }
@@ -1499,10 +1631,15 @@ test('dashboard stays available when a laboratorista assignment table is unavail
   });
 
   try {
-    const app = buildApp(loaded.route, {
+    const sessionUser = {
       tipo: 'laboratorista',
+      roles: ['laboratorista', 'estudiante'],
       documento: '123',
-    });
+      nombre: 'Usuario Sintético',
+      carrera: 'Maestría en Ingeniería',
+      programa: 'Maestría en Ingeniería',
+    };
+    const app = buildApp(loaded.route, sessionUser);
     const response = await request(app).get('/');
 
     assert.equal(response.status, 200);
@@ -1513,6 +1650,10 @@ test('dashboard stays available when a laboratorista assignment table is unavail
       response.body.locals.dashboardWarnings[0],
       /No se pudieron verificar los laboratorios/
     );
+
+    const html = await renderDashboardTemplate(response.body.locals, sessionUser);
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.ok(html.length > 1000);
   } finally {
     loaded.restore();
   }

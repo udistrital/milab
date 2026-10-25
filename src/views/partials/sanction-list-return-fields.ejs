@@ -1,0 +1,6 @@
+<% const returnFilterFields = ['fecha_desde', 'fecha_hasta', 'estado_multa', 'facultad_id', 'dependencia_id', 'ual_id']; %>
+<% returnFilterFields.forEach(function (field) { %>
+    <% if (returnFilters && returnFilters[field] !== undefined && returnFilters[field] !== null) { %>
+        <input type="hidden" name="<%= field %>" value="<%= returnFilters[field] %>">
+    <% } %>
+<% }); %>
