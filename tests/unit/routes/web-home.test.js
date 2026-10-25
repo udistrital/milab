@@ -61,6 +61,18 @@ test('authenticated monitoring roles land on the existing dashboard from inicio'
   assert.equal(response.headers.location, '/milab/api/dashboard');
 });
 
+test('gestores de laboratorio land on the global dashboard from inicio', async () => {
+  delete require.cache[routePath];
+  const app = buildApp({
+    tipo: 'estudiante',
+    roles: ['estudiante', 'gestor_laboratorio'],
+  });
+  const response = await request(app).get('/inicio');
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/api/dashboard');
+});
+
 test('authenticated users without monitoring access retain their welcome page', async () => {
   delete require.cache[routePath];
   const app = buildApp({ tipo: 'estudiante' });

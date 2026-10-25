@@ -1049,12 +1049,33 @@ body.app-shell .app-sidebar-group-toggle::after {
 }
 
 body.app-shell .app-sidebar-group-toggle:not(.collapsed) {
+  border: 1px solid rgba(223, 27, 27, 0.2);
   color: var(--app-accent-deep) !important;
-  background: rgba(223, 27, 27, 0.07);
+  background: rgba(223, 27, 27, 0.12);
+  box-shadow:
+    inset 3px 0 var(--app-accent),
+    0 5px 12px rgba(18, 40, 48, 0.06);
+}
+
+body.app-shell .app-sidebar-group .accordion-collapse.show {
+  margin: 0.2rem 0 0.3rem 0.55rem;
+  border-left: 2px solid rgba(223, 27, 27, 0.2);
+  border-radius: 0 12px 12px 0;
+  background: rgba(20, 51, 58, 0.045);
 }
 
 body.app-shell .app-sidebar-group .accordion-body {
   padding: 0.25rem 0 0.25rem 0.65rem;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-group-toggle:not(.collapsed) {
+  border-color: rgba(223, 27, 27, 0.36);
+  background: rgba(223, 27, 27, 0.18);
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-sidebar-group .accordion-collapse.show {
+  border-left-color: rgba(223, 27, 27, 0.34);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 body.app-shell .app-sidebar-sub-link {
@@ -1082,6 +1103,48 @@ body.app-shell .app-navbar-actions {
 
 body.app-shell .app-main-content {
   min-width: 0;
+}
+
+body.app-shell .app-breadcrumb-nav {
+  margin: 0.55rem 0.4rem 0;
+}
+
+body.app-shell .app-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0 0.25rem;
+  color: var(--app-text-muted);
+  font-size: 0.78rem;
+  --bs-breadcrumb-divider: '›';
+}
+
+body.app-shell .app-breadcrumb .breadcrumb-item + .breadcrumb-item::before {
+  padding-inline: 0.45rem;
+  color: var(--app-text-muted);
+}
+
+body.app-shell .app-breadcrumb a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--app-text-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+body.app-shell .app-breadcrumb a:hover,
+body.app-shell .app-breadcrumb a:focus-visible {
+  color: var(--app-accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+body.app-shell .app-breadcrumb .breadcrumb-item.active {
+  color: var(--app-text-main);
+  font-weight: 700;
 }
 
 @media (min-width: 1200px) and (max-width: 1599.98px) {
@@ -1855,6 +1918,63 @@ body.app-shell .app-page-header {
   border-radius: 20px;
   background: var(--app-surface);
   box-shadow: var(--app-shadow);
+}
+
+body.app-shell .app-page-header--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+}
+
+body.app-shell .app-page-header--inline .app-page-title {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 100%;
+  font-size: clamp(1.1rem, 1.45vw, 1.45rem);
+}
+
+body.app-shell .app-page-title-icon {
+  display: grid;
+  width: 2.65rem;
+  height: 2.65rem;
+  flex: 0 0 2.65rem;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 0.85rem;
+  color: var(--app-text-main);
+  background: rgba(20, 51, 58, 0.06);
+  font-size: 1.2rem;
+}
+
+body.app-shell .app-page-header--inline .app-page-title > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .app-page-header--inline .app-page-subtitle {
+  flex: 1 1 24rem;
+  min-width: 0;
+  max-width: none;
+  padding-left: 1rem;
+  border-left: 1px solid var(--app-border);
+  font-size: clamp(0.82rem, 0.95vw, 0.95rem);
+  line-height: 1.45;
+}
+
+@media (max-width: 767.98px) {
+  body.app-shell .app-page-header--inline {
+    align-items: flex-start;
+  }
+
+  body.app-shell .app-page-header--inline .app-page-subtitle {
+    flex-basis: 100%;
+    padding: 0.6rem 0 0;
+    border-top: 1px solid var(--app-border);
+    border-left: 0;
+  }
 }
 
 body.app-shell .app-fine-search-card {
@@ -2865,6 +2985,34 @@ body.app-shell .dashboard-page--simplified .dashboard-select-shell i,
 body.app-shell .dashboard-page--simplified .dashboard-control-group label,
 body.app-shell .dashboard-page--simplified .dashboard-panel-kicker {
   color: #2f2f2f;
+}
+
+body.app-shell .dashboard-scope-filter {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin: 1rem 0 1.25rem;
+  padding: 1rem;
+  border: 1px solid rgba(23, 23, 23, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+body.app-shell .dashboard-scope-filter .dashboard-control-group {
+  min-width: min(16rem, 100%);
+  flex: 1 1 16rem;
+}
+
+body.app-shell .dashboard-scope-filter > .btn {
+  min-height: 2.85rem;
+  flex: 0 0 auto;
+}
+
+body.app-shell .dashboard-scope-filter-note {
+  flex: 1 0 100%;
+  color: #4f5d70;
+  font-size: 0.82rem;
 }
 
 body.app-shell .dashboard-page--simplified .dashboard-main-card {

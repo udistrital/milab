@@ -146,6 +146,20 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
+function ensureDashboardMonitoringLink(navigation, roles) {
+  if (!normalizeRoles(roles).includes('gestor_laboratorio')) {
+    return navigation;
+  }
+
+  const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
+  const dashboardHref = '/milab/api/dashboard';
+  if (!primaryLinks.some((item) => item?.href === dashboardHref)) {
+    primaryLinks.push(createLink('Monitoreo', dashboardHref, 'bi-activity'));
+  }
+
+  return { ...navigation, primaryLinks };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -492,13 +506,16 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      return ensureCoordinatorSignatureAccountLink(
-        removeSanctionAuthorizationLink({
-          isAuthenticated,
-          role: getPrimaryRole(roles),
-          roleLabel: formatRoleLabel(roles),
-          ...filteredMenu,
-        }),
+      return ensureDashboardMonitoringLink(
+        ensureCoordinatorSignatureAccountLink(
+          removeSanctionAuthorizationLink({
+            isAuthenticated,
+            role: getPrimaryRole(roles),
+            roleLabel: formatRoleLabel(roles),
+            ...filteredMenu,
+          }),
+          roles
+        ),
         roles
       );
     }
@@ -509,10 +526,13 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return {
-      ...removeSanctionAuthorizationLink(filteredFallback),
-      roleLabel: formatRoleLabel(roles),
-    };
+    return ensureDashboardMonitoringLink(
+      {
+        ...removeSanctionAuthorizationLink(filteredFallback),
+        roleLabel: formatRoleLabel(roles),
+      },
+      roles
+    );
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -521,10 +541,13 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return {
-    ...removeSanctionAuthorizationLink(filteredFallback),
-    roleLabel: formatRoleLabel(roles),
-  };
+  return ensureDashboardMonitoringLink(
+    {
+      ...removeSanctionAuthorizationLink(filteredFallback),
+      roleLabel: formatRoleLabel(roles),
+    },
+    roles
+  );
 }
 
 async function navigationMiddleware(req, res, next) {

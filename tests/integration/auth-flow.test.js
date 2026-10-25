@@ -47,7 +47,7 @@ function buildPassportStub(user) {
   };
 }
 
-function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail }) {
+function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail, mountPath = '/' }) {
   const sessionHarness = createSessionHarness(sessionState);
   const stubs = [
     [indexPath, buildApiIndexStub()],
@@ -90,6 +90,7 @@ function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail }) {
     sessionHarness,
     ...buildApp({
       entryPath: appPath,
+      mountPath,
       sessionHarness,
       stubs,
       purgePaths: [appPath, indexPath, profilePath, loginPath, microsoftPath, logoutPath, homePath],
@@ -137,6 +138,24 @@ test('microsoft callback stores authenticated user in session and redirects home
     assert.equal(response.headers.location, '/milab/inicio');
     assert.equal(loaded.sessionHarness.state.user.correo, usuario.correo);
     assert.equal(loaded.sessionHarness.state.microsoftProfile, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('mounted logout path destroys the session and redirects to MiLab home', async () => {
+  const loaded = loadMilabApp({
+    sessionState: { user: createUser() },
+    mountPath: '/milab',
+  });
+
+  try {
+    const response = await request(loaded.app).get('/milab/auth/logout');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/');
+    assert.equal(loaded.sessionHarness.state.user, undefined);
+    assert.match(response.headers['set-cookie'][0], /^connect\.sid=;/);
   } finally {
     loaded.restore();
   }
