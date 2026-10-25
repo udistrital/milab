@@ -88,7 +88,7 @@ test('limiter handler blocks exhausted IP and ipBlockMiddleware rejects subseque
 
     assert.equal(nextCalled, false);
     assert.equal(res.headers['X-IP-BLOCKED'], 'true');
-    assert.equal(res.rendered.view, 'home/login_2');
+    assert.equal(res.rendered.view, 'home/index_2');
 
     const blockedReq = { ip: '10.0.0.1' };
     const blockedRes = createRenderResponse();
