@@ -60,7 +60,7 @@ function renderPaso2(overrides = {}) {
   });
 }
 
-function renderDocente() {
+function renderDocente(overrides = {}) {
   return ejs.renderFile(viewPath, {
     tipo: 'laboratorista',
     csrfToken: 'csrf-token',
@@ -78,6 +78,7 @@ function renderDocente() {
     registrationUrl: '/milab/api/get-info-multa-docente',
     searchUrl: '/milab/api/get-info-multa-docente/get',
     activeSanctionCount: 0,
+    ...overrides,
   });
 }
 
@@ -211,6 +212,18 @@ test('paso 2 shows the success alert from a completed action', async () => {
   const html = await renderPaso2({ successFeedback: 'aplazada' });
 
   assert.match(html, /La sanción se aplazó correctamente\./);
+});
+
+test('student and teacher success views offer a direct return to registration', async () => {
+  const [studentHtml, teacherHtml] = await Promise.all([
+    renderPaso2({ successFeedback: 'registrada' }),
+    renderDocente({ successFeedback: 'registrada' }),
+  ]);
+
+  assert.match(studentHtml, /Volver al registro/);
+  assert.doesNotMatch(studentHtml, /Agregar sanción/);
+  assert.match(teacherHtml, /Volver al registro/);
+  assert.doesNotMatch(teacherHtml, /Continuar con el registro/);
 });
 
 test('docente view keeps the previous layout without student-only actions', async () => {

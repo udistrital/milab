@@ -282,7 +282,13 @@ const NOMBRE = 'ESTUDIANTE PRUEBA';
 function buildRegistrationStubs({
   records = [],
   docentes = [],
-  estadoNames = { A: 'ACTIVO', B: 'PRUEBA AC Y ACTIVO', E: 'EGRESADO', I: 'INACTIVO' },
+  estadoNames = {
+    A: 'ACTIVO',
+    B: 'PRUEBA AC Y ACTIVO',
+    E: 'EGRESADO',
+    I: 'INACTIVO',
+    U: 'NO ESTUDIANTE ACO04',
+  },
   milabTables = {},
   assignedRoles = [],
   assignedRolesCorreo = `no-email+${DOC}@placeholder.milab.local`,
@@ -464,6 +470,41 @@ test('registro permite el acceso a estudiantes en prueba academica', async () =>
 test('registro en prueba academica crea perfil estudiante y concede acceso', async () => {
   const stubs = buildRegistrationStubs({
     records: [record('20240000001', 'B', '673')],
+    usuarioRow: {
+      id: 25,
+      documento: DOC,
+      correo: `no-email+${DOC}@placeholder.milab.local`,
+    },
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/inicio');
+  assert.equal(roleWrites(stubs.executed).includes('estudiante'), true);
+  assert.equal(
+    stubs.executed.some(({ sql }) => sql.includes('INSERT INTO perfil_estudiante')),
+    true
+  );
+});
+
+test('registro permite NO ESTUDIANTE ACO04 (U) como perfil estudiante', async () => {
+  const response = await postIdentify(
+    buildRegistrationStubs({
+      records: [record('20240000001', 'U', '673')],
+    })
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.view, 'home/profile');
+  assert.equal(response.body.locals.tipo_usuario, 'estudiante');
+  assert.equal(response.body.locals.codigo, '20240000001');
+  assert.equal(response.body.locals.estado, 'NO ESTUDIANTE ACO04');
+});
+
+test('registro asigna el rol estudiante a NO ESTUDIANTE ACO04 (U)', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'U', '673')],
     usuarioRow: {
       id: 25,
       documento: DOC,

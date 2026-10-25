@@ -1,6 +1,7 @@
 <%
     const returnSource = locals.returnSource || 'listado';
     const lookupToken = locals.lookupToken || '';
+    const returnFilters = locals.returnFilters || {};
 %>
 <style nonce="<%= cspNonce %>">
     .app-detail-modal {
@@ -123,6 +124,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="multa_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <div class="col-12">
                             <label class="form-label" for="tipo_sancion_listado">Tipo de sanción</label>
@@ -142,6 +144,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="multa_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary" data-submit-loading-label="Saldando...">Saldar sanción</button>
@@ -150,6 +153,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="multa_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-warning" data-submit-loading-label="Aplazando...">Aplazar sanción</button>
@@ -158,6 +162,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="multa_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-success" data-submit-loading-label="Reactivando...">Reactivar sanción</button>
@@ -166,6 +171,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="con_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary" data-submit-loading-label="Procesando...">Saldar sanción</button>
@@ -174,6 +180,7 @@
                         <%- include('./csrf_field'); %>
                         <input type="hidden" name="multa_id" data-sanction-action-id>
                         <input type="hidden" name="source" value="<%= returnSource %>">
+                        <% if (returnSource === 'listado') { %><%- include('./sanction-list-return-fields', { returnFilters: returnFilters }); %><% } %>
                         <% if (lookupToken) { %><input type="hidden" name="lookup_token" value="<%= lookupToken %>"><% } %>
                         <div class="col-12">
                             <label class="form-label" for="fecha_sancion_edicion_listado">Fecha de la sanción</label>

@@ -1911,8 +1911,10 @@ body.app-shell .app-page-shell {
 }
 
 body.app-shell .app-page-header {
-  display: grid;
-  gap: 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
   padding: 0.85rem 1.2rem;
   border: 1px solid var(--app-border);
   border-radius: 20px;
@@ -1934,6 +1936,49 @@ body.app-shell .app-page-header--inline .app-page-title {
   gap: 0.75rem;
   max-width: 100%;
   font-size: clamp(1.1rem, 1.45vw, 1.45rem);
+}
+
+body.app-shell .app-page-header > .app-page-title,
+body.app-shell .app-page-header--inline > h1 {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 100%;
+  font-size: clamp(1.1rem, 1.45vw, 1.45rem);
+}
+
+body.app-shell .app-page-header > .app-page-subtitle,
+body.app-shell .app-page-header--inline > .app-page-subtitle,
+body.app-shell .app-page-header--inline > p {
+  flex: 1 1 24rem;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--app-border);
+  font-size: clamp(0.82rem, 0.95vw, 0.95rem);
+  line-height: 1.45;
+}
+
+body.app-shell .app-page-header > .app-page-header__layout {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+body.app-shell .app-page-header > .app-page-header--inline,
+body.app-shell .app-page-header__layout > .app-page-header--inline {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
+body.app-shell .app-page-header > .sanction-page-title-row {
+  flex: 0 1 auto;
+}
+
+body.app-shell .app-page-header > .alert {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
 body.app-shell .app-page-title-icon {
@@ -1965,11 +2010,14 @@ body.app-shell .app-page-header--inline .app-page-subtitle {
 }
 
 @media (max-width: 767.98px) {
+  body.app-shell .app-page-header,
   body.app-shell .app-page-header--inline {
     align-items: flex-start;
   }
 
-  body.app-shell .app-page-header--inline .app-page-subtitle {
+  body.app-shell .app-page-header > .app-page-subtitle,
+  body.app-shell .app-page-header--inline > .app-page-subtitle,
+  body.app-shell .app-page-header--inline > p {
     flex-basis: 100%;
     padding: 0.6rem 0 0;
     border-top: 1px solid var(--app-border);
@@ -2042,7 +2090,7 @@ body.app-shell .app-fine-action-icon--remove {
 body.app-shell .app-page-title {
   margin: 0;
   font-family: var(--app-font-display);
-  font-size: clamp(1.3rem, 1.6vw, 1.6rem);
+  font-size: clamp(1.1rem, 1.45vw, 1.45rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.2;
@@ -3166,7 +3214,7 @@ body.app-shell .dashboard-page--compact .dashboard-simple-title {
 }
 
 body.app-shell .dashboard-page--compact .dashboard-simple-subtitle {
-  margin-top: 0.3rem;
+  margin-top: 0;
   font-size: 0.85rem;
   line-height: 1.45;
 }
@@ -3756,6 +3804,77 @@ body.app-shell .admin-permissions-table .table th {
   font-size: 0.72rem;
 }
 
+body.app-shell .admin-permissions-grid {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-info-column {
+  width: 42%;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-actions-column {
+  width: 8rem;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-role-column {
+  width: 4.5rem;
+}
+
+body.app-shell .admin-permissions-grid th,
+body.app-shell .admin-permissions-grid td {
+  padding: 0.55rem 0.5rem;
+  vertical-align: middle;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-role-heading {
+  font-size: 0.68rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-role-cell {
+  text-align: center;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-role-cell .form-check-input {
+  float: none;
+  margin: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+body.app-shell .admin-permissions-grid .admin-menu-info-cell {
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .admin-menu-route {
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+body.app-shell .admin-menu-section {
+  display: inline-block;
+  margin-right: 0.35rem;
+  color: var(--app-text-muted);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+body.app-shell .admin-menu-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+body.app-shell .admin-menu-actions form {
+  margin: 0;
+}
+
 body.app-shell .admin-permissions-table .admin-module-root td {
   background: rgba(255, 191, 0, 0.08);
   font-weight: 600;
@@ -3783,9 +3902,10 @@ body.app-shell .admin-menus-page .admin-permissions-table {
   -webkit-overflow-scrolling: touch;
 }
 
-body.app-shell .admin-menus-page .admin-permissions-table > .table {
-  width: max-content;
+body.app-shell .admin-menus-page .admin-permissions-table > .admin-permissions-grid {
+  width: 100%;
   min-width: 100%;
+  table-layout: fixed;
 }
 
 body.app-shell .table-responsive {

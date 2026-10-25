@@ -66,6 +66,12 @@ global de encuentros, aplicar antes del despliegue:
 psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261021_gestor_laboratorio.sql
 ```
 
+Después del despliegue, un administrador también puede abrir **Configuración → Roles** y usar
+**Verificar y configurar**. La acción reutiliza el rol `gestor_laboratorio`, completa de forma
+transaccional los permisos de menú faltantes y puede repetirse sin duplicar registros; no asigna
+el rol a cuentas. Si el usuario de conexión de la aplicación no tiene permisos de escritura sobre
+`rol`, `menu_item` y `rol_permiso`, debe aplicarse la migración con una cuenta DBA.
+
 Si el monitoreo muestra `relation "coordinador_ual_encargado" does not exist`, detener la
 aplicación y aplicar la migración idempotente que crea la tabla y recupera las asignaciones
 desde las cargas aprobadas. La estructura de inventarios debe existir previamente:

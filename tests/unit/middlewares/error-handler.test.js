@@ -55,6 +55,34 @@ test('renderApplicationError renders the shared error page with default payload'
   });
 });
 
+test('renderApplicationError exposes diagnostics to the admin who started impersonation', () => {
+  const res = createHtmlResponse();
+  const req = {
+    method: 'GET',
+    originalUrl: '/milab/api/dashboard',
+    session: {
+      user: { tipo: 'laboratorista' },
+      impersonationAdminUser: { tipo: 'admin' },
+    },
+  };
+
+  renderApplicationError(res, {}, req, new Error('dashboard template failed'));
+
+  assert.match(res.rendered.payload.adminErrorDetail, /dashboard template failed/);
+  assert.match(res.rendered.payload.adminErrorDetail, /GET \/milab\/api\/dashboard/);
+  assert.equal(Object.hasOwn(res.rendered.payload, 'error'), false);
+});
+
+test('renderApplicationError does not expose diagnostics to a non-admin user', () => {
+  const res = createHtmlResponse();
+  const req = { session: { user: { tipo: 'laboratorista' } } };
+
+  renderApplicationError(res, {}, req, new Error('private diagnostic'));
+
+  assert.equal(Object.hasOwn(res.rendered.payload, 'adminErrorDetail'), false);
+  assert.equal(Object.hasOwn(res.rendered.payload, 'error'), false);
+});
+
 test('application error handler renders html error page for browser requests', () => {
   const logger = {
     errorCalls: [],

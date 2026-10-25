@@ -82,7 +82,9 @@ router.get('/', function (req, res) {
     return res.redirect(authenticatedHomePath);
   }
 
-  return res.render('home/index_2');
+  return res.render('home/index_2', {
+    recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY,
+  });
 });
 
 router.get('/inicio', function (req, res) {
@@ -158,15 +160,7 @@ router.get('/reg_multa_erase', function (req, res) {
 });
 //Login view
 router.get('/auth/login', function (req, res) {
-  const authenticatedHomePath = getAuthenticatedHomePath(req.session?.user);
-  if (authenticatedHomePath) {
-    return res.redirect(authenticatedHomePath);
-  }
-
-  return res.render('home/login_2', {
-    error: null,
-    confirmacion: null,
-  });
+  return redirectToCanonicalPublicRoute(req, res, '/milab/');
 });
 
 router.get('/auth/login_2', function (req, res) {

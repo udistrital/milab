@@ -227,10 +227,16 @@ test('sanction edit preserves its original historical category but rejects inact
           cat_multa: categoria,
           tipo_sancion: 'Amonestación verbal o escrita',
           fecha_multa: '2020-01-15',
+          fecha_desde: '2026-01-01',
+          estado_multa: 'Pendiente',
+          facultad_id: '10',
         });
       if (allowed) {
         assert.equal(response.status, 302);
-        assert.equal(response.headers.location, '/milab/api/get_list_multas?success=editada');
+        assert.equal(
+          response.headers.location,
+          '/milab/api/get_list_multas?fecha_desde=2026-01-01&estado_multa=Pendiente&facultad_id=10&success=editada'
+        );
         const update = calls.find((call) => call.sql.includes('UPDATE multa'));
         assert.equal(update.params[0], categoria);
         assert.equal(update.params[2], '2020-01-15');

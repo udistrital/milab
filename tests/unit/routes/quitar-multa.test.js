@@ -221,13 +221,19 @@ test('quitar-multa laboratorista salda assigned sanctions directly', async () =>
 
   try {
     const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: 'lab-user' });
-    const response = await request(app)
-      .post('/')
-      .type('form')
-      .send({ con_id: '9', source: 'listado' });
+    const response = await request(app).post('/').type('form').send({
+      con_id: '9',
+      source: 'listado',
+      fecha_desde: '2026-01-01',
+      estado_multa: 'Pendiente',
+      facultad_id: '10',
+    });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/milab/api/get_list_multas?success=saldada');
+    assert.equal(
+      response.headers.location,
+      '/milab/api/get_list_multas?fecha_desde=2026-01-01&estado_multa=Pendiente&facultad_id=10&success=saldada'
+    );
     assert.deepEqual(updateParams, ['SALDADA', 9]);
   } finally {
     loaded.restore();

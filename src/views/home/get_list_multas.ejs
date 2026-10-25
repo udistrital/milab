@@ -228,7 +228,7 @@
         </section>
     </main>
 
-    <%- include('../partials/sanction-detail-modal'); %>
+    <%- include('../partials/sanction-detail-modal', { returnSource: 'listado', returnFilters: filtros }); %>
     <script src="/milab/public/js/sanction-detail-modal.js"></script>
 
     <script nonce="<%= cspNonce %>">

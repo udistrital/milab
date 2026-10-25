@@ -303,7 +303,7 @@ function toArray(value) {
 }
 
 function isEligibleStudentRecord(record) {
-  return ['A', 'B'].includes(normalizeEstadoCodigo(record?.estado));
+  return ['A', 'B', 'U'].includes(normalizeEstadoCodigo(record?.estado));
 }
 
 function isActiveTeacherRecord(record) {
@@ -313,8 +313,9 @@ function isActiveTeacherRecord(record) {
   return estado === 'A' || estado === 'ACTIVO';
 }
 
-// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso. Un documento puede
-// tener varios registros: los demás (por ejemplo, egresado de otro programa) solo se informan.
+// A (activo), B (prueba académica y activo) y U (NO ESTUDIANTE ACO04) habilitan el registro.
+// Un documento puede tener varios registros: los demás (por ejemplo, egresado de otro programa)
+// solo se informan.
 async function lookupEligibleStudentRecords(documento, signal) {
   let studentData;
   try {

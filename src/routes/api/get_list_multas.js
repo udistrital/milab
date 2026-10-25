@@ -13,6 +13,7 @@ const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
 const { sgaDebtService } = require('../../libs/oati-debts');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
+const { buildSanctionListReturnPath } = require('../../libs/sanction-list-navigation');
 const {
   renderApplicationError,
   renderModuleError,
@@ -716,7 +717,7 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
         .toLowerCase() === 'get-info-multa-persona'
         ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim(), 'editada')
         : null;
-    return res.redirect(personaReturnPath || '/milab/api/get_list_multas?success=editada');
+    return res.redirect(personaReturnPath || buildSanctionListReturnPath(req.body, 'editada'));
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);

@@ -15,7 +15,7 @@ test('admin menu permission grid scrolls responsively without hiding role column
   assert.match(template, /class="table-responsive admin-permissions-table"/);
   assert.match(
     template,
-    /roles\.forEach\(function\(role\) \{ %>\s*<th class="text-center"><%= role\.name %><\/th>/s
+    /roles\.forEach\(function\(role\) \{ %>\s*<th class="text-center admin-menu-role-heading" title="<%= role\.name %>">\s*<%= role\.name %>\s*<\/th>/s
   );
   assert.match(template, /class="form-check-input permission-toggle"/);
 
@@ -31,7 +31,7 @@ test('admin menu permission grid scrolls responsively without hiding role column
   );
   assert.match(
     scopedStyles,
-    /body\.app-shell \.admin-menus-page \.admin-permissions-table > \.table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*100%;/s
+    /body\.app-shell \.admin-menus-page \.admin-permissions-table > \.admin-permissions-grid\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*100%;/s
   );
   assert.match(scopedStyles, /min-width:\s*0;/);
   assert.match(scopedStyles, /max-width:\s*100%;/);
