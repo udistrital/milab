@@ -774,6 +774,34 @@ test('manager can register a missing exit after finalization and issue the certi
   }
 });
 
+test('manager can register a missing entry after finalization', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('SELECT p.id, e.estado AS estado_evento')) {
+      return { rows: [{ id: 32, estado_evento: 'finalizado' }] };
+    }
+    if (sql.includes('INSERT INTO encuentro_asistencia')) {
+      return { rows: [{ entrada_en: '2026-10-24T20:00:00.000Z' }] };
+    }
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/asistencia/entrada')
+      .set('x-test-role', 'gestor_laboratorio')
+      .send({ documento: '000124' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.entrada_en, '2026-10-24T20:00:00.000Z');
+    assert.ok(statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_asistencia')));
+  } finally {
+    setup.restore();
+  }
+});
+
 test('historical event creation stores the event as finalized', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-historical-event-test-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
@@ -949,15 +977,15 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
             lugar: 'Sede',
             organizador: 'MiLab',
             estado: 'finalizado',
-            total_participantes: 4,
-            entradas: 3,
-            salidas: 2,
+            total_participantes: 70,
+            entradas: 69,
+            salidas: 50,
             sin_entrada: 1,
-            dentro_sin_salida: 1,
-            certificados_generados: 2,
-            certificados_enviados: 1,
-            certificados_pendientes: 0,
-            certificados_con_error: 1,
+            dentro_sin_salida: 19,
+            certificados_generados: 50,
+            certificados_enviados: 45,
+            certificados_pendientes: 2,
+            certificados_con_error: 3,
             registros_post_cierre: 1,
             salidas_post_cierre: 1,
             certificados_enviados_post_cierre: 1,
@@ -980,9 +1008,9 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
           },
           {
             facultad: 'Facultad con mayor participación',
-            registrados: 3,
-            con_entrada: 2,
-            completaron: 1,
+            registrados: 69,
+            con_entrada: 68,
+            completaron: 49,
           },
         ],
       };
@@ -1014,6 +1042,18 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
             salida_post_cierre: false,
             certificado_enviado_post_cierre: false,
           },
+          ...Array.from({ length: 68 }, (_, index) => ({
+            nombre: `Participante ${index + 3}`,
+            documento: `100${index + 1}`,
+            correo: `participante${index + 3}@example.edu`,
+            facultad: 'Facultad con mayor participación',
+            laboratorio: `Lab ${(index % 3) + 1}`,
+            estado_asistencia: index < 49 ? 'completada' : index < 67 ? 'en_curso' : 'sin_entrada',
+            estado_certificado: index < 45 ? 'enviado' : index < 48 ? 'pendiente' : 'error',
+            registro_post_cierre: false,
+            salida_post_cierre: false,
+            certificado_enviado_post_cierre: false,
+          })),
         ],
       };
     }
@@ -1054,7 +1094,27 @@ test('finalized encounter report downloads an aggregate PDF grouped by faculty',
         const pageText = content.items.map((item) => item.str).join(' ');
         reportText += ` ${pageText}`;
         if (pageNumber === 1) firstPageText = pageText;
+        const footer = content.items.find((item) =>
+          item.str.includes('Reporte generado por MiLab')
+        );
+        const pageLabel = content.items.find((item) => item.str === `Página ${pageNumber}`);
+        assert.ok(footer, `page ${pageNumber} should contain the report footer`);
+        assert.ok(pageLabel, `page ${pageNumber} should contain its page number`);
+        const footerY = footer.transform[5];
+        const bodyYPositions = content.items
+          .filter(
+            (item) =>
+              item.str.trim() &&
+              !item.str.includes('Reporte generado por MiLab') &&
+              !item.str.startsWith('Página ')
+          )
+          .map((item) => item.transform[5]);
+        assert.ok(
+          Math.min(...bodyYPositions) > footerY + 12,
+          `page ${pageNumber} content should not overlap its footer`
+        );
       }
+      assert.ok(pdf.numPages >= 2, 'the report should paginate the full participant list');
       assert.match(reportText, /Informe del encuentro/);
       assert.match(reportText, /Registrados activos/);
       assert.match(reportText, /Resumen de participantes\s+por facultad/);

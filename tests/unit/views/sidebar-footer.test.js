@@ -21,6 +21,11 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
   const profileMenu = fs.readFileSync(path.join(viewsPath, 'partials/profile-menu.ejs'), 'utf8');
   const styles = fs.readFileSync(stylesPath, 'utf8');
 
+  const logoutLinks = header.match(
+    /<a\b(?=[^>]*\bdata-logout-trigger="true")(?=[^>]*\bhref="\/milab\/auth\/logout")[^>]*>/g
+  );
+  assert.equal(logoutLinks?.length, 3);
+  assert.doesNotMatch(header, /<button\b(?=[^>]*\bdata-logout-trigger="true")/);
   assert.equal((footer.match(/data-sidebar-action="/g) || []).length, 4);
   ['Perfil de usuario', 'Mis medallas', 'Centro de ayuda', 'Cerrar sesión'].forEach((label) => {
     assert.match(footer, new RegExp(`aria-label="${label}"`));

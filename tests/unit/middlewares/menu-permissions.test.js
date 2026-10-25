@@ -525,6 +525,41 @@ test('menuPermissionMiddleware delegates impersonation exit without requiring th
   }
 });
 
+test('menuPermissionMiddleware allows gestores to read the dashboard without a database permission row', async () => {
+  for (const pathname of ['/milab/api/dashboard', '/milab/api/dashboard/inventarios?fragment=1']) {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async () => {
+        throw new Error('Dashboard navigation should not require a DB menu grant for gestores');
+      },
+    });
+
+    try {
+      const req = {
+        method: 'GET',
+        originalUrl: pathname,
+        session: {
+          user: {
+            roles: ['estudiante', 'gestor_laboratorio'],
+            tipo: 'estudiante',
+          },
+        },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true);
+      assert.equal(res.rendered, null);
+      assert.equal(loaded.getCalls().length, 0);
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
 for (const [method, pathname] of [
   ['GET', '/milab/api/dashboard/impersonacion/detener'],
   ['POST', '/milab/api/dashboard/impersonacion/iniciar'],

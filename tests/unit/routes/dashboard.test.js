@@ -1000,8 +1000,34 @@ test('dashboard resolves coordinador_general as a global consultation role', () 
       getDashboardRole({ roles: ['coordinador', 'coordinador_general'] }),
       'coordinador_general'
     );
+    assert.equal(
+      getDashboardRole({ roles: ['estudiante', 'gestor_laboratorio'] }),
+      'coordinador_general'
+    );
     assert.equal(getDashboardRole({ roles: ['admin', 'coordinador_general'] }), 'admin');
     assert.deepEqual(getAvailableChartIds('coordinador_general'), getAvailableChartIds('admin'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('gestor_laboratorio sees the same read-only global dashboard as coordinador_general', async () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'estudiante',
+      roles: ['estudiante', 'gestor_laboratorio'],
+      documento: 'manager-1',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.dashboardRole, 'coordinador_general');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, true);
+    assert.deepEqual(
+      response.body.locals.availableCharts.map((chart) => chart.id),
+      loaded.route.__private.getAvailableChartIds('coordinador_general')
+    );
   } finally {
     loaded.restore();
   }
@@ -1092,7 +1118,7 @@ test('dashboard paz y salvo cards link each role to its own workflow', () => {
   }
 });
 
-test('dashboard monitoring is limited to admin, coordinador general, coordinador and laboratorista', () => {
+test('dashboard monitoring grants only explicit dashboard roles', () => {
   const loaded = loadDashboardRoute();
   try {
     const dashboardGuard = loaded.requireRolesCalls.find((call) =>
@@ -1103,6 +1129,7 @@ test('dashboard monitoring is limited to admin, coordinador general, coordinador
       'coordinador_general',
       'coordinador',
       'laboratorista',
+      'gestor_laboratorio',
     ]);
     const { getDashboardRole } = loaded.route.__private;
     assert.equal(getDashboardRole({ roles: ['estudiante'] }), '');
@@ -1314,6 +1341,68 @@ test('dashboard scopes coordinator certificates by the faculty encoded in the st
   }
 });
 
+test('dashboard filters coordinator indicators by an assigned faculty', async () => {
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-user',
+      facultyIds: [10],
+    }),
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM certificado_estudiante ce')) {
+        return {
+          rows: [
+            { id: 1, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231077001' },
+            { id: 2, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231005001' },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('SELECT dependencia_facultad_id AS id, nombre')) {
+        return {
+          rows: [{ id: 10, nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      if (sql.includes('SELECT DISTINCT COALESCE(p.nombre, d.nombre) AS nombre')) {
+        return {
+          rows: [{ nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return {
+          rows: [{ nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-user',
+    });
+    const response = await request(app).get('/?facultad_id=10');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.pazYSalvo.certificados.estudiantes, 1);
+    assert.deepEqual(response.body.locals.scopePresentation.chips, [
+      'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA',
+    ]);
+    assert.equal(
+      response.body.locals.inventoryDashboardUrl,
+      '/milab/api/dashboard/inventarios?fragment=1&facultad_id=10'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard laboratorista scope reads the UAL faculty column from ual', async () => {
   const ualQueries = [];
   const inventoryQueries = [];
@@ -1384,6 +1473,87 @@ test('dashboard laboratorista scope reads the UAL faculty column from ual', asyn
       assert.match(sql, /u\.ual_id = ANY\(\$1::int\[\]\)/);
       assert.deepEqual(params, [[7]]);
     });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard stays available when a laboratorista assignment table is unavailable', async () => {
+  const missingAssignments = Object.assign(
+    new Error('relation "laboratorista_ual" does not exist'),
+    { code: '42P01' }
+  );
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: '123' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        throw missingAssignments;
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'laboratorista',
+      documento: '123',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.canViewInventoryDashboard, false);
+    assert.equal(response.body.locals.pazYSalvo, null);
+    assert.match(
+      response.body.locals.dashboardWarnings[0],
+      /No se pudieron verificar los laboratorios/
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard keeps the main view when optional paz y salvo tables are unavailable', async () => {
+  const missingSanctions = Object.assign(new Error('relation "multa" does not exist'), {
+    code: '42P01',
+  });
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: '123' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Física', facultad_id: 50 }] };
+      }
+      if (sql.includes('FROM multa m')) {
+        throw missingSanctions;
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'laboratorista',
+      documento: '123',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.pazYSalvo, null);
+    assert.match(response.body.locals.dashboardWarnings[0], /Paz y salvos/);
   } finally {
     loaded.restore();
   }
@@ -1676,6 +1846,99 @@ test('inventory dashboard scopes coordinator queries to assigned faculties', asy
     scopedQueries.forEach(({ sql, params }) => {
       assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
       assert.deepEqual(params, [[10, 12]]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory dashboard intersects coordinator filters with assigned faculties', async () => {
+  const inventoryQueries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10],
+      facultyNames: ['Facultad A'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return { rows: [{ id: 10, nombre: 'Facultad A' }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ id: 100, nombre: 'Laboratorio A', facultad_id: 10 }] };
+      }
+      if (sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')) {
+        inventoryQueries.push({ sql, params });
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios?fragment=1&facultad_id=10&ual_id=100');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A', 'Laboratorio A']);
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.match(sql, /u\.facultad_id = \$2/);
+      assert.match(sql, /u\.ual_id = \$3/);
+      assert.deepEqual(params, [[10], 10, 100]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory dashboard ignores coordinator filters outside their assigned scope', async () => {
+  const inventoryQueries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10],
+      facultyNames: ['Facultad A'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return { rows: [{ id: 10, nombre: 'Facultad A' }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ id: 100, nombre: 'Laboratorio A', facultad_id: 10 }] };
+      }
+      if (sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')) {
+        inventoryQueries.push({ sql, params });
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios?fragment=1&facultad_id=99&ual_id=999');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A']);
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.doesNotMatch(sql, /u\.facultad_id = \$2|u\.ual_id = \$2/);
+      assert.deepEqual(params, [[10]]);
     });
   } finally {
     loaded.restore();

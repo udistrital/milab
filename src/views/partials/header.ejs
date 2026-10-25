@@ -44,10 +44,37 @@
   const navigationGroups = secondaryGroups.filter(
     (group) => group && Array.isArray(group.items) && group.items.length
   );
-  const navigationCurrentPath = String(locals.navigationCurrentPath || '')
-    .split('?')[0]
-    .replace(/\/+$/, '') || '/';
+  function normalizeNavigationPath(value) {
+    return String(value || '').split('?')[0].replace(/\/+$/, '') || '/';
+  }
+  const navigationCurrentPath = normalizeNavigationPath(locals.navigationCurrentPath);
   const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
+  const navigationEntries = [
+    ...primaryLinks.filter(Boolean).map((link) => ({ link, section: 'primary', group: null })),
+    ...navigationGroups.flatMap((group) =>
+      group.items.filter(Boolean).map((link) => ({ link, section: 'secondary', group }))
+    ),
+    ...accountLinks.filter(Boolean).map((link) => ({ link, section: 'account', group: null })),
+  ];
+  const activeNavigationMatch =
+    navigationEntries
+      .map((entry, index) => {
+        const href = normalizeNavigationPath(entry.link.href);
+        return { entry, href, index, exact: href === navigationCurrentPath };
+      })
+      .filter(
+        ({ href }) =>
+          href === navigationCurrentPath ||
+          (href !== '/' && navigationCurrentPath.startsWith(`${href}/`))
+      )
+      .sort(
+        (left, right) =>
+          Number(right.exact) - Number(left.exact) ||
+          right.href.length - left.href.length ||
+          left.index - right.index
+      )[0] || null;
+  const activeNavigationEntry = activeNavigationMatch?.entry || null;
+  const activeNavigationHref = activeNavigationMatch?.href || '';
   const activeRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
   const activeSanctionsSummary = locals.activeSanctionsSummary || { enabled: false, count: 0, items: [] };
   const activeSanctionsCount = Number(activeSanctionsSummary.count || 0);
@@ -137,17 +164,34 @@
     return key ? `data-guide="${key}"` : '';
   }
   function isNavigationLinkActive(link) {
-    const href = String(link?.href || '')
-      .split('?')[0]
-      .replace(/\/+$/, '') || '/';
-    return (
-      navigationCurrentPath === href ||
-      (href !== '/' && navigationCurrentPath.startsWith(`${href}/`))
-    );
+    const entry = navigationEntries.find((candidate) => candidate.link === link);
+    if (entry) return entry === activeNavigationEntry;
+    return Boolean(activeNavigationEntry && normalizeNavigationPath(link?.href) === activeNavigationHref);
   }
   function isNavigationGroupActive(group) {
-    return Array.isArray(group?.items) && group.items.some(isNavigationLinkActive);
+    return activeNavigationEntry?.group === group;
   }
+  function buildNavigationBreadcrumbs() {
+    if (!activeNavigationEntry) return [];
+
+    const isHomeLink =
+      activeNavigationEntry.section === 'primary' &&
+      String(activeNavigationEntry.link.label || '').trim().toLowerCase() === 'inicio';
+    if (isHomeLink) return [{ label: 'Inicio', current: true }];
+
+    const breadcrumbs = [
+      {
+        label: 'Inicio',
+        href: isAuthenticated ? '/milab/inicio' : '/milab/',
+      },
+    ];
+    if (activeNavigationEntry.group) {
+      breadcrumbs.push({ label: activeNavigationEntry.group.title });
+    }
+    breadcrumbs.push({ label: activeNavigationEntry.link.label, current: true });
+    return breadcrumbs;
+  }
+  const navigationBreadcrumbs = buildNavigationBreadcrumbs();
   function isPrestamosNavLink(link) {
     const label = String(link?.label || '').trim().toLowerCase();
     const href = String(link?.href || '').toLowerCase();
@@ -372,9 +416,9 @@
                     <% } %>
 
                     <li>
-                      <button
+                      <a
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
-                        type="button"
+                        href="/milab/auth/logout"
                         data-logout-trigger="true"
                         data-guide="logout-action"
                         aria-label="Cerrar sesion"
@@ -382,7 +426,7 @@
                       >
                         <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
                         <span>Cerrar sesion</span>
-                      </button>
+                      </a>
                     </li>
                   </ul>
                 </div>
@@ -554,9 +598,9 @@
                     <% } %>
 
                     <li>
-                      <button
+                      <a
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
-                        type="button"
+                        href="/milab/auth/logout"
                         data-logout-trigger="true"
                         data-guide="logout-action"
                         aria-label="Cerrar sesion"
@@ -564,7 +608,7 @@
                       >
                         <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
                         <span>Cerrar sesion</span>
-                      </button>
+                      </a>
                     </li>
                   </ul>
                 </div>
@@ -819,9 +863,9 @@
                 </li>
               </ul>
             </div>
-            <button
+            <a
               class="app-sidebar-link app-sidebar-logout"
-              type="button"
+              href="/milab/auth/logout"
               data-logout-trigger="true"
               data-guide="logout-action"
               aria-label="Cerrar sesión"
@@ -832,11 +876,33 @@
                 <i class="bi bi-door-open app-sidebar-door-open"></i>
                 <i class="bi bi-door-closed app-sidebar-door-closed"></i>
               </span>
-            </button>
+            </a>
           </nav>
         <% } %>
       </aside>
       <div class="app-main-content">
+        <% if (navigationBreadcrumbs.length) { %>
+          <nav class="app-breadcrumb-nav" aria-label="Miga de pan">
+            <ol class="breadcrumb app-breadcrumb">
+              <% navigationBreadcrumbs.forEach(function(item, index) { %>
+                <% const isCurrentBreadcrumb = index === navigationBreadcrumbs.length - 1; %>
+                <li
+                  class="breadcrumb-item <%= isCurrentBreadcrumb ? 'active' : '' %>"
+                  <%- isCurrentBreadcrumb ? 'aria-current="page"' : '' %>
+                >
+                  <% if (item.href && !isCurrentBreadcrumb) { %>
+                    <a href="<%= item.href %>">
+                      <% if (index === 0) { %><i class="bi bi-house-door" aria-hidden="true"></i><% } %>
+                      <%= item.label %>
+                    </a>
+                  <% } else { %>
+                    <span><%= item.label %></span>
+                  <% } %>
+                </li>
+              <% }) %>
+            </ol>
+          </nav>
+        <% } %>
 
   <script nonce="<%= cspNonce %>">
     function openMicrosoftLoginPopup(url) {

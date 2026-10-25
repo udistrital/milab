@@ -115,7 +115,7 @@ test('inventory dashboard is an in-page tab beside platform and peace-and-cleara
   assert.match(template, /id="dashboardSectionInventarios"[^>]*data-dashboard-inventory-panel/);
   assert.match(
     template,
-    /data-dashboard-inventory-url="\/milab\/api\/dashboard\/inventarios\?fragment=1"/
+    /data-dashboard-inventory-url="<%= inventoryDashboardUrl \|\| '\/milab\/api\/dashboard\/inventarios\?fragment=1' %>"/
   );
   assert.doesNotMatch(tabs, /href="\/milab\/api\/dashboard\/inventarios"/);
   assert.doesNotMatch(template, /dashboard-section-tab-link/);
@@ -157,7 +157,7 @@ test('laboratorista dashboard omits platform monitoring and keeps authorized tab
 
   assert.doesNotMatch(renderedTabs, /Toda la plataforma/);
   assert.match(renderedTabs, /Paz y salvos/);
-  assert.match(renderedTabs, /Dashboard de inventarios/);
+  assert.match(renderedTabs, /Inventarios/);
   assert.equal(renderedPlatformPanel.trim(), '');
   assert.doesNotThrow(() => ejs.compile(template, { filename: dashboardViewPath }));
 });

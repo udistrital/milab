@@ -911,7 +911,8 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       white: '#FFFFFF',
     };
     const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
-    const bottomLimit = () => pdf.page.height - pdf.page.margins.bottom;
+    const getFooterY = () => pdf.page.height - pdf.page.margins.bottom - 10;
+    const bottomLimit = () => getFooterY() - 22;
     const contentTop = () => pdf.page.margins.top + 88;
     const drawProgressBar = (x, y, width, ratio) => {
       const normalized = Math.max(0, Math.min(1, Number(ratio) || 0));
@@ -928,7 +929,7 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
     const drawPageChrome = () => {
       const topY = 18;
       const headerHeight = 72;
-      const footerY = pdf.page.height - pdf.page.margins.bottom - 10;
+      const footerY = getFooterY();
       pdf
         .save()
         .fillColor(palette.white)
@@ -1457,6 +1458,8 @@ function renderEventReportPdf({ event, faculties, participants = [] }) {
       });
     }
 
+    pdf.x = participantTableX;
+    ensureSpace(28);
     pdf.x = participantTableX;
     pdf.moveDown(0.7);
     pdf
@@ -3000,7 +3003,9 @@ router.post('/api/eventos/:eventId/asistencia/entrada', requireManager, async (r
       );
       const participant = participantResult.rows[0];
       if (!participant) return { error: 'not_enrolled' };
-      if (participant.estado_evento !== 'en_curso') return { error: 'event_not_open' };
+      if (!['en_curso', 'finalizado'].includes(participant.estado_evento)) {
+        return { error: 'event_not_open' };
+      }
 
       const attendance = await client.query(
         `
@@ -3022,9 +3027,10 @@ router.post('/api/eventos/:eventId/asistencia/entrada', requireManager, async (r
         .status(404)
         .json({ ok: false, message: 'El participante no está inscrito en este evento.' });
     if (result.error === 'event_not_open')
-      return res
-        .status(409)
-        .json({ ok: false, message: 'El evento no está habilitado para registrar entradas.' });
+      return res.status(409).json({
+        ok: false,
+        message: 'El evento no permite registrar entradas en su estado actual.',
+      });
     if (result.error === 'duplicate_entry')
       return res.status(409).json({ ok: false, message: 'La entrada ya fue registrada.' });
     return res.json({ ok: true, entrada_en: result.entrada_en });

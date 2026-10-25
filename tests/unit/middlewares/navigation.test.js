@@ -143,6 +143,31 @@ test('buildNavigation falls back to static menu when dynamic menu lookup fails',
   }
 });
 
+test('buildNavigation adds dashboard access for gestores with other primary roles', async () => {
+  const loaded = loadNavigationModule({
+    menuImpl: async () => ({
+      primaryLinks: [{ label: 'Inicio', href: '/milab/inicio', icon: 'bi-house' }],
+      secondaryGroups: [],
+      accountLinks: [],
+    }),
+  });
+
+  try {
+    const navigation = await loaded.buildNavigation({
+      tipo: 'estudiante',
+      roles: ['estudiante', 'gestor_laboratorio'],
+    });
+
+    assert.ok(
+      navigation.primaryLinks.some(
+        (link) => link.label === 'Monitoreo' && link.href === '/milab/api/dashboard'
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('navigationMiddleware no longer queries authorization counts', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({ primaryLinks: [], secondaryGroups: [], accountLinks: [] }),

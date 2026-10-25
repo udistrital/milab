@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.1.10 - 2026-10-24
+
+1. El dashboard conserva sus secciones disponibles y muestra advertencias cuando fallan consultas opcionales de alcance, filtros o Paz y Salvos.
+2. El rol `gestor_laboratorio` puede consultar el dashboard global en modo de solo lectura, igual que `coordinador_general`.
+
 ## 3.1.0 - 2026-10-24
 
 1. La verificación de sanciones SGA consulta los códigos académicos asociados al documento, clasifica las multas de laboratorio por el nombre del concepto y distingue resultados completos de consultas parciales o no verificables.
