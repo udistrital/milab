@@ -190,6 +190,30 @@ test('bulk student query modal uses the shared Bootstrap 5 runtime', async () =>
   assert.doesNotMatch(bulkQueryView, /jquery-3\.5\.1\.slim|popperjs\/core/i);
   assert.match(bulkQueryView, /data-max-codes="20"/);
   assert.match(bulkQueryView, /id="consultaMasivaCount"/);
+  const tableBody = bulkQueryView.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
+  assert.doesNotMatch(tableBody, /colspan=/i);
+});
+
+test('get_consulta renders the empty table without querying the database', async () => {
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const response = await request(app).get('/get_consulta');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/consulta_masiva');
+    assert.equal(response.body.locals.sampleData1, 0);
+    assert.equal(queryCount, 0);
+  } finally {
+    loaded.restore();
+  }
 });
 
 test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo', async () => {

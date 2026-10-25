@@ -91,7 +91,13 @@ router.get('/inicio', function (req, res) {
     return res.redirect('/milab/');
   }
 
-  const dashboardRoles = ['admin', 'coordinador_general', 'coordinador', 'laboratorista'];
+  const dashboardRoles = [
+    'admin',
+    'coordinador_general',
+    'coordinador',
+    'laboratorista',
+    'gestor_laboratorio',
+  ];
   const userRoles = normalizeRoles(user.roles || user.tipo);
   if (userRoles.some((role) => dashboardRoles.includes(role))) {
     return res.redirect('/milab/api/dashboard');

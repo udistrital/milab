@@ -115,6 +115,14 @@ async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
     const method = String(req.method || 'GET').toUpperCase();
+    const requestRoles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+    const isGestorDashboardRead =
+      requestRoles.includes('gestor_laboratorio') &&
+      ['GET', 'HEAD'].includes(method) &&
+      ['/milab/api/dashboard', '/milab/api/dashboard/inventarios'].includes(path);
+    if (isGestorDashboardRead) {
+      return next();
+    }
     if (hasRouteLevelApiAuthorization(path, method)) {
       return next();
     }

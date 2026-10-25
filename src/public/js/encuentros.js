@@ -307,6 +307,7 @@
     const allowCertificateSelection = event.estado === 'finalizado';
     const allowExitSelection = event.estado === 'en_curso';
     const allowSelection = allowCertificateSelection || allowExitSelection;
+    const attendanceIsEditable = ['en_curso', 'finalizado'].includes(event.estado);
     const wrap = element('div', undefined, 'table-responsive mt-3');
     const filters = element('div', undefined, 'row g-2 mb-2');
     const searchCol = element('div', undefined, 'col-12 col-lg-6');
@@ -441,25 +442,13 @@
       }
       row.appendChild(certCell);
       const actions = element('td', undefined, 'text-nowrap');
-      if (event.estado === 'en_curso') {
-        if (!participant.entrada_en) {
-          actions.appendChild(
-            actionButton('Entrada', 'btn-outline-success', () =>
-              recordAttendance(event, participant, 'entrada')
-            )
-          );
-        } else if (!participant.salida_en) {
-          actions.appendChild(
-            actionButton('Registrar salida', 'btn-outline-primary btn-sm', () =>
-              recordAttendance(event, participant, 'salida')
-            )
-          );
-        }
-      } else if (
-        event.estado === 'finalizado' &&
-        participant.entrada_en &&
-        !participant.salida_en
-      ) {
+      if (attendanceIsEditable && !participant.entrada_en) {
+        actions.appendChild(
+          actionButton('Registrar entrada', 'btn-outline-success', () =>
+            recordAttendance(event, participant, 'entrada')
+          )
+        );
+      } else if (attendanceIsEditable && participant.entrada_en && !participant.salida_en) {
         actions.appendChild(
           actionButton('Registrar salida', 'btn-outline-primary btn-sm', () =>
             recordAttendance(event, participant, 'salida')
@@ -842,6 +831,7 @@
 
   function buildAttendanceForm(event) {
     const form = element('form', undefined, 'row g-2 align-items-end border rounded p-3 mt-3');
+    const attendanceIsEditable = ['en_curso', 'finalizado'].includes(event.estado);
     form.innerHTML = `
       <div class="col-12"><strong>Registro manual de asistencia</strong><div class="small text-muted">Busca al inscrito por documento. No se usa QR para la asistencia.</div></div>
       <div class="col-12 col-md-7"><label class="form-label">Documento, nombre o correo<input name="busqueda" class="form-control form-control-sm" autocomplete="off" aria-label="Buscar participante inscrito"></label></div>`;
@@ -881,17 +871,13 @@
             'small'
           )
         );
-        if (event.estado === 'en_curso' && !participant.entrada_en) {
+        if (attendanceIsEditable && !participant.entrada_en) {
           card.appendChild(
             actionButton('Registrar entrada', 'btn-outline-success', () =>
               recordAttendance(event, participant, 'entrada')
             )
           );
-        } else if (
-          participant.entrada_en &&
-          !participant.salida_en &&
-          ['en_curso', 'finalizado'].includes(event.estado)
-        ) {
+        } else if (participant.entrada_en && !participant.salida_en && attendanceIsEditable) {
           card.appendChild(
             actionButton('Registrar salida', 'btn-outline-primary', () =>
               recordAttendance(event, participant, 'salida')

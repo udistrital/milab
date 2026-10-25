@@ -90,6 +90,70 @@ test('inventory approval navigation shows a pending-count badge only when needed
   assert.doesNotMatch(emptyHtml, /aprobaciones de inventario pendientes/);
 });
 
+test('nested navigation selects one accordion and renders its module breadcrumbs', async () => {
+  const route = '/milab/api/get_list_estudiantes/get_consulta';
+  const appNavigation = {
+    primaryLinks: [{ label: 'Inicio', href: '/milab/inicio', icon: 'bi-house-door' }],
+    secondaryGroups: [
+      {
+        title: 'Consulta y control',
+        icon: 'bi-grid',
+        items: [
+          {
+            label: 'Certificado de consulta y control',
+            href: '/milab/api/get_list_estudiantes',
+            icon: 'bi-file-earmark-check',
+          },
+        ],
+      },
+      {
+        title: 'Paz y Salvos',
+        icon: 'bi-patch-check',
+        items: [
+          {
+            label: 'Generar Paz y Salvos Masivo',
+            href: route,
+            icon: 'bi-collection',
+          },
+        ],
+      },
+    ],
+    accountLinks: [],
+    role: 'admin',
+    roleLabel: 'Admin',
+  };
+  const html = await renderView(
+    'src/views/home/consulta_masiva.ejs',
+    buildBaseViewLocals({
+      appNavigation,
+      navigationCurrentPath: route,
+      sampleData1: 0,
+      error: null,
+      sgaConsultaOmitida: false,
+    }),
+    { async: false }
+  );
+  const accordionToggles = Array.from(
+    html.matchAll(/<button\b[^>]*class="accordion-button app-sidebar-group-toggle[^"]*"[^>]*>/g),
+    ([tag]) => tag
+  );
+  const expandedToggles = accordionToggles.filter((tag) => /aria-expanded="true"/.test(tag));
+  const submenuLinks = Array.from(
+    html.matchAll(/<a\b[^>]*class="app-sidebar-link app-sidebar-sub-link[^"]*"[^>]*>/g),
+    ([tag]) => tag
+  );
+  const activeSubmenuLinks = submenuLinks.filter((tag) => /\bis-active\b/.test(tag));
+  const breadcrumb = html.match(/<nav class="app-breadcrumb-nav"[\s\S]*?<\/nav>/)?.[0] || '';
+
+  assert.equal(expandedToggles.length, 1);
+  assert.match(expandedToggles[0], /data-bs-target="#appSidebarGroup1"/);
+  assert.equal(activeSubmenuLinks.length, 1);
+  assert.match(activeSubmenuLinks[0], /href="\/milab\/api\/get_list_estudiantes\/get_consulta"/);
+  assert.match(breadcrumb, /Inicio[\s\S]*?Paz y Salvos[\s\S]*?Generar Paz y Salvos Masivo/);
+  assert.match(html, /class="app-page-header app-page-header--inline"/);
+  assert.match(html, /class="app-page-title-icon"/);
+});
+
 test('inventory dashboard renders as content for the shared dashboard tab', async () => {
   const html = await renderView('src/views/home/dashboard/inventarios.ejs', {
     metrics: {
