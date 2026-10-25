@@ -231,6 +231,7 @@ async function listPrestamosFacultyAccess(client = pool) {
          AND mon.rol = 'monitor'
          AND mon.activo = TRUE
         WHERE f.activo = TRUE
+          AND f.padre_id IS NULL
         ORDER BY f.nombre ASC
       `
     );
@@ -248,7 +249,8 @@ async function listPrestamosFacultyAccess(client = pool) {
             TRUE AS monitor_permitido
           FROM dependencia_facultad
           WHERE activo = TRUE
-          ORDER BY nombre ASC
+              AND padre_id IS NULL
+            ORDER BY nombre ASC
         `
       );
 

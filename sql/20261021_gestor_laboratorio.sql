@@ -2,9 +2,11 @@ SET search_path TO milab;
 
 BEGIN;
 
-INSERT INTO rol (nombre)
-VALUES ('gestor_laboratorio')
-ON CONFLICT (nombre) DO NOTHING;
+INSERT INTO rol (nombre, activo)
+VALUES ('gestor_laboratorio', TRUE)
+ON CONFLICT (nombre)
+DO UPDATE SET activo = TRUE,
+              fecha_modificacion = CURRENT_TIMESTAMP;
 
 INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
 SELECT

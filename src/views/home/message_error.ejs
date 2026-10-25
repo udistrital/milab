@@ -27,8 +27,14 @@
         <% if (typeof adminErrorDetail !== 'undefined' && adminErrorDetail) { %>
         <section class="app-error-detail mt-3" aria-label="Detalle técnico de error para administrador">
             <h5 class="app-error-detail-title">Detalle técnico (solo administrador)</h5>
-            <pre class="app-error-detail-body"><%= adminErrorDetail %></pre>
+            <pre class="app-error-detail-body" data-admin-error-detail><%= adminErrorDetail %></pre>
         </section>
+        <script nonce="<%= cspNonce %>">
+            (function () {
+                const detail = document.querySelector('[data-admin-error-detail]');
+                if (detail) console.error('[MILab] Error de aplicación:', detail.textContent);
+            })();
+        </script>
         <% } %>
         <% if (!limit){ %>
         <% } else if(limit === 'noSession'){ %>

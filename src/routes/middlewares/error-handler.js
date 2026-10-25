@@ -94,8 +94,10 @@ function buildFallbackAdminErrorDetail(req, payload = {}, status = 500) {
 function enrichErrorPayloadForAdmin(req, payload = {}, explicitError = null) {
   const safePayload = payload && typeof payload === 'object' ? { ...payload } : {};
   const statusCode = Number.isInteger(safePayload.status) ? safePayload.status : 500;
+  const canSeeAdminErrorDetail =
+    isAdminUser(req?.session?.user) || isAdminUser(req?.session?.impersonationAdminUser);
 
-  if (safePayload.adminErrorDetail || !req || !isAdminUser(req.session?.user)) {
+  if (safePayload.adminErrorDetail || !req || !canSeeAdminErrorDetail) {
     delete safePayload.error;
     return safePayload;
   }

@@ -7,6 +7,7 @@ const { requireRoles } = require('../middlewares/auth');
 // const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 const { renderModuleError } = require('../middlewares/error-handler');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
+const { buildSanctionListReturnPath } = require('../../libs/sanction-list-navigation');
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const returnToListFlow = source === 'listado';
   const returnToTeacherFlow = source === 'docente';
   const successReturnUrl = returnToListFlow
-    ? '/milab/api/get_list_multas'
+    ? buildSanctionListReturnPath(req.body)
     : returnToTeacherFlow
       ? '/milab/api/get-info-multa-docente/get'
       : personaReturnPath || '/milab/api/get-info-multa/get';
