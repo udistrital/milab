@@ -15,14 +15,6 @@ function sanitizePath(pathname) {
   return cleanPath;
 }
 
-const DASHBOARD_HOME_ROLES = [
-  'admin',
-  'coordinador_general',
-  'coordinador',
-  'laboratorista',
-  'gestor_laboratorio',
-];
-
 const publicApiAllowlist = [
   { prefix: '/milab/api/login/login', methods: ['POST'], allowSubpaths: false },
   { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
@@ -131,12 +123,10 @@ async function menuPermissionMiddleware(req, res, next) {
     if (isGestorDashboardRead) {
       return next();
     }
-    // /milab/inicio solo redirige a /milab/api/dashboard, que valida su propio permiso de menú.
-    const isDashboardHomeRedirect =
-      requestRoles.some((role) => DASHBOARD_HOME_ROLES.includes(role)) &&
-      ['GET', 'HEAD'].includes(method) &&
-      path === '/milab/inicio';
-    if (isDashboardHomeRedirect) {
+    // La portada autenticada es pública para roles; los módulos de destino validan sus permisos.
+    const isAuthenticatedHomeRequest =
+      Boolean(req.session?.user) && ['GET', 'HEAD'].includes(method) && path === '/milab/inicio';
+    if (isAuthenticatedHomeRequest) {
       return next();
     }
     if (hasRouteLevelApiAuthorization(path, method)) {
