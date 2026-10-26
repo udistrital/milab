@@ -168,7 +168,7 @@ test('microsoft callback authenticates when email exists in usuario (admin-corre
   }
 });
 
-test('microsoft callback denies non-registered institutional users', async () => {
+test('microsoft callback preserves first-time user context and redirects to document identification', async () => {
   const sessionState = createSessionState();
 
   const loaded = loadMicrosoftRoute({
@@ -184,10 +184,13 @@ test('microsoft callback denies non-registered institutional users', async () =>
     const app = buildApp(loaded.router, sessionState);
     const response = await request(app).get('/microsoft/callback?code=fake&state=fake');
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.view, 'home/message_error');
-    assert.match(response.body.locals.message, /acceso denegado/i);
-    assert.equal(sessionState.microsoftProfile, null);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/profile/identify');
+    assert.deepEqual(sessionState.microsoftProfile, {
+      correo: 'nueva@udistrital.edu.co',
+      nombre: 'Persona Nueva',
+      microsoftId: 'ms-404',
+    });
     assert.equal(sessionState.user, undefined);
   } finally {
     loaded.restore();
