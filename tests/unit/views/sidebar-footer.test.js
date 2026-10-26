@@ -32,6 +32,8 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
     assert.match(footer, new RegExp(`title="${label}"`));
   });
   assert.match(footer, /include\('\.\/profile-menu',/);
+  assert.match(footer, /formatSanctionDate,\s*sanctionsActionHref/);
+  assert.match(footer, /formatUsageHours,/);
   assert.match(footer, /app-sidebar-avatar-mouth--neutral/);
   assert.match(footer, /app-sidebar-avatar-mouth--smile/);
   assert.match(footer, /bi-door-open/);
@@ -42,15 +44,39 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
     sessionName: 'Andres Mendez',
     sessionDocument: '1024467835',
     sessionRole: 'Admin',
-    shouldShowAvatarSanctionsBadge: false,
-    activeSanctionsCount: 0,
-    activeSanctionsSummary: { items: [] },
+    shouldShowAvatarSanctionsBadge: true,
+    activeSanctionsCount: 1,
+    activeSanctionsSummary: {
+      items: [
+        {
+          categoria: 'Seguridad',
+          estado: 'Activa',
+          tipo: 'General',
+          ual: 'Laboratorio Uno',
+          fecha: '2026-10-26',
+        },
+      ],
+    },
+    formatSanctionDate: () => '26/10/2026',
     sanctionsActionHref: '/milab/api/sanciones/mis-sanciones',
-    studentUsageSummary: null,
+    studentUsageSummary: {
+      items: [
+        {
+          icon: 'bi-clock',
+          label: 'Horas de uso',
+          hasLimit: true,
+          used: 2.5,
+          limit: 10,
+          remaining: 7.5,
+          percentage: 25,
+        },
+      ],
+    },
+    formatUsageHours: (value) => Number(value).toFixed(2),
     activeRole: 'admin',
     accountLinks: [],
   });
-  ['Andres Mendez', '1024467835', 'Admin'].forEach((value) =>
+  ['Andres Mendez', '1024467835', 'Admin', '26/10/2026', '2.50 / 10.00 h'].forEach((value) =>
     assert.match(renderedProfileMenu, new RegExp(value))
   );
   assert.doesNotMatch(footer, /<span class="visually-hidden">/);
