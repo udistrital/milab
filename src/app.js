@@ -1,4 +1,6 @@
 const express = require('express');
+// Debe cargarse antes de las rutas: reenvía los rechazos de handlers async al manejador de errores.
+require('express-async-errors');
 const passport = require('passport');
 const fs = require('fs');
 const path = require('path');
