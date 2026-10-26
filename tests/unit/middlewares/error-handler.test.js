@@ -167,6 +167,7 @@ test('error page falls back to a static page when the error view cannot render',
 
   app.use((req, res, next) => {
     req.requestId = 'ref-123';
+    req.session = { user: { tipo: 'laboratorista' } };
     next();
   });
   app.get('/boom', (req, res, next) => {
@@ -178,4 +179,28 @@ test('error page falls back to a static page when the error view cannot render',
   assert.equal(res.status, 500);
   assert.match(res.text, /No pudimos completar tu solicitud/);
   assert.match(res.text, /ref-123/);
+  assert.doesNotMatch(res.text, /Detalle técnico|boom/);
+});
+
+test('error page fallback shows escaped diagnostics only to administrators', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.use((req, res, next) => {
+    req.requestId = 'ref-admin';
+    req.session = { user: { tipo: 'admin' } };
+    next();
+  });
+  app.get('/boom', (req, res, next) => {
+    next(new Error('<script>secret</script>'));
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const res = await request(app).get('/boom');
+  assert.equal(res.status, 500);
+  assert.match(res.text, /Detalle técnico \(solo visible para administradores\)/);
+  assert.match(res.text, /Mensaje: &lt;script&gt;secret&lt;\/script&gt;/);
+  assert.match(res.text, /ref-admin/);
+  assert.doesNotMatch(res.text, /<script>secret<\/script>/);
 });

@@ -156,11 +156,16 @@ function escapeHtml(value) {
 }
 
 // Respaldo sin plantillas: se usa si la vista de error también falla al renderizar.
-function sendFallbackErrorPage(res, statusCode, requestId) {
+function sendFallbackErrorPage(res, statusCode, requestId, adminErrorDetail = null) {
   const defaultUserError = buildDefaultUserError();
   const idLine = requestId
     ? `<p>Código de referencia: <code>${escapeHtml(requestId)}</code></p>`
     : '';
+  const detailSection =
+    typeof adminErrorDetail === 'string' && adminErrorDetail
+      ? `<details><summary>Detalle técnico (solo visible para administradores)</summary>` +
+        `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(adminErrorDetail)}</pre></details>`
+      : '';
   res.status(statusCode);
   if (res.headersSent) return undefined;
   return res
@@ -169,7 +174,7 @@ function sendFallbackErrorPage(res, statusCode, requestId) {
       `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>MILab</title></head>` +
         `<body><main style="font-family:sans-serif;max-width:640px;margin:4rem auto;padding:1rem">` +
         `<h1>${escapeHtml(defaultUserError.message)}</h1>` +
-        `<p>${escapeHtml(defaultUserError.message2)}</p>${idLine}</main></body></html>`
+        `<p>${escapeHtml(defaultUserError.message2)}</p>${idLine}${detailSection}</main></body></html>`
     );
 }
 
@@ -202,7 +207,7 @@ function renderApplicationError(res, overrides = {}, req = null, error = null) {
         { err: renderError, status: statusCode, path: req?.originalUrl },
         'No fue posible renderizar la página de error; se envía respaldo'
       );
-      return sendFallbackErrorPage(res, statusCode, requestId);
+      return sendFallbackErrorPage(res, statusCode, requestId, normalizedPayload.adminErrorDetail);
     });
 }
 
@@ -262,7 +267,8 @@ function createApplicationErrorHandler(logger = console) {
         { err: handlerError, status, path: req.originalUrl },
         'El manejador de errores falló; se envía respaldo'
       );
-      return sendFallbackErrorPage(res, status, req.requestId);
+      const fallbackPayload = enrichErrorPayloadForAdmin(req, { status }, error);
+      return sendFallbackErrorPage(res, status, req.requestId, fallbackPayload.adminErrorDetail);
     }
   };
 }
