@@ -560,6 +560,34 @@ test('menuPermissionMiddleware allows gestores to read the dashboard without a d
   }
 });
 
+test('menuPermissionMiddleware lets dashboard roles reach the inicio redirect without an Inicio grant', async () => {
+  const loaded = loadMiddleware({
+    poolQueryImpl: async () => {
+      throw new Error('Inicio redirect should not query menu grants for dashboard roles');
+    },
+  });
+
+  try {
+    const req = {
+      method: 'GET',
+      originalUrl: '/milab/inicio',
+      session: { user: { roles: ['laboratorista'], tipo: 'laboratorista' } },
+    };
+    const res = createResponse();
+    let nextCalled = false;
+
+    await loaded.menuPermissionMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.rendered, null);
+    assert.equal(loaded.getCalls().length, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
 for (const [method, pathname] of [
   ['GET', '/milab/api/dashboard/impersonacion/detener'],
   ['POST', '/milab/api/dashboard/impersonacion/iniciar'],
