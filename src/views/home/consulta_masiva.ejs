@@ -534,7 +534,8 @@
             }
             if (contentType.includes('application/json')) {
                 const payload = await response.json();
-                throw new Error(payload.message || 'No fue posible completar la consulta masiva.');
+                const details = [payload.message, payload.message2].filter(Boolean).join(' ');
+                throw new Error(details || 'No fue posible completar la consulta masiva.');
             }
             throw new Error('El servidor no devolvió el progreso de la consulta.');
         }
@@ -628,11 +629,16 @@
         });
 
         try {
+            const formData = new FormData(consultaForm);
+            const csrfToken = String(formData.get('_csrf') || '');
             const response = await fetch(consultaForm.action, {
                 method: 'POST',
-                body: new FormData(consultaForm),
+                body: new URLSearchParams(formData),
                 credentials: 'same-origin',
-                headers: { Accept: 'application/x-ndjson' },
+                headers: {
+                    Accept: 'application/x-ndjson',
+                    'X-CSRF-Token': csrfToken,
+                },
             });
             const reportHtml = await leerFlujoProgreso(response);
             if (reportHtml) {

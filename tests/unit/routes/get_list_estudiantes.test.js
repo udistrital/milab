@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
-const { SgaDebtService, resolveSgaConceptName } = require('../../../src/libs/oati-debts');
+const { SgaDebtService, resolveSgaLaboratoryConceptName } = require('../../../src/libs/oati-debts');
 const { summarizeBulkSanctions } = require('../../../src/libs/bulk-sanction-report');
 
 const debtService = new SgaDebtService();
@@ -80,7 +80,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
-        resolveSgaConceptName,
+        resolveSgaLaboratoryConceptName,
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
           resolveStudentCode: async ({ codigo, documento, identificador }) => {
@@ -127,7 +127,7 @@ function loadRoute({
               const activeDebts = rawDebts.filter(
                 (debt) =>
                   debtService.isBlockingDebt(debt) &&
-                  Boolean(resolveSgaConceptName(debt?.DEU_CPTO_COD))
+                  Boolean(resolveSgaLaboratoryConceptName(debt?.DEU_CPTO_COD))
               );
               return {
                 status: activeDebts.length ? 'found' : 'clear',
@@ -198,6 +198,8 @@ test('bulk student query modal uses the shared Bootstrap 5 runtime', async () =>
   assert.match(bulkQueryView, /id="consultaMasivaProgressModal"/);
   assert.match(bulkQueryView, /application\/x-ndjson/);
   assert.match(bulkQueryView, /id="consultaMasivaCount"/);
+  assert.match(bulkQueryView, /body: new URLSearchParams\(formData\)/);
+  assert.match(bulkQueryView, /'X-CSRF-Token': csrfToken/);
   const tableBody = bulkQueryView.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
   assert.doesNotMatch(tableBody, /colspan=/i);
 });

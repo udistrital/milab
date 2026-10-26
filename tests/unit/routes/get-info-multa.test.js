@@ -403,6 +403,86 @@ test('get-info-multa /persona renders the student panel with active count and SG
   }
 });
 
+test('get-info-multa exposes other SGA debts by document only to admins', async () => {
+  const otherDebt = {
+    codigo_concepto: '1',
+    nombre_concepto: 'BIBLIOTECA INGENIERÍA',
+    categoria: 'Libro pendiente',
+    estado: '2',
+  };
+  let queryOptions;
+  const loaded = loadRoute({
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      queryStudent: async (options) => {
+        queryOptions = options;
+        return {
+          status: 'clear',
+          debts: [],
+          otherDebts: [otherDebt],
+          message: '',
+          errors: [],
+        };
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const lookupResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.isAdmin, true);
+    assert.equal(queryOptions.documento, '79520182');
+    assert.equal(queryOptions.includeOtherDebts, true);
+    assert.deepEqual(response.body.locals.sga.otherDebts, [otherDebt]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa does not expose other SGA debts to non-admins', async () => {
+  const otherDebt = { codigo_concepto: '1', nombre_concepto: 'BIBLIOTECA INGENIERÍA' };
+  let queryOptions;
+  const loaded = loadRoute({
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      queryStudent: async (options) => {
+        queryOptions = options;
+        return {
+          status: 'clear',
+          debts: [],
+          otherDebts: [otherDebt],
+          message: '',
+          errors: [],
+        };
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const lookupResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.isAdmin, false);
+    assert.equal(queryOptions.includeOtherDebts, false);
+    assert.deepEqual(response.body.locals.sga.otherDebts, []);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('get-info-multa /persona rejects an unknown lookup token', async () => {
   const loaded = loadRoute();
 

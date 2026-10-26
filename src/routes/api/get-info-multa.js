@@ -70,6 +70,7 @@ const requireFineInfoPageAccess = requireRoles(['admin', 'laboratorista', 'coord
 
 // Historial y SGA son solo del estudiante consultado; los reutilizan la búsqueda y el regreso desde cada acción.
 async function buildStudentSanctionPanel(req, { usuarioId, person }) {
+  const includeOtherSgaDebts = req.session?.user?.tipo === 'admin';
   const activeResult = await pool.query(
     "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
     [usuarioId]
@@ -93,14 +94,23 @@ async function buildStudentSanctionPanel(req, { usuarioId, person }) {
     history = await sanctionListHelpers.addLaboratoristaActions(pool, rows, req);
   }
 
-  const sga = { configured: sgaDebtService.isConfigured(), debts: [], failed: false, status: null };
+  const sga = {
+    configured: sgaDebtService.isConfigured(),
+    debts: [],
+    otherDebts: [],
+    failed: false,
+    status: null,
+  };
   if (sga.configured) {
     try {
       const result = await sgaDebtService.queryStudent({
         codigo: person.codigo,
         documento: person.documento,
+        includeOtherDebts: includeOtherSgaDebts,
       });
       sga.debts = result.debts;
+      sga.otherDebts =
+        includeOtherSgaDebts && Array.isArray(result.otherDebts) ? result.otherDebts : [];
       sga.status = result.status;
       sga.message = result.message;
       sga.failed = !['found', 'clear'].includes(result.status);
@@ -131,6 +141,7 @@ async function renderStudentSanctionActions(
   const sanctionCategories = await fetchSanctionCategories({ client: pool });
   return res.render('home/sancion-person-actions', {
     lookupToken,
+    isAdmin: req.session?.user?.tipo === 'admin',
     personType: 'estudiante',
     person,
     activeSanctionCount: panel.activeSanctionCount,

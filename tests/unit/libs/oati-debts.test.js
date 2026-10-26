@@ -11,6 +11,8 @@ const {
   isLaboratoryConceptName,
   sgaDebtService,
   resolveSgaConceptName,
+  resolveSgaConceptType,
+  resolveSgaLaboratoryConceptName,
 } = require('../../../src/libs/oati-debts');
 
 function createService({ serviceName = 'academica_pruebas', studentResponse, debtResponse } = {}) {
@@ -58,9 +60,40 @@ test('SgaDebtService parses repeated SGA estudiante records', () => {
   assert.equal(result[1].DEU_ESTADO, '3');
 });
 
-test('SGA concept codes resolve to the laboratory or dependency names from the catalog', () => {
+test('SGA concept codes resolve the full catalog and keep laboratory classification separate', () => {
+  const catalogCodes = [
+    ...Array.from({ length: 24 }, (_, index) => String(index + 1)),
+    ...Array.from({ length: 43 }, (_, index) => String(index + 30)),
+  ];
+  assert.equal(catalogCodes.length, 67);
+  assert.ok(catalogCodes.every((code) => resolveSgaConceptName(code)));
+  assert.ok(catalogCodes.every((code) => resolveSgaConceptType(code)));
+  assert.equal(resolveSgaConceptName('1'), 'BIBLIOTECA INGENIERÍA');
+  assert.equal(resolveSgaConceptName('9'), 'BIENESTAR UNIVERSITARIO');
   assert.equal(resolveSgaConceptName('4'), 'LABORATORIO DE QUIMICA');
   assert.equal(resolveSgaConceptName('04'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaConceptName('8'), 'LABORATORIO DE FOTOGAMETRIA (VIVERO)');
+  assert.equal(resolveSgaConceptName('14'), 'CENTRO INVEST. GEOG. CIIGER');
+  assert.equal(resolveSgaConceptName('21'), 'DEPORTES - VIVERO');
+  assert.equal(resolveSgaConceptName('23'), 'CENTRO DE DOCUMENTACIÓN DE ARTES');
+  assert.equal(resolveSgaConceptName('24'), 'LAB. INGENIERÍA');
+  assert.equal(resolveSgaConceptName('35'), 'XILOTECA VIVERO');
+  assert.equal(resolveSgaConceptName('52'), 'BIBLIOTECA ADUANILLA DE PAIBA');
+  assert.equal(resolveSgaConceptName('60'), 'LAB. CALIDAD DEL AGUA (BOSA)');
+  assert.equal(resolveSgaConceptName('71'), 'LAB. TOPOGRAFIA (BOSA)');
+  assert.equal(resolveSgaConceptName('72'), 'LAB. QUÍMICA ORGÁNICA (BOSA)');
+  assert.equal(resolveSgaLaboratoryConceptName('4'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaLaboratoryConceptName('14'), 'CENTRO INVEST. GEOG. CIIGER');
+  assert.equal(resolveSgaLaboratoryConceptName('21'), 'DEPORTES - VIVERO');
+  assert.equal(resolveSgaLaboratoryConceptName('23'), 'CENTRO DE DOCUMENTACIÓN DE ARTES');
+  assert.equal(resolveSgaLaboratoryConceptName('35'), 'XILOTECA VIVERO');
+  assert.equal(resolveSgaLaboratoryConceptName('55'), 'ZOONOSIS (FAMARENA)');
+  assert.equal(resolveSgaLaboratoryConceptName('56'), 'CENTRO DE DOCUMENTACION SOCIALES');
+  assert.equal(resolveSgaLaboratoryConceptName('1'), null);
+  assert.equal(resolveSgaLaboratoryConceptName('9'), null);
+  assert.equal(resolveSgaConceptType('4'), 'LABORATORIO');
+  assert.equal(resolveSgaConceptType('1'), 'BIBLIOTECA');
+  assert.equal(resolveSgaConceptType('9'), 'BIENESTAR');
   assert.equal(resolveSgaConceptName('999'), null);
   assert.equal(resolveSgaConceptName(''), null);
 });
@@ -411,6 +444,115 @@ test('queryStudent classifies a mapped concept when OATI omits its name', async 
   assert.equal(result.unclassifiedCount, 0);
 });
 
+test('queryStudent returns active non-laboratory debts only when explicitly requested', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: 'lab-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '4',
+          },
+          {
+            DEU_ID: 'other-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '1',
+            CPTO_NOMBRE: 'BIBLIOTECA INGENIERÍA',
+            DEU_MATERIAL: 'Libro pendiente',
+          },
+          {
+            DEU_ID: 'other-2',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '1',
+            DEU_CPTO_COD: '9',
+            CPTO_NOMBRE: 'BIENESTAR UNIVERSITARIO',
+          },
+          {
+            DEU_ID: 'inactive',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '3',
+            DEU_CPTO_COD: '1',
+          },
+          {
+            DEU_ID: 'library-detail',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '7',
+            DEU_MATERIAL: 'Biblioteca audiovisual',
+          },
+          {
+            DEU_ID: 'unknown-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '999',
+            CPTO_NOMBRE: 'CONCEPTO DESCONOCIDO',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    documento: '79520182',
+    includeOtherDebts: true,
+  });
+
+  assert.equal(result.status, 'found');
+  assert.deepEqual(
+    result.debts.map((debt) => debt.id_sga),
+    ['lab-1']
+  );
+  assert.deepEqual(
+    result.otherDebts.map((debt) => debt.id_sga),
+    ['other-1', 'other-2', 'library-detail']
+  );
+  assert.equal(result.otherDebts[0].nombre_concepto, 'BIBLIOTECA INGENIERÍA');
+  assert.equal(result.otherDebts[0].tipo_concepto, 'BIBLIOTECA');
+  assert.equal(result.otherDebts[1].nombre_concepto, 'BIENESTAR UNIVERSITARIO');
+  assert.equal(result.otherDebts[1].tipo_concepto, 'BIENESTAR');
+  assert.equal(result.otherDebts[0].codigo_estudiante, '2024100001');
+});
+
+test('other active SGA debts do not count as laboratory fines', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: 'other-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '1',
+            CPTO_NOMBRE: 'BIBLIOTECA INGENIERÍA',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    documento: '79520182',
+    includeOtherDebts: true,
+  });
+
+  assert.equal(result.status, 'clear');
+  assert.deepEqual(result.debts, []);
+  assert.equal(result.otherDebts.length, 1);
+});
+
 test('queryStudent silently discards active debts with concept codes outside the allowed catalog', async () => {
   const { service } = createService({
     studentResponse: {
@@ -439,6 +581,7 @@ test('queryStudent silently discards active debts with concept codes outside the
 
   assert.equal(result.status, 'clear');
   assert.deepEqual(result.debts, []);
+  assert.deepEqual(result.otherDebts, []);
   assert.equal(result.unclassifiedCount, 0);
 });
 

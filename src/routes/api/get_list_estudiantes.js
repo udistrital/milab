@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireRoles } = require('../middlewares/auth');
-const { resolveSgaConceptName, sgaDebtService } = require('../../libs/oati-debts');
+const { resolveSgaLaboratoryConceptName, sgaDebtService } = require('../../libs/oati-debts');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { renderBulkSanctionReport } = require('../../libs/bulk-sanction-report');
 const {
@@ -33,7 +33,7 @@ const requireBulkStudentQueryAccess = requireRoles(['admin', 'laboratorista', 'c
 
 function mapSgaDebtToMulta(debt, student) {
   const conceptCode = String(debt.codigo_concepto || debt.DEU_CPTO_COD || '').trim();
-  const conceptName = resolveSgaConceptName(conceptCode);
+  const conceptName = resolveSgaLaboratoryConceptName(conceptCode);
   if (!conceptName) return null;
   const amount = debt.valor ?? debt.DEU_MULTA;
   const details = [
