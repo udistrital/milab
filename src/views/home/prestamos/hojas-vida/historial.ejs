@@ -78,6 +78,11 @@
                     </div>
                   <% } %>
                   <div class="small text-muted">Responsable: <%= evento.usuario || '—' %></div>
+                  <% if (evento.referencia_display) { %>
+                    <div class="small text-muted" data-testid="historial-evento-referencia">
+                      Referencia: <%= evento.referencia_display %>
+                    </div>
+                  <% } %>
                 </li>
               <% }); %>
             </ul>

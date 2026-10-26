@@ -13,7 +13,14 @@ const { fetchOperationalRoleScopeByUser } = require('../../libs/operational-role
 const { APP_PERMISSIONS, hasPermission } = require('../../libs/permissions');
 const { getPrestamosModuleAccess } = require('../../libs/prestamos-module-access');
 const { getPrimaryRole, normalizeRoles } = require('../../libs/roles');
-const { CAMPOS_POR_SECCION } = require('../../libs/hojas-vida-campos');
+const {
+  CAMPOS_POR_SECCION,
+  TIPOS_USO_OPCIONES,
+  CLAVE_USO_OTROS,
+  parsearTipoUso,
+  opcionesTipoUsoMarcadas,
+  formatearTipoUso,
+} = require('../../libs/hojas-vida-campos');
 const {
   TIPOS_EVENTO_MANUALES,
   etiquetaTipoEvento,
@@ -8163,6 +8170,8 @@ router.get(
         .filter((row) => row.obligatorio)
         .map((row) => row.nombre_campo);
 
+      const usoTipoUso = parsearTipoUso(hojaVida.tipo_uso);
+
       return res.render('home/prestamos/hojas-vida/confirmar', {
         hojaVida,
         equipo: {
@@ -8175,6 +8184,8 @@ router.get(
         documentos: documentosResult.rows,
         secciones: CAMPOS_POR_SECCION,
         obligatorios,
+        tipoUsoClaves: usoTipoUso.claves,
+        tipoUsoOtro: usoTipoUso.otro,
         maxFotoMB: 5,
         successMessage: sanitizeText(req.query.success),
         errorMessage: sanitizeText(req.query.error),
@@ -8233,13 +8244,11 @@ function formatearValorHojaVidaPdf(valor, tipo) {
 }
 
 const HV_PDF_META = {
-  sistema: 'FORMATO',
   codigo1: 'Codigo: GL-PR-002-FR-007',
-  codigo2: '',
-  macroproceso: 'Macroproceso: Gestion de Recursos',
+  macroproceso: 'Macro proceso: Apoyo a lo Misional',
   version: 'Version: 01',
-  proceso: 'Proceso: Gestion y Desarrollo del Talento Humano',
-  fechaAprobacion: '10/08/2022',
+  proceso: 'Proceso: Gestion de Laboratorios',
+  fechaAprobacion: '30/10/2017',
 };
 
 const HV_PDF_TITULO = 'HOJA DE VIDA DE EQUIPOS';
@@ -8256,6 +8265,10 @@ function prepararMantenimientosPdf(mantenimientos) {
     fecha: formatearValorHojaVidaPdf(mantenimiento.fecha_realizacion, 'date'),
     estado: etiquetaEstadoMantenimiento(mantenimiento.estado) || '-',
     responsable: sanitizeText(mantenimiento.responsable) || '-',
+    empresa: sanitizeText(mantenimiento.datos_empresa_contratada) || '-',
+    garantia: sanitizeText(mantenimiento.tiempo_garantia) || '-',
+    especificaciones: sanitizeText(mantenimiento.especificaciones_mantenimiento) || '-',
+    observaciones: sanitizeText(mantenimiento.observaciones_repuestos) || '-',
     cierre: mantenimiento.fecha_cierre
       ? formatearFechaHoraHojaVida(mantenimiento.fecha_cierre)
       : '-',
@@ -8270,27 +8283,199 @@ function aplicarFuentePdf(doc, fuente) {
   }
 }
 
+function obtenerValorHojaVidaPdf(valor, tipo, fallback = 'No hay informacion') {
+  if (valor === null || valor === undefined || valor === '') return fallback;
+  const formateado = formatearValorHojaVidaPdf(valor, tipo);
+  if (!formateado || formateado === '-' || formateado === '—') return fallback;
+  return formateado;
+}
+
+function obtenerTiposUsoMarcados(valor) {
+  return opcionesTipoUsoMarcadas(valor);
+}
+
+function dibujarCajaHojaVidaPdf(doc, x, y, ancho, alto, texto, opciones = {}) {
+  const {
+    tamano = 9,
+    negrilla = false,
+    alineacion = 'left',
+    relleno = null,
+    colorTexto = '#000000',
+    paddingX = 4,
+    paddingY = 4,
+    valign = 'center',
+  } = opciones;
+
+  if (relleno) {
+    doc.rect(x, y, ancho, alto).fillAndStroke(relleno, '#000000');
+  } else {
+    doc.rect(x, y, ancho, alto).stroke('#000000');
+  }
+
+  aplicarFuentePdf(doc, negrilla ? PDF_FONT_BOLD : PDF_FONT_REGULAR);
+  doc.fontSize(tamano).fillColor(colorTexto);
+
+  let textY = y + paddingY;
+  if (valign === 'center') {
+    const textHeight = doc.heightOfString(String(texto || ''), {
+      width: ancho - paddingX * 2,
+      align: alineacion,
+    });
+    textY = y + Math.max(paddingY, (alto - textHeight) / 2);
+  }
+
+  doc.text(String(texto || ''), x + paddingX, textY, {
+    width: ancho - paddingX * 2,
+    height: alto - paddingY * 2,
+    align: alineacion,
+  });
+}
+
+function dibujarCampoHojaVidaPdf(doc, x, y, anchoEtiqueta, anchoValor, alto, etiqueta, valor) {
+  dibujarCajaHojaVidaPdf(doc, x, y, anchoEtiqueta, alto, etiqueta, {
+    negrilla: true,
+    relleno: '#d9d9d9',
+  });
+  dibujarCajaHojaVidaPdf(doc, x + anchoEtiqueta, y, anchoValor, alto, valor, {
+    valign: alto >= 36 ? 'top' : 'center',
+  });
+}
+
+function dibujarEncabezadoHojaVidaPdf(doc, fechaGeneracion, fechaActualizacion) {
+  const x = doc.page.margins.left;
+  const y = doc.page.margins.top;
+  const ancho = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const alto = 58;
+  const colEscudo = 105;
+  const colCentro = 355;
+  const colMeta = 200;
+  const fila = alto / 3;
+
+  doc.strokeColor('#000000').lineWidth(1).rect(x, y, ancho, alto).stroke();
+  doc
+    .moveTo(x + colEscudo, y)
+    .lineTo(x + colEscudo, y + alto)
+    .stroke();
+  doc
+    .moveTo(x + colEscudo + colCentro, y)
+    .lineTo(x + colEscudo + colCentro, y + alto)
+    .stroke();
+  doc
+    .moveTo(x + colEscudo + colCentro + colMeta, y)
+    .lineTo(x + colEscudo + colCentro + colMeta, y + alto)
+    .stroke();
+
+  for (let i = 1; i <= 2; i += 1) {
+    doc
+      .moveTo(x + colEscudo, y + fila * i)
+      .lineTo(x + colEscudo + colCentro + colMeta, y + fila * i)
+      .stroke();
+  }
+
+  if (fs.existsSync(PDF_ESCUDO_PATH)) {
+    doc.image(PDF_ESCUDO_PATH, x + 12, y + 6, { fit: [78, 46], align: 'center' });
+  }
+  if (fs.existsSync(PDF_SIGUD_PATH)) {
+    doc.image(PDF_SIGUD_PATH, x + colEscudo + colCentro + colMeta + 12, y + 10, {
+      fit: [95, 38],
+      align: 'center',
+    });
+  }
+
+  dibujarCajaHojaVidaPdf(doc, x + colEscudo, y, colCentro, fila, HV_PDF_TITULO, {
+    negrilla: true,
+    alineacion: 'center',
+    colorTexto: '#021c27',
+  });
+  dibujarCajaHojaVidaPdf(doc, x + colEscudo, y + fila, colCentro, fila, HV_PDF_META.macroproceso, {
+    negrilla: true,
+    alineacion: 'center',
+  });
+  dibujarCajaHojaVidaPdf(doc, x + colEscudo, y + fila * 2, colCentro, fila, HV_PDF_META.proceso, {
+    negrilla: true,
+    alineacion: 'center',
+  });
+  dibujarCajaHojaVidaPdf(doc, x + colEscudo + colCentro, y, colMeta, fila, HV_PDF_META.codigo1, {
+    negrilla: true,
+  });
+  dibujarCajaHojaVidaPdf(
+    doc,
+    x + colEscudo + colCentro,
+    y + fila,
+    colMeta,
+    fila,
+    HV_PDF_META.version,
+    {
+      negrilla: true,
+    }
+  );
+  dibujarCajaHojaVidaPdf(
+    doc,
+    x + colEscudo + colCentro,
+    y + fila * 2,
+    colMeta,
+    fila,
+    `Fecha de aprobacion: ${HV_PDF_META.fechaAprobacion}`,
+    {
+      negrilla: true,
+    }
+  );
+
+  aplicarFuentePdf(doc, PDF_FONT_REGULAR);
+  doc
+    .fontSize(8)
+    .fillColor('#000000')
+    .text(
+      `Fecha de generacion: ${fechaGeneracion}    Fecha de actualizacion: ${fechaActualizacion}`,
+      x,
+      y + alto + 8,
+      {
+        width: ancho,
+        align: 'left',
+      }
+    );
+
+  return y + alto + 22;
+}
+
 function dibujarHistorialMantenimientosPdf(doc, filas) {
   const izquierda = doc.page.margins.left;
   const util = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const limiteInferior = doc.page.height - doc.page.margins.bottom;
-  const alturaFila = 18;
+  const alturaFila = 34;
   const columnas = [
-    { etiqueta: 'Item', ancho: util * 0.3, valor: (fila) => fila.item },
-    { etiqueta: 'Tipo', ancho: util * 0.14, valor: (fila) => fila.tipo },
-    { etiqueta: 'Fecha', ancho: util * 0.13, valor: (fila) => fila.fecha },
-    { etiqueta: 'Estado', ancho: util * 0.14, valor: (fila) => fila.estado },
-    { etiqueta: 'Responsable', ancho: util * 0.17, valor: (fila) => fila.responsable },
-    { etiqueta: 'Cierre', ancho: util * 0.12, valor: (fila) => fila.cierre },
+    { etiqueta: 'ITEM', ancho: util * 0.05, valor: (fila) => fila.item },
+    { etiqueta: 'TIPO DE\nMANTENIMIENTO', ancho: util * 0.15, valor: (fila) => fila.tipo },
+    { etiqueta: 'FECHA DE\nREALIZACION', ancho: util * 0.12, valor: (fila) => fila.fecha },
+    {
+      etiqueta: 'DATOS EMPRESA\nCONTRATADA',
+      ancho: util * 0.14,
+      valor: (fila) => fila.empresa,
+    },
+    { etiqueta: 'TIEMPO DE\nGARANTIA', ancho: util * 0.11, valor: (fila) => fila.garantia },
+    {
+      etiqueta: 'ESPECIFICACIONES DEL\nMANTENIMIENTO REALIZADO',
+      ancho: util * 0.18,
+      valor: (fila) => fila.especificaciones,
+    },
+    { etiqueta: 'RESPONSABLE', ancho: util * 0.11, valor: (fila) => fila.responsable },
+    {
+      etiqueta: 'OBSERVACIONES /\nREPUESTOS',
+      ancho: util * 0.14,
+      valor: (fila) => fila.observaciones,
+    },
   ];
 
   function dibujarEncabezado(y) {
     aplicarFuentePdf(doc, PDF_FONT_BOLD);
-    doc.fontSize(9).fillColor('#021c27');
+    doc.fontSize(8).fillColor('#000000');
     let x = izquierda;
     columnas.forEach((columna) => {
-      doc.rect(x, y, columna.ancho, alturaFila).stroke('#000000');
-      doc.text(columna.etiqueta, x + 3, y + 5, { width: columna.ancho - 6 });
+      doc.rect(x, y, columna.ancho, alturaFila).fillAndStroke('#d9d9d9', '#000000');
+      doc.fillColor('#000000').text(columna.etiqueta, x + 3, y + 6, {
+        width: columna.ancho - 6,
+        align: 'center',
+      });
       x += columna.ancho;
     });
     return y + alturaFila;
@@ -8302,14 +8487,40 @@ function dibujarHistorialMantenimientosPdf(doc, filas) {
     doc.x = izquierda;
   }
 
-  aplicarFuentePdf(doc, PDF_FONT_BOLD);
-  doc.fontSize(11).fillColor('#021c27').text('Historial de mantenimientos', izquierda, doc.y);
-  doc.moveDown(0.4);
+  dibujarCajaHojaVidaPdf(doc, izquierda, doc.y, util, 16, '3. HISTORIAL DE MANTENIMIENTO', {
+    negrilla: true,
+    alineacion: 'center',
+    relleno: '#bfbfbf',
+  });
+  doc.y += 16;
+  dibujarCajaHojaVidaPdf(doc, izquierda, doc.y, util, 18, 'CONVENCION DE MANTENIMIENTO', {
+    negrilla: true,
+    alineacion: 'center',
+  });
+  doc.y += 18;
+  dibujarCajaHojaVidaPdf(
+    doc,
+    izquierda,
+    doc.y,
+    util,
+    34,
+    'MANTENIMIENTO INTERNO CORRECTIVO (MIC) ----- MANTENIMIENTO EXTERNO CORRECTIVO (MEC)\n' +
+      'MANTENIMIENTO INTERNO PREDICTIVO (MIP) ----- MANTENIMIENTO EXTERNO PREDICTIVO (MEP)\n' +
+      'MANTENIMIENTO INTERNO PREVENTIVO (MIPV) ----- MANTENIMIENTO EXTERNO PREVENTIVO (MEPV)',
+    {
+      alineacion: 'center',
+      valign: 'center',
+    }
+  );
+  doc.y += 34;
 
   if (!filas || filas.length === 0) {
     aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-    doc.fontSize(10).fillColor('#000000').text('Sin mantenimientos registrados.', izquierda, doc.y);
-    doc.moveDown();
+    doc
+      .fontSize(10)
+      .fillColor('#000000')
+      .text('Sin mantenimientos registrados.', izquierda, doc.y + 8);
+    doc.moveDown(2);
     return;
   }
 
@@ -8325,14 +8536,13 @@ function dibujarHistorialMantenimientosPdf(doc, filas) {
       aplicarFuentePdf(doc, PDF_FONT_REGULAR);
     }
 
-    doc.fontSize(8).fillColor('#000000');
+    doc.fontSize(7).fillColor('#000000');
     let x = izquierda;
     columnas.forEach((columna) => {
       doc.rect(x, y, columna.ancho, alturaFila).stroke('#000000');
       doc.text(String(columna.valor(fila) || '-'), x + 3, y + 3, {
         width: columna.ancho - 6,
-        height: alturaFila - 4,
-        ellipsis: true,
+        height: alturaFila - 6,
       });
       x += columna.ancho;
     });
@@ -8344,7 +8554,7 @@ function dibujarHistorialMantenimientosPdf(doc, filas) {
 }
 
 function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
-  const doc = new PDFDocument({ margin: 50 });
+  const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
@@ -8352,39 +8562,290 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
   );
   doc.pipe(res);
 
-  drawLegacyTemplateHeader(doc, HV_PDF_TITULO, HV_PDF_META);
+  const fechaGeneracion = formatearValorHojaVidaPdf(new Date(), 'date');
+  const fechaActualizacion = formatearValorHojaVidaPdf(
+    hojaVida.fecha_modificacion || hojaVida.fecha_creacion || new Date(),
+    'date'
+  );
+  let y = dibujarEncabezadoHojaVidaPdf(doc, fechaGeneracion, fechaActualizacion);
+  const izquierda = doc.page.margins.left;
+  const util = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const fotoAncho = 150;
+  const infoAncho = util - fotoAncho;
+  const usosMarcados = obtenerTiposUsoMarcados(hojaVida.tipo_uso);
 
-  aplicarFuentePdf(doc, PDF_FONT_BOLD);
-  doc.fontSize(11).fillColor('#000000');
-  doc.text(`Equipo: ${equipo.nombre || '-'}`);
-  doc.text(`Codigo interno: ${equipo.codigo || '-'}`);
-  doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || '-'}`);
-  doc.moveDown();
+  dibujarCajaHojaVidaPdf(doc, izquierda, y, util, 16, '1. INFORMACION DEL EQUIPO', {
+    negrilla: true,
+    alineacion: 'center',
+    relleno: '#bfbfbf',
+  });
+  y += 16;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    infoAncho - 145,
+    20,
+    'DEPENDENCIA',
+    obtenerValorHojaVidaPdf(hojaVida.dependencia || equipo.facultad, 'text')
+  );
+  dibujarCajaHojaVidaPdf(doc, izquierda + infoAncho, y, fotoAncho, 160, '', {});
+  y += 20;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    infoAncho - 145,
+    20,
+    'UBICACION',
+    obtenerValorHojaVidaPdf(hojaVida.ubicacion || equipo.ubicacion || equipo.laboratorio, 'text')
+  );
+  y += 20;
+
+  const nombreEtiqueta = 145;
+  const nombreValor = 195;
+  const proveedorEtiqueta = 145;
+  const proveedorValor = infoAncho - nombreEtiqueta - nombreValor - proveedorEtiqueta;
+  dibujarCajaHojaVidaPdf(doc, izquierda, y, nombreEtiqueta, 64, 'NOMBRE DEL EQUIPO', {
+    negrilla: true,
+    relleno: '#d9d9d9',
+  });
+  dibujarCajaHojaVidaPdf(
+    doc,
+    izquierda + nombreEtiqueta,
+    y,
+    nombreValor,
+    64,
+    obtenerValorHojaVidaPdf(hojaVida.nombre_equipo || equipo.nombre, 'text'),
+    { valign: 'top' }
+  );
+  dibujarCajaHojaVidaPdf(
+    doc,
+    izquierda + nombreEtiqueta + nombreValor,
+    y,
+    proveedorEtiqueta,
+    64,
+    'PROVEEDOR',
+    {
+      negrilla: true,
+      relleno: '#d9d9d9',
+    }
+  );
+  dibujarCajaHojaVidaPdf(
+    doc,
+    izquierda + nombreEtiqueta + nombreValor + proveedorEtiqueta,
+    y,
+    proveedorValor,
+    64,
+    obtenerValorHojaVidaPdf(hojaVida.proveedor, 'text'),
+    { valign: 'top' }
+  );
 
   if (foto && foto.archivo) {
-    aplicarFuentePdf(doc, PDF_FONT_BOLD);
-    doc.fontSize(11).fillColor('#021c27').text('Fotografia del equipo');
     const imagen = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
     try {
-      doc.image(imagen, { fit: [220, 220] });
+      doc.image(imagen, izquierda + infoAncho + 8, y + 8, {
+        fit: [fotoAncho - 16, 144],
+        align: 'center',
+        valign: 'center',
+      });
     } catch {
-      aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-      doc.fontSize(10).fillColor('#000000').text('(No fue posible incrustar la imagen)');
+      dibujarCajaHojaVidaPdf(
+        doc,
+        izquierda + infoAncho + 14,
+        y + 28,
+        fotoAncho - 28,
+        90,
+        'IMAGEN NO DISPONIBLE',
+        {
+          alineacion: 'center',
+          colorTexto: '#777777',
+        }
+      );
     }
-    doc.moveDown();
+  } else {
+    dibujarCajaHojaVidaPdf(
+      doc,
+      izquierda + infoAncho + 14,
+      y + 28,
+      fotoAncho - 28,
+      90,
+      'IMAGEN NO DISPONIBLE',
+      {
+        alineacion: 'center',
+        colorTexto: '#777777',
+      }
+    );
   }
+  y += 64;
 
-  CAMPOS_POR_SECCION.forEach((seccion) => {
-    aplicarFuentePdf(doc, PDF_FONT_BOLD);
-    doc.fontSize(11).fillColor('#021c27').text(seccion.seccion);
-    aplicarFuentePdf(doc, PDF_FONT_REGULAR);
-    doc.fontSize(10).fillColor('#000000');
-    seccion.campos.forEach((campo) => {
-      const valor = formatearValorHojaVidaPdf(hojaVida[campo.nombre], campo.tipo);
-      doc.text(`${campo.etiqueta}: ${valor}`);
-    });
-    doc.moveDown(0.5);
+  const anchoMitad = infoAncho / 2;
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'MARCA',
+    obtenerValorHojaVidaPdf(hojaVida.marca, 'text')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + anchoMitad,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    '# DE REMISION DE COMPRA',
+    obtenerValorHojaVidaPdf(hojaVida.numero_remision_compra, 'text')
+  );
+  y += 20;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    '# DE SERIE',
+    obtenerValorHojaVidaPdf(hojaVida.numero_serie, 'text')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + anchoMitad,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'VALOR DE COMPRA',
+    obtenerValorHojaVidaPdf(hojaVida.valor_compra, 'number')
+  );
+  y += 20;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'CODIGO DE INVENTARIO',
+    obtenerValorHojaVidaPdf(hojaVida.codigo_inventario, 'text')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + anchoMitad,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'PAIS DE ORIGEN',
+    obtenerValorHojaVidaPdf(hojaVida.pais_origen, 'text')
+  );
+  y += 20;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'FECHA DE ADQUISICION',
+    obtenerValorHojaVidaPdf(hojaVida.fecha_adquisicion, 'date')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + anchoMitad,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'REFERENCIA/MODELO',
+    obtenerValorHojaVidaPdf(hojaVida.referencia_modelo, 'text')
+  );
+  y += 20;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'FRECUENCIA MTTO',
+    obtenerValorHojaVidaPdf(hojaVida.frecuencia_mantenimiento, 'text')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + anchoMitad,
+    y,
+    145,
+    anchoMitad - 145,
+    20,
+    'POTENCIA ELECTRICA',
+    obtenerValorHojaVidaPdf(hojaVida.potencia_electrica, 'text')
+  );
+  y += 20;
+
+  dibujarCajaHojaVidaPdf(doc, izquierda, y, 145, 20, 'TIPO DE USO', {
+    negrilla: true,
+    relleno: '#d9d9d9',
   });
+  dibujarCajaHojaVidaPdf(
+    doc,
+    izquierda + 145,
+    y,
+    infoAncho - 145,
+    20,
+    [
+      ...TIPOS_USO_OPCIONES.map(
+        (opcion) => `${usosMarcados.includes(opcion.clave) ? '[x]' : '[ ]'} ${opcion.etiqueta}`
+      ),
+      `${usosMarcados.includes(CLAVE_USO_OTROS) ? '[x]' : '[ ]'} Otros`,
+    ].join('   '),
+    { tamano: 8 }
+  );
+  y += 20;
+
+  dibujarCajaHojaVidaPdf(doc, izquierda, y, util, 16, '2. ESPECIFICACIONES TECNICAS', {
+    negrilla: true,
+    alineacion: 'center',
+    relleno: '#bfbfbf',
+  });
+  y += 16;
+
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda,
+    y,
+    155,
+    90,
+    20,
+    '¿Cuenta con manual?',
+    obtenerValorHojaVidaPdf(hojaVida.cuenta_manual, 'text', 'No hay informacion')
+  );
+  dibujarCampoHojaVidaPdf(
+    doc,
+    izquierda + 245,
+    y,
+    90,
+    util - 335,
+    20,
+    'Accesorios',
+    hojaVida.accesorios
+      ? obtenerValorHojaVidaPdf(hojaVida.accesorios, 'text')
+      : 'No cuenta con accesorios'
+  );
+  y += 26;
+
+  doc.y = y;
 
   dibujarHistorialMantenimientosPdf(doc, prepararMantenimientosPdf(mantenimientos));
 
@@ -8494,6 +8955,7 @@ router.get(
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
         secciones: CAMPOS_POR_SECCION,
+        tipoUsoTexto: formatearTipoUso(datos.hojaVida.tipo_uso),
         documentos,
         mantenimientos,
         resumen: {
@@ -8559,11 +9021,15 @@ router.get(
         .filter((row) => row.obligatorio)
         .map((row) => row.nombre_campo);
 
+      const usoTipoUso = parsearTipoUso(datos.hojaVida.tipo_uso);
+
       return res.render('home/prestamos/hojas-vida/editar', {
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
         secciones: CAMPOS_POR_SECCION,
         obligatorios,
+        tipoUsoClaves: usoTipoUso.claves,
+        tipoUsoOtro: usoTipoUso.otro,
         documentos: documentosResult.rows,
         maxFotoMB: 5,
         successMessage: sanitizeText(req.query.success),
@@ -8687,6 +9153,20 @@ function formatearFechaHoraHojaVida(valor) {
 }
 
 /**
+ * Construye una etiqueta legible de la referencia al registro relacionado de un
+ * evento del historial (por ejemplo "Mantenimiento #12" o "Documento #5").
+ */
+function formatearReferenciaHistorial(tipo, id) {
+  if (!tipo) return null;
+  const etiquetas = {
+    MANTENIMIENTO: 'Mantenimiento',
+    DOCUMENTO: 'Documento',
+  };
+  const etiqueta = etiquetas[tipo] || tipo;
+  return id ? `${etiqueta} #${id}` : etiqueta;
+}
+
+/**
  * Formatea un valor monetario para las vistas de mantenimiento.
  */
 function formatearMonedaCOP(valor) {
@@ -8777,7 +9257,7 @@ router.get(
       const eventosResult = await pool.query(
         `
           SELECT id, tipo_evento, campo_modificado, valor_anterior, valor_nuevo,
-                 descripcion, usuario, fecha
+                 referencia_tipo, referencia_id, descripcion, usuario, fecha
           FROM hoja_vida_historial
           WHERE hoja_vida_id = $1 AND activo = TRUE
           ORDER BY fecha DESC NULLS LAST, id DESC
@@ -8791,6 +9271,10 @@ router.get(
           fecha_display: formatearFechaHoraHojaVida(evento.fecha),
           tipo_evento_etiqueta: etiquetaTipoEvento(evento.tipo_evento),
           tipo_evento_clase: claseTipoEvento(evento.tipo_evento),
+          referencia_display: formatearReferenciaHistorial(
+            evento.referencia_tipo,
+            evento.referencia_id
+          ),
         };
       });
 
@@ -8965,7 +9449,6 @@ router.get(
             : null,
           fecha_creacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_creacion),
           fecha_modificacion_display: formatearFechaHoraHojaVida(mantenimiento.fecha_modificacion),
-          fecha_cierre_display: formatearFechaHoraHojaVida(mantenimiento.fecha_cierre),
           costo_display: formatearMonedaCOP(mantenimiento.costo),
         };
       });
@@ -9060,17 +9543,8 @@ router.get(
         },
         tiposMantenimiento: TIPOS_MANTENIMIENTO,
         estadosMantenimiento: estadosPermitidos,
-        mantenimiento: {
-          ...mantenimiento,
-          fecha_realizacion_display: formatearValorHojaVidaPdf(
-            mantenimiento.fecha_realizacion,
-            'date'
-          ),
-        },
         editable: esEstadoEditableMantenimiento(estadoCodigo),
         estadoEtiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
-        tiposMantenimiento: TIPOS_MANTENIMIENTO,
-        estadosMantenimiento: estadosPermitidos,
         fechaRealizacionValor: mantenimiento.fecha_realizacion
           ? String(mantenimiento.fecha_realizacion).slice(0, 10)
           : '',

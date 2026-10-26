@@ -466,6 +466,13 @@ test('prestamos usa el formato institucional SIGUD de hoja de vida GL-PR-002-FR-
 
   try {
     assert.equal(loaded.route.__private.HV_PDF_META.codigo1, 'Codigo: GL-PR-002-FR-007');
+    assert.equal(
+      loaded.route.__private.HV_PDF_META.macroproceso,
+      'Macro proceso: Apoyo a lo Misional'
+    );
+    assert.equal(loaded.route.__private.HV_PDF_META.proceso, 'Proceso: Gestion de Laboratorios');
+    assert.equal(loaded.route.__private.HV_PDF_META.version, 'Version: 01');
+    assert.equal(loaded.route.__private.HV_PDF_META.fechaAprobacion, '30/10/2017');
     assert.equal(loaded.route.__private.HV_PDF_TITULO, 'HOJA DE VIDA DE EQUIPOS');
   } finally {
     loaded.restore();
@@ -503,6 +510,10 @@ test('prestamos prepara el historial de mantenimientos preservando el orden cron
     assert.equal(filas[0].tipo, 'Preventivo');
     assert.equal(filas[0].estado, 'Cumplido');
     assert.equal(filas[0].fecha, '15/02/2024');
+    assert.equal(filas[0].empresa, '-');
+    assert.equal(filas[0].garantia, '-');
+    assert.equal(filas[0].especificaciones, '-');
+    assert.equal(filas[0].observaciones, '-');
     assert.match(filas[0].cierre, /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
     assert.equal(filas[0].cierre, '16/02/2024 09:30');
     assert.equal(filas[1].tipo, 'Calibración');

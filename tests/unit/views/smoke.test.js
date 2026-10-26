@@ -330,6 +330,8 @@ test('hojas-vida confirmar view renders the confirmation form with catalog field
       documentos: [{ tipo_documento: 'EXCEL_ORIGEN', nombre_archivo: 'sigud.xlsx' }],
       secciones: CAMPOS_POR_SECCION,
       obligatorios: ['marca', 'numero_serie', 'codigo_inventario'],
+      tipoUsoClaves: ['ACADEMICO', 'OTROS'],
+      tipoUsoOtro: 'Certificacion externa',
       maxFotoMB: 5,
       successMessage: null,
       errorMessage: null,
@@ -342,6 +344,10 @@ test('hojas-vida confirmar view renders the confirmation form with catalog field
   assert.match(html, /EXCEL_ORIGEN/);
   assert.match(html, /id="hv-campo-marca"[\s\S]*?required/);
   assert.match(html, /value="MarcaX"/);
+  assert.match(html, /name="tipo_uso"[\s\S]*?value="ACADEMICO"[\s\S]*?checked/);
+  assert.match(html, /id="hv-uso-OTROS"[\s\S]*?checked/);
+  assert.match(html, /name="tipo_uso_otro"[\s\S]*?value="Certificacion externa"/);
+  assert.match(html, /name="tipo_uso_grupo"/);
   assert.match(html, /var hojaVidaId = 42;/);
   assert.match(html, /nonce="test-nonce"/);
 });
@@ -361,12 +367,22 @@ test('hojas-vida historial view renders the event timeline and registration form
       eventos: [
         {
           id: 1,
+          tipo_evento: 'CREACION',
+          tipo_evento_etiqueta: 'Creación de la hoja de vida',
+          tipo_evento_clase: 'success',
+          descripcion: 'Carga inicial de la hoja de vida.',
+          usuario: '100',
+          fecha_display: '15/10/2026 08:00',
+          referencia_display: 'Documento #5',
+        },
+        {
+          id: 2,
           tipo_evento: 'CONFIRMACION',
           tipo_evento_etiqueta: 'Confirmación de la hoja de vida',
           tipo_evento_clase: 'success',
           descripcion: 'Confirmación de la hoja de vida (creación oficial).',
           usuario: '100',
-          fecha_display: '15/10/2026 08:00',
+          fecha_display: '15/10/2026 08:05',
         },
       ],
       tiposEvento: TIPOS_EVENTO_MANUALES,
@@ -378,8 +394,10 @@ test('hojas-vida historial view renders the event timeline and registration form
   assert.match(html, /Historial del ciclo de vida/i);
   assert.match(html, /id="hv-evento-form"/);
   assert.match(html, /name="tipo_evento"/);
+  assert.match(html, /Creación de la hoja de vida/);
   assert.match(html, /Confirmación de la hoja de vida/);
   assert.match(html, /data-testid="historial-evento"/);
+  assert.match(html, /data-testid="historial-evento-referencia">\s*Referencia: Documento #5/);
   assert.match(html, /var HOJA_VIDA_ID = 42;/);
   assert.match(html, /nonce="test-nonce"/);
 });
@@ -421,6 +439,7 @@ test('hojas-vida ver view renders the read-only detail with documents and action
         laboratorio: 'Lab 11',
       },
       secciones: CAMPOS_POR_SECCION,
+      tipoUsoTexto: 'Académico, Otros: Certificación',
       documentos: [
         {
           id: 5,
@@ -442,6 +461,7 @@ test('hojas-vida ver view renders the read-only detail with documents and action
 
   assert.match(html, /Hoja de Vida del Equipo/i);
   assert.match(html, /data-testid="hv-ver"/);
+  assert.match(html, /data-testid="hv-ver-campo-tipo_uso"[^>]*>Académico, Otros: Certificación/);
   assert.match(html, /data-testid="hv-estado">Activa/);
   assert.match(html, /data-testid="action-imprimir-hv"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/imprimir/);
@@ -450,6 +470,8 @@ test('hojas-vida ver view renders the read-only detail with documents and action
   assert.match(html, /data-testid="hv-ver-campo-marca"[\s\S]*?MarcaX/);
   assert.match(html, /data-testid="hv-documento"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/42\/documento\/5/);
+  assert.match(html, /Documento original \(Excel\)/);
+  assert.match(html, /Fotografía del equipo/);
   assert.match(html, /data-testid="hv-fotografia"/);
 });
 
@@ -484,6 +506,8 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
       equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
       secciones: CAMPOS_POR_SECCION,
       obligatorios: ['marca'],
+      tipoUsoClaves: ['SERVICIOS'],
+      tipoUsoOtro: '',
       documentos: [
         {
           id: 6,
@@ -507,6 +531,8 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
   assert.match(html, /data-testid="hv-editar-foto-eliminar-wrap"/);
   assert.match(html, /name="eliminar_foto"/);
   assert.match(html, /value="MarcaX"/);
+  assert.match(html, /name="tipo_uso"[\s\S]*?value="SERVICIOS"[\s\S]*?checked/);
+  assert.match(html, /id="hv-uso-otros-texto"[\s\S]*?disabled/);
   assert.match(html, /var hojaVidaId = 42;/);
   assert.match(html, /var equipoId = 7;/);
   assert.match(html, /nonce="test-nonce"/);

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida (
     anio                    VARCHAR(10),
     numero_factura_compra   VARCHAR(100),
     frecuencia_mantenimiento VARCHAR(50),
-    tipo_uso                VARCHAR(50),
+    tipo_uso                VARCHAR(255),
     proveedor               VARCHAR(200),
     numero_remision_compra  VARCHAR(100),
     valor_compra            NUMERIC(15,2),
@@ -88,17 +88,6 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
         REFERENCES equipo(id) ON DELETE RESTRICT
 );
 
--- Ajustes idempotentes para bases ya creadas
-ALTER TABLE mantenimiento ADD COLUMN IF NOT EXISTS costo NUMERIC(14,2);
-ALTER TABLE mantenimiento DROP CONSTRAINT IF EXISTS ck_estado_mantenimiento;
-ALTER TABLE mantenimiento ADD CONSTRAINT ck_estado_mantenimiento CHECK (
-    estado IN ('PENDIENTE','EN_EJECUCION','CUMPLIDO','VENCIDO','CANCELADO')
-);
-ALTER TABLE mantenimiento DROP CONSTRAINT IF EXISTS ck_costo_mantenimiento;
-ALTER TABLE mantenimiento ADD CONSTRAINT ck_costo_mantenimiento CHECK (
-    costo IS NULL OR costo >= 0
-);
-
 -- Parametrizacion del modulo de mantenimientos (alertas de vencimiento)
 CREATE TABLE IF NOT EXISTS mantenimiento_config (
     id                      BIGSERIAL,
@@ -147,6 +136,8 @@ CREATE TABLE IF NOT EXISTS hoja_vida_historial (
     campo_modificado    VARCHAR(100),
     valor_anterior      TEXT,
     valor_nuevo         TEXT,
+    referencia_tipo     VARCHAR(50),
+    referencia_id       BIGINT,
     descripcion         TEXT,
     usuario             VARCHAR(50),
     fecha               TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -158,7 +149,7 @@ CREATE TABLE IF NOT EXISTS hoja_vida_historial (
     CONSTRAINT pk_hoja_vida_historial PRIMARY KEY (id),
     CONSTRAINT ck_tipo_evento_hoja_vida_historial CHECK (
         tipo_evento IN (
-            'CREACION','CONFIRMACION','EDICION','TRASLADO',
+            'CREACION','CONFIRMACION','EDICION','DOCUMENTO','FOTOGRAFIA','TRASLADO',
             'MANTENIMIENTO','PRESTAMO','INCIDENCIA','BAJA','OBSERVACION'
         )
     ),

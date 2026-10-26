@@ -1,11 +1,16 @@
-﻿const express = require('express');
+const express = require('express');
 const multer = require('multer');
 const path = require('path');
 
 const pool = require('../../libs/db');
 const { requireJsonRoles } = require('../middlewares/auth');
 const { parseSigudExcel } = require('../../libs/hojas-vida-excel');
-const { CAMPOS_HOJA_VIDA, NOMBRES_CAMPOS_HOJA_VIDA } = require('../../libs/hojas-vida-campos');
+const {
+  CAMPOS_HOJA_VIDA,
+  NOMBRES_CAMPOS_HOJA_VIDA,
+  serializarTipoUso,
+  normalizarTipoUso,
+} = require('../../libs/hojas-vida-campos');
 const { esTipoEventoManual } = require('../../libs/hojas-vida-eventos');
 const {
   esTipoMantenimientoValido,
@@ -74,9 +79,16 @@ const CAMPOS_HOJA_VIDA_PERMITIDOS = new Set(NOMBRES_CAMPOS_HOJA_VIDA);
  */
 function normalizarCamposHojaVida(body) {
   const datos = {};
-  Object.keys(body || {}).forEach(function (nombre) {
+  const fuente = body || {};
+  Object.keys(fuente).forEach(function (nombre) {
     if (!CAMPOS_HOJA_VIDA_PERMITIDOS.has(nombre)) return;
-    const valor = body[nombre];
+    const valor = fuente[nombre];
+    if (nombre === 'tipo_uso') {
+      const claves = Array.isArray(valor) ? valor : String(valor == null ? '' : valor).split(',');
+      const serializado = serializarTipoUso(claves, fuente.tipo_uso_otro);
+      datos[nombre] = serializado === '' ? null : serializado;
+      return;
+    }
     if (valor == null) {
       datos[nombre] = null;
       return;
@@ -93,6 +105,13 @@ function normalizarCamposHojaVida(body) {
     }
     datos[nombre] = texto;
   });
+  // Si el grupo de uso se envio pero sin casillas marcadas, se limpia el valor.
+  if (
+    fuente.tipo_uso_grupo !== undefined &&
+    !Object.prototype.hasOwnProperty.call(fuente, 'tipo_uso')
+  ) {
+    datos.tipo_uso = null;
+  }
   return datos;
 }
 
@@ -257,16 +276,35 @@ async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
 }
 
 /**
- * Registra un evento de mantenimiento en el historial del ciclo de vida.
+ * Registra un evento en el historial del ciclo de vida del activo. Por defecto
+ * genera un evento MANTENIMIENTO; las opciones permiten indicar otro tipo y la
+ * referencia al registro relacionado (mantenimiento o documento).
  */
-async function registrarEventoHistorial(cliente, hojaVidaId, equipoId, descripcion, usuario) {
+async function registrarEventoHistorial(
+  cliente,
+  hojaVidaId,
+  equipoId,
+  descripcion,
+  usuario,
+  opciones = {}
+) {
+  const tipoEvento = opciones.tipoEvento || 'MANTENIMIENTO';
   await cliente.query(
     `
       INSERT INTO hoja_vida_historial (
-        hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
-      ) VALUES ($1, $2, 'MANTENIMIENTO', $3, $4, $4)
+        hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion,
+        referencia_tipo, referencia_id
+      ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
     `,
-    [hojaVidaId, equipoId, descripcion, usuario]
+    [
+      hojaVidaId,
+      equipoId,
+      tipoEvento,
+      descripcion,
+      usuario,
+      opciones.referenciaTipo || null,
+      opciones.referenciaId || null,
+    ]
   );
 }
 
@@ -1240,7 +1278,7 @@ router.post(
             camposExtraidos.responsable || null,
             camposExtraidos.supervisor || null,
             camposExtraidos.funcion || null,
-            camposExtraidos.tipo_uso || null,
+            normalizarTipoUso(camposExtraidos.tipo_uso),
             camposExtraidos.descripcion_fisica || null,
             camposExtraidos.especificaciones_tecnicas || null,
             camposExtraidos.instrucciones_uso || null,
@@ -1254,12 +1292,13 @@ router.post(
 
         const hojaVidaId = Number(insertHV.rows[0].id);
 
-        await cliente.query(
+        const documentoResult = await cliente.query(
           `
             INSERT INTO hoja_vida_documento (
               hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
               fecha_carga, usuario_carga
             ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+            RETURNING id
           `,
           [
             hojaVidaId,
@@ -1274,14 +1313,16 @@ router.post(
         await cliente.query(
           `
             INSERT INTO hoja_vida_historial (
-              hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
-            ) VALUES ($1, $2, 'CREACION', $3, $4, $4)
+              hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion,
+              referencia_tipo, referencia_id
+            ) VALUES ($1, $2, 'CREACION', $3, $4, $4, 'DOCUMENTO', $5)
           `,
           [
             hojaVidaId,
             equipoId,
             `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
             req.session?.user?.id || null,
+            documentoResult.rows[0].id,
           ]
         );
 
@@ -1439,14 +1480,34 @@ router.post(
         );
 
         if (req.file) {
-          await cliente.query(
+          const fotoInsert = await cliente.query(
             `
               INSERT INTO hoja_vida_documento (
                 hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
                 fecha_carga, usuario_carga
               ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+              RETURNING id
             `,
             [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
+          );
+
+          await cliente.query(
+            `
+              INSERT INTO hoja_vida_historial (
+                hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion,
+                referencia_tipo, referencia_id
+              ) VALUES ($1, $2, 'FOTOGRAFIA', 'fotografia', $3, $4, $5, $6, $6, 'DOCUMENTO', $7)
+            `,
+            [
+              hojaVidaId,
+              equipoId,
+              'Sin fotografia',
+              req.file.originalname,
+              'Carga de la fotografía del equipo durante la confirmación de la hoja de vida.',
+              usuario,
+              fotoInsert.rows[0].id,
+            ]
           );
         }
 
@@ -1670,12 +1731,13 @@ router.post(
         }
 
         if (req.file) {
-          await cliente.query(
+          const fotoInsert = await cliente.query(
             `
               INSERT INTO hoja_vida_documento (
                 hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
                 fecha_carga, usuario_carga
               ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+              RETURNING id
             `,
             [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
           );
@@ -1685,6 +1747,9 @@ router.post(
             anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
             nuevo: req.file.originalname,
             descripcion: 'Actualizacion de la fotografia del equipo.',
+            tipoEvento: 'FOTOGRAFIA',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: fotoInsert.rows[0].id,
           });
         } else if (eliminarFoto) {
           cambios.push({
@@ -1692,6 +1757,9 @@ router.post(
             anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
             nuevo: 'Sin fotografia',
             descripcion: 'Eliminacion de la fotografia del equipo.',
+            tipoEvento: 'FOTOGRAFIA',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: fotoActiva ? fotoActiva.id : null,
           });
         }
 
@@ -1704,17 +1772,21 @@ router.post(
             `
               INSERT INTO hoja_vida_historial (
                 hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
-                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion
-              ) VALUES ($1, $2, 'EDICION', $3, $4, $5, $6, $7, $7)
+                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion,
+                referencia_tipo, referencia_id
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10)
             `,
             [
               hojaVidaId,
               equipoId,
+              cambio.tipoEvento || 'EDICION',
               cambio.campo,
               cambio.anterior,
               cambio.nuevo,
               descripcion,
               usuario,
+              cambio.referenciaTipo || null,
+              cambio.referenciaId || null,
             ]
           );
         }
@@ -1896,7 +1968,8 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
         hojaVida.id,
         equipoId,
         `Mantenimiento ${etiquetaTipoMantenimiento(tipoMantenimiento)} registrado: "${item}".`,
-        usuario
+        usuario,
+        { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
       );
 
       // CA06: si el mantenimiento inicia en ejecucion, el equipo deja de estar
@@ -2123,7 +2196,8 @@ router.put(
           mantenimiento.hoja_vida_id,
           equipoId,
           `Mantenimiento #${mantenimientoId} actualizado por ${usuario || 'usuario'}. Estado: ${etiquetaEstadoMantenimiento(datos.estado)}.`,
-          usuario
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
         );
 
         await sincronizarDisponibilidadEquipo(cliente, equipoId);
@@ -2241,7 +2315,8 @@ router.post(
           mantenimiento.hoja_vida_id,
           equipoId,
           `Mantenimiento #${mantenimientoId} ${esCierre ? 'cerrado' : 'cambiado'} a estado ${etiquetaEstadoMantenimiento(estadoNuevo)} por ${usuario || 'usuario'}.`,
-          usuario
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
         );
 
         await sincronizarDisponibilidadEquipo(cliente, equipoId);

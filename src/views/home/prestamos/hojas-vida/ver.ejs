@@ -22,6 +22,16 @@
   });
   var listaMantenimientos = typeof mantenimientos !== 'undefined' && mantenimientos ? mantenimientos : [];
   var resumenHV = typeof resumen !== 'undefined' && resumen ? resumen : {};
+  var etiquetasDocumento = {
+    EXCEL_ORIGEN: 'Documento original (Excel)',
+    PDF_ORIGEN: 'Documento original (PDF)',
+    FOTOGRAFIA_EQUIPO: 'Fotografía del equipo',
+  };
+  var claseDocumento = {
+    EXCEL_ORIGEN: 'secondary',
+    PDF_ORIGEN: 'secondary',
+    FOTOGRAFIA_EQUIPO: 'info',
+  };
 %>
 
 <main class="container app-page-shell" data-testid="hv-ver">
@@ -132,8 +142,13 @@
         <div class="row g-3">
           <% grupo.campos.forEach(function (campo) { %>
             <%
-              var valor = formatearValor(hojaVida[campo.nombre], campo.tipo);
-              var esCompleto = campo.tipo === 'textarea' ? 12 : 4;
+              var valor;
+              if (campo.nombre === 'tipo_uso' && typeof tipoUsoTexto !== 'undefined') {
+                valor = tipoUsoTexto || '—';
+              } else {
+                valor = formatearValor(hojaVida[campo.nombre], campo.tipo);
+              }
+              var esCompleto = campo.tipo === 'textarea' || campo.tipo === 'uso' ? 12 : 4;
             %>
             <div class="col-md-<%= esCompleto %>">
               <span class="text-muted d-block small"><%= campo.etiqueta %></span>
@@ -158,7 +173,9 @@
         <ul class="list-unstyled mb-0">
           <% documentos.forEach(function (doc) { %>
             <li class="mb-2 d-flex align-items-center gap-2 flex-wrap" data-testid="hv-documento">
-              <span class="badge bg-secondary"><%= doc.tipo_documento %></span>
+              <span class="badge bg-<%= claseDocumento[doc.tipo_documento] || 'secondary' %>">
+                <%= etiquetasDocumento[doc.tipo_documento] || doc.tipo_documento %>
+              </span>
               <a
                 href="/milab/prestamos/hojas-vida/<%= hojaVida.id %>/documento/<%= doc.id %>"
                 target="_blank"

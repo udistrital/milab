@@ -21,6 +21,20 @@ const TIPOS_EVENTO_HOJA_VIDA = [
     ayuda: 'Se generó al actualizar información de la hoja de vida.',
   },
   {
+    codigo: 'DOCUMENTO',
+    etiqueta: 'Documento o evidencia cargado',
+    sistema: true,
+    clase: 'secondary',
+    ayuda: 'Se generó al cargar el documento original (Excel/PDF) de la hoja de vida.',
+  },
+  {
+    codigo: 'FOTOGRAFIA',
+    etiqueta: 'Fotografía cargada o actualizada',
+    sistema: true,
+    clase: 'secondary',
+    ayuda: 'Se generó al cargar, reemplazar o eliminar la fotografía del equipo.',
+  },
+  {
     codigo: 'TRASLADO',
     etiqueta: 'Traslado / cambio de ubicación',
     sistema: false,
