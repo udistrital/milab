@@ -138,6 +138,48 @@ test('paso 2 does not open an SGA popup when SGA has no sanctions', async () => 
   assert.doesNotMatch(html, /id="sgaSancionesPersonaModal"/);
 });
 
+test('paso 2 shows other SGA debts in a popup only for admins', async () => {
+  const otherDebt = {
+    nombre_concepto: 'BIBLIOTECA INGENIERÍA',
+    codigo_concepto: '1',
+    categoria: 'Libro pendiente',
+    estado: '2',
+    valor: '50000',
+    fecha: '2026-10-26',
+    id_sga: 'debt-1',
+  };
+  const [adminHtml, laboratoristaHtml] = await Promise.all([
+    renderPaso2({
+      tipo: 'admin',
+      isAdmin: true,
+      sga: { configured: true, debts: [], otherDebts: [otherDebt], failed: false },
+    }),
+    renderPaso2({
+      sga: { configured: true, debts: [], otherDebts: [otherDebt], failed: false },
+    }),
+  ]);
+
+  assert.match(adminHtml, /Otras multas SGA/);
+  assert.match(adminHtml, /data-bs-target="#sgaOtrasMultasModal"/);
+  assert.match(adminHtml, /id="sgaOtrasMultasModal"/);
+  assert.match(adminHtml, /BIBLIOTECA INGENIERÍA/);
+  assert.match(adminHtml, /Libro pendiente/);
+  assert.match(adminHtml, /Vista informativa para administración/);
+  assert.doesNotMatch(laboratoristaHtml, /Otras multas SGA/);
+  assert.doesNotMatch(laboratoristaHtml, /id="sgaOtrasMultasModal"/);
+});
+
+test('admin sees an empty-state popup when there are no other SGA debts', async () => {
+  const html = await renderPaso2({
+    tipo: 'admin',
+    isAdmin: true,
+    sga: { configured: true, debts: [], otherDebts: [], failed: false },
+  });
+
+  assert.match(html, /Otras multas SGA/);
+  assert.match(html, /No se encontraron otras multas activas de SGA para este documento/);
+});
+
 test('paso 2 reports an SGA failure without breaking the panel', async () => {
   const html = await renderPaso2({ sga: { configured: true, debts: [], failed: true } });
 
