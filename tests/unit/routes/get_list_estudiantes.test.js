@@ -4,12 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
-const {
-  SgaDebtService,
-  getSgaConceptName,
-  isLaboratoryConceptName,
-  resolveSgaConceptName,
-} = require('../../../src/libs/oati-debts');
+const { SgaDebtService, resolveSgaConceptName } = require('../../../src/libs/oati-debts');
 const { summarizeBulkSanctions } = require('../../../src/libs/bulk-sanction-report');
 
 const debtService = new SgaDebtService();
@@ -27,7 +22,16 @@ function buildApp(route, user) {
 
   app.use((req, res, next) => {
     req.session = { user };
-    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    res.render = (view, locals, callback) => {
+      if (typeof callback === 'function') {
+        callback(
+          null,
+          '<!doctype html><html><body><div id="consultaMasivaReport"></div></body></html>'
+        );
+        return;
+      }
+      return res.status(res.statusCode || 200).json({ view, locals });
+    };
     next();
   });
   app.use('/', route);
@@ -77,7 +81,6 @@ function loadRoute({
       oatiDebtsPath,
       {
         resolveSgaConceptName,
-        getSgaConceptName,
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
           resolveStudentCode: async ({ codigo, documento, identificador }) => {
@@ -103,6 +106,7 @@ function loadRoute({
             return null;
           },
           queryStudent: async (student) => {
+            student.onProgress?.({ stage: 'identity' });
             const code = String(student.codigo || '').trim();
             if (!code) {
               return {
@@ -119,10 +123,11 @@ function loadRoute({
 
             try {
               const rawDebts = sgaDebtsImpl ? await sgaDebtsImpl(code) : [];
+              student.onProgress?.({ stage: 'debts', studentRecord: null });
               const activeDebts = rawDebts.filter(
                 (debt) =>
                   debtService.isBlockingDebt(debt) &&
-                  isLaboratoryConceptName(getSgaConceptName(debt))
+                  Boolean(resolveSgaConceptName(debt?.DEU_CPTO_COD))
               );
               return {
                 status: activeDebts.length ? 'found' : 'clear',
@@ -188,7 +193,10 @@ test('bulk student query modal uses the shared Bootstrap 5 runtime', async () =>
   assert.match(bulkQueryView, /data-bs-dismiss="modal"/);
   assert.doesNotMatch(bulkQueryView, /bootstrap(?:@|\/)4(?:\.|\/)/i);
   assert.doesNotMatch(bulkQueryView, /jquery-3\.5\.1\.slim|popperjs\/core/i);
-  assert.match(bulkQueryView, /data-max-codes="20"/);
+  assert.match(bulkQueryView, /const limiteCodigos = Number\(locals\.maxBulkQueryCodes\) \|\| 50/);
+  assert.match(bulkQueryView, /data-max-codes="<%= limiteCodigos %>"/);
+  assert.match(bulkQueryView, /id="consultaMasivaProgressModal"/);
+  assert.match(bulkQueryView, /application\/x-ndjson/);
   assert.match(bulkQueryView, /id="consultaMasivaCount"/);
   const tableBody = bulkQueryView.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
   assert.doesNotMatch(tableBody, /colspan=/i);
@@ -234,7 +242,7 @@ test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo'
   }
 });
 
-test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', async () => {
+test('get_list_estudiantes consulta_masiva rejects more than 50 identifiers', async () => {
   let queryCount = 0;
   const loaded = loadRoute({
     queryImpl: async () => {
@@ -245,21 +253,21 @@ test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', as
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
-    const values = Array.from({ length: 21 }, (_, i) => `${1000 + i}`).join(',');
+    const values = Array.from({ length: 51 }, (_, i) => `${1000 + i}`).join(',');
     const response = await request(app).post('/consulta_masiva').type('form').send({
       consulta_masiva: values,
     });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/consulta_masiva');
-    assert.match(response.body.locals.error, /límite de 20 estudiantes/i);
+    assert.match(response.body.locals.error, /límite de 50 estudiantes/i);
     assert.equal(queryCount, 0);
   } finally {
     loaded.restore();
   }
 });
 
-test('get_list_estudiantes consulta_masiva accepts exactly 20 identifiers', async () => {
+test('get_list_estudiantes consulta_masiva accepts exactly 50 identifiers', async () => {
   let queryCount = 0;
   const loaded = loadRoute({
     queryImpl: async () => {
@@ -270,7 +278,7 @@ test('get_list_estudiantes consulta_masiva accepts exactly 20 identifiers', asyn
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
-    const values = Array.from({ length: 20 }, (_, i) => `${1000 + i}`).join(',');
+    const values = Array.from({ length: 50 }, (_, i) => `${1000 + i}`).join(',');
     const response = await request(app).post('/consulta_masiva').type('form').send({
       consulta_masiva: values,
     });
@@ -283,12 +291,138 @@ test('get_list_estudiantes consulta_masiva accepts exactly 20 identifiers', asyn
   }
 });
 
-test('generate_pdf rejects more than 20 student records', async () => {
+test('consulta_masiva resolves a numeric local program code to the OATI program name', async () => {
+  let requestedPath;
+  const loaded = loadRoute({
+    sgaServiceConfigured: false,
+    queryImpl: async () => ({
+      rows: [
+        {
+          identificador: '2024100001',
+          documento: '79520182',
+          codigo: '2024100001',
+          programa: '32',
+          multas: [null],
+        },
+      ],
+    }),
+    requestOatiImpl: async (servicePath) => {
+      requestedPath = servicePath;
+      return {
+        carrerasCollection: {
+          carrera: [{ nombre: 'TECNOLOGÍA EN GESTIÓN AMBIENTAL' }],
+        },
+      };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const response = await request(app).post('/consulta_masiva').type('form').send({
+      consulta_masiva: '2024100001',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(requestedPath, 'carrera/32');
+    assert.equal(response.body.locals.sampleData1[0].programa, 'TECNOLOGÍA EN GESTIÓN AMBIENTAL');
+    assert.equal(response.body.locals.sampleData1[0].programaError, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta_masiva streams real per-student progress before returning the report', async () => {
+  const loaded = loadRoute({
+    sgaServiceConfigured: true,
+    queryImpl: async () => ({
+      rows: [
+        {
+          identificador: '2024100001',
+          documento: '79520182',
+          codigo: '2024100001',
+          programa: 'Ingeniería',
+          multas: [null],
+        },
+      ],
+    }),
+    sgaDebtsImpl: async () => [],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const response = await request(app)
+      .post('/consulta_masiva')
+      .set('Accept', 'application/x-ndjson')
+      .type('form')
+      .send({ consulta_masiva: '2024100001' });
+    const events = response.text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/x-ndjson/);
+    assert.deepEqual(
+      events.filter((event) => event.type === 'progress').map((event) => event.stage),
+      ['data', 'student', 'identity', 'sga', 'condensing', 'complete', 'done']
+    );
+    assert.equal(events[1].identifier, '79520182');
+    assert.equal(events[1].identifierType, 'Documento');
+    assert.equal(events[5].percent, 100);
+    assert.match(events.at(-1).html, /id="consultaMasivaReport"/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta_masiva limits concurrent SGA work for large batches', async () => {
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const loaded = loadRoute({
+    sgaServiceConfigured: true,
+    queryImpl: async (_sql, [identifiers]) => ({
+      rows: identifiers.split(',').map((identificador) => ({
+        identificador,
+        documento: `${identificador}0`,
+        codigo: identificador,
+        programa: 'Ingeniería',
+        multas: [null],
+      })),
+    }),
+    sgaDebtsImpl: async () => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeRequests -= 1;
+      return [];
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const identifiers = Array.from({ length: 12 }, (_, index) => `${1000 + index}`);
+    const response = await request(app)
+      .post('/consulta_masiva')
+      .type('form')
+      .send({
+        consulta_masiva: identifiers.join(','),
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.sampleData1.length, identifiers.length);
+    assert.ok(maxActiveRequests > 1);
+    assert.ok(maxActiveRequests <= 4);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_pdf rejects more than 50 student records', async () => {
   const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
-    const data = Array.from({ length: 21 }, (_, i) => ({
+    const data = Array.from({ length: 51 }, (_, i) => ({
       identificador: `${1000 + i}`,
       multas: [null],
     }));
@@ -300,7 +434,7 @@ test('generate_pdf rejects more than 20 student records', async () => {
 
     assert.equal(response.status, 400);
     assert.equal(response.body.view, 'home/message_error');
-    assert.match(response.body.locals.message, /más de 20 estudiantes/i);
+    assert.match(response.body.locals.message, /más de 50 estudiantes/i);
   } finally {
     loaded.restore();
   }
@@ -566,12 +700,12 @@ test('bulk sanction report summary includes all participant and verification sta
   });
 });
 
-test('generate_pdf paginates the complete list of 20 participants', async () => {
+test('generate_pdf paginates the complete list of 50 participants', async () => {
   const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
-    const data = Array.from({ length: 20 }, (_, index) => ({
+    const data = Array.from({ length: 50 }, (_, index) => ({
       identificador: `${1000 + index}`,
       documento: `${2000 + index}`,
       codigo: `${3000 + index}`,
