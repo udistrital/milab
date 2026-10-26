@@ -135,3 +135,47 @@ test('application error handler returns json for api requests expecting json', (
       'Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en milab@udistrital.edu.co.',
   });
 });
+
+test('global error handler catches async route rejections and sync throws with a response', async () => {
+  require('express-async-errors');
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.get('/async-fail', async () => {
+    throw new Error('fallo async');
+  });
+  app.get('/sync-fail', () => {
+    throw new Error('fallo sync');
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const asyncRes = await request(app).get('/async-fail').set('Accept', 'application/json');
+  assert.equal(asyncRes.status, 500);
+  assert.equal(asyncRes.body.ok, false);
+
+  const syncRes = await request(app).get('/sync-fail');
+  assert.equal(syncRes.status, 500);
+  assert.notEqual(syncRes.text.trim(), 'Internal Server Error');
+  assert.match(syncRes.text, /No pudimos completar tu solicitud/);
+});
+
+test('error page falls back to a static page when the error view cannot render', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.use((req, res, next) => {
+    req.requestId = 'ref-123';
+    next();
+  });
+  app.get('/boom', (req, res, next) => {
+    next(new Error('boom'));
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const res = await request(app).get('/boom');
+  assert.equal(res.status, 500);
+  assert.match(res.text, /No pudimos completar tu solicitud/);
+  assert.match(res.text, /ref-123/);
+});
