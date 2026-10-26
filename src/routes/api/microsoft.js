@@ -292,15 +292,14 @@ router.get(
 
       await regenerateSession(req);
       if (req.session) {
-        req.session.microsoftProfile = null;
+        req.session.microsoftProfile = {
+          correo,
+          nombre: req.user?.displayName || req.user?._json?.displayName || '',
+          microsoftId: req.user?.id || req.user?._json?.id || '',
+        };
       }
 
-      return res.render('home/message_error', {
-        message: '¡Acceso denegado!',
-        message2:
-          'Tu cuenta institucional no está registrada en MiLab. Comunícate con administración para habilitar el acceso.',
-        limit: null,
-      });
+      return res.redirect('/milab/api/profile/identify');
     } catch (error) {
       console.error('Error en callback de Microsoft:', error);
       return res.render('home/message_error', {
