@@ -84,7 +84,6 @@ async function checkServiceStatus(log = serviceStatusLogger, { checkEdx = should
           }))
         );
       }, SERVICE_STATUS_TIMEOUT_MS);
-      timeoutId.unref?.();
     });
 
     let results;
