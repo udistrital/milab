@@ -4379,6 +4379,74 @@ body.app-shell .app-bulk-query-form > :not([type='hidden']) {
   min-width: 0;
 }
 
+body.app-shell .app-bulk-progress-dialog {
+  max-width: 34rem;
+}
+
+body.app-shell .app-bulk-progress-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid rgba(168, 15, 18, 0.1);
+  border-radius: 1.35rem;
+  box-shadow: 0 1.5rem 4rem rgba(24, 18, 12, 0.22);
+}
+
+body.app-shell .app-bulk-progress-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border-radius: 1rem;
+  background: rgba(168, 15, 18, 0.08);
+  color: #a80f12;
+  font-size: 1.5rem;
+}
+
+body.app-shell .app-bulk-progress-track {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eee9e1;
+}
+
+body.app-shell .app-bulk-progress-track .progress-bar {
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a80f12, #df1b1b);
+  transition: width 240ms ease;
+}
+
+body.app-shell .app-bulk-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+body.app-shell .app-bulk-progress-steps span {
+  color: #81786c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+body.app-shell .app-bulk-progress-steps span::before {
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: 0 auto 0.45rem;
+  border-radius: 50%;
+  background: #d8d2c6;
+  content: '';
+}
+
+body.app-shell .app-bulk-progress-steps span.is-active,
+body.app-shell .app-bulk-progress-steps span.is-complete {
+  color: #a80f12;
+}
+
+body.app-shell .app-bulk-progress-steps span.is-active::before,
+body.app-shell .app-bulk-progress-steps span.is-complete::before {
+  background: #c5161d;
+}
+
 body.app-shell .app-bulk-query-results-heading {
   width: min(100%, 960px);
   margin-inline: auto;

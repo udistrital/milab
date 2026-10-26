@@ -203,6 +203,7 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
     DEU_DEUDOR_NOMBRE: 'Estudiante Prueba',
     DEU_ESTADO: '2',
     DEU_MATERIAL: 'Equipo pendiente',
+    DEU_CPTO_COD: '4',
     DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
   };
   const loaded = loadRoute({
@@ -245,6 +246,7 @@ test('verificar_estudiante resolves the submitted document to its OATI code befo
           DEU_EST_COD: '20161104039',
           DEU_ESTADO: '2',
           DEU_DEUDOR_NOMBRE: 'Daniela Truque Gomez',
+          DEU_CPTO_COD: '4',
           DEU_CPTO_NOMBRE: 'LABORATORIO DE FISICA',
         },
       ];
@@ -368,6 +370,7 @@ test('verificar_estudiante blocks when SGA has a debt under another code of the 
             {
               DEU_EST_COD: '20151234',
               DEU_ESTADO: '1',
+              DEU_CPTO_COD: '4',
               DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
             },
           ]

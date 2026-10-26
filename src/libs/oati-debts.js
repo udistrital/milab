@@ -4,7 +4,6 @@ const { config } = require('../config/config');
 const { getAcademicServicePath, requestOati, requestOatiPost } = require('./oati-client');
 
 const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
-  1: 'BIBLIOTECA INGENIERÍA',
   2: 'LAB. TOPOGRAFIA (MAC.A)',
   3: 'LABORATORIO DE FISICA',
   4: 'LABORATORIO DE QUIMICA',
@@ -12,26 +11,17 @@ const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   6: 'LAB. ELECTRON. (SED. CENTRAL)',
   7: 'AUDIOVISUALES',
   8: 'LABORATORIO DE FOTOGRAMETRIA (VIVERO)',
-  9: 'BIENESTAR UNIVERSITARIO',
-  10: 'BIBLIOTECA VIVERO',
-  11: 'BIBLIOTECA MAC. A.',
-  12: 'BIBLIOTECA MAC B',
-  13: 'BIBLIOTECA TECNOLOGICA',
   14: 'CENTRO INVEST. GEOG. CIGER',
-  15: 'BIBLIOTECA ILUD',
   16: 'LAB. INVERNADERO -VIVERO-',
   17: 'LAB. TOPOGRAFIA -VIVERO-',
   18: 'LAB. BIOLOGIA -VIVERO-',
   19: 'CALIDAD DE AGUAS -VIVERO-',
   20: 'FOTOINTERPRETACION -VIVERO-',
-  21: 'DEPORTES - VIVERO',
   30: 'COORD. LABORATORIO VIVERO',
   31: 'LAB. MICROBIOLOGIA-VIVERO',
   32: 'LAB. SILVICULTURA VIVERO',
   33: 'LAB. SUELOS VIVERO',
   34: 'LAB. CARPINTERIA VIVERO',
-  35: 'XILOTECA VIVERO',
-  36: 'BIBLIOTECA ASAB',
   37: 'SALAS GEOMATICA - VIVERO',
   38: 'SALA CARTOGRAFIA - VIVERO',
   39: 'LAB. TECNOLOGIA EN MADERAS VIV',
@@ -47,13 +37,10 @@ const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   49: 'LAB. SISTEMAS (TECNO)',
   50: 'LAB. MECANICA (TECNO)',
   51: 'LAB. CIENCIAS BASICAS (TECNO)',
-  52: 'BIBLIOTECA ADUANILLA DE PAIBA',
   53: 'LABORATORIO DE TECNOLOGIAS LIMPIAS (FAMARENA)',
   54: 'LABORATORIO CALIDAD DE AIRE (FAMARENA)',
   55: 'ZOONOSIS (FAMARENA)',
   56: 'CENTRO DE DOCUMENTACION SOCIALES',
-  57: 'BIBLIOTECA POSGRADOS',
-  58: 'BIBLIOTECA PORVENIR',
   59: 'LABORATORIO DE BIOLOGIA MOLECULAR (VIVERO)',
   72: 'LAB. QUIMICA ORGANICA (BOSA)',
 });
@@ -101,7 +88,7 @@ function isLaboratoryConceptName(value) {
 
 function normalizeSgaDebt(debt, queriedCode) {
   const conceptCode = String(debt?.DEU_CPTO_COD || '').trim();
-  const conceptName = getSgaConceptName(debt) || resolveSgaConceptName(conceptCode) || null;
+  const conceptName = resolveSgaConceptName(conceptCode) || getSgaConceptName(debt) || null;
 
   return {
     ...debt,
@@ -153,9 +140,6 @@ function getSgaQueryMessage(result) {
   if (result.status === 'error') {
     return 'No fue posible consultar las multas del estudiante en SGA.';
   }
-  if (result.status === 'partial' && result.unclassifiedCount > 0) {
-    return 'SGA devolvió multas activas sin nombre de concepto; no fue posible clasificarlas.';
-  }
   if (result.status === 'partial') {
     return 'La consulta de SGA quedó incompleta; el resultado no es concluyente.';
   }
@@ -203,7 +187,11 @@ class SgaDebtService {
   }
 
   isBlockingDebt(debt) {
-    return this.isActiveDebt(debt) && !this.isLibraryDebt(debt);
+    return (
+      this.isActiveDebt(debt) &&
+      Boolean(resolveSgaConceptName(debt?.DEU_CPTO_COD)) &&
+      !this.isLibraryDebt(debt)
+    );
   }
 
   buildServicePath(codigoEstudiante) {
@@ -521,7 +509,7 @@ class SgaDebtService {
     };
   }
 
-  async queryStudent({ codigo, codigos = [], documento, identificador } = {}) {
+  async queryStudent({ codigo, codigos = [], documento, identificador, onProgress } = {}) {
     const emptyResult = {
       status: 'not_configured',
       debts: [],
@@ -538,6 +526,7 @@ class SgaDebtService {
       return emptyResult;
     }
 
+    onProgress?.({ stage: 'identity' });
     const identity = await this.resolveStudentCodesForQuery({
       codigo,
       codigos,
@@ -563,6 +552,11 @@ class SgaDebtService {
       return result;
     }
 
+    onProgress?.({
+      stage: 'debts',
+      document: identity.document,
+      studentRecord: identity.studentRecord,
+    });
     const queried = await Promise.all(
       identity.codes.map(async (code) => {
         try {
@@ -597,24 +591,15 @@ class SgaDebtService {
       codeDebts.forEach((debt) => {
         if (!this.isActiveDebt(debt) || this.isLibraryDebt(debt)) return;
 
+        if (!resolveSgaConceptName(debt?.DEU_CPTO_COD)) return;
+
         const debtCode = normalizeNumericIdentifier(debt?.DEU_EST_COD);
         if (debtCode && debtCode !== code) {
-          unclassifiedCount += 1;
           errors.push({
             stage: 'sga',
             code: 'SGA_STUDENT_CODE_MISMATCH',
             message: 'SGA devolvió una multa asociada a un código diferente al consultado.',
           });
-          return;
-        }
-
-        const conceptName = getSgaConceptName(debt);
-        if (!conceptName) {
-          unclassifiedCount += 1;
-          return;
-        }
-        if (!isLaboratoryConceptName(conceptName)) {
-          nonLaboratoryCount += 1;
           return;
         }
 
@@ -627,6 +612,7 @@ class SgaDebtService {
 
     const hasQueryFailures = successfulQueries < identity.codes.length;
     const hasIncompleteIdentity = !identity.identityConfirmed;
+    const hasSgaDataErrors = errors.some((error) => error.stage === 'sga');
     result.debts = debts;
     result.nonLaboratoryCount = nonLaboratoryCount;
     result.unclassifiedCount = unclassifiedCount;
@@ -636,7 +622,7 @@ class SgaDebtService {
     } else if (
       hasQueryFailures ||
       hasIncompleteIdentity ||
-      unclassifiedCount > 0 ||
+      hasSgaDataErrors ||
       identity.errors.length > 0
     ) {
       result.status = 'partial';
@@ -661,9 +647,7 @@ class SgaDebtService {
       .filter((debt) => this.isBlockingDebt(debt))
       .map((debt) => {
         const conceptName = resolveSgaConceptName(debt?.DEU_CPTO_COD);
-        return conceptName && !debt.DEU_CPTO_NOMBRE
-          ? { ...debt, DEU_CPTO_NOMBRE: conceptName }
-          : debt;
+        return { ...debt, DEU_CPTO_NOMBRE: conceptName };
       });
   }
 }

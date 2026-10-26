@@ -363,7 +363,12 @@ const oatiStudentResponse = async (servicePath) => {
 
 test('get-info-multa /persona renders the student panel with active count and SGA debts', async () => {
   const sgaDebts = [
-    { DEU_MATERIAL: 'Reposición de insumos', DEU_MULTA: '50000', DEU_ESTADO: 'PENDIENTE' },
+    {
+      DEU_MATERIAL: 'Reposición de insumos',
+      DEU_MULTA: '50000',
+      DEU_ESTADO: 'PENDIENTE',
+      DEU_CPTO_COD: '4',
+    },
   ];
   const loaded = loadRoute({
     activeSanctionTotal: '2',

@@ -180,7 +180,7 @@ const FORM_TEXT_LIMIT_RULES = [
   {
     methods: ['POST'],
     path: /^\/api\/get_list_estudiantes\/consulta_masiva$/,
-    fields: { consulta_masiva: 1038 },
+    fields: { consulta_masiva: 2599 },
     validate: (body) => validateBulkStudentQuery(body?.consulta_masiva),
   },
   {
