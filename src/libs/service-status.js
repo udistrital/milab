@@ -9,6 +9,9 @@ const { NON_PRODUCTION_ENVIRONMENTS } = require('../config/sga-services');
 
 const serviceStatusLogger = logger.child({ component: 'service-status' });
 
+// Límite total de la verificación. Evita que la respuesta quede pendiente cuando OATI no responde.
+const SERVICE_STATUS_TIMEOUT_MS = Number(process.env.SERVICE_STATUS_TIMEOUT_MS) || 8000;
+
 // En producción edX no se valida: no tiene servicio desplegado y marcaría el portal como interrumpido.
 function shouldCheckEdx(environmentName = process.env.NODE_ENV) {
   const normalizedEnvironment = String(environmentName || '')
@@ -69,7 +72,26 @@ async function checkServiceStatus(log = serviceStatusLogger, { checkEdx = should
       }
     });
 
-    const results = await Promise.all(promises);
+    let timeoutId;
+    const deadline = new Promise((resolve) => {
+      timeoutId = setTimeout(() => {
+        resolve(
+          services.map((service) => ({
+            service: service.name,
+            status: 'TIMEOUT',
+            available: false,
+            error: `Sin respuesta en ${SERVICE_STATUS_TIMEOUT_MS} ms`,
+          }))
+        );
+      }, SERVICE_STATUS_TIMEOUT_MS);
+    });
+
+    let results;
+    try {
+      results = await Promise.race([Promise.all(promises), deadline]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const allAvailable = results.every((result) => result.available);
 
     if (!allAvailable) {

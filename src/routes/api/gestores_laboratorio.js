@@ -2,11 +2,6 @@ const express = require('express');
 
 const pool = require('../../libs/db');
 const { normalizeLogDocument } = require('../../libs/account-email');
-const {
-  ensureOperationalRoleAssignmentsSchema,
-  fetchActiveUalOptions,
-  replaceOperationalRoleAssignments,
-} = require('../../libs/operational-role-assignments');
 const { normalizeRoles } = require('../../libs/roles');
 const { renderAuthError } = require('../middlewares/auth');
 const { renderApplicationError } = require('../middlewares/error-handler');
@@ -42,19 +37,6 @@ function parsePositiveInteger(value) {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function parseUalIds(rawValue) {
-  const values = rawValue === undefined ? [] : Array.isArray(rawValue) ? rawValue : [rawValue];
-  const parsed = [];
-
-  for (const value of values) {
-    const id = parsePositiveInteger(value);
-    if (!id) return null;
-    parsed.push(id);
-  }
-
-  return Array.from(new Set(parsed));
-}
-
 function normalizeEmail(value) {
   return String(value ?? '')
     .trim()
@@ -84,7 +66,7 @@ function requestError(message, status = 400) {
 }
 
 async function loadPageData() {
-  const [usersResult, managersResult, ualOptions, roleResult] = await Promise.all([
+  const [usersResult, managersResult, roleResult] = await Promise.all([
     pool.query(
       `
         SELECT u.id, u.nombre, u.documento, u.correo
@@ -117,24 +99,7 @@ async function loadPageData() {
           u.documento,
           u.correo,
           u.activo AS cuenta_activa,
-          ur.activo AS rol_activo,
-          COALESCE((
-            SELECT json_agg(
-              json_build_object(
-                'ual_id', ual.ual_id,
-                'nombre', ual.nombre,
-                'facultad_nombre', facultad.nombre,
-                'activo', asignacion.activo
-              )
-              ORDER BY facultad.nombre ASC NULLS LAST, ual.nombre ASC
-            )
-            FROM usuario_ual_rol_operativo asignacion
-            JOIN ual ON ual.ual_id = asignacion.ual_id
-            LEFT JOIN dependencia_facultad facultad
-              ON facultad.dependencia_facultad_id = ual.facultad_id
-            WHERE asignacion.usuario_id = u.id
-              AND asignacion.rol_id = r.id
-          ), '[]'::json) AS asignaciones
+          ur.activo AS rol_activo
         FROM usuario_rol ur
         JOIN rol r ON r.id = ur.rol_id
         JOIN usuario u ON u.id = ur.usuario_id
@@ -143,14 +108,12 @@ async function loadPageData() {
       `,
       [ROLE_NAME]
     ),
-    fetchActiveUalOptions(pool),
     pool.query('SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1', [ROLE_NAME]),
   ]);
 
   return {
     candidates: usersResult.rows || [],
     managers: managersResult.rows || [],
-    ualOptions: ualOptions || [],
     roleConfigured: Boolean(roleResult.rows?.length),
   };
 }
@@ -166,6 +129,7 @@ async function renderPage(req, res, options = {}) {
       success: options.success || null,
       formValues: options.formValues || {},
       newManagerValues: options.newManagerValues || {},
+      editManagerValues: options.editManagerValues || {},
       ...data,
     });
   } catch (error) {
@@ -191,6 +155,22 @@ async function writeAuditLog(client, req, action, document) {
   await client.query(
     'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
     [actorName, actorDocument || null, action, document || null]
+  );
+}
+
+async function deactivateManagerUalAssignments(client, userId, roleId) {
+  const tableResult = await client.query(
+    `SELECT to_regclass('milab.usuario_ual_rol_operativo') AS tabla`
+  );
+  if (!tableResult.rows[0]?.tabla) return;
+
+  await client.query(
+    `
+      UPDATE usuario_ual_rol_operativo
+      SET activo = FALSE, fecha_modificacion = CURRENT_TIMESTAMP
+      WHERE usuario_id = $1 AND rol_id = $2 AND activo = TRUE
+    `,
+    [userId, roleId]
   );
 }
 
@@ -299,14 +279,12 @@ router.post('/crear', requireAdminOnly, async (req, res) => {
   }
 });
 
-router.post('/guardar', requireAdminOnly, async (req, res) => {
+async function enrollExistingManager(req, res) {
   const userId = parsePositiveInteger(req.body?.user_id);
-  const ualIds = parseUalIds(req.body?.ual_ids);
-
-  if (!userId || !ualIds) {
+  if (!userId) {
     return renderPage(req, res, {
       status: 400,
-      error: 'Selecciona una cuenta existente y asignaciones de UAL válidas.',
+      error: 'Selecciona una cuenta existente válida.',
     });
   }
 
@@ -319,7 +297,7 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
       'SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1',
       [ROLE_NAME]
     );
-    const roleId = roleResult.rows[0]?.id;
+    const roleId = parsePositiveInteger(roleResult.rows[0]?.id);
     if (!roleId) {
       throw requestError(
         'El rol Gestor de laboratorio no está configurado. Aplica la migración correspondiente.',
@@ -354,16 +332,6 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
       );
     }
 
-    if (ualIds.length) {
-      const validUals = await client.query(
-        'SELECT ual_id FROM ual WHERE activo = TRUE AND ual_id = ANY($1::int[])',
-        [ualIds]
-      );
-      if (validUals.rows.length !== ualIds.length) {
-        throw requestError('Todas las UAL seleccionadas deben existir y estar activas.');
-      }
-    }
-
     const existingRole = await client.query(
       'SELECT activo FROM usuario_rol WHERE usuario_id = $1 AND rol_id = $2 FOR UPDATE',
       [userId, roleId]
@@ -380,23 +348,16 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
       [userId, roleId]
     );
 
-    await ensureOperationalRoleAssignmentsSchema(client);
-    await replaceOperationalRoleAssignments({
-      userId,
-      roleName: ROLE_NAME,
-      ualIds,
-      createdByUserId: parsePositiveInteger(req.session?.user?.id),
-      client,
-    });
+    await deactivateManagerUalAssignments(client, userId, roleId);
 
     const action = existingRole.rows[0]?.activo
-      ? 'Actualizar asignaciones de Gestor de laboratorio'
-      : 'Asignar rol Gestor de laboratorio';
+      ? 'Confirmar enrolamiento como Gestor de laboratorio'
+      : 'Enrolar como Gestor de laboratorio';
     await writeAuditLog(client, req, action, target.documento);
 
     await client.query('COMMIT');
     return renderPage(req, res, {
-      success: `Se actualizaron los accesos de ${target.documento}.`,
+      success: `Se enroló a ${target.documento} como Gestor de laboratorio con cobertura universitaria, sin UAL.`,
     });
   } catch (error) {
     if (client) {
@@ -414,10 +375,262 @@ router.post('/guardar', requireAdminOnly, async (req, res) => {
       });
     }
 
-    console.error('Error asignando el rol Gestor de laboratorio:', error);
+    console.error('Error enrolando una cuenta como Gestor de laboratorio:', error);
     return renderPage(req, res, {
       status: 500,
-      error: 'No fue posible guardar la asignación del gestor de laboratorio.',
+      error: 'No fue posible enrolar la cuenta como gestor de laboratorio.',
+    });
+  } finally {
+    if (client) client.release();
+  }
+}
+
+router.post(['/enrolar', '/guardar'], requireAdminOnly, enrollExistingManager);
+
+router.post('/editar', requireAdminOnly, async (req, res) => {
+  const editManagerValues = {
+    userId: parsePositiveInteger(req.body?.user_id),
+    name: String(req.body?.nombre ?? '').trim(),
+    document: String(req.body?.documento ?? '').trim(),
+    email: normalizeEmail(req.body?.correo),
+  };
+  const validationError = editManagerValues.userId
+    ? validateNewManager(editManagerValues)
+    : 'La cuenta seleccionada no es válida.';
+  if (validationError) {
+    return renderPage(req, res, {
+      status: 400,
+      error: validationError,
+      editManagerValues,
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const roleResult = await client.query(
+      'SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1',
+      [ROLE_NAME]
+    );
+    const roleId = parsePositiveInteger(roleResult.rows[0]?.id);
+    if (!roleId) {
+      throw requestError(
+        'El rol Gestor de laboratorio no está configurado. Aplica la migración correspondiente.',
+        503
+      );
+    }
+
+    const userResult = await client.query(
+      'SELECT id, documento FROM usuario WHERE id = $1 FOR UPDATE',
+      [editManagerValues.userId]
+    );
+    const target = userResult.rows[0];
+    if (!target) {
+      throw requestError('La cuenta seleccionada no existe.', 404);
+    }
+
+    const managerRoleResult = await client.query(
+      'SELECT activo FROM usuario_rol WHERE usuario_id = $1 AND rol_id = $2 FOR UPDATE',
+      [editManagerValues.userId, roleId]
+    );
+    if (!managerRoleResult.rows.length) {
+      throw requestError('La cuenta seleccionada no tiene el rol Gestor de laboratorio.', 404);
+    }
+
+    const duplicateResult = await client.query(
+      `
+        SELECT id
+        FROM usuario
+        WHERE id <> $3
+          AND (documento = $1 OR LOWER(correo) = $2)
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [editManagerValues.document, editManagerValues.email, editManagerValues.userId]
+    );
+    if (duplicateResult.rows.length) {
+      throw requestError('Ya existe otra cuenta con ese documento o correo.', 409);
+    }
+
+    await client.query(
+      `
+        UPDATE usuario
+        SET nombre = $1,
+            documento = $2,
+            correo = $3,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `,
+      [
+        editManagerValues.name,
+        editManagerValues.document,
+        editManagerValues.email,
+        editManagerValues.userId,
+      ]
+    );
+    await client.query(
+      `
+        UPDATE perfil_estudiante
+        SET nombre = $1,
+            documento = $2,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE usuario_id = $3
+      `,
+      [editManagerValues.name, editManagerValues.document, editManagerValues.userId]
+    );
+    await client.query(
+      `
+        UPDATE perfil_docente
+        SET nombre = $1,
+            documento = $2,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE usuario_id = $3
+      `,
+      [editManagerValues.name, editManagerValues.document, editManagerValues.userId]
+    );
+    await writeAuditLog(
+      client,
+      req,
+      'Editar cuenta de Gestor de laboratorio',
+      editManagerValues.document
+    );
+
+    await client.query('COMMIT');
+    return renderPage(req, res, {
+      success: `Se actualizaron los datos de ${editManagerValues.document}.`,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo la edición de un gestor de laboratorio:', rollbackError);
+      }
+    }
+
+    if (error.status || error.code === '23505') {
+      return renderPage(req, res, {
+        status: error.status || 409,
+        error: error.message || 'Ya existe otra cuenta con ese documento o correo.',
+        editManagerValues,
+      });
+    }
+
+    console.error('Error editando una cuenta de Gestor de laboratorio:', error);
+    return renderPage(req, res, {
+      status: 500,
+      error: 'No fue posible editar la cuenta del gestor de laboratorio.',
+      editManagerValues,
+    });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+router.post('/:userId/enrolar', requireAdminOnly, async (req, res) => {
+  const userId = parsePositiveInteger(req.params.userId);
+  if (!userId) {
+    return renderPage(req, res, {
+      status: 400,
+      error: 'La cuenta seleccionada no es válida.',
+    });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const roleResult = await client.query(
+      'SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1',
+      [ROLE_NAME]
+    );
+    const roleId = parsePositiveInteger(roleResult.rows[0]?.id);
+    if (!roleId) {
+      throw requestError(
+        'El rol Gestor de laboratorio no está configurado. Aplica la migración correspondiente.',
+        503
+      );
+    }
+
+    const assignmentResult = await client.query(
+      `
+        SELECT ur.activo, u.documento, u.activo AS cuenta_activa
+        FROM usuario_rol ur
+        JOIN usuario u ON u.id = ur.usuario_id
+        WHERE ur.usuario_id = $1 AND ur.rol_id = $2
+        FOR UPDATE OF ur
+      `,
+      [userId, roleId]
+    );
+    const assignment = assignmentResult.rows[0];
+    if (!assignment) {
+      throw requestError('La cuenta no tiene asignado el rol Gestor de laboratorio.', 404);
+    }
+    if (!assignment.cuenta_activa) {
+      throw requestError('La cuenta está inactiva y no se puede enrolar.', 400);
+    }
+    if (!assignment.activo) {
+      const conflictingRoles = await client.query(
+        `
+          SELECT r.nombre
+          FROM usuario_rol ur
+          JOIN rol r ON r.id = ur.rol_id
+          WHERE ur.usuario_id = $1
+            AND ur.activo = TRUE
+            AND r.nombre = ANY($2::varchar[])
+          LIMIT 1
+        `,
+        [userId, PRIVILEGED_ROLES]
+      );
+      if (conflictingRoles.rows.length) {
+        throw requestError(
+          'No se puede enrolar esta cuenta porque tiene permisos administrativos o de laboratorista.'
+        );
+      }
+    }
+
+    if (!assignment.activo) {
+      await client.query(
+        `
+          UPDATE usuario_rol
+          SET activo = TRUE, fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE usuario_id = $1 AND rol_id = $2
+        `,
+        [userId, roleId]
+      );
+      await writeAuditLog(client, req, 'Reactivar rol Gestor de laboratorio', assignment.documento);
+    }
+    await deactivateManagerUalAssignments(client, userId, roleId);
+
+    await client.query('COMMIT');
+    return renderPage(req, res, {
+      success: assignment.activo
+        ? `El acceso de ${assignment.documento} ya estaba activo.`
+        : `Se enroló nuevamente a ${assignment.documento} como Gestor de laboratorio, sin UAL.`,
+    });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo el enrolamiento de un gestor:', rollbackError);
+      }
+    }
+
+    if (error.status) {
+      return renderPage(req, res, {
+        status: error.status,
+        error: error.message,
+      });
+    }
+
+    console.error('Error enrolando nuevamente un gestor de laboratorio:', error);
+    return renderPage(req, res, {
+      status: 500,
+      error: 'No fue posible enrolar nuevamente al gestor de laboratorio.',
     });
   } finally {
     if (client) client.release();
@@ -475,15 +688,7 @@ router.post('/:userId/desactivar', requireAdminOnly, async (req, res) => {
         `,
         [userId, roleId]
       );
-      await ensureOperationalRoleAssignmentsSchema(client);
-      await client.query(
-        `
-          UPDATE usuario_ual_rol_operativo
-          SET activo = FALSE, fecha_modificacion = CURRENT_TIMESTAMP
-          WHERE usuario_id = $1 AND rol_id = $2 AND activo = TRUE
-        `,
-        [userId, roleId]
-      );
+      await deactivateManagerUalAssignments(client, userId, roleId);
       await writeAuditLog(
         client,
         req,

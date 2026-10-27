@@ -3,6 +3,7 @@ const { XMLParser } = require('fast-xml-parser');
 const { config } = require('../config/config');
 const { getAcademicServicePath, requestOati, requestOatiPost } = require('./oati-client');
 
+// Full SGA concept catalog. Only the codes classified as LABORATORIO count as lab sanctions.
 const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   1: 'BIBLIOTECA INGENIERÍA',
   2: 'LAB. TOPOGRAFIA (MAC.A)',
@@ -11,13 +12,13 @@ const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   5: 'LABORATORIO DE BIOLOGIA',
   6: 'LAB. ELECTRON. (SED. CENTRAL)',
   7: 'AUDIOVISUALES',
-  8: 'LABORATORIO DE FOTOGRAMETRIA (VIVERO)',
+  8: 'LABORATORIO DE FOTOGAMETRIA (VIVERO)',
   9: 'BIENESTAR UNIVERSITARIO',
   10: 'BIBLIOTECA VIVERO',
-  11: 'BIBLIOTECA MAC. A.',
+  11: 'BIBLIOTECA MAC. A',
   12: 'BIBLIOTECA MAC B',
   13: 'BIBLIOTECA TECNOLOGICA',
-  14: 'CENTRO INVEST. GEOG. CIGER',
+  14: 'CENTRO INVEST. GEOG. CIIGER',
   15: 'BIBLIOTECA ILUD',
   16: 'LAB. INVERNADERO -VIVERO-',
   17: 'LAB. TOPOGRAFIA -VIVERO-',
@@ -25,6 +26,9 @@ const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   19: 'CALIDAD DE AGUAS -VIVERO-',
   20: 'FOTOINTERPRETACION -VIVERO-',
   21: 'DEPORTES - VIVERO',
+  22: 'BIBLIOTECA CIENCIAS MATEMÁTICAS Y EDUCACIÓN',
+  23: 'CENTRO DE DOCUMENTACIÓN DE ARTES',
+  24: 'LAB. INGENIERÍA',
   30: 'COORD. LABORATORIO VIVERO',
   31: 'LAB. MICROBIOLOGIA-VIVERO',
   32: 'LAB. SILVICULTURA VIVERO',
@@ -55,14 +59,117 @@ const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
   57: 'BIBLIOTECA POSGRADOS',
   58: 'BIBLIOTECA PORVENIR',
   59: 'LABORATORIO DE BIOLOGIA MOLECULAR (VIVERO)',
-  72: 'LAB. QUIMICA ORGANICA (BOSA)',
+  60: 'LAB. CALIDAD DEL AGUA (BOSA)',
+  61: 'LAB. CALIDAD DEL AIRE (BOSA)',
+  62: 'LAB. SERVICIOS PUBLICOS (BOSA)',
+  63: 'LAB. QUIMICA GENERAL (BOSA)',
+  64: 'LAB. BIOLOGIA (BOSA)',
+  65: 'LAB. ECOLOGIA Y ZOONOSIS (BOSA)',
+  66: 'LAB. MICROBIOLOGIA (BOSA)',
+  67: 'LAB. BIOTECNOLOGIA (BOSA)',
+  68: 'LAB. FISICA (BOSA)',
+  69: 'LAB. MODELACION AMBIENTAL (BOSA)',
+  70: 'LAB. HIDRAULICA (BOSA)',
+  71: 'LAB. TOPOGRAFIA (BOSA)',
+  72: 'LAB. QUÍMICA ORGÁNICA (BOSA)',
 });
 
-function resolveSgaConceptName(rawCode) {
+const SGA_LABORATORY_CONCEPT_CODES = new Set([
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '14',
+  '16',
+  '17',
+  '18',
+  '19',
+  '20',
+  '21',
+  '23',
+  '24',
+  '30',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '37',
+  '38',
+  '39',
+  '40',
+  '41',
+  '42',
+  '43',
+  '44',
+  '45',
+  '46',
+  '47',
+  '48',
+  '49',
+  '50',
+  '51',
+  '53',
+  '54',
+  '55',
+  '56',
+  '59',
+  '60',
+  '61',
+  '62',
+  '63',
+  '64',
+  '65',
+  '66',
+  '67',
+  '68',
+  '69',
+  '70',
+  '71',
+  '72',
+]);
+
+const SGA_OTHER_CONCEPT_TYPES = Object.freeze({
+  1: 'BIBLIOTECA',
+  9: 'BIENESTAR',
+  10: 'BIBLIOTECA',
+  11: 'BIBLIOTECA',
+  12: 'BIBLIOTECA',
+  13: 'BIBLIOTECA',
+  15: 'BIBLIOTECA',
+  22: 'BIBLIOTECA',
+  36: 'BIBLIOTECA',
+  52: 'BIBLIOTECA',
+  57: 'BIBLIOTECA',
+  58: 'BIBLIOTECA',
+});
+
+function normalizeSgaConceptCode(rawCode) {
   const code = String(rawCode ?? '').trim();
+  if (!code) return '';
+  return /^\d+$/.test(code) ? String(Number(code)) : code;
+}
+
+function resolveSgaConceptName(rawCode) {
+  const code = normalizeSgaConceptCode(rawCode);
   if (!code) return null;
-  const normalizedCode = /^\d+$/.test(code) ? String(Number(code)) : code;
-  return SGA_DEBT_CONCEPT_NAMES[code] || SGA_DEBT_CONCEPT_NAMES[normalizedCode] || null;
+  return SGA_DEBT_CONCEPT_NAMES[code] || null;
+}
+
+function resolveSgaLaboratoryConceptName(rawCode) {
+  const code = normalizeSgaConceptCode(rawCode);
+  if (!SGA_LABORATORY_CONCEPT_CODES.has(code)) return null;
+  return SGA_DEBT_CONCEPT_NAMES[code] || null;
+}
+
+function resolveSgaConceptType(rawCode) {
+  const code = normalizeSgaConceptCode(rawCode);
+  if (!code) return null;
+  if (SGA_LABORATORY_CONCEPT_CODES.has(code)) return 'LABORATORIO';
+  return SGA_OTHER_CONCEPT_TYPES[code] || null;
 }
 
 function normalizeNumericIdentifier(value) {
@@ -101,7 +208,7 @@ function isLaboratoryConceptName(value) {
 
 function normalizeSgaDebt(debt, queriedCode) {
   const conceptCode = String(debt?.DEU_CPTO_COD || '').trim();
-  const conceptName = getSgaConceptName(debt) || resolveSgaConceptName(conceptCode) || null;
+  const conceptName = resolveSgaConceptName(conceptCode) || getSgaConceptName(debt) || null;
 
   return {
     ...debt,
@@ -110,7 +217,7 @@ function normalizeSgaDebt(debt, queriedCode) {
     codigo_estudiante: normalizeNumericIdentifier(debt?.DEU_EST_COD) || queriedCode,
     codigo_concepto: conceptCode || null,
     nombre_concepto: conceptName,
-    tipo_concepto: debt?.CPTO_TIPO || debt?.DEU_CPTO_TIPO || null,
+    tipo_concepto: debt?.CPTO_TIPO || debt?.DEU_CPTO_TIPO || resolveSgaConceptType(conceptCode),
     categoria: debt?.DEU_MATERIAL || null,
     valor: debt?.DEU_MULTA ?? null,
     fecha: debt?.DEU_FECHA || null,
@@ -153,9 +260,6 @@ function getSgaQueryMessage(result) {
   if (result.status === 'error') {
     return 'No fue posible consultar las multas del estudiante en SGA.';
   }
-  if (result.status === 'partial' && result.unclassifiedCount > 0) {
-    return 'SGA devolvió multas activas sin nombre de concepto; no fue posible clasificarlas.';
-  }
   if (result.status === 'partial') {
     return 'La consulta de SGA quedó incompleta; el resultado no es concluyente.';
   }
@@ -193,7 +297,7 @@ class SgaDebtService {
     return state === '1' || state === '2';
   }
 
-  // Las deudas de biblioteca no corresponden a laboratorios: no se muestran ni bloquean.
+  // Some records with laboratory codes describe library items and must not block lab workflows.
   isLibraryDebt(debt) {
     const detail = String(debt?.DEU_MATERIAL || '')
       .normalize('NFD')
@@ -203,7 +307,11 @@ class SgaDebtService {
   }
 
   isBlockingDebt(debt) {
-    return this.isActiveDebt(debt) && !this.isLibraryDebt(debt);
+    return (
+      this.isActiveDebt(debt) &&
+      Boolean(resolveSgaLaboratoryConceptName(debt?.DEU_CPTO_COD)) &&
+      !this.isLibraryDebt(debt)
+    );
   }
 
   buildServicePath(codigoEstudiante) {
@@ -521,10 +629,18 @@ class SgaDebtService {
     };
   }
 
-  async queryStudent({ codigo, codigos = [], documento, identificador } = {}) {
+  async queryStudent({
+    codigo,
+    codigos = [],
+    documento,
+    identificador,
+    onProgress,
+    includeOtherDebts = false,
+  } = {}) {
     const emptyResult = {
       status: 'not_configured',
       debts: [],
+      otherDebts: [],
       codes: [],
       document: normalizeNumericIdentifier(documento) || null,
       studentRecord: null,
@@ -538,6 +654,7 @@ class SgaDebtService {
       return emptyResult;
     }
 
+    onProgress?.({ stage: 'identity' });
     const identity = await this.resolveStudentCodesForQuery({
       codigo,
       codigos,
@@ -563,6 +680,11 @@ class SgaDebtService {
       return result;
     }
 
+    onProgress?.({
+      stage: 'debts',
+      document: identity.document,
+      studentRecord: identity.studentRecord,
+    });
     const queried = await Promise.all(
       identity.codes.map(async (code) => {
         try {
@@ -582,6 +704,8 @@ class SgaDebtService {
 
     const debtFingerprints = new Set();
     const debts = [];
+    const otherDebtFingerprints = new Set();
+    const otherDebts = [];
     let successfulQueries = 0;
     let nonLaboratoryCount = 0;
     let unclassifiedCount = 0;
@@ -595,11 +719,15 @@ class SgaDebtService {
       successfulQueries += 1;
 
       codeDebts.forEach((debt) => {
-        if (!this.isActiveDebt(debt) || this.isLibraryDebt(debt)) return;
+        if (!this.isActiveDebt(debt)) return;
+        const conceptCode = debt?.DEU_CPTO_COD;
+        if (!resolveSgaConceptName(conceptCode)) return;
+        const isLaboratoryDebt =
+          Boolean(resolveSgaLaboratoryConceptName(conceptCode)) && !this.isLibraryDebt(debt);
+        if (!isLaboratoryDebt && !includeOtherDebts) return;
 
         const debtCode = normalizeNumericIdentifier(debt?.DEU_EST_COD);
         if (debtCode && debtCode !== code) {
-          unclassifiedCount += 1;
           errors.push({
             stage: 'sga',
             code: 'SGA_STUDENT_CODE_MISMATCH',
@@ -608,26 +736,26 @@ class SgaDebtService {
           return;
         }
 
-        const conceptName = getSgaConceptName(debt);
-        if (!conceptName) {
-          unclassifiedCount += 1;
-          return;
-        }
-        if (!isLaboratoryConceptName(conceptName)) {
-          nonLaboratoryCount += 1;
+        if (isLaboratoryDebt) {
+          const fingerprint = getSgaDebtFingerprint(debt);
+          if (debtFingerprints.has(fingerprint)) return;
+          debtFingerprints.add(fingerprint);
+          debts.push(normalizeSgaDebt(debt, code));
           return;
         }
 
         const fingerprint = getSgaDebtFingerprint(debt);
-        if (debtFingerprints.has(fingerprint)) return;
-        debtFingerprints.add(fingerprint);
-        debts.push(normalizeSgaDebt(debt, code));
+        if (otherDebtFingerprints.has(fingerprint)) return;
+        otherDebtFingerprints.add(fingerprint);
+        otherDebts.push(normalizeSgaDebt(debt, code));
       });
     });
 
     const hasQueryFailures = successfulQueries < identity.codes.length;
     const hasIncompleteIdentity = !identity.identityConfirmed;
+    const hasSgaDataErrors = errors.some((error) => error.stage === 'sga');
     result.debts = debts;
+    result.otherDebts = otherDebts;
     result.nonLaboratoryCount = nonLaboratoryCount;
     result.unclassifiedCount = unclassifiedCount;
     result.errors = errors;
@@ -636,7 +764,7 @@ class SgaDebtService {
     } else if (
       hasQueryFailures ||
       hasIncompleteIdentity ||
-      unclassifiedCount > 0 ||
+      hasSgaDataErrors ||
       identity.errors.length > 0
     ) {
       result.status = 'partial';
@@ -661,9 +789,7 @@ class SgaDebtService {
       .filter((debt) => this.isBlockingDebt(debt))
       .map((debt) => {
         const conceptName = resolveSgaConceptName(debt?.DEU_CPTO_COD);
-        return conceptName && !debt.DEU_CPTO_NOMBRE
-          ? { ...debt, DEU_CPTO_NOMBRE: conceptName }
-          : debt;
+        return { ...debt, DEU_CPTO_NOMBRE: conceptName };
       });
   }
 }
@@ -678,4 +804,6 @@ module.exports = {
   normalizeSgaDebt,
   sgaDebtService,
   resolveSgaConceptName,
+  resolveSgaConceptType,
+  resolveSgaLaboratoryConceptName,
 };

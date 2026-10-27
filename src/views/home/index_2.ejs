@@ -698,8 +698,14 @@
         return new Date(timestamp).toLocaleString('es-CO');
       }
 
-      fetch('/milab/api/check-services')
+      const statusController = new AbortController();
+      const statusTimer = setTimeout(function () {
+        statusController.abort();
+      }, 12000);
+
+      fetch('/milab/api/check-services', { signal: statusController.signal })
         .then((response) => {
+          clearTimeout(statusTimer);
           if (!response.ok) {
             throw new Error('HTTP ' + response.status);
           }

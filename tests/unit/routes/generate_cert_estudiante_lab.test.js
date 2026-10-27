@@ -254,7 +254,12 @@ const validCertificateForm = {
 };
 
 test('generate_cert_estudiante_lab blocks the certificate when SGA reports active debts', async () => {
-  const sgaDebt = { DEU_ID: '75806', DEU_ESTADO: '2', DEU_EST_COD: '2024100001' };
+  const sgaDebt = {
+    DEU_ID: '75806',
+    DEU_ESTADO: '2',
+    DEU_EST_COD: '2024100001',
+    DEU_CPTO_COD: '4',
+  };
   const loaded = loadRoute({
     studentRecord: defaultStudentRecord,
     sgaDebtsImpl: async () => [sgaDebt],
@@ -265,6 +270,7 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
       DEU_ID: '111951',
       DEU_ESTADO: 1,
       DEU_EST_COD: defaultStudentRecord.codigo,
+      DEU_CPTO_COD: '4',
       DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
       DEU_MULTA: 1,
       DEU_FECHA_PAGO: null,
@@ -292,7 +298,9 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
       assert.equal(response.status, 200);
       assert.equal(response.body.view, 'home/alerta-multado');
       assert.deepEqual(response.body.locals.multaInfo, []);
-      assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaDebt]);
+      assert.deepEqual(response.body.locals.sgaMultaInfo, [
+        { ...sgaDebt, DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA' },
+      ]);
     } finally {
       loaded.restore();
     }
@@ -320,7 +328,7 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
 
 test('generate_cert_estudiante_lab shows MILab and SGA debts together', async () => {
   const localFine = { id: 10, con_estado_multa: 'ACTIVA' };
-  const sgaDebt = { DEU_ID: '78741', DEU_ESTADO: '2' };
+  const sgaDebt = { DEU_ID: '78741', DEU_ESTADO: '2', DEU_CPTO_COD: '4' };
   const loaded = loadRoute({
     studentRecord: defaultStudentRecord,
     multaRows: [localFine],

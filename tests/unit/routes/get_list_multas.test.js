@@ -585,7 +585,12 @@ test('get_list_multas resolve_name returns false when documento is missing', asy
 
 test('get_list_multas queries SGA debts for a student only when detail is requested', async () => {
   let serviceArguments;
-  const activeDebt = { DEU_EST_COD: '2024100001', DEU_ESTADO: '2', DEU_MATERIAL: 'Tablet' };
+  const activeDebt = {
+    DEU_EST_COD: '2024100001',
+    DEU_ESTADO: '2',
+    DEU_CPTO_COD: '4',
+    DEU_MATERIAL: 'Tablet',
+  };
   const loaded = loadRoute({
     clientQueryImpl: async (sql, params) => {
       assert.match(sql, /m\.id = \$1/);

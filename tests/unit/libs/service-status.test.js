@@ -141,6 +141,26 @@ test('checkServiceStatus reports the service down when an academic service fails
   }
 });
 
+test('checkServiceStatus answers down when OATI never responds', async () => {
+  const previousTimeout = process.env.SERVICE_STATUS_TIMEOUT_MS;
+  process.env.SERVICE_STATUS_TIMEOUT_MS = '25';
+  const loaded = loadServiceStatus({ oatiImpl: () => new Promise(() => {}) });
+  const log = createLog();
+
+  try {
+    const startedAt = Date.now();
+    const status = await loaded.checkServiceStatus(log);
+
+    assert.equal(status.servicesAreUp, false);
+    assert.ok(Date.now() - startedAt < 2000);
+    assert.ok(log.warnings[0].services.every((service) => service.status === 'TIMEOUT'));
+  } finally {
+    loaded.restore();
+    if (previousTimeout === undefined) delete process.env.SERVICE_STATUS_TIMEOUT_MS;
+    else process.env.SERVICE_STATUS_TIMEOUT_MS = previousTimeout;
+  }
+});
+
 test('checkServiceStatus reports up without warnings when every service responds', async () => {
   const loaded = loadServiceStatus();
   const log = createLog();

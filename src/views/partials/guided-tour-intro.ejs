@@ -15,26 +15,33 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body pt-2">
-        <p class="app-tour-intro-eyebrow">Tour guiado de MiLab</p>
-        <h2 class="modal-title" id="milabTourIntroTitle">Explora MiLab a tu ritmo</h2>
+        <p class="app-tour-intro-eyebrow">Recorrido interactivo · MiLab</p>
+        <h2 class="modal-title" id="milabTourIntroTitle">Descubre lo que puedes hacer en MiLab</h2>
         <p class="app-tour-intro-description" id="milabTourIntroDescription">
-          Puedes recorrer los módulos disponibles para tu perfil o elegir uno específico. Durante el tour, el menú se desplazará hasta cada opción.
+          Tu espacio para gestionar laboratorios, equipos y experiencias académicas. Te mostramos
+          qué resuelve cada área y dónde encontrarla; solo verás las opciones habilitadas para tu
+          perfil.
         </p>
-        <label class="form-label fw-semibold" for="milabTourModuleSelect">Módulo que quieres explorar</label>
+        <div class="app-tour-intro-points" aria-label="Características del recorrido">
+          <span><i class="bi bi-person-check" aria-hidden="true"></i> A tu perfil</span>
+          <span><i class="bi bi-signpost-split" aria-hidden="true"></i> Paso a paso</span>
+          <span><i class="bi bi-lightning-charge" aria-hidden="true"></i> Sin cambiar de pantalla</span>
+        </div>
+        <label class="form-label fw-semibold" for="milabTourModuleSelect">¿Qué área quieres descubrir?</label>
         <select class="form-select" id="milabTourModuleSelect" aria-describedby="milabTourModuleHelp">
           <option value="">Selecciona un módulo disponible</option>
         </select>
         <div class="form-text" id="milabTourModuleHelp">
-          La lista se adapta a las opciones que tienes habilitadas.
+          Elige una ruta breve o conoce todo tu menú. Usa Anterior y Siguiente para avanzar.
         </div>
       </div>
       <div class="modal-footer border-0 pt-0">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Ahora no</button>
         <button type="button" class="btn btn-outline-primary" data-guide-start="module" disabled>
-          Explorar módulo
+          Explorar área
         </button>
         <button type="button" class="btn btn-primary" data-guide-start="all">
-          Recorrer todo
+          Recorrer todo mi menú
         </button>
       </div>
     </div>
