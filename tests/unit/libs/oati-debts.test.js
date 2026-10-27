@@ -247,16 +247,27 @@ test('SgaDebtService uses an explicit environment service name', () => {
   }
 });
 
-test('SGA debtors service name is fixed per environment and ignores .env overrides', () => {
+test('SGA debtors use the production service in every environment and ignore .env overrides', () => {
   const originalOverride = process.env.OATI_DEBT_SERVICE_NAME;
   process.env.OATI_DEBT_SERVICE_NAME = 'otro_servicio';
 
   try {
-    assert.equal(resolveSgaDebtorsServiceName('production'), 'servicios_academicos_produccion');
-    assert.equal(resolveSgaDebtorsServiceName('PRODUCTION'), 'servicios_academicos_produccion');
-    assert.equal(resolveSgaDebtorsServiceName(''), 'servicios_academicos_produccion');
-    for (const environmentName of ['dev', 'development', 'local', 'test', 'staging', 'preprod']) {
-      assert.equal(resolveSgaDebtorsServiceName(environmentName), 'academica_pruebas');
+    for (const environmentName of [
+      'production',
+      'PRODUCTION',
+      '',
+      'dev',
+      'development',
+      'local',
+      'test',
+      'testing',
+      'staging',
+      'preprod',
+    ]) {
+      assert.equal(
+        resolveSgaDebtorsServiceName(environmentName),
+        'servicios_academicos_produccion'
+      );
     }
     assert.ok(Object.isFrozen(SGA_DEBTORS_SERVICE_NAMES));
   } finally {
