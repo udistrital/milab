@@ -5,6 +5,8 @@
   (documentos || []).forEach(function (doc) {
     if (doc.tipo_documento === 'FOTOGRAFIA_EQUIPO' && !fotoActual) { fotoActual = doc; }
   });
+  var usoTipoUsoClaves = typeof tipoUsoClaves !== 'undefined' ? tipoUsoClaves : [];
+  var usoTipoUsoOtro = typeof tipoUsoOtro !== 'undefined' ? tipoUsoOtro : '';
 %>
 
 <main class="container app-page-shell">
@@ -70,7 +72,7 @@
                   var fecha = new Date(valor);
                   valor = isNaN(fecha.getTime()) ? String(valor) : fecha.toISOString().slice(0, 10);
                 } else { valor = String(valor); }
-                var esCompleto = campo.tipo === 'textarea' ? 12 : 4;
+                var esCompleto = campo.tipo === 'textarea' || campo.tipo === 'uso' ? 12 : 4;
               %>
               <div class="col-md-<%= esCompleto %>">
                 <label for="hv-campo-<%= campo.nombre %>" class="form-label">
@@ -78,6 +80,46 @@
                 </label>
                 <% if (campo.tipo === 'textarea') { %>
                   <textarea class="form-control" id="hv-campo-<%= campo.nombre %>" name="<%= campo.nombre %>" rows="2" <%= requerido ? 'required' : '' %>><%= valor %></textarea>
+                <% } else if (campo.tipo === 'uso') { %>
+                  <div class="d-flex flex-wrap gap-3 align-items-center" data-testid="hv-campo-tipo-uso">
+                    <% campo.opciones.forEach(function (opcion) { %>
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          name="tipo_uso"
+                          value="<%= opcion.clave %>"
+                          id="hv-uso-<%= opcion.clave %>"
+                          <%= usoTipoUsoClaves.indexOf(opcion.clave) !== -1 ? 'checked' : '' %>
+                        />
+                        <label class="form-check-label" for="hv-uso-<%= opcion.clave %>"><%= opcion.etiqueta %></label>
+                      </div>
+                    <% }); %>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="tipo_uso"
+                        value="OTROS"
+                        id="hv-uso-OTROS"
+                        data-uso-otros-toggle
+                        <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? 'checked' : '' %>
+                      />
+                      <label class="form-check-label" for="hv-uso-OTROS">Otros</label>
+                    </div>
+                    <input
+                      type="text"
+                      class="form-control"
+                      style="max-width: 260px;"
+                      id="hv-uso-otros-texto"
+                      name="tipo_uso_otro"
+                      value="<%= usoTipoUsoOtro %>"
+                      placeholder="Especifique otro uso"
+                      data-uso-otros-texto
+                      <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? '' : 'disabled' %>
+                    />
+                    <input type="hidden" name="tipo_uso_grupo" value="1" />
+                  </div>
                 <% } else { %>
                   <input
                     type="<%= campo.tipo === 'number' ? 'number' : (campo.tipo === 'date' ? 'date' : 'text') %>"
@@ -109,6 +151,21 @@
               class="img-fluid rounded"
               style="max-height: 220px;"
             />
+          </div>
+          <div class="form-check mb-3" data-testid="hv-editar-foto-eliminar-wrap">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              value="1"
+              id="hv-eliminar-foto"
+              name="eliminar_foto"
+            />
+            <label class="form-check-label" for="hv-eliminar-foto">
+              Eliminar la fotografia actual
+            </label>
+            <div class="form-text text-muted">
+              Si seleccionas una imagen nueva, se reemplazara en lugar de eliminarse.
+            </div>
           </div>
         <% } %>
         <input type="file" class="form-control" id="hv-foto" name="foto" accept="image/*" />
@@ -158,6 +215,15 @@
     var successBox = document.getElementById('hv-success');
     var successMsg = document.getElementById('hv-success-msg');
     var submitBtn = document.getElementById('hv-editar-btn');
+
+    var usoOtrosToggle = form.querySelector('[data-uso-otros-toggle]');
+    var usoOtrosTexto = form.querySelector('[data-uso-otros-texto]');
+    if (usoOtrosToggle && usoOtrosTexto) {
+      usoOtrosToggle.addEventListener('change', function () {
+        usoOtrosTexto.disabled = !usoOtrosToggle.checked;
+        if (!usoOtrosToggle.checked) usoOtrosTexto.value = '';
+      });
+    }
 
     function mostrarError(mensaje) {
       loading.classList.add('d-none');

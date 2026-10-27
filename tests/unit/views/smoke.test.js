@@ -497,6 +497,8 @@ test('hojas-vida confirmar view renders the confirmation form with catalog field
       documentos: [{ tipo_documento: 'EXCEL_ORIGEN', nombre_archivo: 'sigud.xlsx' }],
       secciones: CAMPOS_POR_SECCION,
       obligatorios: ['marca', 'numero_serie', 'codigo_inventario'],
+      tipoUsoClaves: ['ACADEMICO', 'OTROS'],
+      tipoUsoOtro: 'Certificacion externa',
       maxFotoMB: 5,
       successMessage: null,
       errorMessage: null,
@@ -509,6 +511,10 @@ test('hojas-vida confirmar view renders the confirmation form with catalog field
   assert.match(html, /EXCEL_ORIGEN/);
   assert.match(html, /id="hv-campo-marca"[\s\S]*?required/);
   assert.match(html, /value="MarcaX"/);
+  assert.match(html, /name="tipo_uso"[\s\S]*?value="ACADEMICO"[\s\S]*?checked/);
+  assert.match(html, /id="hv-uso-OTROS"[\s\S]*?checked/);
+  assert.match(html, /name="tipo_uso_otro"[\s\S]*?value="Certificacion externa"/);
+  assert.match(html, /name="tipo_uso_grupo"/);
   assert.match(html, /var hojaVidaId = 42;/);
   assert.match(html, /nonce="test-nonce"/);
 });
@@ -528,12 +534,22 @@ test('hojas-vida historial view renders the event timeline and registration form
       eventos: [
         {
           id: 1,
+          tipo_evento: 'CREACION',
+          tipo_evento_etiqueta: 'Creación de la hoja de vida',
+          tipo_evento_clase: 'success',
+          descripcion: 'Carga inicial de la hoja de vida.',
+          usuario: '100',
+          fecha_display: '15/10/2026 08:00',
+          referencia_display: 'Documento #5',
+        },
+        {
+          id: 2,
           tipo_evento: 'CONFIRMACION',
           tipo_evento_etiqueta: 'Confirmación de la hoja de vida',
           tipo_evento_clase: 'success',
           descripcion: 'Confirmación de la hoja de vida (creación oficial).',
           usuario: '100',
-          fecha_display: '15/10/2026 08:00',
+          fecha_display: '15/10/2026 08:05',
         },
       ],
       tiposEvento: TIPOS_EVENTO_MANUALES,
@@ -545,8 +561,10 @@ test('hojas-vida historial view renders the event timeline and registration form
   assert.match(html, /Historial del ciclo de vida/i);
   assert.match(html, /id="hv-evento-form"/);
   assert.match(html, /name="tipo_evento"/);
+  assert.match(html, /Creación de la hoja de vida/);
   assert.match(html, /Confirmación de la hoja de vida/);
   assert.match(html, /data-testid="historial-evento"/);
+  assert.match(html, /data-testid="historial-evento-referencia">\s*Referencia: Documento #5/);
   assert.match(html, /var HOJA_VIDA_ID = 42;/);
   assert.match(html, /nonce="test-nonce"/);
 });
@@ -588,6 +606,7 @@ test('hojas-vida ver view renders the read-only detail with documents and action
         laboratorio: 'Lab 11',
       },
       secciones: CAMPOS_POR_SECCION,
+      tipoUsoTexto: 'Académico, Otros: Certificación',
       documentos: [
         {
           id: 5,
@@ -609,12 +628,17 @@ test('hojas-vida ver view renders the read-only detail with documents and action
 
   assert.match(html, /Hoja de Vida del Equipo/i);
   assert.match(html, /data-testid="hv-ver"/);
+  assert.match(html, /data-testid="hv-ver-campo-tipo_uso"[^>]*>Académico, Otros: Certificación/);
   assert.match(html, /data-testid="hv-estado">Activa/);
   assert.match(html, /data-testid="action-imprimir-hv"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/imprimir/);
+  assert.match(html, /data-testid="action-agregar-mantenimiento-hv"/);
+  assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/mantenimientos\/nuevo/);
   assert.match(html, /data-testid="hv-ver-campo-marca"[\s\S]*?MarcaX/);
   assert.match(html, /data-testid="hv-documento"/);
   assert.match(html, /\/milab\/prestamos\/hojas-vida\/42\/documento\/5/);
+  assert.match(html, /Documento original \(Excel\)/);
+  assert.match(html, /Fotografía del equipo/);
   assert.match(html, /data-testid="hv-fotografia"/);
 });
 
@@ -649,6 +673,8 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
       equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
       secciones: CAMPOS_POR_SECCION,
       obligatorios: ['marca'],
+      tipoUsoClaves: ['SERVICIOS'],
+      tipoUsoOtro: '',
       documentos: [
         {
           id: 6,
@@ -669,7 +695,11 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
   assert.match(html, /id="hv-editar-btn"/);
   assert.match(html, /data-testid="hv-editar-foto-actual"/);
   assert.match(html, /data-testid="hv-editar-foto-actual"[\s\S]*?\/documento\/6/);
+  assert.match(html, /data-testid="hv-editar-foto-eliminar-wrap"/);
+  assert.match(html, /name="eliminar_foto"/);
   assert.match(html, /value="MarcaX"/);
+  assert.match(html, /name="tipo_uso"[\s\S]*?value="SERVICIOS"[\s\S]*?checked/);
+  assert.match(html, /id="hv-uso-otros-texto"[\s\S]*?disabled/);
   assert.match(html, /var hojaVidaId = 42;/);
   assert.match(html, /var equipoId = 7;/);
   assert.match(html, /nonce="test-nonce"/);
@@ -704,6 +734,10 @@ test('hojas-vida mantenimientos view lists records and the empty state', async (
   const baseOverrides = {
     hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA' },
     equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
+    diasAlerta: 30,
+    costoAcumulado: 0,
+    costoAcumuladoDisplay: '$0',
+    estadosMantenimiento: ESTADOS_MANTENIMIENTO,
     successMessage: null,
     errorMessage: null,
   };
@@ -740,4 +774,134 @@ test('hojas-vida mantenimientos view lists records and the empty state', async (
   );
 
   assert.match(sinDatos, /data-testid="hv-mto-vacio"/);
+});
+
+test('hojas-vida mantenimiento-editar view renders the editable form with current values', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/mantenimiento-editar.ejs',
+    buildBaseViewLocals({
+      hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA' },
+      equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
+      mantenimiento: {
+        id: 9,
+        item: 'Cambio de rodamiento',
+        tipo_mantenimiento: 'PREVENTIVO',
+        estado: 'EN_EJECUCION',
+        fecha_realizacion: '2024-05-10',
+        costo: 150000,
+        responsable: 'Juan Perez',
+        datos_empresa_contratada: 'Servitec',
+        observaciones_repuestos: 'Rodamiento nuevo',
+      },
+      tiposMantenimiento: TIPOS_MANTENIMIENTO,
+      estadosMantenimiento: [ESTADOS_MANTENIMIENTO[1]],
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+
+  assert.match(html, /Editar Mantenimiento/i);
+  assert.match(html, /data-testid="hv-mto-editar-form"/);
+  assert.match(html, /value="Cambio de rodamiento"/);
+  assert.match(html, /value="2024-05-10"/);
+  assert.match(html, /value="150000"/);
+  assert.match(html, /name="estado" value="EN_EJECUCION"/);
+  assert.match(html, /var mantenimientoId = 9;/);
+  assert.match(html, /nonce="test-nonce"/);
+});
+
+test('hojas-vida ver view renders the maintenance summary and history', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/ver.ejs',
+    buildBaseViewLocals({
+      hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA', nombre_equipo: 'Equipo Demo' },
+      equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
+      secciones: CAMPOS_POR_SECCION,
+      documentos: [],
+      mantenimientos: [
+        {
+          id: 9,
+          item: 'Cambio de rodamiento',
+          tipo_mantenimiento_etiqueta: 'Preventivo',
+          fecha_realizacion_display: '10/05/2024',
+          estado_etiqueta: 'Cumplido',
+          estado_clase: 'success',
+          responsable: 'Juan Perez',
+          datos_empresa_contratada: 'Servitec',
+          observaciones_repuestos: 'Rodamiento nuevo',
+          costo_display: '$150.000',
+          fecha_cierre_display: '11/05/2024 10:00',
+        },
+      ],
+      resumen: {
+        dias_alerta_vencimiento: 30,
+        alerta: { codigo: 'VENCIDO', etiqueta: 'Mantenimiento vencido', clase: 'danger' },
+        mantenimientos_total: 1,
+        costo_mantenimiento: 150000,
+        costo_mantenimiento_display: '$150.000',
+        prestamos_total: 247,
+      },
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+
+  assert.match(html, /data-testid="hv-resumen-uso"/);
+  assert.match(html, /data-testid="hv-alerta-mantenimiento">Mantenimiento vencido/);
+  assert.match(html, /data-testid="hv-resumen-prestamos">247/);
+  assert.match(html, /data-testid="hv-historial-mantenimientos"/);
+  assert.match(html, /data-testid="hv-historial-mantenimiento-item">Cambio de rodamiento/);
+  assert.match(html, /Servitec/);
+});
+
+test('hojas-vida ver view renders the empty maintenance history', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/ver.ejs',
+    buildBaseViewLocals({
+      hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA' },
+      equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
+      secciones: CAMPOS_POR_SECCION,
+      documentos: [],
+      mantenimientos: [],
+      resumen: { dias_alerta_vencimiento: 30, alerta: null },
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+
+  assert.match(html, /data-testid="hv-historial-mantenimientos-vacio"/);
+});
+
+test('hojas-vida reportes views render filters and data panels', async () => {
+  const base = {
+    successMessage: null,
+    errorMessage: null,
+  };
+
+  const mantenimientos = await renderView(
+    'src/views/home/prestamos/hojas-vida/reportes-mantenimientos.ejs',
+    buildBaseViewLocals({
+      ...base,
+      tiposMantenimiento: TIPOS_MANTENIMIENTO,
+      estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+    })
+  );
+  assert.match(mantenimientos, /data-testid="reportes-mantenimientos"/);
+  assert.match(mantenimientos, /data-testid="rm-total"/);
+  assert.match(mantenimientos, /id="rm-filtros"/);
+
+  const alertas = await renderView(
+    'src/views/home/prestamos/hojas-vida/reportes-alertas.ejs',
+    buildBaseViewLocals({ ...base })
+  );
+  assert.match(alertas, /data-testid="reportes-alertas"/);
+  assert.match(alertas, /id="ra-tbody"/);
+
+  const utilizacion = await renderView(
+    'src/views/home/prestamos/hojas-vida/reportes-utilizacion.ejs',
+    buildBaseViewLocals({ ...base })
+  );
+  assert.match(utilizacion, /data-testid="reportes-utilizacion"/);
+  assert.match(utilizacion, /id="ru-filtros"/);
+  assert.match(utilizacion, /reportes\/mantenimientos/);
 });
