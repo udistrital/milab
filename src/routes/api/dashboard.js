@@ -2564,14 +2564,15 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
         role === 'docente' ||
         role === 'coordinador' ||
         role === 'laboratorista' ||
-        role === 'monitor'
+        role === 'monitor' ||
+        role === 'gestor_laboratorio'
     );
 
     if (!impersonableRoles.length) {
       return res.status(409).json({
         ok: false,
         message:
-          'La cuenta seleccionada no tiene roles activos para ingresar. Asigna un rol (estudiante/docente) y vuelve a intentar.',
+          'La cuenta seleccionada no tiene roles activos para ingresar. Regístrala como Gestor de laboratorio o asígnale un rol estudiante/docente y vuelve a intentar.',
       });
     }
 
@@ -2615,11 +2616,22 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
 
 router.post(
   '/impersonacion/detener',
-  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante', 'monitor'], {
-    message: '¡Acceso denegado!',
-    message2: 'No tienes permisos para realizar esta acción',
-    limit: 'noSession',
-  }),
+  requireRoles(
+    [
+      'admin',
+      'coordinador',
+      'laboratorista',
+      'docente',
+      'estudiante',
+      'monitor',
+      'gestor_laboratorio',
+    ],
+    {
+      message: '¡Acceso denegado!',
+      message2: 'No tienes permisos para realizar esta acción',
+      limit: 'noSession',
+    }
+  ),
   async (req, res) => {
     const adminUser = req.session?.impersonationAdminUser;
     if (!adminUser) {

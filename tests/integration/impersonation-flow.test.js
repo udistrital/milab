@@ -95,7 +95,14 @@ function loadImpersonationApp(role, { failStopAudit = false } = {}) {
   };
 }
 
-for (const role of ['estudiante', 'docente', 'monitor', 'laboratorista', 'coordinador']) {
+for (const role of [
+  'estudiante',
+  'docente',
+  'monitor',
+  'laboratorista',
+  'coordinador',
+  'gestor_laboratorio',
+]) {
   test(`admin returns from ${role} impersonation with a persisted session`, async () => {
     const loaded = loadImpersonationApp(role);
     try {
