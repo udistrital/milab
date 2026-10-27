@@ -1,6 +1,6 @@
 {
   "name": "milabud",
-  "version": "3.1.10",
+  "version": "3.2.0",
   "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {

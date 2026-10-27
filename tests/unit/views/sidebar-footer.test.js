@@ -96,18 +96,42 @@ test('sidebar footer contains four accessible icon-only user actions', () => {
 test('guided tour introduction offers dynamic modules and an all-modules route', () => {
   const introPath = path.join(viewsPath, 'partials/guided-tour-intro.ejs');
   const intro = ejs.render(fs.readFileSync(introPath, 'utf8'));
+  const header = fs.readFileSync(headerPath, 'utf8');
   const scripts = fs.readFileSync(
     path.resolve(__dirname, '../../../src/public/js/scripts.js'),
     'utf8'
   );
+  const styles = fs.readFileSync(stylesPath, 'utf8');
 
   assert.match(intro, /modal-dialog modal-dialog-centered/);
   assert.match(intro, /id="milabTourModuleSelect"/);
   assert.match(intro, /data-guide-start="module"/);
   assert.match(intro, /data-guide-start="all"/);
+  assert.match(intro, /Descubre lo que puedes hacer en MiLab/);
+  assert.match(intro, /Sin cambiar de pantalla/);
   assert.match(scripts, /getAvailableGuideModules/);
   assert.match(scripts, /scrollGuideTargetIntoView/);
   assert.match(scripts, /syncGuideDropdownForTarget/);
+  assert.match(scripts, /progressText: '\{\{current\}\} de \{\{total\}\}'/);
+  [
+    `'Gestores de laboratorio': 'nav-gestores-laboratorio'`,
+    `'Esquema de base de datos': 'nav-esquema-bd'`,
+    `'Inventarios': 'nav-inventarios'`,
+    `'Capacitación': 'nav-capacitacion'`,
+    `'Encuentros': 'nav-encuentros'`,
+    `'Aprobaciones de inventario': 'nav-inventario-aprobaciones'`,
+  ].forEach((entry) => assert.ok(header.includes(entry), `Missing tour mapping: ${entry}`));
+  [
+    'Gestión con mirada universitaria',
+    'Otras multas SGA',
+    'hasta 50 documentos o códigos',
+    'Conoce la estructura de MiLab',
+    'La historia de cada equipo',
+    'Coordina cada encuentro',
+  ].forEach((description) =>
+    assert.ok(scripts.includes(description), `Missing tour step: ${description}`)
+  );
+  assert.match(styles, /app-tour-intro-points/);
 });
 
 test('app footer follows the workspace without fixed blank spacers', () => {

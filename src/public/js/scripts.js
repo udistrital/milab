@@ -692,262 +692,463 @@
       const candidateSteps = [
         createStep(
           ['[data-guide="main-navigation"]'],
-          'Navegacion principal',
-          'Desde aqui puedes acceder a los modulos principales y a las opciones disponibles segun tu perfil.',
+          'Tu mapa de MiLab',
+          'Aquí aparecen las áreas y acciones que tu perfil tiene habilitadas. El recorrido se adapta a este menú y solo muestra accesos disponibles para ti.',
           'bottom',
           'start'
         ),
         createStep(
-          ['[data-guide="nav-solicitar-certificado"]'],
-          'Solicitar certificado',
-          'Este acceso permite iniciar la solicitud del paz y salvo o certificado disponible para estudiantes y docentes.',
+          ['[data-guide="nav-inicio"]'],
+          'Punto de partida',
+          'Vuelve al inicio para orientarte y encontrar los accesos principales de tu jornada en MiLab.',
           'bottom',
           'center'
         ),
-        /*
         createStep(
-          ['[data-guide="nav-autorizaciones"]'],
-          'Autorizaciones',
-          'Aqui se revisan y gestionan solicitudes pendientes que requieren validacion del coordinador.',
+          ['[data-guide="nav-solicitar-certificado"]'],
+          'Tu paz y salvo, paso a paso',
+          'Inicia la solicitud del certificado que corresponde a tu perfil y consulta su estado desde los accesos disponibles.',
           'bottom',
           'center'
         ),
-        */
+        createStep(
+          ['[data-guide="nav-monitoreo"]'],
+          'El pulso de la operación',
+          'Revisa indicadores, tendencias y filtros en un solo tablero para entender qué ocurre y decidir dónde actuar.',
+          'bottom',
+          'center'
+        ),
         createStep(
           ['[data-guide="nav-registro"]'],
-          'Registro',
-          'Este menu agrupa los formularios de creacion de cuentas y configuracion inicial de nuevos usuarios operativos.',
+          'Personas y roles, en orden',
+          'Desde aquí se enrolan los perfiles que hacen posible la operación de los laboratorios y se mantiene actualizado quién puede hacer qué.',
           'bottom',
           'center'
         ),
         createStep(
           ['[data-guide="nav-registro-coordinadores"]'],
-          'Registro de coordinadores',
-          'Permite crear coordinadores con su informacion institucional y el alcance correspondiente dentro del sistema.',
+          'Coordinación con alcance claro',
+          'Registra coordinadores y define el ámbito de facultades que acompañan. Así cada gestión llega a quien corresponde.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-registro-laboratoristas"]'],
-          'Registro de laboratoristas',
-          'Sirve para crear cuentas de laboratoristas y asociarlas a las facultades o UAL autorizadas.',
+          'Equipo de laboratorio',
+          'Incorpora laboratoristas y asigna las UAL bajo su responsabilidad para que cada persona vea las tareas de su operación.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-registro-monitores"]'],
+          'Monitores listos para apoyar',
+          'Enrola monitores para acompañar préstamos y prácticas, con los permisos definidos para su función.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-gestores-laboratorio"]'],
+          'Gestión con mirada universitaria',
+          'Enrola o edita gestores de laboratorio. Su cobertura es institucional: no necesitan asignaciones a UAL.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-registro-admin"]'],
+          'Accesos administrativos',
+          'Registra o consulta cuentas administradoras solo cuando deban tener responsabilidades de configuración y control.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-consulta-control"]'],
-          'Consulta y control',
-          'Este menu concentra consultas operativas y herramientas de seguimiento para revisar registros, estados y sanciones.',
+          'Encuentra la información clave',
+          'Este centro reúne consultas de personas, certificados, sanciones y estructura institucional para resolver gestiones sin saltar entre pantallas.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-certificados"]'],
+          'Certificados bajo control',
+          'Consulta los registros de certificados y verifica la información necesaria para atender solicitudes con confianza.',
           'bottom',
           'center'
         ),
         createStep(
           ['[data-guide="nav-consulta-masiva"]'],
-          'Consulta masiva',
-          'Permite cargar varios codigos o documentos para revisar resultados en lote de forma mas rapida.',
+          'De una consulta a una vista completa',
+          'Reúne la información de varios estudiantes en un informe. La barra de progreso muestra qué documento se está consultando y cómo avanza el proceso.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-coordinadores-registrados"]'],
+          'Coordinadores registrados',
+          'Revisa quién coordina cada ámbito y consulta la información que facilita la continuidad de la gestión.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-estudiantes-docentes-registrados"]'],
-          'Estudiantes y docentes registrados',
-          'Muestra el listado consolidado de usuarios registrados para seguimiento y consulta administrativa.',
+          'Comunidad académica',
+          'Consulta las cuentas de estudiantes y docentes registradas en MiLab y valida su información cuando una gestión lo requiera.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-laboratoristas-registrados"]'],
           'Laboratoristas registrados',
-          'Aqui puedes consultar el personal laboratorista activo y la informacion relacionada con su gestion.',
+          'Encuentra el personal activo y revisa sus datos para mantener actualizada la operación de cada laboratorio.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-monitores-registrados"]'],
+          'Monitores registrados',
+          'Consulta los monitores enrolados y confirma quiénes están disponibles para apoyar los servicios.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-facultades-ual"]'],
+          'El mapa institucional',
+          'Explora facultades y UAL para ubicar cada laboratorio dentro de la estructura de la Universidad.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-logs"]'],
+          'Trazabilidad cuando importa',
+          'Consulta el registro de actividad para entender qué ocurrió, cuándo y en qué proceso.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-sanciones"]'],
-          'Sanciones',
-          'Este acceso permite consultar sanciones registradas y su estado actual dentro de la plataforma.',
+          'Una ruta clara para las sanciones',
+          'Consulta casos, gestiona registros y atiende reclamaciones con las herramientas habilitadas para tu perfil.',
           'right',
           'start'
         ),
         createStep(
-          ['[data-guide="nav-paz-y-salvos"]'],
-          'Paz y Salvos',
-          'Agrupa las herramientas para verificar si estudiantes o docentes cumplen las condiciones para su certificacion.',
-          'bottom',
-          'center'
-        ),
-        createStep(
-          ['[data-guide="nav-verificar-estudiante"]'],
-          'Verificar estudiante',
-          'Sirve para consultar el estado de un estudiante antes de emitir o validar su paz y salvo.',
+          ['[data-guide="nav-listado-sanciones"]'],
+          'Panorama de sanciones',
+          'Filtra las sanciones registradas, revisa su estado y encuentra rápidamente el caso que necesitas.',
           'right',
           'start'
-        ),
-        createStep(
-          ['[data-guide="nav-verificar-docente"]'],
-          'Verificar docente',
-          'Permite revisar el estado de un docente y validar si puede obtener su certificado.',
-          'right',
-          'start'
-        ),
-        createStep(
-          ['[data-guide="nav-administracion"]'],
-          'Administracion',
-          'Este menu reune acciones operativas para gestionar novedades y procesos internos de sanciones.',
-          'bottom',
-          'center'
         ),
         createStep(
           ['[data-guide="nav-sanciones-estudiantes"]'],
-          'Sanciones de estudiantes',
-          'Desde aqui se registran o administran sanciones asociadas a estudiantes segun el flujo del laboratorista.',
+          'Consulta de sanciones de estudiantes',
+          'Busca por documento y revisa la información del estudiante y sus sanciones de laboratorio. Si eres administrador, también puedes abrir “Otras multas SGA” para consultar conceptos externos al catálogo de laboratorio.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-sanciones-docentes"]'],
-          'Sanciones de docentes',
-          'Este acceso permite gestionar sanciones asociadas a docentes cuando el perfil tiene ese permiso.',
+          'Consulta de sanciones de docentes',
+          'Busca al docente, revisa sus datos y gestiona las sanciones asociadas desde un flujo dedicado.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-reclamaciones"]'],
+          'Reclamaciones, de principio a fin',
+          'Sigue los casos recibidos, identifica los que esperan respuesta y mantén visible el avance de cada conversación.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-paz-y-salvos"]'],
+          'Antes de emitir, verifica',
+          'Comprueba el estado de cada persona y prepara consultas individuales o por lotes antes de continuar el trámite.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-verificar-estudiante"]'],
+          'Verificación de estudiante',
+          'Consulta el estado del estudiante y reúne la información necesaria para continuar el trámite de paz y salvo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-verificar-docente"]'],
+          'Verificación de docente',
+          'Comprueba el estado del docente antes de avanzar con su certificado o paz y salvo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-generar-pys-masivo"]'],
+          'Paz y salvos, en lote',
+          'Procesa hasta 50 documentos o códigos en una consulta y sigue el avance de cada caso sin perder el contexto.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-administracion"]'],
+          'Herramientas para la gestión diaria',
+          'Accede a las tareas operativas de sanciones que mantienen en marcha la atención de los laboratorios.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-configuracion"]'],
+          'La plataforma, a tu medida',
+          'Configura accesos y catálogos con cuidado: estos cambios determinan cómo se organiza y opera MiLab.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-roles"]'],
+          'Roles y responsabilidades',
+          'Consulta los roles disponibles y organiza los permisos de acuerdo con las funciones de cada equipo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-permisos-menus"]'],
+          'Cada perfil, sus herramientas',
+          'Administra los menús visibles y las acciones habilitadas por rol para que cada persona encuentre lo que necesita.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-catalogo-sanciones"]'],
+          'Un catálogo consistente',
+          'Mantén organizados los conceptos de sanción para que los registros y reportes usen criterios compartidos.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-esquema-bd"]'],
+          'Conoce la estructura de MiLab',
+          'Explora en modo de consulta el esquema de base de datos de MiLab y sus relaciones, sin mezclar objetos de otros esquemas.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-inventarios"]'],
+          'Inventario, con trazabilidad',
+          'Este módulo reúne la gestión de bienes y las revisiones pendientes para mantener actualizado el inventario institucional.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-inventario-gestion"]'],
+          'Gestión del inventario',
+          'Registra, actualiza y consulta bienes; usa las herramientas de carga y exportación para trabajar con conjuntos de información.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-inventario-aprobaciones"]'],
+          'Aprobaciones de inventario',
+          'Revisa las cargas que esperan validación y aprueba o devuelve cada proceso con una decisión trazable.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos"]'],
-          'Prestamos',
-          'Este menu agrupa el flujo completo de prestamos y practicas, desde la solicitud hasta la entrega, incidencias y reportes.',
+          'Préstamos y prácticas, conectados',
+          'Sigue el ciclo del servicio: disponibilidad, solicitudes, aprobaciones, entrega, devolución y prácticas.',
           'bottom',
           'center'
         ),
         createStep(
           ['[data-guide="nav-prestamos-inventario"]'],
-          'Inventario',
-          'Permite consultar y administrar el inventario operativo disponible para el modulo de prestamos.',
+          'Inventario para préstamos',
+          'Consulta los recursos disponibles para atender solicitudes y controlar el movimiento de equipos.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-equipos"]'],
           'Equipos',
-          'Aqui se revisa el catalogo de equipos con su informacion operativa para solicitudes y control.',
+          'Explora el catálogo de equipos y sus datos operativos antes de iniciar una solicitud o una gestión.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-solicitar-equipo"]'],
           'Solicitar equipo',
-          'Sirve para crear nuevas solicitudes de prestamo de equipos segun el rol y el alcance habilitado.',
+          'Inicia una solicitud con la información requerida y consulta la disponibilidad según las reglas del servicio.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-mis-solicitudes"]'],
           'Mis solicitudes',
-          'Muestra el seguimiento de las solicitudes de prestamo realizadas por el usuario autenticado.',
+          'Haz seguimiento a tus solicitudes y revisa en qué etapa se encuentra cada préstamo.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-gestion-solicitudes"]'],
-          'Gestion de solicitudes',
-          'Concentra la revision, aprobacion y administracion de solicitudes de prestamo pendientes o en curso.',
+          'Gestión de solicitudes',
+          'Revisa las solicitudes pendientes y administra su avance para que cada préstamo tenga una respuesta clara.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-entrega-devolucion"]'],
-          'Entrega y devolucion',
-          'Permite registrar entregas, devoluciones y el estado operativo de los equipos prestados.',
+          'Entrega y devolución',
+          'Registra los movimientos del equipo y deja constancia de su estado al salir y regresar al laboratorio.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-incidencias"]'],
           'Incidencias',
-          'Desde aqui se consultan y gestionan novedades asociadas a prestamos o practicas.',
+          'Documenta y consulta novedades para que los equipos de coordinación y laboratorio puedan darles seguimiento.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-solicitar-practica"]'],
-          'Solicitar practica',
-          'Este acceso permite reservar practicas o espacios academicos segun disponibilidad y reglas del modulo.',
+          'Reserva una práctica',
+          'Solicita una práctica o espacio disponible con la información necesaria para coordinar la actividad.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-mis-practicas"]'],
-          'Mis practicas',
-          'Aqui el usuario puede consultar el historial y estado de sus reservas o practicas registradas.',
+          'Mis prácticas',
+          'Consulta tus reservas, revisa su estado y vuelve a la información de tus actividades cuando la necesites.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-gestion-practicas"]'],
-          'Gestion de practicas',
-          'Permite administrar reservas de practicas, seguimiento diario y cierres operativos.',
+          'Gestión de prácticas',
+          'Administra reservas y seguimiento operativo para que cada actividad llegue ordenada a su cierre.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-salas"]'],
           'Salas',
-          'Muestra la gestion de salas y su relacion con laboratorios, equipos o practicas del modulo.',
+          'Coordina espacios y salas vinculados a las actividades del módulo.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-reportes"]'],
           'Reportes',
-          'Consolida consultas y salidas de informacion para seguimiento del modulo de prestamos.',
+          'Convierte la actividad en información útil para revisar el servicio y detectar oportunidades de mejora.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-auditoria"]'],
-          'Auditoria',
-          'Permite revisar trazabilidad y eventos relevantes del modulo para soporte y control.',
+          'Auditoría',
+          'Revisa la trazabilidad de eventos relevantes para soporte, control y seguimiento.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-parametrizaciones"]'],
           'Parametrizaciones',
-          'Aqui el administrador ajusta reglas operativas generales del modulo de prestamos.',
+          'Ajusta los parámetros generales que determinan cómo opera el servicio de préstamos.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="nav-prestamos-configuracion-practicas"]'],
-          'Configuracion de practicas',
-          'Este acceso permite definir reglas y alcances de practicas para la coordinacion correspondiente.',
+          'Configuración de prácticas',
+          'Define reglas y alcances para que las reservas de prácticas respondan a la operación de cada coordinación.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-hojas-vida-mantenimientos"]'],
+          'La historia de cada equipo',
+          'Consulta hojas de vida, registra mantenimientos y conserva la historia técnica para cuidar los equipos a largo plazo.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-capacitacion"]'],
+          'Aprender también es parte del laboratorio',
+          'Encuentra cursos, sesiones y certificaciones conectadas con los equipos y las necesidades de formación.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-capacitacion-cursos"]'],
+          'Diseña la formación',
+          'Crea cursos con información clara para que la comunidad encuentre las capacitaciones disponibles.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-capacitacion-asociacion-equipos"]'],
+          'Cursos conectados con equipos',
+          'Asocia cursos y equipos especializados para que la formación describa las herramientas que se usarán.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-capacitacion-gestion"]'],
+          'De curso a experiencia',
+          'Programa sesiones, gestiona inscripciones y asistencia, y consulta evidencias y reportes de capacitación.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-capacitacion-mis"]'],
+          'Tu ruta de aprendizaje',
+          'Descubre sesiones disponibles, gestiona tus inscripciones y consulta tus certificaciones en un solo lugar.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-encuentros"]'],
+          'Encuentros que dejan huella',
+          'Organiza eventos y experiencias de proyección con registro, asistencia y certificación integrados.',
+          'bottom',
+          'center'
+        ),
+        createStep(
+          ['[data-guide="nav-gestionar-encuentros"]'],
+          'Coordina cada encuentro',
+          'Gestiona eventos, participantes y asistencia; al final, consulta reportes y certificados del proceso.',
+          'right',
+          'start'
+        ),
+        createStep(
+          ['[data-guide="nav-mis-logros"]'],
+          'Tus logros, siempre a mano',
+          'Consulta las medallas y certificaciones obtenidas en los encuentros y actividades de la comunidad.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="account-menu"]'],
-          'Cuenta del usuario',
-          'Desde este boton puedes consultar tu informacion, tus sanciones y los accesos de tu cuenta.',
+          'Tu espacio personal',
+          'Abre tu perfil para revisar tus datos y los accesos asociados a tu cuenta.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="help-manuals"]'],
-          'Centro de ayuda',
-          'Desde este menu puedes volver a abrir el tour guiado o consultar la carpeta de manuales en PDF.',
+          'Ayuda cuando la necesites',
+          'Vuelve a iniciar este tour o abre los manuales para profundizar en el uso de la plataforma.',
           'right',
           'start'
         ),
         createStep(
           ['[data-guide="logout-action"]'],
-          'Cerrar sesion',
-          'Utiliza esta opcion para salir de forma segura cuando termines de usar la plataforma.',
+          'Cierra tu sesión con seguridad',
+          'Cuando termines, usa esta opción para salir de MiLab y proteger tu cuenta.',
           'right',
           'start'
         ),
         createStep(
           ['.app-frame', '.dashboard-page', '.app-page-shell', '.container'],
-          'Area de trabajo',
-          'En esta zona se cargan formularios, tablas, reportes y demas contenidos del sistema.',
+          'Tu área de trabajo',
+          'Aquí aparece el contenido de cada módulo: formularios, consultas, reportes y el siguiente paso de tu gestión.',
           'top',
           'center'
         ),
@@ -999,6 +1200,7 @@
         nextBtnText: 'Siguiente',
         prevBtnText: 'Anterior',
         doneBtnText: 'Finalizar',
+        progressText: '{{current}} de {{total}}',
         steps,
         onHighlighted: function (element) {
           syncGuideDropdownForTarget(element, expandedNavigationState);
