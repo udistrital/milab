@@ -4,8 +4,10 @@
   <section class="dashboard-topbar dashboard-topbar--compact">
     <div class="dashboard-topbar-copy">
       <span class="dashboard-panel-badge dashboard-panel-badge--scope"><%= scopePresentation.badge %></span>
-      <h1 class="dashboard-simple-title"><%= scopePresentation.title %></h1>
-      <p class="dashboard-simple-subtitle"><%= scopePresentation.subtitle %></p>
+      <div class="app-page-header--inline">
+        <h1 class="dashboard-simple-title"><%= scopePresentation.title %></h1>
+        <p class="dashboard-simple-subtitle"><%= scopePresentation.subtitle %></p>
+      </div>
 
       <% if (scopePresentation.chips && scopePresentation.chips.length) { %>
         <div class="dashboard-scope-chip-row">
@@ -17,26 +19,87 @@
     </div>
   </section>
 
+  <% if (typeof coordinatorUalAssignmentsAvailable !== 'undefined' && !coordinatorUalAssignmentsAvailable) { %>
+    <div class="alert alert-warning mt-3" role="status">
+      El monitoreo sigue disponible, pero no se pudieron cargar los laboratorios a cargo de los coordinadores porque falta actualizar el esquema de inventarios.
+    </div>
+  <% } %>
+
+  <% if (typeof dashboardWarnings !== 'undefined' && Array.isArray(dashboardWarnings) && dashboardWarnings.length) { %>
+    <div class="alert alert-warning mt-3" role="status">
+      <strong>Dashboard parcial:</strong>
+      <ul class="mb-0 mt-1">
+        <% dashboardWarnings.forEach(function(warning) { %>
+          <li><%= warning %></li>
+        <% }) %>
+      </ul>
+    </div>
+  <% } %>
+
+  <% const scopeOptions = typeof dashboardScopeOptions !== 'undefined' ? dashboardScopeOptions : { faculties: [], dependencies: [] }; %>
+  <% const canShowInventoryDashboard = typeof canViewInventoryDashboard === 'undefined' || Boolean(canViewInventoryDashboard); %>
+  <% if (['admin', 'coordinador_general', 'coordinador'].includes(dashboardRole) && scopeOptions.faculties.length) { %>
+    <form method="GET" action="/milab/api/dashboard" id="dashboardScopeFilterForm" class="dashboard-scope-filter">
+      <input type="hidden" name="filtro" value="<%= filtro %>">
+      <input type="hidden" name="grafico" value="<%= selectedChart || '' %>">
+      <div class="dashboard-control-group">
+        <label for="dashboardFacultyFilter">Facultad</label>
+        <div class="dashboard-select-shell">
+          <select name="facultad_id" id="dashboardFacultyFilter" class="form-select form-select-sm">
+            <option value="">Todas las facultades de mi alcance</option>
+            <% scopeOptions.faculties.forEach(function(faculty) { %>
+              <option value="<%= faculty.id %>" <%= Number(selectedFacultyId) === faculty.id ? 'selected' : '' %>><%= faculty.nombre %></option>
+            <% }) %>
+          </select>
+          <i class="bi bi-building" aria-hidden="true"></i>
+        </div>
+      </div>
+      <div class="dashboard-control-group">
+        <label for="dashboardDependencyFilter">Dependencia</label>
+        <div class="dashboard-select-shell">
+          <select name="ual_id" id="dashboardDependencyFilter" class="form-select form-select-sm">
+            <option value="">Todas las dependencias de mi alcance</option>
+            <% scopeOptions.dependencies.forEach(function(dependency) { %>
+              <option value="<%= dependency.id %>" data-facultad-id="<%= dependency.facultadId %>" <%= Number(selectedUalId) === dependency.id ? 'selected' : '' %>><%= dependency.nombre %></option>
+            <% }) %>
+          </select>
+          <i class="bi bi-diagram-2" aria-hidden="true"></i>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-funnel" aria-hidden="true"></i> Aplicar filtros
+      </button>
+      <% if (selectedFacultyId || selectedUalId) { %>
+        <p class="dashboard-scope-filter-note mb-0">El filtro muestra solo datos con una asociación verificable con la selección; algunas métricas globales o sin vínculo directo se omiten.</p>
+      <% } %>
+    </form>
+  <% } %>
+
   <% const hasPazYSalvo = typeof pazYSalvo !== 'undefined' && Boolean(pazYSalvo); %>
   <nav class="dashboard-section-tabs" aria-label="Navegación del dashboard">
     <div class="dashboard-section-tablist" role="tablist" aria-label="Secciones de monitoreo">
-      <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
-        <i class="bi bi-grid-1x2" aria-hidden="true"></i>
-        <span>Toda la plataforma</span>
-      </button>
+      <% if (canViewPlatformMonitoring) { %>
+        <button type="button" class="dashboard-section-tab is-active" id="dashboardTabGeneral" role="tab" aria-selected="true" aria-controls="dashboardSectionGeneral" data-dashboard-section="general">
+          <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+          <span>Toda la plataforma</span>
+        </button>
+      <% } %>
       <% if (hasPazYSalvo) { %>
         <button type="button" class="dashboard-section-tab" id="dashboardTabPys" role="tab" aria-selected="false" aria-controls="dashboardSectionPys" data-dashboard-section="paz-y-salvos" tabindex="-1">
           <i class="bi bi-patch-check" aria-hidden="true"></i>
           <span>Paz y salvos</span>
         </button>
       <% } %>
-      <button type="button" class="dashboard-section-tab" id="dashboardTabInventarios" role="tab" aria-selected="false" aria-controls="dashboardSectionInventarios" data-dashboard-section="inventarios" tabindex="-1">
-        <i class="bi bi-box-seam" aria-hidden="true"></i>
-        <span>Dashboard de inventarios</span>
-      </button>
+      <% if (typeof canShowInventoryDashboard === 'undefined' || canShowInventoryDashboard) { %>
+        <button type="button" class="dashboard-section-tab" id="dashboardTabInventarios" role="tab" aria-selected="false" aria-controls="dashboardSectionInventarios" data-dashboard-section="inventarios" tabindex="-1">
+          <i class="bi bi-box-seam" aria-hidden="true"></i>
+          <span>Inventarios</span>
+        </button>
+      <% } %>
     </div>
   </nav>
 
+  <% if (canViewPlatformMonitoring) { %>
   <div id="dashboardSectionGeneral" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabGeneral">
     <% const overview = typeof generalOverview !== 'undefined' && generalOverview ? generalOverview : null; %>
     <% const overviewHints = overview ? overview.hints : {}; %>
@@ -78,9 +141,11 @@
               </p>
             </div>
             <div class="dashboard-gen-evolution-tools">
-              <form method="GET" action="/milab/api/dashboard" class="dashboard-control-group">
+              <form method="GET" action="/milab/api/dashboard" id="dashboardPeriodForm" class="dashboard-control-group">
                 <label for="filtro">Agrupar por</label>
                 <input type="hidden" name="grafico" id="dashboardSelectedChart" value="<%= selectedChart %>">
+                <input type="hidden" name="facultad_id" value="<%= selectedFacultyId || '' %>">
+                <input type="hidden" name="ual_id" value="<%= selectedUalId || '' %>">
                 <div class="dashboard-select-shell">
                   <select name="filtro" id="filtro" onchange="this.form.submit()" class="form-select form-select-sm">
                     <option value="dia" <%= filtro === 'dia' ? 'selected' : '' %>>Día</option>
@@ -190,7 +255,7 @@
         <section class="dashboard-gen-block" aria-labelledby="dashboardCoverageTitle">
           <header class="dashboard-gen-block-head">
             <h3 id="dashboardCoverageTitle"><i class="bi bi-diagram-3" aria-hidden="true"></i> Cobertura operativa</h3>
-            <span class="dashboard-gen-block-scope">Toda la universidad</span>
+            <span class="dashboard-gen-block-scope"><%= cobertura.scopeLabel || 'Toda la universidad' %></span>
           </header>
           <div class="dashboard-pys-panels dashboard-gen-panels--pair">
             <article class="dashboard-pys-panel dashboard-gen-panel--wide">
@@ -204,11 +269,14 @@
                 </div>
                 <div><dt>Laboratoristas activos</dt><dd><%= coverageTotals.laboratoristas %></dd></div>
                 <div><dt>Coordinadores activos</dt><dd><%= coverageTotals.coordinadores %></dd></div>
-                <div><dt>Monitores activos</dt><dd><%= coverageTotals.monitores %></dd></div>
+                <div><dt>Monitores activos</dt><dd><%= coverageTotals.monitores === null ? '—' : coverageTotals.monitores %></dd></div>
                 <div class="<%= coverageTotals.monitoresPorVencer ? 'dashboard-gen-kpi--warn' : '' %>">
-                  <dt>Monitores que vencen en 30 días</dt><dd><%= coverageTotals.monitoresPorVencer %></dd>
+                  <dt>Monitores que vencen en 30 días</dt><dd><%= coverageTotals.monitoresPorVencer === null ? '—' : coverageTotals.monitoresPorVencer %></dd>
                 </div>
               </dl>
+              <% if (coverageTotals.monitores === null) { %>
+                <p class="dashboard-gen-hint">Los monitores no se incluyen en este filtro porque no tienen una asociación directa con la facultad.</p>
+              <% } %>
               <% if (cobertura.facultades.some((item) => item.ualActivas > 0)) { %>
                 <div class="dashboard-pys-chart" style="height: <%= 40 + cobertura.facultades.length * 30 %>px;">
                   <canvas data-gen-chart="coverage" role="img" aria-label="UAL por facultad: <%= cobertura.facultades.map((item) => item.nombre + ' ' + item.ualConLaboratorista + ' de ' + item.ualActivas + ' con laboratorista').join(', ') %>"></canvas>
@@ -386,6 +454,7 @@
       </div>
     </section>
   </div>
+  <% } %>
 
   <% if (hasPazYSalvo) { %>
     <div id="dashboardSectionPys" class="dashboard-section-panel" role="tabpanel" aria-labelledby="dashboardTabPys" hidden>
@@ -494,19 +563,21 @@
       </section>
     </div>
   <% } %>
-  <div
-    id="dashboardSectionInventarios"
-    class="dashboard-section-panel"
-    role="tabpanel"
-    aria-labelledby="dashboardTabInventarios"
-    data-dashboard-inventory-panel
-    data-dashboard-inventory-url="/milab/api/dashboard/inventarios?fragment=1"
-    hidden
-  >
-    <div class="alert alert-info mb-0" role="status">
-      El dashboard de inventarios se cargará al abrir esta pestaña.
+  <% if (typeof canShowInventoryDashboard === 'undefined' || canShowInventoryDashboard) { %>
+    <div
+      id="dashboardSectionInventarios"
+      class="dashboard-section-panel"
+      role="tabpanel"
+      aria-labelledby="dashboardTabInventarios"
+      data-dashboard-inventory-panel
+      data-dashboard-inventory-url="<%= inventoryDashboardUrl || '/milab/api/dashboard/inventarios?fragment=1' %>"
+      hidden
+    >
+      <div class="alert alert-info mb-0" role="status">
+        El dashboard de inventarios se cargará al abrir esta pestaña.
+      </div>
     </div>
-  </div>
+  <% } %>
 </main>
 
 <div class="modal fade" id="dashboardEmailEditorModal" tabindex="-1" aria-hidden="true">
@@ -2517,6 +2588,46 @@
     }
   }
 
+  function preserveDashboardSectionOnSubmit(form) {
+    const activeSection = document.querySelector('[data-dashboard-section].is-active')
+      ?.dataset.dashboardSection;
+    if (!activeSection) return;
+
+    const actionUrl = new URL(form.action, window.location.href);
+    actionUrl.hash = activeSection === 'general' ? '' : activeSection;
+    form.action = actionUrl.toString();
+  }
+
+  function initDashboardScopeFilters() {
+    const form = document.getElementById('dashboardScopeFilterForm');
+    const facultySelect = document.getElementById('dashboardFacultyFilter');
+    const dependencySelect = document.getElementById('dashboardDependencyFilter');
+    const dependencyOptions = dependencySelect
+      ? Array.from(dependencySelect.options).filter((option) => option.value)
+      : [];
+
+    if (facultySelect && dependencySelect) {
+      function updateDependencies(clearInvalidSelection) {
+        const facultyId = facultySelect.value;
+        dependencyOptions.forEach((option) => {
+          const isAvailable = !facultyId || option.dataset.facultadId === facultyId;
+          option.hidden = !isAvailable;
+          option.disabled = !isAvailable;
+        });
+        if (clearInvalidSelection && dependencySelect.selectedOptions[0]?.disabled) {
+          dependencySelect.value = '';
+        }
+      }
+
+      facultySelect.addEventListener('change', () => updateDependencies(true));
+      updateDependencies(false);
+    }
+
+    [form, document.getElementById('dashboardPeriodForm')].forEach((candidate) => {
+      candidate?.addEventListener('submit', () => preserveDashboardSectionOnSubmit(candidate));
+    });
+  }
+
   function initDashboardSectionTabs() {
     const tabs = Array.from(document.querySelectorAll('[data-dashboard-section]'));
     if (!tabs.length) return;
@@ -2567,6 +2678,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    initDashboardScopeFilters();
     initDashboardSectionTabs();
     const emailEditorForm = document.getElementById('dashboardEmailEditorForm');
     const emailRoleSelect = document.getElementById('dashboardEmailEditorRole');

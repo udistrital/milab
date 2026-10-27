@@ -1,0 +1,121 @@
+<ul
+  class="dropdown-menu app-user-menu-dropdown app-sidebar-profile-menu"
+  aria-labelledby="appSidebarProfileMenuToggle"
+>
+  <li class="app-user-menu-summary">
+    <div class="app-user-menu-item">
+      <span class="app-user-menu-label">Nombre</span>
+      <span class="app-user-menu-value"><%= sessionName || 'Sin nombre' %></span>
+    </div>
+    <div class="app-user-menu-item">
+      <span class="app-user-menu-label">Documento</span>
+      <span class="app-user-menu-value"><%= sessionDocument || 'Sin documento' %></span>
+    </div>
+    <div class="app-user-menu-item">
+      <span class="app-user-menu-label">Roles</span>
+      <span class="app-user-menu-value"><%= sessionRole %></span>
+    </div>
+  </li>
+  <% if (shouldShowAvatarSanctionsBadge) { %>
+    <li><hr class="dropdown-divider"></li>
+    <li class="app-user-menu-summary">
+      <div class="app-user-menu-item">
+        <span class="app-user-menu-label">Sanciones activas</span>
+        <span class="app-user-menu-value"><%= activeSanctionsCount %> registradas</span>
+      </div>
+      <% if (activeSanctionsCount > 0 && Array.isArray(activeSanctionsSummary.items) && activeSanctionsSummary.items.length) { %>
+        <% activeSanctionsSummary.items.forEach(function(item) { %>
+          <div class="app-sanction-item">
+            <div class="app-sanction-item-title">
+              <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+              <span><%= item.categoria %></span>
+            </div>
+            <div class="app-sanction-item-meta">
+              <span>Estado: <%= item.estado %></span>
+              <span>Tipo: <%= item.tipo %></span>
+              <span>UAL: <%= item.ual %></span>
+              <span>Fecha: <%= formatSanctionDate(item.fecha) %></span>
+            </div>
+          </div>
+        <% }) %>
+        <% if (activeSanctionsCount > activeSanctionsSummary.items.length) { %>
+          <div class="app-user-menu-item mt-1">
+            <span class="app-user-menu-value">Y <%= activeSanctionsCount - activeSanctionsSummary.items.length %> sanciones más.</span>
+          </div>
+        <% } %>
+        <a class="dropdown-item app-sanction-action-link mt-2" href="<%= sanctionsActionHref %>">
+          <i class="bi bi-eye" aria-hidden="true"></i>
+          <span>Ver estado de sanciones</span>
+        </a>
+      <% } else { %>
+        <div class="app-user-menu-item">
+          <span class="app-user-menu-value">No tienes sanciones activas en este momento.</span>
+        </div>
+      <% } %>
+    </li>
+  <% } %>
+  <% if (studentUsageSummary && Array.isArray(studentUsageSummary.items) && studentUsageSummary.items.length) { %>
+    <li><hr class="dropdown-divider"></li>
+    <li class="app-user-menu-summary">
+      <div class="app-user-menu-item">
+        <span class="app-user-menu-label">Uso mensual</span>
+      </div>
+      <% studentUsageSummary.items.forEach(function(item) { %>
+        <div class="app-user-menu-item">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <span class="app-user-menu-label">
+              <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+              <span><%= item.label %></span>
+            </span>
+            <% if (item.hasLimit) { %>
+              <span class="app-user-menu-value">
+                <%= formatUsageHours(item.used) %> / <%= formatUsageHours(item.limit) %> h
+              </span>
+            <% } else { %>
+              <span class="app-user-menu-value">
+                <%= formatUsageHours(item.used) %> h usadas
+              </span>
+            <% } %>
+          </div>
+          <% if (item.hasLimit) { %>
+            <div class="progress mt-2" role="progressbar" aria-label="<%= item.label %>" aria-valuenow="<%= Math.round(item.percentage) %>" aria-valuemin="0" aria-valuemax="100" style="height: 0.45rem;">
+              <div class="progress-bar <%= item.percentage >= 100 ? 'bg-danger' : item.percentage >= 80 ? 'bg-warning' : 'bg-success' %>" style="width: <%= item.percentage %>%"></div>
+            </div>
+            <span class="app-user-menu-value d-block mt-1">
+              Disponible: <%= formatUsageHours(item.remaining) %> h
+            </span>
+          <% } else { %>
+            <span class="app-user-menu-value d-block mt-1">Sin limite configurado</span>
+          <% } %>
+        </div>
+      <% }) %>
+    </li>
+  <% } %>
+  <% if (activeRole === 'estudiante' || activeRole === 'docente') { %>
+    <li><hr class="dropdown-divider"></li>
+    <li>
+      <button
+        type="button"
+        class="dropdown-item app-user-menu-action"
+        data-guide="mis-cursos"
+        data-bs-toggle="modal"
+        data-bs-target="#misCursosModal"
+        aria-label="Mis cursos certificados"
+      >
+        <i class="bi bi-mortarboard" aria-hidden="true"></i>
+        <span>Mis cursos</span>
+      </button>
+    </li>
+  <% } %>
+  <% if (accountLinks.length) { %>
+    <li><hr class="dropdown-divider"></li>
+    <% accountLinks.forEach(function(item) { %>
+      <li>
+        <a class="dropdown-item" href="<%= item.href %>">
+          <i class="bi <%= item.icon %>" aria-hidden="true"></i>
+          <span><%= item.label %></span>
+        </a>
+      </li>
+    <% }) %>
+  <% } %>
+</ul>

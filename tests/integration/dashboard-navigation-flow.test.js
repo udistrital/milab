@@ -10,6 +10,7 @@ const { createSessionHarness, createUser } = require('./helpers/session-fixtures
 const routePath = resolveRepoPath('src/routes/api/dashboard.js');
 const dbPath = resolveRepoPath('src/libs/db.js');
 const authPath = resolveRepoPath('src/routes/middlewares/auth.js');
+const normalizeRoleListForMatch = require(authPath).normalizeRoleListForMatch;
 const facultyScopePath = resolveRepoPath('src/libs/faculty-scope.js');
 const dashboardViewPath = resolveRepoPath('src/views/home/dashboard.ejs');
 const dashboardStylesPath = resolveRepoPath('src/public/css/styles.css');
@@ -79,6 +80,7 @@ function loadDashboardApp({ user, scopeImpl, scopeRows, poolRows = {} }) {
       [
         authPath,
         {
+          normalizeRoleListForMatch,
           requireRoles: () => (req, res, next) => next(),
           requireJsonRoles: () => (req, res, next) => next(),
         },
@@ -113,10 +115,50 @@ test('inventory dashboard is an in-page tab beside platform and peace-and-cleara
   assert.match(template, /id="dashboardSectionInventarios"[^>]*data-dashboard-inventory-panel/);
   assert.match(
     template,
-    /data-dashboard-inventory-url="\/milab\/api\/dashboard\/inventarios\?fragment=1"/
+    /data-dashboard-inventory-url="<%= inventoryDashboardUrl \|\| '\/milab\/api\/dashboard\/inventarios\?fragment=1' %>"/
   );
   assert.doesNotMatch(tabs, /href="\/milab\/api\/dashboard\/inventarios"/);
   assert.doesNotMatch(template, /dashboard-section-tab-link/);
+  assert.doesNotThrow(() => ejs.compile(template, { filename: dashboardViewPath }));
+});
+
+test('laboratorista dashboard omits platform monitoring and keeps authorized tabs', () => {
+  const template = fs.readFileSync(dashboardViewPath, 'utf8');
+  const tabsStart = template.indexOf('<nav class="dashboard-section-tabs"');
+  const tabsEnd = template.indexOf('</nav>', tabsStart) + '</nav>'.length;
+  const platformTabIndex = template.indexOf('id="dashboardTabGeneral"');
+  const platformPanelIndex = template.indexOf('id="dashboardSectionGeneral"');
+  const platformTabGuard = template.lastIndexOf(
+    '<% if (canViewPlatformMonitoring) { %>',
+    platformTabIndex
+  );
+  const platformPanelGuard = template.lastIndexOf(
+    '<% if (canViewPlatformMonitoring) { %>',
+    platformPanelIndex
+  );
+  const platformPanelEnd = template.indexOf(
+    '\n  <% } %>\n\n  <% if (hasPazYSalvo) { %>',
+    platformPanelIndex
+  );
+
+  assert.notEqual(platformTabIndex, -1);
+  assert.ok(platformTabGuard < platformTabIndex);
+  assert.notEqual(platformPanelIndex, -1);
+  assert.ok(platformPanelGuard < platformPanelIndex);
+  assert.notEqual(platformPanelEnd, -1);
+  const renderedTabs = ejs.render(template.slice(tabsStart, tabsEnd), {
+    canViewPlatformMonitoring: false,
+    hasPazYSalvo: true,
+  });
+  const renderedPlatformPanel = ejs.render(
+    template.slice(platformPanelGuard, platformPanelEnd + '\n  <% } %>'.length),
+    { canViewPlatformMonitoring: false }
+  );
+
+  assert.doesNotMatch(renderedTabs, /Toda la plataforma/);
+  assert.match(renderedTabs, /Paz y salvos/);
+  assert.match(renderedTabs, /Inventarios/);
+  assert.equal(renderedPlatformPanel.trim(), '');
   assert.doesNotThrow(() => ejs.compile(template, { filename: dashboardViewPath }));
 });
 

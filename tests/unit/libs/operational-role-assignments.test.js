@@ -103,6 +103,27 @@ test('fetchOperationalRoleScopeByUser returns empty scope when user lacks the re
   assert.equal(executor.calls.length, 0);
 });
 
+test('fetchOperationalRoleScopeByUser resolves gestores to their assigned UALs', async () => {
+  const executor = createExecutor([
+    {
+      rows: [
+        { id: 1, usuario_id: 10, ual_id: 4, ual_nombre: 'Laboratorio A', facultad_id: 7 },
+        { id: 2, usuario_id: 10, ual_id: 8, ual_nombre: 'Laboratorio B', facultad_id: 9 },
+      ],
+    },
+  ]);
+
+  const scope = await fetchOperationalRoleScopeByUser(
+    { id: 10, roles: ['gestor_laboratorio'] },
+    'gestor_laboratorio',
+    executor
+  );
+
+  assert.deepEqual(scope.ualIds, [4, 8]);
+  assert.deepEqual(scope.facultyIds, [7, 9]);
+  assert.deepEqual(executor.calls[0].params, [10, 'gestor_laboratorio']);
+});
+
 test('replaceOperationalRoleAssignments deactivates scoped assignments and upserts unique ual ids', async () => {
   const executor = createExecutor();
 

@@ -5,7 +5,8 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const { resolveSanctionPersonLookup } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
-const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
+// const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 
 require('dotenv').config();
 
@@ -172,6 +173,7 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
       const valuesMultaInfo = [usuarioId];
       const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
       multaInfo = resultMultaInfo.rows;
+      /*
       if (multaInfo && multaInfo.length) {
         const configs = await Promise.all(multaInfo.map((m) => resolveMultaConfigForMultaId(m.id)));
         multaInfo = multaInfo.map((m, idx) => ({
@@ -181,6 +183,7 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
           ),
         }));
       }
+      */
 
       console.log(`Cantidad de multas activas encontradas para retiro: ${multaInfo.length}`);
       console.log(multaInfo);
@@ -219,6 +222,9 @@ router.post('/', requireLaboratoristaEraseAccess, async function (req, res) {
       laboratoristaUalIds,
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error durante la consulta:', error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',

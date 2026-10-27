@@ -4,21 +4,30 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-**Versión en curso:** `2.7.0`
+**Versión en curso:** `3.2.0`
 
 ## Release Notes
 
 - Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
 
-## Cambios recientes (2.7.0)
+## Cambios recientes (3.2.0)
+
+- **Sanciones SGA:** la consulta masiva procesa hasta 50 documentos o códigos y muestra su progreso. Los conceptos ajenos al catálogo de sanciones de laboratorio no se contabilizan como multas; los administradores pueden consultar otras multas SGA por separado.
+- **Gestores de laboratorio:** se pueden enrolar, editar e impersonar gestores con alcance universitario, sin asignaciones a UAL.
+- **Tour guiado:** incluye guiones para inventarios, hojas de vida, capacitaciones, encuentros, configuración y los flujos recientes de sanciones.
+- **Esquema de base de datos:** la consulta administrativa se limita al esquema `milab`.
+
+## Cambios de la versión 3.0.11
 
 - **Edición de correos en dashboard:** el formulario libera el bloqueo de envío al terminar cada intento, incluidos los errores de validación o del servicio. Permite editar varias cuentas consecutivamente sin recargar la página y conserva la confirmación obligatoria y la protección contra envíos simultáneos.
 - **Sesión expirada:** se destruye la sesión completa y se limpia su cookie. La navegación y los formularios HTML vuelven al inicio público `/milab/`; las llamadas AJAX/fetch reciben `401 SESSION_EXPIRED` y el cliente compartido vuelve al mismo inicio, sin dejar errores de autenticación dentro de los modales.
 - **Estado de servicios académicos:** `/api/check-services` volvió a ser una ruta pública de solo lectura, sin exigir rol `admin`, para permitir monitoreo externo del estado de los servicios OATI.
+- **Bypass automático ante caída de OATI:** el inicio de sesión con Microsoft permite entrar únicamente a usuarios ya registrados en MiLab usando sus roles guardados en BD, sin crear registros nuevos cuando OATI no responde. Al recuperarse OATI, las consultas académicas vuelven a operar sin activar/desactivar parámetros manuales.
+- **Aviso unificado por indisponibilidad OATI:** las respuestas API que dependen de OATI reportan `503` con `code: OATI_UNAVAILABLE` y `X-Oati-Unavailable: 1`; el cliente compartido muestra un popup informativo para evitar fallas silenciosas.
 - **Dashboard de monitoreo:** se separaron las tablas de "Certificados emitidos" de las nuevas tablas de "Estudiantes" y "Docentes registrados", incluyendo estado de cuenta, código y programa académico.
 - **Registro de coordinadores y laboratoristas:** el coordinador queda asignado a una sola facultad, con alcance en toda ella o en dependencias específicas. El selector de coordinador permite buscar por nombre/documento y el listado de laboratorios se puede filtrar y seleccionar de forma ordenada.
-- **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql) y [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
+- **Base para el módulo de Capacitación y Certificación:** en la rama `modulo_capacitacion_certificacion` se agregaron los scripts [sql-scripts/prod/db_structure_certificacion.sql](sql-scripts/prod/db_structure_certificacion.sql) y [sql-scripts/prod/db_seed_certificacion.sql](sql-scripts/prod/db_seed_certificacion.sql) (tablas `cursos`, `curso_laboratorio` y `equipo_especializado`). El despliegue del entorno de pruebas en CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ahora se ejecuta exclusivamente desde la rama `preprod`.
 
 ## Política de sesiones
 
@@ -51,12 +60,12 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 ## Identificación durante el registro
 
-- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Solo ofrece perfiles de estudiante en estado `A`; el estado `B` (`PRUEBA AC Y ACTIVO`) no habilita un perfil de estudiante.
+- El [registro](src/routes/api/profile.js) consulta OATI por número de documento, no por código estudiantil. Los estados `A` y `B` (`PRUEBA AC Y ACTIVO`) habilitan el perfil de estudiante; si hay varios programas, se puede elegir cualquiera de los habilitados.
 - Si no hay perfil académico activo ni roles habilitados en MILab, el registro explica que no puede usar MILab y muestra los estados reportados por OATI (estudiante o docente), incluyendo prueba académica, inactividad y egreso. Si OATI no devuelve registros, se indica que no reporta un perfil activo, sin inventar un estado.
 - El mensaje remite a los laboratorios del proyecto académico para que un laboratorista genere el paz y salvo a través de MILab. Para solicitar acceso como coordinador o laboratorista, indica escribir a `milab@udistrital.edu.co` detallando la solicitud.
 - Las consultas OATI del registro comparten un límite total de 20 segundos, incluyendo token y reintentos. Si OATI falla, se muestra un error recuperable sin cerrar la sesión de identificación. Esta regla no modifica el flujo de consulta de paz y salvo.
 - Los errores inesperados de la finalización del registro se propagan al manejador de errores de Express: se registran en el servidor y se responde con una página de error, en lugar de dejar la solicitud pendiente.
-- Si falla la consulta de roles durante la identificación, se conservan en el mensaje los estados devueltos por OATI y se informa que no pudo verificarse el acceso. Se ofrecen las instrucciones de certificado y solicitud de acceso, sin atribuir la falla técnica al estado académico ni exponer detalles de PostgreSQL.
+- Si falla la consulta de roles durante la identificación, un estudiante habilitado por OATI puede continuar sin roles adicionales de MILab; el error queda registrado en el servidor. Para una persona sin perfil OATI habilitado, la consulta de roles debe completarse antes de determinar si cuenta con acceso por un rol de MILab.
 
 ## Grillas de facultades y UAL
 
@@ -74,7 +83,7 @@ La primera aprobación de cualquier tipo de inventario (incluida la declaración
 
 Los próximos envíos y declaraciones solo permiten al encargado, que aparece preseleccionado. Las cargas aún pendientes se consultan y resuelven con ese encargado, aunque se hubieran enviado a otro coordinador antes de fijar la relación. Debe continuar activo y conservar alcance sobre la UAL; si deja de cumplirlo, el envío se bloquea y no se elige otro coordinador automáticamente. El alcance general de consulta por facultad no cambia.
 
-La relación se identifica en Gestión del inventario, en las UAL y la consulta de coordinadores de facultades/dependencias, en Coordinadores registrados y en el detalle de coordinadores del dashboard. La migración [db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql) debe aplicarse antes de desplegar: recupera al destinatario de la primera carga aprobada de cada UAL, ordenada por fecha de resolución e ID, sin sobrescribir encargados ya guardados.
+La relación se identifica en Gestión del inventario, en las UAL y la consulta de coordinadores de facultades/dependencias, en Coordinadores registrados y en el detalle de coordinadores del dashboard. La migración [db_structure_inventarios.sql](sql-scripts/preprod/db_structure_inventarios.sql) debe aplicarse antes de desplegar: recupera al destinatario de la primera carga aprobada de cada UAL, ordenada por fecha de resolución e ID, sin sobrescribir encargados ya guardados.
 
 Las cargas pendientes muestran nombre y documento del laboratorista solicitante. La revisión permite expandir descripciones largas con “Ver más” y navegar al inicio o al final de la página. La acción Revisar utiliza el icono estándar de las grillas.
 
@@ -119,7 +128,7 @@ Las acciones de las tablas se presentan como iconos uniformes, sin texto visible
 
 - **Backend:** Node.js + Express
 - **Frontend:** EJS (plantillas), CSS, JS estático
-- **Base de datos:** PostgreSQL (modelos definidos en sql-scripts/db.sql)
+- **Base de datos:** PostgreSQL (modelos definidos en [sql-scripts/prod/db_structure.sql](sql-scripts/prod/db_structure.sql))
 - **Despliegue:** Docker y Docker Compose
 - **Seguridad:** Helmet, rate limiting, validaciones, sesiones
 - **Autenticación:** Passport (Google, Microsoft), JWT, reCAPTCHA
@@ -275,7 +284,7 @@ Notas operativas:
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release usar `2.7.0`.
+- `APP_VERSION`: versión visible de la aplicación. Para este release usar `3.2.0`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.
@@ -301,17 +310,19 @@ Resumen operativo de procesos y responsabilidades por rol:
 
 La inicialización de base para recreación completa del entorno de pruebas usa estos scripts en secuencia:
 
-1. [sql-scripts/db_structure.sql](sql-scripts/db_structure.sql)
-2. [sql-scripts/db_seed_system.sql](sql-scripts/db_seed_system.sql)
-3. [sql-scripts/db_structure_prestamos.sql](sql-scripts/db_structure_prestamos.sql)
-4. [sql-scripts/db_seed_prestamos.sql](sql-scripts/db_seed_prestamos.sql)
-5. [sql-scripts/db_structure_inventarios.sql](sql-scripts/db_structure_inventarios.sql)
-6. [sql-scripts/db_seed_inventarios.sql](sql-scripts/db_seed_inventarios.sql)
-7. [sql-scripts/db_structure_certificacion.sql](sql-scripts/db_structure_certificacion.sql)
-8. [sql-scripts/db_seed_certificacion.sql](sql-scripts/db_seed_certificacion.sql)
-9. [sql-scripts/db_seed_pruebas_ofuscado.sql](sql-scripts/db_seed_pruebas_ofuscado.sql)
+1. [sql-scripts/prod/db_structure.sql](sql-scripts/prod/db_structure.sql)
+2. [sql-scripts/prod/db_seed_system.sql](sql-scripts/prod/db_seed_system.sql)
+3. [sql-scripts/prod/db_structure_prestamos.sql](sql-scripts/prod/db_structure_prestamos.sql)
+4. [sql-scripts/prod/db_seed_prestamos.sql](sql-scripts/prod/db_seed_prestamos.sql)
+5. [sql-scripts/preprod/db_structure_inventarios.sql](sql-scripts/preprod/db_structure_inventarios.sql)
+6. [sql-scripts/prod/db_structure_certificacion.sql](sql-scripts/prod/db_structure_certificacion.sql)
+7. [sql-scripts/prod/db_seed_certificacion.sql](sql-scripts/prod/db_seed_certificacion.sql)
+8. [sql-scripts/preprod/db_seed_inventarios.sql](sql-scripts/preprod/db_seed_inventarios.sql)
+9. [sql-scripts/preprod/db_seed_pruebas_ofuscado.sql](sql-scripts/preprod/db_seed_pruebas_ofuscado.sql)
+10. [sql-scripts/preprod/db_structure_hojas_vida.sql](sql-scripts/preprod/db_structure_hojas_vida.sql)
+11. [sql-scripts/preprod/db_seed_hojas_vida.sql](sql-scripts/preprod/db_seed_hojas_vida.sql)
 
-La recreación en CI aplica los nueve scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. Inventarios se instala antes de certificación porque el seed de certificación consume la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`. El seed ofuscado queda al final y se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los once scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. La estructura de inventarios se instala antes de certificación porque crea la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`; el seed de inventarios se aplica después del seed de certificación para crear las relaciones de equipos especializados de los cursos de prueba. El seed ofuscado se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. Las estructuras y seeds de hojas de vida se aplican al final. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 
@@ -493,7 +504,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/20261008_hotfix_sanciones_depende
 El registro de monitores no ejecuta DDL desde la aplicación, así que desplegar
 el código no requiere permisos `CREATE` sobre `milab` ni ejecutar una migración
 si `milab.monitor` ya existe y el rol de aplicación puede acceder a ella (la
-tabla forma parte de `sql-scripts/db_structure.sql`). Si en producción falta la
+tabla forma parte de `sql-scripts/prod/db_structure.sql`). Si en producción falta la
 tabla o el rol no tiene permisos de tabla, un administrador de base de datos
 debe aplicar
 [`sql/20261010_hotfix_monitor_schema_permissions.sql`](sql/20261010_hotfix_monitor_schema_permissions.sql),
@@ -571,8 +582,8 @@ las asignaciones a la facultad padre continúan heredándose automáticamente.
 El mismo script único
 [`sql/20261008_hotfix_sanciones_dependencias.sql`](sql/20261008_hotfix_sanciones_dependencias.sql)
 crea la tabla `reclamacion_sancion`, sus restricciones y los menús y permisos.
-Para instalaciones nuevas, `sql-scripts/db_structure.sql` y
-`sql-scripts/db_seed_system.sql` ya incluyen estos cambios.
+Para instalaciones nuevas, `sql-scripts/prod/db_structure.sql` y
+`sql-scripts/prod/db_seed_system.sql` ya incluyen estos cambios.
 
 - **Estudiantes:** Cuenta → Mis sanciones (`/milab/api/sanciones/mis-sanciones`),
   también accesible desde el perfil mediante **Mis sanciones y reclamaciones**.

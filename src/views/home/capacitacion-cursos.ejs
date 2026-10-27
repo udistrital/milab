@@ -6,8 +6,8 @@
 
 <main class="container app-page-shell" id="capacitacion-cursos-shell">
   <section class="app-page-header">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-      <div>
+    <div class="app-page-header__layout d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="app-page-header--inline">
         <h1 class="app-page-title">Creación de cursos</h1>
         <p class="app-page-subtitle">Administra el catálogo de cursos de capacitación (EDX) con su facultad y laboratorios asociados.</p>
       </div>
@@ -72,13 +72,20 @@
           </div>
 
           <div class="col-md-4">
-            <label for="id_facultad" class="form-label">Facultad *</label>
-            <select id="id_facultad" class="form-select" required>
+            <label for="id_facultad_padre" class="form-label">Facultad *</label>
+            <select id="id_facultad_padre" class="form-select" required>
               <option value="">Cargando facultades…</option>
             </select>
           </div>
 
-          <div class="col-md-8">
+          <div class="col-md-4">
+            <label for="id_facultad" class="form-label">Dependencia *</label>
+            <select id="id_facultad" class="form-select" required disabled>
+              <option value="">Seleccione primero una facultad</option>
+            </select>
+          </div>
+
+          <div class="col-md-4">
             <label for="url_edx" class="form-label">URL EDX *</label>
             <input type="url" class="form-control" id="url_edx" maxlength="5000" placeholder="https://courses.edx.org/courses/course-v1:..." required />
           </div>
@@ -90,7 +97,7 @@
                 Laboratorios asociados *
               </legend>
               <div id="selector-laboratorios" class="row g-2">
-                <p class="mb-0 text-muted small">Seleccione primero una facultad para ver los laboratorios disponibles.</p>
+                <p class="mb-0 text-muted small">Seleccione primero una facultad y una dependencia para ver los laboratorios disponibles.</p>
               </div>
               <div id="errores-laboratorios" class="mt-2"></div>
             </fieldset>
@@ -269,7 +276,7 @@
           sql_where: meta.sql_where,
         });
       }
-      const select = $('#id_facultad');
+      const select = $('#id_facultad_padre');
       if (!select) return;
       select.innerHTML = '';
       const empty = document.createElement('option');
@@ -298,7 +305,7 @@
         if (!f || typeof f !== 'object') continue;
         const opt = document.createElement('option');
         opt.value = String(f.facultad_id ?? '');
-        opt.textContent = `${escapeHtml(f.nombre || '')} (${f.facultad_id ?? ''})`;
+        opt.textContent = f.nombre || `Facultad ${f.facultad_id ?? ''}`;
         select.appendChild(opt);
       }
     } catch (err) {
@@ -312,9 +319,64 @@
     }
   }
 
+  async function cargarDependencias(idFacultad, selectedId = '') {
+    const select = $('#id_facultad');
+    if (!select) return;
+    select.innerHTML = '';
+    select.disabled = true;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = idFacultad
+      ? 'Cargando dependencias…'
+      : 'Seleccione primero una facultad';
+    select.appendChild(placeholder);
+    if (!idFacultad) return;
+
+    try {
+      const data = await apiFetch(`/facultades/${encodeURIComponent(idFacultad)}/dependencias`);
+      const dependencies = Array.isArray(data.dependencias) ? data.dependencias : [];
+      select.innerHTML = '';
+
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = dependencies.length
+        ? 'Seleccione una dependencia'
+        : 'Esta facultad no tiene dependencias activas';
+      empty.disabled = true;
+      empty.selected = true;
+      select.appendChild(empty);
+
+      if (dependencies.length === 0) return '';
+
+      for (const dependency of dependencies) {
+        if (!dependency || typeof dependency !== 'object') continue;
+        const option = document.createElement('option');
+        option.value = String(dependency.dependencia_id ?? '');
+        option.textContent = dependency.nombre || `Dependencia ${dependency.dependencia_id ?? ''}`;
+        option.selected = String(selectedId) === option.value;
+        select.appendChild(option);
+      }
+      select.disabled = false;
+      return select.value;
+    } catch (err) {
+      console.error('[capacitacion-cursos] cargarDependencias ERROR:', err);
+      select.innerHTML = '';
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No se pudieron cargar las dependencias';
+      select.appendChild(option);
+      mostrarMensaje(
+        'warning',
+        'No se pudo cargar el catálogo de dependencias',
+        err && err.message ? err.message : String(err || 'Error desconocido')
+      );
+      return '';
+    }
+  }
+
   async function cargarLaboratoriosPorFacultad(idFacultad) {
     if (!idFacultad) {
-      renderSelectorLaboratorios([]);
+      renderSelectorLaboratorios([], null, 'Seleccione una dependencia para ver los laboratorios disponibles.');
       return;
     }
     if (state.laboratoriosPorFacultad.has(idFacultad)) {
@@ -333,7 +395,7 @@
     }
   }
 
-  function renderSelectorLaboratorios(labs, errorMsg) {
+  function renderSelectorLaboratorios(labs, errorMsg, emptyMessage) {
     const root = $('#selector-laboratorios');
     if (!root) return;
     const erroresRoot = $('#errores-laboratorios');
@@ -347,7 +409,12 @@
       return;
     }
     if (!labs || labs.length === 0) {
-      root.innerHTML = '<p class="mb-0 text-muted small">Esta facultad no tiene laboratorios (UALes) activos. Seleccione otra facultad o registre UALs primero.</p>';
+      const message = document.createElement('p');
+      message.className = 'mb-0 text-muted small';
+      message.textContent =
+        emptyMessage ||
+        'Esta dependencia no tiene laboratorios (UALes) activos. Seleccione otra dependencia o registre UALs primero.';
+      root.replaceChildren(message);
       return;
     }
     root.innerHTML = '';
@@ -403,10 +470,13 @@
     if ($('#formulario-leyenda')) $('#formulario-leyenda').textContent = '';
     if ($('#activo_curso')) $('#activo_curso').checked = true;
     marcarLaboratoriosSeleccionados([]);
-    if ($('#id_facultad') && $('#id_facultad').options.length) {
-      $('#id_facultad').selectedIndex = 0;
-      renderSelectorLaboratorios([]);
+    if ($('#id_facultad_padre')) $('#id_facultad_padre').selectedIndex = 0;
+    const dependenciaSelect = $('#id_facultad');
+    if (dependenciaSelect) {
+      dependenciaSelect.innerHTML = '<option value="">Seleccione primero una facultad</option>';
+      dependenciaSelect.disabled = true;
     }
+    renderSelectorLaboratorios([]);
   }
 
   function abrirModoCrear() {
@@ -431,13 +501,11 @@
       $('#url_edx').value = String(curso.url_edx || '');
       $('#activo_curso').checked = Boolean(curso.activo);
 
-      const select = $('#id_facultad');
-      if (select) {
-        const idFacultad = String(curso.id_facultad || '');
-        const opt = Array.from(select.options).find((o) => o.value === idFacultad);
-        if (opt) {
-          opt.selected = true;
-        }
+      const parentSelect = $('#id_facultad_padre');
+      if (parentSelect) {
+        const idFacultadPadre = String(curso.id_facultad_padre || curso.id_facultad || '');
+        parentSelect.value = idFacultadPadre;
+        const idFacultad = await cargarDependencias(idFacultadPadre, String(curso.id_facultad || ''));
         await cargarLaboratoriosPorFacultad(idFacultad);
         const idsAsociados = (data.laboratorios_asociados || []).map((x) => x.id_laboratorio);
         marcarLaboratoriosSeleccionados(idsAsociados);
@@ -464,6 +532,15 @@
 
     const codigoCurso = String($('#codigo_curso').value || '').trim();
     const idFacultad = $('#id_facultad').value;
+    const idFacultadPadre = $('#id_facultad_padre').value;
+    if (!idFacultadPadre || !idFacultad) {
+      mostrarMensaje(
+        'warning',
+        'Seleccione una dependencia',
+        'Seleccione primero la facultad y después una de sus dependencias.'
+      );
+      return;
+    }
     const nombreCurso = String($('#nombre_curso').value || '').trim();
     const urlEdx = String($('#url_edx').value || '').trim();
     const activo = Boolean($('#activo_curso').checked);
@@ -474,6 +551,7 @@
     const payload = {
       codigo_curso: codigoCurso,
       id_facultad: idFacultad,
+      id_facultad_padre: idFacultadPadre,
       nombre_curso: nombreCurso,
       url_edx: urlEdx,
       activo: activo,
@@ -653,10 +731,16 @@
     if ($('#form-curso')) {
       $('#form-curso').addEventListener('submit', guardarFormulario);
     }
+    if ($('#id_facultad_padre')) {
+      $('#id_facultad_padre').addEventListener('change', async (e) => {
+        const idFacultad = e.target.value;
+        const idDependencia = await cargarDependencias(idFacultad);
+        await cargarLaboratoriosPorFacultad(idDependencia);
+      });
+    }
     if ($('#id_facultad')) {
       $('#id_facultad').addEventListener('change', (e) => {
-        const value = e.target.value;
-        cargarLaboratoriosPorFacultad(value);
+        cargarLaboratoriosPorFacultad(e.target.value);
       });
     }
     if ($('#buscador-cursos')) {

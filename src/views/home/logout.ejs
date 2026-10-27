@@ -19,12 +19,11 @@
   
   <!-- Script para la función del botón-->
   <script nonce="<%= cspNonce %>">
-    const logoutTriggers = document.querySelectorAll('[data-logout-trigger]');
     const logoutConfirm = document.getElementById('confirmarCerrarSesion');
     const logoutModalElement = document.getElementById('confirmarCerrarSesionModal');
 
     function getLogoutModal() {
-      if (!logoutModalElement || !window.bootstrap) {
+      if (!logoutModalElement || !window.bootstrap || !window.bootstrap.Modal) {
         return null;
       }
 
@@ -33,9 +32,9 @@
 
     function showLogoutModal() {
       const modal = getLogoutModal();
-      if (modal) {
-        modal.show();
-      }
+      if (!modal || !logoutConfirm) return false;
+      modal.show();
+      return true;
     }
 
     function hideLogoutModal() {
@@ -45,28 +44,28 @@
       }
     }
 
-    if (logoutTriggers.length && logoutConfirm && logoutModalElement) {
-      logoutTriggers.forEach(function(trigger) {
-        trigger.addEventListener('click', function(event) {
-          event.preventDefault();
-
-          const offcanvasElement = trigger.closest('.offcanvas.show');
-          if (offcanvasElement && window.bootstrap) {
-            offcanvasElement.addEventListener('hidden.bs.offcanvas', function handleHidden() {
-              showLogoutModal();
-            }, { once: true });
-
-            window.bootstrap.Offcanvas.getOrCreateInstance(offcanvasElement).hide();
-            return;
-          }
-
-          showLogoutModal();
-        });
-      });
-
+    if (logoutConfirm) {
       logoutConfirm.addEventListener('click', function() {
         hideLogoutModal();
-        window.location.href = "/milab/auth/logout";
+        window.location.href = '/milab/auth/logout';
       });
     }
+
+    document.addEventListener('click', function(event) {
+      const trigger = event.target.closest('[data-logout-trigger]');
+      if (!trigger) return;
+
+      event.preventDefault();
+      const offcanvasElement = trigger.closest('.offcanvas.show');
+      if (offcanvasElement && window.bootstrap && window.bootstrap.Offcanvas) {
+        offcanvasElement.addEventListener('hidden.bs.offcanvas', function handleHidden() {
+          if (!showLogoutModal()) window.location.href = '/milab/auth/logout';
+        }, { once: true });
+
+        window.bootstrap.Offcanvas.getOrCreateInstance(offcanvasElement).hide();
+        return;
+      }
+
+      if (!showLogoutModal()) window.location.href = '/milab/auth/logout';
+    });
   </script>

@@ -25,6 +25,17 @@ function buildApp(route, user = { tipo: 'laboratorista', documento: '1024467835'
   return app;
 }
 
+async function getStudentActionScreen(app, lookupResponse, query = {}) {
+  assert.equal(lookupResponse.status, 303);
+  const location = new URL(lookupResponse.headers.location, 'http://localhost');
+  assert.equal(location.pathname, '/milab/api/get-info-multa/persona');
+  const lookupToken = location.searchParams.get('lookup_token');
+  const response = await request(app)
+    .get('/persona')
+    .query({ lookup_token: lookupToken, ...query });
+  return { lookupToken, response };
+}
+
 function loadRoute({
   activeSanctionTotal = '0',
   sgaService = { isConfigured: () => false, getActiveDebts: async () => [] },
@@ -57,6 +68,24 @@ function loadRoute({
   },
 } = {}) {
   const originals = new Map();
+  const debtService = {
+    ...sgaService,
+    queryStudent:
+      sgaService.queryStudent ||
+      (async (student) => {
+        const debts = await sgaService.getActiveDebts(student);
+        return {
+          status: debts.length ? 'found' : 'clear',
+          debts,
+          codes: student.codigo ? [student.codigo] : [],
+          document: student.documento || null,
+          nonLaboratoryCount: 0,
+          unclassifiedCount: 0,
+          message: '',
+          errors: [],
+        };
+      }),
+  };
   const stubs = [
     [
       dbPath,
@@ -117,7 +146,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
-        sgaDebtService: sgaService,
+        sgaDebtService: debtService,
       },
     ],
   ];
@@ -199,10 +228,11 @@ test('get-info-multa reuses searched document when OAS omits documento', async (
 
   try {
     const app = buildApp(loaded.route);
-    const response = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/sancion-person-actions');
@@ -251,19 +281,32 @@ test('get-info-multa reuses the session lookup when the user chooses registratio
 
   try {
     const app = buildApp(loaded.route);
-    const searchResponse = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
+    const { lookupToken, response: searchResponse } = await getStudentActionScreen(
+      app,
+      lookupResponse
+    );
     const actionResponse = await request(app).post('/').type('form').send({
-      lookup_token: searchResponse.body.locals.lookupToken,
+      lookup_token: lookupToken,
     });
+    const registrationResponse = await request(app)
+      .get('/registrar')
+      .query({ lookup_token: lookupToken });
 
     assert.equal(searchResponse.body.view, 'home/sancion-person-actions');
-    assert.equal(actionResponse.status, 200);
-    assert.equal(actionResponse.body.view, 'home/reg_multa');
-    assert.equal(actionResponse.body.locals.con_documento, '79520182');
-    assert.equal(actionResponse.body.locals.con_codigo, '2024100001');
+    assert.equal(actionResponse.status, 303);
+    assert.equal(
+      actionResponse.headers.location,
+      `/milab/api/get-info-multa/registrar?lookup_token=${lookupToken}`
+    );
+    assert.equal(registrationResponse.status, 200);
+    assert.equal(registrationResponse.body.view, 'home/reg_multa');
+    assert.equal(registrationResponse.body.locals.lookupToken, lookupToken);
+    assert.equal(registrationResponse.body.locals.con_documento, '79520182');
+    assert.equal(registrationResponse.body.locals.con_codigo, '2024100001');
     assert.equal(oatiRequestCount, 3);
   } finally {
     loaded.restore();
@@ -275,13 +318,12 @@ test('get-info-multa loads only assigned laboratorista UALs after registration i
 
   try {
     const app = buildApp(loaded.route);
-    const searchResponse = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
-    const response = await request(app).post('/').type('form').send({
-      lookup_token: searchResponse.body.locals.lookupToken,
-    });
+    const { lookupToken } = await getStudentActionScreen(app, lookupResponse);
+    const response = await request(app).get('/registrar').query({ lookup_token: lookupToken });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/reg_multa');
@@ -321,7 +363,12 @@ const oatiStudentResponse = async (servicePath) => {
 
 test('get-info-multa /persona renders the student panel with active count and SGA debts', async () => {
   const sgaDebts = [
-    { DEU_MATERIAL: 'Reposición de insumos', DEU_MULTA: '50000', DEU_ESTADO: 'PENDIENTE' },
+    {
+      DEU_MATERIAL: 'Reposición de insumos',
+      DEU_MULTA: '50000',
+      DEU_ESTADO: 'PENDIENTE',
+      DEU_CPTO_COD: '4',
+    },
   ];
   const loaded = loadRoute({
     activeSanctionTotal: '2',
@@ -334,13 +381,13 @@ test('get-info-multa /persona renders the student panel with active count and SG
 
   try {
     const app = buildApp(loaded.route);
-    const searchResponse = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
-    const response = await request(app)
-      .get('/persona')
-      .query({ lookup_token: searchResponse.body.locals.lookupToken, success: 'saldada' });
+    const { response } = await getStudentActionScreen(app, lookupResponse, {
+      success: 'registrada',
+    });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/sancion-person-actions');
@@ -349,8 +396,88 @@ test('get-info-multa /persona renders the student panel with active count and SG
     assert.equal(response.body.locals.sga.configured, true);
     assert.equal(response.body.locals.sga.failed, false);
     assert.deepEqual(response.body.locals.sga.debts, sgaDebts);
-    assert.equal(response.body.locals.successFeedback, 'saldada');
+    assert.equal(response.body.locals.successFeedback, 'registrada');
     assert.equal(response.body.locals.sanctionHistoryError, '');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa exposes other SGA debts by document only to admins', async () => {
+  const otherDebt = {
+    codigo_concepto: '1',
+    nombre_concepto: 'BIBLIOTECA INGENIERÍA',
+    categoria: 'Libro pendiente',
+    estado: '2',
+  };
+  let queryOptions;
+  const loaded = loadRoute({
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      queryStudent: async (options) => {
+        queryOptions = options;
+        return {
+          status: 'clear',
+          debts: [],
+          otherDebts: [otherDebt],
+          message: '',
+          errors: [],
+        };
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'admin', documento: '1024467835' });
+    const lookupResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.isAdmin, true);
+    assert.equal(queryOptions.documento, '79520182');
+    assert.equal(queryOptions.includeOtherDebts, true);
+    assert.deepEqual(response.body.locals.sga.otherDebts, [otherDebt]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get-info-multa does not expose other SGA debts to non-admins', async () => {
+  const otherDebt = { codigo_concepto: '1', nombre_concepto: 'BIBLIOTECA INGENIERÍA' };
+  let queryOptions;
+  const loaded = loadRoute({
+    requestOatiImpl: oatiStudentResponse,
+    sgaService: {
+      isConfigured: () => true,
+      queryStudent: async (options) => {
+        queryOptions = options;
+        return {
+          status: 'clear',
+          debts: [],
+          otherDebts: [otherDebt],
+          message: '',
+          errors: [],
+        };
+      },
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const lookupResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'documento',
+      valor_busqueda: '79520182',
+    });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.isAdmin, false);
+    assert.equal(queryOptions.includeOtherDebts, false);
+    assert.deepEqual(response.body.locals.sga.otherDebts, []);
   } finally {
     loaded.restore();
   }
@@ -385,13 +512,11 @@ test('get-info-multa keeps the student panel when SGA is unavailable', async () 
 
   try {
     const app = buildApp(loaded.route);
-    const searchResponse = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
-    const response = await request(app)
-      .get('/persona')
-      .query({ lookup_token: searchResponse.body.locals.lookupToken });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/sancion-person-actions');
@@ -407,10 +532,11 @@ test('get-info-multa shows a history notice instead of failing when the user sco
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '1020304050' });
-    const response = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'documento',
       valor_busqueda: '79520182',
     });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/sancion-person-actions');

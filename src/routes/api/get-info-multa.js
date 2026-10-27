@@ -4,13 +4,16 @@ const pool = require('../../libs/db');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const {
+  buildSanctionPersonReturnPath,
   createSanctionPersonLookup,
   resolveSanctionPersonLookup,
 } = require('../../libs/sanction-person-lookup');
 const { requireRoles } = require('../middlewares/auth');
-const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
+const { SANCTION_TYPES } = require('../../libs/multa-config');
+// const { SANCTION_TYPES, fetchMultaConfigsForFacultyIds } = require('../../libs/multa-config');
 const { fetchSanctionCategories } = require('../../libs/sanction-categories');
 const { sgaDebtService } = require('../../libs/oati-debts');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 const { listingHelpers: sanctionListHelpers } = require('./get_list_multas');
 
 // Variables de entorno
@@ -67,6 +70,7 @@ const requireFineInfoPageAccess = requireRoles(['admin', 'laboratorista', 'coord
 
 // Historial y SGA son solo del estudiante consultado; los reutilizan la búsqueda y el regreso desde cada acción.
 async function buildStudentSanctionPanel(req, { usuarioId, person }) {
+  const includeOtherSgaDebts = req.session?.user?.tipo === 'admin';
   const activeResult = await pool.query(
     "SELECT COUNT(*) AS total FROM multa WHERE usuario_sancionado_id = $1 AND con_estado_multa = 'ACTIVA'",
     [usuarioId]
@@ -90,15 +94,32 @@ async function buildStudentSanctionPanel(req, { usuarioId, person }) {
     history = await sanctionListHelpers.addLaboratoristaActions(pool, rows, req);
   }
 
-  const sga = { configured: sgaDebtService.isConfigured(), debts: [], failed: false };
+  const sga = {
+    configured: sgaDebtService.isConfigured(),
+    debts: [],
+    otherDebts: [],
+    failed: false,
+    status: null,
+  };
   if (sga.configured) {
     try {
-      sga.debts = await sgaDebtService.getActiveDebts({
+      const result = await sgaDebtService.queryStudent({
         codigo: person.codigo,
         documento: person.documento,
+        includeOtherDebts: includeOtherSgaDebts,
       });
+      sga.debts = result.debts;
+      sga.otherDebts =
+        includeOtherSgaDebts && Array.isArray(result.otherDebts) ? result.otherDebts : [];
+      sga.status = result.status;
+      sga.message = result.message;
+      sga.failed = !['found', 'clear'].includes(result.status);
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        throw error;
+      }
       sga.failed = true;
+      sga.message = 'No fue posible consultar las multas activas de laboratorio en SGA.';
       console.error('Error consultando sanciones SGA en Paso 2:', error);
     }
   }
@@ -120,6 +141,7 @@ async function renderStudentSanctionActions(
   const sanctionCategories = await fetchSanctionCategories({ client: pool });
   return res.render('home/sancion-person-actions', {
     lookupToken,
+    isAdmin: req.session?.user?.tipo === 'admin',
     personType: 'estudiante',
     person,
     activeSanctionCount: panel.activeSanctionCount,
@@ -132,9 +154,131 @@ async function renderStudentSanctionActions(
   });
 }
 
+async function renderStudentSanctionRegistration(req, res, { lookupToken, person }) {
+  const con_codigo = person.codigo;
+  const con_estado = person.estado;
+  const con_documento = person.documento;
+  const con_carrera = person.programa;
+  const con_nombre = person.nombre;
+  const tipo_busqueda = '';
+
+  if (con_estado === 'EGRESADO') {
+    return res.render('home/alerta-egresado', {
+      message: 'El estudiante es egresado. No se puede continuar.',
+    });
+  }
+
+  let nombre_lab = '';
+  let cc_lab = 0;
+  let uals = '';
+  if (req.session.user.tipo === 'laboratorista') {
+    const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
+    const result = await pool.query(
+      'SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1',
+      [sessionDocumento]
+    );
+    if (!result.rows.length) {
+      throw new Error('No se encontró laboratorista con ese documento');
+    }
+
+    const ualsResult = await pool.query(
+      `SELECT DISTINCT
+        u.ual_id,
+        u.nombre,
+        u.codigo_abreviacion,
+        u.sal_id_espacio,
+        u.sal_ocupantes,
+        u.facultad_id
+      FROM laboratorista_ual lu
+      INNER JOIN ual u ON u.ual_id = lu.ual_id
+      WHERE lu.laboratorista_documento_id = $1
+        AND u.activo = TRUE
+      ORDER BY u.nombre ASC`,
+      [result.rows[0].documento]
+    );
+    nombre_lab = result.rows[0].nombre;
+    cc_lab = result.rows[0].documento;
+    uals = ualsResult.rows;
+  } else if (req.session.user.tipo === 'admin') {
+    nombre_lab = 'admin';
+    const result = await pool.query(
+      'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE ORDER BY nombre ASC'
+    );
+    uals = result.rows;
+  } else if (req.session.user.tipo === 'coordinador') {
+    const coordinatorResult = await pool.query('SELECT * FROM coordinador WHERE documento = $1', [
+      req.session.user.documento,
+    ]);
+    const coordinator = coordinatorResult.rows[0];
+    const facultyId = coordinator.facultad_id;
+    const ualsResult = await pool.query(
+      'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC',
+      [facultyId]
+    );
+    nombre_lab = coordinator.nombre;
+    cc_lab = coordinator.documento;
+    uals = ualsResult.rows;
+  }
+
+  if (Array.isArray(uals) && uals.length > 0) {
+    const needsDelegateOptions =
+      req.session.user.tipo === 'admin' || req.session.user.tipo === 'coordinador';
+    const laboratoristasPorUal = needsDelegateOptions
+      ? await fetchLaboratoristasByUalIds(uals.map((ual) => Number(ual.ual_id)))
+      : new Map();
+    uals = uals.map((ual) => ({
+      ...ual,
+      _laboratoristas: needsDelegateOptions
+        ? laboratoristasPorUal.get(Number(ual.ual_id)) || []
+        : [],
+    }));
+  } else if (uals === null) {
+    uals = [];
+  }
+
+  return res.render('home/reg_multa', {
+    lookupToken,
+    sanctionCategories: await fetchSanctionCategories({ client: pool }),
+    con_codigo,
+    con_estado,
+    con_documento,
+    tipo_busqueda,
+    con_carrera,
+    con_nombre,
+    nombre_lab,
+    cc_lab,
+    uals,
+    SANCTION_TYPES,
+  });
+}
+
 router.get('/get', requireFineInfoPageAccess, async function (req, res) {
   res.set('Cache-Control', 'no-store');
   res.render('home/get-info-multa');
+});
+
+router.get('/registrar', requireFineInfoPageAccess, async function (req, res) {
+  res.set('Cache-Control', 'no-store');
+
+  const lookupToken = String(req.query.lookup_token || '').trim();
+  const person = resolveSanctionPersonLookup(req, lookupToken, 'estudiante');
+  if (!person) {
+    return res.render('home/error-consulta', {
+      message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
+    });
+  }
+
+  try {
+    return await renderStudentSanctionRegistration(req, res, { lookupToken, person });
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
+    console.error(error);
+    return res.render('home/error-consulta', {
+      message: 'Se ha producido un error',
+    });
+  }
 });
 
 // Regreso a Paso 2 desde las acciones del listado; el token es el mismo de la búsqueda.
@@ -154,9 +298,17 @@ router.get('/persona', requireFineInfoPageAccess, async function (req, res) {
       lookupToken,
       person,
       usuarioId: person.usuarioId,
-      successFeedback: sanctionListHelpers.normalizeListSuccessFeedback(req.query.success),
+      successFeedback:
+        String(req.query.success || '')
+          .trim()
+          .toLowerCase() === 'registrada'
+          ? 'registrada'
+          : sanctionListHelpers.normalizeListSuccessFeedback(req.query.success),
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',
@@ -178,13 +330,19 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
       message: 'La búsqueda expiró o ya no está disponible. Busca nuevamente a la persona.',
     });
   }
+  if (searchedPerson) {
+    return res.redirect(
+      303,
+      `/milab/api/get-info-multa/registrar?lookup_token=${encodeURIComponent(lookupToken)}`
+    );
+  }
 
-  let con_codigo = searchedPerson?.codigo;
-  let con_estado = searchedPerson?.estado;
-  let con_documento = searchedPerson?.documento;
-  let con_carrera = searchedPerson?.programa;
-  let con_nombre = searchedPerson?.nombre;
-  let usuarioId = searchedPerson?.usuarioId;
+  let con_codigo;
+  let con_estado;
+  let con_documento;
+  let con_carrera;
+  let con_nombre;
+  let usuarioId;
 
   // Función para obtener la info del estudiante mediante CC segun consultas a la OAS
   try {
@@ -266,140 +424,16 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
         nombre: con_nombre,
       });
 
-      return await renderStudentSanctionActions(req, res, {
-        lookupToken: createdLookupToken,
-        person: {
-          codigo: con_codigo,
-          estado: con_estado,
-          documento: con_documento,
-          programa: con_carrera,
-          nombre: con_nombre,
-        },
-        usuarioId,
-      });
+      return res.redirect(303, buildSanctionPersonReturnPath(createdLookupToken));
     }
 
-    //--- DB
-    const query = 'SELECT COUNT(*) AS multado FROM multa WHERE usuario_sancionado_id = $1';
-    const values = [usuarioId];
-
-    let con_multado = false;
-    const result = await pool.query(query, values);
-    con_multado = result.rows[0].multado > 0;
-
-    let multaInfo = null;
-    if (con_multado) {
-      const queryMultaInfo =
-        'SELECT m.*, us.documento AS documento_sancionado, u.nombre AS ual, l.nombre AS nombre_laboratorista, l.documento AS cc_laboratorista FROM multa m LEFT JOIN usuario us ON us.id = m.usuario_sancionado_id LEFT JOIN ual u ON u.ual_id = m.ual_id LEFT JOIN laboratorista l ON l.documento = m.laboratorista_documento_id WHERE m.usuario_sancionado_id = $1';
-      const valuesMultaInfo = [usuarioId];
-
-      const resultMultaInfo = await pool.query(queryMultaInfo, valuesMultaInfo);
-      multaInfo = resultMultaInfo.rows;
-      console.log(`Cantidad de registros de multas: ${multaInfo.length}`);
-      console.log(multaInfo);
-    }
-
-    //DATOS LAB
-    let nombre_lab = '';
-    let cc_lab = 0;
-    let uals = '';
-    if (req.session.user.tipo === 'laboratorista') {
-      const sessionDocumento = req.session.user.documento_real || req.session.user.documento;
-      const query2 = 'SELECT * FROM laboratorista WHERE documento = $1 OR n_usuario = $1';
-      const values2 = [sessionDocumento];
-      const result2 = await pool.query(query2, values2);
-      if (result2.rows.length === 0) {
-        throw new Error('No se encontró laboratorista con ese documento');
-      }
-      const query3 = `
-        SELECT DISTINCT
-          u.ual_id,
-          u.nombre,
-          u.codigo_abreviacion,
-          u.sal_id_espacio,
-          u.sal_ocupantes,
-          u.facultad_id
-        FROM laboratorista_ual lu
-        INNER JOIN ual u
-          ON u.ual_id = lu.ual_id
-        WHERE lu.laboratorista_documento_id = $1
-          AND u.activo = TRUE
-        ORDER BY u.nombre ASC
-      `;
-      const values3 = [result2.rows[0].documento];
-      const result3 = await pool.query(query3, values3);
-      nombre_lab = result2.rows[0].nombre;
-      cc_lab = result2.rows[0].documento;
-      uals = result3.rows;
-    } else if (req.session.user.tipo === 'admin') {
-      nombre_lab = 'admin';
-      cc_lab = 0;
-      const queryUalsTodas =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE ORDER BY nombre ASC';
-      const resultAdminUals = await pool.query(queryUalsTodas);
-      uals = resultAdminUals.rows;
-    } else if (req.session.user.tipo === 'coordinador') {
-      const query = 'SELECT * FROM coordinador WHERE documento = $1';
-      const values = [req.session.user.documento];
-      const result = await pool.query(query, values);
-
-      const facultadId = result.rows[0].facultad_id;
-      const queryUals =
-        'SELECT ual_id, nombre, codigo_abreviacion, sal_id_espacio, sal_ocupantes, facultad_id FROM ual WHERE activo = TRUE AND facultad_id = $1 ORDER BY nombre ASC';
-      const resultUals = await pool.query(queryUals, [facultadId]);
-
-      nombre_lab = result.rows[0].nombre;
-      cc_lab = result.rows[0].documento;
-      uals = resultUals.rows;
-    }
-
-    if (Array.isArray(uals) && uals.length > 0) {
-      const facultyIds = [
-        ...new Set(uals.map((u) => Number(u.facultad_id)).filter((n) => Number.isFinite(n))),
-      ];
-      const configMap = await fetchMultaConfigsForFacultyIds(facultyIds);
-      const needsDelegateOptions =
-        req.session.user.tipo === 'admin' || req.session.user.tipo === 'coordinador';
-      const laboratoristasPorUal = needsDelegateOptions
-        ? await fetchLaboratoristasByUalIds(uals.map((u) => Number(u.ual_id)))
-        : new Map();
-      uals = uals.map((u) => {
-        const cfg = Number.isFinite(Number(u.facultad_id))
-          ? configMap.get(Number(u.facultad_id))
-          : null;
-        return {
-          ...u,
-          _permiteCrearActivaDirecta: Boolean(cfg && cfg.permite_crear_multas_activas_directas),
-          _laboratoristas: needsDelegateOptions
-            ? laboratoristasPorUal.get(Number(u.ual_id)) || []
-            : [],
-        };
-      });
-    } else if (uals === null) {
-      uals = [];
-    }
-
-    if (con_estado === 'EGRESADO') {
-      console.log('El estudiante es egresado. No se puede continuar.');
-      return res.render('home/alerta-egresado', {
-        message: 'El estudiante es egresado. No se puede continuar.',
-      });
-    }
-
-    return res.render('home/reg_multa', {
-      sanctionCategories: await fetchSanctionCategories({ client: pool }),
-      con_codigo,
-      con_estado,
-      con_documento,
-      tipo_busqueda,
-      con_carrera,
-      con_nombre,
-      nombre_lab,
-      cc_lab,
-      uals,
-      SANCTION_TYPES,
+    return res.render('home/error-consulta', {
+      message: 'No fue posible cargar la información del estudiante.',
     });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error(error);
     return res.render('home/error-consulta', {
       message: 'Se ha producido un error',

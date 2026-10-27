@@ -4,9 +4,10 @@ const pool = require('../../libs/db');
 const { fetchUserById } = require('../../libs/user-identity');
 const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { requireRoles } = require('../middlewares/auth');
-const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
+// const { resolveMultaConfigForMultaId } = require('../../libs/multa-config');
 const { renderModuleError } = require('../middlewares/error-handler');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
+const { buildSanctionListReturnPath } = require('../../libs/sanction-list-navigation');
 
 const router = express.Router();
 
@@ -42,10 +43,15 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
     });
   }
 
+  /*
   let con_estado_saldado = 'POR SALDAR';
   let accionLog = 'Cambiar estado de multa a SALDADO';
   let mensajeSuccess = 'Multa actualizada correctamente';
   let mensajeSuccess2 = '';
+  */
+  const con_estado_saldado = 'SALDADA';
+  const accionLog = 'Cambiar estado de multa a SALDADA';
+  const mensajeSuccess = 'Multa saldada directamente';
   const source = String(req.body?.source || '')
     .trim()
     .toLowerCase();
@@ -56,7 +62,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
   const returnToListFlow = source === 'listado';
   const returnToTeacherFlow = source === 'docente';
   const successReturnUrl = returnToListFlow
-    ? '/milab/api/get_list_multas'
+    ? buildSanctionListReturnPath(req.body)
     : returnToTeacherFlow
       ? '/milab/api/get-info-multa-docente/get'
       : personaReturnPath || '/milab/api/get-info-multa/get';
@@ -151,6 +157,7 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       });
     }
 
+    /*
     const cfg = await resolveMultaConfigForMultaId(conId);
     const permiteSaldarDirecto = Boolean(cfg && cfg.permite_saldar_multas_directas);
     if (permiteSaldarDirecto) {
@@ -160,6 +167,8 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       mensajeSuccess2 =
         'La facultad cuenta con autorización para saldar sin aprobación del coordinador.';
     }
+    // Sin autorización, la sanción quedaba en POR SALDAR para aprobación del coordinador.
+    */
 
     const usuarioSancionadoId = multaActual.usuario_sancionado_id;
     const usuarioSancionado = await fetchUserById(usuarioSancionadoId);
@@ -194,9 +203,12 @@ router.post('/', requireFineRemovalAccess, async (req, res) => {
       return res.redirect(`${successReturnUrl}${separator}${successParam}`);
     }
 
+    /*
+    message2: mensajeSuccess2 || `Sancionado registrado: ${referenciaSancionado}`,
+    */
     return res.render('home/message_success', {
       message: mensajeSuccess,
-      message2: mensajeSuccess2 || `Sancionado registrado: ${referenciaSancionado}`,
+      message2: `Sancionado registrado: ${referenciaSancionado}`,
       returnUrl: successReturnUrl,
       returnLabel: successReturnLabel,
     });

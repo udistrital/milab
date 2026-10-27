@@ -13,7 +13,7 @@ router.use(express.urlencoded({ extended: false, limit: '256kb' }));
 
 const CAPACITACION_SCHEMA_MISSING_MESSAGE =
   'Falta aplicar la migración del módulo de Capacitación en la base de datos. ' +
-  'Ejecutar el script sql-scripts/db_structure_certificacion.sql para crear ' +
+  'Ejecutar el script sql-scripts/prod/db_structure_certificacion.sql para crear ' +
   'las tablas cursos, curso_laboratorio y equipo_especializado.';
 
 function isCapacitacionSchemaMissingError(error) {
@@ -31,13 +31,28 @@ function isCapacitacionSchemaMissingError(error) {
 }
 
 function handleCapacitacionSchemaError(res, error) {
+  if (
+    error?.code === '42P01' &&
+    String(error.message || '')
+      .toLowerCase()
+      .includes('dependencia_facultad')
+  ) {
+    return res.status(503).json({
+      ok: false,
+      error_servicio: true,
+      migration_faltante: true,
+      message:
+        'Falta aplicar el esquema institucional que define la jerarquía de facultades y dependencias.',
+      script_requerido: 'sql-scripts/prod/db_structure.sql',
+    });
+  }
   if (isCapacitacionSchemaMissingError(error)) {
     return res.status(503).json({
       ok: false,
       error_servicio: true,
       migration_faltante: true,
       message: CAPACITACION_SCHEMA_MISSING_MESSAGE,
-      script_requerido: 'sql-scripts/db_structure_certificacion.sql',
+      script_requerido: 'sql-scripts/prod/db_structure_certificacion.sql',
     });
   }
   return null;
@@ -112,7 +127,16 @@ function validateCursoPayload(body, { forEdit = false } = {}) {
 
   const idFacultadRaw = body.id_facultad;
   let idFacultad = Number.isFinite(Number(idFacultadRaw)) ? Number(idFacultadRaw) : NaN;
-  if (!Number.isInteger(idFacultad) || idFacultad <= 0) errors.push('La facultad es obligatoria.');
+  if (!Number.isInteger(idFacultad) || idFacultad <= 0) {
+    errors.push('La dependencia es obligatoria.');
+  }
+  const idFacultadPadreRaw = body.id_facultad_padre;
+  let idFacultadPadre = Number.isFinite(Number(idFacultadPadreRaw))
+    ? Number(idFacultadPadreRaw)
+    : NaN;
+  if (!Number.isInteger(idFacultadPadre) || idFacultadPadre <= 0) {
+    errors.push('La facultad es obligatoria.');
+  }
 
   const nombreCurso = String(body.nombre_curso || '').trim();
   if (!nombreCurso) errors.push('El nombre del curso es obligatorio.');
@@ -151,12 +175,48 @@ function validateCursoPayload(body, { forEdit = false } = {}) {
     data: {
       codigoCurso,
       idFacultad,
+      idFacultadPadre,
       nombreCurso,
       urlEdx,
       activo,
       laboratoriosIds: laboratoriosSet,
     },
   };
+}
+
+async function getCourseFaculty(client, idFacultadPadre, idFacultad) {
+  const result = await client.query(
+    `
+      SELECT
+        padre.nombre AS nombre_facultad,
+        dependencia.nombre AS nombre_dependencia
+      FROM dependencia_facultad padre
+      JOIN dependencia_facultad dependencia
+        ON dependencia.dependencia_facultad_id = $2
+       AND dependencia.activo = TRUE
+      WHERE padre.dependencia_facultad_id = $1
+        AND padre.padre_id IS NULL
+        AND padre.activo = TRUE
+        AND dependencia.padre_id = padre.dependencia_facultad_id
+    `,
+    [idFacultadPadre, idFacultad]
+  );
+  return result.rows[0] || null;
+}
+
+async function validateCourseLaboratories(client, idFacultad, laboratoriosIds) {
+  const result = await client.query(
+    `SELECT ual_id, facultad_id, activo
+     FROM ual
+     WHERE ual_id = ANY($1::int[])
+     ORDER BY ual_id
+     FOR UPDATE`,
+    [laboratoriosIds]
+  );
+  return (
+    result.rows.length === laboratoriosIds.length &&
+    result.rows.every((lab) => lab.activo && Number(lab.facultad_id) === Number(idFacultad))
+  );
 }
 
 function mapDbErrorToMessage(error, defaultMsg) {
@@ -170,7 +230,7 @@ function mapDbErrorToMessage(error, defaultMsg) {
     return `Registro duplicado: ${message || constraint}`;
   }
   if (code === '23503') {
-    if (constraint.includes('fk_cursos_facultad')) return 'La facultad seleccionada no existe.';
+    if (constraint.includes('fk_cursos_facultad')) return 'La dependencia seleccionada no existe.';
     if (constraint.includes('fk_curso_laboratorio_laboratorio'))
       return 'Uno o más laboratorios seleccionados no existen.';
     return `Referencia inválida: ${message || constraint}`;
@@ -261,16 +321,30 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
     let result;
     let sqlWhereDescription = '';
     if (scope.isAdmin || scope.facultyIds.length === 0) {
-      sqlWhereDescription = 'SCOPE_IS_ADMIN_OR_NO_FACULTIES → sin filtro WHERE';
-      result = await pool.query(
-        'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad ORDER BY nombre ASC'
-      );
-    } else {
-      sqlWhereDescription = 'SCOPE_LABORATORISTA → WHERE facultad_id = ANY($1::int[])';
+      sqlWhereDescription = 'PADRES → WHERE padre_id IS NULL';
       result = await pool.query(
         `SELECT dependencia_facultad_id AS facultad_id, nombre
          FROM dependencia_facultad
-         WHERE dependencia_facultad_id = ANY($1::int[])
+         WHERE padre_id IS NULL AND activo = TRUE
+         ORDER BY nombre ASC`
+      );
+    } else {
+      sqlWhereDescription = 'SCOPE_LABORATORISTA → padres de dependencias autorizadas';
+      result = await pool.query(
+        `SELECT padre.dependencia_facultad_id AS facultad_id, padre.nombre
+         FROM dependencia_facultad padre
+         WHERE padre.padre_id IS NULL
+           AND padre.activo = TRUE
+           AND (
+             padre.dependencia_facultad_id = ANY($1::int[])
+             OR EXISTS (
+               SELECT 1
+               FROM dependencia_facultad hija
+               WHERE hija.padre_id = padre.dependencia_facultad_id
+                 AND hija.activo = TRUE
+                 AND hija.dependencia_facultad_id = ANY($1::int[])
+             )
+           )
          ORDER BY nombre ASC`,
         [scope.facultyIds]
       );
@@ -362,6 +436,58 @@ router.get('/facultades', requireCursosRead, async function (req, res) {
   }
 });
 
+router.get('/facultades/:id_facultad/dependencias', requireCursosRead, async function (req, res) {
+  const idFacultadRaw = req.params.id_facultad;
+  const idFacultad = Number.isFinite(Number(idFacultadRaw)) ? Number(idFacultadRaw) : NaN;
+  if (!Number.isInteger(idFacultad) || idFacultad <= 0) {
+    return res.status(400).json({ ok: false, message: 'id_facultad inválido.' });
+  }
+  try {
+    const scope = await resolveLaboratoristaScope(req);
+    const facultadResult = await pool.query(
+      `SELECT dependencia_facultad_id AS facultad_id, nombre
+         FROM dependencia_facultad
+         WHERE dependencia_facultad_id = $1
+           AND padre_id IS NULL
+           AND activo = TRUE`,
+      [idFacultad]
+    );
+    if (facultadResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, message: 'Facultad no existe.' });
+    }
+
+    const result =
+      scope.cursoFilterRequired && scope.facultyIds.length > 0
+        ? await pool.query(
+            `SELECT dependencia_facultad_id AS dependencia_id, nombre
+               FROM dependencia_facultad
+               WHERE padre_id = $1
+                 AND activo = TRUE
+                 AND dependencia_facultad_id = ANY($2::int[])
+               ORDER BY nombre ASC`,
+            [idFacultad, scope.facultyIds]
+          )
+        : await pool.query(
+            `SELECT dependencia_facultad_id AS dependencia_id, nombre
+               FROM dependencia_facultad
+               WHERE padre_id = $1 AND activo = TRUE
+               ORDER BY nombre ASC`,
+            [idFacultad]
+          );
+
+    return res.status(200).json({
+      ok: true,
+      facultad: facultadResult.rows[0],
+      dependencias: result.rows,
+    });
+  } catch (error) {
+    console.error('[capacitacion-cursos:/facultades/:id/dependencias]', error);
+    const handled = handleCapacitacionSchemaError(res, error);
+    if (handled) return handled;
+    return res.status(500).json({ ok: false, message: 'Error al cargar dependencias.' });
+  }
+});
+
 router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async function (req, res) {
   const idFacultadRaw = req.params.id_facultad;
   const idFacultad = Number.isFinite(Number(idFacultadRaw)) ? Number(idFacultadRaw) : NaN;
@@ -379,7 +505,12 @@ router.get('/facultades/:id_facultad/laboratorios', requireCursosRead, async fun
     }
 
     const facRes = await pool.query(
-      'SELECT dependencia_facultad_id AS facultad_id, nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1',
+      `SELECT dependencia.dependencia_facultad_id AS facultad_id,
+              dependencia.nombre,
+              dependencia.padre_id AS facultad_padre_id
+       FROM dependencia_facultad dependencia
+       WHERE dependencia.dependencia_facultad_id = $1
+         AND dependencia.activo = TRUE`,
       [idFacultad]
     );
     if (facRes.rows.length === 0) {
@@ -443,7 +574,10 @@ router.get('/list', requireCursosRead, async function (req, res) {
       rows = await pool.query(
         `SELECT c.codigo_curso,
                 c.id_facultad,
-                f.nombre AS nombre_facultad,
+                CASE
+                  WHEN padre.dependencia_facultad_id IS NULL THEN dependencia.nombre
+                  ELSE padre.nombre || ' / ' || dependencia.nombre
+                END AS nombre_facultad,
                 c.nombre_curso,
                 c.url_edx,
                 c.activo,
@@ -452,7 +586,10 @@ router.get('/list', requireCursosRead, async function (req, res) {
                 COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
                 COALESCE(lab.nombres, '[]') AS laboratorios_nombres
          FROM cursos c
-         JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
+         JOIN dependencia_facultad dependencia
+           ON dependencia.dependencia_facultad_id = c.id_facultad
+         LEFT JOIN dependencia_facultad padre
+           ON padre.dependencia_facultad_id = dependencia.padre_id
          LEFT JOIN (
              SELECT cl.codigo_curso,
                     COUNT(*) AS count_labs,
@@ -474,7 +611,10 @@ router.get('/list', requireCursosRead, async function (req, res) {
       rows = await pool.query(
         `SELECT c.codigo_curso,
                 c.id_facultad,
-                f.nombre AS nombre_facultad,
+                CASE
+                  WHEN padre.dependencia_facultad_id IS NULL THEN dependencia.nombre
+                  ELSE padre.nombre || ' / ' || dependencia.nombre
+                END AS nombre_facultad,
                 c.nombre_curso,
                 c.url_edx,
                 c.activo,
@@ -483,7 +623,10 @@ router.get('/list', requireCursosRead, async function (req, res) {
                 COALESCE(lab.count_labs, 0)::int AS cantidad_laboratorios,
                 COALESCE(lab.nombres, '[]') AS laboratorios_nombres
          FROM cursos c
-         JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
+         JOIN dependencia_facultad dependencia
+           ON dependencia.dependencia_facultad_id = c.id_facultad
+         LEFT JOIN dependencia_facultad padre
+           ON padre.dependencia_facultad_id = dependencia.padre_id
          LEFT JOIN (
              SELECT cl.codigo_curso,
                     COUNT(*) AS count_labs,
@@ -529,12 +672,22 @@ router.get('/detalle/:codigo_curso', requireCursosRead, async function (req, res
     const cursoRes = await pool.query(
       `SELECT c.codigo_curso,
               c.id_facultad,
-              f.nombre AS nombre_facultad,
+              CASE
+                WHEN padre.dependencia_facultad_id IS NULL THEN dependencia.nombre
+                ELSE padre.nombre || ' / ' || dependencia.nombre
+              END AS nombre_facultad,
+              CASE
+                WHEN padre.dependencia_facultad_id IS NULL THEN dependencia.dependencia_facultad_id
+                ELSE padre.dependencia_facultad_id
+              END AS id_facultad_padre,
               c.nombre_curso,
               c.url_edx,
               c.activo
        FROM cursos c
-       JOIN dependencia_facultad f ON f.dependencia_facultad_id = c.id_facultad
+       JOIN dependencia_facultad dependencia
+         ON dependencia.dependencia_facultad_id = c.id_facultad
+       LEFT JOIN dependencia_facultad padre
+         ON padre.dependencia_facultad_id = dependencia.padre_id
        WHERE c.codigo_curso = $1`,
       [codigoCurso]
     );
@@ -609,21 +762,27 @@ router.post('/nuevo', requireCursosWrite, async function (req, res) {
     return res.status(400).json({ ok: false, message: 'Validaciones fallidas.', errors });
   }
 
-  const { codigoCurso, idFacultad, nombreCurso, urlEdx, activo, laboratoriosIds } = data;
+  const { codigoCurso, idFacultad, idFacultadPadre, nombreCurso, urlEdx, activo, laboratoriosIds } =
+    data;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const facRes = await client.query(
-      'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1 AND activo = TRUE',
-      [idFacultad]
-    );
-    if (facRes.rows.length === 0) {
+    const facRes = await getCourseFaculty(client, idFacultadPadre, idFacultad);
+    if (!facRes) {
       await client.query('ROLLBACK');
       return res
         .status(400)
-        .json({ ok: false, message: 'La facultad seleccionada no existe o está inactiva.' });
+        .json({ ok: false, message: 'La dependencia no pertenece a la facultad seleccionada.' });
+    }
+    if (!(await validateCourseLaboratories(client, idFacultad, laboratoriosIds))) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Todos los laboratorios deben estar activos y pertenecer a la dependencia seleccionada.',
+      });
     }
 
     const insertCurso = await client.query(
@@ -651,7 +810,7 @@ router.post('/nuevo', requireCursosWrite, async function (req, res) {
         getLogActorName(req),
         getLogActorDocument(req),
         'crear curso capacitacion',
-        `${codigoCurso} | ${nombreCurso} | ${facRes.rows[0].nombre} | labs=${laboratoriosIds.length}`,
+        `${codigoCurso} | ${nombreCurso} | ${facRes.nombre_facultad} / ${facRes.nombre_dependencia} | labs=${laboratoriosIds.length}`,
       ]
     );
 
@@ -690,7 +849,8 @@ router.post('/editar', requireCursosWrite, async function (req, res) {
     return res.status(400).json({ ok: false, message: 'Validaciones fallidas.', errors });
   }
 
-  const { codigoCurso, idFacultad, nombreCurso, urlEdx, activo, laboratoriosIds } = data;
+  const { codigoCurso, idFacultad, idFacultadPadre, nombreCurso, urlEdx, activo, laboratoriosIds } =
+    data;
   if (!codigoCurso) {
     return res
       .status(400)
@@ -709,15 +869,20 @@ router.post('/editar', requireCursosWrite, async function (req, res) {
       return res.status(404).json({ ok: false, message: 'Curso original no encontrado.' });
     }
 
-    const facRes = await client.query(
-      'SELECT nombre FROM dependencia_facultad WHERE dependencia_facultad_id = $1 AND activo = TRUE',
-      [idFacultad]
-    );
-    if (facRes.rows.length === 0) {
+    const facRes = await getCourseFaculty(client, idFacultadPadre, idFacultad);
+    if (!facRes) {
       await client.query('ROLLBACK');
       return res
         .status(400)
-        .json({ ok: false, message: 'La facultad seleccionada no existe o está inactiva.' });
+        .json({ ok: false, message: 'La dependencia no pertenece a la facultad seleccionada.' });
+    }
+    if (!(await validateCourseLaboratories(client, idFacultad, laboratoriosIds))) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Todos los laboratorios deben estar activos y pertenecer a la dependencia seleccionada.',
+      });
     }
 
     if (codigoCurso !== codigoCursoOriginal) {

@@ -143,19 +143,33 @@ test('get-info-multa-docente reuses the person lookup after the user chooses reg
       },
     };
     const app = buildApp(loaded.route, session);
-    const searchResponse = await request(app).post('/').type('form').send({
+    const lookupResponse = await request(app).post('/').type('form').send({
       numero_documento_identificacion: '79520182',
     });
+    assert.equal(lookupResponse.status, 303);
+    const lookupLocation = new URL(lookupResponse.headers.location, 'http://localhost');
+    assert.equal(lookupLocation.pathname, '/milab/api/get-info-multa-docente/persona');
+    const lookupToken = lookupLocation.searchParams.get('lookup_token');
+    const searchResponse = await request(app).get('/persona').query({ lookup_token: lookupToken });
     const actionResponse = await request(app).post('/').type('form').send({
-      lookup_token: searchResponse.body.locals.lookupToken,
+      lookup_token: lookupToken,
     });
+    const registrationResponse = await request(app)
+      .get('/registrar')
+      .query({ lookup_token: lookupToken });
 
-    assert.equal(searchResponse.status, 200);
+    assert.equal(searchResponse.status, 200, JSON.stringify(searchResponse.body));
     assert.equal(searchResponse.body.view, 'home/sancion-person-actions');
     assert.equal(searchResponse.body.locals.person.documento, '79520182');
-    assert.equal(actionResponse.status, 200);
-    assert.equal(actionResponse.body.view, 'home/reg_multa_docente');
-    assert.equal(actionResponse.body.locals.con_documento, '79520182');
+    assert.equal(actionResponse.status, 303);
+    assert.equal(
+      actionResponse.headers.location,
+      `/milab/api/get-info-multa-docente/registrar?lookup_token=${lookupToken}`
+    );
+    assert.equal(registrationResponse.status, 200);
+    assert.equal(registrationResponse.body.view, 'home/reg_multa_docente');
+    assert.equal(registrationResponse.body.locals.lookupToken, lookupToken);
+    assert.equal(registrationResponse.body.locals.con_documento, '79520182');
     assert.equal(loaded.oatiRequestCount, 1);
     assert.equal(loaded.identityCallCount, 1);
   } finally {

@@ -282,7 +282,13 @@ const NOMBRE = 'ESTUDIANTE PRUEBA';
 function buildRegistrationStubs({
   records = [],
   docentes = [],
-  estadoNames = { A: 'ACTIVO', B: 'PRUEBA AC Y ACTIVO', E: 'EGRESADO', I: 'INACTIVO' },
+  estadoNames = {
+    A: 'ACTIVO',
+    B: 'PRUEBA AC Y ACTIVO',
+    E: 'EGRESADO',
+    I: 'INACTIVO',
+    U: 'NO ESTUDIANTE ACO04',
+  },
   milabTables = {},
   assignedRoles = [],
   assignedRolesCorreo = `no-email+${DOC}@placeholder.milab.local`,
@@ -482,6 +488,41 @@ test('registro en prueba academica crea perfil estudiante y concede acceso', asy
   );
 });
 
+test('registro permite NO ESTUDIANTE ACO04 (U) como perfil estudiante', async () => {
+  const response = await postIdentify(
+    buildRegistrationStubs({
+      records: [record('20240000001', 'U', '673')],
+    })
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.view, 'home/profile');
+  assert.equal(response.body.locals.tipo_usuario, 'estudiante');
+  assert.equal(response.body.locals.codigo, '20240000001');
+  assert.equal(response.body.locals.estado, 'NO ESTUDIANTE ACO04');
+});
+
+test('registro asigna el rol estudiante a NO ESTUDIANTE ACO04 (U)', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20240000001', 'U', '673')],
+    usuarioRow: {
+      id: 25,
+      documento: DOC,
+      correo: `no-email+${DOC}@placeholder.milab.local`,
+    },
+  });
+
+  const response = await postIdentify(stubs);
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/inicio');
+  assert.equal(roleWrites(stubs.executed).includes('estudiante'), true);
+  assert.equal(
+    stubs.executed.some(({ sql }) => sql.includes('INSERT INTO perfil_estudiante')),
+    true
+  );
+});
+
 for (const [state, label] of [
   ['E', 'EGRESADO'],
   ['I', 'INACTIVO'],
@@ -515,48 +556,85 @@ test('registro sin resultados informa ausencia de perfil sin inventar un estado'
   assert.equal(response.body.locals.registrationDenied, true);
 });
 
-for (const failedQuery of [
-  'FROM laboratorista',
-  'FROM coordinador',
-  'FROM monitor',
-  'JOIN usuario_rol ur',
+for (const [state, label] of [
+  ['A', 'activo'],
+  ['B', 'en prueba'],
 ]) {
-  test(`registro responde con error si PostgreSQL falla en ${failedQuery}`, async () => {
-    const stubs = buildRegistrationStubs({
-      records: [record('20240000001', 'B', '673')],
-    });
-    const originalQuery = stubs.options.poolQueryImpl;
-    stubs.options.poolQueryImpl = async (sql, params) => {
-      if (sql.includes(failedQuery)) {
-        const error = new Error('Database lookup failed');
-        error.code = '42703';
-        throw error;
-      }
-      return originalQuery(sql, params);
-    };
-    const loaded = loadRoute(stubs.options);
-    try {
-      const response = await request(
-        buildApp(loaded.route, { microsoftProfile: { correo: CORREO, nombre: NOMBRE } })
-      )
-        .post('/identify')
-        .type('form')
-        .send({ documento: DOC })
-        .timeout({ response: 1000, deadline: 2000 });
+  for (const failedQuery of [
+    'FROM laboratorista',
+    'FROM coordinador',
+    'FROM monitor',
+    'JOIN usuario_rol ur',
+  ]) {
+    test(`estudiante ${label} puede continuar si PostgreSQL falla en ${failedQuery}`, async () => {
+      const stubs = buildRegistrationStubs({
+        records: [record('20240000001', state, '673')],
+      });
+      const originalQuery = stubs.options.poolQueryImpl;
+      stubs.options.poolQueryImpl = async (sql, params) => {
+        if (sql.includes(failedQuery)) {
+          const error = new Error('Database lookup failed');
+          error.code = '42703';
+          throw error;
+        }
+        return originalQuery(sql, params);
+      };
+      const loaded = loadRoute(stubs.options);
+      try {
+        const response = await request(
+          buildApp(loaded.route, { microsoftProfile: { correo: CORREO, nombre: NOMBRE } })
+        )
+          .post('/identify')
+          .type('form')
+          .send({ documento: DOC })
+          .timeout({ response: 1000, deadline: 2000 });
 
-      assert.equal(response.status, 503);
-      assert.equal(response.body.view, 'home/message_error');
-      assert.match(response.body.locals.message, /No fue posible completar tu registro/);
-      assert.match(response.body.locals.message2, /PRUEBA AC Y ACTIVO \(B\)/);
-      assert.match(response.body.locals.message2, /No fue posible verificar tus roles en MILab/);
-      assert.equal(response.body.locals.registrationDenied, true);
-      assert.equal(JSON.stringify(response.body).includes('Database lookup failed'), false);
-      assert.equal(roleWrites(stubs.executed).length, 0);
-    } finally {
-      loaded.restore();
-    }
-  });
+        assert.equal(response.status, 200);
+        assert.equal(response.body.view, 'home/profile');
+        assert.equal(response.body.locals.tipo_usuario, 'estudiante');
+        assert.equal(response.body.locals.codigo, '20240000001');
+        assert.equal(response.body.locals.registrationDenied, undefined);
+        assert.equal(JSON.stringify(response.body).includes('Database lookup failed'), false);
+        assert.equal(roleWrites(stubs.executed).length, 0);
+      } finally {
+        loaded.restore();
+      }
+    });
+  }
 }
+
+test('egresado still gets a technical error when MILab roles cannot be verified', async () => {
+  const stubs = buildRegistrationStubs({
+    records: [record('20151234', 'E', '578')],
+  });
+  const originalQuery = stubs.options.poolQueryImpl;
+  stubs.options.poolQueryImpl = async (sql, params) => {
+    if (sql.includes('FROM laboratorista')) {
+      const error = new Error('Database lookup failed');
+      error.code = '42703';
+      throw error;
+    }
+    return originalQuery(sql, params);
+  };
+
+  const loaded = loadRoute(stubs.options);
+  try {
+    const response = await request(
+      buildApp(loaded.route, { microsoftProfile: { correo: CORREO, nombre: NOMBRE } })
+    )
+      .post('/identify')
+      .type('form')
+      .send({ documento: DOC })
+      .timeout({ response: 1000, deadline: 2000 });
+
+    assert.equal(response.status, 503);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message2, /No fue posible verificar tus roles en MILab/);
+    assert.equal(response.body.locals.registrationDenied, true);
+  } finally {
+    loaded.restore();
+  }
+});
 
 test('mensaje de registro muestra instrucciones y escapa los estados de OATI', () => {
   const fs = require('node:fs');

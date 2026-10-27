@@ -12,6 +12,7 @@ const {
 } = require('../../libs/certificate-email');
 const { ensurePerfilDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 // Variables de entorno
 require('dotenv').config();
@@ -167,6 +168,9 @@ router.post('/', requireTeacherCertificateGenerationAccess, function (req, res) 
         });
       }
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error(error);
       return res.render('home/message_error', {
         message: '¡Algo ha salido mal!',

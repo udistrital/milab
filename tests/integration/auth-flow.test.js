@@ -47,7 +47,7 @@ function buildPassportStub(user) {
   };
 }
 
-function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail }) {
+function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail, mountPath = '/' }) {
   const sessionHarness = createSessionHarness(sessionState);
   const stubs = [
     [indexPath, buildApiIndexStub()],
@@ -90,6 +90,7 @@ function loadMilabApp({ sessionState, microsoftUser, fetchUserByEmail }) {
     sessionHarness,
     ...buildApp({
       entryPath: appPath,
+      mountPath,
       sessionHarness,
       stubs,
       purgePaths: [appPath, indexPath, profilePath, loginPath, microsoftPath, logoutPath, homePath],
@@ -142,7 +143,25 @@ test('microsoft callback stores authenticated user in session and redirects home
   }
 });
 
-test('microsoft callback keeps pending profile identification flow for first-time users', async () => {
+test('mounted logout path destroys the session and redirects to MiLab home', async () => {
+  const loaded = loadMilabApp({
+    sessionState: { user: createUser() },
+    mountPath: '/milab',
+  });
+
+  try {
+    const response = await request(loaded.app).get('/milab/auth/logout');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/');
+    assert.equal(loaded.sessionHarness.state.user, undefined);
+    assert.match(response.headers['set-cookie'][0], /^connect\.sid=;/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('microsoft callback sends first-time users to identify their document', async () => {
   const loaded = loadMilabApp({
     sessionState: {},
     microsoftUser: {
@@ -158,16 +177,14 @@ test('microsoft callback keeps pending profile identification flow for first-tim
 
     assert.equal(callbackResponse.status, 302);
     assert.equal(callbackResponse.headers.location, '/milab/api/profile/identify');
-    assert.deepEqual(
-      loaded.sessionHarness.state.microsoftProfile,
-      createMicrosoftProfile({
-        nombre: 'Persona Microsoft',
-        correo: 'nueva@udistrital.edu.co',
-        microsoftId: 'ms-456',
-      })
-    );
+    assert.deepEqual(loaded.sessionHarness.state.microsoftProfile, {
+      correo: 'nueva@udistrital.edu.co',
+      nombre: 'Persona Microsoft',
+      microsoftId: 'ms-456',
+    });
 
     const identifyResponse = await request(loaded.app).get('/api/profile/identify');
+
     assert.equal(identifyResponse.status, 200);
     assert.equal(identifyResponse.body.view, 'home/profile_identify');
     assert.equal(identifyResponse.body.locals.correo, 'nueva@udistrital.edu.co');

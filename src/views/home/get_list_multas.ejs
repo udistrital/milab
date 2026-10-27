@@ -8,7 +8,10 @@
 
         <main class="container-fluid app-page-shell app-sanctions-report">
             <section class="app-page-header">
-                <h1 class="app-page-title">Listado de sanciones</h1>
+                <div class="sanction-page-title-row">
+                    <%- include('../partials/sanction-flow-help') %>
+                    <h1 class="app-page-title">Listado de sanciones</h1>
+                </div>
                 <p class="app-page-subtitle">Consulta el registro histórico de sanciones con foco en categoría, estado y responsables operativos.</p>
             </section>
         <% const successFeedback = locals.successFeedback || null; %>
@@ -225,7 +228,7 @@
         </section>
     </main>
 
-    <%- include('../partials/sanction-detail-modal'); %>
+    <%- include('../partials/sanction-detail-modal', { returnSource: 'listado', returnFilters: filtros }); %>
     <script src="/milab/public/js/sanction-detail-modal.js"></script>
 
     <script nonce="<%= cspNonce %>">

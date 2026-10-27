@@ -113,6 +113,7 @@ function buildApp(router, sessionState) {
   const app = express();
   app.use((req, res, next) => {
     req.session = sessionState;
+    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
     next();
   });
   app.use('/', router);
@@ -162,6 +163,35 @@ test('microsoft callback authenticates when email exists in usuario (admin-corre
     assert.deepEqual(fetchedEmails, ['estudiante@udistrital.edu.co']);
     assert.equal(sessionState.user?.correo, 'estudiante@udistrital.edu.co');
     assert.equal(sessionState.user?.tipo, 'estudiante');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('microsoft callback preserves first-time user context and redirects to document identification', async () => {
+  const sessionState = createSessionState();
+
+  const loaded = loadMicrosoftRoute({
+    passportUser: {
+      displayName: 'Persona Nueva',
+      emails: [{ value: 'nueva@udistrital.edu.co' }],
+      id: 'ms-404',
+    },
+    fetchUserByEmailImpl: async () => null,
+  });
+
+  try {
+    const app = buildApp(loaded.router, sessionState);
+    const response = await request(app).get('/microsoft/callback?code=fake&state=fake');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/api/profile/identify');
+    assert.deepEqual(sessionState.microsoftProfile, {
+      correo: 'nueva@udistrital.edu.co',
+      nombre: 'Persona Nueva',
+      microsoftId: 'ms-404',
+    });
+    assert.equal(sessionState.user, undefined);
   } finally {
     loaded.restore();
   }

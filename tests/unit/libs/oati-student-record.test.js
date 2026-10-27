@@ -95,36 +95,39 @@ test('collects unique numeric codes of the same person', () => {
   }
 });
 
-test('checks SGA debts for every code and fails if any lookup fails', async () => {
+test('uses the central SGA query and fails when the result is not conclusive', async () => {
   const { mod, restore } = loadModule(() => ({ rows: [] }));
   try {
     const calls = [];
     const debts = await mod.getActiveSgaDebtsForStudent(
       {
-        async getActiveDebts(student) {
+        async queryStudent(student) {
           calls.push(student);
-          return student.codigo === '20151234' ? [{ codigo: '20151234' }] : [];
+          return {
+            status: 'found',
+            debts: [{ codigo: '20151234' }],
+          };
         },
       },
       { codigos: ['20242583011', '20151234'], documento: '1001' }
     );
     assert.deepEqual(debts, [{ codigo: '20151234' }]);
-    assert.deepEqual(calls, [
-      { codigo: '20242583011', documento: '1001' },
-      { codigo: '20151234', documento: '1001' },
-    ]);
+    assert.deepEqual(calls, [{ codigos: ['20242583011', '20151234'], documento: '1001' }]);
 
     await assert.rejects(
       mod.getActiveSgaDebtsForStudent(
         {
-          async getActiveDebts(student) {
-            if (student.codigo === '20151234') throw new Error('SGA down');
-            return [];
+          async queryStudent(student) {
+            calls.push(student);
+            return {
+              status: 'partial',
+              debts: [],
+            };
           },
         },
         { codigos: ['20242583011', '20151234'], documento: '1001' }
       ),
-      /SGA down/
+      /confirmar completamente/
     );
   } finally {
     restore();

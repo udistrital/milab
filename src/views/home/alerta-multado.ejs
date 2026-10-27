@@ -78,9 +78,12 @@
             <table class="table table-bordered" style="width:100%">
               <thead>
                 <tr>
+                  <th>ID SGA</th>
                   <th>Estudiante</th>
                   <th>Código</th>
                   <th>Detalle reportado</th>
+                  <th>Estado SGA</th>
+                  <th>Laboratorio / dependencia</th>
                   <th>Fecha</th>
                   <th>Periodo</th>
                   <th>Valor reportado</th>
@@ -90,13 +93,24 @@
               <tbody>
                 <% sancionesSga.forEach(function(data){ %>
                   <tr>
+                    <td><%= data.id_sga || data.DEU_ID || '-' %></td>
                     <td><%= data.DEU_DEUDOR_NOMBRE || '-' %></td>
-                    <td><%= data.DEU_EST_COD || '-' %></td>
-                    <td><%= data.DEU_MATERIAL || '-' %></td>
-                    <td><%= data.DEU_FECHA || '-' %></td>
-                    <td><%= data.DEU_ANO || '-' %> / <%= data.DEU_PER || '-' %></td>
-                    <td><%= data.DEU_MULTA || '-' %></td>
-                    <td><%= data.DEU_FECHA_PAGO || 'Pendiente' %></td>
+                    <td><%= data.codigo_estudiante || data.DEU_EST_COD || '-' %></td>
+                    <td><%= data.categoria || data.DEU_MATERIAL || '-' %></td>
+                    <td><%= data.estado || data.DEU_ESTADO || '-' %></td>
+                    <td>
+                      <%= data.nombre_concepto || data.CPTO_NOMBRE || data.DEU_CPTO_NOMBRE || (data.codigo_concepto || data.DEU_CPTO_COD ? `Código SGA ${data.codigo_concepto || data.DEU_CPTO_COD}` : 'No reportado por SGA') %>
+                      <% if (data.tipo_concepto || data.CPTO_TIPO || data.DEU_CPTO_TIPO) { %>
+                        <small class="d-block text-muted">Tipo: <%= data.tipo_concepto || data.CPTO_TIPO || data.DEU_CPTO_TIPO %></small>
+                      <% } %>
+                      <% if (data.codigo_concepto || data.DEU_CPTO_COD) { %>
+                        <small class="d-block text-muted">Código SGA: <%= data.codigo_concepto || data.DEU_CPTO_COD %></small>
+                      <% } %>
+                    </td>
+                    <td><%= data.fecha || data.DEU_FECHA || '-' %></td>
+                    <td><%= data.anio || data.DEU_ANO || '-' %> / <%= data.periodo || data.DEU_PER || '-' %></td>
+                    <td><%= data.valor ?? data.DEU_MULTA ?? '-' %></td>
+                    <td><%= data.fecha_pago || data.DEU_FECHA_PAGO || 'Pendiente' %></td>
                   </tr>
                 <% }); %>
               </tbody>
@@ -112,7 +126,7 @@
     <h4>Información de la sanción</h4>
   
     <p>
-      Para poder saldar su estado, acérquese a la Unidad Académica de Laboratorio (UAL) y Facultad donde fue Sancionado y solucione su situación.
+      Para las sanciones de MILab, acérquese a la UAL y Facultad indicadas. Para las multas de SGA, consulte el laboratorio o dependencia que aparece en el reporte y siga el trámite institucional correspondiente.
     </p>
     <button class="btn btn-primary" onclick="goBack()">Volver Atrás</button>
   </div>

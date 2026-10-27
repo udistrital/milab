@@ -3,7 +3,7 @@
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Esquema de base de datos</h1>
-    <p class="app-page-subtitle">Consulta de solo lectura de las tablas y vistas disponibles, con sus columnas, restricciones e índices.</p>
+    <p class="app-page-subtitle">Consulta de tablas y vistas, su estructura y los permisos efectivos del usuario de la aplicación.</p>
   </section>
 
   <section class="row justify-content-center">
@@ -13,10 +13,12 @@
           <dl class="row mb-0 small">
             <dt class="col-sm-3">Base de datos</dt>
             <dd class="col-sm-9"><%= baseDatos.base_datos %></dd>
-            <dt class="col-sm-3">Usuario de la aplicación</dt>
-            <dd class="col-sm-9"><%= baseDatos.usuario_app %></dd>
-            <dt class="col-sm-3">search_path</dt>
-            <dd class="col-sm-9"><code><%= baseDatos.search_path %></code></dd>
+            <dt class="col-sm-3">Usuario de conexión a la BD</dt>
+            <dd class="col-sm-9"><code><%= baseDatos.usuario_conexion %></code></dd>
+            <dt class="col-sm-3">Rol efectivo en la BD</dt>
+            <dd class="col-sm-9"><code><%= baseDatos.usuario_efectivo %></code></dd>
+            <dt class="col-sm-3">Esquema consultado</dt>
+            <dd class="col-sm-9"><code>milab</code></dd>
           </dl>
         </div>
       </div>
@@ -36,19 +38,78 @@
               <dd class="col-sm-9"><%= detalle.tipo %></dd>
               <dt class="col-sm-3">Propietario</dt>
               <dd class="col-sm-9"><%= detalle.propietario %></dd>
-              <dt class="col-sm-3">Lectura para el usuario de la aplicación</dt>
-              <dd class="col-sm-9">
-                <% if (detalle.lectura_permitida) { %>
-                  <span class="badge text-bg-success">Sí</span>
-                <% } else { %>
-                  <span class="badge text-bg-danger">No (sin privilegio SELECT)</span>
-                <% } %>
-              </dd>
               <% if (detalle.comentario) { %>
                 <dt class="col-sm-3">Comentario</dt>
                 <dd class="col-sm-9"><%= detalle.comentario %></dd>
               <% } %>
             </dl>
+          </div>
+        </div>
+
+        <div class="card shadow-sm border-0 mb-4">
+          <div class="card-body">
+            <h3 class="h6 mb-2">Permisos efectivos del usuario de la aplicación</h3>
+            <p class="small text-muted">Estos permisos son los que PostgreSQL reconoce para la conexión actual, incluidos los heredados por roles.</p>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Objeto</th>
+                    <th>Permiso</th>
+                    <th class="text-center">Concedido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% const permisosObjeto = [
+                    ['Esquema', 'USAGE', detalle.permisos.esquema.uso],
+                    ['Esquema', 'CREATE', detalle.permisos.esquema.crear],
+                    ['Tabla', 'SELECT', detalle.permisos.tabla.lectura],
+                    ['Tabla', 'INSERT', detalle.permisos.tabla.insercion],
+                    ['Tabla', 'UPDATE', detalle.permisos.tabla.actualizacion],
+                    ['Tabla', 'DELETE', detalle.permisos.tabla.eliminacion],
+                    ['Tabla', 'TRUNCATE', detalle.permisos.tabla.vaciado],
+                    ['Tabla', 'REFERENCES', detalle.permisos.tabla.referencias],
+                    ['Tabla', 'TRIGGER', detalle.permisos.tabla.disparadores],
+                  ]; %>
+                  <% permisosObjeto.forEach(function(permiso) { %>
+                    <tr>
+                      <td><%= permiso[0] %></td>
+                      <td><code><%= permiso[1] %></code></td>
+                      <td class="text-center">
+                        <% if (permiso[2]) { %>
+                          <span class="badge text-bg-success">Sí</span>
+                        <% } else { %>
+                          <span class="badge text-bg-danger">No</span>
+                        <% } %>
+                      </td>
+                    </tr>
+                  <% }); %>
+                  <% if (detalle.permisos.secuencia) { %>
+                    <% [
+                      ['USAGE', detalle.permisos.secuencia.uso_permitido],
+                      ['SELECT', detalle.permisos.secuencia.lectura_permitida],
+                      ['UPDATE', detalle.permisos.secuencia.actualizacion_permitida],
+                    ].forEach(function(permiso) { %>
+                      <tr>
+                        <td>Secuencia <code><%= detalle.permisos.secuencia.nombre %></code></td>
+                        <td><code><%= permiso[0] %></code></td>
+                        <td class="text-center">
+                          <% if (permiso[1]) { %>
+                            <span class="badge text-bg-success">Sí</span>
+                          <% } else { %>
+                            <span class="badge text-bg-danger">No</span>
+                          <% } %>
+                        </td>
+                      </tr>
+                    <% }); %>
+                  <% } else { %>
+                    <tr>
+                      <td colspan="3" class="text-muted">No se encontró una secuencia asociada a la columna id.</td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -146,14 +207,14 @@
           <h2 class="h5 mb-3">Tablas y vistas</h2>
           <form method="GET" action="/milab/api/admin/esquema-bd" class="row g-2 mb-3">
             <div class="col-md-9">
-              <label class="visually-hidden" for="filtroEsquema">Filtrar por nombre o esquema</label>
+              <label class="visually-hidden" for="filtroEsquema">Filtrar tablas y vistas de milab por nombre</label>
               <input
                 id="filtroEsquema"
                 class="form-control"
                 type="search"
                 name="q"
                 maxlength="100"
-                placeholder="Filtrar por nombre o esquema"
+                placeholder="Filtrar tablas y vistas de milab por nombre"
                 value="<%= filtro %>"
               />
             </div>

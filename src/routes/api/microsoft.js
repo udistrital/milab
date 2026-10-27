@@ -7,6 +7,7 @@ const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity
 const { startSessionLifetime } = require('../../libs/session-policy');
 
 const router = Router();
+const MICROSOFT_OATI_LOOKUP_TIMEOUT_MS = 4000;
 
 function extractMicrosoftEmail(profile) {
   return (
@@ -40,7 +41,12 @@ function isActiveStudentRecord(record) {
 
 async function lookupTeacherByDocumento(documento) {
   try {
-    const data = await requestOati(getAcademicServicePath(`consultar_estado_docente/${documento}`));
+    const data = await requestOati(
+      getAcademicServicePath(`consultar_estado_docente/${documento}`),
+      {
+        signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS),
+      }
+    );
 
     const rawDocentes = data?.docentesCollection?.docente;
     let docentes = [];
@@ -60,7 +66,8 @@ async function lookupTeacherByDocumento(documento) {
 async function lookupStudentByDocumento(documento) {
   try {
     const data = await requestOati(
-      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`)
+      getAcademicServicePath(`datos_basicos_activos_cedula/${documento}`),
+      { signal: AbortSignal.timeout(MICROSOFT_OATI_LOOKUP_TIMEOUT_MS) }
     );
 
     const collection = data?.datosEstudianteCollection?.datosBasicosEstudiante || [];
@@ -278,6 +285,7 @@ router.get(
           req.session.user = buildSessionUser(enriched || usuario);
           startSessionLifetime(req.session);
           req.session.microsoftProfile = null;
+          req.session.showOatiLoginWarning = true;
         }
         return res.redirect('/milab/inicio');
       }
@@ -285,9 +293,9 @@ router.get(
       await regenerateSession(req);
       if (req.session) {
         req.session.microsoftProfile = {
-          nombre: req.user?.displayName || req.user?._json?.displayName || '',
           correo,
-          microsoftId: req.user?.id || req.user?._json?.oid || '',
+          nombre: req.user?.displayName || req.user?._json?.displayName || '',
+          microsoftId: req.user?.id || req.user?._json?.id || '',
         };
       }
 

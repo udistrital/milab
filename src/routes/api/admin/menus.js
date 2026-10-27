@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../../../libs/db');
+const { normalizeLogDocument } = require('../../../libs/account-email');
 const {
   listPrestamosFacultyAccess,
   updatePrestamosFacultyAccess,
@@ -40,7 +41,9 @@ async function loadMenuData() {
   ).rows;
 
   const permissions = (
-    await pool.query('SELECT rol_id AS role_id, menu_item_id, can_view, can_use FROM rol_permiso')
+    await pool.query(
+      'SELECT rol_id AS role_id, menu_item_id, can_view, can_use FROM rol_permiso WHERE activo = TRUE'
+    )
   ).rows;
 
   return { roles, menuItems, permissions };
@@ -254,38 +257,180 @@ router.post('/update', requireAdmin, async (req, res) => {
   }
 });
 
+router.post('/delete', requireAdmin, async (req, res) => {
+  const menuItemId = Number(req.body?.menu_item_id);
+
+  if (!Number.isInteger(menuItemId) || menuItemId <= 0) {
+    return renderAdminMenusPage(res, {
+      error: 'No se pudo identificar el ítem de menú a eliminar.',
+    });
+  }
+
+  let client;
+  let deletedItem;
+  let childCount = 0;
+  let errorMessage = null;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const itemResult = await client.query(
+      `
+        SELECT id, section, label, route
+        FROM menu_item
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [menuItemId]
+    );
+    deletedItem = itemResult.rows[0] || null;
+
+    if (!deletedItem) {
+      await client.query('ROLLBACK');
+      errorMessage = 'El ítem de menú que intentas eliminar ya no existe.';
+    } else {
+      const childrenResult = await client.query(
+        'SELECT COUNT(*)::int AS total FROM menu_item WHERE parent_id = $1',
+        [menuItemId]
+      );
+      childCount = Number(childrenResult.rows[0]?.total || 0);
+
+      await client.query('DELETE FROM menu_item WHERE id = $1', [menuItemId]);
+
+      const user = req.session?.user || {};
+      const actor = sanitizeText(user.tipo) || 'admin';
+      const document = normalizeLogDocument(user.documento_real || user.documento || '');
+      const person = `${deletedItem.section}: ${deletedItem.label}${deletedItem.route ? ` (${deletedItem.route})` : ''}`;
+      await client.query(
+        `
+          INSERT INTO log (nombre, documento, accion, persona)
+          VALUES ($1, $2, $3, $4)
+        `,
+        [actor, document || null, 'Eliminar menu', person]
+      );
+
+      await client.query('COMMIT');
+    }
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo eliminacion de menu:', rollbackError);
+      }
+    }
+    console.error('Error eliminando menu:', error);
+    errorMessage = 'No fue posible eliminar el ítem de menú.';
+  } finally {
+    if (client) client.release();
+  }
+
+  if (errorMessage) {
+    return renderAdminMenusPage(res, { error: errorMessage });
+  }
+
+  const childMessage = childCount ? ` y ${childCount} submenú(s) asociado(s)` : '';
+  return renderAdminMenusPage(res, {
+    success: `Ítem de menú eliminado${childMessage}. También se eliminaron sus permisos asociados.`,
+  });
+});
+
 router.post('/permissions', requireAdmin, async (req, res) => {
   const { role_id: roleIdRaw, menu_item_id: menuItemIdRaw, enabled } = req.body;
   const roleId = Number(roleIdRaw);
   const menuItemId = Number(menuItemIdRaw);
   const isEnabled = enabled === true || enabled === 'true' || enabled === 'on' || enabled === 1;
 
-  if (!roleId || !menuItemId) {
+  if (
+    !Number.isInteger(roleId) ||
+    roleId <= 0 ||
+    !Number.isInteger(menuItemId) ||
+    menuItemId <= 0
+  ) {
     return res.status(400).json({ ok: false, message: 'Parametros invalidos.' });
   }
 
+  let client;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const itemResult = await client.query(
+      `
+        SELECT r.nombre AS role_name, mi.label, mi.route
+        FROM rol r
+        CROSS JOIN menu_item mi
+        WHERE r.id = $1
+          AND mi.id = $2
+      `,
+      [roleId, menuItemId]
+    );
+    const item = itemResult.rows[0];
+    if (!item) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'No existe el rol o el ítem de menú.' });
+    }
+
+    let changed = true;
     if (isEnabled) {
-      await pool.query(
+      await client.query(
         `
           INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use)
           VALUES ($1, $2, TRUE, TRUE)
           ON CONFLICT (rol_id, menu_item_id) DO UPDATE
-          SET can_view = TRUE, can_use = TRUE
+          SET can_view = TRUE,
+              can_use = TRUE,
+              activo = TRUE,
+              fecha_modificacion = CURRENT_TIMESTAMP
         `,
         [roleId, menuItemId]
       );
     } else {
-      await pool.query('DELETE FROM rol_permiso WHERE rol_id = $1 AND menu_item_id = $2', [
-        roleId,
-        menuItemId,
-      ]);
+      const result = await client.query(
+        `
+          UPDATE rol_permiso
+          SET activo = FALSE,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE rol_id = $1
+            AND menu_item_id = $2
+            AND activo = TRUE
+        `,
+        [roleId, menuItemId]
+      );
+      changed = result.rowCount > 0;
     }
 
+    if (changed) {
+      const user = req.session?.user || {};
+      const actor = String(user.tipo || 'admin').trim() || 'admin';
+      const document = normalizeLogDocument(user.documento_real || user.documento || '');
+      const action = isEnabled ? 'Habilitar permiso de menu' : 'Deshabilitar permiso de menu';
+      const person = `${item.role_name} - ${item.label}${item.route ? ` (${item.route})` : ''}`;
+
+      await client.query(
+        `
+          INSERT INTO log (nombre, documento, accion, persona)
+          VALUES ($1, $2, $3, $4)
+        `,
+        [actor, document || null, action, person]
+      );
+    }
+
+    await client.query('COMMIT');
     return res.json({ ok: true });
   } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo permisos de menú:', rollbackError);
+      }
+    }
     console.error('Error actualizando permisos:', error);
     return res.status(500).json({ ok: false, message: 'No fue posible actualizar permisos.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -311,14 +456,17 @@ router.post('/prestamos-access', requireAdmin, async (req, res) => {
         FROM dependencia_facultad
         WHERE dependencia_facultad_id = $1
           AND activo = TRUE
-        LIMIT 1
-      `,
+            AND padre_id IS NULL
+          LIMIT 1
+        `,
       [facultadId]
     );
 
     const facultyName = facultyResult.rows[0]?.nombre;
     if (!facultyName) {
-      return res.status(404).json({ ok: false, message: 'La facultad no existe.' });
+      return res
+        .status(404)
+        .json({ ok: false, message: 'La facultad no existe o no es una facultad raíz.' });
     }
 
     await updatePrestamosFacultyAccess(

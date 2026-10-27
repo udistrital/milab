@@ -94,8 +94,10 @@ function buildFallbackAdminErrorDetail(req, payload = {}, status = 500) {
 function enrichErrorPayloadForAdmin(req, payload = {}, explicitError = null) {
   const safePayload = payload && typeof payload === 'object' ? { ...payload } : {};
   const statusCode = Number.isInteger(safePayload.status) ? safePayload.status : 500;
+  const canSeeAdminErrorDetail =
+    isAdminUser(req?.session?.user) || isAdminUser(req?.session?.impersonationAdminUser);
 
-  if (safePayload.adminErrorDetail || !req || !isAdminUser(req.session?.user)) {
+  if (safePayload.adminErrorDetail || !req || !canSeeAdminErrorDetail) {
     delete safePayload.error;
     return safePayload;
   }
@@ -118,6 +120,64 @@ function wantsJson(req) {
   return acceptedType === 'json';
 }
 
+function respondOatiUnavailable(req, res) {
+  const payload = {
+    ok: false,
+    code: 'OATI_UNAVAILABLE',
+    message: 'Servicios académicos no disponibles',
+    message2: 'No hay servicios OATI disponibles en este momento. Inténtalo más tarde.',
+  };
+
+  res.setHeader('X-Oati-Unavailable', '1');
+
+  if (wantsJson(req)) {
+    return res.status(503).json(payload);
+  }
+
+  return renderApplicationError(
+    res,
+    {
+      status: 503,
+      message: payload.message,
+      message2: payload.message2,
+      limit: null,
+    },
+    req
+  );
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Respaldo sin plantillas: se usa si la vista de error también falla al renderizar.
+function sendFallbackErrorPage(res, statusCode, requestId, adminErrorDetail = null) {
+  const defaultUserError = buildDefaultUserError();
+  const idLine = requestId
+    ? `<p>Código de referencia: <code>${escapeHtml(requestId)}</code></p>`
+    : '';
+  const detailSection =
+    typeof adminErrorDetail === 'string' && adminErrorDetail
+      ? `<details><summary>Detalle técnico (solo visible para administradores)</summary>` +
+        `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(adminErrorDetail)}</pre></details>`
+      : '';
+  res.status(statusCode);
+  if (res.headersSent) return undefined;
+  return res
+    .type('html')
+    .send(
+      `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>MILab</title></head>` +
+        `<body><main style="font-family:sans-serif;max-width:640px;margin:4rem auto;padding:1rem">` +
+        `<h1>${escapeHtml(defaultUserError.message)}</h1>` +
+        `<p>${escapeHtml(defaultUserError.message2)}</p>${idLine}${detailSection}</main></body></html>`
+    );
+}
+
 function renderApplicationError(res, overrides = {}, req = null, error = null) {
   const defaultUserError = buildDefaultUserError();
   const payload = {
@@ -126,14 +186,29 @@ function renderApplicationError(res, overrides = {}, req = null, error = null) {
     limit: null,
     ...overrides,
   };
-
   const errorToRender = error || payload.error || null;
-
   const statusCode = Number.isInteger(payload.status) ? payload.status : 500;
   const normalizedPayload = enrichErrorPayloadForAdmin(req, payload, errorToRender);
   delete normalizedPayload.status;
+  const requestId = req?.requestId || null;
 
-  return res.status(statusCode).render('home/message_error', normalizedPayload);
+  if (res.headersSent) {
+    return undefined;
+  }
+
+  return res
+    .status(statusCode)
+    .render('home/message_error', normalizedPayload, (renderError, html) => {
+      if (!renderError) {
+        return res.send(html);
+      }
+      const log = req?.log || console;
+      log.error(
+        { err: renderError, status: statusCode, path: req?.originalUrl },
+        'No fue posible renderizar la página de error; se envía respaldo'
+      );
+      return sendFallbackErrorPage(res, statusCode, requestId, normalizedPayload.adminErrorDetail);
+    });
 }
 
 function renderModuleError(req, res, overrides = {}, error = null) {
@@ -163,6 +238,7 @@ function createApplicationErrorHandler(logger = console) {
         status,
         method: req.method,
         path: req.originalUrl,
+        requestId: req.requestId,
       },
       'Unhandled request error'
     );
@@ -171,16 +247,29 @@ function createApplicationErrorHandler(logger = console) {
       return next(error);
     }
 
-    if (wantsJson(req)) {
-      const defaultUserError = buildDefaultUserError();
-      return res.status(status).json({
-        ok: false,
-        message: defaultUserError.message,
-        message2: defaultUserError.message2,
-      });
-    }
+    try {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
 
-    return renderApplicationError(res, { status }, req, error);
+      if (wantsJson(req)) {
+        const defaultUserError = buildDefaultUserError();
+        return res.status(status).json({
+          ok: false,
+          message: defaultUserError.message,
+          message2: defaultUserError.message2,
+        });
+      }
+
+      return renderApplicationError(res, { status }, req, error);
+    } catch (handlerError) {
+      logger.error(
+        { err: handlerError, status, path: req.originalUrl },
+        'El manejador de errores falló; se envía respaldo'
+      );
+      const fallbackPayload = enrichErrorPayloadForAdmin(req, { status }, error);
+      return sendFallbackErrorPage(res, status, req.requestId, fallbackPayload.adminErrorDetail);
+    }
   };
 }
 
@@ -188,6 +277,7 @@ module.exports = {
   createApplicationErrorHandler,
   enrichErrorPayloadForAdmin,
   normalizeErrorStatus,
+  respondOatiUnavailable,
   renderApplicationError,
   renderModuleError,
   wantsJson,

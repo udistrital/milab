@@ -3,7 +3,11 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
-const { SgaDebtService } = require('../../../src/libs/oati-debts');
+const {
+  SgaDebtService,
+  getSgaConceptName,
+  isLaboratoryConceptName,
+} = require('../../../src/libs/oati-debts');
 
 const debtService = new SgaDebtService();
 
@@ -50,7 +54,6 @@ function loadRoute({
 } = {}) {
   const originals = new Map();
   let sgaRequest;
-  const sgaRequests = [];
   const stubs = [
     [
       dbPath,
@@ -81,14 +84,44 @@ function loadRoute({
       {
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
-          getActiveDebts: async (student) => {
+          queryStudent: async (student) => {
             sgaRequest = student;
-            sgaRequests.push(student);
-            if (sgaDebtsImpl) {
-              const debts = await sgaDebtsImpl();
-              return debts.filter((debt) => debtService.isBlockingDebt(debt));
+            const codes = [
+              ...new Set([student.codigo, ...(student.codigos || [])].filter(Boolean)),
+            ];
+            try {
+              const debtsByCode = await Promise.all(
+                codes.map((codigo) => (sgaDebtsImpl ? sgaDebtsImpl(codigo) : []))
+              );
+              const debts = debtsByCode
+                .flat()
+                .filter(
+                  (debt) =>
+                    debtService.isBlockingDebt(debt) &&
+                    isLaboratoryConceptName(getSgaConceptName(debt))
+                );
+              return {
+                status: debts.length ? 'found' : 'clear',
+                debts,
+                codes,
+                document: student.documento || null,
+                nonLaboratoryCount: 0,
+                unclassifiedCount: 0,
+                message: '',
+                errors: [],
+              };
+            } catch {
+              return {
+                status: 'error',
+                debts: [],
+                codes,
+                document: student.documento || null,
+                nonLaboratoryCount: 0,
+                unclassifiedCount: 0,
+                message: 'No fue posible consultar SGA; el estado SGA queda sin confirmar.',
+                errors: [],
+              };
             }
-            return [];
           },
         },
       },
@@ -124,7 +157,6 @@ function loadRoute({
   return {
     route: require(routePath),
     getSgaRequest: () => sgaRequest,
-    getSgaRequests: () => sgaRequests,
     restore() {
       for (const [modulePath, original] of originals.entries()) {
         if (original) {
@@ -156,6 +188,7 @@ test('verificar_estudiante parses form submissions and reaches the success flow'
     assert.equal(response.body.locals.nombre, 'Estudiante Prueba');
     assert.deepEqual(loaded.getSgaRequest(), {
       codigo: '2024100001',
+      codigos: ['2024100001'],
       documento: '79520182',
     });
   } finally {
@@ -170,6 +203,8 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
     DEU_DEUDOR_NOMBRE: 'Estudiante Prueba',
     DEU_ESTADO: '2',
     DEU_MATERIAL: 'Equipo pendiente',
+    DEU_CPTO_COD: '4',
+    DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
   };
   const loaded = loadRoute({
     multaRows: [localFine],
@@ -197,7 +232,6 @@ test('verificar_estudiante blocks paz y salvo and shows local then active SGA sa
 });
 
 test('verificar_estudiante resolves the submitted document to its OATI code before querying SGA', async () => {
-  let requestedStudent;
   const loaded = loadRoute({
     studentRecord: {
       codigo: '20161104039',
@@ -212,16 +246,12 @@ test('verificar_estudiante resolves the submitted document to its OATI code befo
           DEU_EST_COD: '20161104039',
           DEU_ESTADO: '2',
           DEU_DEUDOR_NOMBRE: 'Daniela Truque Gomez',
+          DEU_CPTO_COD: '4',
+          DEU_CPTO_NOMBRE: 'LABORATORIO DE FISICA',
         },
       ];
     },
   });
-  const debtsModule = require.cache[oatiDebtsPath];
-  const originalGetActiveDebts = debtsModule.exports.sgaDebtService.getActiveDebts;
-  debtsModule.exports.sgaDebtService.getActiveDebts = async (student) => {
-    requestedStudent = student;
-    return originalGetActiveDebts(student);
-  };
 
   try {
     const app = buildApp(loaded.route);
@@ -233,12 +263,12 @@ test('verificar_estudiante resolves the submitted document to its OATI code befo
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.equal(response.body.locals.sgaMultaInfo[0].DEU_EST_COD, '20161104039');
-    assert.deepEqual(requestedStudent, {
+    assert.deepEqual(loaded.getSgaRequest(), {
       codigo: '20161104039',
+      codigos: ['20161104039'],
       documento: '1089907605',
     });
   } finally {
-    debtsModule.exports.sgaDebtService.getActiveDebts = originalGetActiveDebts;
     loaded.restore();
     delete require.cache[routePath];
   }
@@ -316,10 +346,7 @@ test('verificar_estudiante uses the OATI record associated in MILab and checks S
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/get-info2');
     assert.equal(response.body.locals.codigo, '20242583011');
-    assert.deepEqual(
-      loaded.getSgaRequests().map((item) => item.codigo),
-      ['20242583011', '20151234']
-    );
+    assert.deepEqual(loaded.getSgaRequest().codigos, ['20242583011', '20151234']);
   } finally {
     loaded.restore();
   }
@@ -337,13 +364,18 @@ test('verificar_estudiante blocks when SGA has a debt under another code of the 
   const loaded = loadRoute({
     studentRecords: [anterior, activo],
     usuarioCodigoRows: [{ codigo: '20242583011' }],
-    sgaDebtsImpl: async () => [],
+    sgaDebtsImpl: async (codigo) =>
+      codigo === '20151234'
+        ? [
+            {
+              DEU_EST_COD: '20151234',
+              DEU_ESTADO: '1',
+              DEU_CPTO_COD: '4',
+              DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
+            },
+          ]
+        : [],
   });
-  const originalGetActiveDebts = require.cache[oatiDebtsPath].exports.sgaDebtService.getActiveDebts;
-  require.cache[oatiDebtsPath].exports.sgaDebtService.getActiveDebts = async (student) => {
-    await originalGetActiveDebts(student);
-    return student.codigo === '20151234' ? [{ codigo: '20151234', estado: '1' }] : [];
-  };
 
   try {
     const app = buildApp(loaded.route);

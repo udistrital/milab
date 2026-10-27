@@ -6,9 +6,12 @@
   <% } else { %>
 
 <main class="container app-page-shell app-bulk-query-page">
-    <section class="app-page-header">
-        <h1 class="app-page-title">Consulta masiva de estudiantes</h1>
-        <p class="app-page-subtitle">Carga hasta 20 códigos por lote para revisar sanciones activas, observaciones y UAL asociada.</p>
+    <section class="app-page-header app-page-header--inline">
+        <h1 class="app-page-title">
+            <span class="app-page-title-icon" aria-hidden="true"><i class="bi bi-people"></i></span>
+            <span>Consulta masiva de estudiantes</span>
+        </h1>
+        <p class="app-page-subtitle">Consulta hasta 50 estudiantes. Se muestran las sanciones de MILab y las multas activas de SGA asociadas a conceptos del catálogo de laboratorios.</p>
     </section>
 
 <%
@@ -24,15 +27,57 @@
 
         return `${texto.slice(0, limite).trim()}...`;
     }
+
+    function estadoSga(status) {
+        const labels = {
+            found: 'Multas de laboratorio',
+            clear: 'Consulta completa · sin multas de laboratorio',
+            partial: 'Consulta parcial',
+            error: 'Error de consulta',
+            unresolved: 'Identidad no verificada',
+            not_configured: 'SGA no configurado',
+            pending: 'Pendiente',
+        };
+        return labels[status] || 'Sin verificar';
+    }
+
+    const limiteCodigos = Number(locals.maxBulkQueryCodes) || 50;
+    const maxInputLength = limiteCodigos * 51 + limiteCodigos - 1;
+    const resultados = Array.isArray(sampleData1) ? sampleData1 : [];
+    const estudiantesConSanciones = resultados.filter((item) =>
+        (Array.isArray(item.multas) ? item.multas : []).some(
+            (multa) => multa && typeof multa === 'object'
+        )
+    ).length;
+    const estudiantesNoConcluyentes = resultados.filter((item) =>
+        ['partial', 'error', 'unresolved'].includes(item.sgaStatus)
+    ).length;
+    const totalSancionesMilab = resultados.reduce(
+        (total, item) =>
+            total +
+            (Array.isArray(item.multas)
+                ? item.multas.filter((multa) => multa?.origen === 'MILab').length
+                : 0),
+        0
+    );
+    const totalMultasSga = resultados.reduce(
+        (total, item) =>
+            total +
+            (Array.isArray(item.multas)
+                ? item.multas.filter((multa) => multa?.origen === 'SGA').length
+                : 0),
+        0
+    );
 %>
 
 <section class="card app-form-panel app-bulk-query-panel justify-content-center mx-auto">
     <div class="card-body text-light mt-2 mx-auto">
-        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-oati-loading="true" data-oati-loading-message="Consultando los registros en la OATI...">
+        <form action="/milab/api/get_list_estudiantes/consulta_masiva" method="post" class="app-bulk-query-form app-form-grid" onsubmit="return verificarEntrada()" data-max-codes="<%= limiteCodigos %>">
             <%- include('../partials/csrf_field') %>
-            <label class="lead" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo 20 estudiantes)</label>
-            <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" maxlength="1038" required>
-            <button type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
+            <label class="lead" for="consulta_masiva">Ingrese los códigos o documentos de los estudiantes separados por coma (máximo <%= limiteCodigos %> estudiantes)</label>
+            <input type="text" class="form-control" id="consulta_masiva" name="consulta_masiva" maxlength="<%= maxInputLength %>" required>
+            <div id="consultaMasivaCount" class="form-text text-muted" aria-live="polite">0 / <%= limiteCodigos %> códigos</div>
+            <button id="consultaMasivaSubmit" type="submit" class="btn btn-perso" data-read-only-lock="true">Consultar</button>
         </form>
         <div id="mensajeError" class="mx-auto col-md-10 mt-3 alert alert-danger d-none" role="alert"></div>
         <% if (error) {%>
@@ -46,38 +91,84 @@
         </div>
         <% } %>
     </div>
+    <div id="consultaMasivaReport">
+    <% if (resultados.length > 0) { %>
+    <div class="row g-3 px-3 pt-2" aria-label="Resumen de consulta masiva">
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Estudiantes consultados</div>
+                <div class="h3 mb-0"><%= resultados.length %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Estudiantes con sanciones</div>
+                <div class="h3 mb-0"><%= estudiantesConSanciones %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Sanciones MILab / multas SGA</div>
+                <div class="h3 mb-0"><%= totalSancionesMilab %> / <%= totalMultasSga %></div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="app-panel h-100 p-3">
+                <div class="small text-muted">Consultas SGA no concluyentes</div>
+                <div class="h3 mb-0"><%= estudiantesNoConcluyentes %></div>
+            </div>
+        </div>
+    </div>
+    <% } %>
     <div class="card-header app-bulk-query-results-heading mt-3 text-center">
-        <h5>Resultados del lote</h5>
+        <h5>Resultados detallados del lote</h5>
     </div>
     <div class="card-body app-bulk-query-results pt-0">
             <div class="app-bulk-query-grid-wrap">
                 <table id="myTable" class="table table-bordered table-striped js-data-grid app-grid-contained" data-grid-page-length="25" data-grid-scroll-x="true">
                     <thead class="text-light">
                         <tr>
+                            <th>Estudiante</th>
                             <th>Documento</th>
                             <th>Código</th>
+                            <th>Programa</th>
+                            <th>Estado de consulta SGA</th>
                             <th>Origen</th>
                             <th>Motivo de sanción</th>
                             <th>Estado de la sanción</th>
                             <th>Fecha de la sanción</th>
                             <th>Observación</th>
                             <th>Nombre del laboratorista</th>
-                            <th>UAL</th>
+                            <th>Laboratorio / dependencia</th>
                             <th data-grid-filter="false" data-grid-orderable="false">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <% if(sampleData1.length > 0) {
-                            sampleData1.forEach(function(data) { %>
+                        <% if(resultados.length > 0) {
+                            resultados.forEach(function(data) { %>
                                 <% data.multas.forEach(function(multa) { %>
                                 <tr>
-                                    
+                                        <td class="text-light"><%= data.nombre || '-' %></td>
                                         <td class="text-light"><%= data.documento || '-' %></td>
                                         <td class="text-light"><%= data.codigo || data.identificador || '-' %></td>
+                                        <td class="text-light">
+                                            <%= data.programa || 'No disponible' %>
+                                            <% if (data.programaError) { %>
+                                                <small class="d-block text-warning"><%= data.programaError %></small>
+                                            <% } %>
+                                        </td>
+                                        <td class="text-light">
+                                            <span class="badge text-bg-<%= data.sgaStatus === 'found' ? 'danger' : data.sgaStatus === 'clear' ? 'success' : data.sgaStatus === 'not_configured' ? 'secondary' : 'warning' %>">
+                                                <%= estadoSga(data.sgaStatus) %>
+                                            </span>
+                                            <% if (['partial', 'error', 'unresolved'].includes(data.sgaStatus) && data.sgaMessage) { %>
+                                                <small class="d-block mt-1"><%= resumirTexto(data.sgaMessage, 100) %></small>
+                                            <% } %>
+                                        </td>
                                         <% if (multa === null) { %>
                                             <td class="text-light">-</td>
                                             <td class="text-light">
-                                                <em>El estudiante no tiene multas</em>
+                                                <em>No se encontraron sanciones de MILab ni multas de laboratorio en SGA.</em>
                                             </td>
                                             <td></td>
                                             <td></td>
@@ -88,7 +179,7 @@
                                             <% } else if (multa === 'unknown') { %>
                                                     <td class="text-light">-</td>
                                                 <td class="text-light">
-                                                    <em>Este código no se encuentra registrado</em>
+                                                        <em>No se encontró una identidad académica verificable.</em>
                                                 </td>
                                                 <td></td>
                                                 <td></td>
@@ -98,7 +189,7 @@
                                                 <td class="text-center">-</td>
                                                 <% } else if (multa === 'sga-error') { %>
                                                     <td class="text-light">SGA</td>
-                                                    <td class="text-light"><em>No fue posible verificar las multas en SGA.</em></td>
+                                                    <td class="text-light"><em><%= data.sgaMessage || 'La consulta SGA quedó incompleta; el resultado no es concluyente.' %></em></td>
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
@@ -126,6 +217,9 @@
                                                         data-bs-target="#detalleConsultaMasivaModal"
                                                         data-detalle-documento="<%= data.documento || '-' %>"
                                                         data-detalle-codigo="<%= data.codigo || data.identificador || '-' %>"
+                                                        data-detalle-programa="<%= data.programa || '-' %>"
+                                                        data-detalle-estado-consulta="<%= estadoSga(data.sgaStatus) %>"
+                                                        data-detalle-codigos-sga="<%= (data.sgaCodes || []).join(', ') %>"
                                                         data-detalle-origen="<%= multa.origen || 'MILab' %>"
                                                         data-detalle-categoria="<%= multa.cat_multa || '-' %>"
                                                         data-detalle-estado="<%= multa.con_estado_multa || '-' %>"
@@ -133,8 +227,15 @@
                                                         data-detalle-observacion="<%= multa.obs_multa || 'Sin observaciones' %>"
                                                         data-detalle-laboratorista="<%= multa.nombre_laboratorista || '-' %>"
                                                         data-detalle-ual="<%= multa.ual || '-' %>"
+                                                        data-detalle-codigo-sga="<%= multa.codigo_ubicacion_sga || '' %>"
                                                         data-detalle-facultad="<%= multa.laboratorio_facultad || '' %>"
                                                         data-detalle-dependencia="<%= multa.laboratorio_dependencia || '' %>"
+                                                        data-detalle-id-sga="<%= multa.id_sga || '' %>"
+                                                        data-detalle-tipo-concepto="<%= multa.tipo_concepto || '' %>"
+                                                        data-detalle-valor-sga="<%= multa.valor_sga ?? '' %>"
+                                                        data-detalle-anio-sga="<%= multa.anio_sga || '' %>"
+                                                        data-detalle-periodo-sga="<%= multa.periodo_sga || '' %>"
+                                                        data-detalle-fecha-pago-sga="<%= multa.fecha_pago_sga || '' %>"
                                                     >
                                                         Ver detalle
                                                     </button>
@@ -142,36 +243,53 @@
                                             <% } %> 
                                                                  
                                 </tr>
-                                <% }) %>  
+                                <% }) %>
                             <% });
-                        } else { %>
-                            <tr>
-                                <td class="text-center">No hay registros en la base de datos</td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                            </tr>
-                        <% } %>
+                        } %>
                     </tbody>
                 </table>
-                <% if(sampleData1.length > 0) { %>
-                    <div class="justify-content-center d-flex">
-                        
-                    <a href="/milab/api/get_list_estudiantes/generate_pdf?data=<%= encodeURIComponent(JSON.stringify(sampleData1)) %>" class="btn btn-perso mt-2 mb-2 col-md-11">Generar PDF</a>
-                    </div>
+                <% if(resultados.length > 0) { %>
+                    <form action="/milab/api/get_list_estudiantes/generate_pdf" method="post" class="justify-content-center d-flex">
+                        <%- include('../partials/csrf_field') %>
+                        <input type="hidden" name="data" value="<%= JSON.stringify(resultados) %>">
+                        <button type="submit" class="btn btn-perso mt-2 mb-2 col-md-11">Generar informe PDF</button>
+                    </form>
                 <% } %>
 
             </div>
     </div>
     <br>
+    </div>
 </section>
 </main>
+
+<div class="modal fade app-bulk-progress-modal" id="consultaMasivaProgressModal" tabindex="-1" aria-labelledby="consultaMasivaProgressTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered app-bulk-progress-dialog">
+        <div class="modal-content">
+            <div class="modal-body p-4 p-md-5">
+                <div class="app-bulk-progress-icon mb-3" aria-hidden="true">
+                    <i class="bi bi-clipboard2-data"></i>
+                </div>
+                <div class="small text-uppercase fw-bold text-danger mb-2">Consulta masiva</div>
+                <h2 class="h4 mb-2" id="consultaMasivaProgressTitle">Preparando el informe</h2>
+                <p class="text-muted mb-4" id="consultaMasivaProgressMessage" aria-live="polite">Gestionando datos del lote</p>
+                <div class="progress app-bulk-progress-track" role="progressbar" aria-label="Progreso de la consulta masiva" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="consultaMasivaProgressBar" class="progress-bar"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2 small text-muted">
+                    <span id="consultaMasivaProgressIdentifier">Preparando estudiantes…</span>
+                    <span id="consultaMasivaProgressCount">0 / 0</span>
+                </div>
+                <div class="app-bulk-progress-steps mt-4" aria-hidden="true">
+                    <span data-progress-step="data">Datos</span>
+                    <span data-progress-step="identity">Identidad</span>
+                    <span data-progress-step="sga">SGA</span>
+                    <span data-progress-step="condensing">Informe</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="modal fade app-detail-modal" id="detalleConsultaMasivaModal" tabindex="-1" aria-labelledby="detalleConsultaMasivaLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -191,6 +309,18 @@
                         <div class="fw-semibold" data-detail-field="codigo"></div>
                     </div>
                     <div class="col-md-6">
+                        <div class="text-muted small">Programa</div>
+                        <div class="fw-semibold" data-detail-field="programa"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Estado de consulta SGA</div>
+                        <div class="fw-semibold" data-detail-field="estado-consulta"></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Códigos académicos consultados en SGA</div>
+                        <div class="fw-semibold" data-detail-field="codigos-sga"></div>
+                    </div>
+                    <div class="col-md-6">
                         <div class="text-muted small">Origen</div>
                         <div class="fw-semibold" data-detail-field="origen"></div>
                     </div>
@@ -207,8 +337,32 @@
                         <div class="fw-semibold" data-detail-field="laboratorista"></div>
                     </div>
                     <div class="col-md-6">
-                        <div class="text-muted small">UAL</div>
+                        <div class="text-muted small">Laboratorio / dependencia</div>
                         <div class="fw-semibold" data-detail-field="ual"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Código de concepto SGA</div>
+                        <div class="fw-semibold" data-detail-field="codigo-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Identificador SGA</div>
+                        <div class="fw-semibold" data-detail-field="id-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Tipo de concepto</div>
+                        <div class="fw-semibold" data-detail-field="tipo-concepto"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Valor reportado por SGA</div>
+                        <div class="fw-semibold" data-detail-field="valor-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Año / periodo SGA</div>
+                        <div class="fw-semibold" data-detail-field="periodo-sga"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Fecha de pago SGA</div>
+                        <div class="fw-semibold" data-detail-field="fecha-pago-sga"></div>
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted small">Facultad</div>
@@ -235,10 +389,6 @@
     </div>
 </div>
 <br>
-<!-- Include Bootstrap JS and jQuery -->
-<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 <script nonce="<%= cspNonce %>">
     document.addEventListener('click', function (event) {
         const trigger = event.target.closest('.app-detail-button');
@@ -250,6 +400,9 @@
         const fields = {
             documento: trigger.getAttribute('data-detalle-documento'),
             codigo: trigger.getAttribute('data-detalle-codigo'),
+            programa: trigger.getAttribute('data-detalle-programa'),
+            'estado-consulta': trigger.getAttribute('data-detalle-estado-consulta'),
+            'codigos-sga': trigger.getAttribute('data-detalle-codigos-sga'),
             origen: trigger.getAttribute('data-detalle-origen'),
             categoria: trigger.getAttribute('data-detalle-categoria'),
             estado: trigger.getAttribute('data-detalle-estado'),
@@ -257,6 +410,17 @@
             observacion: trigger.getAttribute('data-detalle-observacion'),
             laboratorista: trigger.getAttribute('data-detalle-laboratorista'),
             ual: trigger.getAttribute('data-detalle-ual'),
+            'codigo-sga': trigger.getAttribute('data-detalle-codigo-sga'),
+            'id-sga': trigger.getAttribute('data-detalle-id-sga'),
+            'tipo-concepto': trigger.getAttribute('data-detalle-tipo-concepto'),
+            'valor-sga': trigger.getAttribute('data-detalle-valor-sga'),
+            'periodo-sga': [
+                trigger.getAttribute('data-detalle-anio-sga'),
+                trigger.getAttribute('data-detalle-periodo-sga'),
+            ]
+                .filter(Boolean)
+                .join(' / '),
+            'fecha-pago-sga': trigger.getAttribute('data-detalle-fecha-pago-sga'),
             facultad: trigger.getAttribute('data-detalle-facultad'),
             dependencia: trigger.getAttribute('data-detalle-dependencia'),
         };
@@ -269,33 +433,230 @@
         });
     });
 
-    function verificarEntrada() {
-    var input = document.getElementById("consulta_masiva").value;
-    var mensajeError = document.getElementById("mensajeError");
-    mensajeError.classList.add("d-none");
-    mensajeError.innerHTML = "";
+    const consultaForm = document.querySelector('.app-bulk-query-form');
+    const consultaInput = document.getElementById('consulta_masiva');
+    const consultaCounter = document.getElementById('consultaMasivaCount');
+    const consultaButton = document.getElementById('consultaMasivaSubmit');
+    const mensajeError = document.getElementById('mensajeError');
+    const maxCodigos = Number(consultaForm.dataset.maxCodes) || 50;
 
-    const numeros = input.split(",");
-    for (let i = 0; i < numeros.length; i++) {
-        if (isNaN(numeros[i])){
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Los códigos deben contener solamente números</p>";
-            return false;
-        }
-        if(parseFloat(numeros[i]) < 0) {
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Los códigos no pueden ser negativos</p>";
-            return false;
-        }
+    function obtenerCodigos() {
+        return consultaInput.value
+            .split(',')
+            .map(function (codigo) { return codigo.trim(); })
+            .filter(Boolean);
     }
-    const max = input.split(',').map(Number);
-        if (max.length > 20) {
-            mensajeError.classList.remove("d-none");
-            mensajeError.innerHTML += "<p>Has excedido el límite de 20 estudiantes, Intentalo nuevamente</p>";
+
+    function actualizarContador() {
+        const codigos = obtenerCodigos();
+        const excedeLimite = codigos.length > maxCodigos;
+        consultaCounter.textContent = `${codigos.length} / ${maxCodigos} códigos`;
+        consultaCounter.classList.toggle('text-danger', excedeLimite);
+        consultaButton.disabled = excedeLimite;
+
+        if (excedeLimite) {
+            mensajeError.textContent = `El máximo permitido es de ${maxCodigos} códigos por consulta.`;
+            mensajeError.classList.remove('d-none');
+        } else {
+            mensajeError.textContent = '';
+            mensajeError.classList.add('d-none');
+        }
+
+        return codigos;
+    }
+
+    consultaInput.addEventListener('input', actualizarContador);
+    actualizarContador();
+
+    function verificarEntrada() {
+        const codigos = actualizarContador();
+        if (codigos.length > maxCodigos) {
             return false;
         }
-    return true;
-}
+
+        if (codigos.some(function (codigo) { return !/^\d+$/.test(codigo); })) {
+            mensajeError.textContent = 'Los códigos deben contener solamente números.';
+            mensajeError.classList.remove('d-none');
+            return false;
+        }
+        return true;
+    }
+
+    const progressModalElement = document.getElementById('consultaMasivaProgressModal');
+    const progressModal =
+        window.bootstrap?.Modal.getOrCreateInstance(progressModalElement, {
+            backdrop: 'static',
+            keyboard: false,
+        }) || null;
+    const progressMessage = document.getElementById('consultaMasivaProgressMessage');
+    const progressIdentifier = document.getElementById('consultaMasivaProgressIdentifier');
+    const progressCount = document.getElementById('consultaMasivaProgressCount');
+    const progressBar = document.getElementById('consultaMasivaProgressBar');
+    const progressTrack = progressBar.parentElement;
+    const progressSteps = Array.from(
+        progressModalElement.querySelectorAll('[data-progress-step]')
+    );
+    const progressStepIndexes = {
+        data: 0,
+        student: 0,
+        identity: 1,
+        sga: 2,
+        condensing: 3,
+        complete: 3,
+        done: 3,
+    };
+    let consultaEnCurso = false;
+
+    function actualizarProgreso(evento) {
+        const porcentaje = Math.min(100, Math.max(0, Number(evento.percent) || 0));
+        progressBar.style.width = `${porcentaje}%`;
+        progressTrack.setAttribute('aria-valuenow', String(porcentaje));
+        progressMessage.textContent = evento.message || 'Procesando la consulta masiva…';
+        progressIdentifier.textContent = evento.identifier
+            ? `${evento.identifierType || 'Identificador'}: ${evento.identifier}`
+            : 'Preparando estudiantes…';
+        progressCount.textContent = `${evento.completed || 0} / ${evento.total || 0}`;
+
+        const activeIndex = progressStepIndexes[evento.stage] ?? 0;
+        progressSteps.forEach((step, index) => {
+            const completed = evento.stage === 'done' || index < activeIndex;
+            step.classList.toggle('is-complete', completed);
+            step.classList.toggle('is-active', index === activeIndex && evento.stage !== 'done');
+        });
+    }
+
+    async function leerFlujoProgreso(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/x-ndjson')) {
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return null;
+            }
+            if (contentType.includes('application/json')) {
+                const payload = await response.json();
+                const details = [payload.message, payload.message2].filter(Boolean).join(' ');
+                throw new Error(details || 'No fue posible completar la consulta masiva.');
+            }
+            throw new Error('El servidor no devolvió el progreso de la consulta.');
+        }
+        if (!response.body || typeof response.body.getReader !== 'function') {
+            throw new Error('El navegador no pudo leer el progreso de la consulta.');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let reportHtml = null;
+        let streamError = null;
+
+        function processLine(line) {
+            if (!line.trim()) return;
+            const event = JSON.parse(line);
+            if (event.type === 'progress') {
+                actualizarProgreso(event);
+            } else if (event.type === 'result') {
+                reportHtml = event.html;
+            } else if (event.type === 'error') {
+                streamError = event.message || 'No fue posible completar la consulta masiva.';
+            } else {
+                throw new Error('El servidor envió un evento de progreso desconocido.');
+            }
+        }
+
+        while (true) {
+            const { done, value } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            lines.forEach(processLine);
+            if (done) break;
+        }
+        if (buffer.trim()) processLine(buffer);
+        if (streamError) throw new Error(streamError);
+        if (!response.ok) throw new Error('No fue posible completar la consulta masiva.');
+        if (!reportHtml) throw new Error('La consulta terminó sin generar el informe.');
+        return reportHtml;
+    }
+
+    function actualizarInforme(html) {
+        const documentResult = new DOMParser().parseFromString(html, 'text/html');
+        const updatedReport = documentResult.getElementById('consultaMasivaReport');
+        const currentReport = document.getElementById('consultaMasivaReport');
+        if (!updatedReport || !currentReport) {
+            throw new Error('No se pudo actualizar el informe de consulta masiva.');
+        }
+
+        const currentTable = currentReport.querySelector('table.js-data-grid');
+        if (
+            currentTable &&
+            window.jQuery?.fn?.DataTable?.isDataTable(currentTable)
+        ) {
+            window.jQuery(currentTable).DataTable().destroy();
+        }
+
+        currentReport.replaceWith(document.importNode(updatedReport, true));
+        const newReport = document.getElementById('consultaMasivaReport');
+        document.dispatchEvent(
+            new CustomEvent('milab:initialize-data-grids', {
+                detail: { root: newReport },
+            })
+        );
+    }
+
+    consultaForm.addEventListener('submit', async function (event) {
+        if (
+            event.defaultPrevented ||
+            consultaEnCurso ||
+            !window.fetch ||
+            !window.ReadableStream ||
+            !progressModal
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        consultaEnCurso = true;
+        consultaButton.disabled = true;
+        const buttonLabel = consultaButton.textContent;
+        consultaButton.textContent = 'Consultando…';
+        progressModal.show();
+        actualizarProgreso({
+            stage: 'data',
+            message: 'Gestionando datos del lote',
+            completed: 0,
+            total: obtenerCodigos().length,
+            percent: 0,
+        });
+
+        try {
+            const formData = new FormData(consultaForm);
+            const csrfToken = String(formData.get('_csrf') || '');
+            const response = await fetch(consultaForm.action, {
+                method: 'POST',
+                body: new URLSearchParams(formData),
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/x-ndjson',
+                    'X-CSRF-Token': csrfToken,
+                },
+            });
+            const reportHtml = await leerFlujoProgreso(response);
+            if (reportHtml) {
+                actualizarInforme(reportHtml);
+                mensajeError.textContent = '';
+                mensajeError.classList.add('d-none');
+            }
+        } catch (error) {
+            mensajeError.textContent =
+                error.message || 'No fue posible completar la consulta masiva.';
+            mensajeError.classList.remove('d-none');
+        } finally {
+            consultaEnCurso = false;
+            consultaButton.textContent = buttonLabel;
+            actualizarContador();
+            progressModal.hide();
+        }
+    });
 </script>
   
  

@@ -6,6 +6,7 @@ const { requireRoles } = require('../../middlewares/auth');
 const { renderApplicationError } = require('../../middlewares/error-handler');
 
 const router = express.Router();
+const GESTOR_LABORATORIO_ROLE = 'gestor_laboratorio';
 
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
@@ -15,6 +16,7 @@ const SYSTEM_PROTECTED_ROLES = new Set([
   'coordinador_general',
   'coordinador',
   'laboratorista',
+  GESTOR_LABORATORIO_ROLE,
   'monitor',
   'docente',
   'estudiante',
@@ -80,6 +82,7 @@ async function loadRolesData() {
      LEFT JOIN (
        SELECT rol_permiso.rol_id, COUNT(*) AS total
        FROM rol_permiso
+       WHERE rol_permiso.activo = TRUE
        GROUP BY rol_permiso.rol_id
      ) permission_counts
        ON permission_counts.rol_id = r.id
@@ -102,6 +105,32 @@ async function renderRolesPage(req, res, { error = null, success = null } = {}) 
   });
 }
 
+function roleSetupError(message) {
+  const error = new Error(message);
+  error.userFacingMessage = message;
+  return error;
+}
+
+async function grantRoleMenuPermission(client, roleId, menuItemId) {
+  const result = await client.query(
+    `
+      INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+      VALUES ($1, $2, TRUE, TRUE, TRUE)
+      ON CONFLICT (rol_id, menu_item_id)
+      DO UPDATE SET can_view = TRUE,
+                    can_use = TRUE,
+                    activo = TRUE,
+                    fecha_modificacion = CURRENT_TIMESTAMP
+      RETURNING rol_id
+    `,
+    [roleId, menuItemId]
+  );
+
+  if (!result.rows?.length) {
+    throw roleSetupError('No fue posible guardar uno de los permisos del Gestor de laboratorio.');
+  }
+}
+
 router.get('/', requireAdmin, async (req, res) => {
   try {
     return await renderRolesPage(req, res);
@@ -117,6 +146,132 @@ router.get('/', requireAdmin, async (req, res) => {
       req,
       error
     );
+  }
+});
+
+router.post('/gestor-laboratorio/inicializar', requireAdmin, async (req, res) => {
+  let client;
+  let transactionStarted = false;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    const roleResult = await client.query(
+      `
+        INSERT INTO rol (nombre, activo)
+        VALUES ($1, TRUE)
+        ON CONFLICT (nombre)
+        DO UPDATE SET activo = TRUE,
+                      fecha_modificacion = CURRENT_TIMESTAMP
+        RETURNING id
+      `,
+      [GESTOR_LABORATORIO_ROLE]
+    );
+    const managerRoleId = Number(roleResult.rows?.[0]?.id);
+    if (!Number.isSafeInteger(managerRoleId) || managerRoleId <= 0) {
+      throw roleSetupError('No fue posible crear o verificar el rol gestor_laboratorio.');
+    }
+
+    const adminRoleResult = await client.query(
+      'SELECT id FROM rol WHERE nombre = $1 AND activo = TRUE LIMIT 1',
+      ['admin']
+    );
+    const adminRoleId = Number(adminRoleResult.rows?.[0]?.id);
+    if (!Number.isSafeInteger(adminRoleId) || adminRoleId <= 0) {
+      throw roleSetupError('No se encontró el rol activo de administración.');
+    }
+
+    const managerMenuResult = await client.query(
+      `
+        INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
+        SELECT 'secondary', parent.id, 'Gestores de laboratorio',
+               '/milab/api/gestores_laboratorio', 'bi-person-gear', 4, TRUE
+        FROM menu_item parent
+        WHERE parent.section = 'secondary'
+          AND parent.label = 'Registro'
+          AND parent.parent_id IS NULL
+        ON CONFLICT (section, parent_id, label, route)
+        DO UPDATE SET activo = TRUE,
+                      fecha_modificacion = CURRENT_TIMESTAMP
+        RETURNING id
+      `
+    );
+    const managerMenuId = Number(managerMenuResult.rows?.[0]?.id);
+    if (!Number.isSafeInteger(managerMenuId) || managerMenuId <= 0) {
+      throw roleSetupError(
+        'No se encontró el menú Registro. No se aplicó la configuración del rol.'
+      );
+    }
+
+    const encountersGroupResult = await client.query(
+      `
+        SELECT id
+        FROM menu_item
+        WHERE section = 'secondary'
+          AND label = 'Encuentros'
+          AND parent_id IS NULL
+          AND activo = TRUE
+        LIMIT 1
+      `
+    );
+    const encountersGroupId = Number(encountersGroupResult.rows?.[0]?.id);
+    if (!Number.isSafeInteger(encountersGroupId) || encountersGroupId <= 0) {
+      throw roleSetupError(
+        'No se encontró el menú activo de Encuentros. No se aplicó la configuración del rol.'
+      );
+    }
+
+    const encountersRouteResult = await client.query(
+      `
+        SELECT id
+        FROM menu_item
+        WHERE route = $1
+          AND activo = TRUE
+        LIMIT 1
+      `,
+      ['/milab/encuentros/gestion']
+    );
+    const encountersRouteId = Number(encountersRouteResult.rows?.[0]?.id);
+    if (!Number.isSafeInteger(encountersRouteId) || encountersRouteId <= 0) {
+      throw roleSetupError(
+        'No se encontró la ruta activa de gestión de Encuentros. No se aplicó la configuración del rol.'
+      );
+    }
+
+    await grantRoleMenuPermission(client, adminRoleId, managerMenuId);
+    await grantRoleMenuPermission(client, managerRoleId, encountersGroupId);
+    await grantRoleMenuPermission(client, managerRoleId, encountersRouteId);
+
+    await client.query('COMMIT');
+    transactionStarted = false;
+    client.release();
+    client = null;
+
+    await writeRoleAuditLog(req, 'Inicializar rol Gestor de laboratorio', GESTOR_LABORATORIO_ROLE);
+
+    return renderRolesPage(req, res, {
+      success:
+        'Configuración verificada: el rol Gestor de laboratorio y sus permisos base están listos. No se duplicaron registros ni se asignó el rol a cuentas.',
+    });
+  } catch (error) {
+    if (client && transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Error revirtiendo configuración del Gestor de laboratorio:', rollbackError);
+      }
+    }
+
+    console.error('Error inicializando el rol Gestor de laboratorio:', error);
+    return renderRolesPage(req, res, {
+      error:
+        error.userFacingMessage ||
+        'No fue posible verificar la configuración del Gestor de laboratorio.',
+    });
+  } finally {
+    if (client) client.release();
   }
 });
 

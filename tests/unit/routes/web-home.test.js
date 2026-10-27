@@ -50,11 +50,30 @@ test('web home protects inicio and canonical auth/login routes', async () => {
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, '/milab/inicio');
+
+  delete require.cache[routePath];
+  app = buildApp(null);
+  response = await request(app).get('/auth/login');
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/');
 });
 
 test('authenticated monitoring roles land on the existing dashboard from inicio', async () => {
   delete require.cache[routePath];
   const app = buildApp({ tipo: 'coordinador' });
+  const response = await request(app).get('/inicio');
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/milab/api/dashboard');
+});
+
+test('gestores de laboratorio land on the global dashboard from inicio', async () => {
+  delete require.cache[routePath];
+  const app = buildApp({
+    tipo: 'estudiante',
+    roles: ['estudiante', 'gestor_laboratorio'],
+  });
   const response = await request(app).get('/inicio');
 
   assert.equal(response.status, 302);

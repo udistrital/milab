@@ -30,10 +30,10 @@
   const sessionRole = locals.sessionRoleLabel || navigation.roleLabel || 'Invitado';
   const sessionName = locals.nombre || '';
   const sessionDocument = locals.documento || '';
-  const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
+  // const pendingSanctionsCount = Number(locals.pendingSanctionsCount || 0);
   const pendingInventoryApprovalsCount = Number(locals.pendingInventoryApprovalsCount || 0);
-  const shouldShowSanctionsBadge = (link) =>
-    pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
+  // const shouldShowSanctionsBadge = (link) =>
+  //   pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
   const shouldShowInventoryApprovalsBadge = (link) =>
     pendingInventoryApprovalsCount > 0 && link && link.href === '/milab/inventarios/aprobaciones';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
@@ -44,10 +44,37 @@
   const navigationGroups = secondaryGroups.filter(
     (group) => group && Array.isArray(group.items) && group.items.length
   );
-  const navigationCurrentPath = String(locals.navigationCurrentPath || '')
-    .split('?')[0]
-    .replace(/\/+$/, '') || '/';
+  function normalizeNavigationPath(value) {
+    return String(value || '').split('?')[0].replace(/\/+$/, '') || '/';
+  }
+  const navigationCurrentPath = normalizeNavigationPath(locals.navigationCurrentPath);
   const accountLinks = Array.isArray(navigation.accountLinks) ? navigation.accountLinks : [];
+  const navigationEntries = [
+    ...primaryLinks.filter(Boolean).map((link) => ({ link, section: 'primary', group: null })),
+    ...navigationGroups.flatMap((group) =>
+      group.items.filter(Boolean).map((link) => ({ link, section: 'secondary', group }))
+    ),
+    ...accountLinks.filter(Boolean).map((link) => ({ link, section: 'account', group: null })),
+  ];
+  const activeNavigationMatch =
+    navigationEntries
+      .map((entry, index) => {
+        const href = normalizeNavigationPath(entry.link.href);
+        return { entry, href, index, exact: href === navigationCurrentPath };
+      })
+      .filter(
+        ({ href }) =>
+          href === navigationCurrentPath ||
+          (href !== '/' && navigationCurrentPath.startsWith(`${href}/`))
+      )
+      .sort(
+        (left, right) =>
+          Number(right.exact) - Number(left.exact) ||
+          right.href.length - left.href.length ||
+          left.index - right.index
+      )[0] || null;
+  const activeNavigationEntry = activeNavigationMatch?.entry || null;
+  const activeNavigationHref = activeNavigationMatch?.href || '';
   const activeRole = (locals.tipo || navigation.role || '').toString().trim().toLowerCase();
   const activeSanctionsSummary = locals.activeSanctionsSummary || { enabled: false, count: 0, items: [] };
   const activeSanctionsCount = Number(activeSanctionsSummary.count || 0);
@@ -95,22 +122,47 @@
   const helpManualsUrl = helpManualsConfig.url;
   const helpManualsLabel = helpManualsConfig.label;
   const navigationGuideMap = {
+    Inicio: 'nav-inicio',
+    Monitoreo: 'nav-monitoreo',
     'Solicitar certificado': 'nav-solicitar-certificado',
-    'Autorizaciones': 'nav-autorizaciones',
+    'Solicitar certificado estudiante': 'nav-solicitar-certificado',
+    'Solicitar certificado docente': 'nav-solicitar-certificado',
+    Reclamaciones: 'nav-reclamaciones',
     'Registro': 'nav-registro',
     'Registro de coordinadores': 'nav-registro-coordinadores',
     'Registro de laboratoristas': 'nav-registro-laboratoristas',
+    'Registro de monitores': 'nav-registro-monitores',
+    'Gestores de laboratorio': 'nav-gestores-laboratorio',
+    'Registro de Admin': 'nav-registro-admin',
+    'Agregar admin': 'nav-registro-admin',
     'Consulta y control': 'nav-consulta-control',
     'Consulta masiva': 'nav-consulta-masiva',
+    Certificados: 'nav-certificados',
+    'Coordinadores registrados': 'nav-coordinadores-registrados',
     'Estudiantes y docentes registrados': 'nav-estudiantes-docentes-registrados',
     'Laboratoristas registrados': 'nav-laboratoristas-registrados',
+    'Monitores registrados': 'nav-monitores-registrados',
+    'Facultades y UAL': 'nav-facultades-ual',
+    Logs: 'nav-logs',
     'Sanciones': 'nav-sanciones',
+    'Listado de sanciones': 'nav-listado-sanciones',
     'Paz y Salvos': 'nav-paz-y-salvos',
     'Verificar estudiante': 'nav-verificar-estudiante',
+    'Generar PYS Estudiante': 'nav-verificar-estudiante',
     'Verificar docente': 'nav-verificar-docente',
+    'Generar PYS Docente': 'nav-verificar-docente',
+    'Generar Paz y Salvos Masivo': 'nav-generar-pys-masivo',
     'Administración': 'nav-administracion',
     'Sanciones de estudiantes': 'nav-sanciones-estudiantes',
+    'Registro de sanciones a estudiantes': 'nav-sanciones-estudiantes',
     'Sanciones de docentes': 'nav-sanciones-docentes',
+    'Registro de sanciones a docentes': 'nav-sanciones-docentes',
+    'Configuración': 'nav-configuracion',
+    'Esquema de base de datos': 'nav-esquema-bd',
+    'Permisos y menus': 'nav-permisos-menus',
+    'Permisos y menús': 'nav-permisos-menus',
+    Roles: 'nav-roles',
+    'Catálogo de sanciones': 'nav-catalogo-sanciones',
     'Prestamos': 'nav-prestamos',
     'Inventario': 'nav-prestamos-inventario',
     'Equipos': 'nav-prestamos-equipos',
@@ -122,31 +174,58 @@
     'Solicitar practica': 'nav-prestamos-solicitar-practica',
     'Mis practicas': 'nav-prestamos-mis-practicas',
     'Gestion de practicas': 'nav-prestamos-gestion-practicas',
+    'Gestión de prácticas': 'nav-prestamos-gestion-practicas',
     'Salas': 'nav-prestamos-salas',
     'Reportes': 'nav-prestamos-reportes',
     'Auditoria': 'nav-prestamos-auditoria',
     'Parametrizaciones': 'nav-prestamos-parametrizaciones',
     'Configuracion de practicas': 'nav-prestamos-configuracion-practicas',
+    'Hojas de Vida y Mantenimientos': 'nav-hojas-vida-mantenimientos',
+    'Inventarios': 'nav-inventarios',
+    'Gestión del inventario': 'nav-inventario-gestion',
+    'Aprobaciones de inventario': 'nav-inventario-aprobaciones',
     'Capacitación': 'nav-capacitacion',
     'Creación de cursos': 'nav-capacitacion-cursos',
     'Asociación curso-equipo': 'nav-capacitacion-asociacion-equipos',
+    'Gestionar capacitaciones': 'nav-capacitacion-gestion',
+    'Mis capacitaciones': 'nav-capacitacion-mis',
+    'Encuentros': 'nav-encuentros',
+    'Gestionar encuentros': 'nav-gestionar-encuentros',
+    'Mis logros': 'nav-mis-logros',
   };
   function getNavigationGuideAttribute(label) {
     const key = navigationGuideMap[label];
     return key ? `data-guide="${key}"` : '';
   }
   function isNavigationLinkActive(link) {
-    const href = String(link?.href || '')
-      .split('?')[0]
-      .replace(/\/+$/, '') || '/';
-    return (
-      navigationCurrentPath === href ||
-      (href !== '/' && navigationCurrentPath.startsWith(`${href}/`))
-    );
+    const entry = navigationEntries.find((candidate) => candidate.link === link);
+    if (entry) return entry === activeNavigationEntry;
+    return Boolean(activeNavigationEntry && normalizeNavigationPath(link?.href) === activeNavigationHref);
   }
   function isNavigationGroupActive(group) {
-    return Array.isArray(group?.items) && group.items.some(isNavigationLinkActive);
+    return activeNavigationEntry?.group === group;
   }
+  function buildNavigationBreadcrumbs() {
+    if (!activeNavigationEntry) return [];
+
+    const isHomeLink =
+      activeNavigationEntry.section === 'primary' &&
+      String(activeNavigationEntry.link.label || '').trim().toLowerCase() === 'inicio';
+    if (isHomeLink) return [{ label: 'Inicio', current: true }];
+
+    const breadcrumbs = [
+      {
+        label: 'Inicio',
+        href: isAuthenticated ? '/milab/inicio' : '/milab/',
+      },
+    ];
+    if (activeNavigationEntry.group) {
+      breadcrumbs.push({ label: activeNavigationEntry.group.title });
+    }
+    breadcrumbs.push({ label: activeNavigationEntry.link.label, current: true });
+    return breadcrumbs;
+  }
+  const navigationBreadcrumbs = buildNavigationBreadcrumbs();
   function isPrestamosNavLink(link) {
     const label = String(link?.label || '').trim().toLowerCase();
     const href = String(link?.href || '').toLowerCase();
@@ -175,6 +254,7 @@
   class="app-shell"
   data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
   data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
+  data-show-oati-login-warning="<%= locals.showOatiLoginWarning ? 'true' : 'false' %>"
   data-session-expires-in="<%= locals.sessionExpiresInMs || '' %>"
   data-session-idle-timeout="<%= locals.sessionPolicy ? locals.sessionPolicy.idleTimeoutMs : '' %>"
 >
@@ -218,6 +298,7 @@
         </div>
       </div>
 
+      <% if ((claimNotifications && claimNotifications.count > 0) || !isAuthenticated) { %>
       <nav class="navbar app-navbar app-header-tools" aria-label="Herramientas de usuario">
         <div class="container-fluid app-navbar-inner">
           <div class="app-navbar-actions">
@@ -227,7 +308,7 @@
                 <span class="app-nav-badge"><%= claimNotifications.count %></span>
               </a>
             <% } %>
-            <% if (isAuthenticated) { %>
+            <% if (false && isAuthenticated) { %>
               <div class="app-user-tools d-none d-xl-flex">
                 <div class="dropdown">
                   <button
@@ -369,9 +450,9 @@
                     <% } %>
 
                     <li>
-                      <button
+                      <a
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
-                        type="button"
+                        href="/milab/auth/logout"
                         data-logout-trigger="true"
                         data-guide="logout-action"
                         aria-label="Cerrar sesion"
@@ -379,10 +460,23 @@
                       >
                         <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
                         <span>Cerrar sesion</span>
-                      </button>
+                      </a>
                     </li>
                   </ul>
                 </div>
+
+                <a
+                  class="btn app-help-pill app-user-card app-user-card--icon"
+                  href="/milab/encuentros/mis-logros"
+                  aria-label="Consultar mis medallas"
+                  title="Mis logros"
+                  data-guide="nav-mis-logros"
+                >
+                  <span class="app-user-card-icon" aria-hidden="true">
+                    <i class="bi bi-award"></i>
+                  </span>
+                  <span class="visually-hidden">Mis logros</span>
+                </a>
 
                 <div class="dropdown">
                   <button
@@ -538,9 +632,9 @@
                     <% } %>
 
                     <li>
-                      <button
+                      <a
                         class="dropdown-item app-user-menu-action app-user-menu-logout"
-                        type="button"
+                        href="/milab/auth/logout"
                         data-logout-trigger="true"
                         data-guide="logout-action"
                         aria-label="Cerrar sesion"
@@ -548,10 +642,21 @@
                       >
                         <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
                         <span>Cerrar sesion</span>
-                      </button>
+                      </a>
                     </li>
                   </ul>
                 </div>
+
+                <a
+                  class="btn app-help-pill app-user-chip app-user-chip--icon"
+                  href="/milab/encuentros/mis-logros"
+                  aria-label="Consultar mis medallas"
+                  title="Mis logros"
+                  data-guide="nav-mis-logros"
+                >
+                  <i class="bi bi-award" aria-hidden="true"></i>
+                  <span class="visually-hidden">Mis logros</span>
+                </a>
 
                 <div class="dropdown">
                   <button
@@ -593,11 +698,13 @@
           </div>
         </div>
       </nav>
+      <% } %>
     </div>
   </header>
 
   <% if (isAuthenticated) { %>
     <%- include('../home/logout') %>
+    <%- include('./guided-tour-intro') %>
   <% } %>
 
   <div class="app-frame">
@@ -627,6 +734,7 @@
                   <a
                     class="app-sidebar-link <%= isNavigationLinkActive(homeLink) ? 'is-active' : '' %>"
                     href="/milab/inicio"
+                    data-guide="nav-inicio"
                     <%- isNavigationLinkActive(homeLink) ? 'aria-current="page"' : '' %>
                   >
                     <i class="bi bi-house-door" aria-hidden="true"></i>
@@ -645,9 +753,7 @@
                   >
                     <i class="bi <%= link.icon %>" aria-hidden="true"></i>
                     <span><%= link.label %></span>
-                    <% if (shouldShowSanctionsBadge(link)) { %>
-                      <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                    <% } %>
+                    <%# Antes, shouldShowSanctionsBadge(link) mostraba las sanciones pendientes en el menú. %>
                     <% if (shouldShowInventoryApprovalsBadge(link)) { %>
                       <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                     <% } %>
@@ -692,9 +798,7 @@
                               >
                                 <i class="bi <%= item.icon %>" aria-hidden="true"></i>
                                 <span><%= item.label %></span>
-                                <% if (shouldShowSanctionsBadge(item)) { %>
-                                  <span class="app-nav-badge" aria-label="Sanciones pendientes"><%= pendingSanctionsCount %></span>
-                                <% } %>
+                                <%# Antes, shouldShowSanctionsBadge(item) mostraba las sanciones pendientes en el menú. %>
                                 <% if (shouldShowInventoryApprovalsBadge(item)) { %>
                                   <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                                 <% } %>
@@ -710,8 +814,130 @@
             <% } %>
           </nav>
         </div>
+
+        <% if (isAuthenticated) { %>
+          <nav class="app-sidebar-footer" aria-label="Opciones de usuario">
+            <div class="dropdown dropup app-sidebar-footer-dropdown">
+              <button
+                class="app-sidebar-link dropdown-toggle <%= isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'is-active' : '' %>"
+                id="appSidebarProfileMenuToggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Perfil de usuario"
+                title="Perfil de usuario"
+                data-sidebar-action="profile"
+                data-guide="account-menu"
+                <%- isNavigationLinkActive({ href: '/milab/api/profile' }) ? 'aria-current="page"' : '' %>
+              >
+                <span class="app-sidebar-action-icon app-sidebar-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <circle class="app-sidebar-avatar-frame" cx="12" cy="12" r="9.25"></circle>
+                    <circle class="app-sidebar-avatar-head" cx="12" cy="8.7" r="3.1"></circle>
+                    <path class="app-sidebar-avatar-eyes" d="M10.8 8.2h.01m2.38 0h.01"></path>
+                    <path class="app-sidebar-avatar-mouth app-sidebar-avatar-mouth--neutral" d="M10.8 10.5h2.4"></path>
+                    <path class="app-sidebar-avatar-mouth app-sidebar-avatar-mouth--smile" d="M10.6 10.3q1.4 1.3 2.8 0"></path>
+                    <path class="app-sidebar-avatar-shoulders" d="M5.5 19c.7-3 3.1-4.5 6.5-4.5s5.8 1.5 6.5 4.5"></path>
+                  </svg>
+                </span>
+                <% if (shouldShowAvatarSanctionsBadge && activeSanctionsCount > 0) { %>
+                  <span class="app-avatar-alert-badge" aria-label="Sanciones activas"><%= activeSanctionsCount %></span>
+                <% } %>
+              </button>
+              <%- include('./profile-menu', {
+                sessionName,
+                sessionDocument,
+                sessionRole,
+                shouldShowAvatarSanctionsBadge,
+                activeSanctionsCount,
+                activeSanctionsSummary,
+                formatSanctionDate,
+                sanctionsActionHref,
+                studentUsageSummary,
+                formatUsageHours,
+                activeRole,
+                accountLinks,
+              }) %>
+            </div>
+            <a
+              class="app-sidebar-link <%= isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'is-active' : '' %>"
+              href="/milab/encuentros/mis-logros"
+              aria-label="Mis medallas"
+              title="Mis medallas"
+              data-sidebar-action="medals"
+              <%- isNavigationLinkActive({ href: '/milab/encuentros/mis-logros' }) ? 'aria-current="page"' : '' %>
+              data-guide="nav-mis-logros"
+            >
+              <i class="bi bi-award" aria-hidden="true"></i>
+            </a>
+            <div class="dropdown dropup app-sidebar-footer-dropdown">
+              <button
+                class="app-sidebar-link dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Centro de ayuda"
+                title="Centro de ayuda"
+                data-sidebar-action="help"
+                data-guide="help-manuals"
+              >
+                <i class="bi bi-question-circle" aria-hidden="true"></i>
+              </button>
+              <ul class="dropdown-menu app-user-menu-dropdown app-help-menu-dropdown">
+                <li>
+                  <button class="dropdown-item" type="button" data-guide-restart="true">
+                    <i class="bi bi-stars" aria-hidden="true"></i>
+                    <span>Ver tour guiado</span>
+                  </button>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="<%= helpManualsUrl %>" target="_blank" rel="noopener noreferrer">
+                    <i class="bi bi-journal-text" aria-hidden="true"></i>
+                    <span><%= helpManualsLabel %></span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <a
+              class="app-sidebar-link app-sidebar-logout"
+              href="/milab/auth/logout"
+              data-logout-trigger="true"
+              data-guide="logout-action"
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              data-sidebar-action="logout"
+            >
+              <span class="app-sidebar-action-icon app-sidebar-door" aria-hidden="true">
+                <i class="bi bi-door-open app-sidebar-door-open"></i>
+                <i class="bi bi-door-closed app-sidebar-door-closed"></i>
+              </span>
+            </a>
+          </nav>
+        <% } %>
       </aside>
       <div class="app-main-content">
+        <% if (navigationBreadcrumbs.length) { %>
+          <nav class="app-breadcrumb-nav" aria-label="Miga de pan">
+            <ol class="breadcrumb app-breadcrumb">
+              <% navigationBreadcrumbs.forEach(function(item, index) { %>
+                <% const isCurrentBreadcrumb = index === navigationBreadcrumbs.length - 1; %>
+                <li
+                  class="breadcrumb-item <%= isCurrentBreadcrumb ? 'active' : '' %>"
+                  <%- isCurrentBreadcrumb ? 'aria-current="page"' : '' %>
+                >
+                  <% if (item.href && !isCurrentBreadcrumb) { %>
+                    <a href="<%= item.href %>">
+                      <% if (index === 0) { %><i class="bi bi-house-door" aria-hidden="true"></i><% } %>
+                      <%= item.label %>
+                    </a>
+                  <% } else { %>
+                    <span><%= item.label %></span>
+                  <% } %>
+                </li>
+              <% }) %>
+            </ol>
+          </nav>
+        <% } %>
 
   <script nonce="<%= cspNonce %>">
     function openMicrosoftLoginPopup(url) {

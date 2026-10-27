@@ -1,13 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
-const { SgaDebtService } = require('../../../src/libs/oati-debts');
+const { SgaDebtService, resolveSgaLaboratoryConceptName } = require('../../../src/libs/oati-debts');
+const { summarizeBulkSanctions } = require('../../../src/libs/bulk-sanction-report');
 
 const debtService = new SgaDebtService();
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/get_list_estudiantes.js');
+const bulkQueryViewPath = path.resolve(__dirname, '../../../src/views/home/consulta_masiva.ejs');
+const headerViewPath = path.resolve(__dirname, '../../../src/views/partials/header.ejs');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
@@ -18,7 +22,16 @@ function buildApp(route, user) {
 
   app.use((req, res, next) => {
     req.session = { user };
-    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    res.render = (view, locals, callback) => {
+      if (typeof callback === 'function') {
+        callback(
+          null,
+          '<!doctype html><html><body><div id="consultaMasivaReport"></div></body></html>'
+        );
+        return;
+      }
+      return res.status(res.statusCode || 200).json({ view, locals });
+    };
     next();
   });
   app.use('/', route);
@@ -67,6 +80,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
+        resolveSgaLaboratoryConceptName,
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
           resolveStudentCode: async ({ codigo, documento, identificador }) => {
@@ -91,10 +105,52 @@ function loadRoute({
             }
             return null;
           },
-          getActiveDebts: async (student) => {
-            if (!sgaDebtsImpl) return [];
-            const debts = await sgaDebtsImpl(student.codigo);
-            return debts.filter((debt) => debtService.isBlockingDebt(debt));
+          queryStudent: async (student) => {
+            student.onProgress?.({ stage: 'identity' });
+            const code = String(student.codigo || '').trim();
+            if (!code) {
+              return {
+                status: 'unresolved',
+                debts: [],
+                codes: [],
+                document: null,
+                nonLaboratoryCount: 0,
+                unclassifiedCount: 0,
+                message: 'No fue posible identificar al estudiante.',
+                errors: [],
+              };
+            }
+
+            try {
+              const rawDebts = sgaDebtsImpl ? await sgaDebtsImpl(code) : [];
+              student.onProgress?.({ stage: 'debts', studentRecord: null });
+              const activeDebts = rawDebts.filter(
+                (debt) =>
+                  debtService.isBlockingDebt(debt) &&
+                  Boolean(resolveSgaLaboratoryConceptName(debt?.DEU_CPTO_COD))
+              );
+              return {
+                status: activeDebts.length ? 'found' : 'clear',
+                debts: activeDebts,
+                codes: [code],
+                document: student.documento || null,
+                nonLaboratoryCount: 0,
+                unclassifiedCount: 0,
+                message: '',
+                errors: [],
+              };
+            } catch {
+              return {
+                status: 'error',
+                debts: [],
+                codes: [code],
+                document: student.documento || null,
+                nonLaboratoryCount: 0,
+                unclassifiedCount: 0,
+                message: 'No fue posible consultar SGA.',
+                errors: [],
+              };
+            }
           },
         },
       },
@@ -127,6 +183,49 @@ function loadRoute({
   };
 }
 
+test('bulk student query modal uses the shared Bootstrap 5 runtime', async () => {
+  const [bulkQueryView, headerView] = await Promise.all([
+    fs.readFile(bulkQueryViewPath, 'utf8'),
+    fs.readFile(headerViewPath, 'utf8'),
+  ]);
+
+  assert.match(headerView, /bootstrap@5\.3\.0-alpha3\/dist\/js\/bootstrap\.bundle\.min\.js/);
+  assert.match(bulkQueryView, /data-bs-dismiss="modal"/);
+  assert.doesNotMatch(bulkQueryView, /bootstrap(?:@|\/)4(?:\.|\/)/i);
+  assert.doesNotMatch(bulkQueryView, /jquery-3\.5\.1\.slim|popperjs\/core/i);
+  assert.match(bulkQueryView, /const limiteCodigos = Number\(locals\.maxBulkQueryCodes\) \|\| 50/);
+  assert.match(bulkQueryView, /data-max-codes="<%= limiteCodigos %>"/);
+  assert.match(bulkQueryView, /id="consultaMasivaProgressModal"/);
+  assert.match(bulkQueryView, /application\/x-ndjson/);
+  assert.match(bulkQueryView, /id="consultaMasivaCount"/);
+  assert.match(bulkQueryView, /body: new URLSearchParams\(formData\)/);
+  assert.match(bulkQueryView, /'X-CSRF-Token': csrfToken/);
+  const tableBody = bulkQueryView.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
+  assert.doesNotMatch(tableBody, /colspan=/i);
+});
+
+test('get_consulta renders the empty table without querying the database', async () => {
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const response = await request(app).get('/get_consulta');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/consulta_masiva');
+    assert.equal(response.body.locals.sampleData1, 0);
+    assert.equal(queryCount, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo', async () => {
   const loaded = loadRoute({
     queryImpl: async () => ({ rows: [{ id: 1, tipo_registro: 'estudiante' }] }),
@@ -145,19 +244,199 @@ test('get_list_estudiantes uses selectedType fallback to todos for invalid tipo'
   }
 });
 
-test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', async () => {
-  const loaded = loadRoute();
+test('get_list_estudiantes consulta_masiva rejects more than 50 identifiers', async () => {
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
 
   try {
     const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
-    const values = Array.from({ length: 21 }, (_, i) => `${1000 + i}`).join(',');
+    const values = Array.from({ length: 51 }, (_, i) => `${1000 + i}`).join(',');
     const response = await request(app).post('/consulta_masiva').type('form').send({
       consulta_masiva: values,
     });
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/consulta_masiva');
-    assert.match(response.body.locals.error, /límite de 20 estudiantes/i);
+    assert.match(response.body.locals.error, /límite de 50 estudiantes/i);
+    assert.equal(queryCount, 0);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('get_list_estudiantes consulta_masiva accepts exactly 50 identifiers', async () => {
+  let queryCount = 0;
+  const loaded = loadRoute({
+    queryImpl: async () => {
+      queryCount += 1;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const values = Array.from({ length: 50 }, (_, i) => `${1000 + i}`).join(',');
+    const response = await request(app).post('/consulta_masiva').type('form').send({
+      consulta_masiva: values,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/consulta_masiva');
+    assert.equal(queryCount, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta_masiva resolves a numeric local program code to the OATI program name', async () => {
+  let requestedPath;
+  const loaded = loadRoute({
+    sgaServiceConfigured: false,
+    queryImpl: async () => ({
+      rows: [
+        {
+          identificador: '2024100001',
+          documento: '79520182',
+          codigo: '2024100001',
+          programa: '32',
+          multas: [null],
+        },
+      ],
+    }),
+    requestOatiImpl: async (servicePath) => {
+      requestedPath = servicePath;
+      return {
+        carrerasCollection: {
+          carrera: [{ nombre: 'TECNOLOGÍA EN GESTIÓN AMBIENTAL' }],
+        },
+      };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '123' });
+    const response = await request(app).post('/consulta_masiva').type('form').send({
+      consulta_masiva: '2024100001',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(requestedPath, 'carrera/32');
+    assert.equal(response.body.locals.sampleData1[0].programa, 'TECNOLOGÍA EN GESTIÓN AMBIENTAL');
+    assert.equal(response.body.locals.sampleData1[0].programaError, null);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta_masiva streams real per-student progress before returning the report', async () => {
+  const loaded = loadRoute({
+    sgaServiceConfigured: true,
+    queryImpl: async () => ({
+      rows: [
+        {
+          identificador: '2024100001',
+          documento: '79520182',
+          codigo: '2024100001',
+          programa: 'Ingeniería',
+          multas: [null],
+        },
+      ],
+    }),
+    sgaDebtsImpl: async () => [],
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const response = await request(app)
+      .post('/consulta_masiva')
+      .set('Accept', 'application/x-ndjson')
+      .type('form')
+      .send({ consulta_masiva: '2024100001' });
+    const events = response.text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/x-ndjson/);
+    assert.deepEqual(
+      events.filter((event) => event.type === 'progress').map((event) => event.stage),
+      ['data', 'student', 'identity', 'sga', 'condensing', 'complete', 'done']
+    );
+    assert.equal(events[1].identifier, '79520182');
+    assert.equal(events[1].identifierType, 'Documento');
+    assert.equal(events[5].percent, 100);
+    assert.match(events.at(-1).html, /id="consultaMasivaReport"/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('consulta_masiva limits concurrent SGA work for large batches', async () => {
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const loaded = loadRoute({
+    sgaServiceConfigured: true,
+    queryImpl: async (_sql, [identifiers]) => ({
+      rows: identifiers.split(',').map((identificador) => ({
+        identificador,
+        documento: `${identificador}0`,
+        codigo: identificador,
+        programa: 'Ingeniería',
+        multas: [null],
+      })),
+    }),
+    sgaDebtsImpl: async () => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeRequests -= 1;
+      return [];
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const identifiers = Array.from({ length: 12 }, (_, index) => `${1000 + index}`);
+    const response = await request(app)
+      .post('/consulta_masiva')
+      .type('form')
+      .send({
+        consulta_masiva: identifiers.join(','),
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.sampleData1.length, identifiers.length);
+    assert.ok(maxActiveRequests > 1);
+    assert.ok(maxActiveRequests <= 4);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_pdf rejects more than 50 student records', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const data = Array.from({ length: 51 }, (_, i) => ({
+      identificador: `${1000 + i}`,
+      multas: [null],
+    }));
+    const response = await request(app)
+      .get('/generate_pdf')
+      .query({
+        data: JSON.stringify(data),
+      });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.message, /más de 50 estudiantes/i);
   } finally {
     loaded.restore();
   }
@@ -165,6 +444,7 @@ test('get_list_estudiantes consulta_masiva rejects more than 20 identifiers', as
 
 test('get_list_estudiantes consulta_masiva marks unknown when no fines and no OATI record', async () => {
   const loaded = loadRoute({
+    sgaServiceConfigured: true,
     queryImpl: async () => ({
       rows: [{ identificador: '1020', documento: null, codigo: null, multas: [null] }],
     }),
@@ -181,7 +461,8 @@ test('get_list_estudiantes consulta_masiva marks unknown when no fines and no OA
 
     assert.equal(response.status, 200);
     assert.equal(response.body.view, 'home/consulta_masiva');
-    assert.equal(response.body.locals.sampleData1[0].multas[0], 'unknown');
+    assert.equal(response.body.locals.sampleData1[0].sgaStatus, 'unresolved');
+    assert.equal(response.body.locals.sampleData1[0].multas[0], 'sga-error');
   } finally {
     loaded.restore();
   }
@@ -214,12 +495,16 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
           DEU_ESTADO: '2',
           DEU_MATERIAL: 'Tablet pendiente',
           DEU_MULTA: '650100',
+          DEU_CPTO_COD: '4',
+          DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
         },
         {
           DEU_EST_COD: '2024100001',
           DEU_ESTADO: '1',
           DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
           DEU_MULTA: '1',
+          DEU_CPTO_COD: '999',
+          CPTO_NOMBRE: 'AUDIOVISUALES',
         },
         { DEU_EST_COD: '2024100001', DEU_ESTADO: '3' },
       ];
@@ -237,13 +522,13 @@ test('get_list_estudiantes consulta_masiva appends active SGA fines after MILab 
     assert.equal(requestedCode, '2024100001');
     assert.deepEqual(
       multas.map((multa) => multa.origen),
-      ['MILab', 'SGA', 'SGA']
+      ['MILab', 'SGA']
     );
     assert.equal(multas[1].cat_multa, 'Tablet pendiente');
+    assert.equal(multas[1].ual, 'LABORATORIO DE QUIMICA');
+    assert.equal(multas[1].codigo_ubicacion_sga, '4');
     assert.match(multas[1].obs_multa, /Valor SGA: 650100/);
-    assert.equal(multas[2].cat_multa, 'Tubo de ensayo omsons 15x150mm');
-    assert.equal(multas[2].con_estado_multa, 'ACTIVA (estado SGA 1)');
-    assert.match(multas[2].obs_multa, /Valor SGA: 1/);
+    assert.equal(response.body.locals.sampleData1[0].sgaStatus, 'found');
   } finally {
     loaded.restore();
   }
@@ -345,7 +630,8 @@ test('get_list_estudiantes buildPdfTableRows keeps SGA fines and failures in the
             cat_multa: 'Tablet',
             fecha_multa: '2026-02-01',
             obs_multa: 'y',
-            ual: 'SGA',
+            ual: 'LABORATORIO DE QUIMICA',
+            codigo_ubicacion_sga: '4',
           },
           'sga-error',
         ],
@@ -355,7 +641,14 @@ test('get_list_estudiantes buildPdfTableRows keeps SGA fines and failures in the
     ]);
 
     assert.deepEqual(rows[0], ['2024100001', 'MILab', 'Daño', '2026-01-01', 'x', 'L1']);
-    assert.deepEqual(rows[1], ['2024100001', 'SGA', 'Tablet', '2026-02-01', 'y', 'SGA']);
+    assert.deepEqual(rows[1], [
+      '2024100001',
+      'SGA',
+      'Tablet',
+      '2026-02-01',
+      'y',
+      'LABORATORIO DE QUIMICA (código SGA 4)',
+    ]);
     assert.equal(rows[2][1], 'SGA');
     assert.equal(rows[2][2], 'No fue posible verificar el estado en SGA.');
     assert.notEqual(rows[2][4], 'El estudiante está a paz y salvo');
@@ -380,6 +673,59 @@ test('get_list_estudiantes generate_pdf renders a PDF including SGA markers', as
 
     assert.equal(response.status, 200);
     assert.match(response.headers['content-type'], /application\/pdf/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('bulk sanction report summary includes all participant and verification states', () => {
+  const summary = summarizeBulkSanctions([
+    {
+      sgaStatus: 'found',
+      multas: [{ origen: 'MILab' }, { origen: 'SGA' }],
+    },
+    { sgaStatus: 'clear', multas: [] },
+    { sgaStatus: 'partial', multas: [] },
+    { sgaStatus: 'not_configured', multas: [] },
+  ]);
+
+  assert.deepEqual(summary, {
+    students: 4,
+    studentsWithSanctions: 1,
+    localSanctions: 1,
+    sgaLaboratoryFines: 1,
+    verified: 2,
+    nonConclusive: 1,
+    notConfigured: 1,
+    sgaWithFines: 1,
+    sgaClear: 1,
+  });
+});
+
+test('generate_pdf paginates the complete list of 50 participants', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, { tipo: 'coordinador', documento: '900' });
+    const data = Array.from({ length: 50 }, (_, index) => ({
+      identificador: `${1000 + index}`,
+      documento: `${2000 + index}`,
+      codigo: `${3000 + index}`,
+      nombre: `Estudiante ${index + 1}`,
+      programa: 'Ingeniería de Prueba',
+      sgaStatus: index === 0 ? 'partial' : 'clear',
+      sgaMessage: index === 0 ? 'La consulta requiere verificación.' : '',
+      multas: [null],
+    }));
+    const response = await request(app)
+      .post('/generate_pdf')
+      .type('form')
+      .send({ data: JSON.stringify(data) });
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/pdf/);
+    const pageCount = response.body.toString('latin1').match(/\/Type\s*\/Page\b/g)?.length;
+    assert.ok(pageCount >= 2, `expected multiple pages, received ${pageCount}`);
   } finally {
     loaded.restore();
   }

@@ -13,9 +13,11 @@ const { resolveOatiName } = require('../../libs/oati-name');
 const { SANCTION_TYPES } = require('../../libs/multa-config');
 const { sgaDebtService } = require('../../libs/oati-debts');
 const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
+const { buildSanctionListReturnPath } = require('../../libs/sanction-list-navigation');
 const {
   renderApplicationError,
   renderModuleError,
+  respondOatiUnavailable,
   wantsJson,
 } = require('../middlewares/error-handler');
 const ExcelJS = require('exceljs');
@@ -482,8 +484,12 @@ async function addLaboratoristaActions(client, rows, req) {
 
     return {
       ...row,
-      canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
-      canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      // Antes las acciones directas dependían de flags configurados por facultad:
+      // canActivate: state === 'PENDIENTE' && config?.permite_crear_multas_activas_directas === true,
+      // canSaldar: state === 'POR SALDAR' && config?.permite_saldar_multas_directas === true,
+      // canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
+      canActivate: state === 'PENDIENTE',
+      canSaldar: state === 'POR SALDAR',
       canAplazar:
         state === 'ACTIVA' &&
         (config?.permite_crear_multas_activas_directas === true ||
@@ -492,7 +498,7 @@ async function addLaboratoristaActions(client, rows, req) {
         state === 'APLAZADA' &&
         (config?.permite_crear_multas_activas_directas === true ||
           config?.permite_saldar_multas_directas === true),
-      canRemove: state === 'ACTIVA' && config?.permite_saldar_multas_directas === true,
+      canRemove: state === 'ACTIVA',
       canEdit: state === 'ACTIVA',
     };
   });
@@ -509,6 +515,9 @@ router.get('/resolve_name', requireMultasAccess, async (req, res) => {
     const nombre = await resolveOatiName(documento);
     return res.json({ ok: true, nombre: nombre || '' });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error resolviendo nombre OATI:', error);
     return res.status(500).json({ ok: false, nombre: '' });
   }
@@ -594,13 +603,28 @@ router.get('/:multaId/sga-multas', requireMultasAccess, async (req, res) => {
       return res.json({ ok: true, configured: true, supported: false, multas: [] });
     }
 
-    const multas = await sgaDebtService.getActiveDebts({
+    const sgaResult = await sgaDebtService.queryStudent({
       codigo: sanction.codigo_sancionado,
       documento: sanction.documento_sancionado,
     });
-    return res.json({ ok: true, configured: true, supported: true, multas });
+    return res.json({
+      ok: true,
+      configured: true,
+      supported: true,
+      status: sgaResult.status,
+      codes: sgaResult.codes,
+      summary: {
+        nonLaboratoryCount: sgaResult.nonLaboratoryCount,
+        unclassifiedCount: sgaResult.unclassifiedCount,
+      },
+      message: sgaResult.message,
+      multas: sgaResult.debts,
+    });
   } catch (error) {
     if (client) client.release();
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando multas SGA desde el detalle de sanción:', error);
     return res.status(502).json({
       ok: false,
@@ -693,7 +717,7 @@ router.post('/editar', requireMultasEditAccess, async (req, res) => {
         .toLowerCase() === 'get-info-multa-persona'
         ? buildSanctionPersonReturnPath(String(req.body?.lookup_token || '').trim(), 'editada')
         : null;
-    return res.redirect(personaReturnPath || '/milab/api/get_list_multas?success=editada');
+    return res.redirect(personaReturnPath || buildSanctionListReturnPath(req.body, 'editada'));
   } catch (error) {
     if (client) client.release();
     console.error('Error editando sanción:', error);

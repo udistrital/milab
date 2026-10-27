@@ -15,6 +15,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+  <% if (typeof recaptchaSiteKey !== 'undefined' && recaptchaSiteKey) { %>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+  <% } %>
   <style>
     :root {
       --page-bg: #faf8f2;
@@ -37,10 +40,8 @@
       margin: 0;
       min-height: 100vh;
       background:
-        radial-gradient(circle at 16% 20%, rgba(255, 191, 0, 0.12), transparent 24%),
-        radial-gradient(circle at 82% 16%, rgba(234, 16, 16, 0.12), transparent 28%),
-        linear-gradient(180deg, #fffdf8 0%, var(--page-bg) 58%, var(--page-bg-deep) 100%);
-      background-attachment: fixed;
+        linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
+        url('/milab/public/img/background_milab.png') center / cover no-repeat fixed;
       color: var(--text-main);
       font-family: "Manrope", "Segoe UI", sans-serif;
     }
@@ -69,7 +70,7 @@
     .index2-shell::before {
       inset: 0;
       border-radius: 0;
-      opacity: 0.42;
+      opacity: 0.12;
       filter: none;
       background-image:
         linear-gradient(rgba(16, 16, 16, 0.03) 1px, transparent 1px),
@@ -237,13 +238,13 @@
     }
 
     .hero-card {
-      width: min(100%, 720px);
+      width: min(100%, 590px);
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
-      gap: 0;
-      padding: 1.45rem 1.8rem 1.3rem;
+      gap: 0.35rem;
+      padding: 1.25rem 1.7rem 1.2rem;
       border: 1px solid var(--surface-border);
       border-radius: 36px;
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.5));
@@ -270,30 +271,80 @@
     }
 
     .hero-logo {
-      width: min(100%, 560px);
+      width: min(100%, 360px);
       height: auto;
       display: block;
-      margin-top: 0.1rem;
-      margin-bottom: 0;
+      margin: 0;
       animation: floatLogo 5.2s ease-in-out infinite;
     }
 
+    .hero-title {
+      margin: 0.15rem 0 0;
+      font-family: "Sora", "Manrope", sans-serif;
+      font-size: clamp(1.45rem, 2.8vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+    }
+
+    .hero-description {
+      max-width: 34rem;
+      margin: 0.35rem 0 0;
+      color: #565656;
+      font-size: 0.96rem;
+      line-height: 1.45;
+    }
+
+    .auth-feedback {
+      width: min(100%, 420px);
+      margin: 0.75rem 0 0;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid rgba(184, 13, 13, 0.18);
+      border-radius: 12px;
+      background: rgba(255, 240, 240, 0.94);
+      color: #9b2020;
+      font-size: 0.85rem;
+    }
+
     .login-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
       border: 0;
       border-radius: 999px;
       background: linear-gradient(180deg, var(--brand-red) 0%, var(--brand-red-dark) 100%);
       color: #ffffff;
       text-decoration: none;
-      font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+      font-size: 1rem;
       font-family: "Sora", "Manrope", sans-serif;
-      padding: 1rem 2.8rem;
-      min-width: 280px;
+      font-weight: 700;
+      padding: 0.95rem 1.5rem;
+      width: min(100%, 420px);
       letter-spacing: 0.015em;
       box-shadow: 0 24px 38px rgba(234, 16, 16, 0.26);
       transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
-      margin-top: 0;
+      margin-top: 0.15rem;
       position: relative;
       overflow: hidden;
+    }
+
+    .microsoft-mark {
+      display: grid;
+      grid-template-columns: repeat(2, 0.72rem);
+      gap: 0.12rem;
+      flex: 0 0 auto;
+    }
+
+    .microsoft-mark span {
+      width: 0.72rem;
+      height: 0.72rem;
+      background: currentColor;
+    }
+
+    .login-arrow {
+      margin-left: auto;
+      font-size: 1.05rem;
     }
 
     .login-btn::before {
@@ -323,25 +374,75 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0.7rem;
-      margin-top: -0.15rem;
+      gap: 0.55rem;
+      width: 100%;
+      margin-top: 0.6rem;
+    }
+
+    .captcha-wrap {
+      display: flex;
+      justify-content: center;
+      min-height: 78px;
+      margin-top: 0.05rem;
+    }
+
+    .captcha-message {
+      margin: -0.25rem 0 0;
+      color: #9b2020;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .hero-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      width: min(100%, 420px);
+      color: #929292;
+      font-size: 0.8rem;
+      margin: 0.05rem 0;
+    }
+
+    .hero-divider::before,
+    .hero-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(16, 16, 16, 0.14);
+    }
+
+    .first-login-note {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      max-width: 26rem;
+      margin: 0.15rem 0 0;
+      color: #686868;
+      font-size: 0.76rem;
+      line-height: 1.4;
+      text-align: left;
+    }
+
+    .first-login-note i {
+      flex: 0 0 auto;
+      font-size: 1.05rem;
     }
 
     .guest-consult-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.55rem;
+      gap: 0.65rem;
       border-radius: 999px;
       border: 1px solid rgba(16, 16, 16, 0.12);
       background: rgba(255, 255, 255, 0.78);
       color: #1a1a1a;
       text-decoration: none;
-      font-size: 0.98rem;
+      font-size: 0.94rem;
       font-weight: 700;
       letter-spacing: 0.02em;
-      padding: 0.95rem 1.5rem;
-      min-width: 280px;
+      padding: 0.78rem 1.5rem;
+      width: min(100%, 420px);
       box-shadow: 0 18px 32px rgba(16, 16, 16, 0.08);
       transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, color 180ms ease;
     }
@@ -456,8 +557,8 @@
       }
 
       .hero-card {
-        gap: 0.15rem;
-        padding: 1.05rem 0.95rem 0.95rem;
+        gap: 0.25rem;
+        padding: 0.9rem 0.8rem 0.85rem;
         border-radius: 28px;
       }
 
@@ -471,8 +572,22 @@
       }
 
       .hero-logo {
-        width: min(100%, 420px);
-        margin-top: 0;
+        width: min(100%, 300px);
+      }
+
+      .hero-title {
+        font-size: 1.45rem;
+      }
+
+      .hero-description {
+        font-size: 0.87rem;
+      }
+
+      .login-btn,
+      .guest-consult-btn {
+        width: min(100%, 360px);
+        padding: 0.82rem 1rem;
+        font-size: 0.9rem;
       }
 
       .page-note {
@@ -512,12 +627,41 @@
           />
         </div>
 
+        <div class="hero-copy">
+          <h1 class="hero-title">Bienvenido a MiLab</h1>
+          <p class="hero-description">
+            Sistema de gestión de laboratorios de la Universidad Distrital Francisco José de Caldas.
+          </p>
+        </div>
+
+        <% if (typeof recaptchaError !== 'undefined' && recaptchaError) { %>
+          <p class="auth-feedback" role="alert"><%= recaptchaError %></p>
+        <% } %>
+
         <div class="hero-actions">
-          <a class="login-btn" href="/milab/auth/login">Ingresar al sistema</a>
+          <a class="login-btn" id="login-submit" href="/milab/auth/microsoft">
+            <span class="microsoft-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+            <span>Acceso correo institucional</span>
+            <i class="bi bi-arrow-right login-arrow" aria-hidden="true"></i>
+          </a>
+          <% if (typeof recaptchaSiteKey !== 'undefined' && recaptchaSiteKey) { %>
+            <div class="captcha-wrap">
+              <div class="g-recaptcha" id="login-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
+            </div>
+            <p class="captcha-message" id="login-captcha-message" role="alert" hidden>
+              Complete el reCAPTCHA para continuar.
+            </p>
+          <% } %>
+          <div class="hero-divider" aria-hidden="true"><span>o</span></div>
           <a class="guest-consult-btn" href="/milab/api/consulta-invit">
             <i class="bi bi-search" aria-hidden="true"></i>
-            <span>Consulta invitado</span>
+            <span>Consulta de invitado</span>
+            <i class="bi bi-arrow-right" aria-hidden="true"></i>
           </a>
+          <p class="first-login-note">
+            <i class="bi bi-people-fill" aria-hidden="true"></i>
+            <span>Si es su primer ingreso y no tiene registro local, el sistema le pedirá completar su perfil.</span>
+          </p>
         </div>
       </div>
     </section>
@@ -541,6 +685,9 @@
       const title = document.getElementById('service-status-title');
       const message = document.getElementById('service-status-message');
       const meta = document.getElementById('service-status-meta');
+      const loginSubmit = document.getElementById('login-submit');
+      const loginCaptcha = document.getElementById('login-recaptcha');
+      const loginCaptchaMessage = document.getElementById('login-captcha-message');
 
       function setBannerState(state) {
         banner.classList.remove('is-loading', 'is-up', 'is-down');
@@ -551,8 +698,14 @@
         return new Date(timestamp).toLocaleString('es-CO');
       }
 
-      fetch('/milab/api/check-services')
+      const statusController = new AbortController();
+      const statusTimer = setTimeout(function () {
+        statusController.abort();
+      }, 12000);
+
+      fetch('/milab/api/check-services', { signal: statusController.signal })
         .then((response) => {
+          clearTimeout(statusTimer);
           if (!response.ok) {
             throw new Error('HTTP ' + response.status);
           }
@@ -579,6 +732,24 @@
           message.textContent = 'No se pudo consultar el estado del servicio en este momento.';
           meta.textContent = 'Servicio: Gestión Académica - UD | Última verificación: ' + new Date().toLocaleString('es-CO');
         });
+
+      if (loginSubmit) {
+        loginSubmit.addEventListener('click', function (event) {
+          if (!loginCaptcha || typeof window.grecaptcha === 'undefined') {
+            return;
+          }
+
+          const captchaResponse = window.grecaptcha.getResponse();
+          if (captchaResponse) {
+            if (loginCaptchaMessage) loginCaptchaMessage.hidden = true;
+            return;
+          }
+
+          event.preventDefault();
+          if (loginCaptchaMessage) loginCaptchaMessage.hidden = false;
+          loginCaptcha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
     });
   </script>
 </body>

@@ -17,8 +17,16 @@ const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const { getAcademicServicePath, requestOati } = require('../../libs/oati-client');
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
-const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  normalizeRoleListForMatch,
+  requireJsonRoles,
+  requireRoles,
+} = require('../middlewares/auth');
+const {
+  renderApplicationError,
+  respondOatiUnavailable,
+  wantsJson,
+} = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -85,7 +93,7 @@ async function resolveDashboardSchemaColumns(client) {
 }
 
 const requireDashboardAccess = requireRoles(
-  ['admin', 'coordinador_general', 'coordinador', 'laboratorista'],
+  ['admin', 'coordinador_general', 'coordinador', 'laboratorista', 'gestor_laboratorio'],
   {
     message: '¡Acceso denegado!',
     message2: 'No tienes permisos para ver el dashboard',
@@ -143,12 +151,95 @@ const CHART_DEFINITIONS = {
 };
 
 function getDashboardRole(user) {
-  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const roles = normalizeRoleListForMatch(user?.roles || user?.tipo);
   if (roles.includes('admin')) return 'admin';
-  if (roles.includes('coordinador_general')) return 'coordinador_general';
+  if (roles.includes('coordinador_general') || roles.includes('gestor_laboratorio')) {
+    return 'coordinador_general';
+  }
   if (roles.includes('coordinador')) return 'coordinador';
   if (roles.includes('laboratorista')) return 'laboratorista';
   return '';
+}
+
+function parseDashboardScopeId(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function fetchDashboardScopeOptions(client, role, scope, columns) {
+  if (!columns.facultadIdColumn) {
+    return { faculties: [], dependencies: [] };
+  }
+
+  const facultyScope =
+    role === 'coordinador' ? `${columns.facultadIdColumn} = ANY($1::int[])` : 'padre_id IS NULL';
+  const facultyParams = role === 'coordinador' ? [scope.facultyIds || []] : [];
+  const facultyResult = await client.query(
+    `SELECT ${columns.facultadIdColumn} AS id, nombre
+     FROM dependencia_facultad
+     WHERE ${facultyScope}
+       AND activo IS DISTINCT FROM FALSE
+     ORDER BY nombre`,
+    facultyParams
+  );
+  const faculties = facultyResult.rows
+    .map((row) => ({
+      id: Number(row.id),
+      nombre: String(row.nombre || '').trim(),
+    }))
+    .filter((row) => Number.isSafeInteger(row.id) && row.id > 0 && row.nombre);
+
+  const facultyIds =
+    role === 'coordinador'
+      ? (scope.facultyIds || []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0)
+      : faculties.map((faculty) => faculty.id);
+  if (!columns.ualIdColumn || !columns.ualFacultadIdColumn || !facultyIds.length) {
+    return { faculties, dependencies: [] };
+  }
+
+  const dependencyResult = await client.query(
+    `SELECT ${columns.ualIdColumn} AS id,
+            nombre,
+            ${columns.ualFacultadIdColumn} AS facultad_id
+     FROM ual
+     WHERE ${columns.ualFacultadIdColumn} = ANY($1::int[])
+       AND activo IS DISTINCT FROM FALSE
+     ORDER BY nombre`,
+    [facultyIds]
+  );
+  const dependencies = dependencyResult.rows
+    .map((row) => ({
+      id: Number(row.id),
+      nombre: String(row.nombre || '').trim(),
+      facultadId: Number(row.facultad_id),
+    }))
+    .filter(
+      (row) =>
+        Number.isSafeInteger(row.id) &&
+        row.id > 0 &&
+        Number.isSafeInteger(row.facultadId) &&
+        row.facultadId > 0 &&
+        row.nombre
+    );
+
+  return { faculties, dependencies };
+}
+
+function requirePlatformMonitoringAccess(req, res, next) {
+  const dashboardRole = getDashboardRole(req.session?.user);
+  const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
+  const requestedPlatformSection = req.query.section === 'general';
+
+  if (dashboardRole !== 'laboratorista' || (!requestedChart && !requestedPlatformSection)) {
+    return next();
+  }
+
+  return res.status(403).render('home/message_error', {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para ver el monitoreo de toda la plataforma.',
+    limit: 'loginOnly',
+  });
 }
 
 function isGlobalDashboardRole(role) {
@@ -428,8 +519,15 @@ async function fetchLaboratoristaRows() {
 }
 
 async function fetchCoordinatorRows() {
-  const result = await pool.query(
-    `SELECT
+  const buildQuery = (includeUalAssignments) => {
+    const assignedLabs = includeUalAssignments
+      ? `(SELECT STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre)
+          FROM coordinador_ual_encargado encargado
+          JOIN ual ON ual.ual_id = encargado.ual_id
+          WHERE encargado.coordinador_documento = c.documento)`
+      : 'NULL::text';
+
+    return `SELECT
        c.fecha_creacion,
        c.nombre,
        c.documento,
@@ -438,10 +536,7 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id,
-       (SELECT STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre)
-        FROM coordinador_ual_encargado encargado
-        JOIN ual ON ual.ual_id = encargado.ual_id
-        WHERE encargado.coordinador_documento = c.documento) AS laboratorios_encargados,
+       ${assignedLabs} AS laboratorios_encargados,
        ARRAY_REMOVE(ARRAY_AGG(DISTINCT cf.facultad_id), NULL) AS faculty_ids
      FROM coordinador c
      LEFT JOIN coordinador_facultad cf
@@ -455,9 +550,27 @@ async function fetchCoordinatorRows() {
        c.soporte_resolucion,
        c.nombre_u,
        c.usuario_id
-     ORDER BY c.fecha_creacion DESC NULLS LAST`
-  );
-  return result.rows;
+     ORDER BY c.fecha_creacion DESC NULLS LAST`;
+  };
+
+  try {
+    const result = await pool.query(buildQuery(true));
+    return { rows: result.rows, ualAssignmentsAvailable: true };
+  } catch (error) {
+    if (
+      error?.code !== '42P01' ||
+      !String(error.message || '').includes('coordinador_ual_encargado')
+    ) {
+      throw error;
+    }
+
+    console.warn(
+      'Dashboard: falta la tabla coordinador_ual_encargado; se omitirá el dato de laboratorios a cargo.',
+      error.message
+    );
+    const result = await pool.query(buildQuery(false));
+    return { rows: result.rows, ualAssignmentsAvailable: false };
+  }
 }
 
 async function fetchUsuarioRows() {
@@ -700,12 +813,28 @@ function isStudentRowInFacultyScope(row, scope) {
   return Boolean(facultyKey) && facultyKeys.has(facultyKey);
 }
 
-function filterStudentRowsByScope(rows, role, scope) {
-  if (isGlobalDashboardRole(role)) {
-    return rows;
+function isRowInSelectedDashboardScope(row, scope) {
+  if (scope.selectedUalId && !hasIntersection(row.ual_ids, new Set([scope.selectedUalId]))) {
+    return false;
   }
 
-  return rows.filter((row) => isStudentRowInFacultyScope(row, scope));
+  if (!scope.selectedFacultyId) return true;
+
+  const selectedFacultyIds = new Set([scope.selectedFacultyId]);
+  if (hasIntersection(row.faculty_ids, selectedFacultyIds)) return true;
+  return Boolean(
+    scope.selectedFacultyKey &&
+    isStudentRowInFacultyScope(row, { facultyKeys: [scope.selectedFacultyKey] })
+  );
+}
+
+function filterStudentRowsByScope(rows, role, scope) {
+  const scopedRows = isGlobalDashboardRole(role)
+    ? rows
+    : rows.filter((row) => isStudentRowInFacultyScope(row, scope));
+  return scope.selectedUalId
+    ? []
+    : scopedRows.filter((row) => isRowInSelectedDashboardScope(row, scope));
 }
 
 function toNumericSet(values) {
@@ -719,55 +848,81 @@ function hasIntersection(leftValues, rightSet) {
 }
 
 function filterLaboratoristaRowsByScope(rows, role, scope) {
+  let scopedRows;
   if (isGlobalDashboardRole(role)) {
-    return rows;
-  }
-
-  if (role === 'coordinador') {
+    scopedRows = rows;
+  } else if (role === 'coordinador') {
     const facultyIds = toNumericSet(scope.facultyIds);
-    return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
-  }
-
-  if (role === 'laboratorista') {
+    scopedRows = rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  } else if (role === 'laboratorista') {
     const scopeUalIds = toNumericSet(scope.ualIds);
-    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
-  }
-
-  return [];
-}
-
-function filterCoordinatorRowsByScope(rows, role, scope) {
-  if (isGlobalDashboardRole(role)) {
-    return rows;
-  }
-
-  if (role !== 'coordinador') {
+    scopedRows = rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
+  } else {
     return [];
   }
 
-  const facultyIds = toNumericSet(scope.facultyIds);
-  return rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  return scopedRows.filter((row) => isRowInSelectedDashboardScope(row, scope));
+}
+
+function filterCoordinatorRowsByScope(rows, role, scope) {
+  let scopedRows;
+  if (isGlobalDashboardRole(role)) {
+    scopedRows = rows;
+  } else if (role === 'coordinador') {
+    const facultyIds = toNumericSet(scope.facultyIds);
+    scopedRows = rows.filter((row) => hasIntersection(row.faculty_ids, facultyIds));
+  } else {
+    return [];
+  }
+  return scopedRows.filter((row) => isRowInSelectedDashboardScope(row, scope));
 }
 
 function filterUsuarioRowsByScope(rows, role, scope) {
+  let scopedRows;
   if (isGlobalDashboardRole(role)) {
-    return rows;
-  }
-
-  if (role === 'coordinador') {
+    scopedRows = rows;
+  } else if (role === 'coordinador') {
     const facultyIds = toNumericSet(scope.facultyIds);
-    return rows.filter(
+    scopedRows = rows.filter(
       (row) =>
         isStudentRowInFacultyScope(row, scope) || hasIntersection(row.faculty_ids, facultyIds)
     );
-  }
-
-  if (role === 'laboratorista') {
+  } else if (role === 'laboratorista') {
     const scopeUalIds = toNumericSet(scope.ualIds);
-    return rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
+    scopedRows = rows.filter((row) => hasIntersection(row.ual_ids, scopeUalIds));
+  } else {
+    return [];
+  }
+  return scopedRows.filter((row) => isRowInSelectedDashboardScope(row, scope));
+}
+
+function isDashboardScopeFilterActive(scope) {
+  return Boolean(scope.selectedFacultyId || scope.selectedUalId);
+}
+
+/*
+ * Keep the user's authorized role scope intact, then apply a validated
+ * selection as an additional restriction.
+ */
+function applyDashboardScopeSelection(scope, options, requestedFacultyId, requestedUalId) {
+  const facultiesById = new Map(options.faculties.map((faculty) => [faculty.id, faculty]));
+  const dependenciesById = new Map(options.dependencies.map((ual) => [ual.id, ual]));
+  let selectedUal = dependenciesById.get(requestedUalId) || null;
+  let selectedFaculty = facultiesById.get(requestedFacultyId) || null;
+
+  if (selectedFaculty && selectedUal && selectedUal.facultadId !== selectedFaculty.id) {
+    selectedUal = null;
+  }
+  if (!selectedFaculty && selectedUal) {
+    selectedFaculty = facultiesById.get(selectedUal.facultadId) || null;
   }
 
-  return [];
+  return {
+    ...scope,
+    selectedFacultyId: selectedFaculty?.id || null,
+    selectedFacultyKey: selectedFaculty ? resolveFacultyKeyFromName(selectedFaculty.nombre) : null,
+    selectedUalId: selectedUal?.id || null,
+  };
 }
 
 const OPEN_SANCTION_STATES = ['ACTIVA', 'Pendiente', 'POR SALDAR'];
@@ -775,15 +930,29 @@ const DETAIL_ROW_LIMIT = 500;
 const RANKING_LIMIT = 5;
 
 function buildSanctionScopeFilter(role, scope) {
-  if (isGlobalDashboardRole(role)) {
-    return { condition: 'TRUE', params: [] };
-  }
-
+  const conditions = [];
+  const params = [];
   if (role === 'coordinador') {
-    return { condition: 'u.facultad_id = ANY($1::int[])', params: [scope.facultyIds || []] };
+    params.push(scope.facultyIds || []);
+    conditions.push(`u.facultad_id = ANY($${params.length}::int[])`);
+  } else if (role === 'laboratorista') {
+    params.push(scope.ualIds || []);
+    conditions.push(`m.ual_id = ANY($${params.length}::int[])`);
   }
 
-  return { condition: 'm.ual_id = ANY($1::int[])', params: [scope.ualIds || []] };
+  if (scope.selectedFacultyId) {
+    params.push(scope.selectedFacultyId);
+    conditions.push(`u.facultad_id = $${params.length}`);
+  }
+  if (scope.selectedUalId) {
+    params.push(scope.selectedUalId);
+    conditions.push(`m.ual_id = $${params.length}`);
+  }
+
+  return {
+    condition: conditions.length ? conditions.join(' AND ') : 'TRUE',
+    params,
+  };
 }
 
 function toInt(value) {
@@ -902,14 +1071,13 @@ async function fetchClaimPazYSalvoSummary(client, role, scope) {
   );
   if (!hasClaims) return null;
 
-  let condition = 'TRUE';
-  let params = [];
-  if (role === 'laboratorista') {
-    condition = 'r.responsable_documento_id = $1';
-    params = [scope.laboratoristaDocument || ''];
-  } else if (!isGlobalDashboardRole(role)) {
-    ({ condition, params } = buildSanctionScopeFilter(role, scope));
-  }
+  const { condition, params } =
+    role === 'laboratorista'
+      ? {
+          condition: 'r.responsable_documento_id = $1',
+          params: [scope.laboratoristaDocument || ''],
+        }
+      : buildSanctionScopeFilter(role, scope);
 
   const result = await client.query(
     `SELECT
@@ -1167,12 +1335,17 @@ function percentOf(value, total) {
   return total ? Math.round((value / total) * 100) : null;
 }
 
-async function fetchOperationalCoverage(client, now = new Date()) {
+async function fetchOperationalCoverage(client, now = new Date(), filters = {}) {
+  const selectedFacultyId = parseDashboardScopeId(filters.selectedFacultyId);
+  const facultyParams = [selectedFacultyId];
   const [facultiesRes, ualRes, labRes, coordRes, totalsRes] = await Promise.all([
     client.query(
       `SELECT dependencia_facultad_id AS facultad_id, nombre
        FROM dependencia_facultad
-       WHERE padre_id IS NULL AND activo IS DISTINCT FROM FALSE`
+       WHERE padre_id IS NULL
+         AND activo IS DISTINCT FROM FALSE
+         AND ($1::int IS NULL OR dependencia_facultad_id = $1)`,
+      facultyParams
     ),
     client.query(
       `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
@@ -1192,7 +1365,9 @@ async function fetchOperationalCoverage(client, now = new Date()) {
        FROM ual u
        JOIN arbol a ON a.id = u.facultad_id
        WHERE u.activo = TRUE
-       GROUP BY a.facultad_id`
+         AND ($1::int IS NULL OR a.facultad_id = $1)
+       GROUP BY a.facultad_id`,
+      facultyParams
     ),
     client.query(
       `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
@@ -1204,7 +1379,9 @@ async function fetchOperationalCoverage(client, now = new Date()) {
        JOIN ual u ON u.ual_id = lu.ual_id AND u.activo = TRUE
        JOIN arbol a ON a.id = u.facultad_id
        WHERE l.activo IS DISTINCT FROM FALSE
-       GROUP BY a.facultad_id`
+         AND ($1::int IS NULL OR a.facultad_id = $1)
+       GROUP BY a.facultad_id`,
+      facultyParams
     ),
     client.query(
       `WITH arbol AS (${OPERATIONAL_FACULTY_TREE})
@@ -1215,7 +1392,9 @@ async function fetchOperationalCoverage(client, now = new Date()) {
         AND cf.activo IS DISTINCT FROM FALSE
        JOIN arbol a ON a.id = cf.facultad_id
        WHERE c.activo IS DISTINCT FROM FALSE
-       GROUP BY a.facultad_id`
+         AND ($1::int IS NULL OR a.facultad_id = $1)
+       GROUP BY a.facultad_id`,
+      facultyParams
     ),
     client.query(
       `SELECT
@@ -1241,6 +1420,7 @@ async function fetchOperationalCoverage(client, now = new Date()) {
       const id = Number(row.facultad_id);
       const ual = ualByFaculty.get(id) || {};
       return {
+        id,
         nombre: String(row.nombre || '').trim() || `Facultad ${id}`,
         ualActivas: toInt(ual.ual_activas),
         ualConLaboratorista: toInt(ual.ual_con_laboratorista),
@@ -1253,6 +1433,8 @@ async function fetchOperationalCoverage(client, now = new Date()) {
   const ualActivas = facultades.reduce((sum, item) => sum + item.ualActivas, 0);
   const ualConLaboratorista = facultades.reduce((sum, item) => sum + item.ualConLaboratorista, 0);
   const totals = totalsRes.rows[0] || {};
+  const scopedLaboratoristas = facultades.reduce((sum, item) => sum + item.laboratoristas, 0);
+  const scopedCoordinadores = facultades.reduce((sum, item) => sum + item.coordinadores, 0);
 
   return {
     totales: {
@@ -1260,13 +1442,14 @@ async function fetchOperationalCoverage(client, now = new Date()) {
       ualActivas,
       ualConLaboratorista,
       porcentajeCubierto: percentOf(ualConLaboratorista, ualActivas),
-      laboratoristas: toInt(totals.laboratoristas),
-      coordinadores: toInt(totals.coordinadores),
-      monitores: toInt(totals.monitores),
-      monitoresPorVencer: toInt(totals.monitores_por_vencer),
+      laboratoristas: selectedFacultyId ? scopedLaboratoristas : toInt(totals.laboratoristas),
+      coordinadores: selectedFacultyId ? scopedCoordinadores : toInt(totals.coordinadores),
+      monitores: selectedFacultyId ? null : toInt(totals.monitores),
+      monitoresPorVencer: selectedFacultyId ? null : toInt(totals.monitores_por_vencer),
     },
     facultades,
     facultadesSinCoordinador: facultades.filter((item) => !item.coordinadores).length,
+    scopeLabel: selectedFacultyId ? 'Facultad seleccionada' : 'Toda la universidad',
   };
 }
 
@@ -1414,17 +1597,21 @@ function buildPazYSalvoCards(role, indicators) {
   });
 
   const pendingApproval = sanciones.pendientes + sanciones.porSaldar;
+  // Lógica anterior mientras las sanciones requerían autorización:
+  // label:
+  //   role === 'coordinador'
+  //     ? 'Pendientes de tu autorización'
+  //     : role === 'laboratorista'
+  //       ? 'Esperando al coordinador'
+  //       : 'Pendientes de autorización',
+  // hint: `${sanciones.pendientes} por crear · ${sanciones.porSaldar} por saldar`,
+  // href: role === 'coordinador' ? '/milab/api/aprobacion_multa' : multasUrl,
   cards.push({
-    label:
-      role === 'coordinador'
-        ? 'Pendientes de tu autorización'
-        : role === 'laboratorista'
-          ? 'Esperando al coordinador'
-          : 'Pendientes de autorización',
+    label: 'Sanciones pendientes o por saldar',
     value: pendingApproval,
-    hint: `${sanciones.pendientes} por crear · ${sanciones.porSaldar} por saldar`,
+    hint: `${sanciones.pendientes} pendientes · ${sanciones.porSaldar} por saldar`,
     tone: pendingApproval ? 'warn' : 'ok',
-    href: role === 'coordinador' ? '/milab/api/aprobacion_multa' : multasUrl,
+    href: multasUrl,
   });
 
   if (reclamaciones) {
@@ -1476,12 +1663,12 @@ async function buildPazYSalvoIndicators(client, role, scope, certificateRows) {
   const sanciones = await fetchSanctionPazYSalvoSummary(client, role, scope);
   const reclamaciones = await fetchClaimPazYSalvoSummary(client, role, scope);
   const certificados =
-    role === 'laboratorista'
+    role === 'laboratorista' || scope.selectedUalId
       ? null
       : buildCertificatePazYSalvoSummary(
           certificateRows.students,
           certificateRows.teachers,
-          isGlobalDashboardRole(role)
+          certificateRows.includeTeachers ?? isGlobalDashboardRole(role)
         );
 
   let rankingGroups = [{ title: 'UAL', items: sanciones.ranking.uals }];
@@ -1628,7 +1815,8 @@ async function lookupEnrollmentStudentData(documento) {
           getAcademicServicePath(`estados_codigo/${estadoCodigo}`)
         );
         estadoNombre = estadoData?.estado?.nombre || estadoCodigo;
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         estadoNombre = estadoCodigo;
       }
     }
@@ -1640,7 +1828,8 @@ async function lookupEnrollmentStudentData(documento) {
           carreraData?.carrerasCollection?.carrera?.[0]?.nombre ||
           carreraData?.carrerasCollection?.carrera?.nombre ||
           '';
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         carreraNombre = '';
       }
     }
@@ -1652,7 +1841,8 @@ async function lookupEnrollmentStudentData(documento) {
       estado: String(estadoNombre || '').trim() || 'ACTIVO',
       carrera: String(carreraNombre || '').trim() || null,
     };
-  } catch {
+  } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') throw error;
     return null;
   }
 }
@@ -1693,7 +1883,8 @@ async function resolveOatiCatalogNames(codes, fetchName) {
     uniqueCodes.map(async (code) => {
       try {
         return [code, String((await fetchName(code)) || '').trim() || code];
-      } catch {
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') throw error;
         return [code, code];
       }
     })
@@ -2192,6 +2383,9 @@ router.get('/usuarios/:id/oati-registros', requireDashboardAdminJson, async (req
     const registros = await lookupOatiStudentRecordsByDocumento(documento);
     return res.json({ ok: true, usuario, registros });
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando registros OATI desde dashboard:', error);
     return res.status(502).json({
       ok: false,
@@ -2236,6 +2430,9 @@ router.post('/usuarios/:id/oati-registro', requireDashboardAdminJson, async (req
     try {
       registros = await lookupOatiStudentRecordsByDocumento(documento);
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error('Error consultando registros OATI para asociar desde dashboard:', error);
       return res.status(502).json({
         ok: false,
@@ -2367,14 +2564,15 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
         role === 'docente' ||
         role === 'coordinador' ||
         role === 'laboratorista' ||
-        role === 'monitor'
+        role === 'monitor' ||
+        role === 'gestor_laboratorio'
     );
 
     if (!impersonableRoles.length) {
       return res.status(409).json({
         ok: false,
         message:
-          'La cuenta seleccionada no tiene roles activos para ingresar. Asigna un rol (estudiante/docente) y vuelve a intentar.',
+          'La cuenta seleccionada no tiene roles activos para ingresar. Regístrala como Gestor de laboratorio o asígnale un rol estudiante/docente y vuelve a intentar.',
       });
     }
 
@@ -2418,11 +2616,22 @@ router.post('/impersonacion/iniciar', requireDashboardAdminJson, async (req, res
 
 router.post(
   '/impersonacion/detener',
-  requireRoles(['admin', 'coordinador', 'laboratorista', 'docente', 'estudiante', 'monitor'], {
-    message: '¡Acceso denegado!',
-    message2: 'No tienes permisos para realizar esta acción',
-    limit: 'noSession',
-  }),
+  requireRoles(
+    [
+      'admin',
+      'coordinador',
+      'laboratorista',
+      'docente',
+      'estudiante',
+      'monitor',
+      'gestor_laboratorio',
+    ],
+    {
+      message: '¡Acceso denegado!',
+      message2: 'No tienes permisos para realizar esta acción',
+      limit: 'noSession',
+    }
+  ),
   async (req, res) => {
     const adminUser = req.session?.impersonationAdminUser;
     if (!adminUser) {
@@ -2467,15 +2676,22 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
   try {
     client = await pool.connect();
     let scopeIds = [];
-    let scopeFilter = '';
+    const scopePredicates = [];
+    const queryParams = [];
+    const appendScopePredicate = (predicate, value) => {
+      queryParams.push(value);
+      scopePredicates.push(predicate.replace('?', `$${queryParams.length}`));
+    };
     let scopeTitle = 'Vista global';
     let scopeDescription = 'Indicadores agregados de todos los inventarios institucionales.';
     let scopeChips = ['Toda la plataforma'];
+    let selectedFacultyId = null;
+    let selectedUalId = null;
 
     if (role === 'coordinador') {
       const coordinatorScope = await resolveCoordinatorScope(client, document);
       scopeIds = [...new Set((coordinatorScope.facultyIds || []).map(Number).filter(Boolean))];
-      scopeFilter = 'AND u.facultad_id = ANY($1::int[])';
+      appendScopePredicate('u.facultad_id = ANY(?::int[])', scopeIds);
       scopeTitle = 'Vista por facultad';
       scopeDescription = 'Los indicadores se limitan a las facultades asignadas al coordinador.';
       let facultyNames = coordinatorScope.facultyNames || [];
@@ -2499,7 +2715,7 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
     } else if (role === 'laboratorista') {
       const laboratoristaScope = await resolveLaboratoristaScope(client, document);
       scopeIds = [...new Set((laboratoristaScope.ualIds || []).map(Number).filter(Boolean))];
-      scopeFilter = 'AND u.ual_id = ANY($1::int[])';
+      appendScopePredicate('u.ual_id = ANY(?::int[])', scopeIds);
       scopeTitle = 'Vista por laboratorio';
       scopeDescription =
         'Los indicadores se limitan a los laboratorios asignados al laboratorista.';
@@ -2512,7 +2728,45 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
         'Indicadores agregados de todos los inventarios institucionales, en modo de consulta.';
     }
 
-    const queryParams = scopeFilter ? [scopeIds] : [];
+    if (role !== 'laboratorista') {
+      const columns = await resolveDashboardSchemaColumns(client);
+      const options = await fetchDashboardScopeOptions(
+        client,
+        role,
+        { facultyIds: role === 'coordinador' ? scopeIds : [] },
+        columns
+      );
+      const selection = applyDashboardScopeSelection(
+        {},
+        options,
+        parseDashboardScopeId(req.query.facultad_id),
+        parseDashboardScopeId(req.query.ual_id)
+      );
+      selectedFacultyId = selection.selectedFacultyId;
+      selectedUalId = selection.selectedUalId;
+
+      const selectedFaculty = options.faculties.find((item) => item.id === selectedFacultyId);
+      const selectedDependency = options.dependencies.find((item) => item.id === selectedUalId);
+      if (selectedDependency || selectedFaculty) {
+        scopeTitle = selectedDependency ? 'Vista por dependencia' : 'Vista por facultad';
+        scopeDescription = selectedDependency
+          ? 'Los indicadores se limitan a la dependencia seleccionada dentro del alcance autorizado.'
+          : 'Los indicadores se limitan a la facultad seleccionada dentro del alcance autorizado.';
+        scopeChips = [
+          ...(selectedFaculty ? [selectedFaculty.nombre] : []),
+          ...(selectedDependency ? [selectedDependency.nombre] : []),
+        ];
+      }
+    }
+
+    if (selectedFacultyId) {
+      appendScopePredicate('u.facultad_id = ?', selectedFacultyId);
+    }
+    if (selectedUalId) {
+      appendScopePredicate('u.ual_id = ?', selectedUalId);
+    }
+    const scopeFilter = scopePredicates.map((predicate) => `AND ${predicate}`).join('\n');
+
     const descriptionKey = (column) =>
       `BTRIM(REGEXP_REPLACE(TRANSLATE(LOWER(BTRIM(${column})), 'áéíóúüñ', 'aeiouun'), '[[:space:][:punct:]]+', ' ', 'g'))`;
     const [typeResult, laboratoryResult, loadResult] = await Promise.all([
@@ -2711,7 +2965,7 @@ router.get('/inventarios', requireDashboardAccess, async (req, res) => {
   }
 });
 
-router.get('/', requireDashboardAccess, async (req, res) => {
+router.get('/', requireDashboardAccess, requirePlatformMonitoringAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
   const filtro = ['dia', 'semana', 'mes', 'anio'].includes(req.query.filtro)
@@ -2719,6 +2973,7 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     : 'dia';
   const requestedChart = typeof req.query.grafico === 'string' ? req.query.grafico.trim() : '';
   const dashboardRole = getDashboardRole(req.session?.user);
+  const canViewPlatformMonitoring = dashboardRole !== 'laboratorista';
 
   let labelFormat = 'Día';
   if (filtro === 'semana') labelFormat = 'Semana';
@@ -2727,8 +2982,32 @@ router.get('/', requireDashboardAccess, async (req, res) => {
 
   let client;
   try {
+    const dashboardWarnings = [];
+    let laboratoristaScopeUnavailable = false;
     client = await pool.connect();
-    const columns = await resolveDashboardSchemaColumns(client);
+    let columns;
+    try {
+      columns = await resolveDashboardSchemaColumns(client);
+    } catch (error) {
+      if (!isGlobalDashboardRole(dashboardRole) && dashboardRole !== 'laboratorista') {
+        throw error;
+      }
+      console.warn('Dashboard: no fue posible inspeccionar el esquema opcional:', error);
+      dashboardWarnings.push(
+        'No fue posible inspeccionar el esquema de inventarios; se omiten los filtros y métricas que dependen de él.'
+      );
+      columns = {
+        facultadIdColumn: null,
+        ualIdColumn: null,
+        ualFacultadIdColumn: null,
+        multaUalIdColumn: null,
+        laboratoristaUalIdColumn: null,
+        laboratoristaUalDocumentColumn: null,
+        coordinadorFacultadIdColumn: null,
+        coordinadorFacultadDocumentColumn: null,
+      };
+      laboratoristaScopeUnavailable = dashboardRole === 'laboratorista';
+    }
 
     let scope = {
       facultyIds: [],
@@ -2785,9 +3064,40 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     }
 
     if (dashboardRole === 'laboratorista') {
-      scope = await resolveLaboratoristaScope(client, req.session.user.documento);
+      if (!laboratoristaScopeUnavailable) {
+        try {
+          scope = await resolveLaboratoristaScope(client, req.session.user.documento);
+        } catch (error) {
+          console.warn('Dashboard: no fue posible verificar el alcance del laboratorista:', error);
+          laboratoristaScopeUnavailable = true;
+          dashboardWarnings.push(
+            'No se pudieron verificar los laboratorios asignados. Se omiten las métricas vinculadas a inventarios hasta que se recupere esa información.'
+          );
+        }
+      }
 
-      if (!scope.laboratoristaDocument || scope.ualIds.length === 0) {
+      const hasLaboratoristaScopeSchema = Boolean(
+        columns.ualIdColumn &&
+        columns.facultadIdColumn &&
+        columns.ualFacultadIdColumn &&
+        columns.laboratoristaUalIdColumn &&
+        columns.laboratoristaUalDocumentColumn
+      );
+      if (
+        !laboratoristaScopeUnavailable &&
+        (!scope.laboratoristaDocument || scope.ualIds.length === 0) &&
+        !hasLaboratoristaScopeSchema
+      ) {
+        laboratoristaScopeUnavailable = true;
+        dashboardWarnings.push(
+          'No se pudo verificar el esquema de asignaciones de laboratorio. Se omiten las métricas vinculadas a inventarios.'
+        );
+      }
+
+      if (
+        !laboratoristaScopeUnavailable &&
+        (!scope.laboratoristaDocument || scope.ualIds.length === 0)
+      ) {
         return res.render('home/message_error', {
           message: 'No tienes alcance para monitoreo.',
           message2: 'El laboratorista no tiene laboratorios asignados.',
@@ -2796,10 +3106,45 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       }
     }
 
-    const availableChartIds = getAvailableChartIds(dashboardRole);
+    const canFilterDashboardScope = ['admin', 'coordinador_general', 'coordinador'].includes(
+      dashboardRole
+    );
+    let availableDashboardScopeOptions = { faculties: [], dependencies: [] };
+    if (canFilterDashboardScope) {
+      try {
+        availableDashboardScopeOptions = await fetchDashboardScopeOptions(
+          client,
+          dashboardRole,
+          scope,
+          columns
+        );
+      } catch (error) {
+        console.warn('Dashboard: no fue posible cargar las opciones de filtros:', error);
+        dashboardWarnings.push(
+          'No fue posible cargar las opciones de facultad y dependencia; el resto del dashboard sigue disponible.'
+        );
+      }
+    }
+    scope = applyDashboardScopeSelection(
+      scope,
+      availableDashboardScopeOptions,
+      parseDashboardScopeId(req.query.facultad_id),
+      parseDashboardScopeId(req.query.ual_id)
+    );
+    const dashboardScopeOptions = availableDashboardScopeOptions;
+    const inventoryUrlParams = new URLSearchParams({ fragment: '1' });
+    if (scope.selectedFacultyId) {
+      inventoryUrlParams.set('facultad_id', String(scope.selectedFacultyId));
+    }
+    if (scope.selectedUalId) {
+      inventoryUrlParams.set('ual_id', String(scope.selectedUalId));
+    }
+    const inventoryDashboardUrl = `/milab/api/dashboard/inventarios?${inventoryUrlParams.toString()}`;
+
+    const availableChartIds = canViewPlatformMonitoring ? getAvailableChartIds(dashboardRole) : [];
     const selectedChart = availableChartIds.includes(requestedChart)
       ? requestedChart
-      : availableChartIds[0];
+      : availableChartIds[0] || null;
 
     const needsUsuariosByRole =
       availableChartIds.includes('estudiantes') || availableChartIds.includes('docentes');
@@ -2808,13 +3153,17 @@ router.get('/', requireDashboardAccess, async (req, res) => {
     const studentCertRows = canSeeStudentCertificates(dashboardRole)
       ? await fetchStudentCertificateRows()
       : [];
-    const teacherCertRows = isGlobalDashboardRole(dashboardRole)
-      ? await fetchTeacherCertificateRows()
+    const teacherCertRows =
+      isGlobalDashboardRole(dashboardRole) && !isDashboardScopeFilterActive(scope)
+        ? await fetchTeacherCertificateRows()
+        : [];
+    const laboratoristaRows = availableChartIds.includes('laboratoristas')
+      ? await fetchLaboratoristaRows()
       : [];
-    const laboratoristaRows = await fetchLaboratoristaRows();
-    const coordinatorRows = availableChartIds.includes('coordinadores')
+    const coordinatorData = availableChartIds.includes('coordinadores')
       ? await fetchCoordinatorRows()
-      : [];
+      : { rows: [], ualAssignmentsAvailable: true };
+    const coordinatorRows = coordinatorData.rows;
     const usuarioRows = needsUsuariosByRole ? await fetchUsuarioRows() : [];
     const usuarioRolesRows = needsUsuariosByRole ? await fetchUsuarioRolesRows() : [];
     const isGlobalRole = isGlobalDashboardRole(dashboardRole);
@@ -2841,10 +3190,12 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       scope
     );
     const filteredUsuarios = filterUsuarioRowsByScope(usuarioRows, dashboardRole, scope);
-    const usuariosRegistradosRows = isGlobalRole
-      ? usuariosRegistradosResult.rows
-      : filteredUsuarios;
-    const usuariosRegistradosColumns = isGlobalRole ? usuariosRegistradosResult.columns : [];
+    const usuariosRegistradosRows =
+      isGlobalRole && !isDashboardScopeFilterActive(scope)
+        ? usuariosRegistradosResult.rows
+        : filteredUsuarios;
+    const usuariosRegistradosColumns =
+      isGlobalRole && !isDashboardScopeFilterActive(scope) ? usuariosRegistradosResult.columns : [];
     const filteredEstudiantes = filteredUsuarios
       .filter((row) => isUsuarioEstudiante(row, roleIndex))
       .map((row) => ({ ...row, __tipo: 'estudiante' }));
@@ -2889,27 +3240,65 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       };
     });
 
-    const scopePresentation = buildScopePresentation(dashboardRole, scope);
-    const generalOverview = buildGeneralOverview(availableChartIds, {
-      estudiantes: filteredEstudiantes,
-      docentes: filteredDocentes,
-      laboratoristas: filteredLaboratoristas,
-      coordinadores: filteredCoordinators,
-      usuariosRegistrados: usuariosRegistradosRows,
-    });
-
-    const coberturaOperativa = isGlobalRole
-      ? await safeIndicator('la cobertura operativa', () => fetchOperationalCoverage(client))
+    let scopePresentation = buildScopePresentation(dashboardRole, scope);
+    if (scope.selectedUalId || scope.selectedFacultyId) {
+      const selectedFaculty = availableDashboardScopeOptions.faculties.find(
+        (faculty) => faculty.id === scope.selectedFacultyId
+      );
+      const selectedDependency = availableDashboardScopeOptions.dependencies.find(
+        (dependency) => dependency.id === scope.selectedUalId
+      );
+      const label = selectedDependency?.nombre || selectedFaculty?.nombre || 'Alcance seleccionado';
+      scopePresentation = {
+        badge: selectedDependency ? 'Vista por dependencia' : 'Vista por facultad',
+        title: `Monitoreo · ${label}`,
+        subtitle: selectedDependency
+          ? 'Los indicadores se limitan a la dependencia seleccionada y a los datos vinculados a ella.'
+          : 'Los indicadores se limitan a la facultad seleccionada dentro del alcance autorizado.',
+        chips: [
+          ...(selectedFaculty ? [selectedFaculty.nombre] : []),
+          ...(selectedDependency ? [selectedDependency.nombre] : []),
+        ],
+      };
+    }
+    const generalOverview = canViewPlatformMonitoring
+      ? buildGeneralOverview(availableChartIds, {
+          estudiantes: filteredEstudiantes,
+          docentes: filteredDocentes,
+          laboratoristas: filteredLaboratoristas,
+          coordinadores: filteredCoordinators,
+          usuariosRegistrados: usuariosRegistradosRows,
+        })
       : null;
+
+    const coberturaOperativa =
+      isGlobalRole && !scope.selectedUalId
+        ? await safeIndicator('la cobertura operativa', () =>
+            fetchOperationalCoverage(client, new Date(), {
+              selectedFacultyId: scope.selectedFacultyId,
+            })
+          )
+        : null;
     const actividadPlataforma =
-      dashboardRole === 'admin'
+      dashboardRole === 'admin' && !isDashboardScopeFilterActive(scope)
         ? await safeIndicator('la actividad de la plataforma', () => fetchPlatformActivity(client))
         : null;
 
-    const pazYSalvo = await buildPazYSalvoIndicators(client, dashboardRole, scope, {
-      students: filteredStudentCerts,
-      teachers: filteredTeacherCerts,
-    });
+    let pazYSalvo = null;
+    if (!laboratoristaScopeUnavailable) {
+      try {
+        pazYSalvo = await buildPazYSalvoIndicators(client, dashboardRole, scope, {
+          students: filteredStudentCerts,
+          teachers: filteredTeacherCerts,
+          includeTeachers: isGlobalRole && !isDashboardScopeFilterActive(scope),
+        });
+      } catch (error) {
+        console.warn('Dashboard: no fue posible cargar los indicadores de paz y salvo:', error);
+        dashboardWarnings.push(
+          'No se pudieron cargar los indicadores de Paz y salvos. Las demás secciones del dashboard siguen disponibles.'
+        );
+      }
+    }
 
     const fullTablesData = {
       estudiantes: filteredEstudiantes,
@@ -2926,12 +3315,13 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       keepFullTables
     );
 
-    return res.render('home/dashboard', {
+    const dashboardViewData = {
       filtro,
       labelFormat,
       selectedChart,
       availableCharts,
       dashboardRole,
+      canViewPlatformMonitoring,
       scopePresentation,
       chartsData,
       tablesData,
@@ -2942,6 +3332,42 @@ router.get('/', requireDashboardAccess, async (req, res) => {
       coberturaOperativa,
       actividadPlataforma,
       usuarioTableColumns: usuariosRegistradosColumns,
+      coordinatorUalAssignmentsAvailable: coordinatorData.ualAssignmentsAvailable,
+      dashboardScopeOptions,
+      selectedFacultyId: scope.selectedFacultyId,
+      selectedUalId: scope.selectedUalId,
+      inventoryDashboardUrl,
+      dashboardWarnings,
+      canViewInventoryDashboard: !laboratoristaScopeUnavailable,
+    };
+
+    return res.render('home/dashboard', dashboardViewData, (renderError, html) => {
+      if (renderError) {
+        console.error('Error renderizando la vista del dashboard:', renderError);
+        if (wantsJson(req)) {
+          return res.status(500).json({
+            ok: false,
+            message: 'No fue posible cargar el dashboard.',
+            message2: 'Intenta nuevamente en unos minutos.',
+          });
+        }
+
+        return renderApplicationError(
+          res,
+          {
+            status: 500,
+            message: 'No fue posible cargar el dashboard.',
+            message2: 'Intenta nuevamente en unos minutos.',
+            limit: null,
+            error: renderError,
+            adminErrorDetail: '',
+          },
+          req,
+          renderError
+        );
+      }
+
+      return res.send(html);
     });
   } catch (error) {
     console.error('Error en dashboard:', error);

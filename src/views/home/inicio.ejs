@@ -7,6 +7,28 @@
   const navigation = locals.appNavigation || {};
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const quickLinks = primaryLinks.filter((link) => link && link.href !== '/milab/inicio').slice(0, 3);
+  const bannerAudience = new Set([
+    'admin',
+    'administrador',
+    'administradora',
+    'coordinador',
+    'coordinador_facultad',
+    'coordinador de facultad',
+    'coordinador_general',
+    'coordinador general',
+    'laboratorista',
+    'laboratorista_ud',
+    'laboratorista_ual',
+    'laboratorista ud',
+    'laboratoristaud',
+  ]);
+  const userRoles = [
+    ...(Array.isArray(locals.roles) ? locals.roles : []),
+    locals.tipo || navigation.role || '',
+  ];
+  const canViewEncounterBanner = userRoles.some((role) =>
+    bannerAudience.has((role || '').toString().trim().toLowerCase())
+  );
   const newsItems = [
     {
       title: 'Reorganización del menú por módulos',
@@ -100,6 +122,74 @@
     </aside>
   </section>
 </main>
+
+<% if (canViewEncounterBanner) { %>
+<div class="app-home-banner-overlay" data-home-banner role="presentation">
+  <section
+    class="app-home-banner-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Encuentro de Laboratorios"
+    tabindex="-1"
+  >
+    <button
+      class="app-home-banner-close"
+      type="button"
+      data-home-banner-close
+      aria-label="Cerrar banner"
+    >
+      <i class="bi bi-x-lg" aria-hidden="true"></i>
+    </button>
+    <img
+      class="app-home-banner-image"
+      src="/milab/public/img/Banner_Encuentro_Laboratorios.png"
+      alt="Banner del Encuentro de Laboratorios"
+    >
+  </section>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    const bannerOverlay = document.querySelector('[data-home-banner]');
+    const bannerDialog = bannerOverlay?.querySelector('[role="dialog"]');
+    const closeButton = bannerOverlay?.querySelector('[data-home-banner-close]');
+
+    if (!bannerOverlay || !bannerDialog || !closeButton) {
+      return;
+    }
+
+    document.body.classList.add('app-home-banner-open');
+
+    function closeBanner() {
+      bannerOverlay.hidden = true;
+      document.body.classList.remove('app-home-banner-open');
+      document.removeEventListener('keydown', handleKeydown);
+    }
+
+    function handleKeydown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeBanner();
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        closeButton.focus();
+      }
+    }
+
+    closeButton.addEventListener('click', closeBanner);
+    bannerOverlay.addEventListener('click', function (event) {
+      if (event.target === bannerOverlay) {
+        closeBanner();
+      }
+    });
+    document.addEventListener('keydown', handleKeydown);
+    closeButton.focus({ preventScroll: true });
+  })();
+</script>
+<% } %>
 
 <script nonce="<%= cspNonce %>">
   (function () {

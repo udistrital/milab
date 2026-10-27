@@ -78,7 +78,10 @@ function loadNavigationModule({ menuImpl, scopeImpl, queryImpl } = {}) {
 test('navigationMiddleware builds dynamic menu by role when DB menu is available', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
-      primaryLinks: [{ label: 'Panel coordinador', href: '/custom/panel', icon: 'bi-grid' }],
+      primaryLinks: [
+        { label: 'Panel coordinador', href: '/custom/panel', icon: 'bi-grid' },
+        { label: 'Autorizaciones', href: '/milab/api/aprobacion_multa', icon: 'bi-check' },
+      ],
       secondaryGroups: [],
       accountLinks: [{ label: 'Perfil', href: '/custom/profile', icon: 'bi-person' }],
     }),
@@ -107,7 +110,13 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
     assert.equal(res.locals.navigationCurrentPath, '/milab/api/dashboard');
     assert.deepEqual(res.locals.roles, ['coordinador']);
     assert.equal(res.locals.appNavigation.primaryLinks[0].href, '/custom/panel');
-    assert.equal(res.locals.pendingSanctionsCount, 0);
+    assert.equal(
+      res.locals.appNavigation.primaryLinks.some(
+        (link) => link.href === '/milab/api/aprobacion_multa'
+      ),
+      false
+    );
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
   } finally {
     loaded.restore();
   }
@@ -134,7 +143,32 @@ test('buildNavigation falls back to static menu when dynamic menu lookup fails',
   }
 });
 
-test('navigationMiddleware sets pending sanctions badge for coordinador', async () => {
+test('buildNavigation adds dashboard access for gestores with other primary roles', async () => {
+  const loaded = loadNavigationModule({
+    menuImpl: async () => ({
+      primaryLinks: [{ label: 'Inicio', href: '/milab/inicio', icon: 'bi-house' }],
+      secondaryGroups: [],
+      accountLinks: [],
+    }),
+  });
+
+  try {
+    const navigation = await loaded.buildNavigation({
+      tipo: 'estudiante',
+      roles: ['estudiante', 'gestor_laboratorio'],
+    });
+
+    assert.ok(
+      navigation.primaryLinks.some(
+        (link) => link.label === 'Monitoreo' && link.href === '/milab/api/dashboard'
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('navigationMiddleware no longer queries authorization counts', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({ primaryLinks: [], secondaryGroups: [], accountLinks: [] }),
     scopeImpl: async () => ({ coordinatorDocument: '1024467835', facultyIds: [4, 7] }),
@@ -158,14 +192,13 @@ test('navigationMiddleware sets pending sanctions badge for coordinador', async 
     });
 
     assert.equal(nextCalled, true);
-    assert.equal(res.locals.pendingSanctionsCount, 5);
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
 
     const queryCalls = loaded.getQueryCalls();
-    assert.equal(queryCalls.length >= 1, true);
     assert.equal(
-      queryCalls.some((call) => call.sql.includes('INNER JOIN ual u ON u.ual_id = m.ual_id')),
-      true,
-      'debe contar sanciones uniendo multa con ual'
+      queryCalls.some((call) => call.sql.includes('FROM multa m')),
+      false,
+      'no debe consultar los totales de la vista de autorizaciones'
     );
   } finally {
     loaded.restore();
@@ -242,9 +275,37 @@ test('claim notification badges reflect unread student answers and assigned pend
         query.sql,
         role === 'estudiante' ? /fecha_lectura IS NULL/ : /fecha_respuesta IS NULL/
       );
+      if (role === 'laboratorista') {
+        assert.match(query.sql, /lu\.laboratorista_documento_id = l\.documento/);
+        assert.match(query.sql, /lu\.ual_id = m\.ual_id/);
+        assert.match(query.sql, /lu\.activo = TRUE/);
+      }
     } finally {
       loaded.restore();
     }
+  }
+});
+
+test('laboratorista retains the claims link when no requests are pending', async () => {
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) =>
+      sql.includes('reclamacion_sancion') ? { rows: [{ total: 0 }] } : { rows: [] },
+  });
+  try {
+    const res = { locals: {} };
+    await loaded.navigationMiddleware(
+      { session: { user: { tipo: 'laboratorista', documento: '456' } } },
+      res,
+      (error) => assert.ifError(error)
+    );
+    assert.equal(res.locals.claimNotifications.count, 0);
+    assert.ok(
+      res.locals.appNavigation.primaryLinks.some(
+        (link) => link.href === '/milab/api/sanciones/reclamaciones'
+      )
+    );
+  } finally {
+    loaded.restore();
   }
 });
 
@@ -304,7 +365,7 @@ test('navigationMiddleware still renders when claim notifications cannot be quer
   }
 });
 
-test('navigationMiddleware keeps pending sanctions badge at zero for non coordinador roles', async () => {
+test('navigationMiddleware does not query authorization counts for laboratoristas', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({
       primaryLinks: [{ label: 'Monitoreo', href: '/milab/api/dashboard', icon: 'bi-activity' }],
@@ -330,7 +391,7 @@ test('navigationMiddleware keeps pending sanctions badge at zero for non coordin
     });
 
     assert.equal(nextCalled, true);
-    assert.equal(res.locals.pendingSanctionsCount, 0);
+    assert.equal(res.locals.pendingSanctionsCount, undefined);
     assert.equal(res.locals.pendingInventoryApprovalsCount, 0);
     assert.ok(
       !loaded

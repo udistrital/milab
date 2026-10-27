@@ -55,6 +55,34 @@ test('renderApplicationError renders the shared error page with default payload'
   });
 });
 
+test('renderApplicationError exposes diagnostics to the admin who started impersonation', () => {
+  const res = createHtmlResponse();
+  const req = {
+    method: 'GET',
+    originalUrl: '/milab/api/dashboard',
+    session: {
+      user: { tipo: 'laboratorista' },
+      impersonationAdminUser: { tipo: 'admin' },
+    },
+  };
+
+  renderApplicationError(res, {}, req, new Error('dashboard template failed'));
+
+  assert.match(res.rendered.payload.adminErrorDetail, /dashboard template failed/);
+  assert.match(res.rendered.payload.adminErrorDetail, /GET \/milab\/api\/dashboard/);
+  assert.equal(Object.hasOwn(res.rendered.payload, 'error'), false);
+});
+
+test('renderApplicationError does not expose diagnostics to a non-admin user', () => {
+  const res = createHtmlResponse();
+  const req = { session: { user: { tipo: 'laboratorista' } } };
+
+  renderApplicationError(res, {}, req, new Error('private diagnostic'));
+
+  assert.equal(Object.hasOwn(res.rendered.payload, 'adminErrorDetail'), false);
+  assert.equal(Object.hasOwn(res.rendered.payload, 'error'), false);
+});
+
 test('application error handler renders html error page for browser requests', () => {
   const logger = {
     errorCalls: [],
@@ -106,4 +134,73 @@ test('application error handler returns json for api requests expecting json', (
     message2:
       'Por favor inténtalo de nuevo. Si el problema persiste, contáctanos en milab@udistrital.edu.co.',
   });
+});
+
+test('global error handler catches async route rejections and sync throws with a response', async () => {
+  require('express-async-errors');
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.get('/async-fail', async () => {
+    throw new Error('fallo async');
+  });
+  app.get('/sync-fail', () => {
+    throw new Error('fallo sync');
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const asyncRes = await request(app).get('/async-fail').set('Accept', 'application/json');
+  assert.equal(asyncRes.status, 500);
+  assert.equal(asyncRes.body.ok, false);
+
+  const syncRes = await request(app).get('/sync-fail');
+  assert.equal(syncRes.status, 500);
+  assert.notEqual(syncRes.text.trim(), 'Internal Server Error');
+  assert.match(syncRes.text, /No pudimos completar tu solicitud/);
+});
+
+test('error page falls back to a static page when the error view cannot render', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.use((req, res, next) => {
+    req.requestId = 'ref-123';
+    req.session = { user: { tipo: 'laboratorista' } };
+    next();
+  });
+  app.get('/boom', (req, res, next) => {
+    next(new Error('boom'));
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const res = await request(app).get('/boom');
+  assert.equal(res.status, 500);
+  assert.match(res.text, /No pudimos completar tu solicitud/);
+  assert.match(res.text, /ref-123/);
+  assert.doesNotMatch(res.text, /Detalle técnico|boom/);
+});
+
+test('error page fallback shows escaped diagnostics only to administrators', async () => {
+  const express = require('express');
+  const request = require('supertest');
+  const app = express();
+
+  app.use((req, res, next) => {
+    req.requestId = 'ref-admin';
+    req.session = { user: { tipo: 'admin' } };
+    next();
+  });
+  app.get('/boom', (req, res, next) => {
+    next(new Error('<script>secret</script>'));
+  });
+  app.use(createApplicationErrorHandler({ error() {} }));
+
+  const res = await request(app).get('/boom');
+  assert.equal(res.status, 500);
+  assert.match(res.text, /Detalle técnico \(solo visible para administradores\)/);
+  assert.match(res.text, /Mensaje: &lt;script&gt;secret&lt;\/script&gt;/);
+  assert.match(res.text, /ref-admin/);
+  assert.doesNotMatch(res.text, /<script>secret<\/script>/);
 });

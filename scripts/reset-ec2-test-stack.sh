@@ -5,6 +5,7 @@ set -eu
 REMOTE_HOST="${REMOTE_HOST:-labs-ec2}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/opt/milab}"
 REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR:-/home/ubuntu/prod}"
+REMOTE_ENCUENTROS_STORAGE_DIR="${REMOTE_ENCUENTROS_STORAGE_DIR:-/opt/milab-data/encuentros}"
 REMOTE_DB_CONTAINER="${REMOTE_DB_CONTAINER:-milabud_db_pruebas}"
 REMOTE_APP_CONTAINER="${REMOTE_APP_CONTAINER:-milabud_pruebas}"
 
@@ -26,6 +27,7 @@ tar \
   --exclude='coverage' \
   --exclude='.nyc_output' \
   --exclude='Docker/.env' \
+  --exclude='private/encuentros' \
   -czf - . | ssh "$REMOTE_HOST" \
   "set -eu
    rm -rf '/tmp/milab.incoming' '/tmp/milab.previous'
@@ -48,6 +50,7 @@ echo "[2/6] Reseteando base de datos remota con la estructura nueva"
 ssh "$REMOTE_HOST" \
   APP_DIR="$REMOTE_APP_DIR" \
   COMPOSE_DIR="$REMOTE_COMPOSE_DIR" \
+  STORAGE_DIR="$REMOTE_ENCUENTROS_STORAGE_DIR" \
   DB_CONTAINER="$REMOTE_DB_CONTAINER" \
   APP_CONTAINER="$REMOTE_APP_CONTAINER" \
   'sh -s' <<'REMOTE_RESET'
@@ -75,9 +78,9 @@ for required_file in \
   db_structure_prestamos.sql \
   db_seed_prestamos.sql \
   db_structure_inventarios.sql \
-  db_seed_inventarios.sql \
   db_structure_certificacion.sql \
   db_seed_certificacion.sql \
+  db_seed_inventarios.sql \
   db_seed_pruebas_ofuscado.sql
 do
   if [ ! -f "$SQL_DIR/$required_file" ]; then
@@ -86,11 +89,15 @@ do
   fi
 done
 
-cat > "$COMPOSE_OVERRIDE_FILE" <<'YAML'
+sudo mkdir -p "$STORAGE_DIR"
+
+cat > "$COMPOSE_OVERRIDE_FILE" <<YAML
 services:
   milabud:
     environment:
       DB_SCHEMA: milab
+    volumes:
+      - ${STORAGE_DIR}:/usr/src/app/private/encuentros
 YAML
 
 rm -rf "$SQL_RUN_DIR"
@@ -139,9 +146,9 @@ sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$D
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_prestamos.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_prestamos.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_inventarios.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_inventarios.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_certificacion.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_certificacion.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_inventarios.sql"
 sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_pruebas_ofuscado.sql"
 
 sudo docker compose up -d --build milabud

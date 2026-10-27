@@ -16,6 +16,25 @@
         <div class="alert alert-success"><%= success %></div>
       <% } %>
 
+      <div class="card shadow-sm border-primary-subtle mb-4">
+        <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h2 class="h5 mb-1">Configurar Gestor de laboratorio</h2>
+            <p class="text-muted mb-0">
+              Verifica el rol técnico <code>gestor_laboratorio</code> y completa los permisos base si faltan.
+              La acción es repetible y no asigna el rol a ninguna cuenta.
+            </p>
+          </div>
+          <form method="POST" action="/milab/api/admin/roles/gestor-laboratorio/inicializar">
+            <%- include('../partials/csrf_field') %>
+            <button class="btn btn-outline-primary" type="submit">
+              <i class="bi bi-person-check me-1" aria-hidden="true"></i>
+              Verificar y configurar
+            </button>
+          </form>
+        </div>
+      </div>
+
       <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
           <h2 class="h5">Crear rol</h2>

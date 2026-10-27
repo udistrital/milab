@@ -39,11 +39,11 @@ const limiter = rateLimit({
       if (req.originalUrl.includes('/auth/recaptcha-login')) {
         errorTemplate = 'home/index_2';
         templateData.recaptchaError = templateData.error;
+        templateData.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY;
       } else if (req.originalUrl.includes('/auth/login')) {
-        errorTemplate = 'home/login_2';
-      } else if (req.originalUrl.includes('/api/get-data1')) {
-        errorTemplate = 'home/register_2';
-        templateData.selectedType = 'estudiante';
+        errorTemplate = 'home/index_2';
+        templateData.recaptchaError = templateData.error;
+        templateData.recaptchaSiteKey = process.env.RECAPTCHA_SITE_KEY;
       }
       return res.render(errorTemplate, templateData);
     } else {

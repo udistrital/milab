@@ -90,6 +90,173 @@ test('inventory approval navigation shows a pending-count badge only when needed
   assert.doesNotMatch(emptyHtml, /aprobaciones de inventario pendientes/);
 });
 
+test('nested navigation selects one accordion and renders its module breadcrumbs', async () => {
+  const route = '/milab/api/get_list_estudiantes/get_consulta';
+  const appNavigation = {
+    primaryLinks: [{ label: 'Inicio', href: '/milab/inicio', icon: 'bi-house-door' }],
+    secondaryGroups: [
+      {
+        title: 'Consulta y control',
+        icon: 'bi-grid',
+        items: [
+          {
+            label: 'Certificado de consulta y control',
+            href: '/milab/api/get_list_estudiantes',
+            icon: 'bi-file-earmark-check',
+          },
+        ],
+      },
+      {
+        title: 'Paz y Salvos',
+        icon: 'bi-patch-check',
+        items: [
+          {
+            label: 'Generar Paz y Salvos Masivo',
+            href: route,
+            icon: 'bi-collection',
+          },
+        ],
+      },
+    ],
+    accountLinks: [],
+    role: 'admin',
+    roleLabel: 'Admin',
+  };
+  const html = await renderView(
+    'src/views/home/consulta_masiva.ejs',
+    buildBaseViewLocals({
+      appNavigation,
+      navigationCurrentPath: route,
+      sampleData1: 0,
+      error: null,
+      sgaConsultaOmitida: false,
+    }),
+    { async: false }
+  );
+  const accordionToggles = Array.from(
+    html.matchAll(/<button\b[^>]*class="accordion-button app-sidebar-group-toggle[^"]*"[^>]*>/g),
+    ([tag]) => tag
+  );
+  const expandedToggles = accordionToggles.filter((tag) => /aria-expanded="true"/.test(tag));
+  const submenuLinks = Array.from(
+    html.matchAll(/<a\b[^>]*class="app-sidebar-link app-sidebar-sub-link[^"]*"[^>]*>/g),
+    ([tag]) => tag
+  );
+  const activeSubmenuLinks = submenuLinks.filter((tag) => /\bis-active\b/.test(tag));
+  const breadcrumb = html.match(/<nav class="app-breadcrumb-nav"[\s\S]*?<\/nav>/)?.[0] || '';
+
+  assert.equal(expandedToggles.length, 1);
+  assert.match(expandedToggles[0], /data-bs-target="#appSidebarGroup1"/);
+  assert.equal(activeSubmenuLinks.length, 1);
+  assert.match(activeSubmenuLinks[0], /href="\/milab\/api\/get_list_estudiantes\/get_consulta"/);
+  assert.match(breadcrumb, /Inicio[\s\S]*?Paz y Salvos[\s\S]*?Generar Paz y Salvos Masivo/);
+  assert.match(html, /class="app-page-header app-page-header--inline"/);
+  assert.match(html, /class="app-page-title-icon"/);
+});
+
+test('landing login uses the branded background and direct institutional access', async () => {
+  const html = await renderView(
+    'src/views/home/index_2.ejs',
+    buildBaseViewLocals({
+      recaptchaSiteKey: 'test-site-key',
+      recaptchaError: null,
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /url\('\/milab\/public\/img\/background_milab\.png'\)/);
+  assert.match(html, /src="\/milab\/public\/img\/Logo_Escudo_Acreditacion_Horizontal\.png"/);
+  assert.match(html, /Coordinación General de/);
+  assert.match(html, /href="\/milab\/auth\/microsoft"/);
+  assert.doesNotMatch(html, /href="\/milab\/auth\/login"/);
+  assert.match(html, /data-sitekey="test-site-key"/);
+  assert.match(html, /Bienvenido a MiLab/);
+  assert.match(html, /Consulta de invitado/);
+});
+
+test('sanction list action forms carry filter state without accepting arbitrary return urls', async () => {
+  const html = await renderView(
+    'src/views/partials/sanction-detail-modal.ejs',
+    buildBaseViewLocals({
+      returnSource: 'listado',
+      returnFilters: {
+        fecha_desde: '2026-01-01',
+        estado_multa: 'Pendiente',
+        facultad_id: '10',
+        unexpected_filter: 'ignored',
+      },
+      SANCTION_TYPES: [],
+      sanctionCategories: [],
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /name="fecha_desde" value="2026-01-01"/);
+  assert.match(html, /name="estado_multa" value="Pendiente"/);
+  assert.match(html, /name="facultad_id" value="10"/);
+  assert.doesNotMatch(html, /unexpected_filter/);
+  assert.doesNotMatch(html, /return_url/);
+});
+
+test('sanction list passes active filters into its action modal', async () => {
+  const html = await renderView(
+    'src/views/home/get_list_multas.ejs',
+    buildBaseViewLocals({
+      sampleData: [],
+      SANCTION_TYPES: [],
+      sanctionCategories: [],
+      sancionesEstudiantes: [],
+      sancionesDocentes: [],
+      filtros: {
+        fecha_desde: '2026-01-01',
+        estado_multa: 'Pendiente',
+        facultad_id: '10',
+      },
+      filterAccess: { facultad: false, dependencia: false, ual: false },
+      locationOptions: { facultades: [], dependencias: [], uals: [] },
+      successFeedback: null,
+      sgaConfigured: false,
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /action="\/milab\/api\/aprobacion_multa\/activar"/);
+  assert.match(html, /name="fecha_desde" value="2026-01-01"/);
+  assert.match(html, /name="estado_multa" value="Pendiente"/);
+  assert.match(html, /name="facultad_id" value="10"/);
+});
+
+test('admin error detail is written to the browser console only when present', async () => {
+  const html = await renderView(
+    'src/views/home/message_error.ejs',
+    buildBaseViewLocals({
+      message: 'Error',
+      message2: 'Intenta nuevamente.',
+      limit: null,
+      adminErrorDetail: 'Error: dashboard render failure',
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /data-admin-error-detail/);
+  assert.match(html, /console\.error\('\[MILab\] Error de aplicación:'/);
+  assert.match(html, /test-nonce/);
+});
+
+test('Paz y Salvos verification pages use compact inline headers', async () => {
+  const verificationViews = [
+    'src/views/home/verificar_estudiante.ejs',
+    'src/views/home/verificar_docente.ejs',
+  ];
+
+  for (const view of verificationViews) {
+    const html = await renderView(view, buildBaseViewLocals(), { async: false });
+    assert.match(html, /class="app-page-header app-page-header--inline"/);
+    assert.match(html, /class="app-page-title">Verificar (?:estudiante|docente)<\/h1>/);
+    assert.match(html, /class="app-page-subtitle">Consulta el estado/);
+  }
+});
+
 test('inventory dashboard renders as content for the shared dashboard tab', async () => {
   const html = await renderView('src/views/home/dashboard/inventarios.ejs', {
     metrics: {

@@ -61,27 +61,28 @@ ON CONFLICT (codigo_curso, id_laboratorio) DO UPDATE
 SET activo = TRUE,
     fecha_modificacion = CURRENT_TIMESTAMP;
 
-INSERT INTO equipo_especializado (
-    codigo_curso,
-    id_equipo,
-    activo
-)
-SELECT
-    cursos.codigo_curso,
-    equipo.id,
-    TRUE
-FROM cursos
-CROSS JOIN LATERAL (
-    SELECT id
-    FROM equipo_catalogo
-    WHERE activo = TRUE
-    ORDER BY id
-    LIMIT 1
-) AS equipo
-WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
-ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
-SET activo = TRUE,
-    fecha_modificacion = CURRENT_TIMESTAMP;
+-- Se traslada a db_seed_inventarios.sql para desplegar en la version 4.0.0.
+-- INSERT INTO equipo_especializado (
+--     codigo_curso,
+--     id_equipo,
+--     activo
+-- )
+-- SELECT
+--     cursos.codigo_curso,
+--     equipo.id,
+--     TRUE
+-- FROM cursos
+-- CROSS JOIN LATERAL (
+--     SELECT id
+--     FROM equipo_catalogo
+--     WHERE activo = TRUE
+--     ORDER BY id
+--     LIMIT 1
+-- ) AS equipo
+-- WHERE cursos.codigo_curso LIKE 'MOCK-COURSE-%'
+-- ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
+-- SET activo = TRUE,
+--     fecha_modificacion = CURRENT_TIMESTAMP;
 
 -- ==============================================================
 -- === Menú y Permisos RBAC - Módulo CAPACITACIÓN            ===
@@ -300,6 +301,108 @@ ON CONFLICT (rol_id, menu_item_id) DO UPDATE
     SET can_view = FALSE,
         can_use  = FALSE,
         activo   = FALSE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+-- ==============================================================
+-- === Menú y permisos RBAC - Submódulo ENCUENTROS            ===
+-- ==============================================================
+
+INSERT INTO menu_item (section, label, icon, order_index)
+SELECT 'secondary', 'Encuentros', 'bi-calendar-event', 11
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM menu_item
+    WHERE section = 'secondary'
+      AND label = 'Encuentros'
+      AND parent_id IS NULL
+);
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index)
+SELECT 'secondary', parent.id, 'Gestionar encuentros',
+       '/milab/encuentros/gestion', 'bi-calendar2-check', 1
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+  AND parent.label = 'Encuentros'
+  AND parent.parent_id IS NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM menu_item
+      WHERE parent_id = parent.id
+        AND route = '/milab/encuentros/gestion'
+  )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO menu_item (section, label, route, icon, order_index)
+SELECT 'account', 'Mis logros', '/milab/encuentros/mis-logros', 'bi-award', 20
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM menu_item
+    WHERE section = 'account'
+      AND label = 'Mis logros'
+      AND route = '/milab/encuentros/mis-logros'
+);
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) IN (
+        'admin', 'administrador', 'administradora', 'coordinador_general',
+        'coordinador general', 'coordinador', 'coordinador_facultad',
+        'coordinador de facultad', 'laboratorista',
+        'laboratorista_ud', 'laboratorista_ual', 'gestor_laboratorio'
+    )
+  AND mi.section = 'secondary'
+  AND mi.label = 'Encuentros'
+  AND mi.parent_id IS NULL
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) = 'gestor_laboratorio'
+  AND mi.route = '/milab/encuentros/gestion'
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) IN (
+        'admin', 'administrador', 'administradora', 'coordinador_general',
+        'coordinador general', 'coordinador', 'coordinador_facultad',
+        'coordinador de facultad', 'laboratorista',
+        'laboratorista_ud', 'laboratorista_ual'
+    )
+  AND mi.route IN ('/milab/encuentros/gestion', '/milab/encuentros/mis-logros')
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
+        fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE LOWER(TRIM(r.nombre)) IN (
+        'estudiante', 'alumno', 'docente', 'profesor', 'profesora',
+        'docente_ocacional', 'monitor'
+    )
+  AND mi.route = '/milab/encuentros/mis-logros'
+ON CONFLICT (rol_id, menu_item_id) DO UPDATE
+    SET can_view = TRUE,
+        can_use = TRUE,
+        activo = TRUE,
         fecha_modificacion = CURRENT_TIMESTAMP;
 
 COMMIT;

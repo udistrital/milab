@@ -9,8 +9,8 @@ const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 
 const DATABASE_INFO = {
   base_datos: 'milab',
-  usuario_app: 'milab_app',
-  search_path: 'milab',
+  usuario_conexion: 'milab_app',
+  usuario_efectivo: 'milab_app',
 };
 
 function buildApp(route, sessionUser) {
@@ -39,6 +39,14 @@ function defaultPoolQuery(sql) {
           tipo: 'Tabla',
           propietario: 'milab_owner',
           lectura_permitida: true,
+          uso_esquema_permitido: true,
+          creacion_esquema_permitida: false,
+          insercion_permitida: false,
+          actualizacion_permitida: true,
+          eliminacion_permitida: false,
+          vaciado_permitido: false,
+          referencias_permitidas: false,
+          disparadores_permitidos: false,
           comentario: null,
         },
       ],
@@ -54,6 +62,14 @@ function defaultPoolQuery(sql) {
           tipo: 'Tabla',
           propietario: 'milab_owner',
           lectura_permitida: false,
+          uso_esquema_permitido: true,
+          creacion_esquema_permitida: false,
+          insercion_permitida: false,
+          actualizacion_permitida: false,
+          eliminacion_permitida: false,
+          vaciado_permitido: false,
+          referencias_permitidas: false,
+          disparadores_permitidos: false,
           comentario: null,
         },
       ],
@@ -78,6 +94,18 @@ function defaultPoolQuery(sql) {
   }
   if (sql.includes('FROM pg_indexes')) {
     return { rows: [{ nombre: 'idx_x', definicion: 'CREATE INDEX idx_x ON x (id)' }] };
+  }
+  if (sql.includes('pg_get_serial_sequence')) {
+    return {
+      rows: [
+        {
+          nombre: 'milab.usuario_ual_rol_operativo_id_seq',
+          uso_permitido: false,
+          lectura_permitida: true,
+          actualizacion_permitida: false,
+        },
+      ],
+    };
   }
   return { rows: [] };
 }
@@ -128,14 +156,42 @@ test('esquema-bd lists relations for admin and escapes the filter', async () => 
     assert.equal(response.body.view, 'home/admin_esquema_bd');
     assert.equal(response.body.locals.relaciones.length, 1);
     assert.equal(response.body.locals.baseDatos.base_datos, 'milab');
+    assert.equal(response.body.locals.baseDatos.usuario_conexion, 'milab_app');
+    assert.equal(response.body.locals.baseDatos.usuario_efectivo, 'milab_app');
     assert.equal(response.body.locals.detalle, null);
 
     const listCall = loaded
       .getPoolCalls()
       .find((call) => call.sql.includes('FROM pg_class c') && call.sql.includes('ILIKE'));
     assert.ok(listCall);
+    assert.match(listCall.sql, /n\.nspname = 'milab'/);
+    assert.doesNotMatch(listCall.sql, /n\.nspname ILIKE/);
     assert.equal(listCall.params[2], '%100\\%\\_%');
     assert.equal(listCall.sql.includes('100%_'), false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('esquema-bd does not reveal relations from schemas other than milab', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_USER);
+    const response = await request(app).get('/').query({ esquema: 'public', tabla: 'users' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/admin_esquema_bd');
+    assert.equal(response.body.locals.notFound, true);
+    assert.equal(response.body.locals.detalle, null);
+    assert.equal(
+      loaded.getPoolCalls().some((call) => call.sql.includes('AND c.relname = $2')),
+      false
+    );
+    const listCall = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('FROM pg_class c') && call.sql.includes('ILIKE'));
+    assert.match(listCall.sql, /n\.nspname = 'milab'/);
   } finally {
     loaded.restore();
   }
@@ -180,9 +236,20 @@ test('esquema-bd returns columns, constraints and indexes for an existing table'
     assert.equal(notFound, false);
     assert.equal(detalle.nombre, 'usuario_ual_rol_operativo');
     assert.equal(detalle.lectura_permitida, false);
+    assert.equal(detalle.permisos.esquema.uso, true);
+    assert.equal(detalle.permisos.esquema.crear, false);
+    assert.equal(detalle.permisos.tabla.insercion, false);
+    assert.equal(detalle.permisos.tabla.actualizacion, false);
+    assert.equal(detalle.permisos.secuencia.nombre, 'milab.usuario_ual_rol_operativo_id_seq');
+    assert.equal(detalle.permisos.secuencia.uso_permitido, false);
     assert.equal(detalle.columnas[0].columna, 'id');
     assert.equal(detalle.restricciones[0].nombre, 'pk_x');
     assert.equal(detalle.indices[0].nombre, 'idx_x');
+
+    const sequenceCall = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('pg_get_serial_sequence'));
+    assert.match(sequenceCall.sql, /format\('%I\.%I', \$1::text, \$2::text\)/);
 
     const columnCall = loaded.getPoolCalls().find((call) => call.sql.includes('FROM pg_attribute'));
     assert.deepEqual(columnCall.params, ['16400']);

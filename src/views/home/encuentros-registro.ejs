@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="<%= csrfToken %>">
+  <title>Registro de <%= tipo === 'salida' ? 'salida' : 'ingreso' %> - MiLab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/milab/public/css/styles.css">
+  <style>
+    body.registro-qr {
+      background: var(--app-bg);
+      color: var(--app-text-main);
+      font-family: 'Manrope', sans-serif;
+      min-height: 100vh;
+    }
+    .registro-qr .registro-marca {
+      background: var(--app-accent);
+      color: #fff;
+      padding: 1.25rem 1rem;
+      text-align: center;
+      border-bottom: 6px solid var(--app-highlight);
+    }
+    .registro-qr .registro-marca small {
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      font-weight: 700;
+      opacity: .9;
+    }
+    .registro-qr h1 {
+      font-family: 'Sora', sans-serif;
+      font-weight: 800;
+      font-size: 1.5rem;
+      margin: .25rem 0 0;
+    }
+    .registro-qr .registro-card {
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 8px 24px rgba(23, 23, 23, .08);
+      padding: 1.5rem;
+    }
+    .registro-qr .form-control {
+      font-size: 1.5rem;
+      text-align: center;
+      letter-spacing: .08em;
+      min-height: 4rem;
+      border-radius: 12px;
+    }
+    .registro-qr .btn-registrar {
+      background: var(--app-accent);
+      border-color: var(--app-accent);
+      color: #fff;
+      font-family: 'Sora', sans-serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      min-height: 3.5rem;
+      border-radius: 12px;
+    }
+    .registro-qr .btn-registrar:hover,
+    .registro-qr .btn-registrar:focus {
+      background: var(--app-accent-deep);
+      border-color: var(--app-accent-deep);
+      color: #fff;
+    }
+    .registro-qr #resultado {
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body class="registro-qr">
+  <header class="registro-marca">
+    <small>MiLab · Universidad Distrital</small>
+    <h1><%= tipo === 'salida' ? 'Registro de salida' : 'Registro de ingreso' %></h1>
+  </header>
+
+  <main class="container py-4" style="max-width: 480px;">
+    <% if (!disponible) { %>
+      <section class="registro-card text-center">
+        <div class="alert alert-warning mb-0" role="status">
+          El registro no está disponible porque el evento no se encuentra en curso.
+        </div>
+      </section>
+    <% } else { %>
+      <section class="registro-card">
+        <p class="fw-bold mb-1"><%= evento.nombre %></p>
+        <p class="text-muted small mb-4">Escribe tu número de documento para registrar tu <%= tipo === 'salida' ? 'salida' : 'ingreso' %>.</p>
+
+        <form id="registro-form" novalidate>
+          <label for="documento" class="form-label fw-semibold">Número de documento</label>
+          <input
+            id="documento"
+            name="documento"
+            class="form-control mb-3"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            maxlength="16"
+            required
+            autofocus
+          >
+          <button id="btn-registrar" type="submit" class="btn btn-registrar w-100">Registrar</button>
+        </form>
+
+        <div id="resultado" class="alert mt-4 mb-0 d-none" role="status" aria-live="polite"></div>
+      </section>
+    <% } %>
+  </main>
+
+  <% if (disponible) { %>
+    <script src="/milab/public/js/encuentros-registro.js" defer></script>
+  <% } %>
+</body>
+</html>

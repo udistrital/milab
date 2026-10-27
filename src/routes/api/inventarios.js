@@ -1336,7 +1336,7 @@ router.get('/gestion_inventario', requireInventoryAccess, async function (req, r
           status: 503,
           message: 'Módulo de inventarios sin instalar',
           message2:
-            'Ejecuta sql-scripts/db_structure_inventarios.sql y sql-scripts/db_seed_inventarios.sql para habilitar el módulo.',
+            'Ejecuta sql-scripts/preprod/db_structure_inventarios.sql y sql-scripts/preprod/db_seed_inventarios.sql para habilitar el módulo.',
           limit: 'loginOnly',
         },
         req,

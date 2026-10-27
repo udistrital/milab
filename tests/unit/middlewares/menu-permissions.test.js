@@ -72,6 +72,41 @@ test('admin catalog mutations resolve their menu parent and respect can_use perm
   }
 });
 
+test('inactive rol_permiso records do not authorize menu routes', async () => {
+  let permissionSql = '';
+  const loaded = loadMiddleware({
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM menu_item')) {
+        return { rows: [{ id: 15, route: '/milab/api/get_list_multas' }] };
+      }
+      permissionSql = sql;
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const res = createResponse();
+    let nextCalled = false;
+    await loaded.menuPermissionMiddleware(
+      {
+        method: 'GET',
+        originalUrl: '/milab/api/get_list_multas',
+        session: { user: { tipo: 'admin' } },
+      },
+      res,
+      () => {
+        nextCalled = true;
+      }
+    );
+
+    assert.match(permissionSql, /rp\.activo\s*=\s*TRUE/i);
+    assert.equal(nextCalled, false);
+    assert.equal(res.rendered.view, 'home/message_error');
+  } finally {
+    loaded.restore();
+  }
+});
+
 function createResponse() {
   return {
     rendered: null,
@@ -487,6 +522,71 @@ test('menuPermissionMiddleware delegates impersonation exit without requiring th
     assert.equal(loaded.getCalls().length, 0);
   } finally {
     loaded.restore();
+  }
+});
+
+test('menuPermissionMiddleware allows gestores to read the dashboard without a database permission row', async () => {
+  for (const pathname of ['/milab/api/dashboard', '/milab/api/dashboard/inventarios?fragment=1']) {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async () => {
+        throw new Error('Dashboard navigation should not require a DB menu grant for gestores');
+      },
+    });
+
+    try {
+      const req = {
+        method: 'GET',
+        originalUrl: pathname,
+        session: {
+          user: {
+            roles: ['estudiante', 'gestor_laboratorio'],
+            tipo: 'estudiante',
+          },
+        },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true);
+      assert.equal(res.rendered, null);
+      assert.equal(loaded.getCalls().length, 0);
+    } finally {
+      loaded.restore();
+    }
+  }
+});
+
+test('menuPermissionMiddleware lets authenticated roles reach inicio without an Inicio grant', async () => {
+  for (const role of ['estudiante', 'docente', 'laboratorista']) {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async () => {
+        throw new Error('Inicio should not query menu grants');
+      },
+    });
+
+    try {
+      const req = {
+        method: 'GET',
+        originalUrl: '/milab/inicio',
+        session: { user: { roles: [role], tipo: role } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true, role);
+      assert.equal(res.rendered, null, role);
+      assert.equal(loaded.getCalls().length, 0, role);
+    } finally {
+      loaded.restore();
+    }
   }
 });
 

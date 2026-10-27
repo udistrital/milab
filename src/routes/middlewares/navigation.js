@@ -1,5 +1,5 @@
 const pool = require('../../libs/db');
-const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
+// const { resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const {
   getPrestamosModuleAccess,
   removePrestamosNavigation,
@@ -13,6 +13,28 @@ function createLink(label, href, icon) {
 
 function createGroup(title, icon, items) {
   return { title, icon, items };
+}
+
+function removeSanctionAuthorizationLink(navigation) {
+  // Antes, el menú dinámico se devolvía sin filtrar y el enlace de autorizaciones quedaba visible.
+  const isAuthorizationLink = (item) =>
+    item?.href === '/milab/api/aprobacion_multa' ||
+    String(item?.label || '')
+      .trim()
+      .toLowerCase() === 'autorizaciones';
+  const secondaryGroups = (navigation.secondaryGroups || [])
+    .map((group) => ({
+      ...group,
+      items: (group.items || []).filter((item) => !isAuthorizationLink(item)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  return {
+    ...navigation,
+    primaryLinks: (navigation.primaryLinks || []).filter((item) => !isAuthorizationLink(item)),
+    secondaryGroups,
+    accountLinks: (navigation.accountLinks || []).filter((item) => !isAuthorizationLink(item)),
+  };
 }
 
 function normalizeHoursValue(value) {
@@ -124,6 +146,20 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
+function ensureDashboardMonitoringLink(navigation, roles) {
+  if (!normalizeRoles(roles).includes('gestor_laboratorio')) {
+    return navigation;
+  }
+
+  const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
+  const dashboardHref = '/milab/api/dashboard';
+  if (!primaryLinks.some((item) => item?.href === dashboardHref)) {
+    primaryLinks.push(createLink('Monitoreo', dashboardHref, 'bi-activity'));
+  }
+
+  return { ...navigation, primaryLinks };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -202,9 +238,7 @@ function buildStaticNavigation(user) {
 
   if (role === 'coordinador') {
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
-    primaryLinks.push(
-      createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check')
-    );
+    // primaryLinks.push(createLink('Autorizaciones', '/milab/api/aprobacion_multa', 'bi-clipboard2-check'));
     primaryLinks.push(createLink('Prestamos', '/milab/prestamos/', 'bi-box-seam'));
 
     secondaryGroups.push(
@@ -324,26 +358,24 @@ function buildStaticNavigation(user) {
   );
 }
 
+/*
 async function getPendingSanctionsCount(user, role) {
   if (!user || role !== 'coordinador') return 0;
 
   const scope = await resolveCoordinatorScope(pool, user.documento);
-
-  if (!scope.coordinatorDocument || scope.facultyIds.length === 0) {
-    return 0;
-  }
+  if (!scope.coordinatorDocument || scope.facultyIds.length === 0) return 0;
 
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
-    FROM multa m
+     FROM multa m
      INNER JOIN ual u ON u.ual_id = m.ual_id
      WHERE m.con_estado_multa IN ('Pendiente', 'POR SALDAR')
        AND u.facultad_id = ANY($1::int[])`,
     [scope.facultyIds]
   );
-
   return result.rows[0]?.total || 0;
 }
+*/
 
 async function getPendingInventoryApprovalsCount(user) {
   const roles = normalizeRoles(user?.roles || user?.tipo);
@@ -474,13 +506,16 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      return ensureCoordinatorSignatureAccountLink(
-        {
-          isAuthenticated,
-          role: getPrimaryRole(roles),
-          roleLabel: formatRoleLabel(roles),
-          ...filteredMenu,
-        },
+      return ensureDashboardMonitoringLink(
+        ensureCoordinatorSignatureAccountLink(
+          removeSanctionAuthorizationLink({
+            isAuthenticated,
+            role: getPrimaryRole(roles),
+            roleLabel: formatRoleLabel(roles),
+            ...filteredMenu,
+          }),
+          roles
+        ),
         roles
       );
     }
@@ -491,7 +526,13 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return { ...filteredFallback, roleLabel: formatRoleLabel(roles) };
+    return ensureDashboardMonitoringLink(
+      {
+        ...removeSanctionAuthorizationLink(filteredFallback),
+        roleLabel: formatRoleLabel(roles),
+      },
+      roles
+    );
   }
 
   const fallback = buildStaticNavigation({ tipo: getPrimaryRole(roles) });
@@ -500,16 +541,23 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return { ...filteredFallback, roleLabel: formatRoleLabel(roles) };
+  return ensureDashboardMonitoringLink(
+    {
+      ...removeSanctionAuthorizationLink(filteredFallback),
+      roleLabel: formatRoleLabel(roles),
+    },
+    roles
+  );
 }
 
 async function navigationMiddleware(req, res, next) {
   try {
     const sessionUser = req.session?.user || null;
+    const showOatiLoginWarning = Boolean(sessionUser && req.session?.showOatiLoginWarning);
     const navigation = await buildNavigation(sessionUser);
     const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
     const primaryRole = getPrimaryRole(roles);
-    const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
+    // const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
@@ -533,11 +581,12 @@ async function navigationMiddleware(req, res, next) {
     res.locals.appNavigation = navigation;
     res.locals.isAuthenticated = navigation.isAuthenticated;
     res.locals.sessionRoleLabel = navigation.roleLabel;
-    res.locals.pendingSanctionsCount = pendingSanctionsCount;
+    // res.locals.pendingSanctionsCount = pendingSanctionsCount;
     res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;
+    res.locals.showOatiLoginWarning = showOatiLoginWarning;
 
     return next();
   } catch (error) {
@@ -558,10 +607,18 @@ async function navigationMiddleware(req, res, next) {
     } else {
       result = await pool.query(
         `SELECT COUNT(*)::int AS total FROM reclamacion_sancion r
+         JOIN multa m ON m.id = r.multa_id
          JOIN laboratorista l ON l.documento = r.responsable_documento_id
          WHERE r.fecha_respuesta IS NULL
            AND (l.documento = $1 OR l.n_usuario = $1)
-           AND l.activo = TRUE`,
+           AND l.activo = TRUE
+           AND EXISTS (
+             SELECT 1
+             FROM laboratorista_ual lu
+             WHERE lu.laboratorista_documento_id = l.documento
+               AND lu.ual_id = m.ual_id
+               AND lu.activo = TRUE
+           )`,
         [document]
       );
     }

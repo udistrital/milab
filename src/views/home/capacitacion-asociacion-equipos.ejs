@@ -8,8 +8,8 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-      <div>
+    <div class="app-page-header__layout d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="app-page-header--inline">
         <h1 class="app-page-title">Asociación curso - equipos</h1>
         <p class="app-page-subtitle">Vincula cada curso de capacitación con los equipos especializados que requiere para certificar a los usuarios.</p>
       </div>
@@ -687,7 +687,7 @@
     var target = forSearch ? setBusquedaAlert : setAlert;
 
     if (data.migration_faltante || status === 503) {
-      var scriptName = data.script_requerido || 'sql-scripts/db_structure_certificacion.sql';
+      var scriptName = data.script_requerido || 'sql-scripts/prod/db_structure_certificacion.sql';
       var msg =
         '⚠️ Falta aplicar la migración de Base de Datos del módulo Capacitación. ' +
         'Ejecutar en TEST el script ' + scriptName + ' para crear las tablas ' +

@@ -130,15 +130,17 @@ jobs:
           base_dir=/opt/milab/sql-scripts
 
           for required_file in \
-            "$base_dir/db_structure.sql" \
-            "$base_dir/db_seed_system.sql" \
-            "$base_dir/db_structure_prestamos.sql" \
-            "$base_dir/db_seed_prestamos.sql" \
-            "$base_dir/db_structure_inventarios.sql" \
-            "$base_dir/db_seed_inventarios.sql" \
-            "$base_dir/db_structure_certificacion.sql" \
-            "$base_dir/db_seed_certificacion.sql" \
-            "$base_dir/db_seed_pruebas_ofuscado.sql"
+            "$base_dir/prod/db_structure.sql" \
+            "$base_dir/prod/db_seed_system.sql" \
+            "$base_dir/prod/db_structure_prestamos.sql" \
+            "$base_dir/prod/db_seed_prestamos.sql" \
+            "$base_dir/preprod/db_structure_inventarios.sql" \
+            "$base_dir/prod/db_structure_certificacion.sql" \
+            "$base_dir/prod/db_seed_certificacion.sql" \
+            "$base_dir/preprod/db_seed_inventarios.sql" \
+            "$base_dir/preprod/db_seed_pruebas_ofuscado.sql" \
+            "$base_dir/preprod/db_structure_hojas_vida.sql" \
+            "$base_dir/preprod/db_seed_hojas_vida.sql"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido: $required_file" >&2
@@ -147,35 +149,56 @@ jobs:
           done
 
           echo "Secuencia de reset BD validada:"
-          echo "1) $base_dir/db_structure.sql"
-          echo "2) $base_dir/db_seed_system.sql"
-          echo "3) $base_dir/db_structure_prestamos.sql"
-          echo "4) $base_dir/db_seed_prestamos.sql"
-          echo "5) $base_dir/db_structure_inventarios.sql"
-          echo "6) $base_dir/db_seed_inventarios.sql"
-          echo "7) $base_dir/db_structure_certificacion.sql"
-          echo "8) $base_dir/db_seed_certificacion.sql"
-          echo "9) $base_dir/db_seed_pruebas_ofuscado.sql (solo al recrear pruebas)"
+          echo "1) $base_dir/prod/db_structure.sql"
+          echo "2) $base_dir/prod/db_seed_system.sql"
+          echo "3) $base_dir/prod/db_structure_prestamos.sql"
+          echo "4) $base_dir/prod/db_seed_prestamos.sql"
+          echo "5) $base_dir/preprod/db_structure_inventarios.sql"
+          echo "6) $base_dir/prod/db_structure_certificacion.sql"
+          echo "7) $base_dir/prod/db_seed_certificacion.sql"
+          echo "8) $base_dir/preprod/db_seed_inventarios.sql"
+          echo "9) $base_dir/preprod/db_seed_pruebas_ofuscado.sql (solo al recrear pruebas)"
+          echo "10) $base_dir/preprod/db_structure_hojas_vida.sql"
+          echo "11) $base_dir/preprod/db_seed_hojas_vida.sql"
 
       - name: Asegurar ruta de compatibilidad para compose
         run: |
           set -eu
           if command -v sudo >/dev/null 2>&1; then
             sudo mkdir -p /opt/milab/Docker
+            sudo mkdir -p /opt/milab-data/encuentros
             sudo ln -sfn /opt/.env /opt/milab/Docker/.env
           else
             mkdir -p /opt/milab/Docker
+            mkdir -p /opt/milab-data/encuentros
             ln -sfn /opt/.env /opt/milab/Docker/.env
           fi
 
       - name: Crear override de compose para pruebas
         run: |
-          cat > /home/ubuntu/prod/docker-compose.override.yml <<'YAML'
+          set -eu
+          target_dir=/home/ubuntu/prod
+          target_file="$target_dir/docker-compose.override.yml"
+          temp_file="$(mktemp)"
+
+          cat > "$temp_file" <<'YAML'
           services:
             milabud:
               environment:
                 DB_SCHEMA: milab
+              volumes:
+                - /opt/milab-data/encuentros:/usr/src/app/private/encuentros
           YAML
+
+          if command -v sudo >/dev/null 2>&1; then
+            sudo mkdir -p "$target_dir"
+            sudo cp "$temp_file" "$target_file"
+          else
+            mkdir -p "$target_dir"
+            cp "$temp_file" "$target_file"
+          fi
+
+          rm -f "$temp_file"
 
       - name: Validar flags sensibles en entorno
         run: |
@@ -266,15 +289,17 @@ jobs:
           sudo mv "$sql_dir" "$sql_run_dir"
           sudo mkdir -p "$sql_dir"
 
-          db_structure_script="$sql_run_dir/db_structure.sql"
-            db_seed_script="$sql_run_dir/db_seed_system.sql"
-          db_structure_prestamos_script="$sql_run_dir/db_structure_prestamos.sql"
-          db_seed_prestamos_script="$sql_run_dir/db_seed_prestamos.sql"
-          db_structure_certificacion_script="$sql_run_dir/db_structure_certificacion.sql"
-          db_seed_certificacion_script="$sql_run_dir/db_seed_certificacion.sql"
-          db_seed_pruebas_ofuscado_script="$sql_run_dir/db_seed_pruebas_ofuscado.sql"
-          db_structure_inventarios_script="$sql_run_dir/db_structure_inventarios.sql"
-          db_seed_inventarios_script="$sql_run_dir/db_seed_inventarios.sql"
+          db_structure_script="$sql_run_dir/prod/db_structure.sql"
+          db_seed_script="$sql_run_dir/prod/db_seed_system.sql"
+          db_structure_prestamos_script="$sql_run_dir/prod/db_structure_prestamos.sql"
+          db_seed_prestamos_script="$sql_run_dir/prod/db_seed_prestamos.sql"
+          db_structure_certificacion_script="$sql_run_dir/prod/db_structure_certificacion.sql"
+          db_seed_certificacion_script="$sql_run_dir/prod/db_seed_certificacion.sql"
+          db_seed_pruebas_ofuscado_script="$sql_run_dir/preprod/db_seed_pruebas_ofuscado.sql"
+          db_structure_inventarios_script="$sql_run_dir/preprod/db_structure_inventarios.sql"
+          db_seed_inventarios_script="$sql_run_dir/preprod/db_seed_inventarios.sql"
+          db_structure_hojas_vida_script="$sql_run_dir/preprod/db_structure_hojas_vida.sql"
+          db_seed_hojas_vida_script="$sql_run_dir/preprod/db_seed_hojas_vida.sql"
 
           for required_file in \
             "$db_structure_script" \
@@ -282,10 +307,12 @@ jobs:
             "$db_structure_prestamos_script" \
             "$db_seed_prestamos_script" \
             "$db_structure_inventarios_script" \
-            "$db_seed_inventarios_script" \
             "$db_structure_certificacion_script" \
             "$db_seed_certificacion_script" \
-            "$db_seed_pruebas_ofuscado_script"
+            "$db_seed_inventarios_script" \
+            "$db_seed_pruebas_ofuscado_script" \
+            "$db_structure_hojas_vida_script" \
+            "$db_seed_hojas_vida_script"
           do
             if [ ! -f "$required_file" ]; then
               echo "No se encontró el script requerido para reset de BD: $required_file" >&2
@@ -335,10 +362,12 @@ jobs:
           echo "3) $db_structure_prestamos_script"
           echo "4) $db_seed_prestamos_script"
           echo "5) $db_structure_inventarios_script"
-          echo "6) $db_seed_inventarios_script"
-          echo "7) $db_structure_certificacion_script"
-          echo "8) $db_seed_certificacion_script"
+          echo "6) $db_structure_certificacion_script"
+          echo "7) $db_seed_certificacion_script"
+          echo "8) $db_seed_inventarios_script"
           echo "9) $db_seed_pruebas_ofuscado_script"
+          echo "10) $db_structure_hojas_vida_script"
+          echo "11) $db_seed_hojas_vida_script"
 
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_script"
@@ -356,10 +385,12 @@ jobs:
             exit 1
           fi
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "DELETE FROM milab.inventario WHERE id = (SELECT inventario_id FROM milab.equipo WHERE id = $legacy_equipment_id);"
-          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_inventarios_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_certificacion_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_certificacion_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_inventarios_script"
           sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_pruebas_ofuscado_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_structure_hojas_vida_script"
+          sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$db_seed_hojas_vida_script"
 
           prestamos_count=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT COUNT(*) FROM milab.menu_item WHERE label = 'Prestamos';")
           if [ "$prestamos_count" != '1' ]; then
@@ -418,14 +449,59 @@ jobs:
             exit 1
           fi
 
+          coordinator_assignment_migration=/opt/milab/sql/20261021_coordinador_ual_encargado.sql
+          if [ ! -r "$coordinator_assignment_migration" ]; then
+            echo "No se encontró la migración requerida: $coordinator_assignment_migration" >&2
+            exit 1
+          fi
+
           sudo docker compose --env-file /opt/.env stop milabud
-          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/db_structure_inventarios.sql; then
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < /opt/milab/sql-scripts/preprod/db_structure_inventarios.sql; then
             echo 'Falló la migración canónica de inventarios; se intentará recuperar el servicio anterior.' >&2
             sudo docker compose --env-file /opt/.env up -d milabud || true
             exit 1
           fi
 
-          echo 'Esquema canónico de inventarios aplicado correctamente.'
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$coordinator_assignment_migration"; then
+            echo 'Falló la migración de coordinador_ual_encargado; se intentará recuperar el servicio anterior.' >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          coordinator_assignment_table=$(sudo docker exec -i milabud_db_pruebas psql -U "$db_user" -d "$db_name" -t -A -c "SELECT to_regclass('milab.coordinador_ual_encargado') IS NOT NULL;")
+          if [ "$coordinator_assignment_table" != 't' ]; then
+            echo 'ERROR: no se creó milab.coordinador_ual_encargado.' >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          gestor_migration=/opt/milab/sql/20261021_gestor_laboratorio.sql
+          if [ ! -r "$gestor_migration" ]; then
+            echo "No se encontró la migración requerida: $gestor_migration" >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$gestor_migration"; then
+            echo 'Falló la inicialización del rol Gestor de laboratorio; se intentará recuperar el servicio anterior.' >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          encounters_permissions_migration=/opt/milab/sql/20261021_encuentros_permissions.sql
+          if [ ! -r "$encounters_permissions_migration" ]; then
+            echo "No se encontró la migración requerida: $encounters_permissions_migration" >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          if ! sudo docker exec -i milabud_db_pruebas psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" < "$encounters_permissions_migration"; then
+            echo 'Falló la migración de permisos de Encuentros; se intentará recuperar el servicio anterior.' >&2
+            sudo docker compose --env-file /opt/.env up -d milabud || true
+            exit 1
+          fi
+
+          echo 'Esquema de inventarios, asignaciones de UAL, rol Gestor de laboratorio y permisos de Encuentros aplicados correctamente.'
 
       - name: Desplegar sin recrear ambiente
         if: steps.estrategia.outputs.recreate != 'true'

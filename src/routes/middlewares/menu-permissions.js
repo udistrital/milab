@@ -17,10 +17,7 @@ function sanitizePath(pathname) {
 
 const publicApiAllowlist = [
   { prefix: '/milab/api/login/login', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/milab/api/register', methods: ['POST'], allowSubpaths: true },
   { prefix: '/milab/api/consulta-invit', methods: ['GET', 'POST'], allowSubpaths: false },
-  { prefix: '/milab/api/get-data1', methods: ['POST'], allowSubpaths: false },
-  { prefix: '/milab/api/get-data2', methods: ['POST'], allowSubpaths: false },
   { prefix: '/milab/api/check-services', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/verify_token', methods: ['GET'], allowSubpaths: false },
   { prefix: '/milab/api/register_labs/new', methods: ['GET'], allowSubpaths: false },
@@ -118,6 +115,20 @@ async function menuPermissionMiddleware(req, res, next) {
   try {
     const path = sanitizePath(req.originalUrl);
     const method = String(req.method || 'GET').toUpperCase();
+    const requestRoles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+    const isGestorDashboardRead =
+      requestRoles.includes('gestor_laboratorio') &&
+      ['GET', 'HEAD'].includes(method) &&
+      ['/milab/api/dashboard', '/milab/api/dashboard/inventarios'].includes(path);
+    if (isGestorDashboardRead) {
+      return next();
+    }
+    // La portada autenticada es pública para roles; los módulos de destino validan sus permisos.
+    const isAuthenticatedHomeRequest =
+      Boolean(req.session?.user) && ['GET', 'HEAD'].includes(method) && path === '/milab/inicio';
+    if (isAuthenticatedHomeRequest) {
+      return next();
+    }
     if (hasRouteLevelApiAuthorization(path, method)) {
       return next();
     }
@@ -191,6 +202,7 @@ async function menuPermissionMiddleware(req, res, next) {
         JOIN rol r ON r.id = rp.rol_id
         WHERE rp.menu_item_id = ANY($1)
           AND rp.can_view = TRUE
+          AND rp.activo = TRUE
           AND r.nombre = ANY($2)
         LIMIT 1
       `,

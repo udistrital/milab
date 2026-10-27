@@ -15,10 +15,10 @@ const {
 const { ensurePerfilEstudiante } = require('../../libs/user-identity');
 const {
   collectStudentCodigos,
-  getActiveSgaDebtsForStudent,
   selectStudentRecordForDocumento,
 } = require('../../libs/oati-student-record');
 const { requireRoles } = require('../middlewares/auth');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 // Variables de entorno
 require('dotenv').config();
@@ -345,6 +345,9 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
       try {
         sgaMultaInfo = await consultarMultasSga();
       } catch (sgaError) {
+        if (sgaError?.code === 'OATI_UNAVAILABLE') {
+          return respondOatiUnavailable(req, res);
+        }
         console.error(
           'Error consultando multas SGA al generar certificado de estudiante:',
           sgaError
@@ -423,6 +426,9 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
         });
       }
     } catch (error) {
+      if (error?.code === 'OATI_UNAVAILABLE') {
+        return respondOatiUnavailable(req, res);
+      }
       console.error(error);
       return res.render('home/message_error', {
         message: '¡Algo ha salido mal!',
@@ -838,10 +844,19 @@ router.post('/', requireStaffStudentCertificateAccess, function (req, res) {
   async function consultarMultasSga() {
     if (!sgaDebtService.isConfigured()) return [];
 
-    return getActiveSgaDebtsForStudent(sgaDebtService, {
+    const result = await sgaDebtService.queryStudent({
+      codigo: con_codigo,
       codigos: con_codigos.length ? con_codigos : collectStudentCodigos([], con_codigo),
       documento: con_documento,
     });
+    if (!['found', 'clear'].includes(result.status)) {
+      const error = new Error(
+        'El estado de las sanciones de laboratorio en SGA no pudo confirmarse completamente.'
+      );
+      error.code = 'SGA_QUERY_INCOMPLETE';
+      throw error;
+    }
+    return result.debts;
   }
 
   consultarEndpointAnidado();

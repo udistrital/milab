@@ -6,15 +6,13 @@ const pool = require('../../libs/db');
 const { isActiveSanctionCategory } = require('../../libs/sanction-categories');
 const { resolveUsuarioIdForDocente } = require('../../libs/user-identity');
 const { requireRoles } = require('../middlewares/auth');
-const {
-  isValidSanctionType,
-  normalizeSanctionType,
-  resolveMultaConfigForUalId,
-} = require('../../libs/multa-config');
+const { isValidSanctionType, normalizeSanctionType } = require('../../libs/multa-config');
+// const { resolveMultaConfigForUalId } = require('../../libs/multa-config');
 const {
   resolveStudentContactByUsuarioId,
   sendSanctionActivationEmail,
 } = require('../../libs/sanction-email');
+const { buildSanctionPersonReturnPath } = require('../../libs/sanction-person-lookup');
 const { renderModuleError } = require('../middlewares/error-handler');
 
 const router = express.Router();
@@ -78,10 +76,12 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
     con_documento,
     ual_id,
     fecha_multa,
-    con_estado_multa,
     obs_multa,
+    lookup_token: rawLookupToken,
   } = requestBody;
+  // const { con_estado_multa } = requestBody; // Se usaba con el flujo anterior por facultad.
   const cat_multa = typeof rawCategory === 'string' ? rawCategory.trim() : '';
+  const lookupToken = String(rawLookupToken || '').trim();
   const today = new Date().toISOString().slice(0, 10);
 
   try {
@@ -204,6 +204,7 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       }
     }
 
+    /*
     const cfg = await resolveMultaConfigForUalId(idUal);
     const permiteCrearActivaDirecta = Boolean(cfg && cfg.permite_crear_multas_activas_directas);
 
@@ -228,6 +229,35 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       mensajeSuccessExtra =
         'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
     }
+
+    if (permiteCrearActivaDirecta) {
+      const inserted = await pool.query(
+        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [cat_multa, laboratorista.documento, usuarioIdSancionado, idUal, fecha_multa, finalEstado, obs_multa, tipoSancionFinal]
+      );
+      multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
+    } else {
+      await pool.query(
+        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [cat_multa, laboratorista.documento, usuarioIdSancionado, idUal, fecha_multa, finalEstado, obs_multa]
+      );
+    }
+    */
+
+    const rawTipo = requestBody.tipo_sancion;
+    if (!isValidSanctionType(rawTipo)) {
+      return res.render('home/message_error', {
+        message: 'Tipo de sanción inválido.',
+        message2: 'Selecciona una opción válida de tipo de sanción antes de continuar.',
+        limit: null,
+      });
+    }
+    const finalEstado = 'ACTIVA';
+    const tipoSancionFinal = normalizeSanctionType(rawTipo);
+    const accionLog = 'Multa activa directa a docente';
+    const mensajeSuccessExtra =
+      'La sanción fue activada inmediatamente y el correo de notificación fue enviado.';
+    let multaIdNueva = null;
 
     if (!(await isActiveSanctionCategory(cat_multa, pool))) {
       return res.render('home/message_error', {
@@ -258,35 +288,20 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       });
     }
 
-    if (permiteCrearActivaDirecta) {
-      const inserted = await pool.query(
-        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-        [
-          cat_multa,
-          laboratorista.documento,
-          usuarioIdSancionado,
-          idUal,
-          fecha_multa,
-          finalEstado,
-          obs_multa,
-          tipoSancionFinal,
-        ]
-      );
-      multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
-    } else {
-      await pool.query(
-        'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [
-          cat_multa,
-          laboratorista.documento,
-          usuarioIdSancionado,
-          idUal,
-          fecha_multa,
-          finalEstado,
-          obs_multa,
-        ]
-      );
-    }
+    const inserted = await pool.query(
+      'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+      [
+        cat_multa,
+        laboratorista.documento,
+        usuarioIdSancionado,
+        idUal,
+        fecha_multa,
+        finalEstado,
+        obs_multa,
+        tipoSancionFinal,
+      ]
+    );
+    multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;
 
     if (multaIdNueva) {
       try {
@@ -331,6 +346,11 @@ router.post('/', requireTeacherFineSubmissionAccess, async (req, res) => {
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
       [req.session.user.tipo, logActorDocumento, accionLogFinal, con_documento]
     );
+
+    const personReturnPath = buildSanctionPersonReturnPath(lookupToken, 'registrada', 'docente');
+    if (personReturnPath) {
+      return res.redirect(303, personReturnPath);
+    }
 
     return res.render('home/message_success', {
       message: 'Multa registrada correctamente',

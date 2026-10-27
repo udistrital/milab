@@ -111,6 +111,7 @@ test('submit_docente rejects inactive or removed catalog categories before inser
       ual_id: '21',
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
+      tipo_sancion: 'Firma de compromiso de buen uso',
     });
     assert.equal(response.status, 200, JSON.stringify(response.body));
     assert.equal(response.body.view, 'home/message_error');
@@ -201,11 +202,12 @@ test('submit_docente rejects when sanctioned user is not found', async () => {
   }
 });
 
-test('submit_docente inserts fine and log when request is valid', async () => {
+test('submit_docente inserts once and redirects to the person information screen when lookup context exists', async () => {
   const loaded = loadRoute();
 
   try {
     const app = buildApp(loaded.route);
+    const lookupToken = 'b'.repeat(64);
     const response = await request(app).post('/').type('form').send({
       cat_multa: 'Uso indebido',
       con_documento: '79520182',
@@ -213,22 +215,30 @@ test('submit_docente inserts fine and log when request is valid', async () => {
       fecha_multa: '2026-01-01',
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',
+      tipo_sancion: 'Firma de compromiso de buen uso',
+      lookup_token: lookupToken,
     });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.view, 'home/message_success');
-    assert.match(response.body.locals.message, /Multa registrada correctamente/i);
-
-    const queries = loaded.getExecutedQueries().map((item) => item.sql);
+    assert.equal(response.status, 303);
     assert.equal(
-      queries.some((sql) => sql.includes('INSERT INTO multa')),
-      true,
-      'debe insertar en multa'
+      response.headers.location,
+      `/milab/api/get-info-multa-docente/persona?lookup_token=${lookupToken}&success=registrada`
+    );
+
+    const executedQueries = loaded.getExecutedQueries();
+    const queries = executedQueries.map((item) => item.sql);
+    const multaInsert = executedQueries.find((item) => item.sql.includes('INSERT INTO multa'));
+    assert.equal(multaInsert.params[5], 'ACTIVA');
+    assert.equal(multaInsert.params[7], 'Firma de compromiso de buen uso');
+    assert.equal(
+      queries.filter((sql) => sql.includes('INSERT INTO multa')).length,
+      1,
+      'debe insertar la sanción exactamente una vez'
     );
     assert.equal(
-      queries.some((sql) => sql.includes('INSERT INTO log')),
-      true,
-      'debe insertar en log'
+      queries.filter((sql) => sql.includes('INSERT INTO log')).length,
+      1,
+      'debe insertar el registro de auditoría exactamente una vez'
     );
   } finally {
     loaded.restore();

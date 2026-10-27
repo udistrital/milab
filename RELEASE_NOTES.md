@@ -1,5 +1,22 @@
 # Release Notes
 
+## 3.2.0 - 2026-10-27
+
+1. La consulta masiva de sanciones procesa hasta 50 documentos o códigos con progreso visible; las multas ajenas al catálogo de laboratorio no se tipifican como sanciones y los administradores pueden consultar otras multas SGA.
+2. Se amplía la gestión de gestores de laboratorio con acciones de enrolamiento y edición, alcance universitario sin UAL e impersonación de cuentas con ese rol.
+3. El tour guiado incorpora módulos de inventarios, hojas de vida, capacitación, encuentros y configuración, con recorridos y progreso en español.
+4. El navegador administrativo del esquema de base de datos queda limitado a `milab`.
+
+## 3.1.10 - 2026-10-24
+
+1. El dashboard conserva sus secciones disponibles y muestra advertencias cuando fallan consultas opcionales de alcance, filtros o Paz y Salvos.
+2. El rol `gestor_laboratorio` puede consultar el dashboard global en modo de solo lectura, igual que `coordinador_general`.
+
+## 3.1.0 - 2026-10-24
+
+1. La verificación de sanciones SGA consulta los códigos académicos asociados al documento, clasifica las multas de laboratorio por el nombre del concepto y distingue resultados completos de consultas parciales o no verificables.
+2. El informe de consulta masiva incorpora resumen visual, barras por estado, detalle de sanciones y el listado completo de participantes, con identidad visual institucional.
+
 ## Hotfix 2026-10-15 - Registro en prueba académica
 
 Se permite que estudiantes con estado `B` (prueba académica y activo) completen

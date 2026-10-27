@@ -1,0 +1,251 @@
+<%- include('../partials/header'); -%>
+<% const values = formValues || {}; %>
+<% const newManager = newManagerValues || {}; %>
+<% const editValues = editManagerValues || {}; %>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Gestores de laboratorio</h1>
+    <p class="app-page-subtitle">
+      Enrola y edita cuentas con cobertura para toda la Universidad. Los gestores no requieren
+      asignaciones a UAL.
+    </p>
+  </section>
+
+  <section class="row justify-content-center">
+    <div class="col-12 col-xxl-10">
+      <% if (error) { %>
+        <div class="alert alert-danger" role="alert"><%= error %></div>
+      <% } %>
+
+      <% if (success) { %>
+        <div class="alert alert-success" role="status"><%= success %></div>
+      <% } %>
+
+      <% if (!roleConfigured) { %>
+        <div class="alert alert-warning" role="alert">
+          El rol aún no está inicializado. Aplica la migración de Gestor de laboratorio antes de asignar cuentas.
+        </div>
+      <% } %>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5">Crear un nuevo gestor</h2>
+          <p class="text-muted">
+            Diligencia los datos de la cuenta institucional. Se asignará el rol automáticamente y no
+            se asociará ninguna UAL; el ingreso se realiza con la cuenta institucional.
+          </p>
+
+          <form method="POST" action="/milab/api/gestores_laboratorio/crear" class="row g-3">
+            <%- include('../partials/csrf_field') %>
+            <div class="col-12 col-md-6">
+              <label for="newManagerName" class="form-label">Nombre completo</label>
+              <input
+                id="newManagerName"
+                name="nombre"
+                class="form-control"
+                maxlength="200"
+                value="<%= newManager.name || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label for="newManagerDocument" class="form-label">Número de documento</label>
+              <input
+                id="newManagerDocument"
+                name="documento"
+                class="form-control"
+                maxlength="50"
+                value="<%= newManager.document || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12">
+              <label for="newManagerEmail" class="form-label">Correo institucional</label>
+              <input
+                id="newManagerEmail"
+                name="correo"
+                type="email"
+                class="form-control"
+                maxlength="255"
+                value="<%= newManager.email || '' %>"
+                required
+                <%= roleConfigured ? '' : 'disabled' %>
+              >
+            </div>
+
+            <div class="col-12 text-end">
+              <button type="submit" class="btn btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
+                Crear y enrolar como gestor
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <h2 class="h5">Enrolar una cuenta existente</h2>
+          <p class="text-muted">
+            Selecciona una cuenta ya registrada para asignarle el rol Gestor de laboratorio con
+            cobertura universitaria.
+          </p>
+
+          <form method="POST" action="/milab/api/gestores_laboratorio/enrolar" class="row g-3">
+            <%- include('../partials/csrf_field') %>
+            <div class="col-12">
+              <label for="managerUser" class="form-label">Cuenta existente</label>
+              <select id="managerUser" name="user_id" class="form-select" required <%= roleConfigured ? '' : 'disabled' %>>
+                <option value="">Selecciona una cuenta</option>
+                <% (candidates || []).forEach(function(candidate) { %>
+                  <option value="<%= candidate.id %>" <%= String(values.userId || '') === String(candidate.id) ? 'selected' : '' %>>
+                    <%= candidate.nombre %> · <%= candidate.documento %> · <%= candidate.correo %>
+                  </option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="col-12 text-end">
+              <button type="submit" class="btn btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
+                Enrolar como gestor
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Gestores registrados</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Estado</th>
+                  <th>Cobertura</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!managers || !managers.length) { %>
+                  <tr><td colspan="4" class="text-muted">No hay gestores registrados.</td></tr>
+                <% } %>
+
+                <% (managers || []).forEach(function(manager) { %>
+                  <% const editingManager = String(editValues.userId || '') === String(manager.id); %>
+                  <tr>
+                    <td>
+                      <strong><%= manager.nombre %></strong><br>
+                      <span class="text-muted"><%= manager.documento %> · <%= manager.correo %></span>
+                    </td>
+                    <td>
+                      <div class="d-flex flex-column align-items-start gap-1">
+                        <span class="badge <%= manager.cuenta_activa ? 'text-bg-success' : 'text-bg-secondary' %>">
+                          Cuenta <%= manager.cuenta_activa ? 'activa' : 'inactiva' %>
+                        </span>
+                        <span class="badge <%= manager.rol_activo ? 'text-bg-success' : 'text-bg-secondary' %>">
+                          Rol <%= manager.rol_activo ? 'activo' : 'inactivo' %>
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge text-bg-primary">Universidad</span>
+                      <div class="small text-muted mt-1">Sin asignación de UAL</div>
+                    </td>
+                    <td>
+                      <div class="d-flex flex-wrap align-items-start gap-2">
+                        <details>
+                          <summary class="btn btn-sm btn-outline-primary" <%= roleConfigured ? '' : 'aria-disabled="true"' %>>
+                            Editar
+                          </summary>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/editar"
+                            class="border rounded p-3 mt-2"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <input type="hidden" name="user_id" value="<%= manager.id %>">
+                            <div class="mb-2">
+                              <label for="managerName<%= manager.id %>" class="form-label">Nombre completo</label>
+                              <input
+                                id="managerName<%= manager.id %>"
+                                name="nombre"
+                                class="form-control form-control-sm"
+                                maxlength="200"
+                                value="<%= editingManager ? editValues.name : manager.nombre %>"
+                                required
+                              >
+                            </div>
+                            <div class="mb-2">
+                              <label for="managerDocument<%= manager.id %>" class="form-label">Documento</label>
+                              <input
+                                id="managerDocument<%= manager.id %>"
+                                name="documento"
+                                class="form-control form-control-sm"
+                                maxlength="50"
+                                value="<%= editingManager ? editValues.document : manager.documento %>"
+                                required
+                              >
+                            </div>
+                            <div class="mb-3">
+                              <label for="managerEmail<%= manager.id %>" class="form-label">Correo institucional</label>
+                              <input
+                                id="managerEmail<%= manager.id %>"
+                                name="correo"
+                                type="email"
+                                class="form-control form-control-sm"
+                                maxlength="255"
+                                value="<%= editingManager ? editValues.email : manager.correo %>"
+                                required
+                              >
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
+                              Guardar cambios
+                            </button>
+                          </form>
+                        </details>
+
+                        <% if (manager.rol_activo) { %>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/<%= manager.id %>/desactivar"
+                            data-confirm-submit="¿Desactivar el acceso de este gestor?"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                              Desactivar
+                            </button>
+                          </form>
+                        <% } else { %>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/<%= manager.id %>/enrolar"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <button
+                              type="submit"
+                              class="btn btn-sm btn-success"
+                              <%= roleConfigured && manager.cuenta_activa ? '' : 'disabled' %>
+                            >
+                              Enrolar
+                            </button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<%- include('../partials/footer'); -%>

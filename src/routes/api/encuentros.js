@@ -1,0 +1,3616 @@
+const crypto = require('crypto');
+const express = require('express');
+const fs = require('fs/promises');
+const path = require('path');
+const multer = require('multer');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
+const rateLimit = require('express-rate-limit');
+
+const pool = require('../../libs/db');
+const { buildAppUrl } = require('../../libs/app-url');
+const { sendEmailNotification } = require('../../libs/email-notifications');
+const { logger } = require('../../libs/logger');
+const { requireJsonRoles, requireRoles, requireUser } = require('../middlewares/auth');
+const { enrichErrorPayloadForAdmin } = require('../middlewares/error-handler');
+const {
+  buildHistoricalParticipationTemplateBuffer,
+  buildParticipantTemplateBuffer,
+  generateCertificatePdf,
+  hasFileSignature,
+  isSafeXlsxArchive,
+  normalizeDocument,
+  PARTICIPANT_EXPORT_HEADERS,
+  parseHistoricalTimestamp,
+  previewHistoricalParticipationWorkbook,
+  previewParticipantWorkbook,
+  validateEventInput,
+  validatePdfTemplate,
+  validateParticipant,
+  validateTemplateConfig,
+} = require('../../libs/encuentros');
+
+const router = express.Router();
+const STORAGE_ROOT = path.resolve(
+  process.env.ENCUENTROS_STORAGE_DIR || path.join(process.cwd(), 'private', 'encuentros')
+);
+const MAX_TEMPLATE_BYTES = 8 * 1024 * 1024;
+const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
+const MAX_BANNER_BYTES = 3 * 1024 * 1024;
+
+const MANAGER_ROLES = [
+  'admin',
+  'administrador',
+  'administradora',
+  'coordinador',
+  'coordinador_facultad',
+  'coordinador_general',
+  'coordinador general',
+  'laboratorista',
+  'laboratorista_ud',
+  'laboratorista_ual',
+  'gestor_laboratorio',
+];
+const requireAuthenticatedJson = (req, res, next) => {
+  if (!req.session?.user) {
+    return res.status(401).json({ ok: false, message: 'Debes iniciar sesión para continuar.' });
+  }
+  return next();
+};
+
+const requireManager = requireJsonRoles(MANAGER_ROLES, {
+  message: 'Solo el personal autorizado puede gestionar encuentros.',
+});
+const requireAttendanceCorrection = requireJsonRoles(['admin'], {
+  message: 'Solo el personal administrador puede corregir asistencias.',
+});
+const requireEncounterManagerPage = requireRoles(MANAGER_ROLES, {
+  message: 'Acceso denegado',
+  message2: 'Solo el personal autorizado puede gestionar encuentros.',
+  limit: 'loginOnly',
+});
+const requireEncounterUserPage = requireUser({
+  message: 'Acceso denegado',
+  message2: 'Debes iniciar sesión para consultar tus logros.',
+  limit: 'loginOnly',
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_TEMPLATE_BYTES, files: 2 },
+  fileFilter(_req, file, callback) {
+    const acceptedTypes = new Map([
+      ['plantilla_pdf', new Set(['application/pdf'])],
+      ['banner', new Set(['image/png', 'image/jpeg'])],
+      ['archivo', new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])],
+    ]);
+    if (!acceptedTypes.get(file.fieldname)?.has(file.mimetype)) {
+      return callback(new Error('Tipo de archivo no permitido.'));
+    }
+    return callback(null, true);
+  },
+});
+
+function withUpload(middleware) {
+  return (req, res, next) => {
+    middleware(req, res, (error) => {
+      if (!error) return next();
+      const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(status).json({ ok: false, message: error.message || 'Archivo inválido.' });
+    });
+  };
+}
+
+function setNoCache(res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+}
+
+router.use((req, res, next) => {
+  setNoCache(res);
+  next();
+});
+
+function parsePositiveId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function getSessionUserId(req) {
+  return parsePositiveId(req.session?.user?.id);
+}
+
+function getSessionDocument(req) {
+  return String(
+    req.session?.user?.documento_real ||
+      req.session?.user?.documento ||
+      req.session?.user?.codigo ||
+      ''
+  ).trim();
+}
+
+function getSessionName(req) {
+  return String(req.session?.user?.nombre || req.session?.user?.tipo || 'Usuario MiLab').trim();
+}
+
+function canAdministerCertificates(req) {
+  const roleValues = req.session?.user?.roles || req.session?.user?.tipo || [];
+  const roles = Array.isArray(roleValues)
+    ? roleValues
+    : String(roleValues)
+        .split(',')
+        .map((role) => role.trim());
+  return roles.some((role) =>
+    ['admin', 'administrador', 'administradora'].includes(String(role).trim().toLowerCase())
+  );
+}
+
+function logFailure(req, error, action) {
+  (req.log || logger).error({ err: error, action }, 'Error en submódulo Encuentros');
+}
+
+function handleServerError(req, res, error, message) {
+  logFailure(req, error, 'encuentros_request');
+  if (error?.code === '42P01' || error?.code === '42703') {
+    return res.status(503).json(
+      enrichErrorPayloadForAdmin(
+        req,
+        {
+          ok: false,
+          migration_faltante: true,
+          message: 'Falta aplicar la migración del submódulo Encuentros.',
+          script_requerido: 'sql-scripts/prod/db_structure_certificacion.sql',
+        },
+        error
+      )
+    );
+  }
+  return res.status(500).json(enrichErrorPayloadForAdmin(req, { ok: false, message }, error));
+}
+
+async function withTransaction(callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function writeAudit(client, req, action, eventId) {
+  const document = getSessionDocument(req);
+  const numericDocument = /^\d{1,16}$/.test(document) ? document : null;
+  await client.query(
+    'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+    [
+      getSessionName(req).slice(0, 500),
+      numericDocument,
+      `Encuentros: ${action}`.slice(0, 500),
+      `Evento #${eventId}`.slice(0, 255),
+    ]
+  );
+}
+
+function resolveStoredPath(relativePath) {
+  if (typeof relativePath !== 'string' || !relativePath || path.isAbsolute(relativePath)) {
+    throw new Error('La ruta almacenada del archivo no es válida.');
+  }
+  const absolutePath = path.resolve(STORAGE_ROOT, relativePath);
+  if (!absolutePath.startsWith(`${STORAGE_ROOT}${path.sep}`)) {
+    throw new Error('La ruta almacenada del archivo no es válida.');
+  }
+  return absolutePath;
+}
+
+async function saveUpload(file, subdirectory, extension) {
+  const relativePath = path.join(subdirectory, `${crypto.randomUUID()}.${extension}`);
+  const absolutePath = resolveStoredPath(relativePath);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, file.buffer, { flag: 'wx', mode: 0o600 });
+  return relativePath;
+}
+
+async function removeStoredFile(relativePath) {
+  if (!relativePath) return;
+  try {
+    await fs.unlink(resolveStoredPath(relativePath));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+function readTemplateConfig(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function validateUploadedEventFiles(files) {
+  const pdf = files?.plantilla_pdf?.[0];
+  const banner = files?.banner?.[0];
+  if (pdf && (pdf.size > MAX_TEMPLATE_BYTES || !hasFileSignature(pdf, 'pdf'))) {
+    return 'La plantilla debe ser un archivo PDF válido de máximo 8 MB.';
+  }
+  if (
+    banner &&
+    (banner.size > MAX_BANNER_BYTES ||
+      !(hasFileSignature(banner, 'png') || hasFileSignature(banner, 'jpeg')))
+  ) {
+    return 'El banner debe ser una imagen PNG o JPEG válida de máximo 3 MB.';
+  }
+  return null;
+}
+
+function formatDateForDisplay(value) {
+  const date = String(value || '').slice(0, 10);
+  const [year, month, day] = date.split('-');
+  return year && month && day ? `${day}/${month}/${year}` : date;
+}
+
+function sanitizeDeliveryError(error) {
+  return String(error?.message || 'El servicio de correo no confirmó el envío.')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[correo oculto]')
+    .replace(/\b\d{6,}\b/g, '[identificador oculto]')
+    .slice(0, 1000);
+}
+
+async function getRegisteredUserMatch(client, normalizedDocument) {
+  const result = await client.query(
+    `
+      SELECT id
+      FROM usuario
+      WHERE COALESCE(activo, TRUE) = TRUE
+        AND regexp_replace(
+          translate(upper(btrim(documento)), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'),
+          '[^A-Z0-9]', '', 'g'
+        ) = $1
+      ORDER BY id
+      LIMIT 2
+    `,
+    [normalizedDocument]
+  );
+  return result.rows.length === 1 ? result.rows[0].id : null;
+}
+
+async function createCertificate(eventId, participantId, req) {
+  let createdFilePath;
+  try {
+    return await withTransaction(async (client) => {
+      const participantResult = await client.query(
+        `
+          SELECT
+            p.id AS participante_id,
+            p.evento_id,
+            p.nombre,
+            p.documento,
+            p.documento_normalizado,
+            p.correo,
+            p.rol,
+            p.facultad,
+            p.laboratorio,
+            a.entrada_en,
+            a.salida_en,
+            e.nombre AS evento,
+            e.fecha AS fecha_evento,
+            e.lugar,
+            e.organizador,
+            e.plantilla_pdf_path,
+            e.plantilla_config
+          FROM encuentro_participante p
+          JOIN encuentro_evento e ON e.id = p.evento_id
+          JOIN encuentro_asistencia a
+            ON a.participante_id = p.id
+           AND a.evento_id = p.evento_id
+          WHERE e.id = $1
+            AND p.id = $2
+            AND p.activo = TRUE
+            AND a.entrada_en IS NOT NULL
+            AND a.salida_en IS NOT NULL
+          FOR UPDATE OF p, e
+        `,
+        [eventId, participantId]
+      );
+      const participant = participantResult.rows[0];
+      if (!participant)
+        throw new Error('No se cumplen las condiciones para generar el certificado.');
+
+      const existing = await client.query(
+        `SELECT id, estado, email_estado FROM encuentro_certificado
+         WHERE evento_id = $1 AND participante_id = $2`,
+        [eventId, participantId]
+      );
+      if (existing.rows[0]) {
+        if (existing.rows[0].estado !== 'valido') {
+          throw new Error('El certificado de esta participación está anulado.');
+        }
+        return existing.rows[0];
+      }
+
+      const config = participant.plantilla_config;
+      const configErrors = validateTemplateConfig(config);
+      if (configErrors.length) throw new Error(configErrors.join(' '));
+
+      const code = crypto.randomBytes(12).toString('hex').toUpperCase();
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const emittedAt = new Intl.DateTimeFormat('es-CO', {
+        dateStyle: 'long',
+        timeZone: 'America/Bogota',
+      }).format(new Date());
+      const values = {
+        nombre: participant.nombre,
+        documento: participant.documento,
+        correo: participant.correo,
+        rol: participant.rol,
+        facultad: participant.facultad,
+        laboratorio: participant.laboratorio,
+        evento: participant.evento,
+        fecha_evento: formatDateForDisplay(participant.fecha_evento),
+        lugar: participant.lugar,
+        organizador: participant.organizador,
+        fecha_emision: emittedAt,
+        codigo_certificado: code,
+      };
+      const certificateSnapshot = Object.fromEntries(
+        Object.keys(config)
+          .filter((key) => key !== 'qr_verificacion')
+          .map((key) => [key, values[key] || ''])
+      );
+      const templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+      const pdfBuffer = await generateCertificatePdf({
+        templateBuffer,
+        templateConfig: config,
+        values,
+        verificationUrl: buildAppUrl(`/encuentros/verificar/${verificationToken}`),
+      });
+      createdFilePath = path.join('certificates', String(eventId), `${code}.pdf`);
+      const absoluteCertificatePath = resolveStoredPath(createdFilePath);
+      await fs.mkdir(path.dirname(absoluteCertificatePath), { recursive: true });
+      await fs.writeFile(absoluteCertificatePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
+
+      const inserted = await client.query(
+        `
+          INSERT INTO encuentro_certificado (
+            evento_id, participante_id, codigo, token_verificacion,
+            archivo_actual, datos_snapshot, creado_por_usuario_id
+          )
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+          RETURNING id, estado, email_estado
+        `,
+        [
+          eventId,
+          participantId,
+          code,
+          verificationToken,
+          createdFilePath,
+          JSON.stringify(certificateSnapshot),
+          getSessionUserId(req),
+        ]
+      );
+      const certificate = inserted.rows[0];
+      await client.query(
+        `
+          INSERT INTO encuentro_certificado_version (
+            certificado_id, numero_version, archivo_path,
+            plantilla_config_snapshot, datos_snapshot, generado_por_usuario_id
+          )
+          VALUES ($1, 1, $2, $3::jsonb, $4::jsonb, $5)
+        `,
+        [
+          certificate.id,
+          createdFilePath,
+          JSON.stringify(config),
+          JSON.stringify(certificateSnapshot),
+          getSessionUserId(req),
+        ]
+      );
+      await writeAudit(client, req, 'certificado generado', eventId);
+      return certificate;
+    });
+  } catch (error) {
+    if (createdFilePath) await removeStoredFile(createdFilePath);
+    throw error;
+  }
+}
+
+async function awardMedal(certificateId, req) {
+  return withTransaction(async (client) => {
+    const eligibleResult = await client.query(
+      `
+        SELECT
+          c.id AS certificado_id,
+          c.evento_id,
+          c.participante_id,
+          p.documento_normalizado,
+          a.entrada_en,
+          a.salida_en,
+          c.estado AS certificado_estado
+        FROM encuentro_certificado c
+        JOIN encuentro_participante p
+          ON p.id = c.participante_id
+         AND p.evento_id = c.evento_id
+        JOIN encuentro_asistencia a
+          ON a.participante_id = p.id
+         AND a.evento_id = p.evento_id
+        WHERE c.id = $1
+        FOR UPDATE OF c
+      `,
+      [certificateId]
+    );
+    const row = eligibleResult.rows[0];
+    if (!row || !row.entrada_en || !row.salida_en || row.certificado_estado !== 'valido') {
+      return { otorgada: false, motivo: 'no_cumple_condiciones' };
+    }
+
+    const userId = await getRegisteredUserMatch(client, row.documento_normalizado);
+    if (!userId) return { otorgada: false, motivo: 'usuario_inexistente_o_ambiguo' };
+
+    const participantIdentity = await client.query(
+      `
+        UPDATE encuentro_participante
+        SET usuario_id = $2, fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $1 AND evento_id = $3 AND (usuario_id IS NULL OR usuario_id = $2)
+        RETURNING usuario_id
+      `,
+      [row.participante_id, userId, row.evento_id]
+    );
+    if (!participantIdentity.rows[0]) {
+      return { otorgada: false, motivo: 'identidad_participante_inconsistente' };
+    }
+
+    const result = await client.query(
+      `
+        INSERT INTO encuentro_logro (evento_id, participante_id, usuario_id, certificado_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `,
+      [row.evento_id, row.participante_id, userId, row.certificado_id]
+    );
+    if (result.rows[0]) {
+      await writeAudit(client, req, 'medalla asignada', row.evento_id);
+      return { otorgada: true };
+    }
+    return { otorgada: false, motivo: 'ya_otorgada' };
+  });
+}
+
+async function deliverCertificate(certificateId, req) {
+  const claim = await withTransaction(async (client) => {
+    const currentResult = await client.query(
+      `
+        SELECT
+          c.id,
+          c.evento_id,
+          c.estado AS certificado_estado,
+          c.email_estado,
+          c.intentos_email,
+          c.archivo_actual,
+          p.nombre AS participante_nombre,
+          p.correo,
+          e.nombre AS evento
+        FROM encuentro_certificado c
+        JOIN encuentro_participante p
+          ON p.id = c.participante_id
+         AND p.evento_id = c.evento_id
+        JOIN encuentro_evento e ON e.id = c.evento_id
+        WHERE c.id = $1
+        FOR UPDATE OF c
+      `,
+      [certificateId]
+    );
+    const current = currentResult.rows[0];
+    if (!current) return { status: 'not_found' };
+    if (current.certificado_estado !== 'valido') return { status: 'annulled' };
+    if (current.email_estado === 'enviado') return { status: 'sent', current };
+
+    const claimed = await client.query(
+      `
+        UPDATE encuentro_certificado
+        SET email_estado = 'enviando',
+            intentos_email = intentos_email + 1,
+            email_lease_hasta = CURRENT_TIMESTAMP + INTERVAL '15 minutes',
+            email_error = NULL,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND (
+            email_estado <> 'enviando'
+            OR email_lease_hasta < CURRENT_TIMESTAMP
+          )
+        RETURNING intentos_email
+      `,
+      [certificateId]
+    );
+    if (!claimed.rows[0]) return { status: 'sending' };
+
+    await client.query(
+      `
+        INSERT INTO encuentro_envio_certificado (
+          certificado_id, intento, estado, iniciado_por_usuario_id
+        )
+        VALUES ($1, $2, 'enviando', $3)
+      `,
+      [certificateId, claimed.rows[0].intentos_email, getSessionUserId(req)]
+    );
+    await writeAudit(client, req, 'intento de envío de certificado', current.evento_id);
+    return {
+      status: 'claimed',
+      current,
+      attempt: claimed.rows[0].intentos_email,
+    };
+  });
+
+  if (claim.status === 'not_found' || claim.status === 'annulled' || claim.status === 'sending') {
+    return claim;
+  }
+  if (claim.status === 'sent') {
+    const medal = await awardMedal(certificateId, req);
+    return { status: 'sent', medal };
+  }
+
+  try {
+    const notification = await sendEmailNotification({
+      sourceSystem: 'encuentros',
+      templateName: 'encuentros/certificado-participacion',
+      recipient: claim.current.correo,
+      subject: `Tu certificado de participación: ${claim.current.evento}`,
+      variables: {
+        participanteNombre: claim.current.participante_nombre,
+        eventoNombre: claim.current.evento,
+      },
+      correlationId: String(certificateId),
+      attachments: [
+        {
+          filename: `certificado-${certificateId}.pdf`,
+          path: resolveStoredPath(claim.current.archivo_actual),
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    if (notification.status !== 'SENT') {
+      throw new Error(notification.error || 'El servicio de correo no confirmó el envío.');
+    }
+
+    await withTransaction(async (client) => {
+      await client.query(
+        `
+          UPDATE encuentro_certificado
+          SET email_estado = 'enviado',
+              email_enviado_en = CURRENT_TIMESTAMP,
+              email_lease_hasta = NULL,
+              email_error = NULL,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [certificateId]
+      );
+      await client.query(
+        `
+          UPDATE encuentro_envio_certificado
+          SET estado = 'enviado'
+          WHERE certificado_id = $1 AND intento = $2
+        `,
+        [certificateId, claim.attempt]
+      );
+      const eventResult = await client.query(
+        'SELECT evento_id FROM encuentro_certificado WHERE id = $1',
+        [certificateId]
+      );
+      await writeAudit(client, req, 'certificado enviado', eventResult.rows[0].evento_id);
+    });
+    const medal = await awardMedal(certificateId, req);
+    return { status: 'sent', medal };
+  } catch (error) {
+    const errorMessage = sanitizeDeliveryError(error);
+    await withTransaction(async (client) => {
+      await client.query(
+        `
+          UPDATE encuentro_certificado
+          SET email_estado = 'error',
+              email_lease_hasta = NULL,
+              email_error = $2,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1 AND email_estado = 'enviando'
+        `,
+        [certificateId, errorMessage]
+      );
+      await client.query(
+        `
+          UPDATE encuentro_envio_certificado
+          SET estado = 'error', error = $3
+          WHERE certificado_id = $1 AND intento = $2
+        `,
+        [certificateId, claim.attempt, errorMessage]
+      );
+      const eventResult = await client.query(
+        'SELECT evento_id FROM encuentro_certificado WHERE id = $1',
+        [certificateId]
+      );
+      if (eventResult.rows[0]) {
+        await writeAudit(
+          client,
+          req,
+          'error en envío de certificado',
+          eventResult.rows[0].evento_id
+        );
+      }
+    });
+    logFailure(req, new Error(errorMessage), 'certificate_email');
+    return { status: 'error' };
+  }
+}
+
+async function fetchEventDetail(eventId) {
+  const eventResult = await pool.query(
+    `
+      SELECT
+        e.id, e.nombre, e.descripcion, e.fecha, e.hora_inicio, e.hora_fin,
+        e.lugar, e.organizador, e.banner_path, e.plantilla_config, e.estado, e.fecha_creacion,
+        COUNT(DISTINCT p.id)::int AS total_participantes,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.entrada_en IS NOT NULL)::int AS entradas,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.salida_en IS NOT NULL)::int AS salidas,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.id IS NOT NULL AND a.entrada_en IS NULL
+        )::int AS sin_entrada,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE a.entrada_en IS NOT NULL AND a.salida_en IS NULL
+        )::int AS dentro_sin_salida,
+        COUNT(DISTINCT c.id)::int AS certificados_generados,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'enviado')::int AS certificados_enviados,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.email_estado IN ('pendiente', 'enviando')
+        )::int AS certificados_pendientes,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'error')::int AS certificados_con_error,
+        COUNT(DISTINCT l.id)::int AS medallas_otorgadas
+      FROM encuentro_evento e
+      LEFT JOIN encuentro_participante p ON p.evento_id = e.id AND p.activo = TRUE
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = e.id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = e.id AND c.activo = TRUE
+      LEFT JOIN encuentro_logro l ON l.evento_id = e.id AND l.participante_id = p.id
+      WHERE e.id = $1 AND e.activo = TRUE
+      GROUP BY e.id
+    `,
+    [eventId]
+  );
+  const event = eventResult.rows[0];
+  if (!event) return null;
+
+  const participantsResult = await pool.query(
+    `
+      SELECT
+        p.id, p.nombre, p.documento, p.correo, p.rol, p.facultad, p.laboratorio,
+        a.entrada_en, a.salida_en,
+        CASE
+          WHEN a.salida_en IS NOT NULL THEN 'completada'
+          WHEN a.entrada_en IS NOT NULL THEN 'en_curso'
+          ELSE 'sin_entrada'
+        END AS estado_asistencia,
+        c.id AS certificado_id,
+        c.codigo AS codigo_certificado,
+        c.email_estado AS estado_certificado,
+        c.estado AS validez_certificado,
+        EXISTS (
+          SELECT 1 FROM encuentro_logro l
+          WHERE l.participante_id = p.id AND l.evento_id = p.evento_id
+        ) AS medalla_vinculada
+      FROM encuentro_participante p
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = p.evento_id AND c.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE
+      ORDER BY p.nombre, p.id
+    `,
+    [eventId]
+  );
+
+  const total = Number(event.total_participantes) || 0;
+  const entries = Number(event.entradas) || 0;
+  const exits = Number(event.salidas) || 0;
+  return {
+    evento: event,
+    participantes: participantsResult.rows,
+    estadisticas: {
+      ...event,
+      porcentaje_asistencia: total ? Number(((entries / total) * 100).toFixed(2)) : 0,
+      porcentaje_completado: total ? Number(((exits / total) * 100).toFixed(2)) : 0,
+    },
+  };
+}
+
+async function fetchEventReportData(eventId) {
+  const eventResult = await pool.query(
+    `
+      SELECT
+        e.id, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
+        e.lugar, e.organizador, e.estado,
+        COUNT(DISTINCT p.id)::int AS total_participantes,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.entrada_en IS NOT NULL)::int AS entradas,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.salida_en IS NOT NULL)::int AS salidas,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.id IS NOT NULL AND a.entrada_en IS NULL
+        )::int AS sin_entrada,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE a.entrada_en IS NOT NULL AND a.salida_en IS NULL
+        )::int AS dentro_sin_salida,
+        COUNT(DISTINCT c.id)::int AS certificados_generados,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'enviado')::int AS certificados_enviados,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.email_estado IN ('pendiente', 'enviando')
+        )::int AS certificados_pendientes,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.email_estado = 'error')::int AS certificados_con_error,
+        COUNT(DISTINCT l.id)::int AS medallas_otorgadas,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.fecha_inscripcion > cierre.cierre_en
+        )::int AS registros_post_cierre,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE a.salida_en > cierre.cierre_en
+        )::int AS salidas_post_cierre,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.email_estado = 'enviado' AND c.email_enviado_en > cierre.cierre_en
+        )::int AS certificados_enviados_post_cierre,
+        COUNT(DISTINCT p.id) FILTER (
+          WHERE p.fecha_inscripcion > cierre.cierre_en
+            OR a.salida_en > cierre.cierre_en
+            OR (c.email_estado = 'enviado' AND c.email_enviado_en > cierre.cierre_en)
+        )::int AS participantes_con_gestion_post_cierre
+      FROM encuentro_evento e
+      CROSS JOIN LATERAL (
+        SELECT (e.fecha + e.hora_fin) AT TIME ZONE 'America/Bogota' AS cierre_en
+      ) cierre
+      LEFT JOIN encuentro_participante p ON p.evento_id = e.id AND p.activo = TRUE
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = e.id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = e.id AND c.activo = TRUE
+      LEFT JOIN encuentro_logro l ON l.evento_id = e.id AND l.participante_id = p.id
+      WHERE e.id = $1 AND e.activo = TRUE
+      GROUP BY e.id, cierre.cierre_en
+    `,
+    [eventId]
+  );
+  const event = eventResult.rows[0];
+  if (!event) return null;
+  if (event.estado !== 'finalizado') return { event, faculties: [], participants: [] };
+
+  const facultiesResult = await pool.query(
+    `
+      SELECT
+        COALESCE(NULLIF(BTRIM(p.facultad), ''), 'Facultad no especificada') AS facultad,
+        COUNT(DISTINCT p.id)::int AS registrados,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.entrada_en IS NOT NULL)::int AS con_entrada,
+        COUNT(DISTINCT p.id) FILTER (WHERE a.salida_en IS NOT NULL)::int AS completaron
+      FROM encuentro_participante p
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE
+      GROUP BY COALESCE(NULLIF(BTRIM(p.facultad), ''), 'Facultad no especificada')
+      ORDER BY registrados ASC, facultad ASC
+    `,
+    [eventId]
+  );
+
+  const participantsResult = await pool.query(
+    `
+      SELECT
+        p.nombre,
+        p.documento,
+        p.correo,
+        p.facultad,
+        p.laboratorio,
+        CASE
+          WHEN a.salida_en IS NOT NULL THEN 'completada'
+          WHEN a.entrada_en IS NOT NULL THEN 'en_curso'
+          ELSE 'sin_entrada'
+        END AS estado_asistencia,
+        CASE
+          WHEN c.id IS NULL THEN 'sin_certificado'
+          WHEN c.estado = 'anulado' THEN 'anulado'
+          WHEN c.email_estado IN ('pendiente', 'enviando') THEN 'pendiente'
+          WHEN c.email_estado = 'error' THEN 'error'
+          WHEN c.email_estado = 'enviado' THEN 'enviado'
+          ELSE COALESCE(c.email_estado, 'pendiente')
+        END AS estado_certificado,
+        (
+          p.fecha_inscripcion IS NOT NULL
+          AND p.fecha_inscripcion > cierre.cierre_en
+        ) AS registro_post_cierre,
+        (
+          a.salida_en IS NOT NULL
+          AND a.salida_en > cierre.cierre_en
+        ) AS salida_post_cierre,
+        (
+          c.email_estado = 'enviado'
+          AND c.email_enviado_en IS NOT NULL
+          AND c.email_enviado_en > cierre.cierre_en
+        ) AS certificado_enviado_post_cierre
+      FROM encuentro_participante p
+      JOIN encuentro_evento e ON e.id = p.evento_id
+      CROSS JOIN LATERAL (
+        SELECT (e.fecha + e.hora_fin) AT TIME ZONE 'America/Bogota' AS cierre_en
+      ) cierre
+      LEFT JOIN encuentro_asistencia a
+        ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+      LEFT JOIN encuentro_certificado c
+        ON c.participante_id = p.id AND c.evento_id = p.evento_id AND c.activo = TRUE
+      WHERE p.evento_id = $1 AND p.activo = TRUE AND e.activo = TRUE
+      ORDER BY p.nombre, p.id
+    `,
+    [eventId]
+  );
+
+  return {
+    event,
+    faculties: facultiesResult.rows || [],
+    participants: participantsResult.rows || [],
+  };
+}
+
+function formatReportNumber(value) {
+  return new Intl.NumberFormat('es-CO').format(Number(value) || 0);
+}
+
+function formatReportPercent(value, total) {
+  const numerator = Number(value) || 0;
+  const denominator = Number(total) || 0;
+  const percentage = denominator ? (numerator / denominator) * 100 : 0;
+  return `${new Intl.NumberFormat('es-CO', {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(percentage)} %`;
+}
+
+function formatReportDate(value) {
+  const date =
+    value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : date || 'No disponible';
+}
+
+function renderEventReportPdf({ event, faculties, participants = [] }) {
+  return new Promise((resolve, reject) => {
+    const pdf = new PDFDocument({
+      size: 'A4',
+      margin: 42,
+      info: { Title: `Informe de encuentro - ${event.nombre}`, Author: 'MiLab' },
+    });
+    const universityLogoPath = path.join(
+      __dirname,
+      '../../public/img/Logo_Escudo_Acreditacion_Horizontal.png'
+    );
+    const milabLogoPath = path.join(__dirname, '../../public/img/milab_logo.png');
+    const chunks = [];
+    pdf.on('data', (chunk) => chunks.push(chunk));
+    pdf.on('end', () => resolve(Buffer.concat(chunks)));
+    pdf.on('error', reject);
+
+    const palette = {
+      primary: '#172A47',
+      accent: '#DF1B1B',
+      highlight: '#FFBF00',
+      text: '#211D1C',
+      muted: '#62584D',
+      border: '#E7DCC7',
+      surface: '#FFF9EB',
+      surfaceAlt: '#FAF6ED',
+      track: '#EFE5D3',
+      white: '#FFFFFF',
+    };
+    const contentWidth = pdf.page.width - pdf.page.margins.left - pdf.page.margins.right;
+    const getFooterY = () => pdf.page.height - pdf.page.margins.bottom - 10;
+    const bottomLimit = () => getFooterY() - 22;
+    const contentTop = () => pdf.page.margins.top + 88;
+    const drawProgressBar = (x, y, width, ratio) => {
+      const normalized = Math.max(0, Math.min(1, Number(ratio) || 0));
+      pdf.save().fillColor(palette.track).roundedRect(x, y, width, 8, 4).fill().restore();
+      pdf
+        .save()
+        .fillColor(palette.accent)
+        .roundedRect(x, y, width * normalized, 8, 4)
+        .fill()
+        .restore();
+    };
+
+    let pageNumber = 1;
+    const drawPageChrome = () => {
+      const topY = 18;
+      const headerHeight = 72;
+      const footerY = getFooterY();
+      pdf
+        .save()
+        .fillColor(palette.white)
+        .rect(pdf.page.margins.left, topY, contentWidth, headerHeight)
+        .fill()
+        .restore();
+      pdf.image(universityLogoPath, pdf.page.margins.left, topY + 5, {
+        fit: [220, 58],
+        align: 'left',
+        valign: 'center',
+      });
+      pdf.image(milabLogoPath, pdf.page.width - pdf.page.margins.right - 126, topY + 2, {
+        fit: [126, 68],
+        align: 'right',
+        valign: 'center',
+      });
+      pdf
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(palette.primary)
+        .text('COORDINACIÓN GENERAL\nDE LABORATORIOS', pdf.page.margins.left + 188, topY + 25, {
+          width: 192,
+          align: 'center',
+          lineGap: 2,
+        });
+      const headerBottom = topY + headerHeight + 2;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(pdf.page.margins.left, headerBottom, contentWidth, 1.5)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .fillColor(palette.accent)
+        .rect(pdf.page.margins.left, headerBottom, contentWidth * 0.12, 3)
+        .fill()
+        .fillColor(palette.highlight)
+        .rect(pdf.page.margins.left + contentWidth * 0.12, headerBottom, contentWidth * 0.08, 3)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(pdf.page.margins.left, footerY - 8, contentWidth, 1)
+        .fill()
+        .fillColor(palette.accent)
+        .rect(pdf.page.margins.left, footerY - 9, 22, 2)
+        .fill()
+        .fillColor(palette.highlight)
+        .rect(pdf.page.margins.left + 22, footerY - 9, 18, 2)
+        .fill()
+        .restore();
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.muted)
+        .text(`Página ${pageNumber}`, pdf.page.width - pdf.page.margins.right - 60, footerY, {
+          width: 60,
+          align: 'right',
+          lineBreak: false,
+          ellipsis: true,
+        });
+      pdf
+        .font('Helvetica')
+        .fontSize(7.3)
+        .fillColor(palette.muted)
+        .text(
+          'Reporte generado por MiLab. Uso interno institucional.',
+          pdf.page.margins.left,
+          footerY,
+          { width: contentWidth - 64, lineBreak: false, ellipsis: true }
+        );
+    };
+    const addPageWithChrome = () => {
+      pdf.addPage();
+      pageNumber += 1;
+      drawPageChrome();
+      pdf.x = pdf.page.margins.left;
+      pdf.y = contentTop();
+    };
+    const ensureSpace = (height) => {
+      if (pdf.y + height > bottomLimit()) addPageWithChrome();
+    };
+    drawPageChrome();
+    pdf.x = pdf.page.margins.left;
+
+    const total = Number(event.total_participantes) || 0;
+    const completionRate = total ? Number(event.salidas) / total : 0;
+    const entryRate = total ? Number(event.entradas) / total : 0;
+    const sentRate = Number(event.certificados_generados)
+      ? Number(event.certificados_enviados) / Number(event.certificados_generados)
+      : 0;
+    const medalsRate = total ? Number(event.medallas_otorgadas) / total : 0;
+    const postClosureParticipants = Number(event.participantes_con_gestion_post_cierre) || 0;
+    const postClosureRate = total ? postClosureParticipants / total : 0;
+    const summaryCards = [
+      {
+        label: 'Asistencia con entrada',
+        value: `${formatReportNumber(event.entradas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.entradas, total),
+        ratio: entryRate,
+        detail: `Sin entrada: ${formatReportNumber(event.sin_entrada)} · Dentro sin salida: ${formatReportNumber(event.dentro_sin_salida)}`,
+      },
+      {
+        label: 'Participación completada',
+        value: `${formatReportNumber(event.salidas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.salidas, total),
+        ratio: completionRate,
+        detail: 'Participantes con salida registrada',
+      },
+      {
+        label: 'Correos de certificados enviados',
+        value: `${formatReportNumber(event.certificados_enviados)} / ${formatReportNumber(event.certificados_generados)}`,
+        percentage: formatReportPercent(event.certificados_enviados, event.certificados_generados),
+        ratio: sentRate,
+        detail: `Pendientes: ${formatReportNumber(event.certificados_pendientes)} · Errores: ${formatReportNumber(event.certificados_con_error)}`,
+      },
+      {
+        label: 'Medallas enlazadas',
+        value: `${formatReportNumber(event.medallas_otorgadas)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(event.medallas_otorgadas, total),
+        ratio: medalsRate,
+        detail: 'Logros asociados a cuentas MiLab',
+      },
+      {
+        label: 'Gestiones posteriores al cierre',
+        value: `${formatReportNumber(postClosureParticipants)} / ${formatReportNumber(total)}`,
+        percentage: formatReportPercent(postClosureParticipants, total),
+        ratio: postClosureRate,
+        detail: `Registros: ${formatReportNumber(event.registros_post_cierre)} · Salidas: ${formatReportNumber(event.salidas_post_cierre)} · Certificados enviados: ${formatReportNumber(event.certificados_enviados_post_cierre)}`,
+      },
+    ];
+    const generatedAt = new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'America/Bogota',
+    }).format(new Date());
+    const startTime = String(event.hora_inicio || '').slice(0, 5);
+    const endTime = String(event.hora_fin || '').slice(0, 5);
+
+    pdf.y = contentTop();
+    pdf.x = pdf.page.margins.left;
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(22)
+      .fillColor(palette.primary)
+      .text('Informe del encuentro');
+    pdf.moveDown(0.2);
+    pdf.font('Helvetica-Bold').fontSize(15).fillColor(palette.text).text(event.nombre);
+    pdf.moveDown(0.45);
+
+    pdf
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(palette.muted)
+      .text(`Fecha: ${formatReportDate(event.fecha)}    Horario: ${startTime} - ${endTime}`)
+      .text(`Lugar: ${event.lugar || 'No especificado'}`)
+      .text(`Organizador: ${event.organizador || 'No especificado'}`)
+      .text(`Estado: Finalizado    Informe generado: ${generatedAt}`);
+    pdf.moveDown(0.8);
+
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor(palette.primary)
+      .text('Resumen del encuentro');
+    pdf
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor(palette.muted)
+      .text(`Registrados activos: ${formatReportNumber(total)}`);
+    pdf.moveDown(0.35);
+
+    pdf.font('Helvetica-Bold').fontSize(12).fillColor(palette.primary).text('Resumen visual');
+    pdf.moveDown(0.35);
+    const cardGap = 10;
+    const cardColumns = 2;
+    const cardWidth = (contentWidth - cardGap * (cardColumns - 1)) / cardColumns;
+    const cardHeight = 66;
+    for (let index = 0; index < summaryCards.length; index += cardColumns) {
+      ensureSpace(cardHeight + 8);
+      const rowY = pdf.y;
+      summaryCards.slice(index, index + cardColumns).forEach((metric, columnIndex) => {
+        if (!metric) return;
+        const x = pdf.page.margins.left + columnIndex * (cardWidth + cardGap);
+        pdf.save().fillColor(palette.surface).rect(x, rowY, cardWidth, cardHeight).fill().restore();
+        pdf
+          .save()
+          .strokeColor(palette.border)
+          .lineWidth(0.7)
+          .rect(x, rowY, cardWidth, cardHeight)
+          .stroke()
+          .restore();
+        pdf
+          .save()
+          .fillColor(palette.accent)
+          .rect(x, rowY, cardWidth * 0.72, 3)
+          .fill()
+          .fillColor(palette.highlight)
+          .rect(x + cardWidth * 0.72, rowY, cardWidth * 0.28, 3)
+          .fill()
+          .restore();
+        pdf
+          .font('Helvetica')
+          .fontSize(8)
+          .fillColor(palette.muted)
+          .text(metric.label, x + 8, rowY + 6, {
+            width: cardWidth - 16,
+            lineBreak: false,
+            ellipsis: true,
+          });
+        pdf
+          .font('Helvetica')
+          .font('Helvetica-Bold')
+          .fontSize(14)
+          .fillColor(palette.text)
+          .text(metric.value, x + 8, rowY + 21, {
+            width: cardWidth - 90,
+            lineBreak: false,
+            ellipsis: true,
+          });
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(11)
+          .fillColor(palette.text)
+          .text(metric.percentage, x + cardWidth - 78, rowY + 21, { width: 70, align: 'right' });
+        drawProgressBar(x + 8, rowY + 40, cardWidth - 16, metric.ratio);
+        pdf
+          .font('Helvetica')
+          .fontSize(7.2)
+          .fillColor(palette.muted)
+          .text(metric.detail, x + 8, rowY + 52, {
+            width: cardWidth - 16,
+            lineBreak: false,
+            ellipsis: true,
+          });
+      });
+      pdf.y = rowY + cardHeight + 8;
+    }
+    pdf.x = pdf.page.margins.left;
+
+    const sortedFaculties = [...faculties].sort(
+      (left, right) => right.registrados - left.registrados
+    );
+    const topFaculty = sortedFaculties[0];
+    if (topFaculty) {
+      ensureSpace(34);
+      pdf
+        .save()
+        .fillColor(palette.surfaceAlt)
+        .rect(pdf.page.margins.left, pdf.y, contentWidth, 26)
+        .fill()
+        .restore();
+      pdf
+        .save()
+        .strokeColor(palette.border)
+        .lineWidth(0.7)
+        .rect(pdf.page.margins.left, pdf.y, contentWidth, 26)
+        .stroke()
+        .restore();
+      pdf
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(palette.primary)
+        .text('Hallazgo destacado', pdf.page.margins.left + 8, pdf.y + 6, { lineBreak: false });
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.text)
+        .text(
+          `La facultad con mayor participación registró ${formatReportNumber(topFaculty.registrados)} inscritos y ${formatReportPercent(topFaculty.completaron, topFaculty.registrados)} de participación completada.`,
+          pdf.page.margins.left + 102,
+          pdf.y + 6,
+          { width: contentWidth - 110, lineBreak: false, ellipsis: true }
+        );
+      pdf.y += 34;
+    }
+
+    pdf.x = pdf.page.margins.left;
+    ensureSpace(52);
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .fillColor(palette.primary)
+      .text('Resumen de participantes por facultad', pdf.page.margins.left, pdf.y, {
+        width: contentWidth,
+      });
+    pdf
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(palette.muted)
+      .text(
+        'Inscritos activos, entradas y participaciones completadas; porcentajes calculados sobre los inscritos de cada facultad.'
+      );
+    pdf.moveDown(0.35);
+
+    const columns = [
+      { label: 'Facultad', width: 165, align: 'left' },
+      { label: 'Inscritos', width: 60, align: 'right' },
+      { label: 'Con entrada', width: 72, align: 'right' },
+      { label: 'Completaron', width: 72, align: 'right' },
+      { label: '% entrada', width: 70, align: 'right' },
+      { label: '% completa', width: 72, align: 'right' },
+    ];
+    const tableX = pdf.page.margins.left;
+    const headerHeight = 19;
+    const drawTableHeader = () => {
+      const y = pdf.y;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(tableX, y, contentWidth, headerHeight)
+        .fill()
+        .restore();
+      let x = tableX;
+      columns.forEach((column) => {
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(6.8)
+          .fillColor(palette.white)
+          .text(column.label, x + 4, y + 7, {
+            width: column.width - 8,
+            align: column.align,
+            lineBreak: false,
+          });
+        x += column.width;
+      });
+      pdf.y = y + headerHeight;
+      pdf.x = tableX;
+    };
+    drawTableHeader();
+
+    if (!faculties.length) {
+      pdf
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor(palette.muted)
+        .text('No hay participantes registrados activos.');
+    } else {
+      faculties.forEach((faculty, index) => {
+        const facultyName = faculty.facultad || 'Facultad no especificada';
+        pdf.font('Helvetica').fontSize(7);
+        const rowHeight = Math.max(
+          16,
+          pdf.heightOfString(facultyName, { width: columns[0].width - 10 }) + 6
+        );
+        if (pdf.y + rowHeight > bottomLimit()) {
+          addPageWithChrome();
+          drawTableHeader();
+        }
+        const rowY = pdf.y;
+        if (index % 2 === 1) {
+          pdf
+            .save()
+            .fillColor(palette.surfaceAlt)
+            .rect(tableX, rowY, contentWidth, rowHeight)
+            .fill()
+            .restore();
+        }
+        const values = [
+          facultyName,
+          formatReportNumber(faculty.registrados),
+          formatReportNumber(faculty.con_entrada),
+          formatReportNumber(faculty.completaron),
+          formatReportPercent(faculty.con_entrada, faculty.registrados),
+          formatReportPercent(faculty.completaron, faculty.registrados),
+        ];
+        let x = tableX;
+        columns.forEach((column, columnIndex) => {
+          pdf
+            .font('Helvetica')
+            .fontSize(7)
+            .fillColor(palette.text)
+            .text(values[columnIndex], x + 4, rowY + 5, {
+              width: column.width - 8,
+              height: rowHeight - 6,
+              align: column.align,
+            });
+          x += column.width;
+        });
+        pdf
+          .moveTo(tableX, rowY + rowHeight)
+          .lineTo(tableX + contentWidth, rowY + rowHeight)
+          .strokeColor(palette.border)
+          .lineWidth(0.5)
+          .stroke();
+        pdf.y = rowY + rowHeight;
+      });
+    }
+
+    pdf.x = tableX;
+    ensureSpace(34);
+    pdf.moveDown(0.7);
+    pdf.x = tableX;
+    pdf
+      .font('Helvetica-Bold')
+      .fontSize(11)
+      .fillColor(palette.primary)
+      .text('Anexo · Listado total de participantes', tableX, pdf.y, {
+        width: contentWidth,
+      });
+    pdf
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(palette.muted)
+      .text(
+        'Detalle operativo para validación interna. Incluye asistencia, estado de certificado y acciones aplicadas después del cierre.'
+      );
+    pdf.moveDown(0.35);
+
+    const participantColumns = [
+      { label: 'Participante', width: 78, key: 'nombre', align: 'left' },
+      { label: 'Documento', width: 48, key: 'documento', align: 'left' },
+      { label: 'Correo', width: 87, key: 'correo', align: 'left' },
+      { label: 'Facultad / UAL', width: 85, key: 'facultadLaboratorio', align: 'left' },
+      { label: 'Asistencia', width: 44, key: 'estado_asistencia', align: 'left' },
+      { label: 'Certificado', width: 53, key: 'estado_certificado', align: 'left' },
+      { label: 'Post-cierre', width: 116, key: 'postCierre', align: 'left' },
+    ];
+    const participantHeaderHeight = 18;
+    const participantRowHeight = 14;
+    const participantTableX = pdf.page.margins.left;
+
+    const normalizeAttendanceLabel = (status) =>
+      status === 'en_curso'
+        ? 'en curso'
+        : status === 'sin_entrada'
+          ? 'sin entrada'
+          : status || 'sin entrada';
+    const normalizeCertificateLabel = (status) =>
+      status === 'sin_certificado' ? 'sin generar' : status || 'sin generar';
+    const formatPostClosureActions = (participant) => {
+      const actions = [];
+      if (participant.registro_post_cierre) actions.push('registro');
+      if (participant.salida_post_cierre) actions.push('salida');
+      if (participant.certificado_enviado_post_cierre) actions.push('certificado');
+      return actions.length ? actions.join(', ') : '—';
+    };
+
+    const drawParticipantHeader = () => {
+      const y = pdf.y;
+      pdf
+        .save()
+        .fillColor(palette.primary)
+        .rect(participantTableX, y, contentWidth, participantHeaderHeight)
+        .fill()
+        .restore();
+      let x = participantTableX;
+      participantColumns.forEach((column) => {
+        pdf
+          .font('Helvetica-Bold')
+          .fontSize(6.4)
+          .fillColor(palette.white)
+          .text(column.label, x + 4, y + 6, {
+            width: column.width - 8,
+            align: column.align,
+            lineBreak: false,
+            ellipsis: true,
+          });
+        x += column.width;
+      });
+      pdf.y = y + participantHeaderHeight;
+      pdf.x = participantTableX;
+    };
+
+    drawParticipantHeader();
+    if (!participants.length) {
+      pdf
+        .font('Helvetica')
+        .fontSize(8)
+        .fillColor(palette.muted)
+        .text('No hay participantes registrados para este encuentro.');
+    } else {
+      participants.forEach((participant, index) => {
+        if (pdf.y + participantRowHeight > bottomLimit()) {
+          addPageWithChrome();
+          pdf
+            .font('Helvetica-Bold')
+            .fontSize(10)
+            .fillColor(palette.primary)
+            .text(`Anexo · Listado total de participantes (continuación)`);
+          pdf.moveDown(0.25);
+          drawParticipantHeader();
+        }
+        const rowY = pdf.y;
+        if (index % 2 === 1) {
+          pdf
+            .save()
+            .fillColor(palette.surfaceAlt)
+            .rect(participantTableX, rowY, contentWidth, participantRowHeight)
+            .fill()
+            .restore();
+        }
+        const values = [
+          participant.nombre || 'Sin nombre',
+          participant.documento || '—',
+          participant.correo || '—',
+          `${participant.facultad || 'Sin facultad'} / ${participant.laboratorio || 'Sin UAL'}`,
+          normalizeAttendanceLabel(participant.estado_asistencia),
+          normalizeCertificateLabel(participant.estado_certificado),
+          formatPostClosureActions(participant),
+        ];
+        let x = participantTableX;
+        participantColumns.forEach((column, columnIndex) => {
+          pdf
+            .font('Helvetica')
+            .fontSize(6.5)
+            .fillColor(palette.text)
+            .text(values[columnIndex], x + 4, rowY + 4, {
+              width: column.width - 8,
+              height: participantRowHeight - 6,
+              align: column.align,
+              lineBreak: false,
+              ellipsis: true,
+            });
+          x += column.width;
+        });
+        pdf
+          .moveTo(participantTableX, rowY + participantRowHeight)
+          .lineTo(participantTableX + contentWidth, rowY + participantRowHeight)
+          .strokeColor(palette.border)
+          .lineWidth(0.35)
+          .stroke();
+        pdf.y = rowY + participantRowHeight;
+      });
+    }
+
+    pdf.x = participantTableX;
+    ensureSpace(28);
+    pdf.x = participantTableX;
+    pdf.moveDown(0.7);
+    pdf
+      .font('Helvetica')
+      .fontSize(8)
+      .fillColor(palette.muted)
+      .text(
+        'Este informe contiene cifras agregadas de participantes activos; no incluye datos personales.'
+      );
+    pdf.end();
+  });
+}
+
+router.get('/gestion', requireEncounterManagerPage, (req, res) => {
+  return res.render('home/encuentros-gestion', {
+    canAnnulCertificates: canAdministerCertificates(req),
+  });
+});
+
+router.get('/mis-logros', requireEncounterUserPage, (req, res) => {
+  return res.render('home/encuentros-logros');
+});
+
+router.get('/verificar/:token', async (req, res) => {
+  const token = String(req.params.token || '');
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    return res.status(200).render('home/encuentros-verificacion', { certificado: null });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          c.codigo,
+          c.estado,
+          c.fecha_emision,
+          e.nombre AS evento,
+          e.fecha AS fecha_evento,
+          p.nombre AS participante
+        FROM encuentro_certificado c
+        JOIN encuentro_evento e ON e.id = c.evento_id
+        JOIN encuentro_participante p ON p.id = c.participante_id
+        WHERE c.token_verificacion = $1
+        LIMIT 1
+      `,
+      [token]
+    );
+    return res.status(200).render('home/encuentros-verificacion', {
+      certificado: result.rows[0] || null,
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_certificate_verification');
+    return res.status(503).render('home/encuentros-verificacion', {
+      certificado: null,
+      verificationError: true,
+    });
+  }
+});
+
+router.post(
+  '/api/plantillas/previsualizar',
+  requireManager,
+  withUpload(upload.single('plantilla_pdf')),
+  async (req, res) => {
+    const file = req.file;
+    const config = readTemplateConfig(req.body?.plantilla_config);
+    if (!file || file.size > MAX_TEMPLATE_BYTES || !hasFileSignature(file, 'pdf')) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Carga una plantilla PDF válida de máximo 8 MB.' });
+    }
+    const configErrors = validateTemplateConfig(config);
+    if (configErrors.length)
+      return res.status(400).json({ ok: false, message: configErrors.join(' ') });
+    try {
+      await validatePdfTemplate(file.buffer);
+      const sampleValues = {
+        nombre: 'Nombre de prueba',
+        documento: '00000000',
+        correo: 'participante@example.edu',
+        rol: 'Cargo de prueba',
+        facultad: 'Facultad de prueba',
+        laboratorio: 'Laboratorio de prueba',
+        evento: 'Encuentro de prueba',
+        fecha_evento: new Intl.DateTimeFormat('es-CO', {
+          dateStyle: 'short',
+          timeZone: 'America/Bogota',
+        }).format(new Date()),
+        lugar: 'Sede de prueba',
+        organizador: 'MiLab',
+        fecha_emision: new Intl.DateTimeFormat('es-CO', {
+          dateStyle: 'long',
+          timeZone: 'America/Bogota',
+        }).format(new Date()),
+        codigo_certificado: 'VISTA-PREVIA',
+      };
+      const buffer = await generateCertificatePdf({
+        templateBuffer: file.buffer,
+        templateConfig: config,
+        values: sampleValues,
+        verificationUrl: buildAppUrl(
+          `/encuentros/verificar/${crypto.randomBytes(32).toString('hex')}`
+        ),
+      });
+      res.type('application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename="vista-previa-certificado.pdf"');
+      return res.send(buffer);
+    } catch (error) {
+      logFailure(req, error, 'certificate_template_preview');
+      return res.status(400).json({
+        ok: false,
+        message:
+          'No fue posible generar la vista previa. Verifica que el PDF y las coordenadas sean válidos.',
+      });
+    }
+  }
+);
+
+const QR_TIPOS = ['ingreso', 'salida'];
+
+// Varios asistentes pueden compartir la misma IP (red del auditorio), por eso el límite es amplio.
+const registroQrLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, message: 'Demasiadas solicitudes. Inténtalo nuevamente en un momento.' },
+});
+
+function buildRegistrationLinks(eventId) {
+  return Object.fromEntries(
+    QR_TIPOS.map((tipo) => [
+      tipo,
+      {
+        registro_url: buildAppUrl(`/encuentros/registro/${tipo}/${eventId}`),
+        proyeccion_url: buildAppUrl(`/encuentros/proyeccion/${tipo}/${eventId}`),
+      },
+    ])
+  );
+}
+
+async function writePublicAudit(client, action, eventId, documento) {
+  const numericDocument = /^\d{1,16}$/.test(documento) ? documento : null;
+  await client.query(
+    'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
+    [
+      'Registro público QR',
+      numericDocument,
+      `Encuentros: ${action}`.slice(0, 500),
+      `Evento #${eventId}`.slice(0, 255),
+    ]
+  );
+}
+
+async function registerPublicAttendance(eventId, tipo, documento) {
+  return withTransaction(async (client) => {
+    const participantResult = await client.query(
+      `
+        SELECT p.id, p.nombre, e.estado AS estado_evento
+        FROM encuentro_participante p
+        JOIN encuentro_evento e ON e.id = p.evento_id
+        WHERE p.evento_id = $1
+          AND p.documento_normalizado = $2
+          AND p.activo = TRUE
+          AND e.activo = TRUE
+        FOR UPDATE OF p, e
+      `,
+      [eventId, documento]
+    );
+    const participant = participantResult.rows[0];
+    if (!participant) return { status: 'not_enrolled' };
+    if (participant.estado_evento !== 'en_curso') return { status: 'event_not_open' };
+    const nombre = String(participant.nombre || '').toLocaleUpperCase('es-CO');
+
+    if (tipo === 'ingreso') {
+      const inserted = await client.query(
+        `
+          INSERT INTO encuentro_asistencia (evento_id, participante_id, entrada_en, entrada_metodo)
+          VALUES ($1, $2, CURRENT_TIMESTAMP, 'manual')
+          ON CONFLICT (participante_id) DO NOTHING
+          RETURNING entrada_en
+        `,
+        [eventId, participant.id]
+      );
+      if (!inserted.rows[0]) return { status: 'already_registered', nombre };
+      await writePublicAudit(client, 'entrada registrada por QR', eventId, documento);
+      return { status: 'registered', nombre };
+    }
+
+    const attendance = await client.query(
+      `
+        SELECT entrada_en, salida_en
+        FROM encuentro_asistencia
+        WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
+        FOR UPDATE
+      `,
+      [eventId, participant.id]
+    );
+    const current = attendance.rows[0];
+    if (!current?.entrada_en) return { status: 'no_entry', nombre };
+    if (current.salida_en) return { status: 'already_out', nombre };
+    await client.query(
+      `
+        UPDATE encuentro_asistencia
+        SET salida_en = CURRENT_TIMESTAMP,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
+      `,
+      [eventId, participant.id]
+    );
+    await writePublicAudit(client, 'salida registrada por QR', eventId, documento);
+    return { status: 'registered', nombre };
+  });
+}
+
+const PUBLIC_REGISTRO_MESSAGES = {
+  registered: {
+    ingreso: (nombre) => `${nombre}, su registro de ingreso fue exitoso.`,
+    salida: (nombre) => `${nombre}, su registro de salida fue exitoso.`,
+  },
+  already_registered: (nombre) => `${nombre}, su registro de ingreso ya estaba registrado.`,
+  already_out: (nombre) => `${nombre}, su registro de salida ya estaba registrado.`,
+  no_entry: (nombre) =>
+    `${nombre}, no tiene registro de ingreso en este evento. Por favor acérquese con los organizadores.`,
+  not_enrolled: (documento) =>
+    `Su documento ${documento} no fue encontrado en la base de registro del evento. Por favor acérquese con los organizadores.`,
+  event_not_open: 'El registro no está disponible porque el evento no se encuentra en curso.',
+};
+
+function buildPublicRegistroMessage(result, tipo, documento) {
+  if (result.status === 'registered')
+    return PUBLIC_REGISTRO_MESSAGES.registered[tipo](result.nombre);
+  if (result.status === 'not_enrolled') return PUBLIC_REGISTRO_MESSAGES.not_enrolled(documento);
+  if (result.status === 'event_not_open') return PUBLIC_REGISTRO_MESSAGES.event_not_open;
+  return PUBLIC_REGISTRO_MESSAGES[result.status](result.nombre);
+}
+
+function renderInvalidQrLink(res) {
+  return res.status(404).render('home/message_error', {
+    status: 404,
+    message: 'Enlace no válido',
+    message2: 'El enlace de registro no existe. Verifica la dirección con los organizadores.',
+    limit: null,
+  });
+}
+
+async function fetchPublicEvent(eventId) {
+  const result = await pool.query(
+    'SELECT id, nombre, fecha, lugar, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+    [eventId]
+  );
+  return result.rows[0] || null;
+}
+
+router.get('/registro/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) return renderInvalidQrLink(res);
+  try {
+    const evento = await fetchPublicEvent(eventId);
+    if (!evento) return renderInvalidQrLink(res);
+    return res.render('home/encuentros-registro', {
+      tipo,
+      evento,
+      disponible: evento.estado === 'en_curso',
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_registration_page');
+    return res.status(503).render('home/message_error', {
+      status: 503,
+      message: 'Registro no disponible',
+      message2: 'No fue posible cargar el registro. Intenta nuevamente más tarde.',
+      limit: null,
+    });
+  }
+});
+
+router.post('/registro/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) {
+    return res.status(404).json({ ok: false, message: 'Enlace de registro no válido.' });
+  }
+  const documento = normalizeDocument(req.body?.documento);
+  if (!documento || documento.length > 16) {
+    return res.status(400).json({ ok: false, message: 'Ingresa un número de documento válido.' });
+  }
+  try {
+    const result = await registerPublicAttendance(eventId, tipo, documento);
+    const ok =
+      result.status === 'registered' ||
+      result.status === 'already_registered' ||
+      result.status === 'already_out';
+    return res.json({
+      ok,
+      status: result.status,
+      nombre: result.nombre || null,
+      message: buildPublicRegistroMessage(result, tipo, documento),
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_registration');
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible registrar la asistencia. Intenta nuevamente.',
+    });
+  }
+});
+
+router.get('/proyeccion/:tipo/:eventId', registroQrLimiter, async (req, res) => {
+  const { tipo } = req.params;
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!QR_TIPOS.includes(tipo) || !eventId) return renderInvalidQrLink(res);
+  try {
+    const evento = await fetchPublicEvent(eventId);
+    if (!evento) return renderInvalidQrLink(res);
+    const registroUrl = buildAppUrl(`/encuentros/registro/${tipo}/${eventId}`);
+    const qrDataUrl = await QRCode.toDataURL(registroUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 900,
+    });
+    return res.render('home/encuentros-proyeccion', {
+      tipo,
+      evento,
+      disponible: evento.estado === 'en_curso',
+      qrDataUrl,
+      registroUrl,
+    });
+  } catch (error) {
+    logFailure(req, error, 'public_qr_projection');
+    return res.status(503).render('home/message_error', {
+      status: 503,
+      message: 'Proyección no disponible',
+      message2: 'No fue posible generar el código QR. Intenta nuevamente más tarde.',
+      limit: null,
+    });
+  }
+});
+
+router.get('/api/eventos/:eventId/certificados/pendientes', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const result = await pool.query(
+      `
+        SELECT p.id AS participante_id, p.nombre, p.correo, c.id AS certificado_id, c.email_estado
+        FROM encuentro_participante p
+        JOIN encuentro_evento e ON e.id = p.evento_id AND e.activo = TRUE
+        JOIN encuentro_asistencia a
+          ON a.participante_id = p.id AND a.evento_id = p.evento_id
+        LEFT JOIN encuentro_certificado c
+          ON c.participante_id = p.id AND c.evento_id = p.evento_id
+        WHERE p.evento_id = $1
+          AND p.activo = TRUE
+          AND a.entrada_en IS NOT NULL
+          AND a.salida_en IS NOT NULL
+          AND (c.id IS NULL OR (c.estado = 'valido' AND c.email_estado <> 'enviado'))
+        ORDER BY p.nombre
+      `,
+      [eventId]
+    );
+    return res.json({ ok: true, total: result.rows.length, participantes: result.rows });
+  } catch (error) {
+    return handleServerError(
+      req,
+      res,
+      error,
+      'No fue posible consultar los certificados pendientes.'
+    );
+  }
+});
+
+router.get('/api/eventos', requireManager, async (req, res) => {
+  try {
+    const page = Math.max(1, Math.min(Number.parseInt(req.query.page, 10) || 1, 100000));
+    const pageSize = Math.max(1, Math.min(Number.parseInt(req.query.pageSize, 10) || 20, 100));
+    const values = [];
+    const filters = ['e.activo = TRUE'];
+    const search = String(req.query.q || '')
+      .trim()
+      .slice(0, 255);
+    const state = String(req.query.estado || '').trim();
+    const date = String(req.query.fecha || '').trim();
+    const organizer = String(req.query.organizador || '')
+      .trim()
+      .slice(0, 255);
+
+    if (search) {
+      values.push(`%${search}%`);
+      filters.push(`(e.nombre ILIKE $${values.length} OR e.organizador ILIKE $${values.length})`);
+    }
+    if (state && ['programado', 'en_curso', 'finalizado', 'cancelado'].includes(state)) {
+      values.push(state);
+      filters.push(`e.estado = $${values.length}`);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      values.push(date);
+      filters.push(`e.fecha = $${values.length}::date`);
+    }
+    if (organizer) {
+      values.push(`%${organizer}%`);
+      filters.push(`e.organizador ILIKE $${values.length}`);
+    }
+    const where = filters.join(' AND ');
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM encuentro_evento e WHERE ${where}`,
+      values
+    );
+    const total = countResult.rows[0]?.total || 0;
+    const orderColumn = req.query.sort === 'nombre' ? 'e.nombre' : 'e.fecha';
+    const direction = String(req.query.direction || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const limitPosition = values.length + 1;
+    const offsetPosition = values.length + 2;
+    const listResult = await pool.query(
+      `
+        SELECT
+          e.id, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
+          e.lugar, e.organizador, e.estado, e.banner_path,
+          COUNT(p.id)::int AS participantes
+        FROM encuentro_evento e
+        LEFT JOIN encuentro_participante p
+          ON p.evento_id = e.id AND p.activo = TRUE
+        WHERE ${where}
+        GROUP BY e.id
+        ORDER BY ${orderColumn} ${direction}, e.id DESC
+        LIMIT $${limitPosition} OFFSET $${offsetPosition}
+      `,
+      [...values, pageSize, (page - 1) * pageSize]
+    );
+    return res.json({
+      ok: true,
+      eventos: listResult.rows,
+      paginacion: { pagina: page, tamano: pageSize, total, paginas: Math.ceil(total / pageSize) },
+    });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible consultar los eventos.');
+  }
+});
+
+router.post(
+  '/api/eventos',
+  requireManager,
+  withUpload(
+    upload.fields([
+      { name: 'plantilla_pdf', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
+    ])
+  ),
+  async (req, res) => {
+    const files = req.files || {};
+    const fileError = validateUploadedEventFiles(files);
+    if (fileError) return res.status(400).json({ ok: false, message: fileError });
+    const pdf = files.plantilla_pdf?.[0];
+    const banner = files.banner?.[0];
+    if (!pdf)
+      return res.status(400).json({ ok: false, message: 'La plantilla PDF es obligatoria.' });
+
+    const eventValidation = validateEventInput(req.body);
+    const config = readTemplateConfig(req.body.plantilla_config);
+    const configErrors = validateTemplateConfig(config);
+    if (eventValidation.errores.length || configErrors.length) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Revisa los datos del evento y la configuración de la plantilla.',
+        errores: [...eventValidation.errores, ...configErrors],
+      });
+    }
+    const historical = req.body.evento_historico === 'true';
+    try {
+      if (historical) {
+        const endedResult = await pool.query(
+          `
+            SELECT (
+              $1::date < (NOW() AT TIME ZONE 'America/Bogota')::date
+              OR (
+                $1::date = (NOW() AT TIME ZONE 'America/Bogota')::date
+                AND $2::time <= (NOW() AT TIME ZONE 'America/Bogota')::time
+              )
+            ) AS ya_finalizado
+          `,
+          [eventValidation.evento.fecha, eventValidation.evento.hora_fin]
+        );
+        if (!endedResult.rows[0]?.ya_finalizado) {
+          return res.status(400).json({
+            ok: false,
+            message:
+              'Un evento histórico debe tener una fecha y hora de finalización ya transcurridas.',
+          });
+        }
+      }
+      await validatePdfTemplate(pdf.buffer);
+    } catch {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'La plantilla no es un PDF válido o está protegida.' });
+    }
+
+    let pdfPath;
+    let bannerPath;
+    try {
+      pdfPath = await saveUpload(pdf, 'templates', 'pdf');
+      if (banner)
+        bannerPath = await saveUpload(
+          banner,
+          'banners',
+          hasFileSignature(banner, 'png') ? 'png' : 'jpg'
+        );
+      const event = eventValidation.evento;
+      const result = await withTransaction(async (client) => {
+        const inserted = await client.query(
+          `
+            INSERT INTO encuentro_evento (
+              nombre, descripcion, fecha, hora_inicio, hora_fin, lugar, organizador,
+              banner_path, plantilla_pdf_path, plantilla_pdf_nombre, plantilla_config,
+              estado, creado_por_usuario_id, modificado_por_usuario_id
+            )
+            VALUES ($1, NULLIF($2, ''), $3::date, $4::time, $5::time, $6, $7,
+                    $8, $9, $10, $11::jsonb,
+                    CASE WHEN $12::boolean THEN 'finalizado' ELSE 'programado' END, $13, $13)
+            RETURNING id
+          `,
+          [
+            event.nombre,
+            event.descripcion,
+            event.fecha,
+            event.hora_inicio,
+            event.hora_fin,
+            event.lugar,
+            event.organizador,
+            bannerPath || null,
+            pdfPath,
+            path.basename(pdf.originalname).slice(0, 255),
+            JSON.stringify(config),
+            historical,
+            getSessionUserId(req),
+          ]
+        );
+        await writeAudit(
+          client,
+          req,
+          historical ? 'evento histórico creado' : 'evento creado',
+          inserted.rows[0].id
+        );
+        return inserted.rows[0];
+      });
+      return res.status(201).json({
+        ok: true,
+        evento_id: result.id,
+        estado: historical ? 'finalizado' : 'programado',
+        message: historical ? 'Evento histórico creado.' : 'Evento creado.',
+      });
+    } catch (error) {
+      if (pdfPath) await removeStoredFile(pdfPath);
+      if (bannerPath) await removeStoredFile(bannerPath);
+      return handleServerError(req, res, error, 'No fue posible crear el evento.');
+    }
+  }
+);
+
+router.put(
+  '/api/eventos/:eventId',
+  requireManager,
+  withUpload(
+    upload.fields([
+      { name: 'plantilla_pdf', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
+    ])
+  ),
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    if (!eventId)
+      return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+    const files = req.files || {};
+    const fileError = validateUploadedEventFiles(files);
+    if (fileError) return res.status(400).json({ ok: false, message: fileError });
+    let newPdfPath;
+    let newBannerPath;
+
+    try {
+      const existingResult = await pool.query(
+        `SELECT * FROM encuentro_evento WHERE id = $1 AND activo = TRUE`,
+        [eventId]
+      );
+      const existing = existingResult.rows[0];
+      if (!existing) return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+      if (existing.estado !== 'programado') {
+        return res
+          .status(409)
+          .json({ ok: false, message: 'Solo se pueden editar eventos programados.' });
+      }
+
+      const eventValidation = validateEventInput({
+        nombre: req.body.nombre ?? existing.nombre,
+        descripcion: req.body.descripcion ?? existing.descripcion,
+        fecha: req.body.fecha ?? String(existing.fecha).slice(0, 10),
+        hora_inicio: req.body.hora_inicio ?? String(existing.hora_inicio).slice(0, 5),
+        hora_fin: req.body.hora_fin ?? String(existing.hora_fin).slice(0, 5),
+        lugar: req.body.lugar ?? existing.lugar,
+        organizador: req.body.organizador ?? existing.organizador,
+      });
+      const config = req.body.plantilla_config
+        ? readTemplateConfig(req.body.plantilla_config)
+        : existing.plantilla_config;
+      const configErrors = validateTemplateConfig(config);
+      if (eventValidation.errores.length || configErrors.length) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Revisa los datos del evento y la configuración de la plantilla.',
+          errores: [...eventValidation.errores, ...configErrors],
+        });
+      }
+
+      const pdf = files.plantilla_pdf?.[0];
+      const banner = files.banner?.[0];
+      if (pdf) {
+        try {
+          await validatePdfTemplate(pdf.buffer);
+        } catch {
+          return res
+            .status(400)
+            .json({ ok: false, message: 'La plantilla no es un PDF válido o está protegida.' });
+        }
+        newPdfPath = await saveUpload(pdf, 'templates', 'pdf');
+      }
+      if (banner)
+        newBannerPath = await saveUpload(
+          banner,
+          'banners',
+          hasFileSignature(banner, 'png') ? 'png' : 'jpg'
+        );
+      const event = eventValidation.evento;
+      await withTransaction(async (client) => {
+        await client.query(
+          `
+            UPDATE encuentro_evento
+            SET nombre = $2,
+                descripcion = NULLIF($3, ''),
+                fecha = $4::date,
+                hora_inicio = $5::time,
+                hora_fin = $6::time,
+                lugar = $7,
+                organizador = $8,
+                banner_path = COALESCE($9, banner_path),
+                plantilla_pdf_path = COALESCE($10, plantilla_pdf_path),
+                plantilla_pdf_nombre = COALESCE($11, plantilla_pdf_nombre),
+                plantilla_config = $12::jsonb,
+                modificado_por_usuario_id = $13,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND estado = 'programado' AND activo = TRUE
+          `,
+          [
+            eventId,
+            event.nombre,
+            event.descripcion,
+            event.fecha,
+            event.hora_inicio,
+            event.hora_fin,
+            event.lugar,
+            event.organizador,
+            newBannerPath || null,
+            newPdfPath || null,
+            pdf ? path.basename(pdf.originalname).slice(0, 255) : null,
+            JSON.stringify(config),
+            getSessionUserId(req),
+          ]
+        );
+        await writeAudit(client, req, 'evento modificado', eventId);
+      });
+      return res.json({ ok: true, message: 'Evento actualizado.' });
+    } catch (error) {
+      if (newPdfPath) await removeStoredFile(newPdfPath);
+      if (newBannerPath) await removeStoredFile(newBannerPath);
+      return handleServerError(req, res, error, 'No fue posible editar el evento.');
+    }
+  }
+);
+
+router.patch('/api/eventos/:eventId/estado', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const nextState = String(req.body?.estado || '');
+  if (!eventId || !['en_curso', 'finalizado', 'cancelado'].includes(nextState)) {
+    return res.status(400).json({ ok: false, message: 'Evento o transición inválida.' });
+  }
+
+  try {
+    const transition = await withTransaction(async (client) => {
+      const result = await client.query(
+        'SELECT id, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+        [eventId]
+      );
+      const event = result.rows[0];
+      if (!event) return { error: 'not_found' };
+
+      const allowed =
+        (event.estado === 'programado' && ['en_curso', 'cancelado'].includes(nextState)) ||
+        (event.estado === 'en_curso' && ['finalizado', 'cancelado'].includes(nextState));
+      if (!allowed) return { error: 'invalid_transition' };
+
+      if (nextState === 'en_curso') {
+        const start = await client.query(
+          `
+            SELECT
+              (NOW() AT TIME ZONE 'America/Bogota')::date >= fecha
+              AND (
+                (NOW() AT TIME ZONE 'America/Bogota')::date > fecha
+                OR (NOW() AT TIME ZONE 'America/Bogota')::time >= hora_inicio
+              ) AS habilitado
+            FROM encuentro_evento
+            WHERE id = $1
+          `,
+          [eventId]
+        );
+        if (!start.rows[0]?.habilitado) return { error: 'too_early' };
+      }
+      if (nextState === 'cancelado' && event.estado === 'en_curso') {
+        const attendance = await client.query(
+          `SELECT 1 FROM encuentro_asistencia WHERE evento_id = $1 AND entrada_en IS NOT NULL LIMIT 1`,
+          [eventId]
+        );
+        if (attendance.rows.length) return { error: 'has_attendance' };
+      }
+
+      await client.query(
+        `
+          UPDATE encuentro_evento
+          SET estado = $2, modificado_por_usuario_id = $3, fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [eventId, nextState, getSessionUserId(req)]
+      );
+      await writeAudit(client, req, `evento ${nextState}`, eventId);
+      return { estado: nextState };
+    });
+    if (transition.error === 'not_found')
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (transition.error === 'invalid_transition') {
+      return res
+        .status(409)
+        .json({ ok: false, message: 'La transición de estado no está permitida.' });
+    }
+    if (transition.error === 'too_early') {
+      return res.status(409).json({
+        ok: false,
+        message:
+          'El evento solo puede iniciarse en la fecha programada y desde la hora de inicio (America/Bogota).',
+      });
+    }
+    if (transition.error === 'has_attendance') {
+      return res.status(409).json({
+        ok: false,
+        message: 'No se puede cancelar un evento con asistencias registradas.',
+      });
+    }
+    return res.json({ ok: true, estado: transition.estado });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible cambiar el estado del evento.');
+  }
+});
+
+router.get('/api/eventos/:eventId', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const detail = await fetchEventDetail(eventId);
+    if (!detail) return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    return res.json({ ok: true, ...detail, enlaces_registro: buildRegistrationLinks(eventId) });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible consultar el detalle del evento.');
+  }
+});
+
+router.get('/api/eventos/:eventId/informe.pdf', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+
+  try {
+    const report = await fetchEventReportData(eventId);
+    if (!report) return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (report.event.estado !== 'finalizado') {
+      return res.status(409).json({
+        ok: false,
+        message: 'El informe solo está disponible cuando el encuentro haya finalizado.',
+      });
+    }
+
+    const pdf = await renderEventReportPdf(report);
+    res.type('application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="informe-encuentro-${eventId}.pdf"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    return res.send(pdf);
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible generar el informe del encuentro.');
+  }
+});
+
+router.get('/api/eventos/:eventId/participantes.xlsx', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          p.nombre,
+          p.documento,
+          p.correo,
+          p.rol,
+          p.facultad,
+          p.laboratorio,
+          p.fecha_inscripcion,
+          a.entrada_en,
+          a.salida_en,
+          CASE
+            WHEN a.salida_en IS NOT NULL THEN 'completada'
+            WHEN a.entrada_en IS NOT NULL THEN 'en_curso'
+            ELSE 'sin_entrada'
+          END AS estado_asistencia,
+          c.codigo AS codigo_certificado,
+          c.email_estado AS estado_certificado,
+          c.estado AS validez_certificado,
+          c.fecha_emision,
+          c.email_enviado_en,
+          (l.id IS NOT NULL) AS medalla_vinculada
+        FROM encuentro_evento e
+        LEFT JOIN encuentro_participante p
+          ON p.evento_id = e.id AND p.activo = TRUE
+        LEFT JOIN encuentro_asistencia a
+          ON a.participante_id = p.id AND a.evento_id = p.evento_id AND a.activo = TRUE
+        LEFT JOIN encuentro_certificado c
+          ON c.participante_id = p.id AND c.evento_id = p.evento_id AND c.activo = TRUE
+        LEFT JOIN encuentro_logro l
+          ON l.participante_id = p.id AND l.evento_id = p.evento_id
+        WHERE e.id = $1 AND e.activo = TRUE
+        ORDER BY p.nombre, p.id
+      `,
+      [eventId]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Participantes');
+    sheet.columns = [
+      { header: PARTICIPANT_EXPORT_HEADERS[0], key: 'nombre', width: 32 },
+      { header: PARTICIPANT_EXPORT_HEADERS[1], key: 'documento', width: 24 },
+      { header: PARTICIPANT_EXPORT_HEADERS[2], key: 'correo', width: 36 },
+      { header: PARTICIPANT_EXPORT_HEADERS[3], key: 'rol', width: 28 },
+      { header: PARTICIPANT_EXPORT_HEADERS[4], key: 'facultad', width: 32 },
+      { header: PARTICIPANT_EXPORT_HEADERS[5], key: 'laboratorio', width: 42 },
+      { header: PARTICIPANT_EXPORT_HEADERS[6], key: 'fecha_inscripcion', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[7], key: 'entrada_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[8], key: 'salida_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[9], key: 'estado_asistencia', width: 24 },
+      { header: PARTICIPANT_EXPORT_HEADERS[10], key: 'codigo_certificado', width: 28 },
+      { header: PARTICIPANT_EXPORT_HEADERS[11], key: 'estado_certificado', width: 22 },
+      { header: PARTICIPANT_EXPORT_HEADERS[12], key: 'validez_certificado', width: 22 },
+      { header: PARTICIPANT_EXPORT_HEADERS[13], key: 'fecha_emision', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[14], key: 'email_enviado_en', width: 30 },
+      { header: PARTICIPANT_EXPORT_HEADERS[15], key: 'medalla_vinculada', width: 20 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    sheet.getColumn(2).numFmt = '@';
+    for (const column of [7, 8, 9, 14, 15]) {
+      sheet.getColumn(column).numFmt = '@';
+    }
+    const timestampToIso = (value) => (value ? new Date(value).toISOString() : null);
+    for (const row of result.rows) {
+      if (row.nombre) {
+        sheet.addRow({
+          ...row,
+          fecha_inscripcion: timestampToIso(row.fecha_inscripcion),
+          entrada_en: timestampToIso(row.entrada_en),
+          salida_en: timestampToIso(row.salida_en),
+          fecha_emision: timestampToIso(row.fecha_emision),
+          email_enviado_en: timestampToIso(row.email_enviado_en),
+        });
+      }
+    }
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="participantes-encuentro-${eventId}.xlsx"`
+    );
+    res.setHeader('Content-Length', String(buffer.length));
+    return res.send(buffer);
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible exportar los participantes.');
+  }
+});
+
+router.get('/api/eventos/:eventId/banner', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const result = await pool.query(
+      'SELECT banner_path FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+      [eventId]
+    );
+    if (!result.rows[0]?.banner_path)
+      return res.status(404).json({ ok: false, message: 'El banner no existe.' });
+    const filePath = resolveStoredPath(result.rows[0].banner_path);
+    await fs.access(filePath);
+    res.type(path.extname(filePath) === '.png' ? 'png' : 'jpeg');
+    return res.sendFile(filePath);
+  } catch (error) {
+    if (error.code === 'ENOENT')
+      return res.status(404).json({ ok: false, message: 'El banner no está disponible.' });
+    return handleServerError(req, res, error, 'No fue posible consultar el banner.');
+  }
+});
+
+router.get('/api/eventos/:eventId/plantilla-pdf', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const result = await pool.query(
+      'SELECT plantilla_pdf_path, plantilla_pdf_nombre FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+      [eventId]
+    );
+    if (!result.rows[0])
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    const filePath = resolveStoredPath(result.rows[0].plantilla_pdf_path);
+    await fs.access(filePath);
+    res.type('application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="plantilla-evento-${eventId}.pdf"`);
+    return res.sendFile(filePath);
+  } catch (error) {
+    if (error.code === 'ENOENT')
+      return res.status(404).json({ ok: false, message: 'La plantilla PDF no está disponible.' });
+    return handleServerError(req, res, error, 'No fue posible consultar la plantilla PDF.');
+  }
+});
+
+router.patch(
+  '/api/eventos/:eventId/plantilla',
+  requireManager,
+  withUpload(upload.fields([{ name: 'plantilla_pdf', maxCount: 1 }])),
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    if (!eventId)
+      return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+
+    const files = req.files || {};
+    const fileError = validateUploadedEventFiles(files);
+    if (fileError) return res.status(400).json({ ok: false, message: fileError });
+
+    const config = readTemplateConfig(req.body?.plantilla_config);
+    const configErrors = validateTemplateConfig(config);
+    if (configErrors.length) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Revisa la configuración de la plantilla.',
+        errores: configErrors,
+      });
+    }
+
+    const pdf = files.plantilla_pdf?.[0];
+    if (pdf) {
+      try {
+        await validatePdfTemplate(pdf.buffer);
+      } catch {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'La plantilla no es un PDF válido o está protegida.' });
+      }
+    }
+
+    let newPdfPath;
+    try {
+      if (pdf) newPdfPath = await saveUpload(pdf, 'templates', 'pdf');
+      const result = await withTransaction(async (client) => {
+        const existing = await client.query(
+          'SELECT id, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+          [eventId]
+        );
+        if (!existing.rows[0]) return { error: 'not_found' };
+        if (!['en_curso', 'finalizado'].includes(existing.rows[0].estado)) {
+          return { error: 'not_started' };
+        }
+
+        await client.query(
+          `
+            UPDATE encuentro_evento
+            SET plantilla_pdf_path = COALESCE($2, plantilla_pdf_path),
+                plantilla_pdf_nombre = COALESCE($3, plantilla_pdf_nombre),
+                plantilla_config = $4::jsonb,
+                modificado_por_usuario_id = $5,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND activo = TRUE
+          `,
+          [
+            eventId,
+            newPdfPath || null,
+            pdf ? path.basename(pdf.originalname).slice(0, 255) : null,
+            JSON.stringify(config),
+            getSessionUserId(req),
+          ]
+        );
+        await writeAudit(client, req, 'plantilla de certificado modificada', eventId);
+        return { updated: true };
+      });
+      if (result.error === 'not_found') {
+        if (newPdfPath) await removeStoredFile(newPdfPath);
+        return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+      }
+      if (result.error === 'not_started') {
+        if (newPdfPath) await removeStoredFile(newPdfPath);
+        return res.status(409).json({
+          ok: false,
+          message: 'La plantilla solo puede modificarse después de iniciar el evento.',
+        });
+      }
+      return res.json({
+        ok: true,
+        message: 'La plantilla de certificados se actualizó. Los certificados emitidos no cambian.',
+      });
+    } catch (error) {
+      if (newPdfPath) await removeStoredFile(newPdfPath);
+      return handleServerError(req, res, error, 'No fue posible actualizar la plantilla.');
+    }
+  }
+);
+
+router.post(
+  '/api/eventos/:eventId/participantes/previsualizar',
+  requireManager,
+  withUpload(upload.single('archivo')),
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const file = req.file;
+    if (!eventId)
+      return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+    if (
+      !file ||
+      file.size > MAX_SPREADSHEET_BYTES ||
+      !hasFileSignature(file, 'xlsx') ||
+      !isSafeXlsxArchive(file.buffer)
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Carga un archivo XLSX válido de máximo 5 MB.' });
+    }
+    try {
+      const eventResult = await pool.query(
+        'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+        [eventId]
+      );
+      if (!eventResult.rows[0])
+        return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+      if (eventResult.rows[0].estado !== 'programado') {
+        return res.status(409).json({
+          ok: false,
+          message: 'La importación Excel solo está habilitada para eventos programados.',
+        });
+      }
+      let preview;
+      try {
+        preview = await previewParticipantWorkbook(file.buffer);
+      } catch {
+        return res.status(400).json({
+          ok: false,
+          message:
+            'No fue posible leer el Excel. Verifica que no esté dañado ni protegido con contraseña.',
+        });
+      }
+      if (preview.errores_estructura.length) {
+        return res.status(400).json({
+          ok: false,
+          message: 'La estructura del Excel no es válida.',
+          errores: preview.errores_estructura,
+        });
+      }
+      const normalizedDocuments = preview.filas
+        .filter((row) => row.errores.length === 0)
+        .map((row) => row.participante.documento_normalizado);
+      if (normalizedDocuments.length) {
+        const existing = await pool.query(
+          `
+            SELECT documento_normalizado
+            FROM encuentro_participante
+            WHERE evento_id = $1
+              AND documento_normalizado = ANY($2::text[])
+              AND activo = TRUE
+          `,
+          [eventId, normalizedDocuments]
+        );
+        const existingDocuments = new Set(existing.rows.map((row) => row.documento_normalizado));
+        preview.filas.forEach((row) => {
+          if (existingDocuments.has(row.participante.documento_normalizado)) {
+            row.errores.push('Este documento ya está inscrito en el evento.');
+          }
+        });
+      }
+      const validCount = preview.filas.filter((row) => row.errores.length === 0).length;
+      return res.json({
+        ok: true,
+        filas: preview.filas,
+        resumen: {
+          total: preview.filas.length,
+          validos: validCount,
+          rechazados: preview.filas.length - validCount,
+        },
+      });
+    } catch (error) {
+      return handleServerError(req, res, error, 'No fue posible validar el archivo Excel.');
+    }
+  }
+);
+
+router.post('/api/eventos/:eventId/participantes/importar', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const rows = req.body?.filas;
+  if (!eventId || !Array.isArray(rows) || rows.length > 2000) {
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Evento o lista de participantes inválida.' });
+  }
+  const validRows = [];
+  const rejectedRows = [];
+  rows.forEach((row, index) => {
+    const validation = validateParticipant(row?.participante || row);
+    if (validation.errores.length) {
+      rejectedRows.push({ fila: row?.fila || index + 1, errores: validation.errores });
+    } else {
+      validRows.push({ fila: row?.fila || index + 1, participante: validation.participante });
+    }
+  });
+
+  try {
+    const result = await withTransaction(async (client) => {
+      const eventResult = await client.query(
+        'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+        [eventId]
+      );
+      if (!eventResult.rows[0]) return { error: 'not_found' };
+      if (eventResult.rows[0].estado !== 'programado') return { error: 'invalid_state' };
+
+      let imported = 0;
+      let omitted = 0;
+      for (const row of validRows) {
+        const userId = await getRegisteredUserMatch(client, row.participante.documento_normalizado);
+        const inserted = await client.query(
+          `
+            INSERT INTO encuentro_participante (
+              evento_id, nombre, documento, documento_normalizado, correo, rol,
+              facultad, laboratorio, usuario_id, creado_por_usuario_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
+            RETURNING id
+          `,
+          [
+            eventId,
+            row.participante.nombre,
+            row.participante.documento,
+            row.participante.documento_normalizado,
+            row.participante.correo,
+            row.participante.rol,
+            row.participante.facultad,
+            row.participante.laboratorio,
+            userId,
+            getSessionUserId(req),
+          ]
+        );
+        if (inserted.rows.length) imported += 1;
+        else {
+          omitted += 1;
+          rejectedRows.push({
+            fila: row.fila,
+            errores: ['El documento ya se encuentra asociado a este evento.'],
+          });
+        }
+      }
+      await writeAudit(client, req, `participantes importados (${imported})`, eventId);
+      return { imported, omitted };
+    });
+    if (result.error === 'not_found')
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (result.error === 'invalid_state') {
+      return res.status(409).json({
+        ok: false,
+        message: 'Solo se pueden importar participantes en eventos programados.',
+      });
+    }
+    return res.json({
+      ok: true,
+      resumen: {
+        procesados: rows.length,
+        importados: result.imported,
+        omitidos: result.omitted,
+        rechazados: rejectedRows.length,
+      },
+      errores: rejectedRows,
+    });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible completar la importación.');
+  }
+});
+
+router.post(
+  '/api/eventos/:eventId/participaciones/previsualizar',
+  requireManager,
+  withUpload(upload.single('archivo')),
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const file = req.file;
+    if (!eventId)
+      return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+    if (
+      !file ||
+      file.size > MAX_SPREADSHEET_BYTES ||
+      !hasFileSignature(file, 'xlsx') ||
+      !isSafeXlsxArchive(file.buffer)
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Carga un archivo XLSX válido de máximo 5 MB.' });
+    }
+
+    try {
+      const eventResult = await pool.query(
+        'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+        [eventId]
+      );
+      if (!eventResult.rows[0])
+        return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+      if (eventResult.rows[0].estado !== 'finalizado') {
+        return res.status(409).json({
+          ok: false,
+          message: 'La importación de participaciones históricas requiere un evento finalizado.',
+        });
+      }
+
+      let preview;
+      try {
+        preview = await previewHistoricalParticipationWorkbook(file.buffer);
+      } catch {
+        return res.status(400).json({
+          ok: false,
+          message:
+            'No fue posible leer el Excel. Verifica que no esté dañado ni protegido con contraseña.',
+        });
+      }
+      if (preview.errores_estructura.length) {
+        return res.status(400).json({
+          ok: false,
+          message: 'La estructura del Excel no es válida.',
+          errores: preview.errores_estructura,
+        });
+      }
+
+      const normalizedDocuments = preview.filas
+        .filter((row) => row.errores.length === 0)
+        .map((row) => row.participante.documento_normalizado);
+      if (normalizedDocuments.length) {
+        const existing = await pool.query(
+          `
+            SELECT documento_normalizado
+            FROM encuentro_participante
+            WHERE evento_id = $1
+              AND documento_normalizado = ANY($2::text[])
+              AND activo = TRUE
+          `,
+          [eventId, normalizedDocuments]
+        );
+        const existingDocuments = new Set(existing.rows.map((row) => row.documento_normalizado));
+        preview.filas.forEach((row) => {
+          if (existingDocuments.has(row.participante.documento_normalizado)) {
+            row.errores.push('Este documento ya está inscrito en el evento.');
+          }
+        });
+      }
+      const validCount = preview.filas.filter((row) => row.errores.length === 0).length;
+      return res.json({
+        ok: true,
+        filas: preview.filas,
+        resumen: {
+          total: preview.filas.length,
+          validos: validCount,
+          rechazados: preview.filas.length - validCount,
+        },
+      });
+    } catch (error) {
+      return handleServerError(
+        req,
+        res,
+        error,
+        'No fue posible validar la participación histórica.'
+      );
+    }
+  }
+);
+
+router.post('/api/eventos/:eventId/participaciones/importar', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const rows = req.body?.filas;
+  if (!eventId || !Array.isArray(rows) || rows.length > 2000) {
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Evento o lista de participaciones inválida.' });
+  }
+
+  const validRows = [];
+  const rejectedRows = [];
+  const firstRowByDocument = new Map();
+  rows.forEach((row, index) => {
+    const validation = validateParticipant(row?.participante || row);
+    const registration = parseHistoricalTimestamp(row?.fecha_inscripcion);
+    const entry = parseHistoricalTimestamp(row?.entrada_en);
+    const exit = parseHistoricalTimestamp(row?.salida_en);
+    const errors = [...validation.errores];
+    if (registration.error) errors.push(`Fecha de inscripción: ${registration.error}`);
+    if (entry.error) errors.push(`Entrada: ${entry.error}`);
+    if (exit.error) errors.push(`Salida: ${exit.error}`);
+    if (exit.value && !entry.value)
+      errors.push('No se puede registrar una salida sin una entrada.');
+    if (entry.value && exit.value && Date.parse(exit.value) < Date.parse(entry.value)) {
+      errors.push('La salida no puede ser anterior a la entrada.');
+    }
+    const normalizedDocument = validation.participante.documento_normalizado;
+    if (normalizedDocument && firstRowByDocument.has(normalizedDocument)) {
+      errors.push(
+        `Documento duplicado en las filas ${firstRowByDocument.get(normalizedDocument)} y ${row?.fila || index + 1}.`
+      );
+    } else if (normalizedDocument) {
+      firstRowByDocument.set(normalizedDocument, row?.fila || index + 1);
+    }
+
+    if (errors.length) {
+      rejectedRows.push({ fila: row?.fila || index + 1, errores: errors });
+    } else {
+      validRows.push({
+        fila: row?.fila || index + 1,
+        participante: validation.participante,
+        fecha_inscripcion: registration.value,
+        entrada_en: entry.value,
+        salida_en: exit.value,
+      });
+    }
+  });
+
+  try {
+    const result = await withTransaction(async (client) => {
+      const eventResult = await client.query(
+        'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+        [eventId]
+      );
+      if (!eventResult.rows[0]) return { error: 'not_found' };
+      if (eventResult.rows[0].estado !== 'finalizado') return { error: 'invalid_state' };
+
+      let imported = 0;
+      let omitted = 0;
+      const participants = [];
+      for (const row of validRows) {
+        const userId = await getRegisteredUserMatch(client, row.participante.documento_normalizado);
+        const inserted = await client.query(
+          `
+            INSERT INTO encuentro_participante (
+              evento_id, nombre, documento, documento_normalizado, correo, rol,
+              facultad, laboratorio, fecha_inscripcion, usuario_id, creado_por_usuario_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, CURRENT_TIMESTAMP), $10, $11)
+            ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
+            RETURNING id
+          `,
+          [
+            eventId,
+            row.participante.nombre,
+            row.participante.documento,
+            row.participante.documento_normalizado,
+            row.participante.correo,
+            row.participante.rol,
+            row.participante.facultad,
+            row.participante.laboratorio,
+            row.fecha_inscripcion,
+            userId,
+            getSessionUserId(req),
+          ]
+        );
+        if (!inserted.rows[0]) {
+          omitted += 1;
+          rejectedRows.push({
+            fila: row.fila,
+            errores: ['El documento ya se encuentra asociado a este evento.'],
+          });
+          continue;
+        }
+
+        const participantId = inserted.rows[0].id;
+        if (row.entrada_en || row.salida_en) {
+          await client.query(
+            `
+              INSERT INTO encuentro_asistencia (
+                evento_id, participante_id, entrada_en, salida_en,
+                entrada_por_usuario_id, salida_por_usuario_id
+              )
+              VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5,
+                      CASE WHEN $4::timestamptz IS NULL THEN NULL ELSE $5 END)
+            `,
+            [eventId, participantId, row.entrada_en, row.salida_en, getSessionUserId(req)]
+          );
+        }
+        imported += 1;
+        participants.push({
+          participante_id: participantId,
+          nombre: row.participante.nombre,
+          completada: Boolean(row.entrada_en && row.salida_en),
+        });
+      }
+      await writeAudit(client, req, `participaciones históricas importadas (${imported})`, eventId);
+      return { imported, omitted, participants };
+    });
+    if (result.error === 'not_found')
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (result.error === 'invalid_state') {
+      return res.status(409).json({
+        ok: false,
+        message: 'Solo se pueden importar participaciones en eventos finalizados.',
+      });
+    }
+    return res.json({
+      ok: true,
+      resumen: {
+        procesados: rows.length,
+        importados: result.imported,
+        omitidos: result.omitted,
+        rechazados: rejectedRows.length,
+        certificados_eligibles: result.participants.filter((participant) => participant.completada)
+          .length,
+      },
+      errores: rejectedRows,
+      participantes_importados: result.participants,
+    });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible importar las participaciones.');
+  }
+});
+
+router.post('/api/eventos/:eventId/participantes', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const validation = validateParticipant(req.body);
+  if (!eventId || validation.errores.length) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Revisa los datos del participante.',
+      errores: validation.errores,
+    });
+  }
+  try {
+    const participant = await withTransaction(async (client) => {
+      const eventResult = await client.query(
+        'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
+        [eventId]
+      );
+      if (!eventResult.rows[0]) return { error: 'not_found' };
+      if (!['programado', 'en_curso', 'finalizado'].includes(eventResult.rows[0].estado)) {
+        return { error: 'invalid_state' };
+      }
+      const userId = await getRegisteredUserMatch(
+        client,
+        validation.participante.documento_normalizado
+      );
+      const inserted = await client.query(
+        `
+          INSERT INTO encuentro_participante (
+            evento_id, nombre, documento, documento_normalizado, correo, rol,
+            facultad, laboratorio, usuario_id, creado_por_usuario_id
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (evento_id, documento_normalizado) DO NOTHING
+          RETURNING id
+        `,
+        [
+          eventId,
+          validation.participante.nombre,
+          validation.participante.documento,
+          validation.participante.documento_normalizado,
+          validation.participante.correo,
+          validation.participante.rol,
+          validation.participante.facultad,
+          validation.participante.laboratorio,
+          userId,
+          getSessionUserId(req),
+        ]
+      );
+      if (!inserted.rows[0]) return { error: 'duplicate' };
+      await writeAudit(client, req, 'participante incorporado', eventId);
+      return { id: inserted.rows[0].id };
+    });
+    if (participant.error === 'not_found')
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (participant.error === 'invalid_state') {
+      return res.status(409).json({
+        ok: false,
+        message: 'No se pueden incorporar participantes en este estado del evento.',
+      });
+    }
+    if (participant.error === 'duplicate')
+      return res
+        .status(409)
+        .json({ ok: false, message: 'El documento ya está inscrito en este evento.' });
+    return res.status(201).json({ ok: true, participante_id: participant.id });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible incorporar al participante.');
+  }
+});
+
+router.post('/api/eventos/:eventId/asistencia/entrada', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const normalizedDocument = normalizeDocument(req.body?.documento);
+  if (!eventId || !normalizedDocument) {
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Evento y documento válido son obligatorios.' });
+  }
+  try {
+    const result = await withTransaction(async (client) => {
+      const participantResult = await client.query(
+        `
+          SELECT p.id, e.estado AS estado_evento
+          FROM encuentro_participante p
+          JOIN encuentro_evento e ON e.id = p.evento_id
+          WHERE p.evento_id = $1
+            AND p.documento_normalizado = $2
+            AND p.activo = TRUE
+            AND e.activo = TRUE
+          FOR UPDATE OF p, e
+        `,
+        [eventId, normalizedDocument]
+      );
+      const participant = participantResult.rows[0];
+      if (!participant) return { error: 'not_enrolled' };
+      if (!['en_curso', 'finalizado'].includes(participant.estado_evento)) {
+        return { error: 'event_not_open' };
+      }
+
+      const attendance = await client.query(
+        `
+          INSERT INTO encuentro_asistencia (
+            evento_id, participante_id, entrada_en, entrada_por_usuario_id
+          )
+          VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+          ON CONFLICT (participante_id) DO NOTHING
+          RETURNING entrada_en
+        `,
+        [eventId, participant.id, getSessionUserId(req)]
+      );
+      if (!attendance.rows[0]) return { error: 'duplicate_entry' };
+      await writeAudit(client, req, 'entrada registrada', eventId);
+      return { entrada_en: attendance.rows[0].entrada_en };
+    });
+    if (result.error === 'not_enrolled')
+      return res
+        .status(404)
+        .json({ ok: false, message: 'El participante no está inscrito en este evento.' });
+    if (result.error === 'event_not_open')
+      return res.status(409).json({
+        ok: false,
+        message: 'El evento no permite registrar entradas en su estado actual.',
+      });
+    if (result.error === 'duplicate_entry')
+      return res.status(409).json({ ok: false, message: 'La entrada ya fue registrada.' });
+    return res.json({ ok: true, entrada_en: result.entrada_en });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible registrar la entrada.');
+  }
+});
+
+router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  const normalizedDocument = normalizeDocument(req.body?.documento);
+  if (!eventId || !normalizedDocument) {
+    return res
+      .status(400)
+      .json({ ok: false, message: 'Evento y documento válido son obligatorios.' });
+  }
+  try {
+    const attendance = await withTransaction(async (client) => {
+      const participantResult = await client.query(
+        `
+          SELECT p.id, e.estado AS estado_evento
+          FROM encuentro_participante p
+          JOIN encuentro_evento e ON e.id = p.evento_id
+          WHERE p.evento_id = $1
+            AND p.documento_normalizado = $2
+            AND p.activo = TRUE
+            AND e.activo = TRUE
+          FOR UPDATE OF p
+        `,
+        [eventId, normalizedDocument]
+      );
+      const participant = participantResult.rows[0];
+      if (!participant) return { error: 'not_enrolled' };
+      if (!['en_curso', 'finalizado'].includes(participant.estado_evento)) {
+        return { error: 'event_not_open' };
+      }
+
+      const updated = await client.query(
+        `
+          UPDATE encuentro_asistencia
+          SET salida_en = CURRENT_TIMESTAMP,
+              salida_por_usuario_id = $3,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE evento_id = $1
+            AND participante_id = $2
+            AND activo = TRUE
+            AND entrada_en IS NOT NULL
+            AND salida_en IS NULL
+            AND CURRENT_TIMESTAMP >= entrada_en
+          RETURNING participante_id, salida_en
+        `,
+        [eventId, participant.id, getSessionUserId(req)]
+      );
+      if (!updated.rows[0]) {
+        const existing = await client.query(
+          'SELECT entrada_en, salida_en FROM encuentro_asistencia WHERE evento_id = $1 AND participante_id = $2',
+          [eventId, participant.id]
+        );
+        if (!existing.rows[0] || !existing.rows[0].entrada_en) return { error: 'no_entry' };
+        if (existing.rows[0].salida_en) return { error: 'duplicate_exit' };
+        return { error: 'invalid_exit_time' };
+      }
+      await writeAudit(client, req, 'salida registrada', eventId);
+      return {
+        participante_id: updated.rows[0].participante_id,
+        salida_en: updated.rows[0].salida_en,
+        estado_evento: participant.estado_evento,
+      };
+    });
+    if (attendance.error === 'not_enrolled')
+      return res
+        .status(404)
+        .json({ ok: false, message: 'El participante no está inscrito en este evento.' });
+    if (attendance.error === 'event_not_open')
+      return res.status(409).json({
+        ok: false,
+        message: 'El evento no permite registrar salidas en su estado actual.',
+      });
+    if (attendance.error === 'no_entry')
+      return res
+        .status(409)
+        .json({ ok: false, message: 'No existe una entrada previa para esta persona.' });
+    if (attendance.error === 'duplicate_exit')
+      return res.status(409).json({ ok: false, message: 'La salida ya fue registrada.' });
+    if (attendance.error === 'invalid_exit_time')
+      return res
+        .status(409)
+        .json({ ok: false, message: 'La salida no puede ser anterior a la entrada.' });
+
+    if (attendance.estado_evento === 'finalizado') {
+      return res.json({
+        ok: true,
+        salida_registrada: true,
+        certificado_generado: false,
+        message: 'Salida registrada. Ahora puedes generar y enviar el certificado desde Acciones.',
+      });
+    }
+
+    let certificate;
+    try {
+      certificate = await createCertificate(eventId, attendance.participante_id, req);
+    } catch (error) {
+      logFailure(req, error, 'certificate_generation');
+      return res.status(500).json({
+        ok: false,
+        salida_registrada: true,
+        message:
+          'La salida se registró, pero no fue posible generar el certificado. Revisa la plantilla y vuelve a intentar.',
+      });
+    }
+    const email = await deliverCertificate(certificate.id, req);
+    if (email.status === 'error') {
+      return res.status(200).json({
+        ok: true,
+        salida_registrada: true,
+        certificado_generado: true,
+        estado_envio: 'error',
+        message:
+          'La salida y el certificado se registraron. El correo no se envió; puedes reintentar el envío.',
+      });
+    }
+    return res.json({
+      ok: true,
+      salida_registrada: true,
+      certificado_generado: true,
+      estado_envio: email.status,
+      medalla_otorgada: Boolean(email.medal?.otorgada),
+      message:
+        email.status === 'sent'
+          ? 'Salida registrada y certificado enviado.'
+          : 'Salida registrada; el certificado ya está en proceso de envío.',
+    });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible registrar la salida.');
+  }
+});
+
+router.post(
+  '/api/eventos/:eventId/participantes/:participantId/certificado/generar',
+  requireManager,
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const participantId = parsePositiveId(req.params.participantId);
+    const sendEmail = req.body?.enviar_correo ?? true;
+    if (!eventId || !participantId) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Identificadores de evento o participante inválidos.' });
+    }
+    if (typeof sendEmail !== 'boolean') {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'La opción de envío de correo es inválida.' });
+    }
+    try {
+      const eligible = await pool.query(
+        `
+          SELECT 1
+          FROM encuentro_participante p
+          JOIN encuentro_asistencia a
+            ON a.participante_id = p.id AND a.evento_id = p.evento_id
+          WHERE p.id = $1 AND p.evento_id = $2
+            AND p.activo = TRUE
+            AND a.entrada_en IS NOT NULL
+            AND a.salida_en IS NOT NULL
+        `,
+        [participantId, eventId]
+      );
+      if (!eligible.rows.length) {
+        return res
+          .status(409)
+          .json({ ok: false, message: 'El participante no tiene una participación completada.' });
+      }
+      const certificate = await createCertificate(eventId, participantId, req);
+      if (!sendEmail) {
+        const medal = await awardMedal(certificate.id, req);
+        return res.json({
+          ok: true,
+          certificado_id: certificate.id,
+          estado_envio: certificate.email_estado,
+          correo_omitido: certificate.email_estado !== 'enviado',
+          medalla_otorgada: Boolean(medal?.otorgada),
+        });
+      }
+      const delivery = await deliverCertificate(certificate.id, req);
+      if (delivery.status === 'error') {
+        return res.status(502).json({
+          ok: false,
+          certificado_generado: true,
+          message: 'El certificado está generado, pero no se pudo enviar. Reintenta el correo.',
+        });
+      }
+      return res.json({
+        ok: true,
+        certificado_id: certificate.id,
+        estado_envio: delivery.status,
+        medalla_otorgada: Boolean(delivery.medal?.otorgada),
+      });
+    } catch (error) {
+      return handleServerError(req, res, error, 'No fue posible generar el certificado.');
+    }
+  }
+);
+
+router.patch(
+  '/api/eventos/:eventId/asistencia/:documento/corregir',
+  requireAttendanceCorrection,
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const normalizedDocument = normalizeDocument(req.params.documento);
+    const reason = String(req.body?.motivo || '').trim();
+    const hasEntry = Object.hasOwn(req.body || {}, 'entrada_en');
+    const hasExit = Object.hasOwn(req.body || {}, 'salida_en');
+    const parseTimestamp = (value) => {
+      if (value === null) return null;
+      if (
+        typeof value !== 'string' ||
+        !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+        Number.isNaN(Date.parse(value))
+      ) {
+        return undefined;
+      }
+      return new Date(value).toISOString();
+    };
+    const correctedEntry = parseTimestamp(req.body?.entrada_en);
+    const correctedExit = parseTimestamp(req.body?.salida_en);
+    if (
+      !eventId ||
+      !normalizedDocument ||
+      !reason ||
+      reason.length > 1000 ||
+      !hasEntry ||
+      !hasExit ||
+      correctedEntry === undefined ||
+      correctedExit === undefined
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'Indica un motivo y las fechas de entrada y salida en ISO 8601 con zona horaria; utiliza null para borrar una marca.',
+      });
+    }
+    if (
+      correctedExit &&
+      (!correctedEntry || Date.parse(correctedExit) < Date.parse(correctedEntry))
+    ) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'La salida no puede ser anterior a la entrada.' });
+    }
+
+    try {
+      const result = await withTransaction(async (client) => {
+        const participantResult = await client.query(
+          `
+            SELECT p.id, e.estado
+            FROM encuentro_participante p
+            JOIN encuentro_evento e ON e.id = p.evento_id
+            WHERE p.evento_id = $1
+              AND p.documento_normalizado = $2
+              AND p.activo = TRUE
+            FOR UPDATE OF p
+          `,
+          [eventId, normalizedDocument]
+        );
+        const participant = participantResult.rows[0];
+        if (!participant) return { error: 'not_found' };
+        if (!['en_curso', 'finalizado'].includes(participant.estado)) {
+          return { error: 'invalid_state' };
+        }
+        const certificate = await client.query(
+          'SELECT 1 FROM encuentro_certificado WHERE evento_id = $1 AND participante_id = $2 LIMIT 1',
+          [eventId, participant.id]
+        );
+        if (certificate.rows.length) return { error: 'certificate_exists' };
+        const attendanceResult = await client.query(
+          `
+            SELECT id, entrada_en, salida_en
+            FROM encuentro_asistencia
+            WHERE evento_id = $1 AND participante_id = $2 AND activo = TRUE
+            FOR UPDATE
+          `,
+          [eventId, participant.id]
+        );
+        const attendance = attendanceResult.rows[0];
+        if (!attendance) return { error: 'no_attendance' };
+
+        await client.query(
+          `
+            INSERT INTO encuentro_asistencia_correccion (
+              evento_id, asistencia_id, entrada_anterior, salida_anterior,
+              entrada_nueva, salida_nueva, motivo, corregido_por_usuario_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `,
+          [
+            eventId,
+            attendance.id,
+            attendance.entrada_en,
+            attendance.salida_en,
+            correctedEntry,
+            correctedExit,
+            reason,
+            getSessionUserId(req),
+          ]
+        );
+        await client.query(
+          `
+            UPDATE encuentro_asistencia
+            SET entrada_en = $2::timestamptz,
+                entrada_por_usuario_id = CASE
+                  WHEN entrada_en IS DISTINCT FROM $2::timestamptz THEN $4
+                  ELSE entrada_por_usuario_id
+                END,
+                salida_en = $3::timestamptz,
+                salida_por_usuario_id = CASE
+                  WHEN salida_en IS DISTINCT FROM $3::timestamptz THEN $4
+                  ELSE salida_por_usuario_id
+                END,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1
+          `,
+          [attendance.id, correctedEntry, correctedExit, getSessionUserId(req)]
+        );
+        await writeAudit(client, req, 'asistencia corregida', eventId);
+        return {
+          participante_id: participant.id,
+          completada: Boolean(correctedEntry && correctedExit),
+        };
+      });
+      if (result.error === 'not_found')
+        return res
+          .status(404)
+          .json({ ok: false, message: 'Participante no inscrito o no encontrado.' });
+      if (result.error === 'invalid_state')
+        return res.status(409).json({
+          ok: false,
+          message: 'La asistencia solo puede corregirse en eventos en curso o finalizados.',
+        });
+      if (result.error === 'certificate_exists')
+        return res.status(409).json({
+          ok: false,
+          message: 'No se puede alterar una asistencia que ya tiene un certificado emitido.',
+        });
+      if (result.error === 'no_attendance')
+        return res.status(409).json({
+          ok: false,
+          message: 'No existe un registro de asistencia que se pueda corregir.',
+        });
+
+      let emailState = null;
+      if (result.completada) {
+        const certificate = await createCertificate(eventId, result.participante_id, req);
+        const delivery = await deliverCertificate(certificate.id, req);
+        emailState = delivery.status;
+      }
+      return res.json({
+        ok: true,
+        message: result.completada
+          ? emailState === 'error'
+            ? 'Asistencia corregida y certificado generado, pero el correo no se envió. Puedes reintentar el envío desde el detalle.'
+            : 'Asistencia corregida; se generó el certificado de participación.'
+          : 'Asistencia corregida y registrada en el historial de auditoría.',
+        estado_envio: emailState,
+      });
+    } catch (error) {
+      return handleServerError(req, res, error, 'No fue posible corregir la asistencia.');
+    }
+  }
+);
+
+router.post(
+  '/api/certificados/:certificateId/reintentar-envio',
+  requireManager,
+  async (req, res) => {
+    const certificateId = parsePositiveId(req.params.certificateId);
+    if (!certificateId)
+      return res.status(400).json({ ok: false, message: 'Identificador de certificado inválido.' });
+    try {
+      const result = await deliverCertificate(certificateId, req);
+      if (result.status === 'not_found')
+        return res.status(404).json({ ok: false, message: 'El certificado no existe.' });
+      if (result.status === 'annulled')
+        return res
+          .status(409)
+          .json({ ok: false, message: 'No se puede enviar un certificado anulado.' });
+      if (result.status === 'sending')
+        return res
+          .status(409)
+          .json({ ok: false, message: 'Ya hay un envío en curso. Intenta de nuevo más tarde.' });
+      if (result.status === 'error')
+        return res.status(502).json({
+          ok: false,
+          message: 'Falló el envío. El certificado se conserva y puedes reintentar.',
+        });
+      return res.json({
+        ok: true,
+        estado_envio: 'enviado',
+        medalla_otorgada: Boolean(result.medal?.otorgada),
+      });
+    } catch (error) {
+      return handleServerError(req, res, error, 'No fue posible reintentar el envío.');
+    }
+  }
+);
+
+router.patch(
+  '/api/certificados/:certificateId/anular',
+  requireAttendanceCorrection,
+  async (req, res) => {
+    const certificateId = parsePositiveId(req.params.certificateId);
+    const reason = String(req.body?.motivo || '').trim();
+    if (!certificateId || !reason || reason.length > 1000) {
+      return res.status(400).json({
+        ok: false,
+        message: 'Indica un motivo válido de anulación (máximo 1000 caracteres).',
+      });
+    }
+    try {
+      const result = await withTransaction(async (client) => {
+        const certificateResult = await client.query(
+          'SELECT id, evento_id, estado, email_estado FROM encuentro_certificado WHERE id = $1 FOR UPDATE',
+          [certificateId]
+        );
+        const certificate = certificateResult.rows[0];
+        if (!certificate) return { error: 'not_found' };
+        if (certificate.estado !== 'valido') return { error: 'already_annulled' };
+        if (certificate.email_estado === 'enviando') return { error: 'sending' };
+        await client.query(
+          `
+          UPDATE encuentro_certificado
+          SET estado = 'anulado',
+              anulado_por_usuario_id = $2,
+              anulado_en = CURRENT_TIMESTAMP,
+              motivo_anulacion = $3,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+          [certificateId, getSessionUserId(req), reason]
+        );
+        await writeAudit(client, req, 'certificado anulado', certificate.evento_id);
+        return { annulled: true };
+      });
+      if (result.error === 'not_found')
+        return res.status(404).json({ ok: false, message: 'El certificado no existe.' });
+      if (result.error === 'already_annulled')
+        return res.status(409).json({ ok: false, message: 'El certificado ya está anulado.' });
+      if (result.error === 'sending')
+        return res.status(409).json({
+          ok: false,
+          message: 'Espera a que termine el envío antes de anular el certificado.',
+        });
+      return res.json({ ok: true, message: 'Certificado anulado.' });
+    } catch (error) {
+      return handleServerError(req, res, error, 'No fue posible anular el certificado.');
+    }
+  }
+);
+
+router.get(
+  '/api/certificados/:certificateId/descargar',
+  requireAuthenticatedJson,
+  async (req, res) => {
+    const certificateId = parsePositiveId(req.params.certificateId);
+    if (!certificateId)
+      return res.status(400).json({ ok: false, message: 'Identificador de certificado inválido.' });
+    try {
+      const roles = Array.isArray(req.session?.user?.roles)
+        ? req.session.user.roles.map((role) => String(role).toLowerCase())
+        : [String(req.session?.user?.tipo || '').toLowerCase()];
+      const isManager = roles.some((role) => MANAGER_ROLES.includes(role));
+      const userId = getSessionUserId(req);
+      const result = await pool.query(
+        `
+        SELECT c.archivo_actual, c.codigo
+        FROM encuentro_certificado c
+        JOIN encuentro_participante p
+          ON p.id = c.participante_id AND p.evento_id = c.evento_id
+        WHERE c.id = $1
+          AND c.estado = 'valido'
+          AND ($2::boolean = TRUE OR p.usuario_id = $3)
+      `,
+        [certificateId, isManager, userId]
+      );
+      if (!result.rows[0])
+        return res
+          .status(404)
+          .json({ ok: false, message: 'El certificado no existe o no tienes acceso.' });
+      const filePath = resolveStoredPath(result.rows[0].archivo_actual);
+      await fs.access(filePath);
+      return res.download(filePath, `certificado-${result.rows[0].codigo}.pdf`);
+    } catch (error) {
+      if (error.code === 'ENOENT')
+        return res
+          .status(404)
+          .json({ ok: false, message: 'El archivo del certificado no está disponible.' });
+      return handleServerError(req, res, error, 'No fue posible descargar el certificado.');
+    }
+  }
+);
+
+router.get('/api/mis-logros', requireAuthenticatedJson, async (req, res) => {
+  const userId = getSessionUserId(req);
+  if (!userId)
+    return res
+      .status(401)
+      .json({ ok: false, message: 'La sesión no identifica un usuario MiLab válido.' });
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          l.id,
+          e.nombre AS evento,
+          e.fecha AS fecha_evento,
+          l.fecha_obtencion,
+          c.id AS certificado_id,
+          c.codigo AS codigo_certificado
+        FROM encuentro_logro l
+        JOIN encuentro_evento e ON e.id = l.evento_id
+        JOIN encuentro_certificado c ON c.id = l.certificado_id AND c.estado = 'valido'
+        WHERE l.usuario_id = $1
+        ORDER BY l.fecha_obtencion DESC, l.id DESC
+      `,
+      [userId]
+    );
+    return res.json({ ok: true, logros: result.rows });
+  } catch (error) {
+    return handleServerError(req, res, error, 'No fue posible consultar tus logros.');
+  }
+});
+
+router.get('/api/eventos/:eventId/plantilla-participantes', requireManager, async (_req, res) => {
+  try {
+    const buffer = await buildParticipantTemplateBuffer();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-encuentros.xlsx"');
+    return res.send(buffer);
+  } catch (error) {
+    return handleServerError(_req, res, error, 'No fue posible generar la plantilla Excel.');
+  }
+});
+
+router.get('/api/eventos/:eventId/plantilla-participaciones', requireManager, async (req, res) => {
+  const eventId = parsePositiveId(req.params.eventId);
+  if (!eventId)
+    return res.status(400).json({ ok: false, message: 'Identificador de evento inválido.' });
+  try {
+    const eventResult = await pool.query(
+      'SELECT estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE',
+      [eventId]
+    );
+    if (!eventResult.rows[0])
+      return res.status(404).json({ ok: false, message: 'El evento no existe.' });
+    if (eventResult.rows[0].estado !== 'finalizado') {
+      return res.status(409).json({
+        ok: false,
+        message: 'La plantilla de participación requiere un evento finalizado.',
+      });
+    }
+    const buffer = await buildHistoricalParticipationTemplateBuffer();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="plantilla-participaciones-encuentro-${eventId}.xlsx"`
+    );
+    return res.send(buffer);
+  } catch (error) {
+    return handleServerError(
+      req,
+      res,
+      error,
+      'No fue posible generar la plantilla de participación.'
+    );
+  }
+});
+
+module.exports = router;

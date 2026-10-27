@@ -19,6 +19,8 @@ function client({
   activeLab = true,
   updateAllowed = true,
   auditFailure = false,
+  assignedUals = [11],
+  claimUal = 11,
 } = {}) {
   const calls = [];
   return {
@@ -36,8 +38,15 @@ function client({
         };
       if (sql.includes('INSERT INTO reclamacion_sancion'))
         return { rows: duplicate ? [] : [{ id: 11 }] };
-      if (sql.includes('UPDATE reclamacion_sancion'))
-        return { rows: updateAllowed ? [{ id: 11 }] : [] };
+      if (sql.includes('UPDATE reclamacion_sancion')) {
+        const hasActiveUalScope =
+          !sql.includes('UPDATE reclamacion_sancion r') ||
+          (sql.includes('FROM laboratorista_ual lu') &&
+            sql.includes('lu.ual_id = m.ual_id') &&
+            sql.includes('lu.activo = TRUE') &&
+            assignedUals.includes(claimUal));
+        return { rows: updateAllowed && hasActiveUalScope ? [{ id: 11 }] : [] };
+      }
       if (sql.includes('INSERT INTO log') && auditFailure) throw new Error('audit unavailable');
       return { rows: [] };
     },
@@ -84,7 +93,10 @@ test('the responsible active laboratorista can answer once without changing sanc
   const db = client();
   assert.equal(await respondToSanctionClaim(db, lab, 11, 'a'.repeat(500), 'PROCEDE'), 11);
   const update = db.calls.find((call) => call.sql.includes('UPDATE reclamacion'));
-  assert.match(update.sql, /responsable_documento_id = \$3 AND fecha_respuesta IS NULL/);
+  assert.match(update.sql, /responsable_documento_id = \$3[\s\S]*fecha_respuesta IS NULL/);
+  assert.match(update.sql, /lu\.laboratorista_documento_id = \$3/);
+  assert.match(update.sql, /lu\.ual_id = m\.ual_id/);
+  assert.match(update.sql, /lu\.activo = TRUE/);
   assert.deepEqual(update.params, ['a'.repeat(500), 'PROCEDE', '456', 11]);
   assert.ok(!db.calls.some((call) => call.sql.includes('UPDATE multa')));
   await assert.rejects(
@@ -95,6 +107,27 @@ test('the responsible active laboratorista can answer once without changing sanc
     respondToSanctionClaim(client({ activeLab: false }), lab, 11, 'Respuesta', 'NO_PROCEDE'),
     { status: 403 }
   );
+});
+
+test('laboratorista can respond across assigned UALs but cannot answer a forged cross-UAL claim ID', async () => {
+  const multipleUalDb = client({ assignedUals: [11, 22], claimUal: 22 });
+  assert.equal(await respondToSanctionClaim(multipleUalDb, lab, 11, 'Respuesta', 'PROCEDE'), 11);
+  const scopedUpdate = multipleUalDb.calls.find((call) =>
+    call.sql.includes('UPDATE reclamacion_sancion')
+  );
+  assert.match(scopedUpdate.sql, /lu\.ual_id = m\.ual_id/);
+  assert.doesNotMatch(scopedUpdate.sql, /lu\.ual_id = \$\d/);
+
+  const crossUalDb = client({ assignedUals: [11, 22], claimUal: 33 });
+  await assert.rejects(respondToSanctionClaim(crossUalDb, lab, 99, 'Respuesta', 'PROCEDE'), {
+    status: 409,
+  });
+  const rejectedUpdate = crossUalDb.calls.find((call) =>
+    call.sql.includes('UPDATE reclamacion_sancion')
+  );
+  assert.match(rejectedUpdate.sql, /r\.id = \$4/);
+  assert.match(rejectedUpdate.sql, /lu\.ual_id = m\.ual_id/);
+  assert.ok(!crossUalDb.calls.some((call) => call.sql.includes('INSERT INTO log')));
 });
 
 test('response cannot be empty, oversized, use a forged decision, or come from another role', async () => {
@@ -160,7 +193,7 @@ test('migration and fresh schema enforce one claim, text boundaries and complete
     'utf8'
   );
   const structure = fs.readFileSync(
-    path.resolve(__dirname, '../../../sql-scripts/db_structure.sql'),
+    path.resolve(__dirname, '../../../sql-scripts/prod/db_structure.sql'),
     'utf8'
   );
   const table = (sql) =>

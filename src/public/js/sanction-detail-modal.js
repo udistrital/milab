@@ -107,27 +107,63 @@ async function loadSgaDebtsForStudent(sanctionId, isConfigured) {
     }
 
     const debts = Array.isArray(result.multas) ? result.multas : [];
+    const complete = ['found', 'clear'].includes(result.status);
+    if (!complete) {
+      status.textContent =
+        result.message || 'La consulta de SGA quedó incompleta; el resultado no es concluyente.';
+      status.dataset.state = result.status === 'error' ? 'error' : 'warning';
+      if (!debts.length) return;
+    }
+
     if (!debts.length) {
-      status.textContent = 'No se encontraron multas activas en SGA.';
+      status.textContent = 'No se encontraron multas activas de laboratorio en SGA.';
       status.dataset.state = 'clear';
       return;
     }
 
-    status.textContent = `${debts.length} multa(s) activa(s) reportada(s) por SGA.`;
-    status.dataset.state = 'warning';
+    if (complete) {
+      status.textContent = `${debts.length} multa(s) activa(s) de laboratorio reportada(s) por SGA.`;
+      status.dataset.state = 'warning';
+    } else {
+      status.textContent += ` Se encontraron ${debts.length} multa(s), pero la consulta debe verificarse.`;
+    }
     debts.forEach((debt) => {
       const item = document.createElement('article');
       item.className = 'sanction-sga-item';
       const title = document.createElement('h6');
-      title.textContent = debt.DEU_MATERIAL || 'Multa reportada por SGA';
+      title.textContent = debt.categoria || debt.DEU_MATERIAL || 'Multa reportada por SGA';
       const fields = document.createElement('div');
       fields.className = 'sanction-sga-grid';
-      addSgaDebtField(fields, 'Código', debt.DEU_EST_COD);
-      addSgaDebtField(fields, 'Estado SGA', debt.DEU_ESTADO);
-      addSgaDebtField(fields, 'Fecha', debt.DEU_FECHA);
-      addSgaDebtField(fields, 'Periodo', [debt.DEU_ANO, debt.DEU_PER].filter(Boolean).join(' / '));
-      addSgaDebtField(fields, 'Valor reportado', debt.DEU_MULTA);
-      addSgaDebtField(fields, 'Fecha de pago', debt.DEU_FECHA_PAGO || 'Pendiente');
+      addSgaDebtField(fields, 'Identificador SGA', debt.id_sga || debt.DEU_ID);
+      addSgaDebtField(fields, 'Código académico', debt.codigo_estudiante || debt.DEU_EST_COD);
+      addSgaDebtField(
+        fields,
+        'Concepto',
+        debt.nombre_concepto ||
+          debt.CPTO_NOMBRE ||
+          debt.DEU_CPTO_NOMBRE ||
+          (debt.codigo_concepto || debt.DEU_CPTO_COD
+            ? `Código SGA ${debt.codigo_concepto || debt.DEU_CPTO_COD}`
+            : 'No reportado por SGA')
+      );
+      addSgaDebtField(
+        fields,
+        'Tipo de concepto',
+        debt.tipo_concepto || debt.CPTO_TIPO || debt.DEU_CPTO_TIPO
+      );
+      addSgaDebtField(fields, 'Estado SGA', debt.estado || debt.DEU_ESTADO);
+      addSgaDebtField(fields, 'Fecha', debt.fecha || debt.DEU_FECHA);
+      addSgaDebtField(
+        fields,
+        'Periodo',
+        [debt.anio || debt.DEU_ANO, debt.periodo || debt.DEU_PER].filter(Boolean).join(' / ')
+      );
+      addSgaDebtField(fields, 'Valor reportado', debt.valor ?? debt.DEU_MULTA);
+      addSgaDebtField(
+        fields,
+        'Fecha de pago',
+        debt.fecha_pago || debt.DEU_FECHA_PAGO || 'Pendiente'
+      );
       item.append(title, fields);
       list.append(item);
     });

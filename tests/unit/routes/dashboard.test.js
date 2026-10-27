@@ -3,27 +3,68 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const express = require('express');
 const request = require('supertest');
+const ejs = require('ejs');
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/dashboard.js');
+const workspaceRoot = path.resolve(__dirname, '../../..');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
 const facultyScopePath = path.resolve(__dirname, '../../../src/libs/faculty-scope.js');
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
+const normalizeRoleListForMatch = require(authPath).normalizeRoleListForMatch;
 const appUrlPath = path.resolve(__dirname, '../../../src/libs/app-url.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const userIdentityPath = path.resolve(__dirname, '../../../src/libs/user-identity.js');
 
-function buildApp(route, sessionUser) {
+function buildApp(route, sessionUser, options = {}) {
   const app = express();
   app.use(express.json());
 
   app.use((req, res, next) => {
-    req.session = { user: sessionUser };
-    res.render = (view, locals) => res.status(res.statusCode || 200).json({ view, locals });
+    req.session = {
+      user: sessionUser,
+      ...(options.impersonationAdminUser
+        ? { impersonationAdminUser: options.impersonationAdminUser }
+        : {}),
+    };
+    res.render = (view, locals, callback) => {
+      if (typeof options.render === 'function') {
+        return options.render({ view, locals, callback, req, res });
+      }
+      return res.status(res.statusCode || 200).json({ view, locals });
+    };
     next();
   });
   app.use('/', route);
 
   return app;
+}
+
+function renderDashboardTemplate(locals, sessionUser) {
+  return ejs.renderFile(
+    path.join(workspaceRoot, 'src/views/home/dashboard.ejs'),
+    {
+      csrfToken: 'test-token',
+      cspNonce: 'test-nonce',
+      appVersion: 'test',
+      appNavigation: {
+        primaryLinks: [],
+        secondaryGroups: [],
+        accountLinks: [],
+        role: 'laboratorista',
+        roleLabel: 'Laboratorista',
+      },
+      isAuthenticated: true,
+      tipo: sessionUser.tipo,
+      nombre: sessionUser.nombre || 'Usuario Sintético',
+      documento: sessionUser.documento || '',
+      pendingSanctionsCount: 0,
+      pendingInventoryApprovalsCount: 0,
+      environmentName: 'test',
+      isNonProductionEnvironment: true,
+      ...locals,
+    },
+    { views: [path.join(workspaceRoot, 'src/views')] }
+  );
 }
 
 function loadDashboardRoute({
@@ -87,6 +128,7 @@ function loadDashboardRoute({
     [
       authPath,
       {
+        normalizeRoleListForMatch,
         requireRoles: (roles, options) => {
           requireRolesCalls.push({ roles, options });
           return (req, res, next) => next();
@@ -308,6 +350,49 @@ test('dashboard keeps sanctions out of the platform tab for coordinador scope', 
   }
 });
 
+test('coordinator dashboard omits UAL assignments when their relation is missing', async () => {
+  const queries = [];
+  const missingRelation = new Error('relation "coordinador_ual_encargado" does not exist');
+  missingRelation.code = '42P01';
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      queries.push(sql);
+      if (sql.includes('coordinador_ual_encargado')) throw missingRelation;
+      return { rows: [{ documento: '900', laboratorios_encargados: null }] };
+    },
+  });
+
+  try {
+    const result = await loaded.route.__private.fetchCoordinatorRows();
+
+    assert.equal(result.ualAssignmentsAvailable, false);
+    assert.equal(result.rows[0].laboratorios_encargados, null);
+    assert.equal(queries.length, 2);
+    assert.doesNotMatch(queries[1], /coordinador_ual_encargado/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('coordinator dashboard rethrows database errors unrelated to the optional UAL relation', async () => {
+  const permissionError = new Error('permission denied for table coordinador');
+  permissionError.code = '42501';
+  let queryCount = 0;
+  const loaded = loadDashboardRoute({
+    poolQueryImpl: async () => {
+      queryCount += 1;
+      throw permissionError;
+    },
+  });
+
+  try {
+    await assert.rejects(loaded.route.__private.fetchCoordinatorRows, permissionError);
+    assert.equal(queryCount, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard renders default admin chart set when there is no data', async () => {
   const loaded = loadDashboardRoute();
 
@@ -322,6 +407,10 @@ test('dashboard renders default admin chart set when there is no data', async ()
     assert.equal(response.body.locals.availableCharts.length >= 1, true);
     assert.equal(response.body.locals.coberturaOperativa.totales.porcentajeCubierto, null);
     assert.equal(response.body.locals.actividadPlataforma.acciones30, 0);
+
+    const chartResponse = await request(app).get('/?grafico=estudiantes');
+    assert.equal(chartResponse.status, 200, JSON.stringify(chartResponse.body));
+    assert.equal(chartResponse.body.locals.selectedChart, 'estudiantes');
   } finally {
     loaded.restore();
   }
@@ -951,8 +1040,34 @@ test('dashboard resolves coordinador_general as a global consultation role', () 
       getDashboardRole({ roles: ['coordinador', 'coordinador_general'] }),
       'coordinador_general'
     );
+    assert.equal(
+      getDashboardRole({ roles: ['estudiante', 'gestor_laboratorio'] }),
+      'coordinador_general'
+    );
     assert.equal(getDashboardRole({ roles: ['admin', 'coordinador_general'] }), 'admin');
     assert.deepEqual(getAvailableChartIds('coordinador_general'), getAvailableChartIds('admin'));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('gestor_laboratorio sees the same read-only global dashboard as coordinador_general', async () => {
+  const loaded = loadDashboardRoute();
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'estudiante',
+      roles: ['estudiante', 'gestor_laboratorio'],
+      documento: 'manager-1',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.dashboardRole, 'coordinador_general');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, true);
+    assert.deepEqual(
+      response.body.locals.availableCharts.map((chart) => chart.id),
+      loaded.route.__private.getAvailableChartIds('coordinador_general')
+    );
   } finally {
     loaded.restore();
   }
@@ -1032,7 +1147,7 @@ test('dashboard paz y salvo cards link each role to its own workflow', () => {
     const find = (cards, text) => cards.find((card) => card.label.includes(text));
 
     const coordCards = buildPazYSalvoCards('coordinador', indicators);
-    assert.equal(find(coordCards, 'autorización').href, '/milab/api/aprobacion_multa');
+    assert.equal(find(coordCards, 'Sanciones pendientes').href, '/milab/api/get_list_multas');
     assert.equal(find(coordCards, 'Reclamaciones').href, null);
 
     const labCards = buildPazYSalvoCards('laboratorista', indicators);
@@ -1043,7 +1158,7 @@ test('dashboard paz y salvo cards link each role to its own workflow', () => {
   }
 });
 
-test('dashboard monitoring is limited to admin, coordinador general, coordinador and laboratorista', () => {
+test('dashboard monitoring grants only explicit dashboard roles', () => {
   const loaded = loadDashboardRoute();
   try {
     const dashboardGuard = loaded.requireRolesCalls.find((call) =>
@@ -1054,6 +1169,7 @@ test('dashboard monitoring is limited to admin, coordinador general, coordinador
       'coordinador_general',
       'coordinador',
       'laboratorista',
+      'gestor_laboratorio',
     ]);
     const { getDashboardRole } = loaded.route.__private;
     assert.equal(getDashboardRole({ roles: ['estudiante'] }), '');
@@ -1265,10 +1381,81 @@ test('dashboard scopes coordinator certificates by the faculty encoded in the st
   }
 });
 
+test('dashboard filters coordinator indicators by an assigned faculty', async () => {
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-user',
+      facultyIds: [10],
+    }),
+    poolQueryImpl: async (sql) => {
+      if (sql.includes('FROM certificado_estudiante ce')) {
+        return {
+          rows: [
+            { id: 1, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231077001' },
+            { id: 2, fecha_creacion: new Date().toISOString(), codigo_usuario: '20231005001' },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('SELECT dependencia_facultad_id AS id, nombre')) {
+        return {
+          rows: [{ id: 10, nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      if (sql.includes('SELECT DISTINCT COALESCE(p.nombre, d.nombre) AS nombre')) {
+        return {
+          rows: [{ nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return {
+          rows: [{ nombre: 'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA' }],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-user',
+    });
+    const response = await request(app).get('/?facultad_id=10');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.locals.pazYSalvo.certificados.estudiantes, 1);
+    assert.deepEqual(response.body.locals.scopePresentation.chips, [
+      'FACULTAD DE TECNOLOGIA - POLITECNICA / TECNOLOGICA',
+    ]);
+    assert.equal(
+      response.body.locals.inventoryDashboardUrl,
+      '/milab/api/dashboard/inventarios?fragment=1&facultad_id=10'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('dashboard laboratorista scope reads the UAL faculty column from ual', async () => {
   const ualQueries = [];
+  const inventoryQueries = [];
+  const platformQueries = [];
   const loaded = loadDashboardRoute({
+    poolQueryImpl: async (sql) => {
+      platformQueries.push(sql);
+      return { rows: [] };
+    },
     clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('u.ual_id = ANY($1::int[])')) {
+        inventoryQueries.push({ sql, params });
+      }
       if (sql.includes('FROM information_schema.columns')) {
         return { rows: [{ column_name: params[1][0] }] };
       }
@@ -1292,8 +1479,222 @@ test('dashboard laboratorista scope reads the UAL faculty column from ual', asyn
 
     assert.equal(response.status, 200);
     assert.equal(response.body.locals.dashboardRole, 'laboratorista');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, false);
+    assert.deepEqual(response.body.locals.availableCharts, []);
+    assert.equal(response.body.locals.generalOverview, null);
+    assert.equal(
+      platformQueries.some(
+        (sql) => sql.includes('WITH usuarios_base AS') || sql.includes('FROM laboratorista l')
+      ),
+      false
+    );
     assert.match(ualQueries[0], /facultad_id AS facultad_id/);
     assert.doesNotMatch(ualQueries[0], /dependencia_facultad_id/);
+
+    const deniedChartResponse = await request(app).get('/?grafico=estudiantes');
+    assert.equal(deniedChartResponse.status, 403);
+    assert.match(deniedChartResponse.body.locals.message2, /no tienes permisos/i);
+
+    const deniedSectionResponse = await request(app).get('/?section=general');
+    assert.equal(deniedSectionResponse.status, 403);
+    assert.equal(
+      loaded.route.__private.getDashboardRole({ roles: ['laboratorista_ual'] }),
+      'laboratorista'
+    );
+    const legacyLabApp = buildApp(loaded.route, { roles: ['laboratorista_ual'] });
+    const deniedLegacyRoleResponse = await request(legacyLabApp).get('/?grafico=estudiantes');
+    assert.equal(deniedLegacyRoleResponse.status, 403);
+
+    const inventoryResponse = await request(app).get('/inventarios?fragment=1');
+    assert.equal(inventoryResponse.status, 200);
+    assert.equal(inventoryResponse.body.view, 'home/dashboard/inventarios');
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.ual_id = ANY\(\$1::int\[\]\)/);
+      assert.deepEqual(params, [[7]]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard renders for a synthetic masters student with a laboratorista profile', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: 'synthetic-lab-user' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Sintético', facultad_id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+  const sessionUser = {
+    tipo: 'laboratorista',
+    roles: ['laboratorista', 'estudiante'],
+    documento: 'synthetic-lab-user',
+    nombre: 'Usuario Sintético',
+    carrera: 'Maestría en Ingeniería',
+    programa: 'Maestría en Ingeniería',
+  };
+
+  try {
+    const response = await request(buildApp(loaded.route, sessionUser)).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.dashboardRole, 'laboratorista');
+    assert.equal(response.body.locals.canViewPlatformMonitoring, false);
+
+    const html = await renderDashboardTemplate(response.body.locals, sessionUser);
+
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.ok(html.length > 1000);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard render failures include admin diagnostics during impersonation', async () => {
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: 'synthetic-lab-user' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Sintético', facultad_id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+  const app = buildApp(
+    loaded.route,
+    {
+      tipo: 'laboratorista',
+      roles: ['laboratorista', 'estudiante'],
+      documento: 'synthetic-lab-user',
+    },
+    {
+      impersonationAdminUser: { tipo: 'admin' },
+      render: ({ view, locals, callback, res }) => {
+        if (view === 'home/dashboard') {
+          return callback(new Error('synthetic dashboard EJS failure'));
+        }
+        return res.status(res.statusCode || 200).json({ view, locals });
+      },
+    }
+  );
+
+  try {
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 500);
+    assert.equal(response.body.view, 'home/message_error');
+    assert.match(response.body.locals.adminErrorDetail, /synthetic dashboard EJS failure/);
+    assert.match(response.body.locals.adminErrorDetail, /GET \//);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard renders for a masters student with a laboratorista role when assignments are unavailable', async () => {
+  const missingAssignments = Object.assign(
+    new Error('relation "laboratorista_ual" does not exist'),
+    { code: '42P01' }
+  );
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: '123' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        throw missingAssignments;
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const sessionUser = {
+      tipo: 'laboratorista',
+      roles: ['laboratorista', 'estudiante'],
+      documento: '123',
+      nombre: 'Usuario Sintético',
+      carrera: 'Maestría en Ingeniería',
+      programa: 'Maestría en Ingeniería',
+    };
+    const app = buildApp(loaded.route, sessionUser);
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.canViewInventoryDashboard, false);
+    assert.equal(response.body.locals.pazYSalvo, null);
+    assert.match(
+      response.body.locals.dashboardWarnings[0],
+      /No se pudieron verificar los laboratorios/
+    );
+
+    const html = await renderDashboardTemplate(response.body.locals, sessionUser);
+    assert.match(html, /<!DOCTYPE html>/);
+    assert.ok(html.length > 1000);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('dashboard keeps the main view when optional paz y salvo tables are unavailable', async () => {
+  const missingSanctions = Object.assign(new Error('relation "multa" does not exist'), {
+    code: '42P01',
+  });
+  const loaded = loadDashboardRoute({
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM laboratorista WHERE')) {
+        return { rows: [{ documento: '123' }] };
+      }
+      if (sql.includes('FROM laboratorista_ual') && !sql.includes('EXISTS')) {
+        return { rows: [{ ual_id: 7 }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ ual_id: 7, nombre: 'Lab Física', facultad_id: 50 }] };
+      }
+      if (sql.includes('FROM multa m')) {
+        throw missingSanctions;
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'laboratorista',
+      documento: '123',
+    });
+    const response = await request(app).get('/');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/dashboard');
+    assert.equal(response.body.locals.pazYSalvo, null);
+    assert.match(response.body.locals.dashboardWarnings[0], /Paz y salvos/);
   } finally {
     loaded.restore();
   }
@@ -1586,6 +1987,99 @@ test('inventory dashboard scopes coordinator queries to assigned faculties', asy
     scopedQueries.forEach(({ sql, params }) => {
       assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
       assert.deepEqual(params, [[10, 12]]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory dashboard intersects coordinator filters with assigned faculties', async () => {
+  const inventoryQueries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10],
+      facultyNames: ['Facultad A'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return { rows: [{ id: 10, nombre: 'Facultad A' }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ id: 100, nombre: 'Laboratorio A', facultad_id: 10 }] };
+      }
+      if (sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')) {
+        inventoryQueries.push({ sql, params });
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios?fragment=1&facultad_id=10&ual_id=100');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A', 'Laboratorio A']);
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.match(sql, /u\.facultad_id = \$2/);
+      assert.match(sql, /u\.ual_id = \$3/);
+      assert.deepEqual(params, [[10], 10, 100]);
+    });
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('inventory dashboard ignores coordinator filters outside their assigned scope', async () => {
+  const inventoryQueries = [];
+  const loaded = loadDashboardRoute({
+    scopeImpl: async () => ({
+      coordinatorDocument: 'coord-1',
+      facultyIds: [10],
+      facultyNames: ['Facultad A'],
+    }),
+    clientQueryImpl: async (sql, params = []) => {
+      if (sql.includes('FROM information_schema.columns')) {
+        return { rows: [{ column_name: params[1][0] }] };
+      }
+      if (sql.includes('FROM dependencia_facultad') && sql.includes('= ANY($1::int[])')) {
+        return { rows: [{ id: 10, nombre: 'Facultad A' }] };
+      }
+      if (/FROM ual\s+WHERE/.test(sql)) {
+        return { rows: [{ id: 100, nombre: 'Laboratorio A', facultad_id: 10 }] };
+      }
+      if (sql.includes('FROM inventario i') || sql.includes('FROM inventario_carga c')) {
+        inventoryQueries.push({ sql, params });
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route, {
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+      documento: 'coord-1',
+    });
+    const response = await request(app).get('/inventarios?fragment=1&facultad_id=99&ual_id=999');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.locals.scopeChips, ['Facultad A']);
+    assert.equal(inventoryQueries.length, 3);
+    inventoryQueries.forEach(({ sql, params }) => {
+      assert.match(sql, /u\.facultad_id = ANY\(\$1::int\[\]\)/);
+      assert.doesNotMatch(sql, /u\.facultad_id = \$2|u\.ual_id = \$2/);
+      assert.deepEqual(params, [[10]]);
     });
   } finally {
     loaded.restore();

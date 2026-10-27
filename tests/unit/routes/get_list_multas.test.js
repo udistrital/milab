@@ -31,6 +31,28 @@ function loadRoute({
   sgaDebtServiceImpl,
 } = {}) {
   const originals = new Map();
+  const rawSgaDebtService = sgaDebtServiceImpl || {
+    isConfigured: () => false,
+    async getActiveDebts() {
+      return [];
+    },
+  };
+  const sgaDebtService = {
+    ...rawSgaDebtService,
+    queryStudent:
+      rawSgaDebtService.queryStudent ||
+      (async (args) => {
+        const debts = await rawSgaDebtService.getActiveDebts(args);
+        return {
+          status: debts.length ? 'found' : 'clear',
+          debts,
+          codes: args.codigo ? [args.codigo] : [],
+          message: '',
+          nonLaboratoryCount: 0,
+          unclassifiedCount: 0,
+        };
+      }),
+  };
   const client = {
     release() {},
     async query(sql, params = []) {
@@ -82,12 +104,7 @@ function loadRoute({
     [
       oatiDebtsPath,
       {
-        sgaDebtService: sgaDebtServiceImpl || {
-          isConfigured: () => false,
-          async getActiveDebts() {
-            return [];
-          },
-        },
+        sgaDebtService,
       },
     ],
   ];
@@ -210,10 +227,16 @@ test('sanction edit preserves its original historical category but rejects inact
           cat_multa: categoria,
           tipo_sancion: 'Amonestación verbal o escrita',
           fecha_multa: '2020-01-15',
+          fecha_desde: '2026-01-01',
+          estado_multa: 'Pendiente',
+          facultad_id: '10',
         });
       if (allowed) {
         assert.equal(response.status, 302);
-        assert.equal(response.headers.location, '/milab/api/get_list_multas?success=editada');
+        assert.equal(
+          response.headers.location,
+          '/milab/api/get_list_multas?fecha_desde=2026-01-01&estado_multa=Pendiente&facultad_id=10&success=editada'
+        );
         const update = calls.find((call) => call.sql.includes('UPDATE multa'));
         assert.equal(update.params[0], categoria);
         assert.equal(update.params[2], '2020-01-15');
@@ -387,7 +410,7 @@ test('get_list_multas applies laboratorista UAL assignment scope in query', asyn
   }
 });
 
-test('get_list_multas exposes state-specific actions for authorized laboratoristas', async () => {
+test('get_list_multas exposes direct state actions regardless of faculty authorization flags', async () => {
   const loaded = loadRoute({
     clientQueryImpl: async (sql, params) => {
       if (sql.includes('SELECT documento FROM laboratorista')) {
@@ -401,8 +424,8 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
             {
               requested_id: 5,
               facultad_id: 5,
-              permite_crear_multas_activas_directas: true,
-              permite_saldar_multas_directas: true,
+              permite_crear_multas_activas_directas: false,
+              permite_saldar_multas_directas: false,
             },
           ],
         };
@@ -430,9 +453,9 @@ test('get_list_multas exposes state-specific actions for authorized laboratorist
     assert.equal(rows[0].canSaldar, false);
     assert.equal(rows[1].canActivate, false);
     assert.equal(rows[1].canSaldar, true);
-    assert.equal(rows[2].canAplazar, true);
+    assert.equal(rows[2].canAplazar, false);
     assert.equal(rows[2].canRemove, true);
-    assert.equal(rows[3].canReactivar, true);
+    assert.equal(rows[3].canReactivar, false);
     assert.equal(rows[3].canActivate, false);
     assert.equal(rows[3].canSaldar, false);
     assert.equal(rows[3].canRemove, false);
@@ -562,7 +585,12 @@ test('get_list_multas resolve_name returns false when documento is missing', asy
 
 test('get_list_multas queries SGA debts for a student only when detail is requested', async () => {
   let serviceArguments;
-  const activeDebt = { DEU_EST_COD: '2024100001', DEU_ESTADO: '2', DEU_MATERIAL: 'Tablet' };
+  const activeDebt = {
+    DEU_EST_COD: '2024100001',
+    DEU_ESTADO: '2',
+    DEU_CPTO_COD: '4',
+    DEU_MATERIAL: 'Tablet',
+  };
   const loaded = loadRoute({
     clientQueryImpl: async (sql, params) => {
       assert.match(sql, /m\.id = \$1/);
@@ -600,6 +628,10 @@ test('get_list_multas queries SGA debts for a student only when detail is reques
       ok: true,
       configured: true,
       supported: true,
+      status: 'found',
+      codes: ['2024100001'],
+      summary: { nonLaboratoryCount: 0, unclassifiedCount: 0 },
+      message: '',
       multas: [activeDebt],
     });
   } finally {

@@ -7,8 +7,17 @@ const {
   normalizeLogDocument,
   normalizeInstitutionalEmail,
 } = require('../../libs/account-email');
+const { resolveCoordinatorUserId } = require('../../libs/faculty-scope');
+const {
+  fetchActiveUalOptions,
+  replaceOperationalRoleAssignments,
+} = require('../../libs/operational-role-assignments');
 const { requireJsonRoles, requireRoles } = require('../middlewares/auth');
-const { renderApplicationError, wantsJson } = require('../middlewares/error-handler');
+const {
+  enrichErrorPayloadForAdmin,
+  renderApplicationError,
+  wantsJson,
+} = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -36,24 +45,6 @@ const requireAdminCoordinatorEmailEdit = requireJsonRoles('admin', {
   message: 'No tienes permisos para actualizar este correo.',
 });
 
-async function resolveCoordinatorUserId(client, coordinador) {
-  if (coordinador?.usuario_id) {
-    return coordinador.usuario_id;
-  }
-
-  const result = await client.query(
-    `SELECT id
-     FROM usuario
-     WHERE documento = $1
-        OR documento = $2
-        OR (correo IS NOT NULL AND LOWER(correo) = LOWER($3))
-     LIMIT 1`,
-    [coordinador?.documento || '', coordinador?.nombre_u || '', coordinador?.correo || '']
-  );
-
-  return result.rows[0]?.id || null;
-}
-
 async function resolveExistingColumn(tableName, candidateColumns) {
   try {
     const res = await pool.query(
@@ -66,6 +57,12 @@ async function resolveExistingColumn(tableName, candidateColumns) {
   }
 }
 
+function isMissingCoordinatorUalAssignmentsTable(error) {
+  return (
+    error?.code === '42P01' && String(error.message || '').includes('coordinador_ual_encargado')
+  );
+}
+
 router.get('/', requireAdminCoordinadoresView, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -73,16 +70,21 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
 
   try {
     client = await pool.connect();
-    const query = `
+    const buildQuery = (includeUalAssignments) => {
+      const assignedLabs = includeUalAssignments
+        ? `(SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
+            FROM coordinador_ual_encargado e
+            JOIN ual u ON u.ual_id = e.ual_id
+            WHERE e.coordinador_documento = c.documento)`
+        : 'NULL::text';
+
+      return `
       SELECT c.nombre AS con_nombre,
              c.documento AS con_documento,
              c.correo AS con_correo,
              c.numero_resolucion_coordinador AS con_numero_resolucion_coordinador,
              c.soporte_resolucion AS con_soporte_resolucion,
-             (SELECT STRING_AGG(u.nombre, ', ' ORDER BY u.nombre)
-              FROM coordinador_ual_encargado e
-              JOIN ual u ON u.ual_id = e.ual_id
-              WHERE e.coordinador_documento = c.documento) AS laboratorios_encargados,
+             ${assignedLabs} AS laboratorios_encargados,
              STRING_AGG(
                DISTINCT COALESCE(facultad.nombre, f.nombre),
                ', '
@@ -97,10 +99,12 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
              CASE WHEN COALESCE(role_state.activo, FALSE)
                THEN 'coordinador'
                ELSE 'inactivo'
-             END AS tipo
+             END AS tipo,
+             ARRAY_AGG(DISTINCT ual_row.ual_id ORDER BY ual_row.ual_id) FILTER (WHERE ual_row.ual_id IS NOT NULL) AS ual_ids,
+             STRING_AGG(DISTINCT ual_row.nombre, ', ' ORDER BY ual_row.nombre) FILTER (WHERE ual_row.ual_id IS NOT NULL) AS ual_nombre
       FROM coordinador c
-      JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
-      JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
+      LEFT JOIN coordinador_facultad cf ON cf.coordinador_documento_id = c.documento
+      LEFT JOIN dependencia_facultad f ON f.dependencia_facultad_id = cf.facultad_id
       LEFT JOIN dependencia_facultad facultad ON facultad.dependencia_facultad_id = f.padre_id
       LEFT JOIN usuario u
         ON u.id = c.usuario_id
@@ -115,9 +119,34 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
           AND r.nombre = 'coordinador'
         LIMIT 1
       ) role_state ON true
+      LEFT JOIN usuario_ual_rol_operativo uro
+        ON uro.usuario_id = u.id
+       AND uro.activo = TRUE
+      LEFT JOIN rol uro_rol
+        ON uro_rol.id = uro.rol_id
+       AND uro_rol.nombre = 'coordinador'
+      LEFT JOIN ual ual_row
+        ON ual_row.ual_id = uro.ual_id
+       AND ual_row.activo = TRUE
       GROUP BY c.nombre, c.documento, c.correo, c.numero_resolucion_coordinador, c.soporte_resolucion, role_state.activo
     `;
-    const result = await client.query(query);
+    };
+    let ualAssignmentsAvailable = true;
+    let result;
+    try {
+      result = await client.query(buildQuery(true));
+    } catch (error) {
+      if (!isMissingCoordinatorUalAssignmentsTable(error)) {
+        throw error;
+      }
+
+      console.warn(
+        'Coordinadores registrados: falta coordinador_ual_encargado; se omitirá el dato de laboratorios a cargo.',
+        error.message
+      );
+      result = await client.query(buildQuery(false));
+      ualAssignmentsAvailable = false;
+    }
     const coordinadores = result.rows;
 
     const facultadIdColumn = await resolveExistingColumn('dependencia_facultad', [
@@ -126,7 +155,7 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
       'id_facultad',
     ]);
     const parentIdColumn = await resolveExistingColumn('dependencia_facultad', ['padre_id']);
-    const [facultadesResult, dependenciasResult] = await Promise.all([
+    const [facultadesResult, dependenciasResult, ualesResult] = await Promise.all([
       client.query(
         `SELECT ${facultadIdColumn} AS facultad_id, nombre
          FROM dependencia_facultad
@@ -141,32 +170,47 @@ router.get('/', requireAdminCoordinadoresView, async (req, res) => {
          WHERE ${parentIdColumn} IS NOT NULL
          ORDER BY nombre ASC`
       ),
+      fetchActiveUalOptions(client),
     ]);
     const facultadesDisponibles = facultadesResult.rows;
     const dependenciasDisponibles = dependenciasResult.rows;
+    const ualesDisponibles = ualesResult;
 
     return res.render('home/coordinadores_registrados', {
       coordinadores,
       facultadesDisponibles,
       dependenciasDisponibles,
+      ualesDisponibles,
+      ualAssignmentsAvailable,
     });
   } catch (error) {
     console.error('Error al obtener coordinadores:', error);
 
     if (wantsJson(req)) {
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible cargar los coordinadores registrados.',
-        message2: 'Intenta nuevamente en unos minutos.',
-      });
+      return res.status(500).json(
+        enrichErrorPayloadForAdmin(
+          req,
+          {
+            ok: false,
+            message: 'No fue posible cargar los coordinadores registrados.',
+            message2: 'Intenta nuevamente en unos minutos.',
+          },
+          error
+        )
+      );
     }
 
-    return renderApplicationError(res, {
-      status: 500,
-      message: 'No fue posible cargar los coordinadores registrados.',
-      message2: 'Intenta nuevamente en unos minutos.',
-      limit: null,
-    });
+    return renderApplicationError(
+      res,
+      {
+        status: 500,
+        message: 'No fue posible cargar los coordinadores registrados.',
+        message2: 'Intenta nuevamente en unos minutos.',
+        limit: null,
+      },
+      req,
+      error
+    );
   } finally {
     if (client) client.release();
   }
@@ -221,6 +265,11 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
   const dependencyIds = [
     ...new Set(dependencyIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0)),
   ];
+  const ualProvided = Object.prototype.hasOwnProperty.call(req.body, 'ual_ids');
+  const ualIdsInput = Array.isArray(req.body.ual_ids) ? req.body.ual_ids : [req.body.ual_ids];
+  const ualIds = ualProvided
+    ? [...new Set(ualIdsInput.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+    : [];
   let assignmentIds = legacyFacultyIds;
   let assignmentFacultyNames = [];
   let assignmentDependencyNames = [];
@@ -385,6 +434,67 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       }
     }
 
+    const coordinatorUserId = await resolveCoordinatorUserId(client, coordinador);
+    // El coordinador general no tiene facultad a cargo por diseño.
+    const isCoordinadorGeneral = coordinatorUserId
+      ? (
+          await client.query(
+            `SELECT 1
+             FROM usuario_rol ur
+             JOIN rol r ON r.id = ur.rol_id
+             WHERE ur.usuario_id = $1
+               AND r.nombre = 'coordinador_general'
+             LIMIT 1`,
+            [coordinatorUserId]
+          )
+        ).rows.length > 0
+      : false;
+
+    let ualNames = [];
+    if (ualIds.length > 0) {
+      const ualResult = await client.query(
+        'SELECT ual_id, nombre FROM ual WHERE ual_id = ANY($1::int[]) AND activo = TRUE ORDER BY nombre ASC',
+        [ualIds]
+      );
+      ualNames = ualResult.rows.map((ual) => ual.nombre);
+      if (ualResult.rows.length !== ualIds.length) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message: 'Una o más UALs seleccionadas no existen o están inactivas.',
+        });
+      }
+      if (!coordinatorUserId) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message:
+            'El coordinador no tiene un usuario asociado, por lo que no es posible asignarle UALs.',
+        });
+      }
+    }
+
+    const scopeChangeProvided = ualProvided || assignmentProvided;
+    if (scopeChangeProvided) {
+      const finalFacultyCount = assignmentProvided
+        ? assignmentIds.length
+        : Number(
+            (
+              await client.query(
+                'SELECT COUNT(*)::int AS total FROM coordinador_facultad WHERE coordinador_documento_id = $1',
+                [documento]
+              )
+            ).rows[0].total
+          );
+      if (finalFacultyCount === 0 && !isCoordinadorGeneral) {
+        client.release();
+        return res.status(400).json({
+          ok: false,
+          message: 'Todo coordinador debe tener una facultad asignada.',
+        });
+      }
+    }
+
     const coordinatorFacultyColumn = assignmentProvided
       ? await resolveExistingColumn('coordinador_facultad', ['facultad_id', 'id_facultad'])
       : null;
@@ -452,11 +562,23 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
       }
     }
 
+    if (ualProvided && coordinatorUserId) {
+      await replaceOperationalRoleAssignments({
+        userId: coordinatorUserId,
+        roleName: 'coordinador',
+        ualIds,
+        facultyId: null,
+        createdByUserId: req.session.user?.id || null,
+        client,
+      });
+    }
+
     const logParts = [];
     if (wantsUpdateEmail) logParts.push('correo');
     if (wantsUpdateNumeroResolucion || wantsUpdateSoporteResolucion)
       logParts.push('resoluci\u00F3n');
     if (assignmentProvided) logParts.push('facultades');
+    if (ualProvided) logParts.push('UALs');
 
     await client.query(
       'INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)',
@@ -487,6 +609,7 @@ router.post('/actualizar', requireAdminCoordinatorEmailEdit, async (req, res) =>
             dependencia_nombre: assignmentDependencyNames.join(', '),
           }
         : {}),
+      ...(ualProvided ? { ual_ids: ualIds, ual_nombre: ualNames.join(', ') } : {}),
     });
   } catch (error) {
     if (client) {

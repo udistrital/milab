@@ -14,6 +14,9 @@
     <div class="card-body">
       <form method="post" action="/milab/api/submit_docente" class="row g-3 mx-auto d-flex justify-content-center app-form-grid" data-submit-once="true">
         <%- include('../partials/csrf_field') %>
+        <% if (locals.lookupToken) { %>
+          <input type="hidden" name="lookup_token" value="<%= lookupToken %>">
+        <% } %>
         <p class="app-page-subtitle mb-2"><em>- Verifique sus datos - </em></p>
     <div class="col-md-6">
       <label for="con_nombre" class="form-label">Nombre</label>
@@ -63,8 +66,9 @@
       <% if (uals && uals.length > 0) { %>
         <select class="form-select" id="ual_id" name="ual_id" required>
           <option value="" disabled>Selecciona una UAL</option>
+          <%# Antes cada UAL incluía data-permite-crear-activa-directa y el selector de tipo iniciaba oculto. %>
           <% uals.forEach((ual, index) => { %>
-            <option value="<%= ual.ual_id %>" <%= index === 0 ? 'selected' : '' %> data-permite-crear-activa-directa="<%= ual._permiteCrearActivaDirecta ? '1' : '0' %>" data-laboratoristas="<%= JSON.stringify(ual._laboratoristas || []) %>"><%= ual.nombre %></option>
+            <option value="<%= ual.ual_id %>" <%= index === 0 ? 'selected' : '' %> data-laboratoristas="<%= JSON.stringify(ual._laboratoristas || []) %>"><%= ual.nombre %></option>
           <% }) %>
         </select>
       <% } else { %>
@@ -72,15 +76,15 @@
       <% } %>
     </div>
 
-    <div class="col-md-6" id="tipo_sancion_wrap" style="display:none;">
+    <div class="col-md-6" id="tipo_sancion_wrap">
       <label for="tipo_sancion" class="form-label">Tipo de sanción (Aplica inmediatamente)</label>
-      <select class="form-select" id="tipo_sancion" name="tipo_sancion">
+      <select class="form-select" id="tipo_sancion" name="tipo_sancion" required>
         <option value="">Selecciona tipo de sanción</option>
         <% (Array.isArray(SANCTION_TYPES) ? SANCTION_TYPES : []).forEach(function (tipo) { %>
           <option value="<%= tipo %>"><%= tipo %></option>
         <% }) %>
       </select>
-      <div class="form-text text-muted">Esta UAL pertenece a una facultad autorizada. La sanción se marcará como ACTIVA inmediatamente y se enviará el correo de notificación.</div>
+      <div class="form-text text-muted">La sanción se registrará como ACTIVA inmediatamente y se enviará el correo de notificación.</div>
     </div>
 
     <div class="col-md-6">
@@ -93,7 +97,8 @@
     </div>
     <div class="col-md-6">
       <label for="con_estado_multa" class="form-label">El estado de esta Sanción será:</label>
-      <input type="text" value="Pendiente" class="form-control" id="con_estado_multa" name="con_estado_multa" maxlength="50" readonly>
+      <%# Antes el estado cambiaba entre Pendiente y ACTIVA según la autorización de la UAL. %>
+      <input type="text" value="ACTIVA" class="form-control" id="con_estado_multa" name="con_estado_multa" readonly>
     </div>
         <div id="mensajeError" class="col-md-10 mt-3 mb-2 alert alert-danger d-none" role="alert"></div>
         <div class="col-md-11 justify-content-center d-flex">
@@ -125,9 +130,9 @@
     }
 
     const ualSelect = document.getElementById('ual_id');
-    const tipoWrap = document.getElementById('tipo_sancion_wrap');
-    const tipoSelect = document.getElementById('tipo_sancion');
-    const estadoInput = document.getElementById('con_estado_multa');
+    // const tipoWrap = document.getElementById('tipo_sancion_wrap');
+    // const tipoSelect = document.getElementById('tipo_sancion');
+    // const estadoInput = document.getElementById('con_estado_multa');
     const laboratoristaSelect = document.getElementById('actuar_como_laboratorista');
 
     function syncLaboratoristaOptions() {
@@ -175,6 +180,7 @@
       });
     }
 
+    /*
     function syncUalSeleccionada() {
       if (!ualSelect || !tipoWrap || !estadoInput) return;
       const selected = ualSelect.options[ualSelect.selectedIndex];
@@ -195,10 +201,10 @@
         estadoInput.value = 'Pendiente';
       }
     }
+    */
     if (ualSelect) {
-      ualSelect.addEventListener('change', syncUalSeleccionada);
+      // Antes se sincronizaban aquí el tipo requerido y el estado según la configuración de la UAL.
       ualSelect.addEventListener('change', syncLaboratoristaOptions);
-      syncUalSeleccionada();
       syncLaboratoristaOptions();
     }
   })();

@@ -111,7 +111,7 @@ function parseColumnComments(sqlText) {
 }
 
 function main() {
-  const sqlPath = path.join(__dirname, '..', '..', 'sql-scripts', 'db_structure.sql');
+  const sqlPath = path.join(__dirname, '..', '..', 'sql-scripts', 'prod', 'db_structure.sql');
   const sqlText = fs.readFileSync(sqlPath, 'utf8');
 
   const fkCols = parseFkColumnsFromDbStructure(sqlText);

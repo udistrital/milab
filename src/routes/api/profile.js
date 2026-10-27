@@ -5,6 +5,7 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { buildSessionUser, fetchUserByEmail } = require('../../libs/user-identity');
 const { normalizeRoles, ROLE_LABELS, ROLE_PRIORITY } = require('../../libs/roles');
 const { startSessionLifetime } = require('../../libs/session-policy');
+const { respondOatiUnavailable } = require('../middlewares/error-handler');
 
 const router = express.Router();
 
@@ -302,7 +303,7 @@ function toArray(value) {
 }
 
 function isEligibleStudentRecord(record) {
-  return ['A', 'B'].includes(normalizeEstadoCodigo(record?.estado));
+  return ['A', 'B', 'U'].includes(normalizeEstadoCodigo(record?.estado));
 }
 
 function isActiveTeacherRecord(record) {
@@ -312,8 +313,9 @@ function isActiveTeacherRecord(record) {
   return estado === 'A' || estado === 'ACTIVO';
 }
 
-// Los estados A (activo) y B (prueba académica y activo) habilitan el acceso. Un documento puede
-// tener varios registros: los demás (por ejemplo, egresado de otro programa) solo se informan.
+// A (activo), B (prueba académica y activo) y U (NO ESTUDIANTE ACO04) habilitan el registro.
+// Un documento puede tener varios registros: los demás (por ejemplo, egresado de otro programa)
+// solo se informan.
 async function lookupEligibleStudentRecords(documento, signal) {
   let studentData;
   try {
@@ -351,6 +353,7 @@ async function lookupEligibleStudentRecords(documento, signal) {
           estado = estadoData?.estado?.nombre || estado;
         } catch (error) {
           if (signal.aborted) throw error;
+          if (error?.code === 'OATI_UNAVAILABLE') throw error;
           console.warn('No se pudo resolver el estado del estudiante en OATI:', error.code);
         }
       }
@@ -369,6 +372,7 @@ async function lookupEligibleStudentRecords(documento, signal) {
       carrera = carreraData?.carrerasCollection?.carrera?.[0]?.nombre || '';
     } catch (error) {
       if (signal.aborted) throw error;
+      if (error?.code === 'OATI_UNAVAILABLE') throw error;
       console.warn('No se pudo resolver el programa del estudiante en OATI:', error.code);
       // Se usa el código de carrera de OATI si no se puede resolver el nombre.
     }
@@ -846,6 +850,50 @@ router.get('/identify', async (req, res) => {
   });
 });
 
+const OATI_IDENTIFY_CACHE_TTL_MS = 60 * 1000;
+const OATI_IDENTIFY_CACHE_MAX_ENTRIES = 500;
+const oatiIdentifyCache = new Map();
+
+// Evita repetir las consultas a OATI cuando el mismo documento se reintenta en poco tiempo.
+async function lookupOatiIdentity(documento, signal) {
+  const cached = oatiIdentifyCache.get(documento);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const studentLookup = await lookupEligibleStudentRecords(documento, signal);
+  const teacherLookup = await lookupTeacherByDocumento(documento, signal);
+  const value = {
+    estudiantes: studentLookup.eligibleRecords,
+    docente: teacherLookup.docente,
+    states: [...studentLookup.states, ...teacherLookup.states],
+  };
+
+  const now = Date.now();
+  if (oatiIdentifyCache.size >= OATI_IDENTIFY_CACHE_MAX_ENTRIES) {
+    for (const [key, entry] of oatiIdentifyCache) {
+      if (entry.expiresAt <= now) oatiIdentifyCache.delete(key);
+    }
+  }
+  oatiIdentifyCache.set(documento, { value, expiresAt: now + OATI_IDENTIFY_CACHE_TTL_MS });
+  return value;
+}
+
+function renderRegistrationError(req, res, error) {
+  console.error('Error guardando el registro en MILab:', {
+    code: error?.code,
+    message: error?.message,
+    requestId: req.id,
+  });
+  return res.status(503).render('home/message_error', {
+    message: 'No fue posible completar tu registro',
+    message2:
+      'Ocurrió un problema al guardar tu información en MILab. Intenta nuevamente en unos minutos. Si el problema persiste, solicita ayuda para completar la validación de tu acceso.',
+    limit: 'loginOnly',
+    registrationDenied: true,
+  });
+}
+
 async function identifyProfile(req, res) {
   if (!req.session.microsoftProfile?.correo) {
     return res.redirect('/milab/auth/login');
@@ -884,12 +932,11 @@ async function identifyProfile(req, res) {
   let docente;
   let states;
   try {
-    const studentLookup = await lookupEligibleStudentRecords(documento, signal);
-    estudiantes = studentLookup.eligibleRecords;
-    const teacherLookup = await lookupTeacherByDocumento(documento, signal);
-    docente = teacherLookup.docente;
-    states = [...studentLookup.states, ...teacherLookup.states];
+    ({ estudiantes, docente, states } = await lookupOatiIdentity(documento, signal));
   } catch (error) {
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
     console.error('Error consultando OATI durante el registro:', {
       code: error.code,
       status: error.response?.status,
@@ -913,16 +960,22 @@ async function identifyProfile(req, res) {
       message: error.message,
       requestId: req.id,
     });
-    return res.status(503).render('home/message_error', {
-      message: 'No fue posible completar tu registro',
-      message2: `${
-        states.length
-          ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
-          : 'OATI no reporta un perfil académico habilitado.'
-      } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
-      limit: 'loginOnly',
-      registrationDenied: true,
-    });
+    if (!estudiantes.length) {
+      return res.status(503).render('home/message_error', {
+        message: 'No fue posible completar tu registro',
+        message2: `${
+          states.length
+            ? `OATI reporta los siguientes estados: ${states.join('; ')}.`
+            : 'OATI no reporta un perfil académico habilitado.'
+        } No fue posible verificar tus roles en MILab. Intenta nuevamente o solicita ayuda para completar la validación de tu acceso.`,
+        limit: 'loginOnly',
+        registrationDenied: true,
+      });
+    }
+
+    // OATI already established student eligibility; MILab roles are not required for students.
+    milabRoles = [];
+    milabIdentity = null;
   }
 
   if (!estudiantes.length && !docente && !milabRoles.length) {
@@ -967,27 +1020,32 @@ async function identifyProfile(req, res) {
       startSessionLifetime(req.session);
       req.session.microsoftProfile = null;
       req.session.registroPendiente = null;
+      req.session.showOatiLoginWarning = true;
     }
     return res.redirect('/milab/inicio');
   };
 
-  // Sin perfil OATI activo: ingresa solo con los roles registrados en MILab.
-  if (!estudiantes.length && !docente) {
-    await completeRegistration({ correo, documento, nombre: nombreRegistro, milabRoles });
-    return loginRegisteredUser();
-  }
+  try {
+    // Sin perfil OATI activo: ingresa solo con los roles registrados en MILab.
+    if (!estudiantes.length && !docente) {
+      await completeRegistration({ correo, documento, nombre: nombreRegistro, milabRoles });
+      return await loginRegisteredUser();
+    }
 
-  const singleChoice = estudiantes.length <= 1;
-  if (singleChoice && (await hasPlaceholderAccount(documento))) {
-    await completeRegistration({
-      correo,
-      documento,
-      nombre: nombreRegistro,
-      estudiante: estudiantes[0] || null,
-      docente,
-      milabRoles,
-    });
-    return loginRegisteredUser();
+    const singleChoice = estudiantes.length <= 1;
+    if (singleChoice && (await hasPlaceholderAccount(documento))) {
+      await completeRegistration({
+        correo,
+        documento,
+        nombre: nombreRegistro,
+        estudiante: estudiantes[0] || null,
+        docente,
+        milabRoles,
+      });
+      return await loginRegisteredUser();
+    }
+  } catch (error) {
+    return renderRegistrationError(req, res, error);
   }
 
   req.session.registroPendiente = {

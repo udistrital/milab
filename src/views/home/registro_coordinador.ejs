@@ -140,6 +140,27 @@
       </div>
     </fieldset>
 
+    <fieldset class="col-md-12" id="ualesSection">
+      <legend class="form-label fs-6">UALs asignadas (opcional)</legend>
+      <input
+        type="search"
+        class="form-control mb-2"
+        id="ualesSearch"
+        placeholder="Filtrar UALs..."
+        autocomplete="off"
+      >
+      <div class="coordinator-dependency-list" id="ualesOptions">
+        <% ualesDisponibles.forEach(function(ual) { %>
+          <label class="form-check coordinator-dependency-option" data-ual-option="true" data-search="<%= ual.nombre.toLowerCase() %>">
+            <input class="form-check-input me-2" type="checkbox" name="ual_ids" value="<%= ual.ual_id %>">
+            <span class="form-check-label"><%= ual.nombre %><% if (ual.facultad_nombre) { %> <small class="text-muted">(<%= ual.facultad_nombre %>)</small><% } %></span>
+          </label>
+        <% }); %>
+        <p class="text-muted mb-0" id="ualesEmpty" hidden>No hay UALs que coincidan con la búsqueda.</p>
+      </div>
+      <small class="form-text text-muted">Las UALs pueden ser de cualquier dependencia o facultad. Si asignas UALs, el coordinador solo verá las multas de esas UALs y no tendrá el panel de configuración de facultades.</small>
+    </fieldset>
+
     <!-- NUEVOS CAMPOS -->
     <div class="col-md-6">
       <label for="numero_resolucion_coordinador" class="form-label">Número y año de Resolución del encargo de coordinación</label>
@@ -230,6 +251,7 @@
   function syncFacultySection() {
     var roleSelect = document.getElementById('role_name');
     var facultiesSection = document.getElementById('facultadesSection');
+    var ualesSection = document.getElementById('ualesSection');
     if (!roleSelect || !facultiesSection) {
       return;
     }
@@ -237,14 +259,29 @@
     var isGeneralRole = roleSelect.value === 'coordinador_general';
     facultiesSection.classList.toggle('d-none', isGeneralRole);
     facultiesSection.disabled = isGeneralRole;
+    ualesSection.classList.toggle('d-none', isGeneralRole);
+    ualesSection.disabled = isGeneralRole;
 
     if (isGeneralRole) {
       var checks = document.querySelectorAll('input[name="dependencia_ids"]');
       checks.forEach(function (check) {
         check.checked = false;
       });
+      document.querySelectorAll('input[name="ual_ids"]').forEach(function (check) {
+        check.checked = false;
+      });
       document.getElementById('facultad_id').value = '';
     }
+  }
+
+  function filterUalOptions() {
+    var filter = document.getElementById('ualesSearch').value.trim().toLocaleLowerCase();
+    var visibleCount = 0;
+    document.querySelectorAll('[data-ual-option="true"]').forEach(function (option) {
+      option.hidden = !option.getAttribute('data-search').includes(filter);
+      if (!option.hidden) visibleCount++;
+    });
+    document.getElementById('ualesEmpty').hidden = visibleCount > 0;
   }
 
   function updateDependencyOptions() {
@@ -278,7 +315,9 @@
       radio.addEventListener('change', updateDependencyOptions);
     });
     document.getElementById('dependenciasSearch').addEventListener('input', updateDependencyOptions);
+    document.getElementById('ualesSearch').addEventListener('input', filterUalOptions);
     syncFacultySection();
     updateDependencyOptions();
+    filterUalOptions();
   });
 </script>

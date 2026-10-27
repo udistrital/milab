@@ -123,9 +123,32 @@ function loadRoute({
       {
         sgaDebtService: {
           isConfigured: () => sgaServiceConfigured,
-          getActiveDebts: async (payload) => {
+          queryStudent: async (payload) => {
             sgaRequests.push(payload);
-            return sgaDebtsImpl(payload);
+            const codes = [
+              ...new Set([payload.codigo, ...(payload.codigos || [])].filter(Boolean)),
+            ];
+            const debtsByCode = await Promise.all(
+              codes.map((codigo) => sgaDebtsImpl({ ...payload, codigo }))
+            );
+            const uniqueDebts = new Map();
+            debtsByCode.flat().forEach((debt, index) => {
+              const key = debt.DEU_ID
+                ? `id:${debt.DEU_ID}`
+                : JSON.stringify([debt.DEU_EST_COD, debt.DEU_CPTO_COD, debt.DEU_FECHA, index]);
+              if (!uniqueDebts.has(key)) uniqueDebts.set(key, debt);
+            });
+            const debts = [...uniqueDebts.values()];
+            return {
+              status: debts.length ? 'found' : 'clear',
+              debts,
+              codes,
+              document: payload.documento || null,
+              nonLaboratoryCount: 0,
+              unclassifiedCount: 0,
+              message: '',
+              errors: [],
+            };
           },
         },
       },
@@ -231,7 +254,12 @@ const validCertificateForm = {
 };
 
 test('generate_cert_estudiante_lab blocks the certificate when SGA reports active debts', async () => {
-  const sgaDebt = { DEU_ID: '75806', DEU_ESTADO: '2', DEU_EST_COD: '2024100001' };
+  const sgaDebt = {
+    DEU_ID: '75806',
+    DEU_ESTADO: '2',
+    DEU_EST_COD: '2024100001',
+    DEU_CPTO_COD: '4',
+  };
   const loaded = loadRoute({
     studentRecord: defaultStudentRecord,
     sgaDebtsImpl: async () => [sgaDebt],
@@ -242,12 +270,18 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
       DEU_ID: '111951',
       DEU_ESTADO: 1,
       DEU_EST_COD: defaultStudentRecord.codigo,
+      DEU_CPTO_COD: '4',
       DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
       DEU_MULTA: 1,
       DEU_FECHA_PAGO: null,
     };
     const service = new SgaDebtService({
       serviceConfig: { oatiDebtorsServiceName: 'servicios_academicos_produccion' },
+      requestAcademicData: async () => ({
+        datosEstudianteCollection: {
+          datosBasicosEstudiante: [defaultStudentRecord],
+        },
+      }),
       requestPost: async () => ({ deudas: { estudiantes: sgaDebt } }),
     });
     const loaded = loadRoute({
@@ -264,7 +298,9 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
       assert.equal(response.status, 200);
       assert.equal(response.body.view, 'home/alerta-multado');
       assert.deepEqual(response.body.locals.multaInfo, []);
-      assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaDebt]);
+      assert.deepEqual(response.body.locals.sgaMultaInfo, [
+        { ...sgaDebt, DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA' },
+      ]);
     } finally {
       loaded.restore();
     }
@@ -278,7 +314,13 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.deepEqual(response.body.locals.multaInfo, []);
     assert.deepEqual(response.body.locals.sgaMultaInfo, [sgaDebt]);
-    assert.deepEqual(loaded.sgaRequests, [{ codigo: '2024100001', documento: '1000694178' }]);
+    assert.deepEqual(loaded.sgaRequests, [
+      {
+        codigo: '2024100001',
+        codigos: ['2024100001'],
+        documento: '1000694178',
+      },
+    ]);
   } finally {
     loaded.restore();
   }
@@ -286,7 +328,7 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
 
 test('generate_cert_estudiante_lab shows MILab and SGA debts together', async () => {
   const localFine = { id: 10, con_estado_multa: 'ACTIVA' };
-  const sgaDebt = { DEU_ID: '78741', DEU_ESTADO: '2' };
+  const sgaDebt = { DEU_ID: '78741', DEU_ESTADO: '2', DEU_CPTO_COD: '4' };
   const loaded = loadRoute({
     studentRecord: defaultStudentRecord,
     multaRows: [localFine],
@@ -376,8 +418,11 @@ test('generate_cert_estudiante_lab uses the code associated in MILab instead of 
     assert.equal(response.body.view, 'home/alerta-multado');
     assert.deepEqual(response.body.locals.sgaMultaInfo, [{ DEU_ID: '1', DEU_EST_COD: '20151234' }]);
     assert.deepEqual(loaded.sgaRequests, [
-      { codigo: '20242583011', documento: '1000694178' },
-      { codigo: '20151234', documento: '1000694178' },
+      {
+        codigo: '20242583011',
+        codigos: ['20242583011', '20151234'],
+        documento: '1000694178',
+      },
     ]);
   } finally {
     loaded.restore();

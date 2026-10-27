@@ -14,7 +14,7 @@ test('fresh-install seed and upgrade migration preserve the same 13 categories w
     'utf8'
   );
   const seed = fs.readFileSync(
-    path.resolve(__dirname, '../../../sql-scripts/db_seed_system.sql'),
+    path.resolve(__dirname, '../../../sql-scripts/prod/db_seed_system.sql'),
     'utf8'
   );
   const extractSeed = (sql) =>

@@ -1,0 +1,49 @@
+<div
+  class="modal fade app-tour-intro-modal"
+  id="milabTourIntroModal"
+  tabindex="-1"
+  aria-labelledby="milabTourIntroTitle"
+  aria-describedby="milabTourIntroDescription"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <div class="app-tour-intro-icon" aria-hidden="true">
+          <i class="bi bi-compass"></i>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p class="app-tour-intro-eyebrow">Recorrido interactivo · MiLab</p>
+        <h2 class="modal-title" id="milabTourIntroTitle">Descubre lo que puedes hacer en MiLab</h2>
+        <p class="app-tour-intro-description" id="milabTourIntroDescription">
+          Tu espacio para gestionar laboratorios, equipos y experiencias académicas. Te mostramos
+          qué resuelve cada área y dónde encontrarla; solo verás las opciones habilitadas para tu
+          perfil.
+        </p>
+        <div class="app-tour-intro-points" aria-label="Características del recorrido">
+          <span><i class="bi bi-person-check" aria-hidden="true"></i> A tu perfil</span>
+          <span><i class="bi bi-signpost-split" aria-hidden="true"></i> Paso a paso</span>
+          <span><i class="bi bi-lightning-charge" aria-hidden="true"></i> Sin cambiar de pantalla</span>
+        </div>
+        <label class="form-label fw-semibold" for="milabTourModuleSelect">¿Qué área quieres descubrir?</label>
+        <select class="form-select" id="milabTourModuleSelect" aria-describedby="milabTourModuleHelp">
+          <option value="">Selecciona un módulo disponible</option>
+        </select>
+        <div class="form-text" id="milabTourModuleHelp">
+          Elige una ruta breve o conoce todo tu menú. Usa Anterior y Siguiente para avanzar.
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Ahora no</button>
+        <button type="button" class="btn btn-outline-primary" data-guide-start="module" disabled>
+          Explorar área
+        </button>
+        <button type="button" class="btn btn-primary" data-guide-start="all">
+          Recorrer todo mi menú
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
