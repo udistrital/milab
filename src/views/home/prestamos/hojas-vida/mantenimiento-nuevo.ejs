@@ -4,7 +4,7 @@
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
       <a
-        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
+        href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
         class="btn btn-outline-secondary btn-sm"
       >
         <i class="bi bi-arrow-left"></i> Volver
@@ -112,7 +112,7 @@
         <span>Registrar mantenimiento</span>
       </button>
       <a
-        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
+        href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
         class="btn btn-outline-secondary"
       >
         Cancelar
@@ -179,7 +179,7 @@
         })
         .then(function (result) {
           if (result.ok) {
-            window.location.href = '/milab/prestamos/hojas-vida/' + equipoId + '/mantenimientos';
+            window.location.href = '/milab/inventarios/hojas-vida/' + equipoId + '/mantenimientos';
             return;
           }
           mostrarError(

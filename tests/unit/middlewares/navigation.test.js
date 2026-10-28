@@ -143,6 +143,40 @@ test('buildNavigation falls back to static menu when dynamic menu lookup fails',
   }
 });
 
+test('buildNavigation agrega hojas de vida dentro del grupo Inventarios para roles autorizados', async () => {
+  const loaded = loadNavigationModule({
+    menuImpl: async () => ({
+      primaryLinks: [],
+      secondaryGroups: [
+        {
+          title: 'Inventarios',
+          icon: 'bi-boxes',
+          items: [
+            { label: 'Gestión del inventario', href: '/milab/inventarios/gestion_inventario' },
+          ],
+        },
+      ],
+      accountLinks: [],
+    }),
+  });
+
+  try {
+    const navigation = await loaded.buildNavigation({
+      tipo: 'coordinador',
+      roles: ['coordinador'],
+    });
+    const inventarios = navigation.secondaryGroups.find((group) => group.title === 'Inventarios');
+
+    assert.ok(inventarios);
+    assert.ok(
+      inventarios.items.some((item) => item.href === '/milab/inventarios/hojas-vida'),
+      'debe agregar el acceso a hojas de vida en Inventarios'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('buildNavigation adds dashboard access for gestores with other primary roles', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => ({

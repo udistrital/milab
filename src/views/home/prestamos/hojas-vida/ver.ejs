@@ -25,7 +25,7 @@
 <main class="container app-page-shell" data-testid="hv-ver">
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
-      <a href="/milab/prestamos/hojas-vida" class="btn btn-outline-secondary btn-sm">
+      <a href="/milab/inventarios/hojas-vida" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left"></i> Volver
       </a>
     </div>
@@ -65,7 +65,7 @@
       </div>
       <div class="d-flex gap-2 flex-wrap mt-3">
         <a
-          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/imprimir"
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/imprimir"
           target="_blank"
           rel="noopener"
           class="btn btn-perso btn-sm"
@@ -74,21 +74,21 @@
           <i class="bi bi-printer"></i> Imprimir
         </a>
         <a
-          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
           class="btn btn-outline-primary btn-sm"
           data-testid="action-mantenimientos-hv"
         >
           <i class="bi bi-tools"></i> Mantenimientos
         </a>
         <a
-          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/historial"
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/historial"
           class="btn btn-outline-info btn-sm"
           data-testid="action-historial-hv"
         >
           <i class="bi bi-clock-history"></i> Ver Historial
         </a>
         <a
-          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/editar"
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/editar"
           class="btn btn-outline-secondary btn-sm"
           data-testid="action-editar-hv"
         >
@@ -105,7 +105,7 @@
       </div>
       <div class="card-body text-center">
         <img
-          src="/milab/prestamos/hojas-vida/<%= hojaVida.id %>/documento/<%= foto.id %>"
+          src="/milab/inventarios/hojas-vida/<%= hojaVida.id %>/documento/<%= foto.id %>"
           alt="Fotografia del equipo"
           class="img-fluid rounded"
           style="max-height: 320px;"
@@ -151,7 +151,7 @@
             <li class="mb-2 d-flex align-items-center gap-2 flex-wrap" data-testid="hv-documento">
               <span class="badge bg-secondary"><%= doc.tipo_documento %></span>
               <a
-                href="/milab/prestamos/hojas-vida/<%= hojaVida.id %>/documento/<%= doc.id %>"
+                href="/milab/inventarios/hojas-vida/<%= hojaVida.id %>/documento/<%= doc.id %>"
                 target="_blank"
                 rel="noopener"
               >

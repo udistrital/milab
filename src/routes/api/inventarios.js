@@ -1,8 +1,27 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('node:path');
+const PDFDocument = require('pdfkit');
 const XLSX = require('xlsx');
 const pool = require('../../libs/db');
+const { CAMPOS_POR_SECCION } = require('../../libs/hojas-vida-campos');
+const {
+  TIPOS_EVENTO_MANUALES,
+  etiquetaTipoEvento,
+  claseTipoEvento,
+} = require('../../libs/hojas-vida-eventos');
+const {
+  TIPOS_MANTENIMIENTO,
+  ESTADOS_MANTENIMIENTO,
+  ESTADO_MANTENIMIENTO_DEFAULT,
+  DIAS_ALERTA_VENCIMIENTO_DEFAULT,
+  etiquetaTipoMantenimiento,
+  etiquetaEstadoMantenimiento,
+  claseEstadoMantenimiento,
+  esEstadoEditableMantenimiento,
+  situacionMantenimiento,
+  diasRestantesMantenimiento,
+} = require('../../libs/hojas-vida-mantenimientos');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
@@ -98,6 +117,7 @@ const INVENTORY_TEMPLATE_EXAMPLES = Object.freeze({
 });
 const INVENTORY_ALL_TYPES = Object.values(INVENTORY_TYPES);
 const ADDITIONAL_IDENTIFIER_TYPE = 'nomenclatura_adicional';
+const HOJAS_VIDA_BASE_URL = '/milab/inventarios/hojas-vida';
 const COORDINATOR_OWNER_CONDITION = `
   NOT EXISTS (
     SELECT 1 FROM coordinador_ual_encargado encargado
@@ -198,6 +218,168 @@ function getRedirectUrl(pathname, params = {}) {
   });
   const suffix = query.toString();
   return suffix ? `${pathname}?${suffix}` : pathname;
+}
+
+function sanitizeText(value) {
+  return value === undefined || value === null ? '' : String(value).trim();
+}
+
+function formatHvDate(value) {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatHvDateTime(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function formatHistorialReference(type, id) {
+  if (!type) return null;
+  const labels = {
+    MANTENIMIENTO: 'Mantenimiento',
+    DOCUMENTO: 'Documento',
+  };
+  const label = labels[type] || type;
+  return id ? `${label} #${id}` : label;
+}
+
+function formatearMonedaCOP(valor) {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero)) return null;
+  return numero.toLocaleString('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+
+async function obtenerDiasAlertaVencimientoWeb(client) {
+  try {
+    const result = await client.query(
+      `
+        SELECT dias_alerta_vencimiento
+        FROM mantenimiento_config
+        WHERE activo = TRUE
+        ORDER BY id ASC
+        LIMIT 1
+      `
+    );
+    if (result.rows.length) {
+      const dias = Number(result.rows[0].dias_alerta_vencimiento);
+      if (Number.isFinite(dias) && dias > 0) return dias;
+    }
+  } catch (error) {
+    if (error?.code !== '42P01') throw error;
+  }
+  return DIAS_ALERTA_VENCIMIENTO_DEFAULT;
+}
+
+async function loadHojaVidaByEquipment(client, equipoId) {
+  const result = await client.query(
+    `
+      SELECT
+        hv.*,
+        ec.codigo AS equipo_codigo,
+        ec.nombre AS equipo_nombre,
+        ec.ubicacion AS equipo_ubicacion,
+        ec.facultad AS equipo_facultad,
+        ec.laboratorio AS equipo_laboratorio,
+        inv.laboratorio_ual_id AS equipo_ual_id
+      FROM hoja_vida hv
+      JOIN equipo_catalogo ec ON ec.id = hv.equipo_id
+      LEFT JOIN inventario inv ON inv.id = ec.inventario_id
+      WHERE hv.equipo_id = $1
+        AND hv.activo = TRUE
+      ORDER BY hv.id DESC
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+
+  if (!result.rows.length) return null;
+
+  const hojaVida = result.rows[0];
+  return {
+    hojaVida,
+    equipo: {
+      codigo: hojaVida.equipo_codigo,
+      nombre: hojaVida.equipo_nombre,
+      ubicacion: hojaVida.equipo_ubicacion,
+      facultad: hojaVida.equipo_facultad,
+      laboratorio: hojaVida.equipo_laboratorio,
+    },
+  };
+}
+
+function sendHojaVidaPdf(res, hojaVida, equipo, foto) {
+  const doc = new PDFDocument({ margin: 50 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="Hoja_Vida_${hojaVida.codigo_inventario || hojaVida.id}.pdf"`
+  );
+  doc.pipe(res);
+
+  doc.fontSize(16).fillColor('#000000').text('HOJA DE VIDA DE EQUIPOS', { align: 'center' });
+  doc.moveDown(0.25);
+  doc.fontSize(10).text('Codigo: GL-PR-002-FR-007', { align: 'center' });
+  doc.text('Macro proceso: Apoyo a lo Misional', { align: 'center' });
+  doc.text('Proceso: Gestion de Laboratorios', { align: 'center' });
+  doc.text('Version: 01', { align: 'center' });
+  doc.text('Fecha de aprobacion: 30/10/2017', { align: 'center' });
+  doc.moveDown();
+
+  doc.fontSize(12).text(`Fecha de generacion: ${formatHvDate(new Date())}`);
+  doc.text(`Fecha de actualizacion: ${formatHvDate(hojaVida.fecha_modificacion || new Date())}`);
+  doc.moveDown();
+
+  doc.fontSize(13).text('1. INFORMACION DEL EQUIPO');
+  doc.moveDown(0.25);
+  doc.fontSize(10);
+  CAMPOS_POR_SECCION.forEach((seccion) => {
+    doc.fontSize(11).text(seccion.seccion);
+    doc.moveDown(0.15);
+    seccion.campos.forEach((campo) => {
+      const value = hojaVida[campo.nombre];
+      const formatted =
+        campo.tipo === 'date'
+          ? formatHvDate(value)
+          : value === null || value === undefined || value === ''
+            ? 'No hay informacion'
+            : String(value);
+      doc.fontSize(10).text(`${campo.etiqueta}: ${formatted}`);
+    });
+    doc.moveDown(0.35);
+  });
+
+  doc.fontSize(11).text('Equipo asociado');
+  doc.fontSize(10).text(`Codigo interno: ${equipo.codigo || 'No hay informacion'}`);
+  doc.text(`Nombre: ${equipo.nombre || 'No hay informacion'}`);
+  doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || 'No hay informacion'}`);
+  doc.moveDown();
+
+  if (foto && foto.archivo) {
+    doc.fontSize(11).text('Fotografia del equipo');
+    try {
+      const image = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
+      doc.image(image, { fit: [220, 220], align: 'center' });
+    } catch {
+      doc.fontSize(10).text('No fue posible incrustar la imagen.');
+    }
+  }
+
+  doc.end();
 }
 
 function addRowError(row, message) {
@@ -1312,6 +1494,738 @@ router.get('/plantillas/:tipo', requireInventoryEditor, function (req, res) {
   );
   return res.send(buffer);
 });
+
+router.get('/hojas-vida', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/index', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get('/hojas-vida/reportes/mantenimientos', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/reportes-mantenimientos', {
+    tiposMantenimiento: TIPOS_MANTENIMIENTO,
+    estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get('/hojas-vida/reportes/alertas', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/reportes-alertas', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get('/hojas-vida/reportes/utilizacion', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/reportes-utilizacion', {
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get('/hojas-vida/:equipoId/cargar', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const equipoResult = await pool.query(
+      `
+        SELECT
+          ec.id,
+          ec.codigo,
+          ec.nombre,
+          ec.estado,
+          ec.ubicacion,
+          ec.facultad,
+          ec.laboratorio,
+          inv.placa AS codigo_inventario,
+          inv.serie AS numero_serie,
+          inv.nombre_bien,
+          inv.laboratorio_ual_id AS ual_id
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ec.id = $1
+          AND ec.activo = TRUE
+      `,
+      [equipoId]
+    );
+
+    if (!equipoResult.rows.length) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20existe`);
+    }
+
+    const equipo = equipoResult.rows[0];
+    if (!equipo.ual_id || !(await hasLaboratoryAccess(pool, req, equipo.ual_id))) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    const hvExistente = await pool.query(
+      `
+        SELECT id, estado
+        FROM hoja_vida
+        WHERE equipo_id = $1
+          AND activo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [equipoId]
+    );
+
+    if (hvExistente.rows.length > 0) {
+      const hv = hvExistente.rows[0];
+      const message = encodeURIComponent(
+        hv.estado === 'PENDIENTE_CONFIRMACION'
+          ? 'El equipo ya tiene una hoja de vida pendiente de confirmación.'
+          : 'El equipo ya tiene una hoja de vida registrada.'
+      );
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=${message}`);
+    }
+
+    return res.render('home/prestamos/hojas-vida/cargar', {
+      equipo,
+      maxSizeMB: 10,
+      allowedFormats: '.xlsx, .xls, .pdf',
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando vista de carga HV:', error);
+    return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20la%20vista`);
+  }
+});
+
+router.get('/hojas-vida/:hojaVidaId/confirmar', requireInventoryAccess, async function (req, res) {
+  try {
+    const hojaVidaId = parsePositiveId(req.params.hojaVidaId);
+    if (!hojaVidaId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Hoja%20de%20vida%20invalida`);
+    }
+
+    const hvResult = await pool.query(
+      `
+        SELECT
+          hv.*,
+          ec.codigo AS equipo_codigo,
+          ec.nombre AS equipo_nombre,
+          ec.ubicacion AS equipo_ubicacion,
+          ec.facultad AS equipo_facultad,
+          ec.laboratorio AS equipo_laboratorio,
+          inv.laboratorio_ual_id AS equipo_ual_id
+        FROM hoja_vida hv
+        JOIN equipo_catalogo ec ON ec.id = hv.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id
+        WHERE hv.id = $1
+          AND hv.activo = TRUE
+      `,
+      [hojaVidaId]
+    );
+
+    if (!hvResult.rows.length) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=La%20hoja%20de%20vida%20no%20existe`);
+    }
+
+    const hojaVida = hvResult.rows[0];
+    if (
+      !hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    if (hojaVida.estado === 'ACTIVA') {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=La%20hoja%20de%20vida%20ya%20esta%20confirmada`
+      );
+    }
+
+    const [documentosResult, configResult] = await Promise.all([
+      pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1
+            AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [hojaVidaId]
+      ),
+      pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      ),
+    ]);
+
+    const obligatorios = configResult.rows
+      .filter((row) => row.obligatorio)
+      .map((row) => row.nombre_campo);
+
+    return res.render('home/prestamos/hojas-vida/confirmar', {
+      hojaVida,
+      equipo: {
+        codigo: hojaVida.equipo_codigo,
+        nombre: hojaVida.equipo_nombre,
+        ubicacion: hojaVida.equipo_ubicacion,
+        facultad: hojaVida.equipo_facultad,
+        laboratorio: hojaVida.equipo_laboratorio,
+      },
+      documentos: documentosResult.rows,
+      secciones: CAMPOS_POR_SECCION,
+      obligatorios,
+      maxFotoMB: 5,
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando vista de confirmacion HV:', error);
+    return res.redirect(
+      `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20la%20confirmacion`
+    );
+  }
+});
+
+router.get('/hojas-vida/:equipoId', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const datos = await loadHojaVidaByEquipment(pool, equipoId);
+    if (!datos) {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+      );
+    }
+    if (
+      !datos.hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    const documentosResult = await pool.query(
+      `
+        SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga, usuario_carga
+        FROM hoja_vida_documento
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+        ORDER BY fecha_carga ASC NULLS LAST, id ASC
+      `,
+      [datos.hojaVida.id]
+    );
+
+    const documentos = documentosResult.rows.map((documento) => ({
+      ...documento,
+      fecha_carga_display: formatHvDateTime(documento.fecha_carga),
+    }));
+
+    return res.render('home/prestamos/hojas-vida/ver', {
+      hojaVida: datos.hojaVida,
+      equipo: datos.equipo,
+      secciones: CAMPOS_POR_SECCION,
+      documentos,
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando vista de hoja de vida:', error);
+    return res.redirect(
+      `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20la%20hoja%20de%20vida`
+    );
+  }
+});
+
+router.get('/hojas-vida/:equipoId/editar', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const datos = await loadHojaVidaByEquipment(pool, equipoId);
+    if (!datos) {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+      );
+    }
+    if (
+      !datos.hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    if (datos.hojaVida.estado !== 'ACTIVA') {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}/${datos.hojaVida.id}/confirmar`);
+    }
+
+    const [documentosResult, configResult] = await Promise.all([
+      pool.query(
+        `
+          SELECT id, tipo_documento, nombre_archivo, tipo_mime, fecha_carga
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1
+            AND activo = TRUE
+          ORDER BY fecha_carga ASC NULLS LAST, id ASC
+        `,
+        [datos.hojaVida.id]
+      ),
+      pool.query(
+        `
+          SELECT nombre_campo, obligatorio
+          FROM hoja_vida_config_campos
+          WHERE activo = TRUE
+        `
+      ),
+    ]);
+
+    const obligatorios = configResult.rows
+      .filter((row) => row.obligatorio)
+      .map((row) => row.nombre_campo);
+
+    return res.render('home/prestamos/hojas-vida/editar', {
+      hojaVida: datos.hojaVida,
+      equipo: datos.equipo,
+      secciones: CAMPOS_POR_SECCION,
+      obligatorios,
+      documentos: documentosResult.rows,
+      maxFotoMB: 5,
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando edicion de hoja de vida:', error);
+    return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20la%20edicion`);
+  }
+});
+
+router.get('/hojas-vida/:equipoId/imprimir', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const datos = await loadHojaVidaByEquipment(pool, equipoId);
+    if (!datos) {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+      );
+    }
+    if (
+      !datos.hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+    const fotoResult = await pool.query(
+      `
+        SELECT archivo, tipo_mime
+        FROM hoja_vida_documento
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+          AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [datos.hojaVida.id]
+    );
+
+    return sendHojaVidaPdf(res, datos.hojaVida, datos.equipo, fotoResult.rows[0] || null);
+  } catch (error) {
+    console.error('[inventarios] Error generando PDF de hoja de vida:', error);
+    return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20generar%20el%20PDF`);
+  }
+});
+
+router.get(
+  '/hojas-vida/:hojaVidaId/documento/:documentoId',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const hojaVidaId = parsePositiveId(req.params.hojaVidaId);
+      const documentoId = parsePositiveId(req.params.documentoId);
+      if (!hojaVidaId || !documentoId) {
+        return res.status(400).send('Solicitud invalida.');
+      }
+
+      const accessResult = await pool.query(
+        `
+          SELECT inv.laboratorio_ual_id AS ual_id
+          FROM hoja_vida hv
+          JOIN equipo_catalogo ec ON ec.id = hv.equipo_id
+          LEFT JOIN inventario inv ON inv.id = ec.inventario_id
+          WHERE hv.id = $1
+            AND hv.activo = TRUE
+        `,
+        [hojaVidaId]
+      );
+
+      const ualId = Number(accessResult.rows[0]?.ual_id || 0);
+      if (!ualId || !(await hasLaboratoryAccess(pool, req, ualId))) {
+        return res.status(403).send('Acceso denegado.');
+      }
+
+      const result = await pool.query(
+        `
+          SELECT nombre_archivo, tipo_mime, archivo
+          FROM hoja_vida_documento
+          WHERE id = $1
+            AND hoja_vida_id = $2
+            AND activo = TRUE
+        `,
+        [documentoId, hojaVidaId]
+      );
+
+      if (!result.rows.length || !result.rows[0].archivo) {
+        return res.status(404).send('Documento no encontrado.');
+      }
+
+      const documento = result.rows[0];
+      res.setHeader('Content-Type', documento.tipo_mime || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(documento.nombre_archivo || 'documento')}"`
+      );
+      return res.send(documento.archivo);
+    } catch (error) {
+      console.error('[inventarios] Error descargando documento de hoja de vida:', error);
+      return res.status(500).send('No fue posible obtener el documento.');
+    }
+  }
+);
+
+router.get('/hojas-vida/:equipoId/historial', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const datos = await loadHojaVidaByEquipment(pool, equipoId);
+    if (!datos) {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+      );
+    }
+    if (
+      !datos.hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    const eventosResult = await pool.query(
+      `
+        SELECT
+          id,
+          tipo_evento,
+          campo_modificado,
+          valor_anterior,
+          valor_nuevo,
+          descripcion,
+          usuario,
+          fecha,
+          referencia_tipo,
+          referencia_id
+        FROM hoja_vida_historial
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+        ORDER BY fecha DESC NULLS LAST, id DESC
+      `,
+      [datos.hojaVida.id]
+    );
+
+    const eventos = eventosResult.rows.map((evento) => ({
+      ...evento,
+      fecha_display: formatHvDateTime(evento.fecha),
+      tipo_evento_etiqueta: etiquetaTipoEvento(evento.tipo_evento),
+      tipo_evento_clase: claseTipoEvento(evento.tipo_evento),
+      referencia_display: formatHistorialReference(evento.referencia_tipo, evento.referencia_id),
+    }));
+
+    return res.render('home/prestamos/hojas-vida/historial', {
+      hojaVida: datos.hojaVida,
+      equipo: datos.equipo,
+      eventos,
+      tiposEvento: TIPOS_EVENTO_MANUALES,
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando historial HV:', error);
+    return res.redirect(
+      `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20el%20historial`
+    );
+  }
+});
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/nuevo',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      if (!equipoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-nuevo', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+        estadoDefault: ESTADO_MANTENIMIENTO_DEFAULT,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[inventarios] Error cargando formulario de mantenimiento:', error);
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20el%20formulario`
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      if (!equipoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+
+      const mantenimientosResult = await pool.query(
+        `
+        SELECT
+          id,
+          item,
+          tipo_mantenimiento,
+          fecha_realizacion,
+          estado,
+          costo,
+          responsable,
+          datos_empresa_contratada,
+          tiempo_garantia,
+          especificaciones_mantenimiento,
+          observaciones_repuestos,
+          fecha_cierre,
+          usuario_cierre,
+          fecha_creacion,
+          usuario_creacion,
+          fecha_modificacion,
+          usuario_modificacion
+        FROM mantenimiento
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+        ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+      `,
+        [datos.hojaVida.id]
+      );
+
+      const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
+
+      const mantenimientos = mantenimientosResult.rows.map((mantenimiento) => {
+        const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
+        const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+        const esEditable = esEstadoEditableMantenimiento(estadoCodigo);
+        return {
+          ...mantenimiento,
+          tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
+          estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+          estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+          situacion: situacion.codigo,
+          situacion_etiqueta: situacion.etiqueta,
+          situacion_clase: situacion.clase,
+          dias_restantes: diasRestantesMantenimiento(mantenimiento, new Date()),
+          es_editable: esEditable,
+          editable: esEditable,
+          fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
+          fecha_cierre_display: formatHvDateTime(mantenimiento.fecha_cierre),
+          fecha_creacion_display: formatHvDateTime(mantenimiento.fecha_creacion),
+          fecha_modificacion_display: formatHvDateTime(mantenimiento.fecha_modificacion),
+          costo_display: formatearMonedaCOP(mantenimiento.costo) || '—',
+        };
+      });
+
+      const costoAcumulado = mantenimientos.reduce(
+        (acumulado, item) => acumulado + Number(item.costo || 0),
+        0
+      );
+
+      return res.render('home/prestamos/hojas-vida/mantenimientos', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimientos,
+        diasAlerta,
+        costoAcumulado,
+        costoAcumuladoDisplay: formatearMonedaCOP(costoAcumulado) || '—',
+        estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[inventarios] Error cargando mantenimientos HV:', error);
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20los%20mantenimientos`
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/:mantenimientoId/editar',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      const mantenimientoId = parsePositiveId(req.params.mantenimientoId);
+      if (!equipoId || !mantenimientoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+
+      const mantenimientoResult = await pool.query(
+        `
+          SELECT *
+          FROM mantenimiento
+          WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+          LIMIT 1
+        `,
+        [mantenimientoId, equipoId]
+      );
+
+      if (mantenimientoResult.rows.length === 0) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20existe`
+        );
+      }
+
+      const mantenimiento = mantenimientoResult.rows[0];
+      const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+      if (!esEstadoEditableMantenimiento(estadoCodigo)) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=` +
+            encodeURIComponent(
+              'El mantenimiento ya fue cerrado y no puede modificarse mediante la edición ordinaria.'
+            )
+        );
+      }
+
+      const estadosPermitidos = ESTADOS_MANTENIMIENTO.filter(
+        (estado) => estado.codigo === estadoCodigo
+      );
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-editar', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimiento: {
+          ...mantenimiento,
+          fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
+        },
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: estadosPermitidos,
+        editable: esEstadoEditableMantenimiento(estadoCodigo),
+        estadoEtiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+        fechaRealizacionValor: mantenimiento.fecha_realizacion
+          ? String(mantenimiento.fecha_realizacion).slice(0, 10)
+          : '',
+        fechaCierreDisplay: formatHvDateTime(mantenimiento.fecha_cierre),
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[inventarios] Error cargando edicion de mantenimiento:', error);
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}/${req.params.equipoId}/mantenimientos?error=No%20fue%20posible%20cargar%20el%20mantenimiento`
+      );
+    }
+  }
+);
 
 router.get('/gestion_inventario', requireInventoryAccess, async function (req, res, next) {
   try {

@@ -1,3 +1,120 @@
+const TIPOS_USO_OPCIONES = [
+  { clave: 'ACADEMICO', etiqueta: 'Académico' },
+  { clave: 'INVESTIGACION', etiqueta: 'Investigación' },
+  { clave: 'EXTENSION', etiqueta: 'Extensión' },
+  { clave: 'SERVICIOS', etiqueta: 'Servicios' },
+];
+const CLAVE_USO_OTROS = 'OTROS';
+const ETIQUETA_USO_OTROS = 'Otros';
+
+function normalizarTextoTipoUso(valor) {
+  return String(valor == null ? '' : valor)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
+function buscarOpcionTipoUso(valor) {
+  const normalizado = normalizarTextoTipoUso(valor);
+  if (!normalizado) return null;
+  return (
+    TIPOS_USO_OPCIONES.find(
+      (opcion) =>
+        normalizarTextoTipoUso(opcion.clave) === normalizado ||
+        normalizarTextoTipoUso(opcion.etiqueta) === normalizado
+    ) || null
+  );
+}
+
+
+function parsearTipoUso(valor) {
+  const claves = [];
+  let otro = '';
+  const texto = String(valor == null ? '' : valor).trim();
+  if (!texto) return { claves: claves, otro: otro };
+
+  texto.split(',').forEach(function (token) {
+    const limpio = token.trim();
+    if (!limpio) return;
+    const normalizado = normalizarTextoTipoUso(limpio);
+    if (normalizado === CLAVE_USO_OTROS) {
+      if (claves.indexOf(CLAVE_USO_OTROS) === -1) claves.push(CLAVE_USO_OTROS);
+      return;
+    }
+    if (normalizado.indexOf(CLAVE_USO_OTROS + ':') === 0) {
+      if (claves.indexOf(CLAVE_USO_OTROS) === -1) claves.push(CLAVE_USO_OTROS);
+      const descripcion = limpio.slice(limpio.indexOf(':') + 1).trim();
+      if (descripcion) otro = otro ? otro + ', ' + descripcion : descripcion;
+      return;
+    }
+    const opcion = buscarOpcionTipoUso(limpio);
+    if (opcion) {
+      if (claves.indexOf(opcion.clave) === -1) claves.push(opcion.clave);
+      return;
+    }
+    if (claves.indexOf(CLAVE_USO_OTROS) === -1) claves.push(CLAVE_USO_OTROS);
+    otro = otro ? otro + ', ' + limpio : limpio;
+  });
+
+  return { claves: claves, otro: otro };
+}
+
+
+function serializarTipoUso(claves, otro) {
+  const lista = Array.isArray(claves) ? claves : claves == null ? [] : [claves];
+  const seleccion = [];
+  let marcaOtros = false;
+
+  lista.forEach(function (clave) {
+    const normalizado = normalizarTextoTipoUso(clave);
+    if (!normalizado) return;
+    if (normalizado === CLAVE_USO_OTROS) {
+      marcaOtros = true;
+      return;
+    }
+    const opcion = buscarOpcionTipoUso(normalizado);
+    if (opcion && seleccion.indexOf(opcion.clave) === -1) seleccion.push(opcion.clave);
+  });
+
+  if (marcaOtros) {
+    const descripcion = String(otro == null ? '' : otro)
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/,/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    seleccion.push(descripcion ? CLAVE_USO_OTROS + ':' + descripcion : CLAVE_USO_OTROS);
+  }
+
+  return seleccion.join(',');
+}
+
+
+function normalizarTipoUso(valor) {
+  const parseado = parsearTipoUso(valor);
+  const normalizado = serializarTipoUso(parseado.claves, parseado.otro);
+  return normalizado === '' ? null : normalizado;
+}
+
+
+function opcionesTipoUsoMarcadas(valor) {
+  return parsearTipoUso(valor).claves;
+}
+
+
+function formatearTipoUso(valor) {
+  const parseado = parsearTipoUso(valor);
+  return parseado.claves
+    .map(function (clave) {
+      if (clave === CLAVE_USO_OTROS) {
+        return parseado.otro ? ETIQUETA_USO_OTROS + ': ' + parseado.otro : ETIQUETA_USO_OTROS;
+      }
+      const opcion = TIPOS_USO_OPCIONES.find((item) => item.clave === clave);
+      return opcion ? opcion.etiqueta : clave;
+    })
+    .join(', ');
+}
+
 const SECCIONES_HOJA_VIDA = [
   'Información del equipo',
   'Adquisición y proveedor',
@@ -52,7 +169,14 @@ const CAMPOS_HOJA_VIDA = [
     seccion: 'Información del equipo',
     tipo: 'date',
   },
-  { nombre: 'tipo_uso', etiqueta: 'Uso', seccion: 'Información del equipo', tipo: 'text' },
+  {
+    nombre: 'tipo_uso',
+    etiqueta: 'Uso',
+    seccion: 'Información del equipo',
+    tipo: 'uso',
+    opciones: TIPOS_USO_OPCIONES,
+    permiteOtros: true,
+  },
   {
     nombre: 'responsable',
     etiqueta: 'Responsable',
@@ -171,4 +295,12 @@ module.exports = {
   CAMPOS_HOJA_VIDA,
   CAMPOS_POR_SECCION,
   NOMBRES_CAMPOS_HOJA_VIDA,
+  TIPOS_USO_OPCIONES,
+  CLAVE_USO_OTROS,
+  ETIQUETA_USO_OTROS,
+  parsearTipoUso,
+  serializarTipoUso,
+  normalizarTipoUso,
+  opcionesTipoUsoMarcadas,
+  formatearTipoUso,
 };

@@ -3,15 +3,26 @@ const multer = require('multer');
 const path = require('path');
 
 const pool = require('../../libs/db');
+const { normalizeRoles } = require('../../libs/roles');
 const { requireJsonRoles } = require('../middlewares/auth');
 const { parseSigudExcel } = require('../../libs/hojas-vida-excel');
-const { CAMPOS_HOJA_VIDA, NOMBRES_CAMPOS_HOJA_VIDA } = require('../../libs/hojas-vida-campos');
+const {
+  CAMPOS_HOJA_VIDA,
+  NOMBRES_CAMPOS_HOJA_VIDA,
+  serializarTipoUso,
+} = require('../../libs/hojas-vida-campos');
 const { esTipoEventoManual } = require('../../libs/hojas-vida-eventos');
 const {
   esTipoMantenimientoValido,
   esEstadoMantenimientoValido,
+  esEstadoEditableMantenimiento,
   etiquetaTipoMantenimiento,
+  etiquetaEstadoMantenimiento,
+  situacionMantenimiento,
+  diasRestantesMantenimiento,
+  CODIGOS_ESTADO_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
+  DIAS_ALERTA_VENCIMIENTO_DEFAULT,
 } = require('../../libs/hojas-vida-mantenimientos');
 
 const router = express.Router();
@@ -68,9 +79,16 @@ const CAMPOS_HOJA_VIDA_PERMITIDOS = new Set(NOMBRES_CAMPOS_HOJA_VIDA);
  */
 function normalizarCamposHojaVida(body) {
   const datos = {};
-  Object.keys(body || {}).forEach(function (nombre) {
+  const fuente = body || {};
+  Object.keys(fuente).forEach(function (nombre) {
     if (!CAMPOS_HOJA_VIDA_PERMITIDOS.has(nombre)) return;
-    const valor = body[nombre];
+    const valor = fuente[nombre];
+    if (nombre === 'tipo_uso') {
+      const claves = Array.isArray(valor) ? valor : String(valor == null ? '' : valor).split(',');
+      const serializado = serializarTipoUso(claves, fuente.tipo_uso_otro);
+      datos[nombre] = serializado === '' ? null : serializado;
+      return;
+    }
     if (valor == null) {
       datos[nombre] = null;
       return;
@@ -87,6 +105,12 @@ function normalizarCamposHojaVida(body) {
     }
     datos[nombre] = texto;
   });
+  if (
+    fuente.tipo_uso_grupo !== undefined &&
+    !Object.prototype.hasOwnProperty.call(fuente, 'tipo_uso')
+  ) {
+    datos.tipo_uso = null;
+  }
   return datos;
 }
 
@@ -94,6 +118,81 @@ function sanitizeLikeValue(value) {
   const str = String(value || '').trim();
   if (!str) return '';
   return str.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+function getHojasVidaUserRoles(req) {
+  return normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+}
+
+function getHojasVidaUserDocument(req) {
+  return String(req.session?.user?.documento || '').trim();
+}
+
+function isGlobalHojasVidaViewer(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['admin', 'administrador', 'coordinador_general', 'coordinador general'].includes(role)
+  );
+}
+
+function isHojasVidaLaboratorista(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['laboratorista', 'laboratorista_ud', 'laboratorista_ual'].includes(role)
+  );
+}
+
+function isHojasVidaCoordinator(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['coordinador', 'coordinador_facultad', 'coordinador de facultad'].includes(role)
+  );
+}
+
+async function getAccessibleHojasVidaLaboratoryIds(req) {
+  if (isGlobalHojasVidaViewer(req)) {
+    return null;
+  }
+
+  const document = getHojasVidaUserDocument(req);
+  if (!document) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `
+      SELECT DISTINCT u.ual_id
+      FROM ual u
+      WHERE u.activo = TRUE
+        AND (
+          (
+            $1::boolean
+            AND EXISTS (
+              SELECT 1
+              FROM laboratorista_ual lu
+              WHERE lu.ual_id = u.ual_id
+                AND lu.laboratorista_documento_id = $3
+                AND lu.activo = TRUE
+            )
+          )
+          OR (
+            $2::boolean
+            AND EXISTS (
+              SELECT 1
+              FROM coordinador_facultad_alcance ca
+              JOIN coordinador c
+                ON c.documento = ca.coordinador_documento_id
+               AND c.activo = TRUE
+              WHERE ca.facultad_id = u.facultad_id
+                AND ca.coordinador_documento_id = $3
+                AND ca.activo = TRUE
+            )
+          )
+        )
+    `,
+    [isHojasVidaLaboratorista(req), isHojasVidaCoordinator(req), document]
+  );
+
+  return result.rows
+    .map((row) => Number(row.ual_id))
+    .filter((value) => Number.isInteger(value) && value > 0);
 }
 
 /**
@@ -161,10 +260,200 @@ function normalizarValorComparacion(valor, tipo) {
   return texto === '' ? null : texto;
 }
 
+
+function normalizarCostoOpcional(valor) {
+  if (valor == null) return null;
+  const texto = String(valor).trim();
+  if (texto === '') return null;
+  const num = Number(texto.replace(/\s/g, '').replace(/,/g, ''));
+  return Number.isFinite(num) && num >= 0 ? num : NaN;
+}
+
+
+async function obtenerDiasAlertaVencimiento(cliente) {
+  try {
+    const result = await cliente.query(
+      `
+        SELECT dias_alerta_vencimiento
+        FROM mantenimiento_config
+        WHERE activo = TRUE
+        ORDER BY id ASC
+        LIMIT 1
+      `
+    );
+    const dias = Number(result.rows[0]?.dias_alerta_vencimiento);
+    return Number.isFinite(dias) ? dias : DIAS_ALERTA_VENCIMIENTO_DEFAULT;
+  } catch {
+    return DIAS_ALERTA_VENCIMIENTO_DEFAULT;
+  }
+}
+
+
+async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
+  const ejecucionResult = await cliente.query(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM mantenimiento
+      WHERE equipo_id = $1 AND activo = TRUE AND estado = 'EN_EJECUCION'
+    `,
+    [equipoId]
+  );
+  const enEjecucion = Number(ejecucionResult.rows[0]?.total || 0) > 0;
+
+  const equipoResult = await cliente.query(
+    `
+      SELECT estado
+      FROM equipo
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+  if (equipoResult.rows.length === 0) return null;
+
+  const estadoActual = String(equipoResult.rows[0].estado || '');
+  let estadoNuevo = estadoActual;
+
+  if (enEjecucion) {
+    if (estadoActual === 'disponible' || estadoActual === 'mantenimiento') {
+      estadoNuevo = 'mantenimiento';
+    }
+  } else if (estadoActual === 'mantenimiento') {
+    estadoNuevo = 'disponible';
+  }
+
+  if (estadoNuevo !== estadoActual) {
+    await cliente.query(
+      `
+        UPDATE equipo
+        SET estado = $2,
+            fecha_modificacion = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `,
+      [equipoId, estadoNuevo]
+    );
+  }
+
+  return estadoNuevo;
+}
+
+
+async function registrarEventoHistorial(
+  cliente,
+  hojaVidaId,
+  equipoId,
+  descripcion,
+  usuario,
+  opciones = {}
+) {
+  const tipoEvento = opciones.tipoEvento || 'MANTENIMIENTO';
+  await cliente.query(
+    `
+      INSERT INTO hoja_vida_historial (
+        hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion,
+        referencia_tipo, referencia_id
+      ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
+    `,
+    [
+      hojaVidaId,
+      equipoId,
+      tipoEvento,
+      descripcion,
+      usuario,
+      opciones.referenciaTipo || null,
+      opciones.referenciaId || null,
+    ]
+  );
+}
+
+
+const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
+
+const SEVERIDAD_SITUACION = {
+  EN_EJECUCION: 4,
+  VENCIDO: 3,
+  PROXIMO_VENCER: 2,
+  VIGENTE: 1,
+  CUMPLIDO: 0,
+  CANCELADO: 0,
+};
+
+
+async function construirResumenEquipos(cliente, equipoIds, diasAlerta) {
+  const resumen = {};
+  if (!Array.isArray(equipoIds) || equipoIds.length === 0) return resumen;
+
+  equipoIds.forEach(function (id) {
+    resumen[id] = {
+      alerta: null,
+      costo_total: 0,
+      prestamos_total: 0,
+      mantenimientos_total: 0,
+    };
+  });
+
+  const mantenimientosResult = await cliente.query(
+    `
+      SELECT equipo_id, estado, fecha_realizacion, costo
+      FROM mantenimiento
+      WHERE equipo_id = ANY($1::int[]) AND activo = TRUE
+    `,
+    [equipoIds]
+  );
+
+  mantenimientosResult.rows.forEach(function (fila) {
+    const id = Number(fila.equipo_id);
+    const item = resumen[id];
+    if (!item) return;
+    item.mantenimientos_total += 1;
+    item.costo_total += Number(fila.costo || 0);
+
+    const estado = String(fila.estado || '').toUpperCase();
+    if (estado === 'CUMPLIDO' || estado === 'CANCELADO' || estado === 'VENCIDO') return;
+    const situacion = situacionMantenimiento(
+      { estado: estado, fecha_realizacion: fila.fecha_realizacion },
+      diasAlerta
+    );
+    if (situacion.codigo === 'CUMPLIDO' || situacion.codigo === 'CANCELADO') return;
+    const severidad = SEVERIDAD_SITUACION[situacion.codigo] || 0;
+    if (!item.alerta || severidad > (SEVERIDAD_SITUACION[item.alerta.codigo] || 0)) {
+      item.alerta = {
+        codigo: situacion.codigo,
+        etiqueta: situacion.etiqueta,
+        clase: situacion.clase,
+        dias_restantes: diasRestantesMantenimiento(
+          { estado: estado, fecha_realizacion: fila.fecha_realizacion },
+          new Date()
+        ),
+      };
+    }
+  });
+
+  const prestamosResult = await cliente.query(
+    `
+      SELECT equipo_id, COUNT(*)::int AS total
+      FROM solicitud_prestamo
+      WHERE equipo_id = ANY($1::int[])
+        AND activo = TRUE
+        AND estado = ANY($2::text[])
+      GROUP BY equipo_id
+    `,
+    [equipoIds, ESTADOS_PRESTAMO_COMPUTABLES]
+  );
+
+  prestamosResult.rows.forEach(function (fila) {
+    const id = Number(fila.equipo_id);
+    if (resumen[id]) resumen[id].prestamos_total = Number(fila.total || 0);
+  });
+
+  return resumen;
+}
+
 router.get('/equipos', async function buscarEquiposHV(req, res) {
   try {
     const params = [];
     const conditions = [];
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
 
     const codigoInventario = sanitizeLikeValue(req.query.codigo_inventario);
     const codigoInterno = sanitizeLikeValue(req.query.codigo_interno);
@@ -181,7 +470,7 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
 
     if (codigoInterno) {
       params.push(`%${codigoInterno}%`);
-      conditions.push(`e.codigo ILIKE $${params.length} ESCAPE '\\'`);
+      conditions.push(`ec.codigo ILIKE $${params.length} ESCAPE '\\'`);
     }
 
     if (numeroSerie) {
@@ -192,7 +481,7 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
     if (nombreEquipo) {
       params.push(`%${nombreEquipo}%`);
       conditions.push(
-        `(e.nombre ILIKE $${params.length} ESCAPE '\\' OR inv.nombre_bien ILIKE $${params.length} ESCAPE '\\')`
+        `(ec.nombre ILIKE $${params.length} ESCAPE '\\' OR inv.nombre_bien ILIKE $${params.length} ESCAPE '\\')`
       );
     }
 
@@ -210,25 +499,33 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
       params.push(`%${buscar}%`);
       const idx = params.length;
       conditions.push(
-        `(e.codigo ILIKE $${idx} ESCAPE '\\' OR e.nombre ILIKE $${idx} ESCAPE '\\' OR ` +
+        `(ec.codigo ILIKE $${idx} ESCAPE '\\' OR ec.nombre ILIKE $${idx} ESCAPE '\\' OR ` +
           `inv.placa ILIKE $${idx} ESCAPE '\\' OR inv.serie ILIKE $${idx} ESCAPE '\\' OR ` +
           `inv.nombre_bien ILIKE $${idx} ESCAPE '\\' OR hv.marca ILIKE $${idx} ESCAPE '\\' OR ` +
           `hv.referencia_modelo ILIKE $${idx} ESCAPE '\\')`
       );
     }
 
+    if (Array.isArray(accessibleLaboratoryIds)) {
+      if (accessibleLaboratoryIds.length === 0) {
+        return res.json({ ok: true, data: [] });
+      }
+      params.push(accessibleLaboratoryIds);
+      conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
+    }
+
     const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
 
     const sql = `
       SELECT
-        e.id AS equipo_id,
-        e.codigo AS codigo_interno,
-        e.nombre AS nombre_equipo,
-        e.categoria,
-        e.estado AS estado_equipo,
-        e.ubicacion,
-        e.facultad,
-        e.laboratorio,
+        ec.id AS equipo_id,
+        ec.codigo AS codigo_interno,
+        ec.nombre AS nombre_equipo,
+        ec.categoria,
+        ec.estado AS estado_equipo,
+        ec.ubicacion,
+        ec.facultad,
+        ec.laboratorio,
         inv.placa AS codigo_inventario,
         inv.serie AS numero_serie,
         inv.nombre_bien AS nombre_bien_inventario,
@@ -238,21 +535,25 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
         COALESCE(hv.referencia_modelo, NULL) AS referencia_modelo,
         EXISTS (
           SELECT 1 FROM hoja_vida hv2
-          WHERE hv2.equipo_id = e.id AND hv2.activo = TRUE
+          WHERE hv2.equipo_id = ec.id AND hv2.activo = TRUE
         ) AS tiene_hoja_vida,
         EXISTS (
           SELECT 1 FROM mantenimiento m
           JOIN hoja_vida hv3 ON hv3.id = m.hoja_vida_id
-          WHERE hv3.equipo_id = e.id AND m.activo = TRUE
+          WHERE hv3.equipo_id = ec.id AND m.activo = TRUE
         ) AS tiene_mantenimientos
-      FROM equipo e
-      LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-      LEFT JOIN hoja_vida hv ON hv.equipo_id = e.id AND hv.activo = TRUE
-      WHERE e.activo = TRUE ${whereClause}
-      ORDER BY e.fecha_creacion DESC NULLS LAST, e.id DESC
+      FROM equipo_catalogo ec
+      LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+      LEFT JOIN hoja_vida hv ON hv.equipo_id = ec.id AND hv.activo = TRUE
+      WHERE ec.activo = TRUE ${whereClause}
+      ORDER BY ec.fecha_creacion DESC NULLS LAST, ec.id DESC
     `;
 
     const result = await pool.query(sql, params);
+
+    const equipoIds = result.rows.map((row) => Number(row.equipo_id));
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+    const resumenPorEquipo = await construirResumenEquipos(pool, equipoIds, diasAlerta);
 
     const data = result.rows.map((row) => ({
       equipo_id: Number(row.equipo_id),
@@ -271,18 +572,545 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
       hoja_vida_estado: row.hoja_vida_estado || null,
       tiene_hoja_vida: Boolean(row.tiene_hoja_vida),
       tiene_mantenimientos: Boolean(row.tiene_mantenimientos),
+      alerta: resumenPorEquipo[Number(row.equipo_id)]?.alerta || null,
+      costo_mantenimiento_acumulado: resumenPorEquipo[Number(row.equipo_id)]?.costo_total || 0,
+      prestamos_total: resumenPorEquipo[Number(row.equipo_id)]?.prestamos_total || 0,
     }));
 
     return res.json({
       ok: true,
       data,
       count: data.length,
+      dias_alerta_vencimiento: diasAlerta,
     });
   } catch (error) {
     console.error('[hojas-vida] Error buscando equipos:', error);
     return res.status(500).json({
       ok: false,
       message: 'No fue posible consultar los equipos.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+
+function aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions) {
+  if (!Array.isArray(accessibleLaboratoryIds)) return true;
+  if (accessibleLaboratoryIds.length === 0) {
+    conditions.push('1 = 0');
+    return false;
+  }
+  params.push(accessibleLaboratoryIds);
+  conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
+  return true;
+}
+
+
+router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(req, res) {
+  try {
+    const params = [];
+    const conditions = [];
+
+    const tipo = String(req.query.tipo_mantenimiento || '')
+      .trim()
+      .toUpperCase();
+    if (tipo) {
+      if (!esTipoMantenimientoValido(tipo)) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'El tipo de mantenimiento no es valido.' });
+      }
+      params.push(tipo);
+      conditions.push(`m.tipo_mantenimiento = $${params.length}`);
+    }
+
+    const estado = String(req.query.estado || '')
+      .trim()
+      .toUpperCase();
+    if (estado) {
+      if (!esEstadoMantenimientoValido(estado)) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'El estado del mantenimiento no es valido.' });
+      }
+      params.push(estado);
+      conditions.push(`m.estado = $${params.length}`);
+    }
+
+    const equipoId = Number(req.query.equipo_id);
+    if (Number.isInteger(equipoId) && equipoId > 0) {
+      params.push(equipoId);
+      conditions.push(`m.equipo_id = $${params.length}`);
+    }
+
+    const fechaDesde = normalizarFechaDiaOpcional(req.query.fecha_desde);
+    if (fechaDesde) {
+      params.push(fechaDesde);
+      conditions.push(`m.fecha_realizacion >= $${params.length}`);
+    }
+
+    const fechaHasta = normalizarFechaDiaOpcional(req.query.fecha_hasta);
+    if (fechaHasta) {
+      params.push(fechaHasta);
+      conditions.push(`m.fecha_realizacion <= $${params.length}`);
+    }
+
+    const facultad = sanitizeLikeValue(req.query.facultad);
+    if (facultad) {
+      params.push(`%${facultad}%`);
+      conditions.push(`ec.facultad ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const laboratorio = sanitizeLikeValue(req.query.laboratorio);
+    if (laboratorio) {
+      params.push(`%${laboratorio}%`);
+      conditions.push(`ec.laboratorio ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
+    const result = await pool.query(
+      `
+        SELECT m.id, m.equipo_id, m.tipo_mantenimiento, m.estado, m.fecha_realizacion, m.costo,
+               ec.codigo AS equipo_codigo, ec.nombre AS equipo_nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad
+        FROM mantenimiento m
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE m.activo = TRUE AND ec.activo = TRUE ${whereClause}
+        ORDER BY m.fecha_realizacion DESC NULLS LAST, m.id DESC
+      `,
+      params
+    );
+
+    const filas = result.rows;
+    const porEstado = {};
+    CODIGOS_ESTADO_MANTENIMIENTO.forEach(function (codigo) {
+      porEstado[codigo] = 0;
+    });
+    let costoTotal = 0;
+    const porEquipoMap = new Map();
+    const porLaboratorioMap = new Map();
+    const porPeriodoMap = new Map();
+    const porTipoMap = new Map();
+
+    filas.forEach(function (fila) {
+      const estadoFila = String(fila.estado || '').toUpperCase();
+      porEstado[estadoFila] = (porEstado[estadoFila] || 0) + 1;
+      const costo = Number(fila.costo || 0);
+      costoTotal += costo;
+
+      const eqKey = Number(fila.equipo_id);
+      if (!porEquipoMap.has(eqKey)) {
+        porEquipoMap.set(eqKey, {
+          equipo_id: eqKey,
+          equipo_codigo: fila.equipo_codigo,
+          equipo_nombre: fila.equipo_nombre,
+          laboratorio: fila.laboratorio,
+          facultad: fila.facultad,
+          total: 0,
+          costo: 0,
+        });
+      }
+      const eq = porEquipoMap.get(eqKey);
+      eq.total += 1;
+      eq.costo += costo;
+
+      const labKey = fila.laboratorio || 'Sin laboratorio';
+      if (!porLaboratorioMap.has(labKey)) {
+        porLaboratorioMap.set(labKey, {
+          laboratorio: labKey,
+          facultad: fila.facultad,
+          total: 0,
+          costo: 0,
+        });
+      }
+      const lab = porLaboratorioMap.get(labKey);
+      lab.total += 1;
+      lab.costo += costo;
+
+      const periodo = fila.fecha_realizacion
+        ? String(fila.fecha_realizacion).slice(0, 7)
+        : 'Sin fecha';
+      if (!porPeriodoMap.has(periodo)) {
+        porPeriodoMap.set(periodo, { periodo: periodo, total: 0, costo: 0 });
+      }
+      const periodoItem = porPeriodoMap.get(periodo);
+      periodoItem.total += 1;
+      periodoItem.costo += costo;
+
+      const tipoFila = String(fila.tipo_mantenimiento || '').toUpperCase();
+      if (!porTipoMap.has(tipoFila)) {
+        porTipoMap.set(tipoFila, {
+          tipo: tipoFila,
+          etiqueta: etiquetaTipoMantenimiento(tipoFila),
+          total: 0,
+          costo: 0,
+        });
+      }
+      const tipoItem = porTipoMap.get(tipoFila);
+      tipoItem.total += 1;
+      tipoItem.costo += costo;
+    });
+
+    return res.json({
+      ok: true,
+      data: {
+        resumen: {
+          total: filas.length,
+          costo_total: costoTotal,
+          costo_promedio: filas.length ? costoTotal / filas.length : 0,
+          por_estado: porEstado,
+        },
+        por_equipo: Array.from(porEquipoMap.values()),
+        por_laboratorio: Array.from(porLaboratorioMap.values()),
+        por_periodo: Array.from(porPeriodoMap.values()),
+        por_tipo: Array.from(porTipoMap.values()),
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error generando reporte de mantenimientos:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible generar el reporte de mantenimientos.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+
+router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
+  try {
+    const params = [];
+    const conditions = [];
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+
+    const result = await pool.query(
+      `
+        SELECT m.id, m.equipo_id, m.tipo_mantenimiento, m.estado, m.fecha_realizacion,
+               ec.codigo AS equipo_codigo, ec.nombre AS equipo_nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad
+        FROM mantenimiento m
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE m.activo = TRUE AND ec.activo = TRUE
+          AND m.estado NOT IN ('CUMPLIDO', 'CANCELADO')
+          ${whereClause}
+        ORDER BY m.fecha_realizacion ASC NULLS LAST, m.id ASC
+      `,
+      params
+    );
+
+    const filas = [];
+    result.rows.forEach(function (fila) {
+      const situacion = situacionMantenimiento(
+        { estado: fila.estado, fecha_realizacion: fila.fecha_realizacion },
+        diasAlerta
+      );
+      if (situacion.codigo === 'VIGENTE') return;
+      filas.push({
+        mantenimiento_id: Number(fila.id),
+        equipo_id: Number(fila.equipo_id),
+        equipo_codigo: fila.equipo_codigo,
+        equipo_nombre: fila.equipo_nombre,
+        codigo_inventario: fila.equipo_codigo,
+        laboratorio: fila.laboratorio,
+        facultad: fila.facultad,
+        tipo_mantenimiento: fila.tipo_mantenimiento,
+        tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(fila.tipo_mantenimiento),
+        fecha_programada: fila.fecha_realizacion,
+        estado: fila.estado,
+        estado_etiqueta: etiquetaEstadoMantenimiento(fila.estado),
+        situacion: situacion.codigo,
+        situacion_etiqueta: situacion.etiqueta,
+        situacion_clase: situacion.clase,
+        dias_restantes: diasRestantesMantenimiento(
+          { estado: fila.estado, fecha_realizacion: fila.fecha_realizacion },
+          new Date()
+        ),
+      });
+    });
+
+    const conteoPorSituacion = {};
+    filas.forEach(function (fila) {
+      conteoPorSituacion[fila.situacion] = (conteoPorSituacion[fila.situacion] || 0) + 1;
+    });
+
+    return res.json({
+      ok: true,
+      data: {
+        dias_alerta_vencimiento: diasAlerta,
+        total: filas.length,
+        por_situacion: conteoPorSituacion,
+        alertas: filas,
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error generando reporte de alertas:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible generar el reporte de alertas.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+
+router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res) {
+  try {
+    const params = [];
+    const conditions = [];
+
+    const equipoId = Number(req.query.equipo_id);
+    if (Number.isInteger(equipoId) && equipoId > 0) {
+      params.push(equipoId);
+      conditions.push(`ec.id = $${params.length}`);
+    }
+
+    const facultad = sanitizeLikeValue(req.query.facultad);
+    if (facultad) {
+      params.push(`%${facultad}%`);
+      conditions.push(`ec.facultad ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const laboratorio = sanitizeLikeValue(req.query.laboratorio);
+    if (laboratorio) {
+      params.push(`%${laboratorio}%`);
+      conditions.push(`ec.laboratorio ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+
+    const fechaDesde = normalizarFechaDiaOpcional(req.query.fecha_desde);
+    const fechaHasta = normalizarFechaDiaOpcional(req.query.fecha_hasta);
+
+    params.push(fechaDesde, fechaHasta);
+    const idxDesde = params.length - 1;
+    const idxHasta = params.length;
+    params.push(ESTADOS_PRESTAMO_COMPUTABLES);
+    const idxEstados = params.length;
+
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
+    const result = await pool.query(
+      `
+        SELECT ec.id AS equipo_id, ec.codigo, ec.nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad,
+               COUNT(sp.id)::int AS prestamos
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        LEFT JOIN solicitud_prestamo sp
+          ON sp.equipo_id = ec.id
+         AND sp.activo = TRUE
+         AND sp.estado = ANY($${idxEstados}::text[])
+         AND ($${idxDesde}::date IS NULL OR sp.fecha_inicio::date >= $${idxDesde}::date)
+         AND ($${idxHasta}::date IS NULL OR sp.fecha_inicio::date <= $${idxHasta}::date)
+        WHERE ec.activo = TRUE ${whereClause}
+        GROUP BY ec.id, ec.codigo, ec.nombre, ec.laboratorio, ec.facultad
+        ORDER BY prestamos DESC, ec.nombre ASC
+      `,
+      params
+    );
+
+    const equipos = result.rows.map(function (fila) {
+      return {
+        equipo_id: Number(fila.equipo_id),
+        codigo: fila.codigo,
+        nombre: fila.nombre,
+        laboratorio: fila.laboratorio,
+        facultad: fila.facultad,
+        prestamos: Number(fila.prestamos || 0),
+      };
+    });
+
+    const totalPrestamos = equipos.reduce(function (acc, eq) {
+      return acc + eq.prestamos;
+    }, 0);
+
+    return res.json({
+      ok: true,
+      data: {
+        resumen: {
+          equipos_total: equipos.length,
+          prestamos_total: totalPrestamos,
+          promedio_prestamos: equipos.length ? totalPrestamos / equipos.length : 0,
+          equipos_sin_prestamos: equipos.filter((eq) => eq.prestamos === 0).length,
+        },
+        mas_utilizados: equipos.slice(0, 10),
+        menos_utilizados: equipos.slice(-10).reverse(),
+        por_equipo: equipos,
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error generando reporte de utilizacion:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible generar el reporte de utilización.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+
+router.get('/:equipoId/resumen', async function resumenEquipoHV(req, res) {
+  try {
+    const equipoId = Number(req.params?.equipoId);
+    if (!Number.isInteger(equipoId) || equipoId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El identificador del equipo es invalido.',
+      });
+    }
+
+    const acceso = await pool.query(
+      `
+        SELECT ec.id, inv.laboratorio_ual_id AS ual_id
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ec.id = $1 AND ec.activo = TRUE
+      `,
+      [equipoId]
+    );
+    if (acceso.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'El equipo no existe en Inventario.',
+      });
+    }
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    if (
+      Array.isArray(accessibleLaboratoryIds) &&
+      (!acceso.rows[0].ual_id || !accessibleLaboratoryIds.includes(Number(acceso.rows[0].ual_id)))
+    ) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No tienes acceso al laboratorio seleccionado.',
+      });
+    }
+
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+    const fechaDesde = normalizarFechaDiaOpcional(req.query.fecha_desde);
+    const fechaHasta = normalizarFechaDiaOpcional(req.query.fecha_hasta);
+
+    const mantenimientosResult = await pool.query(
+      `
+        SELECT id, tipo_mantenimiento, estado, fecha_realizacion, costo
+        FROM mantenimiento
+        WHERE equipo_id = $1 AND activo = TRUE
+        ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+      `,
+      [equipoId]
+    );
+
+    const porEstado = {};
+    CODIGOS_ESTADO_MANTENIMIENTO.forEach(function (codigo) {
+      porEstado[codigo] = 0;
+    });
+    let costoTotal = 0;
+    const porTipoMap = new Map();
+    const porPeriodoMap = new Map();
+    let alerta = null;
+
+    mantenimientosResult.rows.forEach(function (fila) {
+      const estado = String(fila.estado || '').toUpperCase();
+      porEstado[estado] = (porEstado[estado] || 0) + 1;
+      const costo = Number(fila.costo || 0);
+      costoTotal += costo;
+
+      const tipo = String(fila.tipo_mantenimiento || '').toUpperCase();
+      if (!porTipoMap.has(tipo)) {
+        porTipoMap.set(tipo, {
+          tipo: tipo,
+          etiqueta: etiquetaTipoMantenimiento(tipo),
+          total: 0,
+          costo: 0,
+        });
+      }
+      const tipoItem = porTipoMap.get(tipo);
+      tipoItem.total += 1;
+      tipoItem.costo += costo;
+
+      const periodo = fila.fecha_realizacion
+        ? String(fila.fecha_realizacion).slice(0, 7)
+        : 'Sin fecha';
+      if (!porPeriodoMap.has(periodo)) {
+        porPeriodoMap.set(periodo, { periodo: periodo, total: 0, costo: 0 });
+      }
+      const periodoItem = porPeriodoMap.get(periodo);
+      periodoItem.total += 1;
+      periodoItem.costo += costo;
+
+      if (estado === 'CUMPLIDO' || estado === 'CANCELADO') return;
+      const situacion = situacionMantenimiento(
+        { estado: estado, fecha_realizacion: fila.fecha_realizacion },
+        diasAlerta
+      );
+      const severidad = SEVERIDAD_SITUACION[situacion.codigo] || 0;
+      if (!alerta || severidad > (SEVERIDAD_SITUACION[alerta.codigo] || 0)) {
+        alerta = {
+          codigo: situacion.codigo,
+          etiqueta: situacion.etiqueta,
+          clase: situacion.clase,
+          dias_restantes: diasRestantesMantenimiento(
+            { estado: estado, fecha_realizacion: fila.fecha_realizacion },
+            new Date()
+          ),
+        };
+      }
+    });
+
+    const prestamosResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM solicitud_prestamo
+        WHERE equipo_id = $1
+          AND activo = TRUE
+          AND estado = ANY($2::text[])
+          AND ($3::date IS NULL OR fecha_inicio::date >= $3::date)
+          AND ($4::date IS NULL OR fecha_inicio::date <= $4::date)
+      `,
+      [equipoId, ESTADOS_PRESTAMO_COMPUTABLES, fechaDesde, fechaHasta]
+    );
+    const prestamosTotal = Number(prestamosResult.rows[0]?.total || 0);
+
+    return res.json({
+      ok: true,
+      data: {
+        equipo_id: equipoId,
+        dias_alerta_vencimiento: diasAlerta,
+        alerta: alerta,
+        mantenimientos: {
+          total: mantenimientosResult.rows.length,
+          por_estado: porEstado,
+          costo_total: costoTotal,
+          por_tipo: Array.from(porTipoMap.values()),
+          por_periodo: Array.from(porPeriodoMap.values()),
+        },
+        prestamos: {
+          total: prestamosTotal,
+          fecha_desde: fechaDesde || null,
+          fecha_hasta: fechaHasta || null,
+        },
+        relacion: {
+          prestamos: prestamosTotal,
+          mantenimientos: mantenimientosResult.rows.length,
+          costo_mantenimiento: costoTotal,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error generando resumen del equipo:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible generar el resumen del equipo.',
       details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
     });
   }
@@ -368,14 +1196,23 @@ router.post(
         });
       }
 
-      // 1. Verificar que el equipo existe
       const equipoResult = await pool.query(
         `
-          SELECT e.id, e.codigo, e.nombre, e.estado, e.ubicacion, e.facultad, e.laboratorio,
-                 inv.placa AS codigo_inventario, inv.serie AS numero_serie, inv.nombre_bien
-          FROM equipo e
-          LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-          WHERE e.id = $1 AND e.activo = TRUE
+          SELECT
+            ec.id,
+            ec.codigo,
+            ec.nombre,
+            ec.estado,
+            ec.ubicacion,
+            ec.facultad,
+            ec.laboratorio,
+            inv.placa AS codigo_inventario,
+            inv.serie AS numero_serie,
+            inv.nombre_bien,
+            inv.laboratorio_ual_id AS ual_id
+          FROM equipo_catalogo ec
+          LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+          WHERE ec.id = $1 AND ec.activo = TRUE
         `,
         [equipoId]
       );
@@ -388,8 +1225,17 @@ router.post(
       }
 
       const equipo = equipoResult.rows[0];
+      const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+      if (
+        Array.isArray(accessibleLaboratoryIds) &&
+        (!equipo.ual_id || !accessibleLaboratoryIds.includes(Number(equipo.ual_id)))
+      ) {
+        return res.status(403).json({
+          ok: false,
+          message: 'No tienes acceso al laboratorio seleccionado.',
+        });
+      }
 
-      // 2. Verificar que no tenga hoja de vida (incluso en borrador)
       const hvExistente = await pool.query(
         `
           SELECT id, estado
@@ -412,8 +1258,8 @@ router.post(
           details: {
             hoja_vida_id: Number(hv.id),
             estado: hv.estado,
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
-            edit_url: `/milab/prestamos/hojas-vida/${equipoId}/editar`,
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
+            edit_url: `/milab/inventarios/hojas-vida/${equipoId}/editar`,
           },
         });
       }
@@ -428,7 +1274,6 @@ router.post(
         });
       }
 
-      // 3. Validar integridad del archivo
       if (file.size === 0) {
         return res.status(400).json({
           ok: false,
@@ -450,9 +1295,7 @@ router.post(
       let camposNoReconocidos = [];
       let advertenciaEstructura = null;
 
-      // 4. Si es Excel, parsear con el parser SIGUD
       if (tipoDocumento === 'EXCEL_ORIGEN') {
-        // Validar cabecera de archivo xlsx (PK\x03\x04) o xls (D0CF11E0)
         const buf = file.buffer;
         const esXlsx = buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b; // PK
         const esXls =
@@ -470,7 +1313,6 @@ router.post(
           });
         }
 
-        // exceljs solo soporta .xlsx; .xls requiere otra librería
         if (esXls) {
           advertenciaEstructura =
             'El formato .xls no se puede parsear automáticamente. Se conservará el archivo como evidencia, pero deberás ingresar los campos manualmente.';
@@ -502,7 +1344,6 @@ router.post(
           'Los PDFs no se pueden parsear automáticamente. Se conservará el archivo como evidencia, pero deberás ingresar los campos manualmente.';
       }
 
-      // 5. Transacción: crear HV en PENDIENTE_CONFIRMACION + guardar documento
       const cliente = await pool.connect();
       try {
         await cliente.query('BEGIN');
@@ -555,12 +1396,13 @@ router.post(
 
         const hojaVidaId = Number(insertHV.rows[0].id);
 
-        await cliente.query(
+        const documentoInsert = await cliente.query(
           `
             INSERT INTO hoja_vida_documento (
               hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
               fecha_carga, usuario_carga
             ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+            RETURNING id
           `,
           [
             hojaVidaId,
@@ -572,18 +1414,17 @@ router.post(
           ]
         );
 
-        await cliente.query(
-          `
-            INSERT INTO hoja_vida_historial (
-              hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
-            ) VALUES ($1, $2, 'CREACION', $3, $4, $4)
-          `,
-          [
-            hojaVidaId,
-            equipoId,
-            `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
-            req.session?.user?.id || null,
-          ]
+        await registrarEventoHistorial(
+          cliente,
+          hojaVidaId,
+          equipoId,
+          `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
+          req.session?.user?.id || null,
+          {
+            tipoEvento: 'CREACION',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: documentoInsert.rows[0].id,
+          }
         );
 
         await cliente.query('COMMIT');
@@ -599,7 +1440,7 @@ router.post(
             campos_reconocidos: camposReconocidos,
             campos_no_reconocidos: camposNoReconocidos,
             advertencia_estructura: advertenciaEstructura,
-            confirmar_url: `/milab/prestamos/hojas-vida/${hojaVidaId}/confirmar`,
+            confirmar_url: `/milab/inventarios/hojas-vida/${hojaVidaId}/confirmar`,
           },
         });
       } catch (txError) {
@@ -634,12 +1475,7 @@ router.post(
   }
 );
 
-/**
- * POST /:hojaVidaId/confirmar
- * Confirma la hoja de vida: guarda los campos revisados, la fotografia
- * opcional, cambia el estado a ACTIVA y registra la auditoria (usuario,
- * fecha y evento en el historial).
- */
+
 router.post(
   '/:hojaVidaId/confirmar',
   uploadFoto.single('foto'),
@@ -776,7 +1612,7 @@ router.post(
             hoja_vida_id: Number(updateResult.rows[0].id),
             estado: updateResult.rows[0].estado,
             tiene_fotografia: Boolean(req.file),
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
           },
         });
       } catch (txError) {
@@ -885,6 +1721,27 @@ router.post(
         });
       }
 
+      const fotoResult = await pool.query(
+        `
+          SELECT id, nombre_archivo
+          FROM hoja_vida_documento
+          WHERE hoja_vida_id = $1
+            AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+            AND activo = TRUE
+          ORDER BY fecha_carga DESC NULLS LAST, id DESC
+          LIMIT 1
+        `,
+        [hojaVidaId]
+      );
+      const fotoActiva = fotoResult.rows[0] || null;
+      const valorEliminarFoto = String(req.body?.eliminar_foto || '')
+        .trim()
+        .toLowerCase();
+      const eliminarFoto =
+        (valorEliminarFoto === '1' || valorEliminarFoto === 'true') &&
+        !req.file &&
+        Boolean(fotoActiva);
+
       // Detectar cambios reales comparando valor anterior y nuevo
       const cambios = [];
       Object.keys(datos).forEach(function (campo) {
@@ -898,7 +1755,7 @@ router.post(
 
       const usuario = req.session?.user?.id || null;
       const equipoId = Number(hvActual.equipo_id);
-      const tieneCambios = cambios.length > 0 || Boolean(req.file);
+      const tieneCambios = cambios.length > 0 || Boolean(req.file) || eliminarFoto;
 
       if (!tieneCambios) {
         return res.status(200).json({
@@ -933,7 +1790,7 @@ router.post(
           values
         );
 
-        if (req.file) {
+        if (req.file || eliminarFoto) {
           await cliente.query(
             `
               UPDATE hoja_vida_documento
@@ -946,42 +1803,65 @@ router.post(
             `,
             [hojaVidaId, usuario]
           );
+        }
 
-          await cliente.query(
+        if (req.file) {
+          const fotoInsert = await cliente.query(
             `
               INSERT INTO hoja_vida_documento (
                 hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
                 fecha_carga, usuario_carga
               ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+              RETURNING id
             `,
             [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
           );
 
           cambios.push({
             campo: 'fotografia',
-            anterior: 'Anterior',
+            anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
             nuevo: req.file.originalname,
+            descripcion: 'Actualizacion de la fotografia del equipo.',
+            tipoEvento: 'FOTOGRAFIA',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: fotoInsert.rows[0].id,
+          });
+        } else if (eliminarFoto) {
+          cambios.push({
+            campo: 'fotografia',
+            anterior: fotoActiva ? fotoActiva.nombre_archivo : 'Sin fotografia',
+            nuevo: 'Sin fotografia',
+            descripcion: 'Eliminacion de la fotografia del equipo.',
+            tipoEvento: 'FOTOGRAFIA',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: fotoActiva ? fotoActiva.id : null,
           });
         }
 
         for (const cambio of cambios) {
           const definicion = CAMPOS_HOJA_VIDA_POR_NOMBRE.get(cambio.campo) || {};
           const etiqueta = definicion.etiqueta || cambio.campo;
+          const descripcion =
+            cambio.descripcion || `Edición de la hoja de vida: campo "${etiqueta}" actualizado.`;
           await cliente.query(
             `
               INSERT INTO hoja_vida_historial (
                 hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
-                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion
-              ) VALUES ($1, $2, 'EDICION', $3, $4, $5, $6, $7, $7)
+                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion,
+                referencia_tipo, referencia_id
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10)
             `,
             [
               hojaVidaId,
               equipoId,
+              cambio.tipoEvento || 'EDICION',
               cambio.campo,
               cambio.anterior,
               cambio.nuevo,
-              `Edición de la hoja de vida: campo "${etiqueta}" actualizado.`,
+              descripcion,
               usuario,
+              cambio.referenciaTipo || null,
+              cambio.referenciaId || null,
             ]
           );
         }
@@ -996,7 +1876,7 @@ router.post(
             cambios: cambios.map((cambio) => cambio.campo),
             total_cambios: cambios.length,
             tiene_fotografia: Boolean(req.file),
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
           },
         });
       } catch (txError) {
@@ -1030,11 +1910,7 @@ router.post(
   }
 );
 
-/**
- * POST /:equipoId/mantenimientos
- * Registra un mantenimiento asociado a la hoja de vida del equipo y genera el
- * evento MANTENIMIENTO en el historial del ciclo de vida del activo.
- */
+
 router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV(req, res) {
   try {
     const equipoId = Number(req.params?.equipoId);
@@ -1105,7 +1981,17 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
       });
     }
 
+    const costo = normalizarCostoOpcional(body.costo);
+    if (Number.isNaN(costo)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El costo del mantenimiento debe ser un valor numérico mayor o igual a cero.',
+        details: { campos_faltantes: ['costo'] },
+      });
+    }
+
     const usuario = req.session?.user?.id || null;
+    const esCierreDirecto = estado === 'CUMPLIDO';
 
     const cliente = await pool.connect();
     try {
@@ -1116,11 +2002,13 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
           INSERT INTO mantenimiento (
             hoja_vida_id, equipo_id, item, tipo_mantenimiento, fecha_realizacion,
             datos_empresa_contratada, tiempo_garantia, especificaciones_mantenimiento,
-            responsable, observaciones_repuestos, estado, usuario_creacion
+            responsable, observaciones_repuestos, costo, estado,
+            fecha_cierre, usuario_cierre, usuario_creacion
           ) VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8,
-            $9, $10, $11, $12
+            $9, $10, $11, $12,
+            $13, $14, $15
           )
           RETURNING id, estado
         `,
@@ -1135,26 +2023,27 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
           normalizarTextoOpcional(body.especificaciones_mantenimiento),
           normalizarTextoOpcional(body.responsable),
           normalizarTextoOpcional(body.observaciones_repuestos),
+          costo,
           estado,
+          esCierreDirecto ? new Date() : null,
+          esCierreDirecto ? usuario : null,
           usuario,
         ]
       );
 
       const mantenimientoId = Number(insertResult.rows[0].id);
 
-      await cliente.query(
-        `
-          INSERT INTO hoja_vida_historial (
-            hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion
-          ) VALUES ($1, $2, 'MANTENIMIENTO', $3, $4, $4)
-        `,
-        [
-          hojaVida.id,
-          equipoId,
-          `Mantenimiento ${etiquetaTipoMantenimiento(tipoMantenimiento)} registrado: "${item}".`,
-          usuario,
-        ]
+      await registrarEventoHistorial(
+        cliente,
+        hojaVida.id,
+        equipoId,
+        `Mantenimiento ${etiquetaTipoMantenimiento(tipoMantenimiento)} registrado: "${item}".`,
+        usuario,
+        { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
       );
+
+     
+      await sincronizarDisponibilidadEquipo(cliente, equipoId);
 
       await cliente.query('COMMIT');
 
@@ -1165,7 +2054,8 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
           mantenimiento_id: mantenimientoId,
           hoja_vida_id: Number(hojaVida.id),
           estado: insertResult.rows[0].estado,
-          listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+          costo: costo,
+          listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
         },
       });
     } catch (txError) {
@@ -1183,6 +2073,340 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
     });
   }
 });
+
+
+async function cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId) {
+  const result = await cliente.query(
+    `
+      SELECT m.*
+      FROM mantenimiento m
+      JOIN hoja_vida hv ON hv.id = m.hoja_vida_id
+      WHERE m.id = $1 AND m.equipo_id = $2 AND hv.equipo_id = $2
+        AND m.activo = TRUE AND hv.activo = TRUE
+      LIMIT 1
+    `,
+    [mantenimientoId, equipoId]
+  );
+  return result.rows[0] || null;
+}
+
+
+function normalizarDatosMantenimiento(body) {
+  const item = normalizarTextoOpcional(body.item);
+  if (!item) {
+    return {
+      error: {
+        message: 'El ítem o descripción del mantenimiento es obligatorio.',
+        campos: ['item'],
+      },
+    };
+  }
+
+  const tipoMantenimiento = String(body.tipo_mantenimiento || '')
+    .trim()
+    .toUpperCase();
+  if (!esTipoMantenimientoValido(tipoMantenimiento)) {
+    return {
+      error: {
+        message: 'El tipo de mantenimiento no es valido.',
+        campos: ['tipo_mantenimiento'],
+      },
+    };
+  }
+
+  const estado = String(body.estado || ESTADO_MANTENIMIENTO_DEFAULT)
+    .trim()
+    .toUpperCase();
+  if (!esEstadoMantenimientoValido(estado)) {
+    return {
+      error: {
+        message: 'El estado del mantenimiento no es valido.',
+        campos: ['estado'],
+      },
+    };
+  }
+
+  const fechaRealizacion = normalizarFechaDiaOpcional(body.fecha_realizacion);
+  if (normalizarTextoOpcional(body.fecha_realizacion) && !fechaRealizacion) {
+    return {
+      error: { message: 'La fecha de realización no es válida.', campos: ['fecha_realizacion'] },
+    };
+  }
+
+  const costo = normalizarCostoOpcional(body.costo);
+  if (Number.isNaN(costo)) {
+    return {
+      error: {
+        message: 'El costo del mantenimiento debe ser un valor numérico mayor o igual a cero.',
+        campos: ['costo'],
+      },
+    };
+  }
+
+  return {
+    datos: {
+      item,
+      tipo_mantenimiento: tipoMantenimiento,
+      estado,
+      fecha_realizacion: fechaRealizacion,
+      costo,
+      datos_empresa_contratada: normalizarTextoOpcional(body.datos_empresa_contratada),
+      tiempo_garantia: normalizarTextoOpcional(body.tiempo_garantia),
+      especificaciones_mantenimiento: normalizarTextoOpcional(body.especificaciones_mantenimiento),
+      responsable: normalizarTextoOpcional(body.responsable),
+      observaciones_repuestos: normalizarTextoOpcional(body.observaciones_repuestos),
+    },
+  };
+}
+
+
+router.put(
+  '/:equipoId/mantenimientos/:mantenimientoId',
+  async function editarMantenimientoHV(req, res) {
+    try {
+      const equipoId = Number(req.params?.equipoId);
+      const mantenimientoId = Number(req.params?.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
+        });
+      }
+
+      const normalizado = normalizarDatosMantenimiento(req.body || {});
+      if (normalizado.error) {
+        return res.status(400).json({
+          ok: false,
+          message: normalizado.error.message,
+          details: { campos_faltantes: normalizado.error.campos },
+        });
+      }
+      const datos = normalizado.datos;
+
+      const usuario = req.session?.user?.id || null;
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
+        if (!mantenimiento) {
+          await cliente.query('ROLLBACK');
+          return res.status(404).json({
+            ok: false,
+            message: 'El mantenimiento no existe para el equipo indicado.',
+          });
+        }
+
+        if (!esEstadoEditableMantenimiento(String(mantenimiento.estado || '').toUpperCase())) {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message:
+              'El mantenimiento no puede modificarse porque ya fue cerrado. Solo los mantenimientos Programados o En ejecución admiten edición.',
+          });
+        }
+
+        const esCierre = datos.estado === 'CUMPLIDO';
+        const updateResult = await cliente.query(
+          `
+            UPDATE mantenimiento
+            SET item = $3,
+                tipo_mantenimiento = $4,
+                fecha_realizacion = $5,
+                datos_empresa_contratada = $6,
+                tiempo_garantia = $7,
+                especificaciones_mantenimiento = $8,
+                responsable = $9,
+                observaciones_repuestos = $10,
+                costo = $11,
+                estado = $12,
+                fecha_cierre = CASE WHEN $13 THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP) ELSE fecha_cierre END,
+                usuario_cierre = CASE WHEN $13 THEN COALESCE(usuario_cierre, $14) ELSE usuario_cierre END,
+                usuario_modificacion = $14,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+            RETURNING id, estado, fecha_cierre, usuario_cierre
+          `,
+          [
+            mantenimientoId,
+            equipoId,
+            datos.item,
+            datos.tipo_mantenimiento,
+            datos.fecha_realizacion,
+            datos.datos_empresa_contratada,
+            datos.tiempo_garantia,
+            datos.especificaciones_mantenimiento,
+            datos.responsable,
+            datos.observaciones_repuestos,
+            datos.costo,
+            datos.estado,
+            esCierre,
+            usuario,
+          ]
+        );
+
+        await registrarEventoHistorial(
+          cliente,
+          mantenimiento.hoja_vida_id,
+          equipoId,
+          `Mantenimiento #${mantenimientoId} actualizado por ${usuario || 'usuario'}. Estado: ${etiquetaEstadoMantenimiento(datos.estado)}.`,
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
+        );
+
+        await sincronizarDisponibilidadEquipo(cliente, equipoId);
+
+        await cliente.query('COMMIT');
+
+        return res.json({
+          ok: true,
+          message: 'Mantenimiento actualizado correctamente.',
+          data: {
+            mantenimiento_id: Number(updateResult.rows[0].id),
+            estado: updateResult.rows[0].estado,
+            fecha_cierre: updateResult.rows[0].fecha_cierre,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      console.error('[hojas-vida] Error editando mantenimiento:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible actualizar el mantenimiento.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
+
+
+router.post(
+  '/:equipoId/mantenimientos/:mantenimientoId/estado',
+  async function cambiarEstadoMantenimientoHV(req, res) {
+    try {
+      const equipoId = Number(req.params?.equipoId);
+      const mantenimientoId = Number(req.params?.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
+        });
+      }
+
+      const estadoNuevo = String(req.body?.estado || '')
+        .trim()
+        .toUpperCase();
+      if (!esEstadoMantenimientoValido(estadoNuevo)) {
+        return res.status(400).json({
+          ok: false,
+          message: 'El estado del mantenimiento no es valido.',
+          details: { campos_faltantes: ['estado'] },
+        });
+      }
+
+      const usuario = req.session?.user?.id || null;
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
+        if (!mantenimiento) {
+          await cliente.query('ROLLBACK');
+          return res.status(404).json({
+            ok: false,
+            message: 'El mantenimiento no existe para el equipo indicado.',
+          });
+        }
+
+        const estadoActual = String(mantenimiento.estado || '').toUpperCase();
+        if (estadoActual === estadoNuevo) {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message: `El mantenimiento ya se encuentra en estado ${etiquetaEstadoMantenimiento(estadoNuevo)}.`,
+          });
+        }
+        if (estadoActual === 'CUMPLIDO' || estadoActual === 'CANCELADO') {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message: 'El mantenimiento ya fue cerrado y no admite cambios de estado.',
+          });
+        }
+
+        const esCierre = estadoNuevo === 'CUMPLIDO';
+        const updateResult = await cliente.query(
+          `
+            UPDATE mantenimiento
+            SET estado = $3,
+                fecha_cierre = CASE WHEN $4 THEN CURRENT_TIMESTAMP ELSE fecha_cierre END,
+                usuario_cierre = CASE WHEN $4 THEN $5 ELSE usuario_cierre END,
+                usuario_modificacion = $5,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+            RETURNING id, estado, fecha_cierre, usuario_cierre
+          `,
+          [mantenimientoId, equipoId, estadoNuevo, esCierre, usuario]
+        );
+
+        await registrarEventoHistorial(
+          cliente,
+          mantenimiento.hoja_vida_id,
+          equipoId,
+          `Mantenimiento #${mantenimientoId} ${esCierre ? 'cerrado' : 'cambiado'} a estado ${etiquetaEstadoMantenimiento(estadoNuevo)} por ${usuario || 'usuario'}.`,
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
+        );
+
+        await sincronizarDisponibilidadEquipo(cliente, equipoId);
+
+        await cliente.query('COMMIT');
+
+        return res.json({
+          ok: true,
+          message: esCierre
+            ? 'Mantenimiento cerrado como Cumplido.'
+            : 'Estado del mantenimiento actualizado correctamente.',
+          data: {
+            mantenimiento_id: Number(updateResult.rows[0].id),
+            estado: updateResult.rows[0].estado,
+            fecha_cierre: updateResult.rows[0].fecha_cierre,
+            usuario_cierre: updateResult.rows[0].usuario_cierre,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      console.error('[hojas-vida] Error cambiando estado del mantenimiento:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible actualizar el estado del mantenimiento.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
 
 /**
  * POST /:hojaVidaId/eventos

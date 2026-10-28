@@ -160,6 +160,45 @@ function ensureDashboardMonitoringLink(navigation, roles) {
   return { ...navigation, primaryLinks };
 }
 
+function ensureInventoryHojasVidaLink(navigation, roles) {
+  const normalizedRoles = normalizeRoles(roles);
+  const allowed = normalizedRoles.some((role) =>
+    ['admin', 'administrador', 'coordinador_general', 'coordinador', 'laboratorista'].includes(role)
+  );
+  if (!allowed) {
+    return navigation;
+  }
+
+  const targetHref = '/milab/inventarios/hojas-vida';
+  const secondaryGroups = Array.isArray(navigation.secondaryGroups)
+    ? navigation.secondaryGroups.map((group) => ({
+        ...group,
+        items: Array.isArray(group.items) ? [...group.items] : [],
+      }))
+    : [];
+  const inventoryGroupIndex = secondaryGroups.findIndex(
+    (group) =>
+      String(group?.title || '')
+        .trim()
+        .toLowerCase() === 'inventarios'
+  );
+  const targetItem = createLink('Hojas de vida y mantenimientos', targetHref, 'bi-journal-medical');
+
+  if (inventoryGroupIndex === -1) {
+    secondaryGroups.push(createGroup('Inventarios', 'bi-boxes', [targetItem]));
+    return { ...navigation, secondaryGroups };
+  }
+
+  const inventoryGroup = secondaryGroups[inventoryGroupIndex];
+  if (inventoryGroup.items.some((item) => item?.href === targetHref)) {
+    return navigation;
+  }
+
+  inventoryGroup.items.push(targetItem);
+  secondaryGroups[inventoryGroupIndex] = inventoryGroup;
+  return { ...navigation, secondaryGroups };
+}
+
 function buildStaticNavigation(user) {
   const role = user?.tipo || '';
   const isAuthenticated = Boolean(role);
@@ -345,15 +384,18 @@ function buildStaticNavigation(user) {
     accountLinks.push(createLink('Perfil', '/milab/api/profile', 'bi-person-circle'));
   }
 
-  return ensureCoordinatorSignatureAccountLink(
-    {
-      isAuthenticated,
-      role,
-      roleLabel: formatRoleLabel(role),
-      primaryLinks,
-      secondaryGroups,
-      accountLinks,
-    },
+  return ensureInventoryHojasVidaLink(
+    ensureCoordinatorSignatureAccountLink(
+      {
+        isAuthenticated,
+        role,
+        roleLabel: formatRoleLabel(role),
+        primaryLinks,
+        secondaryGroups,
+        accountLinks,
+      },
+      role
+    ),
     role
   );
 }
@@ -506,14 +548,17 @@ async function buildNavigation(user) {
         )
           ? removePrestamosNavigation(menu)
           : menu;
-      return ensureDashboardMonitoringLink(
-        ensureCoordinatorSignatureAccountLink(
-          removeSanctionAuthorizationLink({
-            isAuthenticated,
-            role: getPrimaryRole(roles),
-            roleLabel: formatRoleLabel(roles),
-            ...filteredMenu,
-          }),
+      return ensureInventoryHojasVidaLink(
+        ensureDashboardMonitoringLink(
+          ensureCoordinatorSignatureAccountLink(
+            removeSanctionAuthorizationLink({
+              isAuthenticated,
+              role: getPrimaryRole(roles),
+              roleLabel: formatRoleLabel(roles),
+              ...filteredMenu,
+            }),
+            roles
+          ),
           roles
         ),
         roles
@@ -526,11 +571,14 @@ async function buildNavigation(user) {
       ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
         ? removePrestamosNavigation(fallback)
         : fallback;
-    return ensureDashboardMonitoringLink(
-      {
-        ...removeSanctionAuthorizationLink(filteredFallback),
-        roleLabel: formatRoleLabel(roles),
-      },
+    return ensureInventoryHojasVidaLink(
+      ensureDashboardMonitoringLink(
+        {
+          ...removeSanctionAuthorizationLink(filteredFallback),
+          roleLabel: formatRoleLabel(roles),
+        },
+        roles
+      ),
       roles
     );
   }
@@ -541,11 +589,14 @@ async function buildNavigation(user) {
     ['coordinador', 'laboratorista', 'monitor', 'estudiante', 'docente'].includes(accessInfo.role)
       ? removePrestamosNavigation(fallback)
       : fallback;
-  return ensureDashboardMonitoringLink(
-    {
-      ...removeSanctionAuthorizationLink(filteredFallback),
-      roleLabel: formatRoleLabel(roles),
-    },
+  return ensureInventoryHojasVidaLink(
+    ensureDashboardMonitoringLink(
+      {
+        ...removeSanctionAuthorizationLink(filteredFallback),
+        roleLabel: formatRoleLabel(roles),
+      },
+      roles
+    ),
     roles
   );
 }
