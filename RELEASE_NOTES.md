@@ -1,5 +1,9 @@
 # Release Notes
 
+## 4.0.0 - 2026-10-28
+
+1. Se actualiza la versión visible de MiLab para el despliegue de preproducción.
+
 ## 3.2.0 - 2026-10-27
 
 1. La consulta masiva de sanciones procesa hasta 50 documentos o códigos con progreso visible; las multas ajenas al catálogo de laboratorio no se tipifican como sanciones y los administradores pueden consultar otras multas SGA.
