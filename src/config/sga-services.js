@@ -12,29 +12,30 @@ const NON_PRODUCTION_ENVIRONMENTS = Object.freeze([
   'preprod',
 ]);
 
-const SGA_DEBTORS_SERVICE_NAMES = Object.freeze({
+const OATI_PUBLIC_ENVIRONMENTS = Object.freeze(['dev', 'development', 'test', 'testing']);
+
+const SGA_SERVICE_NAMES = Object.freeze({
   production: 'servicios_academicos_produccion',
-  // Failover target previously used in non-production environments. Uncomment
-  // this and the resolver below to restore test-service routing.
-  // nonProduction: 'academica_pruebas',
+  test: 'academica_pruebas',
 });
 
-function resolveSgaDebtorsServiceName() {
-  return SGA_DEBTORS_SERVICE_NAMES.production;
+function isOatiPublicEnvironment(environmentName) {
+  const normalizedEnvironment = String(environmentName || '')
+    .trim()
+    .toLowerCase();
+  return OATI_PUBLIC_ENVIRONMENTS.includes(normalizedEnvironment);
 }
 
-// Previous routing for test failover:
-// function resolveSgaDebtorsServiceName(environmentName) {
-//   const normalizedEnvironment = String(environmentName || '')
-//     .trim()
-//     .toLowerCase();
-//   return NON_PRODUCTION_ENVIRONMENTS.includes(normalizedEnvironment)
-//     ? SGA_DEBTORS_SERVICE_NAMES.nonProduction
-//     : SGA_DEBTORS_SERVICE_NAMES.production;
-// }
+function resolveSgaServiceName(environmentName) {
+  return isOatiPublicEnvironment(environmentName)
+    ? SGA_SERVICE_NAMES.test
+    : SGA_SERVICE_NAMES.production;
+}
 
 module.exports = {
   NON_PRODUCTION_ENVIRONMENTS,
-  SGA_DEBTORS_SERVICE_NAMES,
-  resolveSgaDebtorsServiceName,
+  OATI_PUBLIC_ENVIRONMENTS,
+  SGA_SERVICE_NAMES,
+  isOatiPublicEnvironment,
+  resolveSgaServiceName,
 };

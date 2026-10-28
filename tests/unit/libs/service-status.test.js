@@ -5,6 +5,7 @@ const path = require('node:path');
 const modulePath = path.resolve(__dirname, '../../../src/libs/service-status.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const edxClientPath = path.resolve(__dirname, '../../../src/libs/edx-cert-client.js');
+const configPath = path.resolve(__dirname, '../../../src/config/config.js');
 
 function createLog() {
   const warnings = [];
@@ -17,11 +18,23 @@ function createLog() {
   };
 }
 
-function loadServiceStatus({ oatiImpl = async () => ({}), edxHealthy = true } = {}) {
+function loadServiceStatus({
+  oatiImpl = async () => ({}),
+  edxHealthy = true,
+  oatiUsePublic = false,
+} = {}) {
   const originals = new Map();
   const oatiCalls = [];
   const edxCalls = [];
   const stubs = [
+    [
+      configPath,
+      {
+        config: {
+          oatiUsePublic,
+        },
+      },
+    ],
     [
       oatiClientPath,
       {
@@ -98,6 +111,20 @@ test('checkServiceStatus still validates edX outside production', async () => {
         (service) => service.service.startsWith('edx_') && service.available === false
       )
     );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('checkServiceStatus uses a non-personal catalog probe for public OATI environments', async () => {
+  const loaded = loadServiceStatus({ oatiUsePublic: true });
+  const log = createLog();
+
+  try {
+    const status = await loaded.checkServiceStatus(log, { checkEdx: false });
+
+    assert.equal(status.servicesAreUp, true);
+    assert.deepEqual(loaded.oatiCalls, ['carrera/0']);
   } finally {
     loaded.restore();
   }

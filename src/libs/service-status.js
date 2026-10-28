@@ -5,6 +5,7 @@ const {
   BASE_URL: edxBaseUrl,
   USE_MOCK: edxUseMock,
 } = require('./edx-cert-client');
+const { config } = require('../config/config');
 const { NON_PRODUCTION_ENVIRONMENTS } = require('../config/sga-services');
 
 const serviceStatusLogger = logger.child({ component: 'service-status' });
@@ -21,16 +22,23 @@ function shouldCheckEdx(environmentName = process.env.NODE_ENV) {
 }
 
 async function checkServiceStatus(log = serviceStatusLogger, { checkEdx = shouldCheckEdx() } = {}) {
-  const services = [
-    {
-      name: 'datos_basicos_activos_cedula',
-      path: getAcademicServicePath('datos_basicos_activos_cedula/1023968369'),
-    },
-    {
-      name: 'consultar_estado_docente',
-      path: getAcademicServicePath('consultar_estado_docente/1023968369'),
-    },
-  ];
+  const services = config.oatiUsePublic
+    ? [
+        {
+          name: 'carrera_catalog',
+          path: getAcademicServicePath('carrera/0'),
+        },
+      ]
+    : [
+        {
+          name: 'datos_basicos_activos_cedula',
+          path: getAcademicServicePath('datos_basicos_activos_cedula/1023968369'),
+        },
+        {
+          name: 'consultar_estado_docente',
+          path: getAcademicServicePath('consultar_estado_docente/1023968369'),
+        },
+      ];
 
   if (checkEdx) {
     services.push({
