@@ -168,6 +168,55 @@ test('microsoft callback authenticates when email exists in usuario (admin-corre
   }
 });
 
+test('microsoft callback looks up missing OATI roles concurrently', async () => {
+  const sessionState = createSessionState();
+  let activeLookups = 0;
+  let maxConcurrentLookups = 0;
+  let fetchCount = 0;
+
+  const loaded = loadMicrosoftRoute({
+    passportUser: {
+      displayName: 'Docente y estudiante',
+      emails: [{ value: 'persona@udistrital.edu.co' }],
+      id: 'ms-roles',
+    },
+    fetchUserByEmailImpl: async (correo) => {
+      fetchCount += 1;
+      return {
+        id: 26,
+        correo,
+        documento: '20202020',
+        nombre: 'Docente y estudiante',
+        roles: fetchCount === 1 ? [] : ['docente', 'estudiante'],
+      };
+    },
+    requestOatiImpl: async (servicePath) => {
+      activeLookups += 1;
+      maxConcurrentLookups = Math.max(maxConcurrentLookups, activeLookups);
+      await Promise.resolve();
+      activeLookups -= 1;
+
+      if (servicePath.startsWith('consultar_estado_docente/')) {
+        return { docentesCollection: { docente: [{ estado_docente: 'A' }] } };
+      }
+
+      return { datosEstudianteCollection: { datosBasicosEstudiante: [{ estado: 'A' }] } };
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.router, sessionState);
+    const response = await request(app).get('/microsoft/callback?code=fake&state=fake');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/milab/inicio');
+    assert.equal(maxConcurrentLookups, 2);
+    assert.deepEqual(sessionState.user?.roles, ['docente', 'estudiante']);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('microsoft callback preserves first-time user context and redirects to document identification', async () => {
   const sessionState = createSessionState();
 
