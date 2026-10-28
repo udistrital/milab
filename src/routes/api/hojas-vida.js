@@ -260,7 +260,6 @@ function normalizarValorComparacion(valor, tipo) {
   return texto === '' ? null : texto;
 }
 
-
 function normalizarCostoOpcional(valor) {
   if (valor == null) return null;
   const texto = String(valor).trim();
@@ -268,7 +267,6 @@ function normalizarCostoOpcional(valor) {
   const num = Number(texto.replace(/\s/g, '').replace(/,/g, ''));
   return Number.isFinite(num) && num >= 0 ? num : NaN;
 }
-
 
 async function obtenerDiasAlertaVencimiento(cliente) {
   try {
@@ -287,7 +285,6 @@ async function obtenerDiasAlertaVencimiento(cliente) {
     return DIAS_ALERTA_VENCIMIENTO_DEFAULT;
   }
 }
-
 
 async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
   const ejecucionResult = await cliente.query(
@@ -337,7 +334,6 @@ async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
   return estadoNuevo;
 }
 
-
 async function registrarEventoHistorial(
   cliente,
   hojaVidaId,
@@ -366,7 +362,6 @@ async function registrarEventoHistorial(
   );
 }
 
-
 const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
 
 const SEVERIDAD_SITUACION = {
@@ -377,7 +372,6 @@ const SEVERIDAD_SITUACION = {
   CUMPLIDO: 0,
   CANCELADO: 0,
 };
-
 
 async function construirResumenEquipos(cliente, equipoIds, diasAlerta) {
   const resumen = {};
@@ -593,7 +587,6 @@ router.get('/equipos', async function buscarEquiposHV(req, res) {
   }
 });
 
-
 function aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions) {
   if (!Array.isArray(accessibleLaboratoryIds)) return true;
   if (accessibleLaboratoryIds.length === 0) {
@@ -604,7 +597,6 @@ function aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions)
   conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
   return true;
 }
-
 
 router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(req, res) {
   try {
@@ -781,7 +773,6 @@ router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(re
   }
 });
 
-
 router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
   try {
     const params = [];
@@ -861,7 +852,6 @@ router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
     });
   }
 });
-
 
 router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res) {
   try {
@@ -958,7 +948,6 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
     });
   }
 });
-
 
 router.get('/:equipoId/resumen', async function resumenEquipoHV(req, res) {
   try {
@@ -1475,7 +1464,6 @@ router.post(
   }
 );
 
-
 router.post(
   '/:hojaVidaId/confirmar',
   uploadFoto.single('foto'),
@@ -1910,7 +1898,6 @@ router.post(
   }
 );
 
-
 router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV(req, res) {
   try {
     const equipoId = Number(req.params?.equipoId);
@@ -2042,7 +2029,6 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
         { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
       );
 
-     
       await sincronizarDisponibilidadEquipo(cliente, equipoId);
 
       await cliente.query('COMMIT');
@@ -2074,7 +2060,6 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
   }
 });
 
-
 async function cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId) {
   const result = await cliente.query(
     `
@@ -2089,7 +2074,6 @@ async function cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId) {
   );
   return result.rows[0] || null;
 }
-
 
 function normalizarDatosMantenimiento(body) {
   const item = normalizarTextoOpcional(body.item);
@@ -2158,7 +2142,6 @@ function normalizarDatosMantenimiento(body) {
     },
   };
 }
-
 
 router.put(
   '/:equipoId/mantenimientos/:mantenimientoId',
@@ -2289,7 +2272,6 @@ router.put(
     }
   }
 );
-
 
 router.post(
   '/:equipoId/mantenimientos/:mantenimientoId/estado',

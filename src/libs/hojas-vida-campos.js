@@ -27,7 +27,6 @@ function buscarOpcionTipoUso(valor) {
   );
 }
 
-
 function parsearTipoUso(valor) {
   const claves = [];
   let otro = '';
@@ -60,7 +59,6 @@ function parsearTipoUso(valor) {
   return { claves: claves, otro: otro };
 }
 
-
 function serializarTipoUso(claves, otro) {
   const lista = Array.isArray(claves) ? claves : claves == null ? [] : [claves];
   const seleccion = [];
@@ -89,18 +87,15 @@ function serializarTipoUso(claves, otro) {
   return seleccion.join(',');
 }
 
-
 function normalizarTipoUso(valor) {
   const parseado = parsearTipoUso(valor);
   const normalizado = serializarTipoUso(parseado.claves, parseado.otro);
   return normalizado === '' ? null : normalizado;
 }
 
-
 function opcionesTipoUsoMarcadas(valor) {
   return parsearTipoUso(valor).claves;
 }
-
 
 function formatearTipoUso(valor) {
   const parseado = parsearTipoUso(valor);

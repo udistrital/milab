@@ -7,7 +7,6 @@ const TIPOS_MANTENIMIENTO = [
   { codigo: 'OTRO', etiqueta: 'Otro' },
 ];
 
-
 const ESTADOS_MANTENIMIENTO = [
   { codigo: 'PENDIENTE', etiqueta: 'Programado', clase: 'secondary' },
   { codigo: 'EN_EJECUCION', etiqueta: 'En ejecución', clase: 'primary' },
@@ -71,7 +70,6 @@ function claseEstadoMantenimiento(codigo) {
   return estado ? estado.clase : 'secondary';
 }
 
-
 function normalizarDia(valor) {
   if (valor == null || valor === '') return null;
   if (valor instanceof Date) {
@@ -90,7 +88,6 @@ function normalizarDia(valor) {
 
 const MILISEGUNDOS_POR_DIA = 24 * 60 * 60 * 1000;
 
-
 function diasRestantesMantenimiento(mantenimiento, hoy) {
   const programada = normalizarDia(mantenimiento ? mantenimiento.fecha_realizacion : null);
   if (programada == null) return null;
@@ -102,7 +99,6 @@ function obtenerSituacion(codigo) {
   const situacion = SITUACIONES_MANTENIMIENTO.find((item) => item.codigo === codigo);
   return situacion || SITUACIONES_MANTENIMIENTO[0];
 }
-
 
 function situacionMantenimiento(mantenimiento, diasAlerta) {
   const alerta = Number.isFinite(Number(diasAlerta))

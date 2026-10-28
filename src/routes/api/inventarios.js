@@ -263,7 +263,6 @@ function formatearMonedaCOP(valor) {
   });
 }
 
-
 async function obtenerDiasAlertaVencimientoWeb(client) {
   try {
     const result = await client.query(
