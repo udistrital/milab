@@ -5,6 +5,26 @@
   var usoTipoUsoOtro = typeof tipoUsoOtro !== 'undefined' ? tipoUsoOtro : '';
 %>
 
+<style nonce="<%= cspNonce %>">
+  .hv-form-grid .hv-form-field {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .hv-form-grid .hv-form-label {
+    min-height: 3.5rem;
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+  }
+  @media (max-width: 767.98px) {
+    .hv-form-grid .hv-form-label {
+      min-height: auto;
+    }
+  }
+</style>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
@@ -74,7 +94,7 @@
           <h5 class="mb-0"><%= grupo.seccion %></h5>
         </div>
         <div class="card-body">
-          <div class="row g-3">
+          <div class="row g-3 hv-form-grid">
             <% grupo.campos.forEach(function (campo) { %>
               <%
                 var requerido = obligatorios.indexOf(campo.nombre) !== -1;
@@ -87,61 +107,63 @@
                 var esCompleto = campo.tipo === 'textarea' || campo.tipo === 'uso' ? 12 : 4;
               %>
               <div class="col-md-<%= esCompleto %>">
-                <label for="hv-campo-<%= campo.nombre %>" class="form-label">
-                  <%= campo.etiqueta %><% if (requerido) { %> <span class="text-danger">*</span><% } %>
-                </label>
-                <% if (campo.tipo === 'textarea') { %>
-                  <textarea class="form-control" id="hv-campo-<%= campo.nombre %>" name="<%= campo.nombre %>" rows="2" <%= requerido ? 'required' : '' %>><%= valor %></textarea>
-                <% } else if (campo.tipo === 'uso') { %>
-                  <div class="d-flex flex-wrap gap-3 align-items-center" data-testid="hv-campo-tipo-uso">
-                    <% campo.opciones.forEach(function (opcion) { %>
+                <div class="hv-form-field">
+                  <label for="hv-campo-<%= campo.nombre %>" class="form-label hv-form-label">
+                    <%= campo.etiqueta %><% if (requerido) { %> <span class="text-danger">*</span><% } %>
+                  </label>
+                  <% if (campo.tipo === 'textarea') { %>
+                    <textarea class="form-control" id="hv-campo-<%= campo.nombre %>" name="<%= campo.nombre %>" rows="2" <%= requerido ? 'required' : '' %>><%= valor %></textarea>
+                  <% } else if (campo.tipo === 'uso') { %>
+                    <div class="d-flex flex-wrap gap-3 align-items-center" data-testid="hv-campo-tipo-uso">
+                      <% campo.opciones.forEach(function (opcion) { %>
+                        <div class="form-check">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            name="tipo_uso"
+                            value="<%= opcion.clave %>"
+                            id="hv-uso-<%= opcion.clave %>"
+                            <%= usoTipoUsoClaves.indexOf(opcion.clave) !== -1 ? 'checked' : '' %>
+                          />
+                          <label class="form-check-label" for="hv-uso-<%= opcion.clave %>"><%= opcion.etiqueta %></label>
+                        </div>
+                      <% }); %>
                       <div class="form-check">
                         <input
                           class="form-check-input"
                           type="checkbox"
                           name="tipo_uso"
-                          value="<%= opcion.clave %>"
-                          id="hv-uso-<%= opcion.clave %>"
-                          <%= usoTipoUsoClaves.indexOf(opcion.clave) !== -1 ? 'checked' : '' %>
+                          value="OTROS"
+                          id="hv-uso-OTROS"
+                          data-uso-otros-toggle
+                          <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? 'checked' : '' %>
                         />
-                        <label class="form-check-label" for="hv-uso-<%= opcion.clave %>"><%= opcion.etiqueta %></label>
+                        <label class="form-check-label" for="hv-uso-OTROS">Otros</label>
                       </div>
-                    <% }); %>
-                    <div class="form-check">
                       <input
-                        class="form-check-input"
-                        type="checkbox"
-                        name="tipo_uso"
-                        value="OTROS"
-                        id="hv-uso-OTROS"
-                        data-uso-otros-toggle
-                        <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? 'checked' : '' %>
+                        type="text"
+                        class="form-control"
+                        style="max-width: 260px;"
+                        id="hv-uso-otros-texto"
+                        name="tipo_uso_otro"
+                        value="<%= usoTipoUsoOtro %>"
+                        placeholder="Especifique otro uso"
+                        data-uso-otros-texto
+                        <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? '' : 'disabled' %>
                       />
-                      <label class="form-check-label" for="hv-uso-OTROS">Otros</label>
+                      <input type="hidden" name="tipo_uso_grupo" value="1" />
                     </div>
+                  <% } else { %>
                     <input
-                      type="text"
+                      type="<%= campo.tipo === 'number' ? 'number' : (campo.tipo === 'date' ? 'date' : 'text') %>"
                       class="form-control"
-                      style="max-width: 260px;"
-                      id="hv-uso-otros-texto"
-                      name="tipo_uso_otro"
-                      value="<%= usoTipoUsoOtro %>"
-                      placeholder="Especifique otro uso"
-                      data-uso-otros-texto
-                      <%= usoTipoUsoClaves.indexOf('OTROS') !== -1 ? '' : 'disabled' %>
+                      id="hv-campo-<%= campo.nombre %>"
+                      name="<%= campo.nombre %>"
+                      value="<%= valor %>"
+                      <%= requerido ? 'required' : '' %>
                     />
-                    <input type="hidden" name="tipo_uso_grupo" value="1" />
-                  </div>
-                <% } else { %>
-                  <input
-                    type="<%= campo.tipo === 'number' ? 'number' : (campo.tipo === 'date' ? 'date' : 'text') %>"
-                    class="form-control"
-                    id="hv-campo-<%= campo.nombre %>"
-                    name="<%= campo.nombre %>"
-                    value="<%= valor %>"
-                    <%= requerido ? 'required' : '' %>
-                  />
-                <% } %>
+                  <% } %>
+                </div>
               </div>
             <% }); %>
           </div>
@@ -187,6 +209,8 @@
 <script nonce="<%= cspNonce %>">
   (function () {
     var hojaVidaId = <%= hojaVida.id %>;
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
     var form = document.getElementById('hv-confirmar-form');
     var loading = document.getElementById('hv-loading');
     var errorBox = document.getElementById('hv-error');
@@ -235,6 +259,11 @@
       try {
         var response = await fetch('/milab/api/hojas-vida/' + hojaVidaId + '/confirmar', {
           method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
           body: formData,
         });
 
@@ -249,7 +278,8 @@
         } else if (response.status === 400 && data.details && data.details.campos_faltantes) {
           mostrarError('Faltan campos obligatorios: ' + data.details.campos_faltantes.join(', ') + '.');
         } else {
-          mostrarError((data && data.message) || 'Ocurrio un error al confirmar la hoja de vida.');
+          var message = [data && data.message, data && data.message2].filter(Boolean).join('. ');
+          mostrarError(message || 'Ocurrio un error al confirmar la hoja de vida.');
         }
       } catch (err) {
         mostrarError('No se pudo conectar con el servidor. Intenta nuevamente.');

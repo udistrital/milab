@@ -166,7 +166,21 @@ class InventoryWorkflowError extends Error {
 }
 
 function getUserRoles(req) {
-  return normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+  const user = req.session?.user;
+  if (!user) return [];
+
+  let roles = [];
+  if (Array.isArray(user.roles) && user.roles.length > 0) {
+    roles = user.roles;
+  } else if (typeof user.roles === 'string' && user.roles.trim() !== '') {
+    roles = user.roles;
+  } else if (user.tipo) {
+    roles = user.tipo;
+  } else if (user.role) {
+    roles = user.role;
+  }
+
+  return normalizeRoles(roles);
 }
 
 function getUserDocument(req) {
