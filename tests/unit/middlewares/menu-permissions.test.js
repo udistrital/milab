@@ -560,31 +560,33 @@ test('menuPermissionMiddleware allows gestores to read the dashboard without a d
   }
 });
 
-test('menuPermissionMiddleware lets dashboard roles reach the inicio redirect without an Inicio grant', async () => {
-  const loaded = loadMiddleware({
-    poolQueryImpl: async () => {
-      throw new Error('Inicio redirect should not query menu grants for dashboard roles');
-    },
-  });
-
-  try {
-    const req = {
-      method: 'GET',
-      originalUrl: '/milab/inicio',
-      session: { user: { roles: ['laboratorista'], tipo: 'laboratorista' } },
-    };
-    const res = createResponse();
-    let nextCalled = false;
-
-    await loaded.menuPermissionMiddleware(req, res, () => {
-      nextCalled = true;
+test('menuPermissionMiddleware lets authenticated roles reach inicio without an Inicio grant', async () => {
+  for (const role of ['estudiante', 'docente', 'laboratorista']) {
+    const loaded = loadMiddleware({
+      poolQueryImpl: async () => {
+        throw new Error('Inicio should not query menu grants');
+      },
     });
 
-    assert.equal(nextCalled, true);
-    assert.equal(res.rendered, null);
-    assert.equal(loaded.getCalls().length, 0);
-  } finally {
-    loaded.restore();
+    try {
+      const req = {
+        method: 'GET',
+        originalUrl: '/milab/inicio',
+        session: { user: { roles: [role], tipo: role } },
+      };
+      const res = createResponse();
+      let nextCalled = false;
+
+      await loaded.menuPermissionMiddleware(req, res, () => {
+        nextCalled = true;
+      });
+
+      assert.equal(nextCalled, true, role);
+      assert.equal(res.rendered, null, role);
+      assert.equal(loaded.getCalls().length, 0, role);
+    } finally {
+      loaded.restore();
+    }
   }
 });
 

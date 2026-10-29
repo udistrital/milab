@@ -1371,7 +1371,7 @@ router.post(
             camposExtraidos.responsable || null,
             camposExtraidos.supervisor || null,
             camposExtraidos.funcion || null,
-            camposExtraidos.tipo_uso || null,
+            normalizarTipoUso(camposExtraidos.tipo_uso),
             camposExtraidos.descripcion_fisica || null,
             camposExtraidos.especificaciones_tecnicas || null,
             camposExtraidos.instrucciones_uso || null,
@@ -1564,14 +1564,34 @@ router.post(
         );
 
         if (req.file) {
-          await cliente.query(
+          const fotoInsert = await cliente.query(
             `
               INSERT INTO hoja_vida_documento (
                 hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
                 fecha_carga, usuario_carga
               ) VALUES ($1, 'FOTOGRAFIA_EQUIPO', $2, $3, $4, NOW(), $5)
+              RETURNING id
             `,
             [hojaVidaId, req.file.originalname, req.file.mimetype, req.file.buffer, usuario]
+          );
+
+          await cliente.query(
+            `
+              INSERT INTO hoja_vida_historial (
+                hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+                valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion,
+                referencia_tipo, referencia_id
+              ) VALUES ($1, $2, 'FOTOGRAFIA', 'fotografia', $3, $4, $5, $6, $6, 'DOCUMENTO', $7)
+            `,
+            [
+              hojaVidaId,
+              equipoId,
+              'Sin fotografia',
+              req.file.originalname,
+              'Carga de la fotografía del equipo durante la confirmación de la hoja de vida.',
+              usuario,
+              fotoInsert.rows[0].id,
+            ]
           );
         }
 
@@ -2371,6 +2391,354 @@ router.post(
             fecha_cierre: updateResult.rows[0].fecha_cierre,
             usuario_cierre: updateResult.rows[0].usuario_cierre,
             listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      console.error('[hojas-vida] Error cambiando estado del mantenimiento:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible actualizar el estado del mantenimiento.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
+
+/**
+ * Carga un mantenimiento activo del equipo indicado. Devuelve null cuando no
+ * existe o no pertenece al equipo.
+ */
+async function cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId) {
+  const result = await cliente.query(
+    `
+      SELECT m.*
+      FROM mantenimiento m
+      JOIN hoja_vida hv ON hv.id = m.hoja_vida_id
+      WHERE m.id = $1 AND m.equipo_id = $2 AND hv.equipo_id = $2
+        AND m.activo = TRUE AND hv.activo = TRUE
+      LIMIT 1
+    `,
+    [mantenimientoId, equipoId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Valida y normaliza los campos editables de un mantenimiento. Devuelve
+ * { error } cuando hay un problema de validacion o { datos } con el resultado.
+ */
+function normalizarDatosMantenimiento(body) {
+  const item = normalizarTextoOpcional(body.item);
+  if (!item) {
+    return {
+      error: {
+        message: 'El ítem o descripción del mantenimiento es obligatorio.',
+        campos: ['item'],
+      },
+    };
+  }
+
+  const tipoMantenimiento = String(body.tipo_mantenimiento || '')
+    .trim()
+    .toUpperCase();
+  if (!esTipoMantenimientoValido(tipoMantenimiento)) {
+    return {
+      error: {
+        message: 'El tipo de mantenimiento no es valido.',
+        campos: ['tipo_mantenimiento'],
+      },
+    };
+  }
+
+  const estado = String(body.estado || ESTADO_MANTENIMIENTO_DEFAULT)
+    .trim()
+    .toUpperCase();
+  if (!esEstadoMantenimientoValido(estado)) {
+    return {
+      error: {
+        message: 'El estado del mantenimiento no es valido.',
+        campos: ['estado'],
+      },
+    };
+  }
+
+  const fechaRealizacion = normalizarFechaDiaOpcional(body.fecha_realizacion);
+  if (normalizarTextoOpcional(body.fecha_realizacion) && !fechaRealizacion) {
+    return {
+      error: { message: 'La fecha de realización no es válida.', campos: ['fecha_realizacion'] },
+    };
+  }
+
+  const costo = normalizarCostoOpcional(body.costo);
+  if (Number.isNaN(costo)) {
+    return {
+      error: {
+        message: 'El costo del mantenimiento debe ser un valor numérico mayor o igual a cero.',
+        campos: ['costo'],
+      },
+    };
+  }
+
+  return {
+    datos: {
+      item,
+      tipo_mantenimiento: tipoMantenimiento,
+      estado,
+      fecha_realizacion: fechaRealizacion,
+      costo,
+      datos_empresa_contratada: normalizarTextoOpcional(body.datos_empresa_contratada),
+      tiempo_garantia: normalizarTextoOpcional(body.tiempo_garantia),
+      especificaciones_mantenimiento: normalizarTextoOpcional(body.especificaciones_mantenimiento),
+      responsable: normalizarTextoOpcional(body.responsable),
+      observaciones_repuestos: normalizarTextoOpcional(body.observaciones_repuestos),
+    },
+  };
+}
+
+/**
+ * PUT /:equipoId/mantenimientos/:mantenimientoId
+ * CA04: edicion ordinaria de un mantenimiento mientras este en estado
+ * Programado (PENDIENTE) o En ejecucion.
+ */
+router.put(
+  '/:equipoId/mantenimientos/:mantenimientoId',
+  async function editarMantenimientoHV(req, res) {
+    try {
+      const equipoId = Number(req.params?.equipoId);
+      const mantenimientoId = Number(req.params?.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
+        });
+      }
+
+      const normalizado = normalizarDatosMantenimiento(req.body || {});
+      if (normalizado.error) {
+        return res.status(400).json({
+          ok: false,
+          message: normalizado.error.message,
+          details: { campos_faltantes: normalizado.error.campos },
+        });
+      }
+      const datos = normalizado.datos;
+
+      const usuario = req.session?.user?.id || null;
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
+        if (!mantenimiento) {
+          await cliente.query('ROLLBACK');
+          return res.status(404).json({
+            ok: false,
+            message: 'El mantenimiento no existe para el equipo indicado.',
+          });
+        }
+
+        if (!esEstadoEditableMantenimiento(String(mantenimiento.estado || '').toUpperCase())) {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message:
+              'El mantenimiento no puede modificarse porque ya fue cerrado. Solo los mantenimientos Programados o En ejecución admiten edición.',
+          });
+        }
+
+        const esCierre = datos.estado === 'CUMPLIDO';
+        const updateResult = await cliente.query(
+          `
+            UPDATE mantenimiento
+            SET item = $3,
+                tipo_mantenimiento = $4,
+                fecha_realizacion = $5,
+                datos_empresa_contratada = $6,
+                tiempo_garantia = $7,
+                especificaciones_mantenimiento = $8,
+                responsable = $9,
+                observaciones_repuestos = $10,
+                costo = $11,
+                estado = $12,
+                fecha_cierre = CASE WHEN $13 THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP) ELSE fecha_cierre END,
+                usuario_cierre = CASE WHEN $13 THEN COALESCE(usuario_cierre, $14) ELSE usuario_cierre END,
+                usuario_modificacion = $14,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+            RETURNING id, estado, fecha_cierre, usuario_cierre
+          `,
+          [
+            mantenimientoId,
+            equipoId,
+            datos.item,
+            datos.tipo_mantenimiento,
+            datos.fecha_realizacion,
+            datos.datos_empresa_contratada,
+            datos.tiempo_garantia,
+            datos.especificaciones_mantenimiento,
+            datos.responsable,
+            datos.observaciones_repuestos,
+            datos.costo,
+            datos.estado,
+            esCierre,
+            usuario,
+          ]
+        );
+
+        await registrarEventoHistorial(
+          cliente,
+          mantenimiento.hoja_vida_id,
+          equipoId,
+          `Mantenimiento #${mantenimientoId} actualizado por ${usuario || 'usuario'}. Estado: ${etiquetaEstadoMantenimiento(datos.estado)}.`,
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
+        );
+
+        await sincronizarDisponibilidadEquipo(cliente, equipoId);
+
+        await cliente.query('COMMIT');
+
+        return res.json({
+          ok: true,
+          message: 'Mantenimiento actualizado correctamente.',
+          data: {
+            mantenimiento_id: Number(updateResult.rows[0].id),
+            estado: updateResult.rows[0].estado,
+            fecha_cierre: updateResult.rows[0].fecha_cierre,
+            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+          },
+        });
+      } catch (txError) {
+        await cliente.query('ROLLBACK');
+        throw txError;
+      } finally {
+        cliente.release();
+      }
+    } catch (error) {
+      console.error('[hojas-vida] Error editando mantenimiento:', error);
+      return res.status(500).json({
+        ok: false,
+        message: 'No fue posible actualizar el mantenimiento.',
+        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+      });
+    }
+  }
+);
+
+/**
+ * POST /:equipoId/mantenimientos/:mantenimientoId/estado
+ * CA05: cierre y cambios de estado del mantenimiento (En ejecucion, Cumplido,
+ * Vencido, Cancelado). Al cerrar se registra fecha, hora y usuario responsable.
+ */
+router.post(
+  '/:equipoId/mantenimientos/:mantenimientoId/estado',
+  async function cambiarEstadoMantenimientoHV(req, res) {
+    try {
+      const equipoId = Number(req.params?.equipoId);
+      const mantenimientoId = Number(req.params?.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
+        });
+      }
+
+      const estadoNuevo = String(req.body?.estado || '')
+        .trim()
+        .toUpperCase();
+      if (!esEstadoMantenimientoValido(estadoNuevo)) {
+        return res.status(400).json({
+          ok: false,
+          message: 'El estado del mantenimiento no es valido.',
+          details: { campos_faltantes: ['estado'] },
+        });
+      }
+
+      const usuario = req.session?.user?.id || null;
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+
+        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
+        if (!mantenimiento) {
+          await cliente.query('ROLLBACK');
+          return res.status(404).json({
+            ok: false,
+            message: 'El mantenimiento no existe para el equipo indicado.',
+          });
+        }
+
+        const estadoActual = String(mantenimiento.estado || '').toUpperCase();
+        if (estadoActual === estadoNuevo) {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message: `El mantenimiento ya se encuentra en estado ${etiquetaEstadoMantenimiento(estadoNuevo)}.`,
+          });
+        }
+        if (estadoActual === 'CUMPLIDO' || estadoActual === 'CANCELADO') {
+          await cliente.query('ROLLBACK');
+          return res.status(409).json({
+            ok: false,
+            message: 'El mantenimiento ya fue cerrado y no admite cambios de estado.',
+          });
+        }
+
+        const esCierre = estadoNuevo === 'CUMPLIDO';
+        const updateResult = await cliente.query(
+          `
+            UPDATE mantenimiento
+            SET estado = $3,
+                fecha_cierre = CASE WHEN $4 THEN CURRENT_TIMESTAMP ELSE fecha_cierre END,
+                usuario_cierre = CASE WHEN $4 THEN $5 ELSE usuario_cierre END,
+                usuario_modificacion = $5,
+                fecha_modificacion = CURRENT_TIMESTAMP
+            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+            RETURNING id, estado, fecha_cierre, usuario_cierre
+          `,
+          [mantenimientoId, equipoId, estadoNuevo, esCierre, usuario]
+        );
+
+        await registrarEventoHistorial(
+          cliente,
+          mantenimiento.hoja_vida_id,
+          equipoId,
+          `Mantenimiento #${mantenimientoId} ${esCierre ? 'cerrado' : 'cambiado'} a estado ${etiquetaEstadoMantenimiento(estadoNuevo)} por ${usuario || 'usuario'}.`,
+          usuario,
+          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
+        );
+
+        await sincronizarDisponibilidadEquipo(cliente, equipoId);
+
+        await cliente.query('COMMIT');
+
+        return res.json({
+          ok: true,
+          message: esCierre
+            ? 'Mantenimiento cerrado como Cumplido.'
+            : 'Estado del mantenimiento actualizado correctamente.',
+          data: {
+            mantenimiento_id: Number(updateResult.rows[0].id),
+            estado: updateResult.rows[0].estado,
+            fecha_cierre: updateResult.rows[0].fecha_cierre,
+            usuario_cierre: updateResult.rows[0].usuario_cierre,
+            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
           },
         });
       } catch (txError) {

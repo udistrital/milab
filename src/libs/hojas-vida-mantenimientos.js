@@ -7,6 +7,8 @@ const TIPOS_MANTENIMIENTO = [
   { codigo: 'OTRO', etiqueta: 'Otro' },
 ];
 
+// El codigo historico se mantiene como PENDIENTE, pero en la interfaz se muestra
+// como "Programado" para alinearse con el lenguaje del formato SIGUD.
 const ESTADOS_MANTENIMIENTO = [
   { codigo: 'PENDIENTE', etiqueta: 'Programado', clase: 'secondary' },
   { codigo: 'EN_EJECUCION', etiqueta: 'En ejecución', clase: 'primary' },

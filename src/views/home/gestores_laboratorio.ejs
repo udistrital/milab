@@ -1,14 +1,14 @@
 <%- include('../partials/header'); -%>
 <% const values = formValues || {}; %>
 <% const newManager = newManagerValues || {}; %>
-<% const selectedUalIds = new Set((values.ualIds || []).map(String)); %>
+<% const editValues = editManagerValues || {}; %>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Gestores de laboratorio</h1>
     <p class="app-page-subtitle">
-      Crea cuentas nuevas con el rol Gestor o asigna el rol a una cuenta existente. La asociación
-      a UAL es opcional.
+      Enrola y edita cuentas con cobertura para toda la Universidad. Los gestores no requieren
+      asignaciones a UAL.
     </p>
   </section>
 
@@ -89,14 +89,15 @@
 
       <div class="card shadow-sm border-0 mb-4">
         <div class="card-body">
-          <h2 class="h5">Asignar o actualizar una cuenta existente</h2>
+          <h2 class="h5">Enrolar una cuenta existente</h2>
           <p class="text-muted">
-            Usa esta opción para una cuenta ya registrada. Puedes guardar el rol sin asignarle UAL.
+            Selecciona una cuenta ya registrada para asignarle el rol Gestor de laboratorio con
+            cobertura universitaria.
           </p>
 
-          <form method="POST" action="/milab/api/gestores_laboratorio/guardar" class="row g-3">
+          <form method="POST" action="/milab/api/gestores_laboratorio/enrolar" class="row g-3">
             <%- include('../partials/csrf_field') %>
-            <div class="col-12 col-lg-5">
+            <div class="col-12">
               <label for="managerUser" class="form-label">Cuenta existente</label>
               <select id="managerUser" name="user_id" class="form-select" required <%= roleConfigured ? '' : 'disabled' %>>
                 <option value="">Selecciona una cuenta</option>
@@ -107,32 +108,9 @@
                 <% }); %>
               </select>
             </div>
-
-            <div class="col-12 col-lg-7">
-              <label for="managerUals" class="form-label">UAL asignadas (opcional)</label>
-              <select
-                id="managerUals"
-                name="ual_ids"
-                class="form-select"
-                multiple
-                size="5"
-                <%= roleConfigured ? '' : 'disabled' %>
-                aria-describedby="managerUalsHelp"
-              >
-                <% (ualOptions || []).forEach(function(ual) { %>
-                  <option value="<%= ual.ual_id %>" <%= selectedUalIds.has(String(ual.ual_id)) ? 'selected' : '' %>>
-                    <%= ual.facultad_nombre || 'Facultad no disponible' %> · <%= ual.nombre %>
-                  </option>
-                <% }); %>
-              </select>
-              <div id="managerUalsHelp" class="form-text">
-                Usa Ctrl/Cmd para seleccionar varias. Si no seleccionas ninguna, el gestor queda sin UAL.
-              </div>
-            </div>
-
             <div class="col-12 text-end">
               <button type="submit" class="btn btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
-                Asignar / guardar gestor
+                Enrolar como gestor
               </button>
             </div>
           </form>
@@ -148,8 +126,8 @@
                 <tr>
                   <th>Cuenta</th>
                   <th>Estado</th>
-                  <th>Asignaciones de UAL</th>
-                  <th>Acceso</th>
+                  <th>Cobertura</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,8 +136,7 @@
                 <% } %>
 
                 <% (managers || []).forEach(function(manager) { %>
-                  <% const activeAssignments = (manager.asignaciones || []).filter(function(item) { return item.activo; }); %>
-                  <% const assignedIds = new Set(activeAssignments.map(function(item) { return String(item.ual_id); })); %>
+                  <% const editingManager = String(editValues.userId || '') === String(manager.id); %>
                   <tr>
                     <td>
                       <strong><%= manager.nombre %></strong><br>
@@ -176,59 +153,89 @@
                       </div>
                     </td>
                     <td>
-                      <form
-                        method="POST"
-                        action="/milab/api/gestores_laboratorio/guardar"
-                        class="d-flex flex-column gap-2"
-                      >
-                        <%- include('../partials/csrf_field') %>
-                        <input type="hidden" name="user_id" value="<%= manager.id %>">
-                        <label class="visually-hidden" for="managerUals<%= manager.id %>">UAL asignadas</label>
-                        <select
-                          id="managerUals<%= manager.id %>"
-                          name="ual_ids"
-                          class="form-select form-select-sm"
-                          multiple
-                          size="4"
-                          <%= roleConfigured ? '' : 'disabled' %>
-                        >
-                          <% (ualOptions || []).forEach(function(ual) { %>
-                            <option value="<%= ual.ual_id %>" <%= assignedIds.has(String(ual.ual_id)) ? 'selected' : '' %>>
-                              <%= ual.facultad_nombre || 'Facultad no disponible' %> · <%= ual.nombre %>
-                            </option>
-                          <% }); %>
-                        </select>
-                        <button type="submit" class="btn btn-sm btn-outline-primary align-self-start" <%= roleConfigured && manager.cuenta_activa ? '' : 'disabled' %>>
-                          Guardar / activar
-                        </button>
-                        <% if (!activeAssignments.length) { %>
-                          <small class="text-muted">Sin UAL asignadas.</small>
-                        <% } %>
-                        <% if (manager.asignaciones && manager.asignaciones.length) { %>
-                          <small class="text-muted">
-                            Historial:
-                            <%= manager.asignaciones.map(function(item) {
-                              return `${item.activo ? 'activa' : 'inactiva'}: ${item.nombre}`;
-                            }).join(' · ') %>
-                          </small>
-                        <% } %>
-                      </form>
+                      <span class="badge text-bg-primary">Universidad</span>
+                      <div class="small text-muted mt-1">Sin asignación de UAL</div>
                     </td>
                     <td>
-                      <form
-                        method="POST"
-                        action="/milab/api/gestores_laboratorio/<%= manager.id %>/desactivar"
-                        data-confirm-submit="¿Desactivar el acceso de este gestor?"
-                      >
-                        <%- include('../partials/csrf_field') %>
-                        <button
-                          type="submit"
-                          class="btn btn-sm btn-outline-danger"
-                          <%= manager.rol_activo ? '' : 'disabled' %>
-                        >
-                          Desactivar
-                        </button>
-                      </form>
+                      <div class="d-flex flex-wrap align-items-start gap-2">
+                        <details>
+                          <summary class="btn btn-sm btn-outline-primary" <%= roleConfigured ? '' : 'aria-disabled="true"' %>>
+                            Editar
+                          </summary>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/editar"
+                            class="border rounded p-3 mt-2"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <input type="hidden" name="user_id" value="<%= manager.id %>">
+                            <div class="mb-2">
+                              <label for="managerName<%= manager.id %>" class="form-label">Nombre completo</label>
+                              <input
+                                id="managerName<%= manager.id %>"
+                                name="nombre"
+                                class="form-control form-control-sm"
+                                maxlength="200"
+                                value="<%= editingManager ? editValues.name : manager.nombre %>"
+                                required
+                              >
+                            </div>
+                            <div class="mb-2">
+                              <label for="managerDocument<%= manager.id %>" class="form-label">Documento</label>
+                              <input
+                                id="managerDocument<%= manager.id %>"
+                                name="documento"
+                                class="form-control form-control-sm"
+                                maxlength="50"
+                                value="<%= editingManager ? editValues.document : manager.documento %>"
+                                required
+                              >
+                            </div>
+                            <div class="mb-3">
+                              <label for="managerEmail<%= manager.id %>" class="form-label">Correo institucional</label>
+                              <input
+                                id="managerEmail<%= manager.id %>"
+                                name="correo"
+                                type="email"
+                                class="form-control form-control-sm"
+                                maxlength="255"
+                                value="<%= editingManager ? editValues.email : manager.correo %>"
+                                required
+                              >
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary" <%= roleConfigured ? '' : 'disabled' %>>
+                              Guardar cambios
+                            </button>
+                          </form>
+                        </details>
+
+                        <% if (manager.rol_activo) { %>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/<%= manager.id %>/desactivar"
+                            data-confirm-submit="¿Desactivar el acceso de este gestor?"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                              Desactivar
+                            </button>
+                          </form>
+                        <% } else { %>
+                          <form
+                            method="POST"
+                            action="/milab/api/gestores_laboratorio/<%= manager.id %>/enrolar"
+                          >
+                            <%- include('../partials/csrf_field') %>
+                            <button
+                              type="submit"
+                              class="btn btn-sm btn-success"
+                              <%= roleConfigured && manager.cuenta_activa ? '' : 'disabled' %>
+                            >
+                              Enrolar
+                            </button>
+                          </form>
+                        <% } %>
+                      </div>
                     </td>
                   </tr>
                 <% }); %>

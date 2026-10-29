@@ -8016,6 +8016,92 @@ router.get(/^\/hojas-vida(?:\/.*)?$/, requireInventarioAuthorized, function (req
   );
 });
 
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/:mantenimientoId/editar',
+  requireInventarioAuthorized,
+  async function editarMantenimientoHVView(req, res) {
+    try {
+      const equipoId = Number(req.params.equipoId);
+      const mantenimientoId = Number(req.params.mantenimientoId);
+      if (
+        !Number.isInteger(equipoId) ||
+        equipoId <= 0 ||
+        !Number.isInteger(mantenimientoId) ||
+        mantenimientoId <= 0
+      ) {
+        return res.redirect('/milab/prestamos/hojas-vida?error=Equipo%20invalido');
+      }
+
+      const datos = await cargarHojaVidaPorEquipo(equipoId);
+      if (!datos) {
+        return res.redirect(
+          '/milab/prestamos/hojas-vida?error=El%20equipo%20no%20tiene%20hoja%20de%20vida'
+        );
+      }
+
+      const mantenimientoResult = await pool.query(
+        `
+          SELECT *
+          FROM mantenimiento
+          WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+          LIMIT 1
+        `,
+        [mantenimientoId, equipoId]
+      );
+
+      if (mantenimientoResult.rows.length === 0) {
+        return res.redirect(
+          `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20existe`
+        );
+      }
+
+      const mantenimiento = mantenimientoResult.rows[0];
+      const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+      if (!esEstadoEditableMantenimiento(estadoCodigo)) {
+        return res.redirect(
+          `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos?error=` +
+            encodeURIComponent(
+              'El mantenimiento ya fue cerrado y no puede modificarse mediante la edición ordinaria.'
+            )
+        );
+      }
+
+      const estadosPermitidos = ESTADOS_MANTENIMIENTO.filter(function (estado) {
+        return estado.codigo === estadoCodigo;
+      });
+
+      return res.render('home/prestamos/hojas-vida/mantenimiento-editar', {
+        hojaVida: datos.hojaVida,
+        equipo: datos.equipo,
+        mantenimiento: {
+          ...mantenimiento,
+          fecha_realizacion_display: formatearValorHojaVidaPdf(
+            mantenimiento.fecha_realizacion,
+            'date'
+          ),
+        },
+        tiposMantenimiento: TIPOS_MANTENIMIENTO,
+        estadosMantenimiento: estadosPermitidos,
+        editable: esEstadoEditableMantenimiento(estadoCodigo),
+        estadoEtiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+        fechaRealizacionValor: mantenimiento.fecha_realizacion
+          ? String(mantenimiento.fecha_realizacion).slice(0, 10)
+          : '',
+        fechaCierreDisplay: mantenimiento.fecha_cierre
+          ? formatearFechaHoraHojaVida(mantenimiento.fecha_cierre)
+          : null,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('[prestamos] Error cargando edicion de mantenimiento:', error);
+      return res.redirect(
+        `/milab/prestamos/hojas-vida/${req.params.equipoId}/mantenimientos?error=No%20fue%20posible%20cargar%20el%20mantenimiento`
+      );
+    }
+  }
+);
+
 router.get('/inventario/crear', requireInventarioAuthorized, function (req, res) {
   return res.render('home/prestamos/inventario/form', {
     item: {},
@@ -8849,6 +8935,26 @@ router.get(
   }
 );
 
+/**
+ * CA06/CA07: determina si un equipo tiene al menos un mantenimiento en
+ * ejecucion, en cuyo caso el activo no puede prestarse.
+ */
+async function equipoBloqueadoPorMantenimiento(cliente, equipoId) {
+  const result = await cliente.query(
+    `
+      SELECT 1
+      FROM mantenimiento
+      WHERE equipo_id = $1 AND activo = TRUE AND estado = 'EN_EJECUCION'
+      LIMIT 1
+    `,
+    [equipoId]
+  );
+  return result.rows.length > 0;
+}
+
+const MENSAJE_EQUIPO_EN_MANTENIMIENTO =
+  'Equipo no disponible para préstamo. El activo tiene un mantenimiento en ejecución.';
+
 router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (req, res) {
   const payload = buildLoanRequestPayload(req.body);
   const validationError = validateLoanRequestPayload(payload);
@@ -8929,6 +9035,13 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       return res.status(404).json({
         success: false,
         message: 'El equipo no existe.',
+      });
+    }
+
+    if (await equipoBloqueadoPorMantenimiento(pool, payload.equipo_id)) {
+      return res.status(409).json({
+        success: false,
+        message: MENSAJE_EQUIPO_EN_MANTENIMIENTO,
       });
     }
 
@@ -10295,6 +10408,14 @@ router.post(
           return res.status(404).json({
             success: false,
             message: 'La solicitud de ultima hora no existe o ya fue procesada.',
+          });
+        }
+
+        if (await equipoBloqueadoPorMantenimiento(client, cola.equipo_id)) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            success: false,
+            message: MENSAJE_EQUIPO_EN_MANTENIMIENTO,
           });
         }
 
@@ -16255,6 +16376,9 @@ router.__private = {
   buildAcademicPracticePayload,
   validateAcademicPracticePayload,
   normalizePracticeDocumentList,
+  HV_PDF_META,
+  HV_PDF_TITULO,
+  prepararMantenimientosPdf,
 };
 
 module.exports = router;

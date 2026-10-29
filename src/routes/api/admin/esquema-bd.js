@@ -18,6 +18,7 @@ const ACCESS_DENIED_OVERRIDES = {
 };
 
 const requireAdmin = requireRoles('admin', ACCESS_DENIED_OVERRIDES);
+const DATABASE_SCHEMA = 'milab';
 
 // requireRoles concede solo lectura a coordinador_general; esta vista es exclusiva del admin.
 function requireAdminRoleOnly(req, res, next) {
@@ -29,7 +30,6 @@ function requireAdminRoleOnly(req, res, next) {
 }
 
 const RELATION_KINDS = ['r', 'p', 'v', 'm', 'f'];
-const SYSTEM_SCHEMA_FILTER = `n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'`;
 
 function sanitizeText(value) {
   return value === undefined || value === null ? '' : String(value).trim();
@@ -43,8 +43,7 @@ async function loadDatabaseInfo() {
   const result = await pool.query(`
     SELECT current_database() AS base_datos,
            session_user AS usuario_conexion,
-           current_user AS usuario_efectivo,
-           current_setting('search_path') AS search_path
+           current_user AS usuario_efectivo
   `);
   return result.rows[0] || {};
 }
@@ -68,9 +67,9 @@ async function listRelations(filtro) {
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE c.relkind = ANY($1::"char"[])
-        AND ${SYSTEM_SCHEMA_FILTER}
-        AND ($2 = '' OR c.relname ILIKE $3 OR n.nspname ILIKE $3)
-      ORDER BY n.nspname, c.relname
+        AND n.nspname = 'milab'
+        AND ($2 = '' OR c.relname ILIKE $3)
+      ORDER BY c.relname
     `,
     [RELATION_KINDS, filtro, pattern]
   );
@@ -78,6 +77,8 @@ async function listRelations(filtro) {
 }
 
 async function findRelation(esquema, nombre) {
+  if (esquema !== DATABASE_SCHEMA) return null;
+
   const result = await pool.query(
     `
       SELECT c.oid,
@@ -104,6 +105,7 @@ async function findRelation(esquema, nombre) {
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = $1
+        AND n.nspname = 'milab'
         AND c.relname = $2
         AND c.relkind = ANY($3::"char"[])
     `,

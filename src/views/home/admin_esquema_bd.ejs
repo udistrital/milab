@@ -17,8 +17,8 @@
             <dd class="col-sm-9"><code><%= baseDatos.usuario_conexion %></code></dd>
             <dt class="col-sm-3">Rol efectivo en la BD</dt>
             <dd class="col-sm-9"><code><%= baseDatos.usuario_efectivo %></code></dd>
-            <dt class="col-sm-3">search_path</dt>
-            <dd class="col-sm-9"><code><%= baseDatos.search_path %></code></dd>
+            <dt class="col-sm-3">Esquema consultado</dt>
+            <dd class="col-sm-9"><code>milab</code></dd>
           </dl>
         </div>
       </div>
@@ -207,14 +207,14 @@
           <h2 class="h5 mb-3">Tablas y vistas</h2>
           <form method="GET" action="/milab/api/admin/esquema-bd" class="row g-2 mb-3">
             <div class="col-md-9">
-              <label class="visually-hidden" for="filtroEsquema">Filtrar por nombre o esquema</label>
+              <label class="visually-hidden" for="filtroEsquema">Filtrar tablas y vistas de milab por nombre</label>
               <input
                 id="filtroEsquema"
                 class="form-control"
                 type="search"
                 name="q"
                 maxlength="100"
-                placeholder="Filtrar por nombre o esquema"
+                placeholder="Filtrar tablas y vistas de milab por nombre"
                 value="<%= filtro %>"
               />
             </div>

@@ -11,7 +11,6 @@ const DATABASE_INFO = {
   base_datos: 'milab',
   usuario_conexion: 'milab_app',
   usuario_efectivo: 'milab_app',
-  search_path: 'milab',
 };
 
 function buildApp(route, sessionUser) {
@@ -165,8 +164,34 @@ test('esquema-bd lists relations for admin and escapes the filter', async () => 
       .getPoolCalls()
       .find((call) => call.sql.includes('FROM pg_class c') && call.sql.includes('ILIKE'));
     assert.ok(listCall);
+    assert.match(listCall.sql, /n\.nspname = 'milab'/);
+    assert.doesNotMatch(listCall.sql, /n\.nspname ILIKE/);
     assert.equal(listCall.params[2], '%100\\%\\_%');
     assert.equal(listCall.sql.includes('100%_'), false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('esquema-bd does not reveal relations from schemas other than milab', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const app = buildApp(loaded.route, ADMIN_USER);
+    const response = await request(app).get('/').query({ esquema: 'public', tabla: 'users' });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/admin_esquema_bd');
+    assert.equal(response.body.locals.notFound, true);
+    assert.equal(response.body.locals.detalle, null);
+    assert.equal(
+      loaded.getPoolCalls().some((call) => call.sql.includes('AND c.relname = $2')),
+      false
+    );
+    const listCall = loaded
+      .getPoolCalls()
+      .find((call) => call.sql.includes('FROM pg_class c') && call.sql.includes('ILIKE'));
+    assert.match(listCall.sql, /n\.nspname = 'milab'/);
   } finally {
     loaded.restore();
   }

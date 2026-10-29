@@ -1,5 +1,16 @@
 # Release Notes
 
+## 4.0.0 - 2026-10-28
+
+1. Se actualiza la versión visible de MiLab para el despliegue de preproducción.
+
+## 3.2.0 - 2026-10-27
+
+1. La consulta masiva de sanciones procesa hasta 50 documentos o códigos con progreso visible; las multas ajenas al catálogo de laboratorio no se tipifican como sanciones y los administradores pueden consultar otras multas SGA.
+2. Se amplía la gestión de gestores de laboratorio con acciones de enrolamiento y edición, alcance universitario sin UAL e impersonación de cuentas con ese rol.
+3. El tour guiado incorpora módulos de inventarios, hojas de vida, capacitación, encuentros y configuración, con recorridos y progreso en español.
+4. El navegador administrativo del esquema de base de datos queda limitado a `milab`.
+
 ## 3.1.10 - 2026-10-24
 
 1. El dashboard conserva sus secciones disponibles y muestra advertencias cuando fallan consultas opcionales de alcance, filtros o Paz y Salvos.

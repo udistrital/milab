@@ -4,18 +4,19 @@
 
 MILab es la aplicación web para la gestión de paz y salvos en laboratorios de la Universidad Distrital. Permite automatizar consultas, registros, aprobaciones y generación de certificados para estudiantes, docentes, laboratoristas y coordinadores. El sistema integra autenticación, control de acceso, generación de PDFs, notificaciones por correo y seguridad avanzada.
 
-**Versión en curso:** `3.1.10`
+**Versión en curso:** `4.0.0`
 
 ## Release Notes
 
 - Índice general: [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - Préstamos 2.0: [docs/release-notes-prestamos-2.0.md](docs/release-notes-prestamos-2.0.md)
 
-## Cambios recientes (3.1.10)
+## Cambios recientes (3.2.0)
 
-- **Dashboard resiliente y acceso de gestores:** errores en los indicadores opcionales no interrumpen la vista; los gestores de laboratorio pueden consultar el dashboard global.
-- **Consulta centralizada de sanciones SGA:** verifica códigos asociados e históricos por documento, identifica multas de laboratorio por el nombre del concepto e informa explícitamente cuando la consulta queda parcial o no verificable.
-- **Informe de consulta masiva:** agrega resumen visual, barras por estado, detalle de multas y listado completo de participantes con encabezados, pies y logos institucionales.
+- **Sanciones SGA:** la consulta masiva procesa hasta 50 documentos o códigos y muestra su progreso. Los conceptos ajenos al catálogo de sanciones de laboratorio no se contabilizan como multas; los administradores pueden consultar otras multas SGA por separado.
+- **Gestores de laboratorio:** se pueden enrolar, editar e impersonar gestores con alcance universitario, sin asignaciones a UAL.
+- **Tour guiado:** incluye guiones para inventarios, hojas de vida, capacitaciones, encuentros, configuración y los flujos recientes de sanciones.
+- **Esquema de base de datos:** la consulta administrativa se limita al esquema `milab`.
 
 ## Cambios de la versión 3.0.11
 
@@ -44,11 +45,11 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 ## Consulta de multas SGA
 
-- El servicio de deudores por ambiente se define en [src/config/sga-services.js](src/config/sga-services.js) (`SGA_DEBTORS_SERVICE_NAMES`) y no se lee del `.env` (`OATI_DEBT_SERVICE_NAME` no tiene efecto). Las consultas usan el gateway https de OATI con token OAuth, no el puerto 8282.
-- `NODE_ENV=production` (o cualquier ambiente no listado como no productivo, incluido vacío) usa `servicios_academicos_produccion`; `dev`, `development`, `local`, `test`, `testing`, `staging` y `preprod` usan `academica_pruebas`.
+- `dev`, `development`, `test` y `testing` usan `academica_pruebas` mediante `OATI_PUBLIC_BASE_URL` (por defecto `https://autenticacion.portaloas.udistrital.edu.co`) y no solicitan token OAuth, tanto para GET como para POST. Los demás ambientes usan `servicios_academicos_produccion` en el gateway `OATI_BASE_URL` y se autentican mediante `OATI_TOKEN_URL`. Los nombres de servicio se definen en [src/config/sga-services.js](src/config/sga-services.js); `OATI_DEBT_SERVICE_NAME` no tiene efecto.
+- En dev/test, usa únicamente identificadores de prueba autorizados: el servicio público puede devolver información estudiantil. El endpoint de estado usa `carrera/0` para evitar consultar documentos personales.
 - Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
 - Se consideran deudas activas las de `DEU_ESTADO = 1` o `2` (se aceptan valores numéricos o texto), excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea. El estado `3` (saldada) y los demás estados no se incluyen.
-- Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes: una deuda registrada en producción puede no existir en pruebas. Para diagnosticar faltantes, verificar tanto el servicio seleccionado por ambiente como el estado devuelto; una respuesta válida sin registros no es un error de conexión.
+- Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes; una respuesta válida sin registros no es un error de conexión.
 - La generación del paz y salvo de estudiante revisa las multas de MILab y SGA; si SGA no responde, el certificado no se genera.
 
 ## Correos de registro y sanciones
@@ -283,7 +284,7 @@ Notas operativas:
 ## Variables de entorno relevantes
 
 - `APP_BASE_URL`: URL base pública de la aplicación.
-- `APP_VERSION`: versión visible de la aplicación. Para este release usar `3.1.10`.
+- `APP_VERSION`: versión visible de la aplicación. Para este release usar `4.0.0`.
 - `RECAPTCHA_SITE_KEY`: llave pública de reCAPTCHA.
 - `RECAPTCHA_SECRET_KEY`: llave privada de reCAPTCHA.
 - `REGISTRATION_TOKEN_SECRET`: secreto usado para firmar enlaces de registro de coordinadores y laboratoristas. Debe definirse por ambiente y rotarse fuera de desarrollo local.

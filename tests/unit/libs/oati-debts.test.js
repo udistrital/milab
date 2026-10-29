@@ -3,14 +3,17 @@ const assert = require('node:assert/strict');
 
 const { config } = require('../../../src/config/config');
 const {
-  resolveSgaDebtorsServiceName,
-  SGA_DEBTORS_SERVICE_NAMES,
+  isOatiPublicEnvironment,
+  resolveSgaServiceName,
+  SGA_SERVICE_NAMES,
 } = require('../../../src/config/sga-services');
 const {
   SgaDebtService,
   isLaboratoryConceptName,
   sgaDebtService,
   resolveSgaConceptName,
+  resolveSgaConceptType,
+  resolveSgaLaboratoryConceptName,
 } = require('../../../src/libs/oati-debts');
 
 function createService({ serviceName = 'academica_pruebas', studentResponse, debtResponse } = {}) {
@@ -58,9 +61,40 @@ test('SgaDebtService parses repeated SGA estudiante records', () => {
   assert.equal(result[1].DEU_ESTADO, '3');
 });
 
-test('SGA concept codes resolve to the laboratory or dependency names from the catalog', () => {
+test('SGA concept codes resolve the full catalog and keep laboratory classification separate', () => {
+  const catalogCodes = [
+    ...Array.from({ length: 24 }, (_, index) => String(index + 1)),
+    ...Array.from({ length: 43 }, (_, index) => String(index + 30)),
+  ];
+  assert.equal(catalogCodes.length, 67);
+  assert.ok(catalogCodes.every((code) => resolveSgaConceptName(code)));
+  assert.ok(catalogCodes.every((code) => resolveSgaConceptType(code)));
+  assert.equal(resolveSgaConceptName('1'), 'BIBLIOTECA INGENIERÍA');
+  assert.equal(resolveSgaConceptName('9'), 'BIENESTAR UNIVERSITARIO');
   assert.equal(resolveSgaConceptName('4'), 'LABORATORIO DE QUIMICA');
   assert.equal(resolveSgaConceptName('04'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaConceptName('8'), 'LABORATORIO DE FOTOGAMETRIA (VIVERO)');
+  assert.equal(resolveSgaConceptName('14'), 'CENTRO INVEST. GEOG. CIIGER');
+  assert.equal(resolveSgaConceptName('21'), 'DEPORTES - VIVERO');
+  assert.equal(resolveSgaConceptName('23'), 'CENTRO DE DOCUMENTACIÓN DE ARTES');
+  assert.equal(resolveSgaConceptName('24'), 'LAB. INGENIERÍA');
+  assert.equal(resolveSgaConceptName('35'), 'XILOTECA VIVERO');
+  assert.equal(resolveSgaConceptName('52'), 'BIBLIOTECA ADUANILLA DE PAIBA');
+  assert.equal(resolveSgaConceptName('60'), 'LAB. CALIDAD DEL AGUA (BOSA)');
+  assert.equal(resolveSgaConceptName('71'), 'LAB. TOPOGRAFIA (BOSA)');
+  assert.equal(resolveSgaConceptName('72'), 'LAB. QUÍMICA ORGÁNICA (BOSA)');
+  assert.equal(resolveSgaLaboratoryConceptName('4'), 'LABORATORIO DE QUIMICA');
+  assert.equal(resolveSgaLaboratoryConceptName('14'), 'CENTRO INVEST. GEOG. CIIGER');
+  assert.equal(resolveSgaLaboratoryConceptName('21'), 'DEPORTES - VIVERO');
+  assert.equal(resolveSgaLaboratoryConceptName('23'), 'CENTRO DE DOCUMENTACIÓN DE ARTES');
+  assert.equal(resolveSgaLaboratoryConceptName('35'), 'XILOTECA VIVERO');
+  assert.equal(resolveSgaLaboratoryConceptName('55'), 'ZOONOSIS (FAMARENA)');
+  assert.equal(resolveSgaLaboratoryConceptName('56'), 'CENTRO DE DOCUMENTACION SOCIALES');
+  assert.equal(resolveSgaLaboratoryConceptName('1'), null);
+  assert.equal(resolveSgaLaboratoryConceptName('9'), null);
+  assert.equal(resolveSgaConceptType('4'), 'LABORATORIO');
+  assert.equal(resolveSgaConceptType('1'), 'BIBLIOTECA');
+  assert.equal(resolveSgaConceptType('9'), 'BIENESTAR');
   assert.equal(resolveSgaConceptName('999'), null);
   assert.equal(resolveSgaConceptName(''), null);
 });
@@ -147,7 +181,7 @@ test('SgaDebtService resolves a document to student code and fetches active SGA 
     },
     debtResponse: `
       <deudas xmlns="http://ws.wso2.org/dataservice/qry_deudores">
-        <estudiantes><DEU_EST_COD>2024100001</DEU_EST_COD><DEU_ESTADO>2</DEU_ESTADO></estudiantes>
+        <estudiantes><DEU_EST_COD>2024100001</DEU_EST_COD><DEU_ESTADO>2</DEU_ESTADO><DEU_CPTO_COD>4</DEU_CPTO_COD></estudiantes>
         <estudiantes><DEU_EST_COD>2024100001</DEU_EST_COD><DEU_ESTADO>3</DEU_ESTADO></estudiantes>
       </deudas>
     `,
@@ -157,14 +191,25 @@ test('SgaDebtService resolves a document to student code and fetches active SGA 
 
   assert.equal(activeDebts.length, 1);
   assert.equal(activeDebts[0].DEU_ESTADO, '2');
+  assert.equal(activeDebts[0].DEU_CPTO_NOMBRE, 'LABORATORIO DE QUIMICA');
   assert.deepEqual(calls.academic, ['datos_basicos_activos_cedula/79520182']);
   assert.equal(calls.post[0][0], 'wso2eiserver/services/academica_pruebas/deudores/2024100001');
   assert.match(calls.post[0][1], /<xs:codigo_estudiante>2024100001<\/xs:codigo_estudiante>/);
 });
 
-test('SgaDebtService handles Axios-parsed debts and returns state-1 and state-2 records', async () => {
-  const newDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: 1, DEU_ID: '111951' };
-  const activeDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '2', DEU_ID: '75806' };
+test('SgaDebtService handles Axios-parsed debts and returns mapped state-1 and state-2 records', async () => {
+  const newDebt = {
+    DEU_EST_COD: '20161104039',
+    DEU_ESTADO: 1,
+    DEU_ID: '111951',
+    DEU_CPTO_COD: '4',
+  };
+  const activeDebt = {
+    DEU_EST_COD: '20161104039',
+    DEU_ESTADO: '2',
+    DEU_ID: '75806',
+    DEU_CPTO_COD: '7',
+  };
   const paidDebt = { DEU_EST_COD: '20161104039', DEU_ESTADO: '3', DEU_ID: '92915' };
   const { service } = createService({
     debtResponse: { deudas: { estudiantes: [newDebt, activeDebt, paidDebt] } },
@@ -172,7 +217,13 @@ test('SgaDebtService handles Axios-parsed debts and returns state-1 and state-2 
 
   const result = await service.getActiveDebts({ codigo: '20161104039' });
 
-  assert.deepEqual(result, [newDebt, activeDebt]);
+  assert.deepEqual(
+    result.map((debt) => [debt.DEU_ID, debt.DEU_CPTO_NOMBRE]),
+    [
+      ['111951', 'LABORATORIO DE QUIMICA'],
+      ['75806', 'AUDIOVISUALES'],
+    ]
+  );
 });
 
 test('SgaDebtService skips SGA and academic requests when not configured', async () => {
@@ -197,18 +248,20 @@ test('SgaDebtService uses an explicit environment service name', () => {
   }
 });
 
-test('SGA debtors service name is fixed per environment and ignores .env overrides', () => {
+test('OATI dev and test use the test service while other environments use production', () => {
   const originalOverride = process.env.OATI_DEBT_SERVICE_NAME;
   process.env.OATI_DEBT_SERVICE_NAME = 'otro_servicio';
 
   try {
-    assert.equal(resolveSgaDebtorsServiceName('production'), 'servicios_academicos_produccion');
-    assert.equal(resolveSgaDebtorsServiceName('PRODUCTION'), 'servicios_academicos_produccion');
-    assert.equal(resolveSgaDebtorsServiceName(''), 'servicios_academicos_produccion');
-    for (const environmentName of ['dev', 'development', 'local', 'test', 'staging', 'preprod']) {
-      assert.equal(resolveSgaDebtorsServiceName(environmentName), 'academica_pruebas');
+    for (const environmentName of ['dev', 'DEV', 'development', 'test', 'TEST', 'testing']) {
+      assert.equal(resolveSgaServiceName(environmentName), 'academica_pruebas');
+      assert.equal(isOatiPublicEnvironment(environmentName), true);
     }
-    assert.ok(Object.isFrozen(SGA_DEBTORS_SERVICE_NAMES));
+    for (const environmentName of ['production', 'PRODUCTION', '', 'local', 'staging', 'preprod']) {
+      assert.equal(resolveSgaServiceName(environmentName), 'servicios_academicos_produccion');
+      assert.equal(isOatiPublicEnvironment(environmentName), false);
+    }
+    assert.ok(Object.isFrozen(SGA_SERVICE_NAMES));
   } finally {
     if (originalOverride === undefined) delete process.env.OATI_DEBT_SERVICE_NAME;
     else process.env.OATI_DEBT_SERVICE_NAME = originalOverride;
@@ -224,13 +277,23 @@ test('SgaDebtService builds the production debtors path', () => {
   );
 });
 
-test('SgaDebtService ignores library debts even when they are active', async () => {
-  const labDebt = { DEU_ID: '1', DEU_ESTADO: '2', DEU_MATERIAL: 'TABLET LENOVO PLACA 123' };
+test('SgaDebtService keeps only active debts with concept codes in the allowed catalog', async () => {
+  const labDebt = {
+    DEU_ID: '1',
+    DEU_ESTADO: '2',
+    DEU_CPTO_COD: '4',
+    DEU_MATERIAL: 'TABLET LENOVO PLACA 123',
+  };
   const libraryDebts = [
-    { DEU_ID: '5', DEU_ESTADO: '1', DEU_MATERIAL: 'Biblioteca' },
-    { DEU_ID: '2', DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' },
-    { DEU_ID: '3', DEU_ESTADO: '2', DEU_MATERIAL: 'MULTA BIBLIOTECA CENTRAL' },
-    { DEU_ID: '4', DEU_ESTADO: '2', DEU_MATERIAL: 'libro no devuelto - bibliotéca' },
+    { DEU_ID: '5', DEU_ESTADO: '1', DEU_CPTO_COD: '1', DEU_MATERIAL: 'Biblioteca' },
+    { DEU_ID: '2', DEU_ESTADO: '2', DEU_CPTO_COD: '1', DEU_MATERIAL: 'Biblioteca' },
+    { DEU_ID: '3', DEU_ESTADO: '2', DEU_CPTO_COD: '999', DEU_MATERIAL: 'MULTA BIBLIOTECA CENTRAL' },
+    {
+      DEU_ID: '4',
+      DEU_ESTADO: '2',
+      DEU_CPTO_COD: '999',
+      DEU_MATERIAL: 'libro no devuelto - bibliotéca',
+    },
   ];
   const { service } = createService({
     debtResponse: { deudas: { estudiantes: [labDebt, ...libraryDebts] } },
@@ -238,7 +301,9 @@ test('SgaDebtService ignores library debts even when they are active', async () 
 
   const result = await service.getActiveDebts({ codigo: '20161104039' });
 
-  assert.deepEqual(result, [labDebt]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].DEU_ID, labDebt.DEU_ID);
+  assert.equal(result[0].DEU_CPTO_NOMBRE, 'LABORATORIO DE QUIMICA');
 });
 
 test('SgaDebtService classifies library debts by the reported detail', () => {
@@ -250,11 +315,22 @@ test('SgaDebtService classifies library debts by the reported detail', () => {
   assert.equal(service.isLibraryDebt({ DEU_MATERIAL: 'Osciloscopio' }), false);
   assert.equal(service.isLibraryDebt({ DEU_MATERIAL: null }), false);
   assert.equal(service.isLibraryDebt({}), false);
-  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Biblioteca' }), false);
-  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '1', DEU_MATERIAL: 'Biblioteca' }), false);
-  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '1', DEU_MATERIAL: 'Osciloscopio' }), true);
-  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '3', DEU_MATERIAL: 'Osciloscopio' }), false);
-  assert.equal(service.isBlockingDebt({ DEU_ESTADO: '2', DEU_MATERIAL: 'Osciloscopio' }), true);
+  assert.equal(
+    service.isBlockingDebt({ DEU_ESTADO: '2', DEU_CPTO_COD: '4', DEU_MATERIAL: 'Biblioteca' }),
+    false
+  );
+  assert.equal(
+    service.isBlockingDebt({ DEU_ESTADO: '1', DEU_CPTO_COD: '4', DEU_MATERIAL: 'Osciloscopio' }),
+    true
+  );
+  assert.equal(
+    service.isBlockingDebt({ DEU_ESTADO: '3', DEU_CPTO_COD: '4', DEU_MATERIAL: 'Osciloscopio' }),
+    false
+  );
+  assert.equal(
+    service.isBlockingDebt({ DEU_ESTADO: '2', DEU_CPTO_COD: '999', DEU_MATERIAL: 'Osciloscopio' }),
+    false
+  );
 });
 
 test('laboratory concept matching uses whole words and ignores case and accents', () => {
@@ -267,7 +343,7 @@ test('laboratory concept matching uses whole words and ignores case and accents'
   assert.equal(isLaboratoryConceptName(''), false);
 });
 
-test('queryStudent checks historical codes, filters by concept name, and deduplicates SGA debts', async () => {
+test('queryStudent filters by allowed concept code and deduplicates SGA debts', async () => {
   const { service, calls } = createService({
     studentResponse: {
       datosEstudianteCollection: {
@@ -303,13 +379,22 @@ test('queryStudent checks historical codes, filters by concept name, and dedupli
           {
             DEU_ID: '222',
             DEU_ESTADO: '1',
+            DEU_CPTO_COD: '7',
             CPTO_NOMBRE: 'AUDIOVISUALES',
             DEU_MATERIAL: 'Proyector',
           },
           {
             DEU_ID: '333',
+            DEU_CPTO_COD: '999',
             DEU_ESTADO: '3',
             CPTO_NOMBRE: 'LABORATORIO DE FISICA',
+          },
+          {
+            DEU_ID: '444',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '999',
+            CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
+            DEU_MATERIAL: 'Concepto fuera del catálogo',
           },
         ],
       },
@@ -325,18 +410,19 @@ test('queryStudent checks historical codes, filters by concept name, and dedupli
   assert.deepEqual(result.codes, ['2024100001', '2015100001']);
   assert.equal(result.studentRecord.nombre, 'Estudiante vigente');
   assert.equal(result.studentRecord.carrera, 'Ingeniería');
-  assert.equal(result.debts.length, 1);
+  assert.equal(result.debts.length, 2);
   assert.equal(result.debts[0].id_sga, '111');
-  assert.equal(result.debts[0].nombre_concepto, 'Laboratorio de Química');
+  assert.equal(result.debts[0].nombre_concepto, 'LABORATORIO DE QUIMICA');
   assert.equal(result.debts[0].codigo_estudiante, '2024100001');
   assert.equal(result.debts[0].valor, '650100');
-  assert.equal(result.nonLaboratoryCount, 2);
+  assert.equal(result.debts[1].nombre_concepto, 'AUDIOVISUALES');
+  assert.equal(result.nonLaboratoryCount, 0);
   assert.equal(result.unclassifiedCount, 0);
   assert.equal(calls.post.length, 2);
   assert.ok(calls.academic.every((path) => path === 'datos_basicos_activos_cedula/79520182'));
 });
 
-test('queryStudent returns an incomplete result when an active debt has no concept name', async () => {
+test('queryStudent classifies a mapped concept when OATI omits its name', async () => {
   const { service } = createService({
     studentResponse: {
       datosEstudianteCollection: {
@@ -355,9 +441,151 @@ test('queryStudent returns an incomplete result when an active debt has no conce
     documento: '79520182',
   });
 
-  assert.equal(result.status, 'partial');
+  assert.equal(result.status, 'found');
+  assert.equal(result.debts.length, 1);
+  assert.equal(result.debts[0].nombre_concepto, 'LABORATORIO DE QUIMICA');
+  assert.equal(result.unclassifiedCount, 0);
+});
+
+test('queryStudent returns active non-laboratory debts only when explicitly requested', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: 'lab-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '4',
+          },
+          {
+            DEU_ID: 'other-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '1',
+            CPTO_NOMBRE: 'BIBLIOTECA INGENIERÍA',
+            DEU_MATERIAL: 'Libro pendiente',
+          },
+          {
+            DEU_ID: 'other-2',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '1',
+            DEU_CPTO_COD: '9',
+            CPTO_NOMBRE: 'BIENESTAR UNIVERSITARIO',
+          },
+          {
+            DEU_ID: 'inactive',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '3',
+            DEU_CPTO_COD: '1',
+          },
+          {
+            DEU_ID: 'library-detail',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '7',
+            DEU_MATERIAL: 'Biblioteca audiovisual',
+          },
+          {
+            DEU_ID: 'unknown-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '999',
+            CPTO_NOMBRE: 'CONCEPTO DESCONOCIDO',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    documento: '79520182',
+    includeOtherDebts: true,
+  });
+
+  assert.equal(result.status, 'found');
+  assert.deepEqual(
+    result.debts.map((debt) => debt.id_sga),
+    ['lab-1']
+  );
+  assert.deepEqual(
+    result.otherDebts.map((debt) => debt.id_sga),
+    ['other-1', 'other-2', 'library-detail']
+  );
+  assert.equal(result.otherDebts[0].nombre_concepto, 'BIBLIOTECA INGENIERÍA');
+  assert.equal(result.otherDebts[0].tipo_concepto, 'BIBLIOTECA');
+  assert.equal(result.otherDebts[1].nombre_concepto, 'BIENESTAR UNIVERSITARIO');
+  assert.equal(result.otherDebts[1].tipo_concepto, 'BIENESTAR');
+  assert.equal(result.otherDebts[0].codigo_estudiante, '2024100001');
+});
+
+test('other active SGA debts do not count as laboratory fines', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: 'other-1',
+            DEU_EST_COD: '2024100001',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '1',
+            CPTO_NOMBRE: 'BIBLIOTECA INGENIERÍA',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    documento: '79520182',
+    includeOtherDebts: true,
+  });
+
+  assert.equal(result.status, 'clear');
   assert.deepEqual(result.debts, []);
-  assert.equal(result.unclassifiedCount, 1);
+  assert.equal(result.otherDebts.length, 1);
+});
+
+test('queryStudent silently discards active debts with concept codes outside the allowed catalog', async () => {
+  const { service } = createService({
+    studentResponse: {
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [{ codigo: '2024100001', documento: '79520182' }],
+      },
+    },
+    debtResponse: {
+      deudas: {
+        estudiantes: [
+          {
+            DEU_ID: '1',
+            DEU_ESTADO: '2',
+            DEU_CPTO_COD: '999',
+            CPTO_NOMBRE: 'LABORATORIO DE QUIMICA',
+          },
+        ],
+      },
+    },
+  });
+
+  const result = await service.queryStudent({
+    codigo: '2024100001',
+    documento: '79520182',
+  });
+
+  assert.equal(result.status, 'clear');
+  assert.deepEqual(result.debts, []);
+  assert.deepEqual(result.otherDebts, []);
+  assert.equal(result.unclassifiedCount, 0);
 });
 
 test('queryStudent does not query SGA when identity lookup is unavailable', async () => {

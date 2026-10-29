@@ -20,6 +20,18 @@
   (documentos || []).forEach(function (doc) {
     if (doc.tipo_documento === 'FOTOGRAFIA_EQUIPO' && !foto) { foto = doc; }
   });
+  var listaMantenimientos = typeof mantenimientos !== 'undefined' && mantenimientos ? mantenimientos : [];
+  var resumenHV = typeof resumen !== 'undefined' && resumen ? resumen : {};
+  var etiquetasDocumento = {
+    EXCEL_ORIGEN: 'Documento original (Excel)',
+    PDF_ORIGEN: 'Documento original (PDF)',
+    FOTOGRAFIA_EQUIPO: 'Fotografía del equipo',
+  };
+  var claseDocumento = {
+    EXCEL_ORIGEN: 'secondary',
+    PDF_ORIGEN: 'secondary',
+    FOTOGRAFIA_EQUIPO: 'info',
+  };
 %>
 
 <main class="container app-page-shell" data-testid="hv-ver">
@@ -71,7 +83,7 @@
           class="btn btn-perso btn-sm"
           data-testid="action-imprimir-hv"
         >
-          <i class="bi bi-printer"></i> Imprimir
+          <i class="bi bi-printer"></i> Imprimir Hoja de Vida
         </a>
         <a
           href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
@@ -123,8 +135,13 @@
         <div class="row g-3">
           <% grupo.campos.forEach(function (campo) { %>
             <%
-              var valor = formatearValor(hojaVida[campo.nombre], campo.tipo);
-              var esCompleto = campo.tipo === 'textarea' ? 12 : 4;
+              var valor;
+              if (campo.nombre === 'tipo_uso' && typeof tipoUsoTexto !== 'undefined') {
+                valor = tipoUsoTexto || '—';
+              } else {
+                valor = formatearValor(hojaVida[campo.nombre], campo.tipo);
+              }
+              var esCompleto = campo.tipo === 'textarea' || campo.tipo === 'uso' ? 12 : 4;
             %>
             <div class="col-md-<%= esCompleto %>">
               <span class="text-muted d-block small"><%= campo.etiqueta %></span>
@@ -149,7 +166,9 @@
         <ul class="list-unstyled mb-0">
           <% documentos.forEach(function (doc) { %>
             <li class="mb-2 d-flex align-items-center gap-2 flex-wrap" data-testid="hv-documento">
-              <span class="badge bg-secondary"><%= doc.tipo_documento %></span>
+              <span class="badge bg-<%= claseDocumento[doc.tipo_documento] || 'secondary' %>">
+                <%= etiquetasDocumento[doc.tipo_documento] || doc.tipo_documento %>
+              </span>
               <a
                 href="/milab/inventarios/hojas-vida/<%= hojaVida.id %>/documento/<%= doc.id %>"
                 target="_blank"
@@ -161,6 +180,97 @@
             </li>
           <% }); %>
         </ul>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4" data-testid="hv-resumen-uso">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <h5 class="mb-0">Resumen de mantenimiento y uso</h5>
+      <% if (resumenHV.alerta) { %>
+        <span class="badge bg-<%= resumenHV.alerta.clase %>" data-testid="hv-alerta-mantenimiento"><%= resumenHV.alerta.etiqueta %></span>
+      <% } else { %>
+        <span class="badge bg-success" data-testid="hv-alerta-mantenimiento">Mantenimiento vigente</span>
+      <% } %>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Mantenimientos registrados</span>
+          <strong data-testid="hv-resumen-mantenimientos"><%= resumenHV.mantenimientos_total || 0 %></strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Costo acumulado de mantenimiento</span>
+          <strong data-testid="hv-resumen-costo"><%= resumenHV.costo_mantenimiento_display || '$0' %></strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Cantidad de prestamos</span>
+          <strong data-testid="hv-resumen-prestamos"><%= resumenHV.prestamos_total || 0 %></strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Ventana de alerta</span>
+          <strong><%= resumenHV.dias_alerta_vencimiento || 30 %> dias antes del vencimiento</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4" data-testid="hv-historial-mantenimientos">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <h5 class="mb-0">Historial de mantenimientos</h5>
+      <a
+        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/nuevo"
+        class="btn btn-outline-primary btn-sm"
+        data-testid="action-hv-historial-agregar"
+      >
+        <i class="bi bi-plus-lg"></i> Agregar mantenimiento
+      </a>
+    </div>
+    <div class="card-body">
+      <% if (!listaMantenimientos.length) { %>
+        <div class="alert alert-warning mb-0" data-testid="hv-historial-mantenimientos-vacio">
+          Aun no hay mantenimientos registrados para este equipo.
+        </div>
+      <% } else { %>
+        <div class="table-responsive">
+          <table class="table table-dark table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Descripcion</th>
+                <th>Responsable</th>
+                <th>Empresa</th>
+                <th>Repuestos / Observaciones</th>
+                <th>Costo</th>
+                <th>Estado</th>
+                <th>Fecha de cierre</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% listaMantenimientos.forEach(function (mantenimiento) { %>
+                <tr data-testid="hv-historial-mantenimiento">
+                  <td><%= mantenimiento.fecha_realizacion_display || '—' %></td>
+                  <td><%= mantenimiento.tipo_mantenimiento_etiqueta || '—' %></td>
+                  <td>
+                    <span data-testid="hv-historial-mantenimiento-item"><%= mantenimiento.item || '—' %></span>
+                    <% if (mantenimiento.especificaciones_mantenimiento) { %>
+                      <small class="d-block text-muted"><%= mantenimiento.especificaciones_mantenimiento %></small>
+                    <% } %>
+                  </td>
+                  <td><%= mantenimiento.responsable || '—' %></td>
+                  <td><%= mantenimiento.datos_empresa_contratada || '—' %></td>
+                  <td><%= mantenimiento.observaciones_repuestos || '—' %></td>
+                  <td><%= mantenimiento.costo_display || '$0' %></td>
+                  <td>
+                    <span class="badge bg-<%= mantenimiento.estado_clase %>"><%= mantenimiento.estado_etiqueta %></span>
+                  </td>
+                  <td><%= mantenimiento.fecha_cierre_display || '—' %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
       <% } %>
     </div>
   </section>

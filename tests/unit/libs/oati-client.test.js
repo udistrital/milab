@@ -6,7 +6,7 @@ const modulePath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const axiosPath = require.resolve('axios');
 const configPath = path.resolve(__dirname, '../../../src/config/config.js');
 
-function loadOatiClient({ postImpl, getImpl }) {
+function loadOatiClient({ postImpl, getImpl, configOverrides = {} }) {
   const originalAxios = require.cache[axiosPath];
   const originalConfig = require.cache[configPath];
 
@@ -30,7 +30,11 @@ function loadOatiClient({ postImpl, getImpl }) {
         oatiSecret: 'secret',
         oatiBaseUrl: 'https://oati.test',
         oatiTokenUrl: 'https://oati.test/oauth2/token',
+        oatiPublicBaseUrl: 'https://public-oati.test',
+        oatiUsePublic: false,
+        oatiServiceName: 'servicios_academicos_produccion',
         oatiRejectUnauthorized: false,
+        ...configOverrides,
       },
     },
   };
@@ -187,6 +191,97 @@ test('requestOati marks OATI unavailable and fails fast during cooldown window',
     await assert.rejects(loaded.oatiClient.requestOati('test'), { code: 'OATI_UNAVAILABLE' });
     assert.equal(postCalls, 1);
     assert.equal(getCalls, 4);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('requestOati uses the public host without requesting a token in public environments', async () => {
+  let postCalls = 0;
+  const getCalls = [];
+  const loaded = loadOatiClient({
+    postImpl: async () => {
+      postCalls += 1;
+      return { data: { access_token: 'unexpected-token', expires_in: 300 } };
+    },
+    getImpl: async (...args) => {
+      getCalls.push(args);
+      return { data: { ok: true } };
+    },
+    configOverrides: {
+      oatiUsePublic: true,
+    },
+  });
+
+  try {
+    const response = await loaded.oatiClient.requestOati(
+      'wso2eiserver/services/academica_pruebas/carrera/0'
+    );
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(postCalls, 0);
+    assert.equal(
+      getCalls[0][0],
+      'https://public-oati.test/wso2eiserver/services/academica_pruebas/carrera/0'
+    );
+    assert.equal(getCalls[0][1].headers, undefined);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('requestOatiPost uses the public host without requesting a token in public environments', async () => {
+  const postCalls = [];
+  const loaded = loadOatiClient({
+    postImpl: async (...args) => {
+      postCalls.push(args);
+      return { data: { ok: true } };
+    },
+    getImpl: async () => {
+      throw new Error('Public POST must not issue a GET');
+    },
+    configOverrides: {
+      oatiUsePublic: true,
+    },
+  });
+  const body = '<request />';
+  const contentType = 'text/xml; charset=utf-8';
+
+  try {
+    const response = await loaded.oatiClient.requestOatiPost(
+      'wso2eiserver/services/academica_pruebas/deudores/123',
+      body,
+      contentType
+    );
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(postCalls.length, 1);
+    assert.equal(
+      postCalls[0][0],
+      'https://public-oati.test/wso2eiserver/services/academica_pruebas/deudores/123'
+    );
+    assert.equal(postCalls[0][1], body);
+    assert.deepEqual(postCalls[0][2].headers, { 'Content-Type': contentType });
+    assert.equal(postCalls[0][2].auth, undefined);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('getAcademicServicePath uses the service namespace configured for the environment', () => {
+  const loaded = loadOatiClient({
+    postImpl: async () => ({ data: {} }),
+    getImpl: async () => ({ data: {} }),
+    configOverrides: {
+      oatiServiceName: 'academica_pruebas',
+    },
+  });
+
+  try {
+    assert.equal(
+      loaded.oatiClient.getAcademicServicePath('carrera/0'),
+      'wso2eiserver/services/academica_pruebas/carrera/0'
+    );
   } finally {
     loaded.restore();
   }

@@ -5,6 +5,7 @@ const path = require('node:path');
 const modulePath = path.resolve(__dirname, '../../../src/libs/service-status.js');
 const oatiClientPath = path.resolve(__dirname, '../../../src/libs/oati-client.js');
 const edxClientPath = path.resolve(__dirname, '../../../src/libs/edx-cert-client.js');
+const configPath = path.resolve(__dirname, '../../../src/config/config.js');
 
 function createLog() {
   const warnings = [];
@@ -17,11 +18,23 @@ function createLog() {
   };
 }
 
-function loadServiceStatus({ oatiImpl = async () => ({}), edxHealthy = true } = {}) {
+function loadServiceStatus({
+  oatiImpl = async () => ({}),
+  edxHealthy = true,
+  oatiUsePublic = false,
+} = {}) {
   const originals = new Map();
   const oatiCalls = [];
   const edxCalls = [];
   const stubs = [
+    [
+      configPath,
+      {
+        config: {
+          oatiUsePublic,
+        },
+      },
+    ],
     [
       oatiClientPath,
       {
@@ -103,6 +116,20 @@ test('checkServiceStatus still validates edX outside production', async () => {
   }
 });
 
+test('checkServiceStatus uses a non-personal catalog probe for public OATI environments', async () => {
+  const loaded = loadServiceStatus({ oatiUsePublic: true });
+  const log = createLog();
+
+  try {
+    const status = await loaded.checkServiceStatus(log, { checkEdx: false });
+
+    assert.equal(status.servicesAreUp, true);
+    assert.deepEqual(loaded.oatiCalls, ['carrera/0']);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('shouldCheckEdx is false for production and true for non-production environments', () => {
   const loaded = loadServiceStatus();
 
@@ -138,6 +165,26 @@ test('checkServiceStatus reports the service down when an academic service fails
     assert.equal(log.warnings.length, 1);
   } finally {
     loaded.restore();
+  }
+});
+
+test('checkServiceStatus answers down when OATI never responds', async () => {
+  const previousTimeout = process.env.SERVICE_STATUS_TIMEOUT_MS;
+  process.env.SERVICE_STATUS_TIMEOUT_MS = '25';
+  const loaded = loadServiceStatus({ oatiImpl: () => new Promise(() => {}) });
+  const log = createLog();
+
+  try {
+    const startedAt = Date.now();
+    const status = await loaded.checkServiceStatus(log);
+
+    assert.equal(status.servicesAreUp, false);
+    assert.ok(Date.now() - startedAt < 2000);
+    assert.ok(log.warnings[0].services.every((service) => service.status === 'TIMEOUT'));
+  } finally {
+    loaded.restore();
+    if (previousTimeout === undefined) delete process.env.SERVICE_STATUS_TIMEOUT_MS;
+    else process.env.SERVICE_STATUS_TIMEOUT_MS = previousTimeout;
   }
 });
 

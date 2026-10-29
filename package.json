@@ -1,6 +1,6 @@
 {
   "name": "milabud",
-  "version": "3.1.10",
+  "version": "4.0.0",
   "description": "MILab - plataforma de laboratorios UD",
   "main": "src/app.js",
   "scripts": {
@@ -36,6 +36,7 @@
     "ejs": "^3.1.9",
     "exceljs": "^4.4.0",
     "express": "^4.22.2",
+    "express-async-errors": "^3.1.1",
     "express-rate-limit": "^7.1.5",
     "express-recaptcha": "^5.1.0",
     "express-session": "^1.17.3",
@@ -65,7 +66,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
-    "qs": "^6.16.0",
+    "qs": "^6.16.1",
     "jake": "^12.10.1",
     "uuid": "^11.1.1"
   },

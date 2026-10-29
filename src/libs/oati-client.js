@@ -227,6 +227,34 @@ async function requestOatiPublic(pathname, signal) {
   return response.data;
 }
 
+async function requestOatiPublicPost(pathname, body, contentType) {
+  throwWhenCircuitOpen();
+  const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
+  let response;
+
+  try {
+    response = await withOatiTlsFallback((agent) =>
+      axios.post(url, body, {
+        headers: {
+          'Content-Type': contentType,
+        },
+        httpsAgent: agent,
+        timeout: config.oatiRequestTimeoutMs,
+      })
+    );
+  } catch (error) {
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
+
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
+  return response.data;
+}
+
 async function requestOati(pathname, { signal } = {}) {
   if (config.oatiUsePublic) {
     return requestOatiPublic(pathname, signal);
@@ -265,6 +293,10 @@ async function requestOati(pathname, { signal } = {}) {
 }
 
 async function requestOatiPost(pathname, body, contentType = 'application/json') {
+  if (config.oatiUsePublic) {
+    return requestOatiPublicPost(pathname, body, contentType);
+  }
+
   throwWhenCircuitOpen();
   const accessToken = await fetchAccessToken();
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
@@ -297,7 +329,7 @@ async function requestOatiPost(pathname, body, contentType = 'application/json')
 }
 
 function getAcademicServicePath(servicePath) {
-  return `wso2eiserver/services/servicios_academicos_produccion/${servicePath}`;
+  return `wso2eiserver/services/${config.oatiServiceName}/${servicePath}`;
 }
 
 module.exports = {

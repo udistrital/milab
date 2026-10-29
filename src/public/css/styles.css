@@ -1558,6 +1558,30 @@ body.app-shell .app-tour-intro-description {
   line-height: 1.65;
 }
 
+body.app-shell .app-tour-intro-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+body.app-shell .app-tour-intro-points span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  background: rgba(71, 125, 138, 0.06);
+  color: var(--app-text-main);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+body.app-shell .app-tour-intro-points i {
+  color: #477d8a;
+}
+
 body.app-shell .app-tour-intro-modal .form-select {
   border-color: var(--app-border);
   background-color: var(--app-surface);
@@ -1601,6 +1625,15 @@ html[data-bs-theme='dark'] body.app-shell .app-tour-intro-icon {
 
 html[data-bs-theme='dark'] body.app-shell .app-tour-intro-modal .form-select {
   color-scheme: dark;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-points span {
+  background: rgba(155, 203, 212, 0.08);
+  color: #e3f5fa;
+}
+
+html[data-bs-theme='dark'] body.app-shell .app-tour-intro-points i {
+  color: #9bcbd4;
 }
 
 html[data-bs-theme='dark'] body.app-shell .app-tour-intro-modal .btn-primary {
@@ -4377,6 +4410,74 @@ body.app-shell .app-bulk-query-form {
 body.app-shell .app-bulk-query-form > :not([type='hidden']) {
   width: 100%;
   min-width: 0;
+}
+
+body.app-shell .app-bulk-progress-dialog {
+  max-width: 34rem;
+}
+
+body.app-shell .app-bulk-progress-modal .modal-content {
+  overflow: hidden;
+  border: 1px solid rgba(168, 15, 18, 0.1);
+  border-radius: 1.35rem;
+  box-shadow: 0 1.5rem 4rem rgba(24, 18, 12, 0.22);
+}
+
+body.app-shell .app-bulk-progress-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  border-radius: 1rem;
+  background: rgba(168, 15, 18, 0.08);
+  color: #a80f12;
+  font-size: 1.5rem;
+}
+
+body.app-shell .app-bulk-progress-track {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eee9e1;
+}
+
+body.app-shell .app-bulk-progress-track .progress-bar {
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a80f12, #df1b1b);
+  transition: width 240ms ease;
+}
+
+body.app-shell .app-bulk-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+body.app-shell .app-bulk-progress-steps span {
+  color: #81786c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+body.app-shell .app-bulk-progress-steps span::before {
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: 0 auto 0.45rem;
+  border-radius: 50%;
+  background: #d8d2c6;
+  content: '';
+}
+
+body.app-shell .app-bulk-progress-steps span.is-active,
+body.app-shell .app-bulk-progress-steps span.is-complete {
+  color: #a80f12;
+}
+
+body.app-shell .app-bulk-progress-steps span.is-active::before,
+body.app-shell .app-bulk-progress-steps span.is-complete::before {
+  background: #c5161d;
 }
 
 body.app-shell .app-bulk-query-results-heading {
