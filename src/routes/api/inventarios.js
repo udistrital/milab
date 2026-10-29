@@ -4,7 +4,12 @@ const path = require('node:path');
 const PDFDocument = require('pdfkit');
 const XLSX = require('xlsx');
 const pool = require('../../libs/db');
-const { CAMPOS_POR_SECCION } = require('../../libs/hojas-vida-campos');
+const {
+  CAMPOS_POR_SECCION,
+  formatearTipoUso,
+  opcionesTipoUsoMarcadas,
+  parsearTipoUso,
+} = require('../../libs/hojas-vida-campos');
 const {
   TIPOS_EVENTO_MANUALES,
   etiquetaTipoEvento,
@@ -21,6 +26,7 @@ const {
   esEstadoEditableMantenimiento,
   situacionMantenimiento,
   diasRestantesMantenimiento,
+  SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
@@ -318,6 +324,93 @@ async function loadHojaVidaByEquipment(client, equipoId) {
       facultad: hojaVida.equipo_facultad,
       laboratorio: hojaVida.equipo_laboratorio,
     },
+  };
+}
+
+function mapearMantenimientoWeb(mantenimiento, diasAlerta) {
+  const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
+  const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
+  const esEditable = esEstadoEditableMantenimiento(estadoCodigo);
+  return {
+    ...mantenimiento,
+    tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
+    estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
+    estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
+    situacion: situacion.codigo,
+    situacion_etiqueta: situacion.etiqueta,
+    situacion_clase: situacion.clase,
+    dias_restantes: diasRestantesMantenimiento(mantenimiento, new Date()),
+    es_editable: esEditable,
+    editable: esEditable,
+    fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
+    fecha_cierre_display: formatHvDateTime(mantenimiento.fecha_cierre),
+    fecha_creacion_display: formatHvDateTime(mantenimiento.fecha_creacion),
+    fecha_modificacion_display: formatHvDateTime(mantenimiento.fecha_modificacion),
+    costo_display: formatearMonedaCOP(mantenimiento.costo) || '—',
+  };
+}
+
+async function cargarMantenimientosWeb(client, hojaVidaId, diasAlerta) {
+  const result = await client.query(
+    `
+      SELECT
+        id,
+        item,
+        tipo_mantenimiento,
+        fecha_realizacion,
+        estado,
+        costo,
+        responsable,
+        datos_empresa_contratada,
+        tiempo_garantia,
+        especificaciones_mantenimiento,
+        observaciones_repuestos,
+        fecha_cierre,
+        usuario_cierre,
+        fecha_creacion,
+        usuario_creacion,
+        fecha_modificacion,
+        usuario_modificacion
+      FROM mantenimiento
+      WHERE hoja_vida_id = $1
+        AND activo = TRUE
+      ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
+    `,
+    [hojaVidaId]
+  );
+
+  return result.rows.map((mantenimiento) => mapearMantenimientoWeb(mantenimiento, diasAlerta));
+}
+
+function construirResumenHojaVidaWeb(mantenimientos, prestamosTotal, diasAlerta) {
+  const activos = mantenimientos.filter((mantenimiento) =>
+    ['PENDIENTE', 'EN_EJECUCION'].includes(String(mantenimiento.estado || '').toUpperCase())
+  );
+  const principal = activos.reduce((seleccionado, actual) => {
+    if (!seleccionado) return actual;
+    const severidadActual = SEVERIDAD_SITUACION[actual.situacion] || 0;
+    const severidadSeleccionada = SEVERIDAD_SITUACION[seleccionado.situacion] || 0;
+    return severidadActual > severidadSeleccionada ? actual : seleccionado;
+  }, null);
+
+  const costoTotal = mantenimientos.reduce(
+    (acumulado, mantenimiento) => acumulado + Number(mantenimiento.costo || 0),
+    0
+  );
+
+  return {
+    alerta: principal
+      ? {
+          codigo: principal.situacion,
+          etiqueta: principal.situacion_etiqueta,
+          clase: principal.situacion_clase,
+        }
+      : null,
+    mantenimientos_total: mantenimientos.length,
+    costo_mantenimiento: costoTotal,
+    costo_mantenimiento_display: formatearMonedaCOP(costoTotal) || '$0',
+    prestamos_total: Number(prestamosTotal) || 0,
+    dias_alerta_vencimiento: diasAlerta,
   };
 }
 
@@ -1685,6 +1778,8 @@ router.get('/hojas-vida/:hojaVidaId/confirmar', requireInventoryAccess, async fu
       documentos: documentosResult.rows,
       secciones: CAMPOS_POR_SECCION,
       obligatorios,
+      tipoUsoClaves: opcionesTipoUsoMarcadas(hojaVida.tipo_uso),
+      tipoUsoOtro: parsearTipoUso(hojaVida.tipo_uso).otro,
       maxFotoMB: 5,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
@@ -1737,11 +1832,31 @@ router.get('/hojas-vida/:equipoId', requireInventoryAccess, async function (req,
       fecha_carga_display: formatHvDateTime(documento.fecha_carga),
     }));
 
+    const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
+    const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
+    const prestamosResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM solicitud_prestamo
+        WHERE equipo_id = $1
+          AND activo = TRUE
+      `,
+      [equipoId]
+    );
+    const resumen = construirResumenHojaVidaWeb(
+      mantenimientos,
+      prestamosResult.rows[0]?.total || 0,
+      diasAlerta
+    );
+
     return res.render('home/prestamos/hojas-vida/ver', {
       hojaVida: datos.hojaVida,
       equipo: datos.equipo,
       secciones: CAMPOS_POR_SECCION,
       documentos,
+      mantenimientos,
+      resumen,
+      tipoUsoTexto: formatearTipoUso(datos.hojaVida.tipo_uso),
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -1811,6 +1926,8 @@ router.get('/hojas-vida/:equipoId/editar', requireInventoryAccess, async functio
       secciones: CAMPOS_POR_SECCION,
       obligatorios,
       documentos: documentosResult.rows,
+      tipoUsoClaves: opcionesTipoUsoMarcadas(datos.hojaVida.tipo_uso),
+      tipoUsoOtro: parsearTipoUso(datos.hojaVida.tipo_uso).otro,
       maxFotoMB: 5,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
@@ -2062,58 +2179,8 @@ router.get(
         });
       }
 
-      const mantenimientosResult = await pool.query(
-        `
-        SELECT
-          id,
-          item,
-          tipo_mantenimiento,
-          fecha_realizacion,
-          estado,
-          costo,
-          responsable,
-          datos_empresa_contratada,
-          tiempo_garantia,
-          especificaciones_mantenimiento,
-          observaciones_repuestos,
-          fecha_cierre,
-          usuario_cierre,
-          fecha_creacion,
-          usuario_creacion,
-          fecha_modificacion,
-          usuario_modificacion
-        FROM mantenimiento
-        WHERE hoja_vida_id = $1
-          AND activo = TRUE
-        ORDER BY fecha_realizacion DESC NULLS LAST, id DESC
-      `,
-        [datos.hojaVida.id]
-      );
-
       const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
-
-      const mantenimientos = mantenimientosResult.rows.map((mantenimiento) => {
-        const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
-        const estadoCodigo = String(mantenimiento.estado || '').toUpperCase();
-        const esEditable = esEstadoEditableMantenimiento(estadoCodigo);
-        return {
-          ...mantenimiento,
-          tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
-          estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
-          estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
-          situacion: situacion.codigo,
-          situacion_etiqueta: situacion.etiqueta,
-          situacion_clase: situacion.clase,
-          dias_restantes: diasRestantesMantenimiento(mantenimiento, new Date()),
-          es_editable: esEditable,
-          editable: esEditable,
-          fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
-          fecha_cierre_display: formatHvDateTime(mantenimiento.fecha_cierre),
-          fecha_creacion_display: formatHvDateTime(mantenimiento.fecha_creacion),
-          fecha_modificacion_display: formatHvDateTime(mantenimiento.fecha_modificacion),
-          costo_display: formatearMonedaCOP(mantenimiento.costo) || '—',
-        };
-      });
+      const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
 
       const costoAcumulado = mantenimientos.reduce(
         (acumulado, item) => acumulado + Number(item.costo || 0),

@@ -10,6 +10,7 @@ const {
   CAMPOS_HOJA_VIDA,
   NOMBRES_CAMPOS_HOJA_VIDA,
   serializarTipoUso,
+  normalizarTipoUso,
 } = require('../../libs/hojas-vida-campos');
 const { esTipoEventoManual } = require('../../libs/hojas-vida-eventos');
 const {
@@ -23,6 +24,7 @@ const {
   CODIGOS_ESTADO_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
+  SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
 
 const router = express.Router();
@@ -363,15 +365,6 @@ async function registrarEventoHistorial(
 }
 
 const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
-
-const SEVERIDAD_SITUACION = {
-  EN_EJECUCION: 4,
-  VENCIDO: 3,
-  PROXIMO_VENCER: 2,
-  VIGENTE: 1,
-  CUMPLIDO: 0,
-  CANCELADO: 0,
-};
 
 async function construirResumenEquipos(cliente, equipoIds, diasAlerta) {
   const resumen = {};
@@ -2080,336 +2073,6 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
   }
 });
 
-async function cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId) {
-  const result = await cliente.query(
-    `
-      SELECT m.*
-      FROM mantenimiento m
-      JOIN hoja_vida hv ON hv.id = m.hoja_vida_id
-      WHERE m.id = $1 AND m.equipo_id = $2 AND hv.equipo_id = $2
-        AND m.activo = TRUE AND hv.activo = TRUE
-      LIMIT 1
-    `,
-    [mantenimientoId, equipoId]
-  );
-  return result.rows[0] || null;
-}
-
-function normalizarDatosMantenimiento(body) {
-  const item = normalizarTextoOpcional(body.item);
-  if (!item) {
-    return {
-      error: {
-        message: 'El ítem o descripción del mantenimiento es obligatorio.',
-        campos: ['item'],
-      },
-    };
-  }
-
-  const tipoMantenimiento = String(body.tipo_mantenimiento || '')
-    .trim()
-    .toUpperCase();
-  if (!esTipoMantenimientoValido(tipoMantenimiento)) {
-    return {
-      error: {
-        message: 'El tipo de mantenimiento no es valido.',
-        campos: ['tipo_mantenimiento'],
-      },
-    };
-  }
-
-  const estado = String(body.estado || ESTADO_MANTENIMIENTO_DEFAULT)
-    .trim()
-    .toUpperCase();
-  if (!esEstadoMantenimientoValido(estado)) {
-    return {
-      error: {
-        message: 'El estado del mantenimiento no es valido.',
-        campos: ['estado'],
-      },
-    };
-  }
-
-  const fechaRealizacion = normalizarFechaDiaOpcional(body.fecha_realizacion);
-  if (normalizarTextoOpcional(body.fecha_realizacion) && !fechaRealizacion) {
-    return {
-      error: { message: 'La fecha de realización no es válida.', campos: ['fecha_realizacion'] },
-    };
-  }
-
-  const costo = normalizarCostoOpcional(body.costo);
-  if (Number.isNaN(costo)) {
-    return {
-      error: {
-        message: 'El costo del mantenimiento debe ser un valor numérico mayor o igual a cero.',
-        campos: ['costo'],
-      },
-    };
-  }
-
-  return {
-    datos: {
-      item,
-      tipo_mantenimiento: tipoMantenimiento,
-      estado,
-      fecha_realizacion: fechaRealizacion,
-      costo,
-      datos_empresa_contratada: normalizarTextoOpcional(body.datos_empresa_contratada),
-      tiempo_garantia: normalizarTextoOpcional(body.tiempo_garantia),
-      especificaciones_mantenimiento: normalizarTextoOpcional(body.especificaciones_mantenimiento),
-      responsable: normalizarTextoOpcional(body.responsable),
-      observaciones_repuestos: normalizarTextoOpcional(body.observaciones_repuestos),
-    },
-  };
-}
-
-router.put(
-  '/:equipoId/mantenimientos/:mantenimientoId',
-  async function editarMantenimientoHV(req, res) {
-    try {
-      const equipoId = Number(req.params?.equipoId);
-      const mantenimientoId = Number(req.params?.mantenimientoId);
-      if (
-        !Number.isInteger(equipoId) ||
-        equipoId <= 0 ||
-        !Number.isInteger(mantenimientoId) ||
-        mantenimientoId <= 0
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
-        });
-      }
-
-      const normalizado = normalizarDatosMantenimiento(req.body || {});
-      if (normalizado.error) {
-        return res.status(400).json({
-          ok: false,
-          message: normalizado.error.message,
-          details: { campos_faltantes: normalizado.error.campos },
-        });
-      }
-      const datos = normalizado.datos;
-
-      const usuario = req.session?.user?.id || null;
-      const cliente = await pool.connect();
-      try {
-        await cliente.query('BEGIN');
-
-        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
-        if (!mantenimiento) {
-          await cliente.query('ROLLBACK');
-          return res.status(404).json({
-            ok: false,
-            message: 'El mantenimiento no existe para el equipo indicado.',
-          });
-        }
-
-        if (!esEstadoEditableMantenimiento(String(mantenimiento.estado || '').toUpperCase())) {
-          await cliente.query('ROLLBACK');
-          return res.status(409).json({
-            ok: false,
-            message:
-              'El mantenimiento no puede modificarse porque ya fue cerrado. Solo los mantenimientos Programados o En ejecución admiten edición.',
-          });
-        }
-
-        const esCierre = datos.estado === 'CUMPLIDO';
-        const updateResult = await cliente.query(
-          `
-            UPDATE mantenimiento
-            SET item = $3,
-                tipo_mantenimiento = $4,
-                fecha_realizacion = $5,
-                datos_empresa_contratada = $6,
-                tiempo_garantia = $7,
-                especificaciones_mantenimiento = $8,
-                responsable = $9,
-                observaciones_repuestos = $10,
-                costo = $11,
-                estado = $12,
-                fecha_cierre = CASE WHEN $13 THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP) ELSE fecha_cierre END,
-                usuario_cierre = CASE WHEN $13 THEN COALESCE(usuario_cierre, $14) ELSE usuario_cierre END,
-                usuario_modificacion = $14,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
-            RETURNING id, estado, fecha_cierre, usuario_cierre
-          `,
-          [
-            mantenimientoId,
-            equipoId,
-            datos.item,
-            datos.tipo_mantenimiento,
-            datos.fecha_realizacion,
-            datos.datos_empresa_contratada,
-            datos.tiempo_garantia,
-            datos.especificaciones_mantenimiento,
-            datos.responsable,
-            datos.observaciones_repuestos,
-            datos.costo,
-            datos.estado,
-            esCierre,
-            usuario,
-          ]
-        );
-
-        await registrarEventoHistorial(
-          cliente,
-          mantenimiento.hoja_vida_id,
-          equipoId,
-          `Mantenimiento #${mantenimientoId} actualizado por ${usuario || 'usuario'}. Estado: ${etiquetaEstadoMantenimiento(datos.estado)}.`,
-          usuario,
-          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
-        );
-
-        await sincronizarDisponibilidadEquipo(cliente, equipoId);
-
-        await cliente.query('COMMIT');
-
-        return res.json({
-          ok: true,
-          message: 'Mantenimiento actualizado correctamente.',
-          data: {
-            mantenimiento_id: Number(updateResult.rows[0].id),
-            estado: updateResult.rows[0].estado,
-            fecha_cierre: updateResult.rows[0].fecha_cierre,
-            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
-          },
-        });
-      } catch (txError) {
-        await cliente.query('ROLLBACK');
-        throw txError;
-      } finally {
-        cliente.release();
-      }
-    } catch (error) {
-      console.error('[hojas-vida] Error editando mantenimiento:', error);
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible actualizar el mantenimiento.',
-        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
-      });
-    }
-  }
-);
-
-router.post(
-  '/:equipoId/mantenimientos/:mantenimientoId/estado',
-  async function cambiarEstadoMantenimientoHV(req, res) {
-    try {
-      const equipoId = Number(req.params?.equipoId);
-      const mantenimientoId = Number(req.params?.mantenimientoId);
-      if (
-        !Number.isInteger(equipoId) ||
-        equipoId <= 0 ||
-        !Number.isInteger(mantenimientoId) ||
-        mantenimientoId <= 0
-      ) {
-        return res.status(400).json({
-          ok: false,
-          message: 'Los identificadores del equipo o del mantenimiento son invalidos.',
-        });
-      }
-
-      const estadoNuevo = String(req.body?.estado || '')
-        .trim()
-        .toUpperCase();
-      if (!esEstadoMantenimientoValido(estadoNuevo)) {
-        return res.status(400).json({
-          ok: false,
-          message: 'El estado del mantenimiento no es valido.',
-          details: { campos_faltantes: ['estado'] },
-        });
-      }
-
-      const usuario = req.session?.user?.id || null;
-      const cliente = await pool.connect();
-      try {
-        await cliente.query('BEGIN');
-
-        const mantenimiento = await cargarMantenimientoDeEquipo(cliente, equipoId, mantenimientoId);
-        if (!mantenimiento) {
-          await cliente.query('ROLLBACK');
-          return res.status(404).json({
-            ok: false,
-            message: 'El mantenimiento no existe para el equipo indicado.',
-          });
-        }
-
-        const estadoActual = String(mantenimiento.estado || '').toUpperCase();
-        if (estadoActual === estadoNuevo) {
-          await cliente.query('ROLLBACK');
-          return res.status(409).json({
-            ok: false,
-            message: `El mantenimiento ya se encuentra en estado ${etiquetaEstadoMantenimiento(estadoNuevo)}.`,
-          });
-        }
-        if (estadoActual === 'CUMPLIDO' || estadoActual === 'CANCELADO') {
-          await cliente.query('ROLLBACK');
-          return res.status(409).json({
-            ok: false,
-            message: 'El mantenimiento ya fue cerrado y no admite cambios de estado.',
-          });
-        }
-
-        const esCierre = estadoNuevo === 'CUMPLIDO';
-        const updateResult = await cliente.query(
-          `
-            UPDATE mantenimiento
-            SET estado = $3,
-                fecha_cierre = CASE WHEN $4 THEN CURRENT_TIMESTAMP ELSE fecha_cierre END,
-                usuario_cierre = CASE WHEN $4 THEN $5 ELSE usuario_cierre END,
-                usuario_modificacion = $5,
-                fecha_modificacion = CURRENT_TIMESTAMP
-            WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
-            RETURNING id, estado, fecha_cierre, usuario_cierre
-          `,
-          [mantenimientoId, equipoId, estadoNuevo, esCierre, usuario]
-        );
-
-        await registrarEventoHistorial(
-          cliente,
-          mantenimiento.hoja_vida_id,
-          equipoId,
-          `Mantenimiento #${mantenimientoId} ${esCierre ? 'cerrado' : 'cambiado'} a estado ${etiquetaEstadoMantenimiento(estadoNuevo)} por ${usuario || 'usuario'}.`,
-          usuario,
-          { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
-        );
-
-        await sincronizarDisponibilidadEquipo(cliente, equipoId);
-
-        await cliente.query('COMMIT');
-
-        return res.json({
-          ok: true,
-          message: esCierre
-            ? 'Mantenimiento cerrado como Cumplido.'
-            : 'Estado del mantenimiento actualizado correctamente.',
-          data: {
-            mantenimiento_id: Number(updateResult.rows[0].id),
-            estado: updateResult.rows[0].estado,
-            fecha_cierre: updateResult.rows[0].fecha_cierre,
-            usuario_cierre: updateResult.rows[0].usuario_cierre,
-            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
-          },
-        });
-      } catch (txError) {
-        await cliente.query('ROLLBACK');
-        throw txError;
-      } finally {
-        cliente.release();
-      }
-    } catch (error) {
-      console.error('[hojas-vida] Error cambiando estado del mantenimiento:', error);
-      return res.status(500).json({
-        ok: false,
-        message: 'No fue posible actualizar el estado del mantenimiento.',
-        details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
-      });
-    }
-  }
-);
-
 /**
  * Carga un mantenimiento activo del equipo indicado. Devuelve null cuando no
  * existe o no pertenece al equipo.
@@ -2616,7 +2279,7 @@ router.put(
             mantenimiento_id: Number(updateResult.rows[0].id),
             estado: updateResult.rows[0].estado,
             fecha_cierre: updateResult.rows[0].fecha_cierre,
-            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
           },
         });
       } catch (txError) {
@@ -2738,7 +2401,7 @@ router.post(
             estado: updateResult.rows[0].estado,
             fecha_cierre: updateResult.rows[0].fecha_cierre,
             usuario_cierre: updateResult.rows[0].usuario_cierre,
-            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
           },
         });
       } catch (txError) {

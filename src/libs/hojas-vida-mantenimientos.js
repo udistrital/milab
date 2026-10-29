@@ -38,6 +38,16 @@ const ESTADOS_MANTENIMIENTO_CIERRE = ['CUMPLIDO', 'CANCELADO'];
 
 const DIAS_ALERTA_VENCIMIENTO_DEFAULT = 30;
 
+// Orden de severidad usado para elegir la alerta principal de un equipo.
+const SEVERIDAD_SITUACION = {
+  EN_EJECUCION: 4,
+  VENCIDO: 3,
+  PROXIMO_VENCER: 2,
+  VIGENTE: 1,
+  CUMPLIDO: 0,
+  CANCELADO: 0,
+};
+
 function esTipoMantenimientoValido(codigo) {
   return CODIGOS_TIPO_MANTENIMIENTO.indexOf(codigo) !== -1;
 }
@@ -141,6 +151,7 @@ module.exports = {
   ESTADOS_MANTENIMIENTO_EDITABLES,
   ESTADOS_MANTENIMIENTO_CIERRE,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
+  SEVERIDAD_SITUACION,
   esTipoMantenimientoValido,
   esEstadoMantenimientoValido,
   esEstadoEditableMantenimiento,
