@@ -288,6 +288,8 @@
 <script nonce="<%= cspNonce %>">
   (function () {
     const equipoId = <%= equipo.id %>;
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
     const form = document.getElementById('hv-carga-form');
     const loading = document.getElementById('hv-loading');
     const errorBox = document.getElementById('hv-error');
@@ -354,6 +356,11 @@
       try {
         const response = await fetch('/milab/api/hojas-vida/' + equipoId + '/cargar', {
           method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
           body: formData,
         });
 
@@ -373,7 +380,8 @@
           }
           mostrarError(msg);
         } else {
-          mostrarError(data.message || 'Ocurrio un error al cargar el archivo.');
+          const message = [data.message, data.message2].filter(Boolean).join('. ');
+          mostrarError(message || 'Ocurrio un error al cargar el archivo.');
         }
       } catch (err) {
         mostrarError('No se pudo conectar con el servidor. Intenta nuevamente.');
