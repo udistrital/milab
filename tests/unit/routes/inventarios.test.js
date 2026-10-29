@@ -520,6 +520,10 @@ test('inventory upload view links downloadable examples and retains its visual m
   assert.match(view, /Otros encabezados opcionales aceptados/);
   assert.match(view, /column\.required \? 'Obligatoria' : 'Opcional'/);
   assert.match(view, /EQUIPO<\/strong> como encabezado de/);
+  assert.match(view, /class="[^"]*inventory-action-card/);
+  assert.match(view, /data-bs-target="#inventoryUploadModal"/);
+  assert.match(view, /id="inventoryNoComplementaryModal"/);
+  assert.match(view, /id="inventoryRecords"/);
 });
 
 test('ARKA preview offers an optional additional-nomenclature column without replacing its plate', () => {
@@ -549,6 +553,14 @@ test('inventory preview exposes row filters, ordered fields, cancellation, and n
   assert.match(view, /data-grid-column-filters="false"/);
   assert.match(view, /Campos obligatorios/);
   assert.match(view, /Opcionales y validación/);
+  assert.match(view, /id="inventorySendApprovalModal"/);
+  assert.match(view, /Enviar <%= batch\.filas_exitosas %> filas exitosas/);
+  assert.match(view, /Estado y error/);
+  assert.match(view, /class="inventory-preview-status-cell"/);
+  assert.match(view, /class="inventory-preview-error-list mt-2"/);
+  assert.doesNotMatch(view, /<th>Errores<\/th>/);
+  assert.match(view, /table-layout: fixed/);
+  assert.match(view, /class="inventory-preview-observations-cell"/);
   assert.match(view, /data-description-toggle/);
   assert.match(view, /\/cancelar/);
   assert.match(view, />Volver<\/a>/);
