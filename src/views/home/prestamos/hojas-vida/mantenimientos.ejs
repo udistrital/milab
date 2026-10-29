@@ -11,7 +11,7 @@
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
       <a
-        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>"
+        href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>"
         class="btn btn-outline-secondary btn-sm"
       >
         <i class="bi bi-arrow-left"></i> Volver
@@ -35,7 +35,7 @@
     <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
       <h5 class="mb-0">Equipo asociado</h5>
       <a
-        href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/nuevo"
+        href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/nuevo"
         class="btn btn-perso btn-sm"
         data-testid="action-nuevo-mantenimiento"
       >
@@ -145,7 +145,7 @@
                       <% if (mantenimiento.es_editable) { %>
                         <a
                           class="btn btn-outline-warning btn-sm"
-                          href="/milab/prestamos/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/editar"
+                          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/editar"
                           data-testid="action-editar-mantenimiento"
                         >
                           <i class="bi bi-pencil"></i> Editar

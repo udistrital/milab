@@ -32,13 +32,21 @@ const CODIGOS_ESTADO_MANTENIMIENTO = ESTADOS_MANTENIMIENTO.map((estado) => estad
 
 const ESTADO_MANTENIMIENTO_DEFAULT = 'PENDIENTE';
 
-// Estados que permiten edicion ordinaria y cierre.
 const ESTADOS_MANTENIMIENTO_EDITABLES = ['PENDIENTE', 'EN_EJECUCION'];
-// Estados terminales: al llegar a ellos se registra el cierre y el mantenimiento
-// deja de ser editable.
+
 const ESTADOS_MANTENIMIENTO_CIERRE = ['CUMPLIDO', 'CANCELADO'];
 
 const DIAS_ALERTA_VENCIMIENTO_DEFAULT = 30;
+
+// Orden de severidad usado para elegir la alerta principal de un equipo.
+const SEVERIDAD_SITUACION = {
+  EN_EJECUCION: 4,
+  VENCIDO: 3,
+  PROXIMO_VENCER: 2,
+  VIGENTE: 1,
+  CUMPLIDO: 0,
+  CANCELADO: 0,
+};
 
 function esTipoMantenimientoValido(codigo) {
   return CODIGOS_TIPO_MANTENIMIENTO.indexOf(codigo) !== -1;
@@ -58,6 +66,7 @@ function esEstadoMantenimientoEditable(codigo) {
 function esEstadoMantenimientoCierre(codigo) {
   return ESTADOS_MANTENIMIENTO_CIERRE.indexOf(codigo) !== -1;
 }
+
 function etiquetaTipoMantenimiento(codigo) {
   const tipo = TIPOS_MANTENIMIENTO.find((item) => item.codigo === codigo);
   return tipo ? tipo.etiqueta : codigo;
@@ -73,10 +82,6 @@ function claseEstadoMantenimiento(codigo) {
   return estado ? estado.clase : 'secondary';
 }
 
-/**
- * Normaliza una fecha (Date o 'YYYY-MM-DD') a un entero de dia en horario local.
- * Devuelve null cuando no es una fecha valida.
- */
 function normalizarDia(valor) {
   if (valor == null || valor === '') return null;
   if (valor instanceof Date) {
@@ -95,10 +100,6 @@ function normalizarDia(valor) {
 
 const MILISEGUNDOS_POR_DIA = 24 * 60 * 60 * 1000;
 
-/**
- * Dias restantes hasta la fecha programada/realizada del mantenimiento.
- * Negativo cuando ya vencio; null cuando no hay fecha.
- */
 function diasRestantesMantenimiento(mantenimiento, hoy) {
   const programada = normalizarDia(mantenimiento ? mantenimiento.fecha_realizacion : null);
   if (programada == null) return null;
@@ -106,9 +107,11 @@ function diasRestantesMantenimiento(mantenimiento, hoy) {
   return Math.round((programada - referencia) / MILISEGUNDOS_POR_DIA);
 }
 
-/**
- * Determina la situacion (alerta) de un mantenimiento segun su estado y fecha.
- */
+function obtenerSituacion(codigo) {
+  const situacion = SITUACIONES_MANTENIMIENTO.find((item) => item.codigo === codigo);
+  return situacion || SITUACIONES_MANTENIMIENTO[0];
+}
+
 function situacionMantenimiento(mantenimiento, diasAlerta) {
   const alerta = Number.isFinite(Number(diasAlerta))
     ? Number(diasAlerta)
@@ -138,11 +141,6 @@ function situacionMantenimiento(mantenimiento, diasAlerta) {
   return obtenerSituacion('VIGENTE');
 }
 
-function obtenerSituacion(codigo) {
-  const situacion = SITUACIONES_MANTENIMIENTO.find((item) => item.codigo === codigo);
-  return situacion || SITUACIONES_MANTENIMIENTO[0];
-}
-
 module.exports = {
   TIPOS_MANTENIMIENTO,
   ESTADOS_MANTENIMIENTO,
@@ -151,11 +149,12 @@ module.exports = {
   CODIGOS_ESTADO_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
   ESTADOS_MANTENIMIENTO_EDITABLES,
+  ESTADOS_MANTENIMIENTO_CIERRE,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
+  SEVERIDAD_SITUACION,
   esTipoMantenimientoValido,
   esEstadoMantenimientoValido,
   esEstadoEditableMantenimiento,
-  ESTADOS_MANTENIMIENTO_CIERRE,
   esEstadoMantenimientoEditable,
   esEstadoMantenimientoCierre,
   etiquetaTipoMantenimiento,

@@ -631,14 +631,10 @@ test('hojas-vida ver view renders the read-only detail with documents and action
   assert.match(html, /data-testid="hv-ver-campo-tipo_uso"[^>]*>Académico, Otros: Certificación/);
   assert.match(html, /data-testid="hv-estado">Activa/);
   assert.match(html, /data-testid="action-imprimir-hv"/);
-  assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/imprimir/);
-  assert.match(html, /data-testid="action-agregar-mantenimiento-hv"/);
-  assert.match(html, /\/milab\/prestamos\/hojas-vida\/7\/mantenimientos\/nuevo/);
+  assert.match(html, /\/milab\/inventarios\/hojas-vida\/7\/imprimir/);
   assert.match(html, /data-testid="hv-ver-campo-marca"[\s\S]*?MarcaX/);
   assert.match(html, /data-testid="hv-documento"/);
-  assert.match(html, /\/milab\/prestamos\/hojas-vida\/42\/documento\/5/);
-  assert.match(html, /Documento original \(Excel\)/);
-  assert.match(html, /Fotografía del equipo/);
+  assert.match(html, /\/milab\/inventarios\/hojas-vida\/42\/documento\/5/);
   assert.match(html, /data-testid="hv-fotografia"/);
 });
 
@@ -705,6 +701,36 @@ test('hojas-vida editar view renders the editable form with current photo', asyn
   assert.match(html, /nonce="test-nonce"/);
 });
 
+test('hojas-vida cargar view renders the Excel example helper modal', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/cargar.ejs',
+    buildBaseViewLocals({
+      equipo: {
+        id: 7,
+        codigo: 'EQ-01',
+        codigo_inventario: 'INV-01',
+        numero_serie: 'SER-01',
+        nombre: 'Equipo Demo',
+        ubicacion: 'Lab 11',
+        facultad: 'Ciencias',
+      },
+      maxSizeMB: 10,
+      allowedFormats: '.xlsx, .xls, .pdf',
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+
+  assert.match(html, /Cargar Hoja de Vida/i);
+  assert.match(html, /id="hv-carga-form"/);
+  assert.match(html, /data-testid="hv-ejemplo-excel-btn"/);
+  assert.match(html, /id="hvExcelExampleModal"/);
+  assert.match(html, /Así debe verse el Excel/);
+  assert.match(html, /Nombre del equipo/);
+  assert.match(html, /Area/);
+  assert.match(html, /Formato de hoja de vida para lectura automática en MiLab/);
+});
+
 test('hojas-vida mantenimiento-nuevo view renders the form with catalogs', async () => {
   const html = await renderView(
     'src/views/home/prestamos/hojas-vida/mantenimiento-nuevo.ejs',
@@ -734,10 +760,8 @@ test('hojas-vida mantenimientos view lists records and the empty state', async (
   const baseOverrides = {
     hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA' },
     equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
-    diasAlerta: 30,
-    costoAcumulado: 0,
     costoAcumuladoDisplay: '$0',
-    estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+    diasAlerta: 30,
     successMessage: null,
     errorMessage: null,
   };

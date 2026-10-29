@@ -36,13 +36,20 @@ VALUES ('admin'),
        ('laboratorista')
 ON CONFLICT (nombre) DO NOTHING;
 
-INSERT INTO menu_item (section, label, route, icon)
-VALUES (
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
+SELECT
   'secondary',
+  parent.id,
   'Hojas de Vida y Mantenimientos',
-  '/milab/prestamos/hojas-vida',
-  'bi-journal-medical'
-)
+  '/milab/inventarios/hojas-vida',
+  'bi-journal-medical',
+  3,
+  TRUE
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+  AND parent.label = 'Inventarios'
+  AND parent.parent_id IS NULL
 ON CONFLICT (section, parent_id, label, route) DO NOTHING;
 
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use)
@@ -51,7 +58,7 @@ FROM rol r
 JOIN menu_item mi
   ON mi.section = 'secondary'
  AND mi.label = 'Hojas de Vida y Mantenimientos'
- AND mi.route = '/milab/prestamos/hojas-vida'
+ AND mi.route = '/milab/inventarios/hojas-vida'
 WHERE r.nombre IN ('admin', 'coordinador', 'coordinador_general', 'laboratorista')
 ON CONFLICT (rol_id, menu_item_id) DO UPDATE
 SET can_view = TRUE,

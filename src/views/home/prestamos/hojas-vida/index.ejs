@@ -4,23 +4,23 @@
   <section class="app-page-header">
     <h1 class="app-page-title">Hojas de Vida y Mantenimientos</h1>
     <p class="app-page-subtitle">Gestiona la informacion documental, tecnica e historica de los equipos del inventario.</p>
-      <div class="d-flex gap-2 flex-wrap mt-3">
+    <div class="d-flex gap-2 flex-wrap mt-3">
       <a
-        href="/milab/prestamos/hojas-vida/reportes/mantenimientos"
+        href="/milab/inventarios/hojas-vida/reportes/mantenimientos"
         class="btn btn-outline-primary btn-sm"
         data-testid="action-reporte-mantenimientos"
       >
         <i class="bi bi-clipboard-data"></i> Reporte de mantenimientos
       </a>
       <a
-        href="/milab/prestamos/hojas-vida/reportes/alertas"
+        href="/milab/inventarios/hojas-vida/reportes/alertas"
         class="btn btn-outline-warning btn-sm"
         data-testid="action-reporte-alertas"
       >
         <i class="bi bi-exclamation-triangle"></i> Equipos con alertas
       </a>
       <a
-        href="/milab/prestamos/hojas-vida/reportes/utilizacion"
+        href="/milab/inventarios/hojas-vida/reportes/utilizacion"
         class="btn btn-outline-info btn-sm"
         data-testid="action-reporte-utilizacion"
       >
@@ -188,7 +188,7 @@
     }
 
     function buildRowData(equipo) {
-      var base = '/milab/prestamos/hojas-vida';
+      var base = '/milab/inventarios/hojas-vida';
       var accionesHtml;
       if (!equipo.tiene_hoja_vida) {
         accionesHtml = '<a class="btn btn-success btn-sm" data-testid="action-cargar-hv" href="' + base + '/' + equipo.equipo_id + '/cargar"><i class="bi bi-upload"></i> <span>Cargar Hoja de Vida</span></a>';

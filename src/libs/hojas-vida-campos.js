@@ -1,4 +1,3 @@
-// Tipo de uso del equipo: multiseleccion con opcion "Otros" descriptiva.
 const TIPOS_USO_OPCIONES = [
   { clave: 'ACADEMICO', etiqueta: 'Académico' },
   { clave: 'INVESTIGACION', etiqueta: 'Investigación' },
@@ -28,10 +27,6 @@ function buscarOpcionTipoUso(valor) {
   );
 }
 
-/**
- * Interpreta el valor almacenado en tipo_uso, tanto el formato por claves
- * separadas por coma (OTROS:descripcion) como el texto libre legado.
- */
 function parsearTipoUso(valor) {
   const claves = [];
   let otro = '';
@@ -57,7 +52,6 @@ function parsearTipoUso(valor) {
       if (claves.indexOf(opcion.clave) === -1) claves.push(opcion.clave);
       return;
     }
-    // Texto libre no reconocido: se conserva en "Otros" (compatibilidad legada).
     if (claves.indexOf(CLAVE_USO_OTROS) === -1) claves.push(CLAVE_USO_OTROS);
     otro = otro ? otro + ', ' + limpio : limpio;
   });
@@ -65,10 +59,6 @@ function parsearTipoUso(valor) {
   return { claves: claves, otro: otro };
 }
 
-/**
- * Construye el valor a almacenar en tipo_uso a partir de las claves
- * seleccionadas y, opcionalmente, la descripcion de "Otros".
- */
 function serializarTipoUso(claves, otro) {
   const lista = Array.isArray(claves) ? claves : claves == null ? [] : [claves];
   const seleccion = [];
@@ -97,25 +87,16 @@ function serializarTipoUso(claves, otro) {
   return seleccion.join(',');
 }
 
-/**
- * Normaliza cualquier valor de tipo_uso al formato por claves.
- */
 function normalizarTipoUso(valor) {
   const parseado = parsearTipoUso(valor);
   const normalizado = serializarTipoUso(parseado.claves, parseado.otro);
   return normalizado === '' ? null : normalizado;
 }
 
-/**
- * Devuelve las claves activas (incluye OTROS cuando aplica) para marcar casillas.
- */
 function opcionesTipoUsoMarcadas(valor) {
   return parsearTipoUso(valor).claves;
 }
 
-/**
- * Texto legible para vistas e impresion.
- */
 function formatearTipoUso(valor) {
   const parseado = parsearTipoUso(valor);
   return parseado.claves

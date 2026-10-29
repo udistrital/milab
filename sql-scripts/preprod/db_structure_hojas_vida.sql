@@ -88,7 +88,6 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
         REFERENCES equipo(id) ON DELETE RESTRICT
 );
 
--- Parametrizacion del modulo de mantenimientos (alertas de vencimiento)
 CREATE TABLE IF NOT EXISTS mantenimiento_config (
     id                      BIGSERIAL,
     dias_alerta_vencimiento INT                     NOT NULL DEFAULT 30,
@@ -104,6 +103,7 @@ CREATE TABLE IF NOT EXISTS mantenimiento_config (
 INSERT INTO mantenimiento_config (dias_alerta_vencimiento)
 SELECT 30
 WHERE NOT EXISTS (SELECT 1 FROM mantenimiento_config);
+
 
 
 CREATE TABLE IF NOT EXISTS hoja_vida_documento (

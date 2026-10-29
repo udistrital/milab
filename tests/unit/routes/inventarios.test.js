@@ -2060,3 +2060,60 @@ test('inventory migration drops the compatibility view before altering its sourc
   assert.match(baseStructure, /nombre_bien VARCHAR\(1000\) NOT NULL/);
   assert.match(migration, /ALTER COLUMN espacio_fisico TYPE VARCHAR\(255\)/);
 });
+
+test('inventarios genera el PDF de hoja de vida con la informacion vigente (CA05/CA06)', async () => {
+  const pool = {
+    async query(sql) {
+      if (sql.includes('FROM hoja_vida hv')) {
+        return {
+          rows: [
+            {
+              id: 42,
+              equipo_id: 7,
+              codigo_inventario: 'INV-001',
+              nombre_equipo: 'Equipo Demo',
+              estado: 'ACTIVA',
+              activo: true,
+              equipo_codigo: 'EQ-01',
+              equipo_nombre: 'Equipo Demo',
+              equipo_ubicacion: 'Lab 11',
+              equipo_laboratorio: 'Lab',
+              equipo_ual_id: 3,
+            },
+          ],
+        };
+      }
+      if (sql.includes('AS permitido')) {
+        return { rows: [{ permitido: true }] };
+      }
+      return { rows: [] };
+    },
+    async connect() {
+      return { query: async () => ({ rows: [] }), release() {} };
+    },
+  };
+
+  const loaded = loadInventoryRoute({
+    pool,
+    user: { tipo: 'laboratorista', roles: ['laboratorista'], documento: 'lab-1' },
+  });
+
+  try {
+    const response = await request(loaded.app)
+      .get('/hojas-vida/7/imprimir')
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /application\/pdf/);
+    assert.match(response.headers['content-disposition'], /Hoja_Vida_INV-001\.pdf/);
+    assert.ok(response.body.length > 1000, `pdf length=${response.body.length}`);
+    assert.equal(response.body.subarray(0, 5).toString(), '%PDF-');
+  } finally {
+    loaded.restore();
+  }
+});

@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 
 const pool = require('../../libs/db');
+const { normalizeRoles } = require('../../libs/roles');
 const { requireJsonRoles } = require('../middlewares/auth');
 const { parseSigudExcel } = require('../../libs/hojas-vida-excel');
 const {
@@ -23,6 +24,7 @@ const {
   CODIGOS_ESTADO_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
+  SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
 
 const router = express.Router();
@@ -105,7 +107,6 @@ function normalizarCamposHojaVida(body) {
     }
     datos[nombre] = texto;
   });
-  // Si el grupo de uso se envio pero sin casillas marcadas, se limpia el valor.
   if (
     fuente.tipo_uso_grupo !== undefined &&
     !Object.prototype.hasOwnProperty.call(fuente, 'tipo_uso')
@@ -119,6 +120,81 @@ function sanitizeLikeValue(value) {
   const str = String(value || '').trim();
   if (!str) return '';
   return str.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+function getHojasVidaUserRoles(req) {
+  return normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+}
+
+function getHojasVidaUserDocument(req) {
+  return String(req.session?.user?.documento || '').trim();
+}
+
+function isGlobalHojasVidaViewer(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['admin', 'administrador', 'coordinador_general', 'coordinador general'].includes(role)
+  );
+}
+
+function isHojasVidaLaboratorista(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['laboratorista', 'laboratorista_ud', 'laboratorista_ual'].includes(role)
+  );
+}
+
+function isHojasVidaCoordinator(req) {
+  return getHojasVidaUserRoles(req).some((role) =>
+    ['coordinador', 'coordinador_facultad', 'coordinador de facultad'].includes(role)
+  );
+}
+
+async function getAccessibleHojasVidaLaboratoryIds(req) {
+  if (isGlobalHojasVidaViewer(req)) {
+    return null;
+  }
+
+  const document = getHojasVidaUserDocument(req);
+  if (!document) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `
+      SELECT DISTINCT u.ual_id
+      FROM ual u
+      WHERE u.activo = TRUE
+        AND (
+          (
+            $1::boolean
+            AND EXISTS (
+              SELECT 1
+              FROM laboratorista_ual lu
+              WHERE lu.ual_id = u.ual_id
+                AND lu.laboratorista_documento_id = $3
+                AND lu.activo = TRUE
+            )
+          )
+          OR (
+            $2::boolean
+            AND EXISTS (
+              SELECT 1
+              FROM coordinador_facultad_alcance ca
+              JOIN coordinador c
+                ON c.documento = ca.coordinador_documento_id
+               AND c.activo = TRUE
+              WHERE ca.facultad_id = u.facultad_id
+                AND ca.coordinador_documento_id = $3
+                AND ca.activo = TRUE
+            )
+          )
+        )
+    `,
+    [isHojasVidaLaboratorista(req), isHojasVidaCoordinator(req), document]
+  );
+
+  return result.rows
+    .map((row) => Number(row.ual_id))
+    .filter((value) => Number.isInteger(value) && value > 0);
 }
 
 /**
@@ -186,10 +262,6 @@ function normalizarValorComparacion(valor, tipo) {
   return texto === '' ? null : texto;
 }
 
-/**
- * Normaliza el costo de un mantenimiento. Devuelve null para vacio y NaN cuando
- * el valor recibido no es numerico o es negativo.
- */
 function normalizarCostoOpcional(valor) {
   if (valor == null) return null;
   const texto = String(valor).trim();
@@ -198,10 +270,6 @@ function normalizarCostoOpcional(valor) {
   return Number.isFinite(num) && num >= 0 ? num : NaN;
 }
 
-/**
- * Dias de anticipacion configurados por el administrador para las alertas de
- * vencimiento de mantenimiento.
- */
 async function obtenerDiasAlertaVencimiento(cliente) {
   try {
     const result = await cliente.query(
@@ -220,13 +288,6 @@ async function obtenerDiasAlertaVencimiento(cliente) {
   }
 }
 
-/**
- * Mantiene sincronizado el estado del equipo con sus mantenimientos en
- * ejecucion: si existe al menos uno, el equipo queda 'mantenimiento'
- * (no disponible para prestamo); cuando no queda ninguno en ejecucion se
- * libera a 'disponible' siempre que el equipo no este prestado o fuera de
- * servicio.
- */
 async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
   const ejecucionResult = await cliente.query(
     `
@@ -275,11 +336,6 @@ async function sincronizarDisponibilidadEquipo(cliente, equipoId) {
   return estadoNuevo;
 }
 
-/**
- * Registra un evento en el historial del ciclo de vida del activo. Por defecto
- * genera un evento MANTENIMIENTO; las opciones permiten indicar otro tipo y la
- * referencia al registro relacionado (mantenimiento o documento).
- */
 async function registrarEventoHistorial(
   cliente,
   hojaVidaId,
@@ -308,160 +364,8 @@ async function registrarEventoHistorial(
   );
 }
 
-router.get('/equipos', async function buscarEquiposHV(req, res) {
-  try {
-    const params = [];
-    const conditions = [];
-
-    const codigoInventario = sanitizeLikeValue(req.query.codigo_inventario);
-    const codigoInterno = sanitizeLikeValue(req.query.codigo_interno);
-    const numeroSerie = sanitizeLikeValue(req.query.numero_serie);
-    const nombreEquipo = sanitizeLikeValue(req.query.nombre_equipo);
-    const marca = sanitizeLikeValue(req.query.marca);
-    const referenciaModelo = sanitizeLikeValue(req.query.referencia_modelo);
-    const buscar = sanitizeLikeValue(req.query.buscar);
-
-    if (codigoInventario) {
-      params.push(`%${codigoInventario}%`);
-      conditions.push(`inv.placa ILIKE $${params.length} ESCAPE '\\'`);
-    }
-
-    if (codigoInterno) {
-      params.push(`%${codigoInterno}%`);
-      conditions.push(`e.codigo ILIKE $${params.length} ESCAPE '\\'`);
-    }
-
-    if (numeroSerie) {
-      params.push(`%${numeroSerie}%`);
-      conditions.push(`inv.serie ILIKE $${params.length} ESCAPE '\\'`);
-    }
-
-    if (nombreEquipo) {
-      params.push(`%${nombreEquipo}%`);
-      conditions.push(
-        `(e.nombre ILIKE $${params.length} ESCAPE '\\' OR inv.nombre_bien ILIKE $${params.length} ESCAPE '\\')`
-      );
-    }
-
-    if (marca) {
-      params.push(`%${marca}%`);
-      conditions.push(`hv.marca ILIKE $${params.length} ESCAPE '\\'`);
-    }
-
-    if (referenciaModelo) {
-      params.push(`%${referenciaModelo}%`);
-      conditions.push(`hv.referencia_modelo ILIKE $${params.length} ESCAPE '\\'`);
-    }
-
-    if (buscar) {
-      params.push(`%${buscar}%`);
-      const idx = params.length;
-      conditions.push(
-        `(e.codigo ILIKE $${idx} ESCAPE '\\' OR e.nombre ILIKE $${idx} ESCAPE '\\' OR ` +
-          `inv.placa ILIKE $${idx} ESCAPE '\\' OR inv.serie ILIKE $${idx} ESCAPE '\\' OR ` +
-          `inv.nombre_bien ILIKE $${idx} ESCAPE '\\' OR hv.marca ILIKE $${idx} ESCAPE '\\' OR ` +
-          `hv.referencia_modelo ILIKE $${idx} ESCAPE '\\')`
-      );
-    }
-
-    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
-
-    const sql = `
-      SELECT
-        e.id AS equipo_id,
-        e.codigo AS codigo_interno,
-        e.nombre AS nombre_equipo,
-        e.categoria,
-        e.estado AS estado_equipo,
-        e.ubicacion,
-        e.facultad,
-        e.laboratorio,
-        inv.placa AS codigo_inventario,
-        inv.serie AS numero_serie,
-        inv.nombre_bien AS nombre_bien_inventario,
-        hv.id AS hoja_vida_id,
-        hv.estado AS hoja_vida_estado,
-        COALESCE(hv.marca, NULL) AS marca,
-        COALESCE(hv.referencia_modelo, NULL) AS referencia_modelo,
-        EXISTS (
-          SELECT 1 FROM hoja_vida hv2
-          WHERE hv2.equipo_id = e.id AND hv2.activo = TRUE
-        ) AS tiene_hoja_vida,
-        EXISTS (
-          SELECT 1 FROM mantenimiento m
-          JOIN hoja_vida hv3 ON hv3.id = m.hoja_vida_id
-          WHERE hv3.equipo_id = e.id AND m.activo = TRUE
-        ) AS tiene_mantenimientos
-      FROM equipo e
-      LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-      LEFT JOIN hoja_vida hv ON hv.equipo_id = e.id AND hv.activo = TRUE
-      WHERE e.activo = TRUE ${whereClause}
-      ORDER BY e.fecha_creacion DESC NULLS LAST, e.id DESC
-    `;
-
-    const result = await pool.query(sql, params);
-
-    const equipoIds = result.rows.map((row) => Number(row.equipo_id));
-    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
-    const resumenPorEquipo = await construirResumenEquipos(pool, equipoIds, diasAlerta);
-
-    const data = result.rows.map((row) => ({
-      equipo_id: Number(row.equipo_id),
-      codigo_inventario: row.codigo_inventario || null,
-      codigo_interno: row.codigo_interno || null,
-      numero_serie: row.numero_serie || null,
-      nombre_equipo: row.nombre_equipo || row.nombre_bien_inventario || null,
-      marca: row.marca || null,
-      referencia_modelo: row.referencia_modelo || null,
-      categoria: row.categoria || null,
-      estado_equipo: row.estado_equipo || null,
-      ubicacion: row.ubicacion || null,
-      facultad: row.facultad || null,
-      laboratorio: row.laboratorio || null,
-      hoja_vida_id: row.hoja_vida_id ? Number(row.hoja_vida_id) : null,
-      hoja_vida_estado: row.hoja_vida_estado || null,
-      tiene_hoja_vida: Boolean(row.tiene_hoja_vida),
-      tiene_mantenimientos: Boolean(row.tiene_mantenimientos),
-      alerta: resumenPorEquipo[Number(row.equipo_id)]?.alerta || null,
-      costo_mantenimiento_acumulado: resumenPorEquipo[Number(row.equipo_id)]?.costo_total || 0,
-      prestamos_total: resumenPorEquipo[Number(row.equipo_id)]?.prestamos_total || 0,
-    }));
-
-    return res.json({
-      ok: true,
-      data,
-      count: data.length,
-      dias_alerta_vencimiento: diasAlerta,
-    });
-  } catch (error) {
-    console.error('[hojas-vida] Error buscando equipos:', error);
-    return res.status(500).json({
-      ok: false,
-      message: 'No fue posible consultar los equipos.',
-      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
-    });
-  }
-});
-
-// Estados de solicitud de prestamo que cuentan como prestamo efectivamente
-// realizado sobre el activo.
 const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
 
-// Orden de severidad de las situaciones de mantenimiento para priorizar la
-// alerta mostrada por equipo.
-const SEVERIDAD_SITUACION = {
-  EN_EJECUCION: 4,
-  VENCIDO: 3,
-  PROXIMO_VENCER: 2,
-  VIGENTE: 1,
-  CUMPLIDO: 0,
-  CANCELADO: 0,
-};
-
-/**
- * Construye, para una lista de equipos, el resumen de alertas de mantenimiento,
- * costo acumulado y cantidad de prestamos. Se usa en el listado de equipos.
- */
 async function construirResumenEquipos(cliente, equipoIds, diasAlerta) {
   const resumen = {};
   if (!Array.isArray(equipoIds) || equipoIds.length === 0) return resumen;
@@ -532,10 +436,161 @@ async function construirResumenEquipos(cliente, equipoIds, diasAlerta) {
   return resumen;
 }
 
-/**
- * GET /reportes/mantenimientos
- * CA11: reporte consolidado de mantenimientos con filtros y agregados.
- */
+router.get('/equipos', async function buscarEquiposHV(req, res) {
+  try {
+    const params = [];
+    const conditions = [];
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+
+    const codigoInventario = sanitizeLikeValue(req.query.codigo_inventario);
+    const codigoInterno = sanitizeLikeValue(req.query.codigo_interno);
+    const numeroSerie = sanitizeLikeValue(req.query.numero_serie);
+    const nombreEquipo = sanitizeLikeValue(req.query.nombre_equipo);
+    const marca = sanitizeLikeValue(req.query.marca);
+    const referenciaModelo = sanitizeLikeValue(req.query.referencia_modelo);
+    const buscar = sanitizeLikeValue(req.query.buscar);
+
+    if (codigoInventario) {
+      params.push(`%${codigoInventario}%`);
+      conditions.push(`inv.placa ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    if (codigoInterno) {
+      params.push(`%${codigoInterno}%`);
+      conditions.push(`ec.codigo ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    if (numeroSerie) {
+      params.push(`%${numeroSerie}%`);
+      conditions.push(`inv.serie ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    if (nombreEquipo) {
+      params.push(`%${nombreEquipo}%`);
+      conditions.push(
+        `(ec.nombre ILIKE $${params.length} ESCAPE '\\' OR inv.nombre_bien ILIKE $${params.length} ESCAPE '\\')`
+      );
+    }
+
+    if (marca) {
+      params.push(`%${marca}%`);
+      conditions.push(`hv.marca ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    if (referenciaModelo) {
+      params.push(`%${referenciaModelo}%`);
+      conditions.push(`hv.referencia_modelo ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      const idx = params.length;
+      conditions.push(
+        `(ec.codigo ILIKE $${idx} ESCAPE '\\' OR ec.nombre ILIKE $${idx} ESCAPE '\\' OR ` +
+          `inv.placa ILIKE $${idx} ESCAPE '\\' OR inv.serie ILIKE $${idx} ESCAPE '\\' OR ` +
+          `inv.nombre_bien ILIKE $${idx} ESCAPE '\\' OR hv.marca ILIKE $${idx} ESCAPE '\\' OR ` +
+          `hv.referencia_modelo ILIKE $${idx} ESCAPE '\\')`
+      );
+    }
+
+    if (Array.isArray(accessibleLaboratoryIds)) {
+      if (accessibleLaboratoryIds.length === 0) {
+        return res.json({ ok: true, data: [] });
+      }
+      params.push(accessibleLaboratoryIds);
+      conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
+    }
+
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT
+        ec.id AS equipo_id,
+        ec.codigo AS codigo_interno,
+        ec.nombre AS nombre_equipo,
+        ec.categoria,
+        ec.estado AS estado_equipo,
+        ec.ubicacion,
+        ec.facultad,
+        ec.laboratorio,
+        inv.placa AS codigo_inventario,
+        inv.serie AS numero_serie,
+        inv.nombre_bien AS nombre_bien_inventario,
+        hv.id AS hoja_vida_id,
+        hv.estado AS hoja_vida_estado,
+        COALESCE(hv.marca, NULL) AS marca,
+        COALESCE(hv.referencia_modelo, NULL) AS referencia_modelo,
+        EXISTS (
+          SELECT 1 FROM hoja_vida hv2
+          WHERE hv2.equipo_id = ec.id AND hv2.activo = TRUE
+        ) AS tiene_hoja_vida,
+        EXISTS (
+          SELECT 1 FROM mantenimiento m
+          JOIN hoja_vida hv3 ON hv3.id = m.hoja_vida_id
+          WHERE hv3.equipo_id = ec.id AND m.activo = TRUE
+        ) AS tiene_mantenimientos
+      FROM equipo_catalogo ec
+      LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+      LEFT JOIN hoja_vida hv ON hv.equipo_id = ec.id AND hv.activo = TRUE
+      WHERE ec.activo = TRUE ${whereClause}
+      ORDER BY ec.fecha_creacion DESC NULLS LAST, ec.id DESC
+    `;
+
+    const result = await pool.query(sql, params);
+
+    const equipoIds = result.rows.map((row) => Number(row.equipo_id));
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+    const resumenPorEquipo = await construirResumenEquipos(pool, equipoIds, diasAlerta);
+
+    const data = result.rows.map((row) => ({
+      equipo_id: Number(row.equipo_id),
+      codigo_inventario: row.codigo_inventario || null,
+      codigo_interno: row.codigo_interno || null,
+      numero_serie: row.numero_serie || null,
+      nombre_equipo: row.nombre_equipo || row.nombre_bien_inventario || null,
+      marca: row.marca || null,
+      referencia_modelo: row.referencia_modelo || null,
+      categoria: row.categoria || null,
+      estado_equipo: row.estado_equipo || null,
+      ubicacion: row.ubicacion || null,
+      facultad: row.facultad || null,
+      laboratorio: row.laboratorio || null,
+      hoja_vida_id: row.hoja_vida_id ? Number(row.hoja_vida_id) : null,
+      hoja_vida_estado: row.hoja_vida_estado || null,
+      tiene_hoja_vida: Boolean(row.tiene_hoja_vida),
+      tiene_mantenimientos: Boolean(row.tiene_mantenimientos),
+      alerta: resumenPorEquipo[Number(row.equipo_id)]?.alerta || null,
+      costo_mantenimiento_acumulado: resumenPorEquipo[Number(row.equipo_id)]?.costo_total || 0,
+      prestamos_total: resumenPorEquipo[Number(row.equipo_id)]?.prestamos_total || 0,
+    }));
+
+    return res.json({
+      ok: true,
+      data,
+      count: data.length,
+      dias_alerta_vencimiento: diasAlerta,
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error buscando equipos:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible consultar los equipos.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+function aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions) {
+  if (!Array.isArray(accessibleLaboratoryIds)) return true;
+  if (accessibleLaboratoryIds.length === 0) {
+    conditions.push('1 = 0');
+    return false;
+  }
+  params.push(accessibleLaboratoryIds);
+  conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
+  return true;
+}
+
 router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(req, res) {
   try {
     const params = [];
@@ -588,28 +643,29 @@ router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(re
     const facultad = sanitizeLikeValue(req.query.facultad);
     if (facultad) {
       params.push(`%${facultad}%`);
-      conditions.push(`COALESCE(u.facultad, e.facultad) ILIKE $${params.length} ESCAPE '\\'`);
+      conditions.push(`ec.facultad ILIKE $${params.length} ESCAPE '\\'`);
     }
 
     const laboratorio = sanitizeLikeValue(req.query.laboratorio);
     if (laboratorio) {
       params.push(`%${laboratorio}%`);
-      conditions.push(`COALESCE(u.nombre, e.laboratorio) ILIKE $${params.length} ESCAPE '\\'`);
+      conditions.push(`ec.laboratorio ILIKE $${params.length} ESCAPE '\\'`);
     }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
 
     const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
 
     const result = await pool.query(
       `
         SELECT m.id, m.equipo_id, m.tipo_mantenimiento, m.estado, m.fecha_realizacion, m.costo,
-               e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
-               COALESCE(u.nombre, e.laboratorio) AS laboratorio,
-               COALESCE(u.facultad, e.facultad) AS facultad
+               ec.codigo AS equipo_codigo, ec.nombre AS equipo_nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad
         FROM mantenimiento m
-        JOIN equipo e ON e.id = m.equipo_id
-        LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-        LEFT JOIN ual u ON u.ual_id = inv.laboratorio_ual_id
-        WHERE m.activo = TRUE AND e.activo = TRUE ${whereClause}
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE m.activo = TRUE AND ec.activo = TRUE ${whereClause}
         ORDER BY m.fecha_realizacion DESC NULLS LAST, m.id DESC
       `,
       params
@@ -710,31 +766,30 @@ router.get('/reportes/mantenimientos', async function reporteMantenimientosHV(re
   }
 });
 
-/**
- * GET /reportes/alertas
- * CA12: equipos que requieren, estan proximos o tienen mantenimiento vencido,
- * o se encuentran actualmente en mantenimiento.
- */
 router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
   try {
+    const params = [];
+    const conditions = [];
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
     const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
 
     const result = await pool.query(
       `
         SELECT m.id, m.equipo_id, m.tipo_mantenimiento, m.estado, m.fecha_realizacion,
-               e.codigo AS equipo_codigo, e.nombre AS equipo_nombre,
-               hv.codigo_inventario,
-               COALESCE(u.nombre, e.laboratorio) AS laboratorio,
-               COALESCE(u.facultad, e.facultad) AS facultad
+               ec.codigo AS equipo_codigo, ec.nombre AS equipo_nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad
         FROM mantenimiento m
-        JOIN equipo e ON e.id = m.equipo_id
-        JOIN hoja_vida hv ON hv.id = m.hoja_vida_id
-        LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-        LEFT JOIN ual u ON u.ual_id = inv.laboratorio_ual_id
-        WHERE m.activo = TRUE AND e.activo = TRUE
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE m.activo = TRUE AND ec.activo = TRUE
           AND m.estado NOT IN ('CUMPLIDO', 'CANCELADO')
+          ${whereClause}
         ORDER BY m.fecha_realizacion ASC NULLS LAST, m.id ASC
-      `
+      `,
+      params
     );
 
     const filas = [];
@@ -749,7 +804,7 @@ router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
         equipo_id: Number(fila.equipo_id),
         equipo_codigo: fila.equipo_codigo,
         equipo_nombre: fila.equipo_nombre,
-        codigo_inventario: fila.codigo_inventario,
+        codigo_inventario: fila.equipo_codigo,
         laboratorio: fila.laboratorio,
         facultad: fila.facultad,
         tipo_mantenimiento: fila.tipo_mantenimiento,
@@ -791,10 +846,6 @@ router.get('/reportes/alertas', async function reporteAlertasHV(req, res) {
   }
 });
 
-/**
- * GET /reportes/utilizacion
- * CA14: cantidad de prestamos por equipo y reporte de utilizacion.
- */
 router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res) {
   try {
     const params = [];
@@ -803,20 +854,23 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
     const equipoId = Number(req.query.equipo_id);
     if (Number.isInteger(equipoId) && equipoId > 0) {
       params.push(equipoId);
-      conditions.push(`e.id = $${params.length}`);
+      conditions.push(`ec.id = $${params.length}`);
     }
 
     const facultad = sanitizeLikeValue(req.query.facultad);
     if (facultad) {
       params.push(`%${facultad}%`);
-      conditions.push(`COALESCE(u.facultad, e.facultad) ILIKE $${params.length} ESCAPE '\\'`);
+      conditions.push(`ec.facultad ILIKE $${params.length} ESCAPE '\\'`);
     }
 
     const laboratorio = sanitizeLikeValue(req.query.laboratorio);
     if (laboratorio) {
       params.push(`%${laboratorio}%`);
-      conditions.push(`COALESCE(u.nombre, e.laboratorio) ILIKE $${params.length} ESCAPE '\\'`);
+      conditions.push(`ec.laboratorio ILIKE $${params.length} ESCAPE '\\'`);
     }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
 
     const fechaDesde = normalizarFechaDiaOpcional(req.query.fecha_desde);
     const fechaHasta = normalizarFechaDiaOpcional(req.query.fecha_hasta);
@@ -831,22 +885,20 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
 
     const result = await pool.query(
       `
-        SELECT e.id AS equipo_id, e.codigo, e.nombre,
-               COALESCE(u.nombre, e.laboratorio) AS laboratorio,
-               COALESCE(u.facultad, e.facultad) AS facultad,
+        SELECT ec.id AS equipo_id, ec.codigo, ec.nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad,
                COUNT(sp.id)::int AS prestamos
-        FROM equipo e
-        LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-        LEFT JOIN ual u ON u.ual_id = inv.laboratorio_ual_id
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
         LEFT JOIN solicitud_prestamo sp
-          ON sp.equipo_id = e.id
+          ON sp.equipo_id = ec.id
          AND sp.activo = TRUE
          AND sp.estado = ANY($${idxEstados}::text[])
          AND ($${idxDesde}::date IS NULL OR sp.fecha_inicio::date >= $${idxDesde}::date)
          AND ($${idxHasta}::date IS NULL OR sp.fecha_inicio::date <= $${idxHasta}::date)
-        WHERE e.activo = TRUE ${whereClause}
-        GROUP BY e.id, e.codigo, e.nombre, u.nombre, e.laboratorio, u.facultad, e.facultad
-        ORDER BY prestamos DESC, e.nombre ASC
+        WHERE ec.activo = TRUE ${whereClause}
+        GROUP BY ec.id, ec.codigo, ec.nombre, ec.laboratorio, ec.facultad
+        ORDER BY prestamos DESC, ec.nombre ASC
       `,
       params
     );
@@ -890,11 +942,6 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
   }
 });
 
-/**
- * GET /:equipoId/resumen
- * CA10/CA13/CA15: costos acumulados de mantenimiento, cantidad de prestamos y
- * relacion entre utilizacion y mantenimiento para un equipo.
- */
 router.get('/:equipoId/resumen', async function resumenEquipoHV(req, res) {
   try {
     const equipoId = Number(req.params?.equipoId);
@@ -902,6 +949,32 @@ router.get('/:equipoId/resumen', async function resumenEquipoHV(req, res) {
       return res.status(400).json({
         ok: false,
         message: 'El identificador del equipo es invalido.',
+      });
+    }
+
+    const acceso = await pool.query(
+      `
+        SELECT ec.id, inv.laboratorio_ual_id AS ual_id
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ec.id = $1 AND ec.activo = TRUE
+      `,
+      [equipoId]
+    );
+    if (acceso.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'El equipo no existe en Inventario.',
+      });
+    }
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    if (
+      Array.isArray(accessibleLaboratoryIds) &&
+      (!acceso.rows[0].ual_id || !accessibleLaboratoryIds.includes(Number(acceso.rows[0].ual_id)))
+    ) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No tienes acceso al laboratorio seleccionado.',
       });
     }
 
@@ -1105,14 +1178,23 @@ router.post(
         });
       }
 
-      // 1. Verificar que el equipo existe
       const equipoResult = await pool.query(
         `
-          SELECT e.id, e.codigo, e.nombre, e.estado, e.ubicacion, e.facultad, e.laboratorio,
-                 inv.placa AS codigo_inventario, inv.serie AS numero_serie, inv.nombre_bien
-          FROM equipo e
-          LEFT JOIN inventario inv ON inv.placa = e.codigo AND inv.activo = TRUE
-          WHERE e.id = $1 AND e.activo = TRUE
+          SELECT
+            ec.id,
+            ec.codigo,
+            ec.nombre,
+            ec.estado,
+            ec.ubicacion,
+            ec.facultad,
+            ec.laboratorio,
+            inv.placa AS codigo_inventario,
+            inv.serie AS numero_serie,
+            inv.nombre_bien,
+            inv.laboratorio_ual_id AS ual_id
+          FROM equipo_catalogo ec
+          LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+          WHERE ec.id = $1 AND ec.activo = TRUE
         `,
         [equipoId]
       );
@@ -1125,8 +1207,17 @@ router.post(
       }
 
       const equipo = equipoResult.rows[0];
+      const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+      if (
+        Array.isArray(accessibleLaboratoryIds) &&
+        (!equipo.ual_id || !accessibleLaboratoryIds.includes(Number(equipo.ual_id)))
+      ) {
+        return res.status(403).json({
+          ok: false,
+          message: 'No tienes acceso al laboratorio seleccionado.',
+        });
+      }
 
-      // 2. Verificar que no tenga hoja de vida (incluso en borrador)
       const hvExistente = await pool.query(
         `
           SELECT id, estado
@@ -1149,8 +1240,8 @@ router.post(
           details: {
             hoja_vida_id: Number(hv.id),
             estado: hv.estado,
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
-            edit_url: `/milab/prestamos/hojas-vida/${equipoId}/editar`,
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
+            edit_url: `/milab/inventarios/hojas-vida/${equipoId}/editar`,
           },
         });
       }
@@ -1165,7 +1256,6 @@ router.post(
         });
       }
 
-      // 3. Validar integridad del archivo
       if (file.size === 0) {
         return res.status(400).json({
           ok: false,
@@ -1187,9 +1277,7 @@ router.post(
       let camposNoReconocidos = [];
       let advertenciaEstructura = null;
 
-      // 4. Si es Excel, parsear con el parser SIGUD
       if (tipoDocumento === 'EXCEL_ORIGEN') {
-        // Validar cabecera de archivo xlsx (PK\x03\x04) o xls (D0CF11E0)
         const buf = file.buffer;
         const esXlsx = buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b; // PK
         const esXls =
@@ -1207,7 +1295,6 @@ router.post(
           });
         }
 
-        // exceljs solo soporta .xlsx; .xls requiere otra librería
         if (esXls) {
           advertenciaEstructura =
             'El formato .xls no se puede parsear automáticamente. Se conservará el archivo como evidencia, pero deberás ingresar los campos manualmente.';
@@ -1239,7 +1326,6 @@ router.post(
           'Los PDFs no se pueden parsear automáticamente. Se conservará el archivo como evidencia, pero deberás ingresar los campos manualmente.';
       }
 
-      // 5. Transacción: crear HV en PENDIENTE_CONFIRMACION + guardar documento
       const cliente = await pool.connect();
       try {
         await cliente.query('BEGIN');
@@ -1292,7 +1378,7 @@ router.post(
 
         const hojaVidaId = Number(insertHV.rows[0].id);
 
-        const documentoResult = await cliente.query(
+        const documentoInsert = await cliente.query(
           `
             INSERT INTO hoja_vida_documento (
               hoja_vida_id, tipo_documento, nombre_archivo, tipo_mime, archivo,
@@ -1310,20 +1396,17 @@ router.post(
           ]
         );
 
-        await cliente.query(
-          `
-            INSERT INTO hoja_vida_historial (
-              hoja_vida_id, equipo_id, tipo_evento, descripcion, usuario, usuario_creacion,
-              referencia_tipo, referencia_id
-            ) VALUES ($1, $2, 'CREACION', $3, $4, $4, 'DOCUMENTO', $5)
-          `,
-          [
-            hojaVidaId,
-            equipoId,
-            `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
-            req.session?.user?.id || null,
-            documentoResult.rows[0].id,
-          ]
+        await registrarEventoHistorial(
+          cliente,
+          hojaVidaId,
+          equipoId,
+          `Hoja de vida creada a partir de la carga del archivo "${file.originalname}" (estado: Pendiente de confirmación).`,
+          req.session?.user?.id || null,
+          {
+            tipoEvento: 'CREACION',
+            referenciaTipo: 'DOCUMENTO',
+            referenciaId: documentoInsert.rows[0].id,
+          }
         );
 
         await cliente.query('COMMIT');
@@ -1339,7 +1422,7 @@ router.post(
             campos_reconocidos: camposReconocidos,
             campos_no_reconocidos: camposNoReconocidos,
             advertencia_estructura: advertenciaEstructura,
-            confirmar_url: `/milab/prestamos/hojas-vida/${hojaVidaId}/confirmar`,
+            confirmar_url: `/milab/inventarios/hojas-vida/${hojaVidaId}/confirmar`,
           },
         });
       } catch (txError) {
@@ -1374,12 +1457,6 @@ router.post(
   }
 );
 
-/**
- * POST /:hojaVidaId/confirmar
- * Confirma la hoja de vida: guarda los campos revisados, la fotografia
- * opcional, cambia el estado a ACTIVA y registra la auditoria (usuario,
- * fecha y evento en el historial).
- */
 router.post(
   '/:hojaVidaId/confirmar',
   uploadFoto.single('foto'),
@@ -1536,7 +1613,7 @@ router.post(
             hoja_vida_id: Number(updateResult.rows[0].id),
             estado: updateResult.rows[0].estado,
             tiene_fotografia: Boolean(req.file),
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
           },
         });
       } catch (txError) {
@@ -1645,7 +1722,6 @@ router.post(
         });
       }
 
-      // Fotografia vigente (para reemplazo o eliminacion)
       const fotoResult = await pool.query(
         `
           SELECT id, nombre_archivo
@@ -1800,9 +1876,8 @@ router.post(
             hoja_vida_id: hojaVidaId,
             cambios: cambios.map((cambio) => cambio.campo),
             total_cambios: cambios.length,
-            tiene_fotografia: req.file ? true : eliminarFoto ? false : Boolean(fotoActiva),
-            foto_eliminada: eliminarFoto,
-            view_url: `/milab/prestamos/hojas-vida/${equipoId}`,
+            tiene_fotografia: Boolean(req.file),
+            view_url: `/milab/inventarios/hojas-vida/${equipoId}`,
           },
         });
       } catch (txError) {
@@ -1836,11 +1911,6 @@ router.post(
   }
 );
 
-/**
- * POST /:equipoId/mantenimientos
- * Registra un mantenimiento asociado a la hoja de vida del equipo y genera el
- * evento MANTENIMIENTO en el historial del ciclo de vida del activo.
- */
 router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV(req, res) {
   try {
     const equipoId = Number(req.params?.equipoId);
@@ -1972,8 +2042,6 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
         { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
       );
 
-      // CA06: si el mantenimiento inicia en ejecucion, el equipo deja de estar
-      // disponible para prestamo.
       await sincronizarDisponibilidadEquipo(cliente, equipoId);
 
       await cliente.query('COMMIT');
@@ -1986,7 +2054,7 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
           hoja_vida_id: Number(hojaVida.id),
           estado: insertResult.rows[0].estado,
           costo: costo,
-          listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+          listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
         },
       });
     } catch (txError) {
@@ -2211,7 +2279,7 @@ router.put(
             mantenimiento_id: Number(updateResult.rows[0].id),
             estado: updateResult.rows[0].estado,
             fecha_cierre: updateResult.rows[0].fecha_cierre,
-            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
           },
         });
       } catch (txError) {
@@ -2333,7 +2401,7 @@ router.post(
             estado: updateResult.rows[0].estado,
             fecha_cierre: updateResult.rows[0].fecha_cierre,
             usuario_cierre: updateResult.rows[0].usuario_cierre,
-            listado_url: `/milab/prestamos/hojas-vida/${equipoId}/mantenimientos`,
+            listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
           },
         });
       } catch (txError) {
