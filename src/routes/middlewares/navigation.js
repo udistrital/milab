@@ -169,7 +169,27 @@ function ensureInventoryHojasVidaLink(navigation, roles) {
     return navigation;
   }
 
-  const targetHref = '/milab/inventarios/hojas-vida';
+  const targetLinks = [
+    createLink(
+      'Hojas de vida y mantenimientos',
+      '/milab/inventarios/hojas-vida',
+      'bi-journal-medical'
+    ),
+  ];
+  if (
+    normalizedRoles.some((role) =>
+      ['admin', 'administrador', 'coordinador_general', 'coordinador'].includes(role)
+    )
+  ) {
+    targetLinks.push(
+      createLink(
+        'Conciliaciones ARKA',
+        '/milab/inventarios/conciliaciones-arka',
+        'bi-arrow-left-right'
+      )
+    );
+  }
+
   const secondaryGroups = Array.isArray(navigation.secondaryGroups)
     ? navigation.secondaryGroups.map((group) => ({
         ...group,
@@ -182,19 +202,21 @@ function ensureInventoryHojasVidaLink(navigation, roles) {
         .trim()
         .toLowerCase() === 'inventarios'
   );
-  const targetItem = createLink('Hojas de vida y mantenimientos', targetHref, 'bi-journal-medical');
 
   if (inventoryGroupIndex === -1) {
-    secondaryGroups.push(createGroup('Inventarios', 'bi-boxes', [targetItem]));
+    secondaryGroups.push(createGroup('Inventarios', 'bi-boxes', targetLinks));
     return { ...navigation, secondaryGroups };
   }
 
   const inventoryGroup = secondaryGroups[inventoryGroupIndex];
-  if (inventoryGroup.items.some((item) => item?.href === targetHref)) {
+  const missingLinks = targetLinks.filter(
+    (targetLink) => !inventoryGroup.items.some((item) => item?.href === targetLink.href)
+  );
+  if (!missingLinks.length) {
     return navigation;
   }
 
-  inventoryGroup.items.push(targetItem);
+  inventoryGroup.items.push(...missingLinks);
   secondaryGroups[inventoryGroupIndex] = inventoryGroup;
   return { ...navigation, secondaryGroups };
 }

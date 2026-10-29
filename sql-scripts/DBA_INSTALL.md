@@ -132,6 +132,18 @@ asignaciones oficiales. No crea UALs nuevos.
   coordinadores registrados y dashboard. Recupera el encargado de la primera carga aprobada
   de cada UAL (fecha de resolucion e ID), conserva relaciones existentes y dirige las cargas
   pendientes al encargado. Debe ejecutarse antes de iniciar la nueva version de la aplicacion.
+- La misma estructura de inventarios crea las tablas de corridas, snapshots y alertas de
+  Conciliaciones ARKA. Las corridas fallidas no reemplazan el ultimo snapshot exitoso.
+- Para habilitar Conciliaciones ARKA, configura `OATI_CLIENT_ID` y `OATI_SECRET` en el entorno
+  seguro de la aplicacion. El cliente reutiliza el token OAuth de OATI y su caché; nunca guardes
+  las credenciales ni el token en el repositorio. `OATI_TOKEN_URL` conserva su valor por defecto
+  salvo que el ambiente requiera uno distinto. Fuera de produccion se usan por defecto las URL
+  de pruebas documentadas en la aplicacion. En produccion ambas URL (`ARKA_API_BASE_URL` y
+  `ARKA_TERCEROS_API_BASE_URL`) deben configurarse explicitamente y el servicio nunca reutiliza
+  las URL de pruebas.
+- El worker procesa las corridas en segundo plano y programa la conciliacion mensual el dia 1
+  a las 02:00, hora de Bogota. El proceso puede deshabilitarse con
+  `ARKA_RECONCILIATION_ENABLED=false`.
 - En bases existentes donde esa tabla aún no exista, la migración
   `sql/20261021_coordinador_ual_encargado.sql` permite crearla sin volver a ejecutar toda
   la migración de inventarios.

@@ -34,6 +34,15 @@ WHERE parent.section = 'secondary'
   AND parent.label = 'Inventarios'
 ON CONFLICT DO NOTHING;
 
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
+SELECT 'secondary', parent.id, 'Conciliaciones ARKA',
+       '/milab/inventarios/conciliaciones-arka', 'bi-arrow-left-right', 3, TRUE
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+  AND parent.parent_id IS NULL
+  AND parent.label = 'Inventarios'
+ON CONFLICT DO NOTHING;
+
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
 SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general', TRUE
 FROM rol r
@@ -52,7 +61,8 @@ UPDATE menu_item
 SET activo = TRUE
 WHERE route IN (
     '/milab/inventarios/gestion_inventario',
-    '/milab/inventarios/aprobaciones'
+    '/milab/inventarios/aprobaciones',
+    '/milab/inventarios/conciliaciones-arka'
 );
 
 INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
@@ -73,6 +83,18 @@ FROM rol r
 JOIN menu_item mi
   ON mi.route = '/milab/inventarios/aprobaciones'
 WHERE r.nombre IN ('admin', 'coordinador_general', 'coordinador')
+ON CONFLICT (rol_id, menu_item_id)
+DO UPDATE SET can_view = EXCLUDED.can_view,
+              can_use = EXCLUDED.can_use,
+              activo = EXCLUDED.activo,
+              fecha_modificacion = CURRENT_TIMESTAMP;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, r.nombre <> 'coordinador_general', TRUE
+FROM rol r
+JOIN menu_item mi
+  ON mi.route = '/milab/inventarios/conciliaciones-arka'
+WHERE r.nombre IN ('admin', 'administrador', 'coordinador_general', 'coordinador')
 ON CONFLICT (rol_id, menu_item_id)
 DO UPDATE SET can_view = EXCLUDED.can_view,
               can_use = EXCLUDED.can_use,

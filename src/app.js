@@ -80,6 +80,7 @@ const {
 const {
   startCoordinatorPendingNotificationsJob,
 } = require('./jobs/coordinator-pending-notifications.job');
+const { startArkaReconciliationJobs } = require('./jobs/arka-reconciliation.job');
 
 installConsoleBridge();
 installProcessHandlers();
@@ -436,6 +437,7 @@ app.use(createApplicationErrorHandler(logger));
 
 if (require.main === module) {
   startCoordinatorPendingNotificationsJob();
+  startArkaReconciliationJobs();
 
   app.listen(app.get('port'), app.get('host'), function () {
     logger.info(

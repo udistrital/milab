@@ -43,6 +43,7 @@ const {
 } = require('../../libs/inventario-import');
 
 const router = express.Router();
+router.use('/conciliaciones-arka', require('./arka-reconciliation'));
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 5000;
 const INVENTORY_LABELS = Object.freeze({

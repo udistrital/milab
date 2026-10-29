@@ -602,4 +602,100 @@ COMMENT ON VIEW equipo_catalogo IS
 COMMENT ON COLUMN inventario_identificador.etiqueta IS
     'Encabezado de Excel asociado a un identificador de nomenclatura adicional, cuando aplica.';
 
+CREATE TABLE IF NOT EXISTS arka_conciliacion_corrida (
+    id BIGSERIAL PRIMARY KEY,
+    coordinador_documento VARCHAR(50) NOT NULL
+        REFERENCES coordinador(documento) ON DELETE RESTRICT,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('manual', 'mensual')),
+    periodo_mensual DATE,
+    estado VARCHAR(20) NOT NULL DEFAULT 'en_cola'
+        CHECK (estado IN ('en_cola', 'procesando', 'completado', 'fallido')),
+    solicitada_por_documento VARCHAR(50),
+    fecha_solicitud TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_inicio TIMESTAMPTZ,
+    fecha_fin TIMESTAMPTZ,
+    lease_token UUID,
+    lease_hasta TIMESTAMPTZ,
+    total_arka INT NOT NULL DEFAULT 0 CHECK (total_arka >= 0),
+    total_alertas INT NOT NULL DEFAULT 0 CHECK (total_alertas >= 0),
+    codigo_error VARCHAR(80),
+    mensaje_error TEXT,
+    error_correo TEXT,
+    CONSTRAINT ck_arka_conciliacion_periodo_mensual
+        CHECK ((tipo = 'mensual' AND periodo_mensual IS NOT NULL)
+            OR (tipo = 'manual' AND periodo_mensual IS NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arka_conciliacion_corrida_activa_coordinador
+    ON arka_conciliacion_corrida(coordinador_documento)
+    WHERE estado IN ('en_cola', 'procesando');
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arka_conciliacion_corrida_periodo_mensual
+    ON arka_conciliacion_corrida(coordinador_documento, periodo_mensual)
+    WHERE tipo = 'mensual';
+CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_corrida_ultima
+    ON arka_conciliacion_corrida(coordinador_documento, estado, fecha_fin DESC);
+CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_corrida_cola
+    ON arka_conciliacion_corrida(estado, fecha_solicitud, id);
+
+CREATE TABLE IF NOT EXISTS arka_conciliacion_ual (
+    corrida_id BIGINT NOT NULL
+        REFERENCES arka_conciliacion_corrida(id) ON DELETE CASCADE,
+    ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE RESTRICT,
+    total_milab INT NOT NULL DEFAULT 0 CHECK (total_milab >= 0),
+    total_coincidencias INT NOT NULL DEFAULT 0 CHECK (total_coincidencias >= 0),
+    total_no_coincidentes INT NOT NULL DEFAULT 0 CHECK (total_no_coincidentes >= 0),
+    PRIMARY KEY (corrida_id, ual_id)
+);
+
+CREATE TABLE IF NOT EXISTS arka_conciliacion_detalle (
+    id BIGSERIAL PRIMARY KEY,
+    corrida_id BIGINT NOT NULL
+        REFERENCES arka_conciliacion_corrida(id) ON DELETE CASCADE,
+    indice_arka INT,
+    arka_id BIGINT,
+    arka_elemento_acta_id BIGINT,
+    arka_placa VARCHAR(255),
+    arka_serie VARCHAR(255),
+    arka_nombre TEXT,
+    arka_marca VARCHAR(255),
+    inventario_id INT,
+    ual_id INT REFERENCES ual(ual_id) ON DELETE SET NULL,
+    inventario_placa VARCHAR(255),
+    inventario_serie VARCHAR(255),
+    inventario_nombre TEXT,
+    tipo_coincidencia VARCHAR(20),
+    estado VARCHAR(20) NOT NULL
+        CHECK (estado IN ('coincide', 'solo_arka', 'solo_milab', 'ambiguo')),
+    clave_alerta VARCHAR(700),
+    CONSTRAINT uq_arka_conciliacion_detalle_indice
+        UNIQUE (corrida_id, indice_arka),
+    CONSTRAINT ck_arka_conciliacion_detalle_coincidencia
+        CHECK (tipo_coincidencia IS NULL OR tipo_coincidencia IN ('id_arka', 'placa', 'serie'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_detalle_ual_estado
+    ON arka_conciliacion_detalle(corrida_id, ual_id, estado);
+CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_detalle_alertas
+    ON arka_conciliacion_detalle(corrida_id, estado)
+    WHERE estado <> 'coincide';
+
+CREATE TABLE IF NOT EXISTS arka_conciliacion_alerta (
+    id BIGSERIAL PRIMARY KEY,
+    coordinador_documento VARCHAR(50) NOT NULL
+        REFERENCES coordinador(documento) ON DELETE RESTRICT,
+    clave_alerta VARCHAR(700) NOT NULL,
+    corrida_id BIGINT NOT NULL
+        REFERENCES arka_conciliacion_corrida(id) ON DELETE RESTRICT,
+    ual_id INT REFERENCES ual(ual_id) ON DELETE SET NULL,
+    estado VARCHAR(20) NOT NULL CHECK (estado IN ('activa', 'resuelta')),
+    primera_aparicion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ultima_aparicion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_resolucion TIMESTAMPTZ,
+    UNIQUE (coordinador_documento, clave_alerta)
+);
+
+CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_alerta_activa
+    ON arka_conciliacion_alerta(coordinador_documento, ual_id, ultima_aparicion DESC)
+    WHERE estado = 'activa';
+
 COMMIT;

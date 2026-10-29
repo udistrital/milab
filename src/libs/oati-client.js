@@ -336,6 +336,7 @@ module.exports = {
   requestOati,
   requestOatiPost,
   getAcademicServicePath,
+  getOatiAccessToken: fetchAccessToken,
   OatiUnavailableError,
   isOatiUnavailableError,
   isOatiCircuitOpen,

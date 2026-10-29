@@ -1,0 +1,290 @@
+<%- include('../../partials/header'); -%>
+
+<%
+  const reconciliationLabels = {
+    coincide: 'Coincide en esta UAL',
+    en_otra_ual: 'Encontrado en otra UAL',
+    solo_arka: 'Solo en ARKA',
+    solo_milab: 'Solo en MiLab',
+    ambiguo: 'Coincidencia ambigua',
+  };
+%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Conciliaciones ARKA</h1>
+    <p class="app-page-subtitle">
+      Compara el inventario aprobado de equipos de la UAL con los elementos asignados en ARKA
+      al coordinador encargado.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="status"><%= successMessage %></div>
+  <% } %>
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (canRunAll) { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+        <div>
+          <h2 class="h5 mb-1">Proceso para todos los coordinadores</h2>
+          <p class="mb-0">Encola una consulta por coordinador. El proceso se ejecuta en segundo plano.</p>
+        </div>
+        <form method="post" action="<%= pageUrl %>/corridas">
+          <%- include('../../partials/csrf_field'); -%>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
+            Iniciar conciliaciones
+          </button>
+        </form>
+      </div>
+    </section>
+  <% } %>
+
+  <% if (laboratories.length) { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body">
+        <form id="arka-location-filters" method="get" action="<%= pageUrl %>" class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label for="arka-faculty" class="form-label">Facultad</label>
+            <select id="arka-faculty" class="form-select">
+              <option value="">Selecciona una facultad</option>
+              <% faculties.forEach(function(faculty) { %>
+                <option
+                  value="<%= faculty.id %>"
+                  <%= selectedLaboratory && selectedLaboratory.facultad_id === faculty.id ? 'selected' : '' %>
+                ><%= faculty.name %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="arka-dependency" class="form-label">Dependencia</label>
+            <select id="arka-dependency" class="form-select" disabled>
+              <option value="">Selecciona una dependencia</option>
+              <% dependencies.forEach(function(dependency) { %>
+                <option
+                  value="<%= dependency.id %>"
+                  data-faculty-id="<%= dependency.facultyId %>"
+                  <%= selectedLaboratory && selectedLaboratory.dependencia_filtro_id === dependency.id ? 'selected' : '' %>
+                ><%= dependency.name %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="arka-laboratory" class="form-label">UAL con inventario aprobado</label>
+            <select id="arka-laboratory" name="ual_id" class="form-select" required>
+              <option value="">Selecciona una UAL</option>
+              <% laboratories.forEach(function(laboratory) { %>
+                <option
+                  value="<%= laboratory.ual_id %>"
+                  data-faculty-id="<%= laboratory.facultad_id %>"
+                  data-dependency-id="<%= laboratory.dependencia_filtro_id || '' %>"
+                  <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : '' %>
+                ><%= laboratory.laboratorio %></option>
+              <% }); %>
+            </select>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } else { %>
+    <div class="alert alert-info" role="status">
+      No hay UAL asignadas con inventario de equipos aprobado para consultar.
+    </div>
+  <% } %>
+
+  <% if (activeRun) { %>
+    <div class="alert alert-info d-flex align-items-center gap-2" role="status">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      <% if (activeRun.estado === 'en_cola') { %>
+        La conciliación de este coordinador está en cola y se ejecutará en segundo plano.
+      <% } else { %>
+        La conciliación de este coordinador se está ejecutando.
+      <% } %>
+    </div>
+  <% } %>
+  <% if (failedRun) { %>
+    <div class="alert alert-warning" role="alert">
+      La última conciliación no terminó correctamente; se conserva el último snapshot exitoso.
+      <% if (canRunAll && failedRun.mensaje_error) { %>
+        <span class="d-block mt-1"><%= failedRun.mensaje_error %></span>
+      <% } %>
+    </div>
+  <% } %>
+
+  <% if (selectedLaboratory && report) { %>
+    <section class="mb-4" aria-label="Resumen de conciliación">
+      <div class="row g-3">
+        <div class="col-6 col-xl-3">
+          <article class="card h-100">
+            <div class="card-body">
+              <p class="text-body-secondary mb-2">Asignados en ARKA</p>
+              <p class="h2 mb-0"><%= report.total_arka %></p>
+            </div>
+          </article>
+        </div>
+        <div class="col-6 col-xl-3">
+          <article class="card h-100">
+            <div class="card-body">
+              <p class="text-body-secondary mb-2">En el inventario MiLab</p>
+              <p class="h2 mb-0"><%= report.total_milab %></p>
+            </div>
+          </article>
+        </div>
+        <div class="col-6 col-xl-3">
+          <article class="card h-100">
+            <div class="card-body">
+              <p class="text-body-secondary mb-2">Coinciden en esta UAL</p>
+              <p class="h2 mb-0 text-success"><%= report.total_coincidencias %></p>
+            </div>
+          </article>
+        </div>
+        <div class="col-6 col-xl-3">
+          <article class="card h-100">
+            <div class="card-body">
+              <p class="text-body-secondary mb-2">No coincidentes</p>
+              <p class="h2 mb-0 text-danger"><%= report.total_no_coincidentes %></p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="card mb-4">
+      <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <div>
+          <h2 class="h5 mb-1"><%= selectedLaboratory.laboratorio %></h2>
+          <p class="mb-0 text-body-secondary">
+            <%= selectedLaboratory.facultad %>
+            <% if (selectedLaboratory.dependencia) { %> · <%= selectedLaboratory.dependencia %><% } %>
+            · Coordinador: <%= selectedLaboratory.coordinador_nombre %>
+          </p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="small text-body-secondary">
+            Última verificación:
+            <%= new Date(report.fecha_fin).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %>
+          </span>
+          <a
+            class="btn btn-outline-primary"
+            href="<%= pageUrl %>/exportar?ual_id=<%= selectedLaboratory.ual_id %>"
+          >
+            <i class="bi bi-download me-1" aria-hidden="true"></i>
+            Descargar XLSX
+          </a>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="small text-body-secondary">
+          “No coincidentes” suma los elementos ARKA que no coinciden con esta UAL y los elementos
+          aprobados en MiLab sin coincidencia en ARKA. Los equipos encontrados en otra UAL se
+          identifican por separado.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-striped table-hover align-middle">
+            <thead>
+              <tr>
+                <th scope="col">Estado</th>
+                <th scope="col">ID ARKA</th>
+                <th scope="col">Placa</th>
+                <th scope="col">Serie</th>
+                <th scope="col">Descripción ARKA</th>
+                <th scope="col">Inventario MiLab</th>
+                <th scope="col">Criterio</th>
+                <th scope="col">UAL encontrada</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (report.details.length) { %>
+                <% report.details.forEach(function(detail) { %>
+                  <tr>
+                    <td>
+                      <span class="badge <%= detail.estado_mostrado === 'coincide' ? 'text-bg-success' : detail.estado_mostrado === 'en_otra_ual' ? 'text-bg-warning' : 'text-bg-danger' %>">
+                        <%= reconciliationLabels[detail.estado_mostrado] || detail.estado_mostrado %>
+                      </span>
+                    </td>
+                    <td><%= detail.arka_id || detail.arka_elemento_acta_id || '—' %></td>
+                    <td><%= detail.arka_placa || detail.inventario_placa || '—' %></td>
+                    <td><%= detail.arka_serie || detail.inventario_serie || '—' %></td>
+                    <td><%= detail.arka_nombre || '—' %></td>
+                    <td><%= detail.inventario_nombre || '—' %></td>
+                    <td><%= detail.tipo_coincidencia || '—' %></td>
+                    <td><%= detail.laboratorio_coincidencia || '—' %></td>
+                  </tr>
+                <% }); %>
+              <% } else { %>
+                <tr>
+                  <td colspan="8" class="text-center text-body-secondary py-4">
+                    No hay elementos para mostrar en esta conciliación.
+                  </td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  <% } else if (selectedLaboratory) { %>
+    <div class="alert alert-secondary" role="status">
+      Aún no hay una conciliación exitosa para esta UAL. Se mostrará el reporte después de la
+      siguiente corrida completada.
+    </div>
+  <% } %>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (() => {
+    const form = document.getElementById('arka-location-filters');
+    const facultySelect = document.getElementById('arka-faculty');
+    const dependencySelect = document.getElementById('arka-dependency');
+    const laboratorySelect = document.getElementById('arka-laboratory');
+    if (!form || !facultySelect || !dependencySelect || !laboratorySelect) return;
+
+    const dependencyOptions = Array.from(dependencySelect.options).slice(1);
+    const laboratoryOptions = Array.from(laboratorySelect.options).slice(1);
+
+    function updateOptions() {
+      const facultyId = facultySelect.value;
+      dependencySelect.disabled = !facultyId;
+
+      dependencyOptions.forEach((option) => {
+        const visible = option.dataset.facultyId === facultyId;
+        option.hidden = !visible;
+        option.disabled = !visible;
+      });
+
+      const selectedDependency = dependencySelect.value;
+      laboratoryOptions.forEach((option) => {
+        const sameFaculty = option.dataset.facultyId === facultyId;
+        const sameDependency = selectedDependency
+          ? option.dataset.dependencyId === selectedDependency
+          : !option.dataset.dependencyId;
+        const visible = Boolean(facultyId && sameFaculty && sameDependency);
+        option.hidden = !visible;
+        option.disabled = !visible;
+      });
+
+      const selectedOption = laboratorySelect.selectedOptions[0];
+      if (selectedOption && selectedOption.value && selectedOption.hidden) {
+        laboratorySelect.value = '';
+      }
+    }
+
+    facultySelect.addEventListener('change', () => {
+      dependencySelect.value = '';
+      laboratorySelect.value = '';
+      updateOptions();
+    });
+    dependencySelect.addEventListener('change', () => {
+      laboratorySelect.value = '';
+      updateOptions();
+    });
+    laboratorySelect.addEventListener('change', () => {
+      if (laboratorySelect.value) form.submit();
+    });
+    updateOptions();
+  })();
+</script>
