@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('node:path');
-const PDFDocument = require('pdfkit');
 const XLSX = require('xlsx');
 const pool = require('../../libs/db');
 const {
@@ -28,6 +27,7 @@ const {
   diasRestantesMantenimiento,
   SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
+const { sendHojaVidaPdf } = require('../../libs/hojas-vida-pdf');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
@@ -426,66 +426,6 @@ function construirResumenHojaVidaWeb(mantenimientos, prestamosTotal, diasAlerta)
     prestamos_total: Number(prestamosTotal) || 0,
     dias_alerta_vencimiento: diasAlerta,
   };
-}
-
-function sendHojaVidaPdf(res, hojaVida, equipo, foto) {
-  const doc = new PDFDocument({ margin: 50 });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader(
-    'Content-Disposition',
-    `inline; filename="Hoja_Vida_${hojaVida.codigo_inventario || hojaVida.id}.pdf"`
-  );
-  doc.pipe(res);
-
-  doc.fontSize(16).fillColor('#000000').text('HOJA DE VIDA DE EQUIPOS', { align: 'center' });
-  doc.moveDown(0.25);
-  doc.fontSize(10).text('Codigo: GL-PR-002-FR-007', { align: 'center' });
-  doc.text('Macro proceso: Apoyo a lo Misional', { align: 'center' });
-  doc.text('Proceso: Gestion de Laboratorios', { align: 'center' });
-  doc.text('Version: 01', { align: 'center' });
-  doc.text('Fecha de aprobacion: 30/10/2017', { align: 'center' });
-  doc.moveDown();
-
-  doc.fontSize(12).text(`Fecha de generacion: ${formatHvDate(new Date())}`);
-  doc.text(`Fecha de actualizacion: ${formatHvDate(hojaVida.fecha_modificacion || new Date())}`);
-  doc.moveDown();
-
-  doc.fontSize(13).text('1. INFORMACION DEL EQUIPO');
-  doc.moveDown(0.25);
-  doc.fontSize(10);
-  CAMPOS_POR_SECCION.forEach((seccion) => {
-    doc.fontSize(11).text(seccion.seccion);
-    doc.moveDown(0.15);
-    seccion.campos.forEach((campo) => {
-      const value = hojaVida[campo.nombre];
-      const formatted =
-        campo.tipo === 'date'
-          ? formatHvDate(value)
-          : value === null || value === undefined || value === ''
-            ? 'No hay informacion'
-            : String(value);
-      doc.fontSize(10).text(`${campo.etiqueta}: ${formatted}`);
-    });
-    doc.moveDown(0.35);
-  });
-
-  doc.fontSize(11).text('Equipo asociado');
-  doc.fontSize(10).text(`Codigo interno: ${equipo.codigo || 'No hay informacion'}`);
-  doc.text(`Nombre: ${equipo.nombre || 'No hay informacion'}`);
-  doc.text(`Ubicacion: ${equipo.ubicacion || equipo.laboratorio || 'No hay informacion'}`);
-  doc.moveDown();
-
-  if (foto && foto.archivo) {
-    doc.fontSize(11).text('Fotografia del equipo');
-    try {
-      const image = Buffer.isBuffer(foto.archivo) ? foto.archivo : Buffer.from(foto.archivo);
-      doc.image(image, { fit: [220, 220], align: 'center' });
-    } catch {
-      doc.fontSize(10).text('No fue posible incrustar la imagen.');
-    }
-  }
-
-  doc.end();
 }
 
 function addRowError(row, message) {
@@ -1987,8 +1927,16 @@ router.get('/hojas-vida/:equipoId/imprimir', requireInventoryAccess, async funct
       `,
       [datos.hojaVida.id]
     );
+    const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
+    const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
 
-    return sendHojaVidaPdf(res, datos.hojaVida, datos.equipo, fotoResult.rows[0] || null);
+    return sendHojaVidaPdf(
+      res,
+      datos.hojaVida,
+      datos.equipo,
+      fotoResult.rows[0] || null,
+      mantenimientos
+    );
   } catch (error) {
     console.error('[inventarios] Error generando PDF de hoja de vida:', error);
     return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20generar%20el%20PDF`);

@@ -145,6 +145,8 @@
 <script nonce="<%= cspNonce %>">
   (function () {
     var equipoId = <%- Number(hojaVida.equipo_id) %>;
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
     var form = document.getElementById('hv-mto-form');
     var loading = document.getElementById('hv-mto-loading');
     var errorBox = document.getElementById('hv-mto-error');
@@ -176,6 +178,7 @@
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
         },
         body: cuerpo.toString(),
       })
@@ -195,8 +198,8 @@
             return;
           }
           mostrarError(
-            result.body && result.body.message
-              ? result.body.message
+            result.body && (result.body.message || result.body.message2)
+              ? [result.body.message, result.body.message2].filter(Boolean).join('. ')
               : 'No fue posible registrar el mantenimiento.'
           );
         })

@@ -201,6 +201,8 @@
 <script nonce="<%= cspNonce %>">
   (function () {
     var equipoId = <%- Number(hojaVida.equipo_id) %>;
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
     var feedback = document.getElementById('hv-mto-feedback');
     var feedbackMsg = document.getElementById('hv-mto-feedback-msg');
 
@@ -230,6 +232,7 @@
             headers: {
               Accept: 'application/json',
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
             },
             body: new URLSearchParams({ estado: estado }).toString(),
           }
@@ -251,8 +254,8 @@
             }
             boton.disabled = false;
             mostrarFeedback(
-              result.body && result.body.message
-                ? result.body.message
+              result.body && (result.body.message || result.body.message2)
+                ? [result.body.message, result.body.message2].filter(Boolean).join('. ')
                 : 'No fue posible actualizar el estado del mantenimiento.',
               'danger'
             );
