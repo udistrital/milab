@@ -358,7 +358,13 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     });
 
     fillStrokeRect(contentLeft, y, leftLabelWidth, typeUsoHeight, palette.gray);
-    fillStrokeRect(contentLeft + leftLabelWidth, y, leftWidth - leftLabelWidth, typeUsoHeight, palette.white);
+    fillStrokeRect(
+      contentLeft + leftLabelWidth,
+      y,
+      leftWidth - leftLabelWidth,
+      typeUsoHeight,
+      palette.white
+    );
     setHvPdfFont(doc, 'bold');
     doc
       .fontSize(8)
