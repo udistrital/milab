@@ -236,16 +236,17 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
 
   function drawSectionHeader(title) {
     ensureSpace(18);
-    fillStrokeRect(contentLeft, doc.y, contentWidth, 18, palette.darkGray);
+    const startY = doc.y;
+    fillStrokeRect(contentLeft, startY, contentWidth, 18, palette.darkGray);
     setHvPdfFont(doc, 'bold');
     doc
       .fontSize(9)
       .fillColor(palette.text)
-      .text(title, contentLeft, doc.y + 5, {
+      .text(title, contentLeft, startY + 5, {
         width: contentWidth,
         align: 'center',
       });
-    doc.y += 18;
+    doc.y = startY + 18;
   }
 
   function drawSimplePairRow(labelA, valueA, labelB, valueB) {
@@ -256,25 +257,30 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       ...values.map((value, index) => measureText(value, widths[index] - 6) + 6)
     );
     ensureSpace(rowHeight);
+    const rowY = doc.y;
     let x = contentLeft;
     widths.forEach((width, index) => {
-      fillStrokeRect(x, doc.y, width, rowHeight, index % 2 === 0 ? palette.gray : palette.white);
+      fillStrokeRect(x, rowY, width, rowHeight, index % 2 === 0 ? palette.gray : palette.white);
       setHvPdfFont(doc, index % 2 === 0 ? 'bold' : 'regular');
       doc
         .fontSize(8)
         .fillColor(palette.text)
-        .text(String(values[index] || ''), x + 3, doc.y + 4, {
+        .text(String(values[index] || ''), x + 3, rowY + 4, {
           width: width - 6,
         });
       x += width;
     });
-    doc.y += rowHeight;
+    doc.y = rowY + rowHeight;
   }
 
   function drawInfoEquipoSection() {
     drawSectionHeader('1. INFORMACION DEL EQUIPO');
     const photoWidth = 120;
     const leftWidth = contentWidth - photoWidth;
+    const leftLabelWidth = 88;
+    const leftValueWidth = 120;
+    const rightLabelWidth = 95;
+    const rightValueWidth = leftWidth - leftLabelWidth - leftValueWidth - rightLabelWidth;
     const rows = [
       { left: ['DEPENDENCIA', data.dependencia] },
       { left: ['UBICACION', data.ubicacion] },
@@ -300,14 +306,14 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     const rowHeights = rows.map((row) => {
       const segments = row.right
         ? [
-            { width: 104, text: row.left[0] },
-            { width: 172, text: row.left[1] },
-            { width: 112, text: row.right[0] },
-            { width: leftWidth - 388, text: row.right[1] },
+            { width: leftLabelWidth, text: row.left[0] },
+            { width: leftValueWidth, text: row.left[1] },
+            { width: rightLabelWidth, text: row.right[0] },
+            { width: rightValueWidth, text: row.right[1] },
           ]
         : [
-            { width: 104, text: row.left[0] },
-            { width: leftWidth - 104, text: row.left[1] },
+            { width: leftLabelWidth, text: row.left[0] },
+            { width: leftWidth - leftLabelWidth, text: row.left[1] },
           ];
       return Math.max(
         18,
@@ -318,19 +324,20 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     const photoHeight = rowHeights.reduce((sum, height) => sum + height, 0) + typeUsoHeight;
     ensureSpace(photoHeight);
 
-    let y = doc.y;
+    const sectionY = doc.y;
+    let y = sectionY;
     rows.forEach((row, index) => {
       let x = contentLeft;
       const segments = row.right
         ? [
-            { width: 104, text: row.left[0], bold: true },
-            { width: 172, text: row.left[1], bold: false },
-            { width: 112, text: row.right[0], bold: true },
-            { width: leftWidth - 388, text: row.right[1], bold: false },
+            { width: leftLabelWidth, text: row.left[0], bold: true },
+            { width: leftValueWidth, text: row.left[1], bold: false },
+            { width: rightLabelWidth, text: row.right[0], bold: true },
+            { width: rightValueWidth, text: row.right[1], bold: false },
           ]
         : [
-            { width: 104, text: row.left[0], bold: true },
-            { width: leftWidth - 104, text: row.left[1], bold: false },
+            { width: leftLabelWidth, text: row.left[0], bold: true },
+            { width: leftWidth - leftLabelWidth, text: row.left[1], bold: false },
           ];
       segments.forEach((segment, segmentIndex) => {
         fillStrokeRect(
@@ -350,13 +357,19 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       y += rowHeights[index];
     });
 
-    fillStrokeRect(contentLeft, y, 104, typeUsoHeight, palette.gray);
-    fillStrokeRect(contentLeft + 104, y, leftWidth - 104, typeUsoHeight, palette.white);
+    fillStrokeRect(contentLeft, y, leftLabelWidth, typeUsoHeight, palette.gray);
+    fillStrokeRect(
+      contentLeft + leftLabelWidth,
+      y,
+      leftWidth - leftLabelWidth,
+      typeUsoHeight,
+      palette.white
+    );
     setHvPdfFont(doc, 'bold');
     doc
       .fontSize(8)
       .fillColor(palette.text)
-      .text('TIPO DE USO', contentLeft + 3, y + 8, { width: 98 });
+      .text('TIPO DE USO', contentLeft + 3, y + 8, { width: leftLabelWidth - 6 });
     const checks = [
       { label: 'Académico', checked: /ACADEMICO/i.test(data.tipo_uso) },
       { label: 'Investigación', checked: /INVESTIGACION/i.test(data.tipo_uso) },
@@ -364,7 +377,7 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       { label: 'Servicios', checked: /SERVICIOS/i.test(data.tipo_uso) },
       { label: 'Otros', checked: /OTROS/i.test(data.tipo_uso) },
     ];
-    let cursorX = contentLeft + 110;
+    let cursorX = contentLeft + leftLabelWidth + 6;
     checks.forEach((item) => {
       strokeRect(cursorX, y + 7, 8, 8);
       if (item.checked) {
@@ -377,10 +390,10 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     });
     y += typeUsoHeight;
 
-    fillStrokeRect(contentLeft + leftWidth, doc.y, photoWidth, photoHeight, palette.white);
+    fillStrokeRect(contentLeft + leftWidth, sectionY, photoWidth, photoHeight, palette.white);
     if (photoBuffer) {
       try {
-        doc.image(photoBuffer, contentLeft + leftWidth + 8, doc.y + 8, {
+        doc.image(photoBuffer, contentLeft + leftWidth + 8, sectionY + 8, {
           fit: [photoWidth - 16, photoHeight - 16],
           align: 'center',
           valign: 'center',
@@ -390,13 +403,13 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         doc
           .fontSize(8)
           .fillColor(palette.muted)
-          .text('Sin imagen', contentLeft + leftWidth + 8, doc.y + 8, {
+          .text('Sin imagen', contentLeft + leftWidth + 8, sectionY + 8, {
             width: photoWidth - 16,
             align: 'center',
           });
       }
     }
-    doc.y += photoHeight;
+    doc.y = sectionY + photoHeight;
   }
 
   function drawFullWidthRow(label, value) {
@@ -408,10 +421,11 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         measureText(value, contentWidth - labelWidth - 6)
       ) + 6;
     ensureSpace(rowHeight);
-    fillStrokeRect(contentLeft, doc.y, labelWidth, rowHeight, palette.gray);
+    const rowY = doc.y;
+    fillStrokeRect(contentLeft, rowY, labelWidth, rowHeight, palette.gray);
     fillStrokeRect(
       contentLeft + labelWidth,
-      doc.y,
+      rowY,
       contentWidth - labelWidth,
       rowHeight,
       palette.white
@@ -420,12 +434,12 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     doc
       .fontSize(8)
       .fillColor(palette.text)
-      .text(label, contentLeft + 3, doc.y + 4, { width: labelWidth - 6 });
+      .text(label, contentLeft + 3, rowY + 4, { width: labelWidth - 6 });
     setHvPdfFont(doc, 'regular');
-    doc.text(value, contentLeft + labelWidth + 3, doc.y + 4, {
+    doc.text(value, contentLeft + labelWidth + 3, rowY + 4, {
       width: contentWidth - labelWidth - 6,
     });
-    doc.y += rowHeight;
+    doc.y = rowY + rowHeight;
   }
 
   function drawEspecificacionesSection() {
@@ -441,7 +455,7 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
   }
 
   function drawMantenimientoTableHeader() {
-    const widths = [28, 76, 68, 82, 62, 104, 70, 92];
+    const widths = [24, 66, 56, 72, 52, 95, 60, 98];
     const labels = [
       'ITEM',
       'TIPO DE MANTENIMIENTO',
@@ -453,20 +467,21 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       'OBSERVACIONES / REPUESTOS',
     ];
     ensureSpace(34);
+    const headerY = doc.y;
     let x = contentLeft;
     labels.forEach((label, index) => {
-      fillStrokeRect(x, doc.y, widths[index], 34, palette.gray);
+      fillStrokeRect(x, headerY, widths[index], 34, palette.gray);
       setHvPdfFont(doc, 'bold');
       doc
         .fontSize(7.2)
         .fillColor(palette.text)
-        .text(label, x + 2, doc.y + 6, {
+        .text(label, x + 2, headerY + 6, {
           width: widths[index] - 4,
           align: 'center',
         });
       x += widths[index];
     });
-    doc.y += 34;
+    doc.y = headerY + 34;
     return widths;
   }
 
@@ -481,11 +496,12 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       'MANTENIMIENTO INTERNO PREVENTIVO (MIVP) ----- MANTENIMIENTO EXTERNO PREVENTIVO (MEVP)',
     ].forEach((line) => {
       ensureSpace(11);
-      doc.text(line, contentLeft, doc.y + 2, { width: contentWidth, align: 'center' });
-      doc.y += 11;
+      const lineY = doc.y;
+      doc.text(line, contentLeft, lineY + 2, { width: contentWidth, align: 'center' });
+      doc.y = lineY + 11;
     });
 
-    const widths = drawMantenimientoTableHeader();
+    let widths = drawMantenimientoTableHeader();
     const rows = Array.isArray(mantenimientos) && mantenimientos.length ? mantenimientos : [null];
 
     rows.forEach((mantenimiento, index) => {
@@ -505,27 +521,28 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         18,
         ...values.map((value, idx) => measureText(value, widths[idx] - 4) + 6)
       );
-      ensureSpace(rowHeight);
       if (doc.y + rowHeight > bottomLimit()) {
+        doc.addPage();
         drawHeader();
         doc.y = contentTop();
         drawSectionHeader('3. HISTORIAL DE MANTENIMIENTO (CONTINUACION)');
-        drawMantenimientoTableHeader();
+        widths = drawMantenimientoTableHeader();
       }
+      const rowY = doc.y;
       let x = contentLeft;
       values.forEach((value, valueIndex) => {
-        fillStrokeRect(x, doc.y, widths[valueIndex], rowHeight, palette.white);
+        fillStrokeRect(x, rowY, widths[valueIndex], rowHeight, palette.white);
         setHvPdfFont(doc, 'regular');
         doc
           .fontSize(7.3)
           .fillColor(palette.text)
-          .text(value, x + 2, doc.y + 4, {
+          .text(value, x + 2, rowY + 4, {
             width: widths[valueIndex] - 4,
             align: valueIndex === 0 ? 'center' : 'left',
           });
         x += widths[valueIndex];
       });
-      doc.y += rowHeight;
+      doc.y = rowY + rowHeight;
     });
   }
 
