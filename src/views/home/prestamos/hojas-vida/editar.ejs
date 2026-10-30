@@ -208,6 +208,8 @@
   (function () {
     var hojaVidaId = <%= hojaVida.id %>;
     var equipoId = <%= Number(hojaVida.equipo_id) %>;
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
     var form = document.getElementById('hv-editar-form');
     var loading = document.getElementById('hv-loading');
     var errorBox = document.getElementById('hv-error');
@@ -256,6 +258,11 @@
       try {
         var response = await fetch('/milab/api/hojas-vida/' + hojaVidaId + '/editar', {
           method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
           body: formData,
         });
 
@@ -270,7 +277,8 @@
         } else if (response.status === 400 && data.details && data.details.campos_faltantes) {
           mostrarError('Faltan campos obligatorios: ' + data.details.campos_faltantes.join(', ') + '.');
         } else {
-          mostrarError((data && data.message) || 'Ocurrio un error al guardar la hoja de vida.');
+          var message = [data && data.message, data && data.message2].filter(Boolean).join('. ');
+          mostrarError(message || 'Ocurrio un error al guardar la hoja de vida.');
         }
       } catch (err) {
         mostrarError('No se pudo conectar con el servidor. Intenta nuevamente.');
