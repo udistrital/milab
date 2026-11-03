@@ -163,20 +163,16 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         .restore();
       currentY += height;
     });
-    doc
-      .save()
-      .lineWidth(0.8)
-      .strokeColor(palette.border)
-      [(22, 44)].forEach((offset) => {
-        doc
-          .save()
-          .lineWidth(0.8)
-          .strokeColor(palette.border)
-          .moveTo(contentLeft + leftWidth + centerWidth, topY + offset)
-          .lineTo(contentLeft + leftWidth + centerWidth + rightWidth, topY + offset)
-          .stroke()
-          .restore();
-      });
+    [22, 44].forEach((offset) => {
+      doc
+        .save()
+        .lineWidth(0.8)
+        .strokeColor(palette.border)
+        .moveTo(contentLeft + leftWidth + centerWidth, topY + offset)
+        .lineTo(contentLeft + leftWidth + centerWidth + rightWidth, topY + offset)
+        .stroke()
+        .restore();
+    });
 
     setHvPdfFont(doc, 'bold');
     doc
