@@ -27,7 +27,7 @@ const {
   diasRestantesMantenimiento,
   SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
-const { sendHojaVidaPdf } = require('../../libs/hojas-vida-pdf');
+const { sendHojaVidaPdf, sendFichaTecnicaPdf } = require('../../libs/hojas-vida-pdf');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
@@ -1942,6 +1942,61 @@ router.get('/hojas-vida/:equipoId/imprimir', requireInventoryAccess, async funct
     return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20generar%20el%20PDF`);
   }
 });
+
+router.get(
+  '/hojas-vida/:equipoId/ficha-tecnica',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      if (!equipoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+      const fotoResult = await pool.query(
+        `
+        SELECT archivo, tipo_mime
+        FROM hoja_vida_documento
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+          AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+        [datos.hojaVida.id]
+      );
+      const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
+      const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
+
+      return sendFichaTecnicaPdf(
+        res,
+        datos.hojaVida,
+        datos.equipo,
+        fotoResult.rows[0] || null,
+        mantenimientos
+      );
+    } catch (error) {
+      console.error('[inventarios] Error generando PDF de ficha tecnica:', error);
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20generar%20la%20ficha`);
+    }
+  }
+);
 
 router.get(
   '/hojas-vida/:hojaVidaId/documento/:documentoId',

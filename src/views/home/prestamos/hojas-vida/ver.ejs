@@ -86,6 +86,15 @@
           <i class="bi bi-printer"></i> Imprimir Hoja de Vida
         </a>
         <a
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/ficha-tecnica"
+          target="_blank"
+          rel="noopener"
+          class="btn btn-outline-dark btn-sm"
+          data-testid="action-imprimir-ficha-tecnica"
+        >
+          <i class="bi bi-file-earmark-text"></i> Imprimir Ficha Técnica
+        </a>
+        <a
           href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos"
           class="btn btn-outline-primary btn-sm"
           data-testid="action-mantenimientos-hv"
