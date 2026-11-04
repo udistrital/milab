@@ -1,5 +1,10 @@
 <%- include('../../../partials/header'); -%>
 
+<%
+  var formatosMantenimiento =
+    typeof formatosMantenimiento !== 'undefined' ? formatosMantenimiento : [];
+%>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
