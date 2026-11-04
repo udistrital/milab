@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
     hoja_vida_id                    BIGINT                  NOT NULL,
     equipo_id                       INT                     NOT NULL,
     item                            VARCHAR(255),
+    formato_registro                VARCHAR(20),
     tipo_mantenimiento              VARCHAR(50),
     fecha_realizacion               DATE,
     datos_empresa_contratada        TEXT,
@@ -69,6 +70,25 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
     responsable                     VARCHAR(150),
     observaciones_repuestos         TEXT,
     costo                           NUMERIC(14,2),
+    descripcion_falla               TEXT,
+    responsable_verificar           VARCHAR(150),
+    firma_responsable_verificar     VARCHAR(150),
+    firma_proveedor                 VARCHAR(150),
+    diligenciado_por                VARCHAR(150),
+    cargo_diligenciado_por          VARCHAR(150),
+    sede                            VARCHAR(150),
+    area_especifica                 VARCHAR(255),
+    descripcion_accion_verificacion TEXT,
+    registro_mantenimiento          JSONB,
+    cumple_mantenimiento            BOOLEAN,
+    justificacion_ausencia_mantenimiento TEXT,
+    firma_responsable               VARCHAR(150),
+    encargado_elaboracion           VARCHAR(150),
+    descripcion_actividad           TEXT,
+    meses_programados               JSONB,
+    verificado_por                  VARCHAR(150),
+    firma_verificacion              VARCHAR(150),
+    observaciones_generales         TEXT,
     estado                          VARCHAR(30)             NOT NULL,
     fecha_cierre                    TIMESTAMPTZ,
     usuario_cierre                  VARCHAR(50),
@@ -80,6 +100,9 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
     CONSTRAINT pk_mantenimiento PRIMARY KEY (id),
     CONSTRAINT ck_estado_mantenimiento CHECK (
         estado IN ('PENDIENTE','EN_EJECUCION','CUMPLIDO','VENCIDO','CANCELADO')
+    ),
+    CONSTRAINT ck_formato_registro_mantenimiento CHECK (
+        formato_registro IS NULL OR formato_registro IN ('FR-026','FR-028','FR-029')
     ),
     CONSTRAINT ck_costo_mantenimiento CHECK (costo IS NULL OR costo >= 0),
     CONSTRAINT fk_mantenimiento_hoja_vida FOREIGN KEY (hoja_vida_id)

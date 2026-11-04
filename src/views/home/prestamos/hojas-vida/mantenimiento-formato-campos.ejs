@@ -1,0 +1,252 @@
+<%
+  var mantenimientoActual = typeof mantenimiento !== 'undefined' && mantenimiento ? mantenimiento : {};
+  var formatoRegistroValor = mantenimientoActual.formato_registro || '';
+  var cumpleValor = '';
+  if (
+    mantenimientoActual.cumple_mantenimiento === true ||
+    mantenimientoActual.cumple_mantenimiento === false
+  ) {
+    cumpleValor = mantenimientoActual.cumple_mantenimiento ? 'true' : 'false';
+  }
+  var mesesFormato = [
+    { codigo: 'enero', etiqueta: 'Enero' },
+    { codigo: 'febrero', etiqueta: 'Febrero' },
+    { codigo: 'marzo', etiqueta: 'Marzo' },
+    { codigo: 'abril', etiqueta: 'Abril' },
+    { codigo: 'mayo', etiqueta: 'Mayo' },
+    { codigo: 'junio', etiqueta: 'Junio' },
+    { codigo: 'julio', etiqueta: 'Julio' },
+    { codigo: 'agosto', etiqueta: 'Agosto' },
+    { codigo: 'septiembre', etiqueta: 'Septiembre' },
+    { codigo: 'octubre', etiqueta: 'Octubre' },
+    { codigo: 'noviembre', etiqueta: 'Noviembre' },
+    { codigo: 'diciembre', etiqueta: 'Diciembre' },
+  ];
+%>
+
+<div class="col-md-4">
+  <label for="hv-mto-formato" class="form-label">Formato SIGUD asociado</label>
+  <select class="form-select" id="hv-mto-formato" name="formato_registro">
+    <option value="">Sin formato específico</option>
+    <% formatosMantenimiento.forEach(function (formato) { %>
+      <option value="<%= formato.codigo %>" <%= formato.codigo === formatoRegistroValor ? 'selected' : '' %>>
+        <%= formato.etiqueta %>
+      </option>
+    <% }); %>
+  </select>
+</div>
+
+<input type="hidden" id="hv-mto-registro-mantenimiento" name="registro_mantenimiento" />
+<input type="hidden" id="hv-mto-meses-programados" name="meses_programados" />
+
+<div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-026">
+  <div class="border rounded p-3">
+    <h6 class="mb-3">Campos adicionales FR-026 Correctivo</h6>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="hv-mto-descripcion-falla" class="form-label">Descripción de la falla</label>
+        <textarea class="form-control" id="hv-mto-descripcion-falla" name="descripcion_falla" rows="3"><%= mantenimientoActual.descripcion_falla || '' %></textarea>
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-responsable-verificar" class="form-label">Responsable de verificar</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-responsable-verificar"
+          name="responsable_verificar"
+          value="<%= mantenimientoActual.responsable_verificar || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-firma-responsable-verificar" class="form-label">Firma responsable de verificar</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-firma-responsable-verificar"
+          name="firma_responsable_verificar"
+          value="<%= mantenimientoActual.firma_responsable_verificar || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-firma-proveedor" class="form-label">Firma proveedor</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-firma-proveedor"
+          name="firma_proveedor"
+          value="<%= mantenimientoActual.firma_proveedor || '' %>"
+        />
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-028">
+  <div class="border rounded p-3">
+    <h6 class="mb-3">Campos adicionales FR-028 Cronograma</h6>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="hv-mto-encargado-elaboracion" class="form-label">Encargado de su elaboración</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-encargado-elaboracion"
+          name="encargado_elaboracion"
+          value="<%= mantenimientoActual.encargado_elaboracion || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-verificado-por" class="form-label">Verificado por</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-verificado-por"
+          name="verificado_por"
+          value="<%= mantenimientoActual.verificado_por || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-firma-verificacion" class="form-label">Firma</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-firma-verificacion"
+          name="firma_verificacion"
+          value="<%= mantenimientoActual.firma_verificacion || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-descripcion-actividad" class="form-label">Descripción de la actividad</label>
+        <textarea class="form-control" id="hv-mto-descripcion-actividad" name="descripcion_actividad" rows="3"><%= mantenimientoActual.descripcion_actividad || '' %></textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label d-block">Meses de mantenimiento programados</label>
+        <div class="row g-2">
+          <% mesesFormato.forEach(function (mes) { %>
+            <div class="col-md-3 col-6">
+              <label class="form-check">
+                <input
+                  type="checkbox"
+                  class="form-check-input js-cronograma-mes"
+                  value="<%= mes.codigo %>"
+                />
+                <span class="form-check-label"><%= mes.etiqueta %></span>
+              </label>
+            </div>
+          <% }); %>
+        </div>
+      </div>
+      <div class="col-12">
+        <label for="hv-mto-observaciones-generales" class="form-label">Observaciones</label>
+        <textarea class="form-control" id="hv-mto-observaciones-generales" name="observaciones_generales" rows="3"><%= mantenimientoActual.observaciones_generales || '' %></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-029">
+  <div class="border rounded p-3">
+    <h6 class="mb-3">Campos adicionales FR-029 Preventivo</h6>
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label for="hv-mto-diligenciado-por" class="form-label">Diligenciado por</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-diligenciado-por"
+          name="diligenciado_por"
+          value="<%= mantenimientoActual.diligenciado_por || '' %>"
+        />
+      </div>
+      <div class="col-md-3">
+        <label for="hv-mto-cargo-diligenciado" class="form-label">Cargo</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-cargo-diligenciado"
+          name="cargo_diligenciado_por"
+          value="<%= mantenimientoActual.cargo_diligenciado_por || '' %>"
+        />
+      </div>
+      <div class="col-md-3">
+        <label for="hv-mto-sede" class="form-label">Sede</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-sede"
+          name="sede"
+          value="<%= mantenimientoActual.sede || '' %>"
+        />
+      </div>
+      <div class="col-md-3">
+        <label for="hv-mto-area-especifica" class="form-label">Área específica</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-area-especifica"
+          name="area_especifica"
+          value="<%= mantenimientoActual.area_especifica || '' %>"
+        />
+      </div>
+      <div class="col-md-6">
+        <label for="hv-mto-descripcion-accion-verificacion" class="form-label">Descripción de la acción de verificación</label>
+        <textarea class="form-control" id="hv-mto-descripcion-accion-verificacion" name="descripcion_accion_verificacion" rows="3"><%= mantenimientoActual.descripcion_accion_verificacion || '' %></textarea>
+      </div>
+      <div class="col-md-3">
+        <label for="hv-mto-cumple" class="form-label">Cumple con el mantenimiento</label>
+        <select class="form-select" id="hv-mto-cumple" name="cumple_mantenimiento">
+          <option value="">Seleccione...</option>
+          <option value="true" <%= cumpleValor === 'true' ? 'selected' : '' %>>Sí</option>
+          <option value="false" <%= cumpleValor === 'false' ? 'selected' : '' %>>No</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="hv-mto-firma-responsable" class="form-label">Firma</label>
+        <input
+          type="text"
+          class="form-control"
+          id="hv-mto-firma-responsable"
+          name="firma_responsable"
+          value="<%= mantenimientoActual.firma_responsable || '' %>"
+        />
+      </div>
+      <div class="col-12">
+        <label class="form-label d-block">Registro de mantenimiento por mes</label>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>1</th>
+                <th>2</th>
+                <th>3</th>
+                <th>4</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% mesesFormato.forEach(function (mes) { %>
+                <tr>
+                  <td><%= mes.etiqueta %></td>
+                  <% [1, 2, 3, 4].forEach(function (slot) { %>
+                    <td class="text-center">
+                      <input
+                        type="checkbox"
+                        class="form-check-input js-registro-slot"
+                        data-mes="<%= mes.codigo %>"
+                        data-slot="<%= slot - 1 %>"
+                      />
+                    </td>
+                  <% }); %>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-12">
+        <label for="hv-mto-justificacion-ausencia" class="form-label">Justificación ausencia de mantenimiento</label>
+        <textarea class="form-control" id="hv-mto-justificacion-ausencia" name="justificacion_ausencia_mantenimiento" rows="3"><%= mantenimientoActual.justificacion_ausencia_mantenimiento || '' %></textarea>
+      </div>
+    </div>
+  </div>
+</div>

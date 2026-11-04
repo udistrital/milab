@@ -70,6 +70,7 @@
               <% }); %>
             </select>
           </div>
+          <%- include('./mantenimiento-formato-campos', { mantenimiento: null, formatosMantenimiento: formatosMantenimiento }); -%>
           <div class="col-md-4">
             <label for="hv-mto-fecha" class="form-label">Fecha de realizacion</label>
             <input type="date" class="form-control" id="hv-mto-fecha" name="fecha_realizacion" />
@@ -209,5 +210,7 @@
     });
   })();
 </script>
+
+<%- include('./mantenimiento-formato-script', { mantenimiento: null }); -%>
 
 <%- include('../../../partials/footer'); -%>
