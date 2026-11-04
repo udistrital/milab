@@ -296,9 +296,9 @@ function normalizarBooleanoOpcional(valor) {
 
 function normalizarJsonOpcional(valor) {
   if (valor == null || valor === '') return null;
-  if (typeof valor === 'object') return valor;
+  if (typeof valor === 'object') return JSON.stringify(valor);
   try {
-    return JSON.parse(String(valor));
+    return JSON.stringify(JSON.parse(String(valor)));
   } catch {
     return null;
   }
@@ -2013,7 +2013,7 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
             $20, $21, $22,
             $23, $24, $25,
             $26, $27, $28, $29,
-            $30, $31, $32
+            $30, $31, $32, $33, $34, $35
           )
           RETURNING id, estado
         `,
