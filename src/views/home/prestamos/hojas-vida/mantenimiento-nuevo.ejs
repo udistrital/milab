@@ -1,5 +1,10 @@
 <%- include('../../../partials/header'); -%>
 
+<%
+  var formatosMantenimiento =
+    typeof formatosMantenimiento !== 'undefined' ? formatosMantenimiento : [];
+%>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <div class="d-flex align-items-center gap-2 mb-2">
@@ -70,6 +75,7 @@
               <% }); %>
             </select>
           </div>
+          <%- include('./mantenimiento-formato-campos', { mantenimiento: null, formatosMantenimiento: formatosMantenimiento }); -%>
           <div class="col-md-4">
             <label for="hv-mto-fecha" class="form-label">Fecha de realizacion</label>
             <input type="date" class="form-control" id="hv-mto-fecha" name="fecha_realizacion" />
@@ -209,5 +215,7 @@
     });
   })();
 </script>
+
+<%- include('./mantenimiento-formato-script', { mantenimiento: null }); -%>
 
 <%- include('../../../partials/footer'); -%>

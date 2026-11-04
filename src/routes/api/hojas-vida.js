@@ -15,6 +15,7 @@ const {
 const { esTipoEventoManual } = require('../../libs/hojas-vida-eventos');
 const {
   esTipoMantenimientoValido,
+  esFormatoRegistroMantenimientoValido,
   esEstadoMantenimientoValido,
   esEstadoEditableMantenimiento,
   etiquetaTipoMantenimiento,
@@ -282,6 +283,25 @@ function normalizarCostoOpcional(valor) {
   if (texto === '') return null;
   const num = Number(texto.replace(/\s/g, '').replace(/,/g, ''));
   return Number.isFinite(num) && num >= 0 ? num : NaN;
+}
+
+function normalizarBooleanoOpcional(valor) {
+  if (valor == null) return null;
+  const texto = String(valor).trim().toLowerCase();
+  if (texto === '') return null;
+  if (['true', '1', 'si', 'sí', 'yes'].includes(texto)) return true;
+  if (['false', '0', 'no'].includes(texto)) return false;
+  return null;
+}
+
+function normalizarJsonOpcional(valor) {
+  if (valor == null || valor === '') return null;
+  if (typeof valor === 'object') return valor;
+  try {
+    return JSON.parse(String(valor));
+  } catch {
+    return null;
+  }
 }
 
 async function obtenerDiasAlertaVencimiento(cliente) {
@@ -1954,58 +1974,18 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
     }
 
     const hojaVida = hvResult.rows[0];
-    const body = req.body || {};
-
-    const item = normalizarTextoOpcional(body.item);
-    if (!item) {
+    const normalizado = normalizarDatosMantenimiento(req.body || {});
+    if (normalizado.error) {
       return res.status(400).json({
         ok: false,
-        message: 'El ítem o descripción del mantenimiento es obligatorio.',
-        details: { campos_faltantes: ['item'] },
+        message: normalizado.error.message,
+        details: { campos_faltantes: normalizado.error.campos },
       });
     }
-
-    const tipoMantenimiento = String(body.tipo_mantenimiento || '')
-      .trim()
-      .toUpperCase();
-    if (!esTipoMantenimientoValido(tipoMantenimiento)) {
-      return res.status(400).json({
-        ok: false,
-        message: 'El tipo de mantenimiento no es valido.',
-        details: { campos_faltantes: ['tipo_mantenimiento'] },
-      });
-    }
-
-    const estado = String(body.estado || ESTADO_MANTENIMIENTO_DEFAULT)
-      .trim()
-      .toUpperCase();
-    if (!esEstadoMantenimientoValido(estado)) {
-      return res.status(400).json({
-        ok: false,
-        message: 'El estado del mantenimiento no es valido.',
-        details: { campos_faltantes: ['estado'] },
-      });
-    }
-
-    const fechaRealizacion = normalizarFechaDiaOpcional(body.fecha_realizacion);
-    if (normalizarTextoOpcional(body.fecha_realizacion) && !fechaRealizacion) {
-      return res.status(400).json({
-        ok: false,
-        message: 'La fecha de realización no es válida.',
-      });
-    }
-
-    const costo = normalizarCostoOpcional(body.costo);
-    if (Number.isNaN(costo)) {
-      return res.status(400).json({
-        ok: false,
-        message: 'El costo del mantenimiento debe ser un valor numérico mayor o igual a cero.',
-        details: { campos_faltantes: ['costo'] },
-      });
-    }
+    const datos = normalizado.datos;
 
     const usuario = req.session?.user?.id || null;
-    const esCierreDirecto = estado === 'CUMPLIDO';
+    const esCierreDirecto = datos.estado === 'CUMPLIDO';
 
     const cliente = await pool.connect();
     try {
@@ -2014,31 +1994,62 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
       const insertResult = await cliente.query(
         `
           INSERT INTO mantenimiento (
-            hoja_vida_id, equipo_id, item, tipo_mantenimiento, fecha_realizacion,
+            hoja_vida_id, equipo_id, item, formato_registro, tipo_mantenimiento, fecha_realizacion,
             datos_empresa_contratada, tiempo_garantia, especificaciones_mantenimiento,
             responsable, observaciones_repuestos, costo, estado,
+            descripcion_falla, responsable_verificar, firma_responsable_verificar,
+            firma_proveedor, diligenciado_por, cargo_diligenciado_por,
+            sede, area_especifica, descripcion_accion_verificacion,
+            registro_mantenimiento, cumple_mantenimiento, justificacion_ausencia_mantenimiento,
+            firma_responsable, encargado_elaboracion, descripcion_actividad,
+            meses_programados, verificado_por, firma_verificacion, observaciones_generales,
             fecha_cierre, usuario_cierre, usuario_creacion
           ) VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8,
-            $9, $10, $11, $12,
-            $13, $14, $15
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9,
+            $10, $11, $12, $13,
+            $14, $15, $16,
+            $17, $18, $19,
+            $20, $21, $22,
+            $23, $24, $25,
+            $26, $27, $28, $29,
+            $30, $31, $32
           )
           RETURNING id, estado
         `,
         [
           hojaVida.id,
           equipoId,
-          item,
-          tipoMantenimiento,
-          fechaRealizacion,
-          normalizarTextoOpcional(body.datos_empresa_contratada),
-          normalizarTextoOpcional(body.tiempo_garantia),
-          normalizarTextoOpcional(body.especificaciones_mantenimiento),
-          normalizarTextoOpcional(body.responsable),
-          normalizarTextoOpcional(body.observaciones_repuestos),
-          costo,
-          estado,
+          datos.item,
+          datos.formato_registro,
+          datos.tipo_mantenimiento,
+          datos.fecha_realizacion,
+          datos.datos_empresa_contratada,
+          datos.tiempo_garantia,
+          datos.especificaciones_mantenimiento,
+          datos.responsable,
+          datos.observaciones_repuestos,
+          datos.costo,
+          datos.estado,
+          datos.descripcion_falla,
+          datos.responsable_verificar,
+          datos.firma_responsable_verificar,
+          datos.firma_proveedor,
+          datos.diligenciado_por,
+          datos.cargo_diligenciado_por,
+          datos.sede,
+          datos.area_especifica,
+          datos.descripcion_accion_verificacion,
+          datos.registro_mantenimiento,
+          datos.cumple_mantenimiento,
+          datos.justificacion_ausencia_mantenimiento,
+          datos.firma_responsable,
+          datos.encargado_elaboracion,
+          datos.descripcion_actividad,
+          datos.meses_programados,
+          datos.verificado_por,
+          datos.firma_verificacion,
+          datos.observaciones_generales,
           esCierreDirecto ? new Date() : null,
           esCierreDirecto ? usuario : null,
           usuario,
@@ -2051,7 +2062,7 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
         cliente,
         hojaVida.id,
         equipoId,
-        `Mantenimiento ${etiquetaTipoMantenimiento(tipoMantenimiento)} registrado: "${item}".`,
+        `Mantenimiento ${etiquetaTipoMantenimiento(datos.tipo_mantenimiento)} registrado: "${datos.item}".`,
         usuario,
         { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
       );
@@ -2067,7 +2078,7 @@ router.post('/:equipoId/mantenimientos', async function registrarMantenimientoHV
           mantenimiento_id: mantenimientoId,
           hoja_vida_id: Number(hojaVida.id),
           estado: insertResult.rows[0].estado,
-          costo: costo,
+          costo: datos.costo,
           listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
         },
       });
@@ -2162,9 +2173,40 @@ function normalizarDatosMantenimiento(body) {
     };
   }
 
+  const formatoRegistro = normalizarTextoOpcional(body.formato_registro);
+  if (formatoRegistro && !esFormatoRegistroMantenimientoValido(formatoRegistro)) {
+    return {
+      error: {
+        message: 'El formato del mantenimiento no es valido.',
+        campos: ['formato_registro'],
+      },
+    };
+  }
+
+  const registroMantenimiento = normalizarJsonOpcional(body.registro_mantenimiento);
+  if (body.registro_mantenimiento && !registroMantenimiento) {
+    return {
+      error: {
+        message: 'El registro mensual del mantenimiento preventivo no es válido.',
+        campos: ['registro_mantenimiento'],
+      },
+    };
+  }
+
+  const mesesProgramados = normalizarJsonOpcional(body.meses_programados);
+  if (body.meses_programados && !mesesProgramados) {
+    return {
+      error: {
+        message: 'La programación mensual del cronograma no es válida.',
+        campos: ['meses_programados'],
+      },
+    };
+  }
+
   return {
     datos: {
       item,
+      formato_registro: formatoRegistro,
       tipo_mantenimiento: tipoMantenimiento,
       estado,
       fecha_realizacion: fechaRealizacion,
@@ -2174,6 +2216,29 @@ function normalizarDatosMantenimiento(body) {
       especificaciones_mantenimiento: normalizarTextoOpcional(body.especificaciones_mantenimiento),
       responsable: normalizarTextoOpcional(body.responsable),
       observaciones_repuestos: normalizarTextoOpcional(body.observaciones_repuestos),
+      descripcion_falla: normalizarTextoOpcional(body.descripcion_falla),
+      responsable_verificar: normalizarTextoOpcional(body.responsable_verificar),
+      firma_responsable_verificar: normalizarTextoOpcional(body.firma_responsable_verificar),
+      firma_proveedor: normalizarTextoOpcional(body.firma_proveedor),
+      diligenciado_por: normalizarTextoOpcional(body.diligenciado_por),
+      cargo_diligenciado_por: normalizarTextoOpcional(body.cargo_diligenciado_por),
+      sede: normalizarTextoOpcional(body.sede),
+      area_especifica: normalizarTextoOpcional(body.area_especifica),
+      descripcion_accion_verificacion: normalizarTextoOpcional(
+        body.descripcion_accion_verificacion
+      ),
+      registro_mantenimiento: registroMantenimiento,
+      cumple_mantenimiento: normalizarBooleanoOpcional(body.cumple_mantenimiento),
+      justificacion_ausencia_mantenimiento: normalizarTextoOpcional(
+        body.justificacion_ausencia_mantenimiento
+      ),
+      firma_responsable: normalizarTextoOpcional(body.firma_responsable),
+      encargado_elaboracion: normalizarTextoOpcional(body.encargado_elaboracion),
+      descripcion_actividad: normalizarTextoOpcional(body.descripcion_actividad),
+      meses_programados: mesesProgramados,
+      verificado_por: normalizarTextoOpcional(body.verificado_por),
+      firma_verificacion: normalizarTextoOpcional(body.firma_verificacion),
+      observaciones_generales: normalizarTextoOpcional(body.observaciones_generales),
     },
   };
 }
@@ -2239,18 +2304,38 @@ router.put(
           `
             UPDATE mantenimiento
             SET item = $3,
-                tipo_mantenimiento = $4,
-                fecha_realizacion = $5,
-                datos_empresa_contratada = $6,
-                tiempo_garantia = $7,
-                especificaciones_mantenimiento = $8,
-                responsable = $9,
-                observaciones_repuestos = $10,
-                costo = $11,
-                estado = $12,
-                fecha_cierre = CASE WHEN $13 THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP) ELSE fecha_cierre END,
-                usuario_cierre = CASE WHEN $13 THEN COALESCE(usuario_cierre, $14) ELSE usuario_cierre END,
-                usuario_modificacion = $14,
+                formato_registro = $4,
+                tipo_mantenimiento = $5,
+                fecha_realizacion = $6,
+                datos_empresa_contratada = $7,
+                tiempo_garantia = $8,
+                especificaciones_mantenimiento = $9,
+                responsable = $10,
+                observaciones_repuestos = $11,
+                costo = $12,
+                estado = $13,
+                descripcion_falla = $14,
+                responsable_verificar = $15,
+                firma_responsable_verificar = $16,
+                firma_proveedor = $17,
+                diligenciado_por = $18,
+                cargo_diligenciado_por = $19,
+                sede = $20,
+                area_especifica = $21,
+                descripcion_accion_verificacion = $22,
+                registro_mantenimiento = $23,
+                cumple_mantenimiento = $24,
+                justificacion_ausencia_mantenimiento = $25,
+                firma_responsable = $26,
+                encargado_elaboracion = $27,
+                descripcion_actividad = $28,
+                meses_programados = $29,
+                verificado_por = $30,
+                firma_verificacion = $31,
+                observaciones_generales = $32,
+                fecha_cierre = CASE WHEN $33 THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP) ELSE fecha_cierre END,
+                usuario_cierre = CASE WHEN $33 THEN COALESCE(usuario_cierre, $34) ELSE usuario_cierre END,
+                usuario_modificacion = $34,
                 fecha_modificacion = CURRENT_TIMESTAMP
             WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
             RETURNING id, estado, fecha_cierre, usuario_cierre
@@ -2259,6 +2344,7 @@ router.put(
             mantenimientoId,
             equipoId,
             datos.item,
+            datos.formato_registro,
             datos.tipo_mantenimiento,
             datos.fecha_realizacion,
             datos.datos_empresa_contratada,
@@ -2268,6 +2354,25 @@ router.put(
             datos.observaciones_repuestos,
             datos.costo,
             datos.estado,
+            datos.descripcion_falla,
+            datos.responsable_verificar,
+            datos.firma_responsable_verificar,
+            datos.firma_proveedor,
+            datos.diligenciado_por,
+            datos.cargo_diligenciado_por,
+            datos.sede,
+            datos.area_especifica,
+            datos.descripcion_accion_verificacion,
+            datos.registro_mantenimiento,
+            datos.cumple_mantenimiento,
+            datos.justificacion_ausencia_mantenimiento,
+            datos.firma_responsable,
+            datos.encargado_elaboracion,
+            datos.descripcion_actividad,
+            datos.meses_programados,
+            datos.verificado_por,
+            datos.firma_verificacion,
+            datos.observaciones_generales,
             esCierre,
             usuario,
           ]

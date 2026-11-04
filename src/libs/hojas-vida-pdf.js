@@ -14,7 +14,6 @@ const HV_PDF_ESCUDO_PATH = path.join(
   'img',
   'Logo_Escudo_Acreditacion_Horizontal.png'
 );
-const HV_PDF_SIGUD_PATH = path.join(__dirname, '..', 'public', 'img', 'logo_sigud.jpg');
 
 function formatHvDate(value) {
   if (!value) return '—';
@@ -136,7 +135,7 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
     const topY = doc.page.margins.top;
     const headerHeight = 68;
     const leftWidth = 92;
-    const rightWidth = 120;
+    const rightWidth = 158;
     const centerWidth = contentWidth - leftWidth - rightWidth;
 
     strokeRect(contentLeft, topY, contentWidth, headerHeight);
@@ -150,13 +149,6 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         valign: 'center',
       });
     }
-    if (fs.existsSync(HV_PDF_SIGUD_PATH)) {
-      doc.image(HV_PDF_SIGUD_PATH, contentLeft + leftWidth + centerWidth + 12, topY + 14, {
-        fit: [rightWidth - 24, 22],
-        align: 'center',
-      });
-    }
-
     const centerX = contentLeft + leftWidth;
     const rowHeights = [20, 16, 16, 16];
     let currentY = topY;
@@ -171,21 +163,13 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         .restore();
       currentY += height;
     });
-    doc
-      .save()
-      .lineWidth(0.8)
-      .strokeColor(palette.border)
-      .moveTo(contentLeft + leftWidth + centerWidth + 60, topY)
-      .lineTo(contentLeft + leftWidth + centerWidth + 60, topY + headerHeight)
-      .stroke()
-      .restore();
-    [20, 40].forEach((offset) => {
+    [22, 44].forEach((offset) => {
       doc
         .save()
         .lineWidth(0.8)
         .strokeColor(palette.border)
         .moveTo(contentLeft + leftWidth + centerWidth, topY + offset)
-        .lineTo(contentLeft + leftWidth + centerWidth + 60, topY + offset)
+        .lineTo(contentLeft + leftWidth + centerWidth + rightWidth, topY + offset)
         .stroke()
         .restore();
     });
@@ -208,19 +192,15 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       align: 'center',
     });
 
-    const metaX = contentLeft + leftWidth + centerWidth + 4;
-    setHvPdfFont(doc, 'bold');
-    doc.fontSize(7.5).text('Código:', metaX, topY + 6, { lineBreak: false });
+    const metaX = contentLeft + leftWidth + centerWidth + 5;
+    const metaRows = ['Código: GL-PR-002-FR-007', 'Versión: 01', 'Fecha de aprobación: 30/10/2017'];
     setHvPdfFont(doc, 'regular');
-    doc.text('GL-PR-002-FR-007', metaX + 34, topY + 6);
-    setHvPdfFont(doc, 'bold');
-    doc.text('Versión:', metaX, topY + 26, { lineBreak: false });
-    setHvPdfFont(doc, 'regular');
-    doc.text('01', metaX + 34, topY + 26);
-    setHvPdfFont(doc, 'bold');
-    doc.text('Fecha de aprobación:', metaX, topY + 46, { lineBreak: false });
-    setHvPdfFont(doc, 'regular');
-    doc.text('30/10/2017', metaX + 54, topY + 46);
+    metaRows.forEach((linea, index) => {
+      doc.fontSize(index === 2 ? 6.6 : 7.1).text(linea, metaX, topY + 7 + index * 22, {
+        width: rightWidth - 10,
+        align: 'left',
+      });
+    });
   }
 
   function drawFooter(pageNumber) {
@@ -568,6 +548,335 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
   doc.end();
 }
 
+// Resumen de mantenimiento usado por la ficha tecnica: ultima fecha realizada
+// y descripcion del ultimo mantenimiento registrado.
+function resumenMantenimientoFicha(mantenimientos) {
+  if (!Array.isArray(mantenimientos) || mantenimientos.length === 0) {
+    return { fecha: null, descripcion: null };
+  }
+  const ordenados = mantenimientos.slice().sort((a, b) => {
+    const fa = a && a.fecha_realizacion ? new Date(a.fecha_realizacion).getTime() : 0;
+    const fb = b && b.fecha_realizacion ? new Date(b.fecha_realizacion).getTime() : 0;
+    return fb - fa;
+  });
+  const ultimo = ordenados[0] || {};
+  const descripcion =
+    [ultimo.especificaciones_mantenimiento, ultimo.observaciones_repuestos]
+      .map((valor) => String(valor == null ? '' : valor).trim())
+      .filter((valor) => valor !== '')
+      .join(' — ') || null;
+  return { fecha: ultimo.fecha_realizacion || null, descripcion: descripcion };
+}
+
+// Plantilla institucional de la Ficha Tecnica (formato GDTH-PG-003-FR-027).
+// Reutiliza los mismos datos de la hoja de vida; el ultimo mantenimiento y su
+// descripcion se derivan de la tabla mantenimiento.
+function sendFichaTecnicaPdf(res, hojaVida, equipo, foto, mantenimientos) {
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 36,
+    bufferPages: true,
+  });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="Ficha_Tecnica_${hojaVida.codigo_inventario || hojaVida.id}.pdf"`
+  );
+  doc.pipe(res);
+
+  const palette = {
+    border: '#4b5563',
+    text: '#111827',
+    muted: '#4b5563',
+    gray: '#d1d5db',
+    darkGray: '#b9c0c8',
+    white: '#ffffff',
+  };
+  const contentLeft = doc.page.margins.left;
+  const contentWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const contentTop = () => doc.page.margins.top + 96;
+  const bottomLimit = () => doc.page.height - doc.page.margins.bottom - 26;
+
+  const resumen = resumenMantenimientoFicha(mantenimientos);
+  const data = {
+    nombre_equipo: formatHvPdfValue(null, hojaVida.nombre_equipo || equipo.nombre),
+    area: formatHvPdfValue(null, hojaVida.dependencia || equipo.facultad || equipo.laboratorio),
+    modelo: formatHvPdfValue(null, hojaVida.referencia_modelo),
+    fecha_compra: formatHvPdfValue({ tipo: 'date' }, hojaVida.fecha_adquisicion),
+    anio: formatHvPdfValue(null, hojaVida.anio),
+    ultimo_mantenimiento: resumen.fecha ? formatHvDate(resumen.fecha) : 'No hay informacion',
+    marca: formatHvPdfValue(null, hojaVida.marca),
+    cantidades: formatHvPdfValue(null, hojaVida.cantidad),
+    responsable: formatHvPdfValue(null, hojaVida.responsable),
+    supervisor: formatHvPdfValue(null, hojaVida.supervisor),
+    numero_inventario: formatHvPdfValue(null, hojaVida.codigo_inventario),
+    foto_descripcion: formatHvPdfValue(null, hojaVida.foto_descripcion),
+    funcion: formatHvPdfValue(null, hojaVida.funcion),
+    uso: formatearTipoUso(hojaVida.tipo_uso) || 'No hay informacion',
+    descripcion_fisica: formatHvPdfValue(null, hojaVida.descripcion_fisica),
+    especificaciones_tecnicas: formatHvPdfValue(null, hojaVida.especificaciones_tecnicas),
+    instrucciones_uso: formatHvPdfValue(null, hojaVida.instrucciones_uso),
+    condiciones_seguridad: formatHvPdfValue(null, hojaVida.condiciones_seguridad),
+    protocolo_limpieza: formatHvPdfValue(null, hojaVida.protocolo_limpieza),
+    descripcion_mantenimiento: resumen.descripcion || 'No hay informacion',
+    fecha_creacion: formatHvDate(hojaVida.fecha_creacion),
+    fecha_actualizacion: formatHvDate(hojaVida.fecha_modificacion || new Date()),
+  };
+  const photoBuffer =
+    foto && foto.archivo
+      ? Buffer.isBuffer(foto.archivo)
+        ? foto.archivo
+        : Buffer.from(foto.archivo)
+      : null;
+
+  function ensureSpace(height) {
+    if (doc.y + height <= bottomLimit()) return;
+    doc.addPage();
+    drawHeader();
+    doc.x = contentLeft;
+    doc.y = contentTop();
+  }
+
+  function fillStrokeRect(x, y, width, height, fillColor) {
+    doc.save().lineWidth(0.8).fillColor(fillColor).strokeColor(palette.border);
+    doc.rect(x, y, width, height).fillAndStroke();
+    doc.restore();
+  }
+
+  function line(x1, y1, x2, y2) {
+    doc
+      .save()
+      .lineWidth(0.8)
+      .strokeColor(palette.border)
+      .moveTo(x1, y1)
+      .lineTo(x2, y2)
+      .stroke()
+      .restore();
+  }
+
+  function measureText(text, width) {
+    return doc.heightOfString(String(text || ''), { width: width, align: 'left' });
+  }
+
+  function drawHeader() {
+    const topY = doc.page.margins.top;
+    const headerHeight = 84;
+    const leftWidth = 86;
+    const rightWidth = 168;
+    const centerWidth = contentWidth - leftWidth - rightWidth;
+    const metaX = contentLeft + leftWidth + centerWidth;
+
+    fillStrokeRect(contentLeft, topY, contentWidth, headerHeight, palette.white);
+    line(contentLeft + leftWidth, topY, contentLeft + leftWidth, topY + headerHeight);
+    line(metaX, topY, metaX, topY + headerHeight);
+
+    if (fs.existsSync(HV_PDF_ESCUDO_PATH)) {
+      doc.image(HV_PDF_ESCUDO_PATH, contentLeft + 6, topY + 10, {
+        fit: [leftWidth - 12, headerHeight - 20],
+        align: 'center',
+        valign: 'center',
+      });
+    }
+
+    setHvPdfFont(doc, 'bold');
+    doc
+      .fontSize(8)
+      .fillColor(palette.text)
+      .text('FORMATO:', contentLeft + leftWidth, topY + 18, {
+        width: centerWidth,
+        align: 'center',
+      });
+    doc
+      .fontSize(10)
+      .text('HOJA DE VIDA DE EQUIPOS O MAQUINARIA', contentLeft + leftWidth + 6, topY + 34, {
+        width: centerWidth - 12,
+        align: 'center',
+      });
+
+    const metaLines = [
+      'Código: GDTH-PG-003-027',
+      'Macroproceso: Gestión de Recursos',
+      'Versión: 01',
+      'Proceso: Gestión y Desarrollo del Talento Humano',
+      'Fecha Aprobación: 10/08/2022',
+    ];
+    const metaRowHeight = headerHeight / metaLines.length;
+    setHvPdfFont(doc, 'regular');
+    metaLines.forEach((linea, index) => {
+      const rowY = topY + index * metaRowHeight;
+      if (index > 0) line(metaX, rowY, metaX + rightWidth, rowY);
+      doc
+        .fontSize(6.4)
+        .fillColor(palette.text)
+        .text(linea, metaX + 4, rowY + 4, {
+          width: rightWidth - 8,
+        });
+    });
+  }
+
+  function drawFooter(pageNumber, total) {
+    setHvPdfFont(doc, 'regular');
+    doc
+      .fontSize(8)
+      .fillColor(palette.muted)
+      .text(`Página ${pageNumber} de ${total}`, contentLeft, doc.page.height - 24, {
+        width: contentWidth,
+        align: 'right',
+      });
+  }
+
+  function drawCell(x, y, width, height, fillColor, text, options) {
+    const opts = options || {};
+    fillStrokeRect(x, y, width, height, fillColor);
+    setHvPdfFont(doc, opts.bold ? 'bold' : 'regular');
+    doc
+      .fontSize(opts.fontSize || 8)
+      .fillColor(palette.text)
+      .text(String(text == null ? '' : text), x + 3, y + 4, {
+        width: width - 6,
+        align: opts.align || 'left',
+      });
+  }
+
+  function drawRow4(labelA, valueA, labelB, valueB) {
+    const labelWidth = 112;
+    const valueWidthA = 150;
+    const widths = [
+      labelWidth,
+      valueWidthA,
+      labelWidth,
+      contentWidth - labelWidth * 2 - valueWidthA,
+    ];
+    const values = [labelA, valueA, labelB, valueB];
+    const rowHeight = Math.max(
+      18,
+      ...values.map((value, index) => measureText(value, widths[index] - 6) + 6)
+    );
+    ensureSpace(rowHeight);
+    const rowY = doc.y;
+    let x = contentLeft;
+    values.forEach((value, index) => {
+      drawCell(
+        x,
+        rowY,
+        widths[index],
+        rowHeight,
+        index % 2 === 0 ? palette.gray : palette.white,
+        value,
+        {
+          bold: index % 2 === 0,
+        }
+      );
+      x += widths[index];
+    });
+    doc.y = rowY + rowHeight;
+  }
+
+  function drawRowFull(label, value) {
+    const labelWidth = 150;
+    const rowHeight =
+      Math.max(
+        18,
+        measureText(label, labelWidth - 6),
+        measureText(value, contentWidth - labelWidth - 6)
+      ) + 6;
+    ensureSpace(rowHeight);
+    const rowY = doc.y;
+    drawCell(contentLeft, rowY, labelWidth, rowHeight, palette.gray, label, { bold: true });
+    drawCell(
+      contentLeft + labelWidth,
+      rowY,
+      contentWidth - labelWidth,
+      rowHeight,
+      palette.white,
+      value
+    );
+    doc.y = rowY + rowHeight;
+  }
+
+  function drawSectionLabel(title) {
+    ensureSpace(18);
+    const startY = doc.y;
+    fillStrokeRect(contentLeft, startY, contentWidth, 18, palette.darkGray);
+    setHvPdfFont(doc, 'bold');
+    doc
+      .fontSize(8.5)
+      .fillColor(palette.text)
+      .text(title, contentLeft + 4, startY + 5, { width: contentWidth - 8 });
+    doc.y = startY + 18;
+  }
+
+  function drawFotoRow() {
+    const photoHeight = 170;
+    ensureSpace(18 + photoHeight);
+    drawSectionLabel('FOTO DEL EQUIPO');
+    const boxY = doc.y;
+    fillStrokeRect(contentLeft, boxY, contentWidth, photoHeight, palette.white);
+    if (photoBuffer) {
+      try {
+        doc.image(photoBuffer, contentLeft + 8, boxY + 8, {
+          fit: [contentWidth - 16, photoHeight - 16],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {
+        setHvPdfFont(doc, 'regular');
+        doc
+          .fontSize(8)
+          .fillColor(palette.muted)
+          .text('Sin imagen', contentLeft, boxY + 8, { width: contentWidth, align: 'center' });
+      }
+    } else {
+      setHvPdfFont(doc, 'regular');
+      doc
+        .fontSize(8)
+        .fillColor(palette.muted)
+        .text('Sin imagen', contentLeft, boxY + 8, { width: contentWidth, align: 'center' });
+    }
+    doc.y = boxY + photoHeight;
+  }
+
+  drawHeader();
+  doc.y = contentTop();
+  doc.x = contentLeft;
+
+  drawRow4('NOMBRE DEL EQUIPO', data.nombre_equipo, 'ÁREA', data.area);
+  drawRow4('MODELO', data.modelo, 'FECHA DE COMPRA', data.fecha_compra);
+  drawRow4('AÑO', data.anio, 'ÚLTIMO MANTENIMIENTO', data.ultimo_mantenimiento);
+  drawRow4('MARCA', data.marca, 'CANTIDADES', data.cantidades);
+  drawRow4('RESPONSABLE', data.responsable, 'SUPERVISOR', data.supervisor);
+  drawRowFull('NÚMERO DE INVENTARIO', data.numero_inventario);
+  drawFotoRow();
+  drawRowFull('DESCRIPCIÓN DE LA FOTOGRAFÍA', data.foto_descripcion);
+  drawRow4('FUNCIÓN', data.funcion, 'USO', data.uso);
+  drawRow4(
+    'DESCRIPCIÓN FÍSICA',
+    data.descripcion_fisica,
+    'ESPECIFICACIONES TÉCNICAS',
+    data.especificaciones_tecnicas
+  );
+  drawRowFull('INSTRUCCIONES DE USO', data.instrucciones_uso);
+  drawRowFull('CONDICIONES DE SEGURIDAD', data.condiciones_seguridad);
+  drawRowFull('PROTOCOLO DE LIMPIEZA', data.protocolo_limpieza);
+  drawRowFull('DESCRIPCIÓN DE MANTENIMIENTO', data.descripcion_mantenimiento);
+  drawRow4(
+    'FECHA DE CREACIÓN',
+    data.fecha_creacion,
+    'FECHA DE ACTUALIZACIÓN',
+    data.fecha_actualizacion
+  );
+
+  const range = doc.bufferedPageRange();
+  for (let pageIndex = range.start; pageIndex < range.start + range.count; pageIndex += 1) {
+    doc.switchToPage(pageIndex);
+    drawFooter(pageIndex + 1, range.count);
+  }
+
+  doc.end();
+}
+
 module.exports = {
   sendHojaVidaPdf,
+  sendFichaTecnicaPdf,
+  resumenMantenimientoFicha,
 };

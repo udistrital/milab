@@ -142,6 +142,48 @@
                   <td><%= mantenimiento.fecha_cierre_display || '—' %></td>
                   <td>
                     <div class="d-flex gap-1 flex-wrap">
+                      <div class="btn-group">
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                        >
+                          <i class="bi bi-printer"></i> Imprimir
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li>
+                            <a
+                              class="dropdown-item"
+                              href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/imprimir/FR-026"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              FR-026 Correctivo
+                            </a>
+                          </li>
+                          <li>
+                            <a
+                              class="dropdown-item"
+                              href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/imprimir/FR-028"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              FR-028 Cronograma
+                            </a>
+                          </li>
+                          <li>
+                            <a
+                              class="dropdown-item"
+                              href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/mantenimientos/<%= mantenimiento.id %>/imprimir/FR-029"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              FR-029 Preventivo
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
                       <% if (mantenimiento.es_editable) { %>
                         <a
                           class="btn btn-outline-warning btn-sm"

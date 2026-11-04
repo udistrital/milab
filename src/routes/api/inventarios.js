@@ -16,10 +16,12 @@ const {
 } = require('../../libs/hojas-vida-eventos');
 const {
   TIPOS_MANTENIMIENTO,
+  FORMATOS_REGISTRO_MANTENIMIENTO,
   ESTADOS_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
   etiquetaTipoMantenimiento,
+  etiquetaFormatoRegistroMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,
   esEstadoEditableMantenimiento,
@@ -27,7 +29,12 @@ const {
   diasRestantesMantenimiento,
   SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
-const { sendHojaVidaPdf } = require('../../libs/hojas-vida-pdf');
+const { sendHojaVidaPdf, sendFichaTecnicaPdf } = require('../../libs/hojas-vida-pdf');
+const {
+  sendMantenimientoCorrectivoPdf,
+  sendCronogramaMantenimientoPdf,
+  sendMantenimientoPreventivoPdf,
+} = require('../../libs/mantenimiento-formatos-pdf');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
@@ -348,6 +355,7 @@ function mapearMantenimientoWeb(mantenimiento, diasAlerta) {
   const esEditable = esEstadoEditableMantenimiento(estadoCodigo);
   return {
     ...mantenimiento,
+    formato_registro_etiqueta: etiquetaFormatoRegistroMantenimiento(mantenimiento.formato_registro),
     tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(mantenimiento.tipo_mantenimiento),
     estado_etiqueta: etiquetaEstadoMantenimiento(mantenimiento.estado),
     estado_clase: claseEstadoMantenimiento(mantenimiento.estado),
@@ -371,6 +379,7 @@ async function cargarMantenimientosWeb(client, hojaVidaId, diasAlerta) {
       SELECT
         id,
         item,
+        formato_registro,
         tipo_mantenimiento,
         fecha_realizacion,
         estado,
@@ -380,6 +389,25 @@ async function cargarMantenimientosWeb(client, hojaVidaId, diasAlerta) {
         tiempo_garantia,
         especificaciones_mantenimiento,
         observaciones_repuestos,
+        descripcion_falla,
+        responsable_verificar,
+        firma_responsable_verificar,
+        firma_proveedor,
+        diligenciado_por,
+        cargo_diligenciado_por,
+        sede,
+        area_especifica,
+        descripcion_accion_verificacion,
+        registro_mantenimiento,
+        cumple_mantenimiento,
+        justificacion_ausencia_mantenimiento,
+        firma_responsable,
+        encargado_elaboracion,
+        descripcion_actividad,
+        meses_programados,
+        verificado_por,
+        firma_verificacion,
+        observaciones_generales,
         fecha_cierre,
         usuario_cierre,
         fecha_creacion,
@@ -1945,6 +1973,61 @@ router.get('/hojas-vida/:equipoId/imprimir', requireInventoryAccess, async funct
 });
 
 router.get(
+  '/hojas-vida/:equipoId/ficha-tecnica',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      if (!equipoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+      const fotoResult = await pool.query(
+        `
+        SELECT archivo, tipo_mime
+        FROM hoja_vida_documento
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+          AND tipo_documento = 'FOTOGRAFIA_EQUIPO'
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+        [datos.hojaVida.id]
+      );
+      const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
+      const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
+
+      return sendFichaTecnicaPdf(
+        res,
+        datos.hojaVida,
+        datos.equipo,
+        fotoResult.rows[0] || null,
+        mantenimientos
+      );
+    } catch (error) {
+      console.error('[inventarios] Error generando PDF de ficha tecnica:', error);
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20generar%20la%20ficha`);
+    }
+  }
+);
+
+router.get(
   '/hojas-vida/:hojaVidaId/documento/:documentoId',
   requireInventoryAccess,
   async function (req, res) {
@@ -2100,6 +2183,7 @@ router.get(
       return res.render('home/prestamos/hojas-vida/mantenimiento-nuevo', {
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
+        formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
         tiposMantenimiento: TIPOS_MANTENIMIENTO,
         estadosMantenimiento: ESTADOS_MANTENIMIENTO,
         estadoDefault: ESTADO_MANTENIMIENTO_DEFAULT,
@@ -2236,6 +2320,7 @@ router.get(
           ...mantenimiento,
           fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
         },
+        formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
         tiposMantenimiento: TIPOS_MANTENIMIENTO,
         estadosMantenimiento: estadosPermitidos,
         editable: esEstadoEditableMantenimiento(estadoCodigo),
@@ -2251,6 +2336,75 @@ router.get(
       console.error('[inventarios] Error cargando edicion de mantenimiento:', error);
       return res.redirect(
         `${HOJAS_VIDA_BASE_URL}/${req.params.equipoId}/mantenimientos?error=No%20fue%20posible%20cargar%20el%20mantenimiento`
+      );
+    }
+  }
+);
+
+router.get(
+  '/hojas-vida/:equipoId/mantenimientos/:mantenimientoId/imprimir/:formato',
+  requireInventoryAccess,
+  async function (req, res) {
+    try {
+      const equipoId = parsePositiveId(req.params.equipoId);
+      const mantenimientoId = parsePositiveId(req.params.mantenimientoId);
+      const formato = String(req.params.formato || '')
+        .trim()
+        .toUpperCase();
+      if (!equipoId || !mantenimientoId) {
+        return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+      }
+
+      const datos = await loadHojaVidaByEquipment(pool, equipoId);
+      if (!datos) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+        );
+      }
+      if (
+        !datos.hojaVida.equipo_ual_id ||
+        !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+      ) {
+        return res.status(403).render('home/message_error', {
+          message: 'Acceso denegado',
+          message2: 'No tienes acceso al laboratorio seleccionado.',
+          limit: 'loginOnly',
+        });
+      }
+
+      const mantenimientoResult = await pool.query(
+        `
+          SELECT *
+          FROM mantenimiento
+          WHERE id = $1 AND equipo_id = $2 AND activo = TRUE
+          LIMIT 1
+        `,
+        [mantenimientoId, equipoId]
+      );
+      if (!mantenimientoResult.rows.length) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20existe`
+        );
+      }
+
+      const mantenimiento = mantenimientoResult.rows[0];
+      if (formato === 'FR-026') {
+        return sendMantenimientoCorrectivoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
+      }
+      if (formato === 'FR-028') {
+        return sendCronogramaMantenimientoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
+      }
+      if (formato === 'FR-029') {
+        return sendMantenimientoPreventivoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
+      }
+
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=Formato%20de%20impresion%20no%20valido`
+      );
+    } catch (error) {
+      console.error('[inventarios] Error generando PDF de mantenimiento:', error);
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}/${req.params.equipoId}/mantenimientos?error=No%20fue%20posible%20generar%20el%20PDF`
       );
     }
   }

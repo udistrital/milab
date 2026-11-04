@@ -1,0 +1,93 @@
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var formatoSelect = document.getElementById('hv-mto-formato');
+    if (!formatoSelect) return;
+
+    var tipoSelect = document.getElementById('hv-mto-tipo');
+    var hiddenRegistro = document.getElementById('hv-mto-registro-mantenimiento');
+    var hiddenMeses = document.getElementById('hv-mto-meses-programados');
+    var bloques = Array.prototype.slice.call(
+      document.querySelectorAll('.js-formato-bloque')
+    );
+    var cronogramaChecks = Array.prototype.slice.call(
+      document.querySelectorAll('.js-cronograma-mes')
+    );
+    var registroChecks = Array.prototype.slice.call(
+      document.querySelectorAll('.js-registro-slot')
+    );
+    var valorInicialMeses = <%- JSON.stringify((mantenimiento && mantenimiento.meses_programados) || []) %>;
+    var valorInicialRegistro = <%- JSON.stringify((mantenimiento && mantenimiento.registro_mantenimiento) || {}) %>;
+    var sugerenciasTipo = {
+      'FR-026': 'CORRECTIVO',
+      'FR-028': 'PREVENTIVO',
+      'FR-029': 'PREVENTIVO',
+    };
+
+    function sincronizarMesesProgramados() {
+      if (!hiddenMeses) return;
+      var seleccionados = cronogramaChecks
+        .filter(function (checkbox) {
+          return checkbox.checked;
+        })
+        .map(function (checkbox) {
+          return checkbox.value;
+        });
+      hiddenMeses.value = JSON.stringify(seleccionados);
+    }
+
+    function sincronizarRegistroPreventivo() {
+      if (!hiddenRegistro) return;
+      var data = {};
+      registroChecks.forEach(function (checkbox) {
+        var mes = checkbox.getAttribute('data-mes');
+        var slot = Number(checkbox.getAttribute('data-slot'));
+        if (!data[mes]) {
+          data[mes] = [false, false, false, false];
+        }
+        data[mes][slot] = checkbox.checked;
+      });
+      hiddenRegistro.value = JSON.stringify(data);
+    }
+
+    function aplicarValoresIniciales() {
+      cronogramaChecks.forEach(function (checkbox) {
+        checkbox.checked = Array.isArray(valorInicialMeses)
+          ? valorInicialMeses.indexOf(checkbox.value) !== -1
+          : false;
+      });
+      registroChecks.forEach(function (checkbox) {
+        var mes = checkbox.getAttribute('data-mes');
+        var slot = Number(checkbox.getAttribute('data-slot'));
+        checkbox.checked = Boolean(
+          valorInicialRegistro &&
+            valorInicialRegistro[mes] &&
+            valorInicialRegistro[mes][slot]
+        );
+      });
+      sincronizarMesesProgramados();
+      sincronizarRegistroPreventivo();
+    }
+
+    function actualizarVisibilidadFormato() {
+      var formato = formatoSelect.value || '';
+      bloques.forEach(function (bloque) {
+        var activo = bloque.getAttribute('data-formato-bloque') === formato;
+        bloque.classList.toggle('d-none', !activo);
+      });
+      if (tipoSelect && formato && !tipoSelect.value && sugerenciasTipo[formato]) {
+        tipoSelect.value = sugerenciasTipo[formato];
+      }
+    }
+
+    formatoSelect.addEventListener('change', actualizarVisibilidadFormato);
+    cronogramaChecks.forEach(function (checkbox) {
+      checkbox.addEventListener('change', sincronizarMesesProgramados);
+    });
+    registroChecks.forEach(function (checkbox) {
+      checkbox.addEventListener('change', sincronizarRegistroPreventivo);
+    });
+
+    aplicarValoresIniciales();
+    actualizarVisibilidadFormato();
+  })();
+</script>

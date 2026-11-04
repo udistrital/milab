@@ -7,6 +7,7 @@ const { TIPOS_EVENTO_MANUALES } = require('../../../src/libs/hojas-vida-eventos'
 const {
   TIPOS_MANTENIMIENTO,
   ESTADOS_MANTENIMIENTO,
+  FORMATOS_REGISTRO_MANTENIMIENTO,
 } = require('../../../src/libs/hojas-vida-mantenimientos');
 
 const workspaceRoot = path.resolve(__dirname, '../../../');
@@ -740,9 +741,11 @@ test('hojas-vida mantenimiento-nuevo view renders the form with catalogs', async
       tiposMantenimiento: TIPOS_MANTENIMIENTO,
       estadosMantenimiento: ESTADOS_MANTENIMIENTO,
       estadoDefault: 'PENDIENTE',
+      formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
       successMessage: null,
       errorMessage: null,
-    })
+    }),
+    { async: false }
   );
 
   assert.match(html, /Registrar Mantenimiento/i);
@@ -752,6 +755,9 @@ test('hojas-vida mantenimiento-nuevo view renders the form with catalogs', async
   assert.match(html, /Preventivo/);
   assert.match(html, /value="CUMPLIDO"/);
   assert.match(html, /name="estado"/);
+  assert.match(html, /id="hv-mto-formato"/);
+  assert.match(html, /FR-026 Correctivo/);
+  assert.match(html, /data-formato-bloque="FR-029"/);
   assert.match(html, /var equipoId = 7;/);
   assert.match(html, /nonce="test-nonce"/);
 });
@@ -819,9 +825,11 @@ test('hojas-vida mantenimiento-editar view renders the editable form with curren
       },
       tiposMantenimiento: TIPOS_MANTENIMIENTO,
       estadosMantenimiento: [ESTADOS_MANTENIMIENTO[1]],
+      formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
       successMessage: null,
       errorMessage: null,
-    })
+    }),
+    { async: false }
   );
 
   assert.match(html, /Editar Mantenimiento/i);
@@ -830,6 +838,9 @@ test('hojas-vida mantenimiento-editar view renders the editable form with curren
   assert.match(html, /value="2024-05-10"/);
   assert.match(html, /value="150000"/);
   assert.match(html, /name="estado" value="EN_EJECUCION"/);
+  assert.match(html, /id="hv-mto-formato"/);
+  assert.match(html, /FR-029 Preventivo/);
+  assert.match(html, /data-formato-bloque="FR-028"/);
   assert.match(html, /var mantenimientoId = 9;/);
   assert.match(html, /nonce="test-nonce"/);
 });
