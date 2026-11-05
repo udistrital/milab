@@ -14,6 +14,7 @@ const HV_PDF_ESCUDO_PATH = path.join(
   'img',
   'Logo_Escudo_Acreditacion_Horizontal.png'
 );
+const HV_PDF_SIGUD_PATH = path.join(__dirname, '..', 'public', 'img', 'logo_sigud.jpg');
 
 function formatHvDate(value) {
   if (!value) return '—';
@@ -149,6 +150,19 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         valign: 'center',
       });
     }
+
+    const rightX = contentLeft + leftWidth + centerWidth;
+    const metaWidth = 104;
+    const logoWidth = rightWidth - metaWidth;
+
+    if (fs.existsSync(HV_PDF_SIGUD_PATH)) {
+      doc.image(HV_PDF_SIGUD_PATH, rightX + metaWidth + 6, topY + 8, {
+        fit: [logoWidth - 12, headerHeight - 16],
+        align: 'center',
+        valign: 'center',
+      });
+    }
+
     const centerX = contentLeft + leftWidth;
     const rowHeights = [20, 16, 16, 16];
     let currentY = topY;
@@ -163,13 +177,21 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
         .restore();
       currentY += height;
     });
+    doc
+      .save()
+      .lineWidth(0.8)
+      .strokeColor(palette.border)
+      .moveTo(rightX + metaWidth, topY)
+      .lineTo(rightX + metaWidth, topY + headerHeight)
+      .stroke()
+      .restore();
     [22, 44].forEach((offset) => {
       doc
         .save()
         .lineWidth(0.8)
         .strokeColor(palette.border)
-        .moveTo(contentLeft + leftWidth + centerWidth, topY + offset)
-        .lineTo(contentLeft + leftWidth + centerWidth + rightWidth, topY + offset)
+        .moveTo(rightX, topY + offset)
+        .lineTo(rightX + metaWidth, topY + offset)
         .stroke()
         .restore();
     });
@@ -192,12 +214,12 @@ function sendHojaVidaPdf(res, hojaVida, equipo, foto, mantenimientos) {
       align: 'center',
     });
 
-    const metaX = contentLeft + leftWidth + centerWidth + 5;
+    const metaX = rightX + 4;
     const metaRows = ['Código: GL-PR-002-FR-007', 'Versión: 01', 'Fecha de aprobación: 30/10/2017'];
     setHvPdfFont(doc, 'regular');
     metaRows.forEach((linea, index) => {
-      doc.fontSize(index === 2 ? 6.6 : 7.1).text(linea, metaX, topY + 7 + index * 22, {
-        width: rightWidth - 10,
+      doc.fontSize(index === 2 ? 6.3 : 7.1).text(linea, metaX, topY + 7 + index * 22, {
+        width: metaWidth - 8,
         align: 'left',
       });
     });

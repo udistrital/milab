@@ -780,6 +780,8 @@ test('hojas-vida mantenimientos view lists records and the empty state', async (
         {
           id: 1,
           item: 'Cambio de rodamiento',
+          formato_registro: 'FR-029',
+          formato_registro_etiqueta: 'FR-029 Preventivo',
           tipo_mantenimiento: 'PREVENTIVO',
           tipo_mantenimiento_etiqueta: 'Preventivo',
           fecha_realizacion_display: '10/05/2024',
@@ -796,6 +798,10 @@ test('hojas-vida mantenimientos view lists records and the empty state', async (
   assert.match(conDatos, /data-testid="action-nuevo-mantenimiento"/);
   assert.match(conDatos, /data-testid="hv-mto-item"/);
   assert.match(conDatos, /Cambio de rodamiento/);
+  assert.match(conDatos, /data-testid="action-imprimir-mantenimiento"/);
+  assert.match(conDatos, /Imprimir FR-029 Preventivo/);
+  assert.match(conDatos, /\/mantenimientos\/1\/imprimir\/FR-029/);
+  assert.doesNotMatch(conDatos, /FR-026 Correctivo/);
   assert.match(conDatos, /bg-success/);
 
   const sinDatos = await renderView(

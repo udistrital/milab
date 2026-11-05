@@ -54,6 +54,14 @@ function textValue(value) {
   return String(value);
 }
 
+function splitDateParts(value) {
+  const formatted = formatDate(value);
+  if (!formatted || formatted === '—') return ['—', '—', '—'];
+  const parts = formatted.split('/');
+  if (parts.length !== 3) return [formatted, '—', '—'];
+  return parts;
+}
+
 function monthsFromJson(value) {
   if (Array.isArray(value)) return value;
   if (!value || typeof value !== 'object') return [];
@@ -191,6 +199,19 @@ function drawCell(doc, x, y, width, height, text, opts = {}) {
     });
 }
 
+function drawInstructionRow(doc, x, y, width, text) {
+  const labelWidth = 78;
+  drawCell(doc, x, y, labelWidth, 26, 'Indicaciones', {
+    bold: true,
+    fill: '#d1d5db',
+    align: 'center',
+    fontSize: 6.8,
+  });
+  drawCell(doc, x + labelWidth, y, width - labelWidth, 26, text, {
+    fontSize: 6.2,
+  });
+}
+
 function commonMaintenanceContext(hojaVida, equipo, mantenimiento) {
   return {
     nombreEquipo: textValue(hojaVida.nombre_equipo || equipo.nombre),
@@ -224,16 +245,23 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
   const left = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const ctx = commonMaintenanceContext(hojaVida, equipo, mantenimiento);
+  const [dia, mes, anio] = splitDateParts(mantenimiento.fecha_realizacion);
   const rowY = doc.y;
-  const headWidths = [80, 80, 120, width - 280];
-  drawCell(doc, left, rowY, headWidths[0], 18, 'Facultad', { bold: true, fill: '#d1d5db' });
+  const headWidths = [105, 90, 118, width - 313];
+  drawCell(doc, left, rowY, headWidths[0], 18, 'Facultad', {
+    bold: true,
+    fill: '#d1d5db',
+    align: 'center',
+  });
   drawCell(doc, left + headWidths[0], rowY, headWidths[1], 18, 'Área', {
     bold: true,
     fill: '#d1d5db',
+    align: 'center',
   });
   drawCell(doc, left + headWidths[0] + headWidths[1], rowY, headWidths[2], 18, 'Responsable', {
     bold: true,
     fill: '#d1d5db',
+    align: 'center',
   });
   drawCell(
     doc,
@@ -245,6 +273,7 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
     {
       bold: true,
       fill: '#d1d5db',
+      align: 'center',
     }
   );
   drawCell(doc, left, rowY + 18, headWidths[0], 18, ctx.facultad);
@@ -267,36 +296,56 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
   );
 
   const secondY = rowY + 36;
-  drawCell(doc, left, secondY, 140, 18, 'Fecha', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 140, secondY, 150, 18, ctx.fecha);
-  drawCell(doc, left + 290, secondY, 140, 18, 'Cargo', { bold: true, fill: '#d1d5db' });
-  drawCell(
-    doc,
-    left + 430,
-    secondY,
-    width - 430,
-    18,
-    textValue(mantenimiento.cargo_diligenciado_por)
+  const fechaCols = [70, 46, 46, 62, 84, width - 308];
+  const fechaLabels = ['Fecha', 'Día', 'Mes', 'Año', 'Cargo', ''];
+  let x = left;
+  fechaLabels.forEach((label, index) => {
+    drawCell(doc, x, secondY, fechaCols[index], 18, label, {
+      bold: true,
+      fill: '#d1d5db',
+      align: 'center',
+      fontSize: 6.8,
+    });
+    x += fechaCols[index];
+  });
+  x = left;
+  ['', dia, mes, anio, '', textValue(mantenimiento.cargo_diligenciado_por)].forEach(
+    (value, index) => {
+      drawCell(doc, x, secondY + 18, fechaCols[index], 18, value, {
+        align: index > 0 && index < 4 ? 'center' : 'left',
+      });
+      x += fechaCols[index];
+    }
   );
 
-  doc.y = secondY + 28;
-  const cols = [90, 78, 95, 120, 95, 60, 80, 60];
+  const instructionY = secondY + 42;
+  drawInstructionRow(
+    doc,
+    left,
+    instructionY,
+    width,
+    'Seleccione el nombre del equipo, especificando su código, y registre la descripción detallada de la falla junto con la reparación efectuada.'
+  );
+
+  doc.y = instructionY + 34;
+  const cols = [110, 95, 150, 160, 92, 42, 86, 47];
   const labels = [
-    'Nombre del equipo',
-    'Código de inventario',
-    'Descripción de la falla',
-    'Descripción de la reparación ejecutada',
-    'Responsable de verificar',
-    'Firma',
-    'Proveedor',
-    'Firma',
+    'NOMBRE DEL EQUIPO',
+    'CÓDIGO DE INVENTARIO',
+    'DESCRIPCIÓN DE LA FALLA',
+    'DESCRIPCIÓN DE LA REPARACIÓN EFECTUADA',
+    'RESPONSABLE DE VERIFICAR',
+    'FIRMA',
+    'PROVEEDOR',
+    'FIRMA',
   ];
-  let x = left;
+  x = left;
   labels.forEach((label, index) => {
     drawCell(doc, x, doc.y, cols[index], 34, label, {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
+      fontSize: 6.4,
     });
     x += cols[index];
   });
@@ -313,7 +362,10 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
   x = left;
   const dataY = doc.y + 34;
   values.forEach((value, index) => {
-    drawCell(doc, x, dataY, cols[index], 72, value);
+    drawCell(doc, x, dataY, cols[index], 86, value, {
+      fontSize: 6.8,
+      align: index >= 5 ? 'center' : 'left',
+    });
     x += cols[index];
   });
   drawFooter(doc);
@@ -330,9 +382,10 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
   const left = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const ctx = commonMaintenanceContext(hojaVida, equipo, mantenimiento);
+  const [dia, mes, anio] = splitDateParts(mantenimiento.fecha_realizacion);
   const mesesProgramados = monthsFromJson(mantenimiento.meses_programados);
   const topY = doc.y;
-  const infoWidths = [100, 100, 120, width - 320];
+  const infoWidths = [110, 98, 132, width - 340];
   const infoLabels = [
     'Facultad',
     'Área',
@@ -346,6 +399,7 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
+      fontSize: 6.8,
     });
     x += infoWidths[index];
   });
@@ -354,50 +408,76 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
     drawCell(doc, x, topY + 18, infoWidths[index], 18, value);
     x += infoWidths[index];
   });
-  drawCell(doc, left, topY + 36, 110, 18, 'Fecha', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 110, topY + 36, 160, 18, ctx.fecha);
-  drawCell(doc, left + 270, topY + 36, 160, 18, 'Encargado de su elaboración', {
-    bold: true,
-    fill: '#d1d5db',
+
+  const fechaY = topY + 36;
+  const fechaCols = [60, 38, 38, 52, 118, width - 306];
+  const fechaLabels = ['Fecha', 'Día', 'Mes', 'Año', 'Encargado de su elaboración', ''];
+  x = left;
+  fechaLabels.forEach((label, index) => {
+    drawCell(doc, x, fechaY, fechaCols[index], 18, label, {
+      bold: true,
+      fill: '#d1d5db',
+      align: 'center',
+      fontSize: 6.6,
+    });
+    x += fechaCols[index];
   });
-  drawCell(
-    doc,
-    left + 430,
-    topY + 36,
-    width - 430,
-    18,
-    textValue(mantenimiento.encargado_elaboracion)
+  x = left;
+  ['', dia, mes, anio, '', textValue(mantenimiento.encargado_elaboracion)].forEach(
+    (value, index) => {
+      drawCell(doc, x, fechaY + 18, fechaCols[index], 18, value, {
+        align: index > 0 && index < 4 ? 'center' : 'left',
+      });
+      x += fechaCols[index];
+    }
   );
 
-  const tableY = topY + 64;
-  const baseCols = [100, 80, 150];
-  const monthWidth = 15;
-  const tailCols = [65, 55, 45, width - (100 + 80 + 150 + monthWidth * 12 + 65 + 55 + 45)];
+  const instructionY = fechaY + 42;
+  drawInstructionRow(
+    doc,
+    left,
+    instructionY,
+    width,
+    'El cronograma de mantenimiento registra la programación anual de actividades como limpieza, mantenimiento correctivo, preventivo y otras acciones que garanticen el adecuado estado del equipo.'
+  );
+
+  const tableY = instructionY + 34;
+  const baseCols = [112, 84, 156];
+  const monthWidth = 18;
+  const tailCols = [70, 58, 46, width - (112 + 84 + 156 + monthWidth * 12 + 70 + 58 + 46)];
   x = left;
-  ['Nombre de la máquina/equipo', 'Código de inventario', 'Descripción de la actividad'].forEach(
+  ['NOMBRE DE LA MÁQUINA/EQUIPO', 'CÓDIGO DE INVENTARIO', 'DESCRIPCIÓN DE LA ACTIVIDAD'].forEach(
     (label, index) => {
       drawCell(doc, x, tableY, baseCols[index], 34, label, {
         bold: true,
         fill: '#d1d5db',
         align: 'center',
+        fontSize: 6.4,
       });
       x += baseCols[index];
     }
   );
-  MESES.forEach((mes) => {
-    drawCell(doc, x, tableY, monthWidth, 34, mes.etiqueta.slice(0, 3), {
+  drawCell(doc, x, tableY, monthWidth * 12, 18, 'MES DE MANTENIMIENTO', {
+    bold: true,
+    fill: '#d1d5db',
+    align: 'center',
+    fontSize: 6.6,
+  });
+  MESES.forEach((mesItem, index) => {
+    drawCell(doc, x + index * monthWidth, tableY + 18, monthWidth, 16, String(index + 1), {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
-      fontSize: 6.2,
+      fontSize: 6.4,
     });
-    x += monthWidth;
   });
-  ['Responsable', 'Verificado por', 'Firma', 'Observaciones'].forEach((label, index) => {
+  x += monthWidth * 12;
+  ['RESPONSABLE', 'VERIFICADO POR', 'FIRMA', 'OBSERVACIONES'].forEach((label, index) => {
     drawCell(doc, x, tableY, tailCols[index], 34, label, {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
+      fontSize: 6.4,
     });
     x += tailCols[index];
   });
@@ -406,13 +486,14 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
   x = left;
   [ctx.nombreEquipo, ctx.codigoInventario, textValue(mantenimiento.descripcion_actividad)].forEach(
     (value, index) => {
-      drawCell(doc, x, dataY, baseCols[index], 56, value);
+      drawCell(doc, x, dataY, baseCols[index], 62, value, { fontSize: 6.8 });
       x += baseCols[index];
     }
   );
-  MESES.forEach((mes) => {
-    drawCell(doc, x, dataY, monthWidth, 56, mesesProgramados.includes(mes.codigo) ? 'X' : '', {
+  MESES.forEach((mesItem) => {
+    drawCell(doc, x, dataY, monthWidth, 62, mesesProgramados.includes(mesItem.codigo) ? 'X' : '', {
       align: 'center',
+      fontSize: 7,
     });
     x += monthWidth;
   });
@@ -422,7 +503,7 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
     textValue(mantenimiento.firma_verificacion),
     textValue(mantenimiento.observaciones_generales),
   ].forEach((value, index) => {
-    drawCell(doc, x, dataY, tailCols[index], 56, value);
+    drawCell(doc, x, dataY, tailCols[index], 62, value, { fontSize: 6.6 });
     x += tailCols[index];
   });
   drawFooter(doc);
@@ -444,81 +525,118 @@ function sendMantenimientoPreventivoPdf(res, hojaVida, equipo, mantenimiento) {
   const left = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const ctx = commonMaintenanceContext(hojaVida, equipo, mantenimiento);
+  const [dia, mes, anio] = splitDateParts(mantenimiento.fecha_realizacion);
   const registro = registroFromJson(mantenimiento.registro_mantenimiento);
   const infoY = doc.y;
-  drawCell(doc, left, infoY, 130, 18, 'Diligenciado por', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 130, infoY, 130, 18, textValue(mantenimiento.diligenciado_por));
-  drawCell(doc, left + 260, infoY, 110, 18, 'Cargo', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 370, infoY, 120, 18, textValue(mantenimiento.cargo_diligenciado_por));
-  drawCell(doc, left + 490, infoY, 120, 18, 'Responsable del área', {
-    bold: true,
-    fill: '#d1d5db',
-  });
-  drawCell(doc, left + 610, infoY, width - 610, 18, ctx.responsableArea);
-
-  drawCell(doc, left, infoY + 18, 130, 18, 'Fecha', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 130, infoY + 18, 130, 18, ctx.fecha);
-  drawCell(doc, left + 260, infoY + 18, 110, 18, 'Sede', { bold: true, fill: '#d1d5db' });
-  drawCell(doc, left + 370, infoY + 18, 120, 18, textValue(mantenimiento.sede));
-  drawCell(doc, left + 490, infoY + 18, 120, 18, 'Área específica', {
-    bold: true,
-    fill: '#d1d5db',
-  });
-  drawCell(doc, left + 610, infoY + 18, width - 610, 18, textValue(mantenimiento.area_especifica));
-
-  const tableY = infoY + 48;
-  const cols = [72, 54, 28, 84];
-  const monthMini = 5;
-  const tailCols = [
-    54,
-    36,
-    90,
-    50,
-    width - (72 + 54 + 28 + 84 + monthMini * 4 * 12 + 54 + 36 + 90 + 50),
-  ];
+  const infoCols = [108, 122, 62, 94, 120, width - 506];
   let x = left;
-  ['Equipo / Máquina', 'Código inv.', 'Cant.', 'Descripción de la acción de verificación'].forEach(
-    (label, index) => {
-      drawCell(doc, x, tableY, cols[index], 34, label, {
-        bold: true,
-        fill: '#d1d5db',
-        align: 'center',
-        fontSize: 6.4,
-      });
-      x += cols[index];
-    }
+  [
+    'Diligenciado por',
+    textValue(mantenimiento.diligenciado_por),
+    'Cargo',
+    textValue(mantenimiento.cargo_diligenciado_por),
+    'Responsable del Área',
+    ctx.responsableArea,
+  ].forEach((value, index) => {
+    const isLabel = index % 2 === 0;
+    drawCell(doc, x, infoY, infoCols[index], 18, value, {
+      bold: isLabel,
+      fill: isLabel ? '#d1d5db' : '#ffffff',
+      align: isLabel ? 'center' : 'left',
+      fontSize: 6.6,
+    });
+    x += infoCols[index];
+  });
+
+  const secondInfoY = infoY + 18;
+  const secondCols = [62, 36, 36, 48, 64, 96, 102, width - 444];
+  x = left;
+  [
+    'Fecha',
+    dia,
+    mes,
+    anio,
+    'Sede',
+    textValue(mantenimiento.sede),
+    'Área específica',
+    textValue(mantenimiento.area_especifica),
+  ].forEach((value, index) => {
+    const isLabel = index === 0 || index === 4 || index === 6;
+    drawCell(doc, x, secondInfoY, secondCols[index], 18, value, {
+      bold: isLabel,
+      fill: isLabel ? '#d1d5db' : '#ffffff',
+      align: index > 0 && index < 4 ? 'center' : isLabel ? 'center' : 'left',
+      fontSize: 6.4,
+    });
+    x += secondCols[index];
+  });
+
+  const instructionY = secondInfoY + 24;
+  drawInstructionRow(
+    doc,
+    left,
+    instructionY,
+    width,
+    'Registre el equipo o máquina, su código de inventario, la cantidad, la acción de verificación y el control mensual del mantenimiento preventivo; si no se cumple, justifique la ausencia.'
   );
-  MESES.forEach((mes) => {
-    const startX = x;
-    drawCell(doc, startX, tableY, monthMini * 4, 18, mes.etiqueta.slice(0, 3), {
+
+  const tableY = instructionY + 34;
+  const cols = [86, 68, 38, 118];
+  const monthMini = 5;
+  const monthGroupWidth = monthMini * 4;
+  const tailCols = [58, 42, 96, width - (86 + 68 + 38 + 118 + monthGroupWidth * 12 + 58 + 42 + 96)];
+  x = left;
+  [
+    'EQUIPO / MÁQUINA',
+    'CÓDIGO/N° DE INVENTARIO',
+    'CANT.',
+    'DESCRIPCIÓN DE LA ACCIÓN O VERIFICACIÓN',
+  ].forEach((label, index) => {
+    drawCell(doc, x, tableY, cols[index], 48, label, {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
       fontSize: 6.1,
     });
+    x += cols[index];
+  });
+  drawCell(doc, x, tableY, monthGroupWidth * 12, 16, 'REGISTRO DE MANTENIMIENTO', {
+    bold: true,
+    fill: '#d1d5db',
+    align: 'center',
+    fontSize: 6.2,
+  });
+  MESES.forEach((mesItem, index) => {
+    const monthX = x + index * monthGroupWidth;
+    drawCell(doc, monthX, tableY + 16, monthGroupWidth, 16, mesItem.etiqueta, {
+      bold: true,
+      fill: '#d1d5db',
+      align: 'center',
+      fontSize: 5.8,
+    });
     [1, 2, 3, 4].forEach((slot, slotIndex) => {
-      drawCell(doc, startX + slotIndex * monthMini, tableY + 18, monthMini, 16, String(slot), {
+      drawCell(doc, monthX + slotIndex * monthMini, tableY + 32, monthMini, 16, String(slot), {
+        bold: true,
+        fill: '#d1d5db',
+        align: 'center',
+        fontSize: 5.8,
+      });
+    });
+  });
+  x += monthGroupWidth * 12;
+  ['RESPONSABLE', 'CUMPLE', 'JUSTIFICAR LA AUSENCIA DE MANTENIMIENTO', 'FIRMA'].forEach(
+    (label, index) => {
+      drawCell(doc, x, tableY, tailCols[index], 48, label, {
         bold: true,
         fill: '#d1d5db',
         align: 'center',
         fontSize: 6,
       });
-    });
-    x += monthMini * 4;
-  });
-  ['Responsable', 'Cumple', 'Justificación ausencia', 'Auxiliar', 'Firma'].forEach(
-    (label, index) => {
-      drawCell(doc, x, tableY, tailCols[index], 34, label, {
-        bold: true,
-        fill: '#d1d5db',
-        align: 'center',
-        fontSize: 6.2,
-      });
       x += tailCols[index];
     }
   );
 
-  const rowY = tableY + 34;
+  const rowY = tableY + 48;
   x = left;
   [
     ctx.nombreEquipo,
@@ -526,19 +644,19 @@ function sendMantenimientoPreventivoPdf(res, hojaVida, equipo, mantenimiento) {
     ctx.cantidad,
     textValue(mantenimiento.descripcion_accion_verificacion),
   ].forEach((value, index) => {
-    drawCell(doc, x, rowY, cols[index], 60, value, { fontSize: 6.7 });
+    drawCell(doc, x, rowY, cols[index], 66, value, { fontSize: 6.4 });
     x += cols[index];
   });
-  MESES.forEach((mes) => {
+  MESES.forEach((mesItem) => {
     const startX = x;
     [0, 1, 2, 3].forEach((slotIndex) => {
-      const marcado = Boolean(registro[mes.codigo] && registro[mes.codigo][slotIndex]);
-      drawCell(doc, startX + slotIndex * monthMini, rowY, monthMini, 60, marcado ? 'X' : '', {
+      const marcado = Boolean(registro[mesItem.codigo] && registro[mesItem.codigo][slotIndex]);
+      drawCell(doc, startX + slotIndex * monthMini, rowY, monthMini, 66, marcado ? 'X' : '', {
         align: 'center',
-        fontSize: 7,
+        fontSize: 6.8,
       });
     });
-    x += monthMini * 4;
+    x += monthGroupWidth;
   });
   [
     ctx.responsable,
@@ -548,11 +666,22 @@ function sendMantenimientoPreventivoPdf(res, hojaVida, equipo, mantenimiento) {
         ? 'Sí'
         : 'No',
     textValue(mantenimiento.justificacion_ausencia_mantenimiento),
-    ctx.supervisor,
     textValue(mantenimiento.firma_responsable),
   ].forEach((value, index) => {
-    drawCell(doc, x, rowY, tailCols[index], 60, value, { fontSize: 6.6 });
+    drawCell(doc, x, rowY, tailCols[index], 66, value, {
+      fontSize: index === 1 ? 6.8 : 6.2,
+      align: index === 1 ? 'center' : 'left',
+    });
     x += tailCols[index];
+  });
+  drawCell(doc, left, rowY + 66, width, 18, 'Observaciones', {
+    bold: true,
+    fill: '#d1d5db',
+    align: 'center',
+    fontSize: 6.4,
+  });
+  drawCell(doc, left, rowY + 84, width, 24, textValue(mantenimiento.observaciones_generales), {
+    fontSize: 6.3,
   });
   drawFooter(doc);
   doc.end();

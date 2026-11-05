@@ -2388,6 +2388,19 @@ router.get(
       }
 
       const mantenimiento = mantenimientoResult.rows[0];
+      const formatoAsociado = String(mantenimiento.formato_registro || '')
+        .trim()
+        .toUpperCase();
+      if (!formatoAsociado) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=El%20mantenimiento%20no%20tiene%20un%20formato%20SIGUD%20asociado`
+        );
+      }
+      if (formato !== formatoAsociado) {
+        return res.redirect(
+          `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=El%20mantenimiento%20solo%20puede%20imprimirse%20con%20su%20formato%20asociado`
+        );
+      }
       if (formato === 'FR-026') {
         return sendMantenimientoCorrectivoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
       }
