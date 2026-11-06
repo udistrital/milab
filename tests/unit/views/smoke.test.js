@@ -859,6 +859,16 @@ test('hojas-vida ver view renders the maintenance summary and history', async ()
       equipo: { codigo: 'EQ-01', nombre: 'Equipo Demo', ubicacion: 'Lab 11' },
       secciones: CAMPOS_POR_SECCION,
       documentos: [],
+      baja: {
+        estado: 'APLICADA',
+        estado_etiqueta: 'Aplicada',
+        estado_clase: 'danger',
+        bloquea_prestamo: true,
+        fecha_baja_display: '12/10/2026',
+        responsable: 'Ana Responsable',
+        motivo: 'Obsolescencia tecnológica',
+        observaciones: 'Se reemplaza por equipo nuevo.',
+      },
       mantenimientos: [
         {
           id: 9,
@@ -890,6 +900,11 @@ test('hojas-vida ver view renders the maintenance summary and history', async ()
   assert.match(html, /data-testid="hv-resumen-uso"/);
   assert.match(html, /data-testid="hv-alerta-mantenimiento">Mantenimiento vencido/);
   assert.match(html, /data-testid="hv-resumen-prestamos">247/);
+  assert.match(html, /data-testid="action-baja-hv"/);
+  assert.match(html, /data-testid="hv-baja-panel"/);
+  assert.match(html, /data-testid="hv-baja-estado">\s*Aplicada/);
+  assert.match(html, /Bloqueada por baja aplicada/);
+  assert.match(html, /Obsolescencia tecnológica/);
   assert.match(html, /data-testid="hv-historial-mantenimientos"/);
   assert.match(html, /data-testid="hv-historial-mantenimiento-item">Cambio de rodamiento/);
   assert.match(html, /Servitec/);
@@ -911,6 +926,54 @@ test('hojas-vida ver view renders the empty maintenance history', async () => {
   );
 
   assert.match(html, /data-testid="hv-historial-mantenimientos-vacio"/);
+});
+
+test('hojas-vida baja view renders the registration form and current status', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/baja.ejs',
+    buildBaseViewLocals({
+      hojaVida: { id: 42, equipo_id: 7, estado: 'ACTIVA' },
+      equipo: {
+        codigo: 'EQ-01',
+        nombre: 'Equipo Demo',
+        ubicacion: 'Lab 11',
+        estado: 'disponible',
+        disponible_prestamo: true,
+      },
+      baja: {
+        estado: 'REGISTRADA',
+        estado_etiqueta: 'Registrada',
+        estado_clase: 'warning',
+        bloquea_prestamo: false,
+        fecha_baja: '2026-11-05',
+        fecha_baja_display: '05/11/2026',
+        responsable: 'Ana Responsable',
+        motivo: 'Equipo obsoleto',
+        observaciones: 'Pendiente de retiro físico.',
+      },
+      estadosBaja: [
+        { codigo: 'REGISTRADA', etiqueta: 'Registrada' },
+        { codigo: 'APLICADA', etiqueta: 'Aplicada' },
+        { codigo: 'REVERTIDA', etiqueta: 'Revertida' },
+      ],
+      successMessage: null,
+      errorMessage: null,
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /data-testid="hv-baja-view"/);
+  assert.match(html, /data-testid="hv-baja-form"/);
+  assert.match(html, /data-testid="hv-baja-estado-actual">\s*Registrada/);
+  assert.match(html, /name="motivo"/);
+  assert.match(html, /name="responsable"/);
+  assert.match(html, /name="fecha_baja"/);
+  assert.match(html, /name="estado"/);
+  assert.match(html, /Pendiente de retiro físico\./);
+  assert.match(html, /var HOJA_VIDA_ID = 42;/);
+  assert.match(html, /var ENDPOINT = '\/milab\/api\/hojas-vida\/' \+ HOJA_VIDA_ID \+ '\/baja';/);
+  assert.match(html, /X-CSRF-Token/);
+  assert.match(html, /nonce="test-nonce"/);
 });
 
 test('hojas-vida reportes views render filters and data panels', async () => {

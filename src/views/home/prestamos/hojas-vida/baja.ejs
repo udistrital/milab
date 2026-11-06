@@ -1,0 +1,280 @@
+<%- include('../../../partials/header'); -%>
+
+<%
+  function formatDateInput(value) {
+    if (!value) return '';
+    if (value instanceof Date) {
+      var padDate = function (n) { return String(n).padStart(2, '0'); };
+      return (
+        value.getFullYear() +
+        '-' +
+        padDate(value.getMonth() + 1) +
+        '-' +
+        padDate(value.getDate())
+      );
+    }
+    var match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : String(value);
+  }
+
+  var bajaActual = typeof baja !== 'undefined' ? baja : null;
+  var estadosDisponibles = typeof estadosBaja !== 'undefined' ? estadosBaja : [];
+  var hoy = new Date();
+  var fechaBajaValor = bajaActual && bajaActual.fecha_baja ? formatDateInput(bajaActual.fecha_baja) : formatDateInput(hoy);
+  var prestabilidadActual = typeof equipo.disponible_prestamo === 'boolean' ? equipo.disponible_prestamo : null;
+%>
+
+<main class="container app-page-shell" data-testid="hv-baja-view">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver a la Hoja de Vida
+      </a>
+    </div>
+    <h1 class="app-page-title">Gestión de obsolescencia / baja</h1>
+    <p class="app-page-subtitle">
+      Registra la baja del activo, controla su efecto sobre la prestabilidad y conserva la trazabilidad en el historial.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <section class="card app-table-panel text-light mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Equipo asociado</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Codigo interno</span>
+              <strong><%= equipo.codigo || '—' %></strong>
+            </div>
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Nombre</span>
+              <strong><%= equipo.nombre || '—' %></strong>
+            </div>
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Ubicacion</span>
+              <strong><%= equipo.ubicacion || equipo.laboratorio || '—' %></strong>
+            </div>
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Estado operativo</span>
+              <strong><%= equipo.estado || '—' %></strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card app-table-panel text-light">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <h5 class="mb-0">Estado actual de la baja</h5>
+          <% if (bajaActual) { %>
+            <span class="badge bg-<%= bajaActual.estado_clase || 'secondary' %>" data-testid="hv-baja-estado-actual">
+              <%= bajaActual.estado_etiqueta || bajaActual.estado %>
+            </span>
+          <% } else { %>
+            <span class="badge bg-secondary" data-testid="hv-baja-estado-actual">Sin registrar</span>
+          <% } %>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Prestabilidad</span>
+              <strong data-testid="hv-baja-prestabilidad-actual">
+                <% if (bajaActual && bajaActual.bloquea_prestamo) { %>
+                  Bloqueada por baja aplicada
+                <% } else if (prestabilidadActual === true) { %>
+                  Disponible para préstamo
+                <% } else if (prestabilidadActual === false) { %>
+                  No disponible para préstamo
+                <% } else { %>
+                  No aplica
+                <% } %>
+              </strong>
+            </div>
+            <div class="col-sm-6">
+              <span class="text-muted d-block small">Fecha registrada</span>
+              <strong><%= bajaActual ? bajaActual.fecha_baja_display || '—' : '—' %></strong>
+            </div>
+            <div class="col-12">
+              <div class="alert <%= bajaActual && bajaActual.bloquea_prestamo ? 'alert-danger' : 'alert-info' %> mb-0" role="alert">
+                <% if (bajaActual && bajaActual.bloquea_prestamo) { %>
+                  La baja aplicada deja el equipo fuera de servicio y bloquea la prestabilidad.
+                <% } else { %>
+                  Usa el estado <strong>Aplicada</strong> cuando la baja deba bloquear el préstamo y sacar el equipo de operación.
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col-lg-7">
+      <section class="card app-table-panel text-light">
+        <div class="card-header">
+          <h5 class="mb-0"><%= bajaActual ? 'Actualizar baja registrada' : 'Registrar nueva baja' %></h5>
+        </div>
+        <div class="card-body">
+          <form id="hv-baja-form" data-testid="hv-baja-form">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="hv-baja-fecha" class="form-label">Fecha de baja <span class="text-danger">*</span></label>
+                <input
+                  type="date"
+                  class="form-control"
+                  id="hv-baja-fecha"
+                  name="fecha_baja"
+                  value="<%= fechaBajaValor %>"
+                  required
+                />
+              </div>
+              <div class="col-md-6">
+                <label for="hv-baja-estado" class="form-label">Estado <span class="text-danger">*</span></label>
+                <select class="form-select" id="hv-baja-estado" name="estado" required>
+                  <option value="">Seleccione...</option>
+                  <% estadosDisponibles.forEach(function (estadoItem) { %>
+                    <option
+                      value="<%= estadoItem.codigo %>"
+                      <%= bajaActual && bajaActual.estado === estadoItem.codigo ? 'selected' : (!bajaActual && estadoItem.codigo === 'REGISTRADA' ? 'selected' : '') %>
+                    >
+                      <%= estadoItem.etiqueta %>
+                    </option>
+                  <% }); %>
+                </select>
+              </div>
+              <div class="col-12">
+                <label for="hv-baja-responsable" class="form-label">Responsable <span class="text-danger">*</span></label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="hv-baja-responsable"
+                  name="responsable"
+                  value="<%= bajaActual ? (bajaActual.responsable || '') : '' %>"
+                  maxlength="150"
+                  required
+                />
+              </div>
+              <div class="col-12">
+                <label for="hv-baja-motivo" class="form-label">Motivo <span class="text-danger">*</span></label>
+                <textarea
+                  class="form-control"
+                  id="hv-baja-motivo"
+                  name="motivo"
+                  rows="3"
+                  required
+                ><%= bajaActual ? (bajaActual.motivo || '') : '' %></textarea>
+              </div>
+              <div class="col-12">
+                <label for="hv-baja-observaciones" class="form-label">Observaciones</label>
+                <textarea
+                  class="form-control"
+                  id="hv-baja-observaciones"
+                  name="observaciones"
+                  rows="4"
+                ><%= bajaActual ? (bajaActual.observaciones || '') : '' %></textarea>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap mt-4">
+              <button type="submit" class="btn btn-danger" id="hv-baja-submit" data-submit-lock="true">
+                <i class="bi bi-save"></i>
+                <span><%= bajaActual ? 'Actualizar baja' : 'Registrar baja' %></span>
+              </button>
+              <a href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/historial" class="btn btn-outline-info">
+                <i class="bi bi-clock-history"></i> Ver historial
+              </a>
+            </div>
+
+            <div id="hv-baja-loading" class="d-none mt-3">
+              <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
+              <span class="ms-2">Guardando gestión de baja...</span>
+            </div>
+
+            <div id="hv-baja-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var HOJA_VIDA_ID = <%- Number(hojaVida.id) %>;
+    var ENDPOINT = '/milab/api/hojas-vida/' + HOJA_VIDA_ID + '/baja';
+    var REDIRECT_BASE = '/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/baja';
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
+    var form = document.getElementById('hv-baja-form');
+    var loadingEl = document.getElementById('hv-baja-loading');
+    var errorEl = document.getElementById('hv-baja-error');
+    var submitBtn = document.getElementById('hv-baja-submit');
+
+    function showError(message) {
+      if (!errorEl) return;
+      errorEl.textContent = message || 'No fue posible guardar la baja.';
+      errorEl.classList.remove('d-none');
+    }
+
+    if (!form) return;
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (errorEl) errorEl.classList.add('d-none');
+      if (loadingEl) loadingEl.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var formData = new FormData(form);
+      var cuerpo = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        cuerpo.append(key, value);
+      });
+
+      fetch(ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        },
+        body: cuerpo.toString(),
+      })
+        .then(function (res) {
+          return res
+            .json()
+            .then(function (body) {
+              return { ok: res.ok && body && body.ok === true, body: body };
+            })
+            .catch(function () {
+              return { ok: false, body: null };
+            });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(
+              (result.body && result.body.message) || 'No fue posible guardar la baja.'
+            );
+          }
+          var target = (result.body && result.body.data && result.body.data.gestion_url) || REDIRECT_BASE;
+          window.location.assign(target + '?success=' + encodeURIComponent(result.body.message));
+        })
+        .catch(function (error) {
+          showError(error && error.message ? error.message : null);
+        })
+        .finally(function () {
+          if (loadingEl) loadingEl.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+  })();
+</script>
