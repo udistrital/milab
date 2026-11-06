@@ -23,13 +23,22 @@ const CODIGOS_ESTADO_BAJA_HOJA_VIDA = ESTADOS_BAJA_HOJA_VIDA.map((estado) => est
 
 function obtenerEstadoBajaHojaVida(codigo) {
   return (
-    ESTADOS_BAJA_HOJA_VIDA.find((estado) => estado.codigo === String(codigo || '').trim().toUpperCase()) ||
-    null
+    ESTADOS_BAJA_HOJA_VIDA.find(
+      (estado) =>
+        estado.codigo ===
+        String(codigo || '')
+          .trim()
+          .toUpperCase()
+    ) || null
   );
 }
 
 function esEstadoBajaHojaVidaValido(codigo) {
-  return CODIGOS_ESTADO_BAJA_HOJA_VIDA.includes(String(codigo || '').trim().toUpperCase());
+  return CODIGOS_ESTADO_BAJA_HOJA_VIDA.includes(
+    String(codigo || '')
+      .trim()
+      .toUpperCase()
+  );
 }
 
 function etiquetaEstadoBajaHojaVida(codigo) {
