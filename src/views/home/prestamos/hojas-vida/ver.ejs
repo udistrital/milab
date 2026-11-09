@@ -20,8 +20,10 @@
   (documentos || []).forEach(function (doc) {
     if (doc.tipo_documento === 'FOTOGRAFIA_EQUIPO' && !foto) { foto = doc; }
   });
+  var bajaData = typeof baja !== 'undefined' ? baja : null;
   var listaMantenimientos = typeof mantenimientos !== 'undefined' && mantenimientos ? mantenimientos : [];
   var resumenHV = typeof resumen !== 'undefined' && resumen ? resumen : {};
+  var prestabilidadActual = typeof equipo.disponible_prestamo === 'boolean' ? equipo.disponible_prestamo : null;
   var etiquetasDocumento = {
     EXCEL_ORIGEN: 'Documento original (Excel)',
     PDF_ORIGEN: 'Documento original (PDF)',
@@ -109,11 +111,81 @@
           <i class="bi bi-clock-history"></i> Ver Historial
         </a>
         <a
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/baja"
+          class="btn btn-outline-danger btn-sm"
+          data-testid="action-baja-hv"
+        >
+          <i class="bi bi-slash-circle"></i> Gestionar baja
+        </a>
+        <a
           href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/editar"
           class="btn btn-outline-secondary btn-sm"
           data-testid="action-editar-hv"
         >
           <i class="bi bi-pencil"></i> Editar HV
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4" data-testid="hv-baja-panel">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <h5 class="mb-0">Obsolescencia / Baja</h5>
+      <% if (bajaData) { %>
+        <span class="badge bg-<%= bajaData.estado_clase || 'secondary' %>" data-testid="hv-baja-estado">
+          <%= bajaData.estado_etiqueta || bajaData.estado || 'Sin estado' %>
+        </span>
+      <% } else { %>
+        <span class="badge bg-secondary" data-testid="hv-baja-estado">Sin baja registrada</span>
+      <% } %>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Prestabilidad actual</span>
+          <strong data-testid="hv-baja-prestamo">
+            <% if (bajaData && bajaData.bloquea_prestamo) { %>
+              Bloqueada por baja aplicada
+            <% } else if (prestabilidadActual === true) { %>
+              Disponible para préstamo
+            <% } else if (prestabilidadActual === false) { %>
+              No disponible para préstamo
+            <% } else { %>
+              No aplica
+            <% } %>
+          </strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Fecha de baja</span>
+          <strong><%= bajaData ? bajaData.fecha_baja_display || '—' : '—' %></strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Responsable</span>
+          <strong><%= bajaData ? bajaData.responsable || '—' : '—' %></strong>
+        </div>
+        <div class="col-md-3">
+          <span class="text-muted d-block small">Motivo</span>
+          <strong data-testid="hv-baja-motivo"><%= bajaData ? bajaData.motivo || '—' : 'Sin registrar' %></strong>
+        </div>
+      </div>
+      <% if (bajaData && bajaData.observaciones) { %>
+        <div class="mt-3">
+          <span class="text-muted d-block small">Observaciones</span>
+          <span style="white-space: pre-line;"><%= bajaData.observaciones %></span>
+        </div>
+      <% } %>
+      <div class="d-flex gap-2 flex-wrap mt-3">
+        <a
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/baja"
+          class="btn btn-outline-danger btn-sm"
+        >
+          <i class="bi bi-pencil-square"></i> Registrar o actualizar baja
+        </a>
+        <a
+          href="/milab/inventarios/hojas-vida/<%= hojaVida.equipo_id %>/historial"
+          class="btn btn-outline-info btn-sm"
+        >
+          <i class="bi bi-clock-history"></i> Ver trazabilidad
         </a>
       </div>
     </div>

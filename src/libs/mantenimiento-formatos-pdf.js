@@ -11,6 +11,7 @@ const ESCUDO_PATH = path.join(
   'img',
   'Logo_Escudo_Acreditacion_Horizontal.png'
 );
+const SIGUD_PATH = path.join(__dirname, '..', 'public', 'img', 'logo_sigud.jpg');
 
 const MESES = [
   { codigo: 'enero', etiqueta: 'Enero' },
@@ -91,9 +92,13 @@ function drawHeader(doc, title, code, approvalDate) {
   const top = doc.page.margins.top;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const leftWidth = 90;
-  const rightWidth = 180;
+  const rightWidth = 200;
+  const sigudWidth = 72;
+  const metaWidth = rightWidth - sigudWidth;
   const centerWidth = width - leftWidth - rightWidth;
   const palette = { border: '#4b5563', gray: '#d1d5db', text: '#111827', white: '#ffffff' };
+  const rightX = left + leftWidth + centerWidth;
+  const sigudX = rightX + metaWidth;
 
   doc
     .save()
@@ -114,8 +119,16 @@ function drawHeader(doc, title, code, approvalDate) {
     .save()
     .lineWidth(0.8)
     .strokeColor(palette.border)
-    .moveTo(left + leftWidth + centerWidth, top)
-    .lineTo(left + leftWidth + centerWidth, top + 56)
+    .moveTo(rightX, top)
+    .lineTo(rightX, top + 56)
+    .stroke()
+    .restore();
+  doc
+    .save()
+    .lineWidth(0.8)
+    .strokeColor(palette.border)
+    .moveTo(sigudX, top)
+    .lineTo(sigudX, top + 56)
     .stroke()
     .restore();
   [18, 36].forEach((offset) => {
@@ -152,13 +165,22 @@ function drawHeader(doc, title, code, approvalDate) {
   });
 
   setFont(doc, 'regular');
-  doc.fontSize(6.5).text(`Código: ${code}`, left + leftWidth + centerWidth + 6, top + 6, {
-    width: rightWidth - 12,
+  doc.fontSize(6.5).text(`Código: ${code}`, rightX + 6, top + 6, {
+    width: metaWidth - 12,
   });
-  doc.text('Versión: 01', left + leftWidth + centerWidth + 6, top + 24, { width: rightWidth - 12 });
-  doc.text(`Fecha Aprobación: ${approvalDate}`, left + leftWidth + centerWidth + 6, top + 42, {
-    width: rightWidth - 12,
+  doc.text('Versión: 01', rightX + 6, top + 24, { width: metaWidth - 12 });
+  doc.text(`Fecha Aprobación: ${approvalDate}`, rightX + 6, top + 42, {
+    width: metaWidth - 12,
   });
+
+  if (fs.existsSync(SIGUD_PATH)) {
+    doc.image(SIGUD_PATH, sigudX + 6, top + 8, {
+      fit: [sigudWidth - 12, 40],
+      align: 'center',
+      valign: 'center',
+    });
+  }
+
   doc.y = top + 66;
 }
 
@@ -339,9 +361,10 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
     'PROVEEDOR',
     'FIRMA',
   ];
+  const headerY = doc.y;
   x = left;
   labels.forEach((label, index) => {
-    drawCell(doc, x, doc.y, cols[index], 34, label, {
+    drawCell(doc, x, headerY, cols[index], 34, label, {
       bold: true,
       fill: '#d1d5db',
       align: 'center',
@@ -360,7 +383,7 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
     textValue(mantenimiento.firma_proveedor),
   ];
   x = left;
-  const dataY = doc.y + 34;
+  const dataY = headerY + 34;
   values.forEach((value, index) => {
     drawCell(doc, x, dataY, cols[index], 86, value, {
       fontSize: 6.8,

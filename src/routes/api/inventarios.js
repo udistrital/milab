@@ -29,6 +29,12 @@ const {
   diasRestantesMantenimiento,
   SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
+const {
+  ESTADOS_BAJA_HOJA_VIDA,
+  etiquetaEstadoBajaHojaVida,
+  claseEstadoBajaHojaVida,
+  bloqueaPrestamoPorBaja,
+} = require('../../libs/hojas-vida-bajas');
 const { sendHojaVidaPdf, sendFichaTecnicaPdf } = require('../../libs/hojas-vida-pdf');
 const {
   sendMantenimientoCorrectivoPdf,
@@ -322,7 +328,10 @@ async function loadHojaVidaByEquipment(client, equipoId) {
         ec.ubicacion AS equipo_ubicacion,
         ec.facultad AS equipo_facultad,
         ec.laboratorio AS equipo_laboratorio,
-        inv.laboratorio_ual_id AS equipo_ual_id
+        ec.estado AS equipo_estado,
+        ec.inventario_id AS inventario_id,
+        inv.laboratorio_ual_id AS equipo_ual_id,
+        inv.disponible_prestamo AS inventario_disponible_prestamo
       FROM hoja_vida hv
       JOIN equipo_catalogo ec ON ec.id = hv.equipo_id
       LEFT JOIN inventario inv ON inv.id = ec.inventario_id
@@ -345,8 +354,54 @@ async function loadHojaVidaByEquipment(client, equipoId) {
       ubicacion: hojaVida.equipo_ubicacion,
       facultad: hojaVida.equipo_facultad,
       laboratorio: hojaVida.equipo_laboratorio,
+      estado: hojaVida.equipo_estado,
+      inventario_id: hojaVida.inventario_id,
+      disponible_prestamo: hojaVida.inventario_disponible_prestamo,
     },
   };
+}
+
+function mapearBajaHojaVidaWeb(baja) {
+  if (!baja) return null;
+  return {
+    ...baja,
+    estado_etiqueta: etiquetaEstadoBajaHojaVida(baja.estado),
+    estado_clase: claseEstadoBajaHojaVida(baja.estado),
+    bloquea_prestamo: bloqueaPrestamoPorBaja(baja.estado),
+    fecha_baja_display: formatHvDate(baja.fecha_baja),
+    fecha_creacion_display: formatHvDateTime(baja.fecha_creacion),
+    fecha_modificacion_display: formatHvDateTime(baja.fecha_modificacion),
+  };
+}
+
+async function cargarBajaHojaVidaWeb(client, hojaVidaId) {
+  try {
+    const result = await client.query(
+      `
+        SELECT
+          id,
+          motivo,
+          fecha_baja,
+          responsable,
+          estado,
+          observaciones,
+          fecha_creacion,
+          fecha_modificacion,
+          usuario_creacion,
+          usuario_modificacion
+        FROM hoja_vida_baja
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [hojaVidaId]
+    );
+    return mapearBajaHojaVidaWeb(result.rows[0] || null);
+  } catch (error) {
+    if (error?.code === '42P01') return null;
+    throw error;
+  }
 }
 
 function mapearMantenimientoWeb(mantenimiento, diasAlerta) {
@@ -1817,6 +1872,7 @@ router.get('/hojas-vida/:equipoId', requireInventoryAccess, async function (req,
 
     const diasAlerta = await obtenerDiasAlertaVencimientoWeb(pool);
     const mantenimientos = await cargarMantenimientosWeb(pool, datos.hojaVida.id, diasAlerta);
+    const baja = await cargarBajaHojaVidaWeb(pool, datos.hojaVida.id);
     const prestamosResult = await pool.query(
       `
         SELECT COUNT(*)::int AS total
@@ -1838,6 +1894,7 @@ router.get('/hojas-vida/:equipoId', requireInventoryAccess, async function (req,
       secciones: CAMPOS_POR_SECCION,
       documentos,
       mantenimientos,
+      baja,
       resumen,
       tipoUsoTexto: formatearTipoUso(datos.hojaVida.tipo_uso),
       successMessage: sanitizeText(req.query.success),
@@ -2149,6 +2206,48 @@ router.get('/hojas-vida/:equipoId/historial', requireInventoryAccess, async func
     console.error('[inventarios] Error cargando historial HV:', error);
     return res.redirect(
       `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20el%20historial`
+    );
+  }
+});
+
+router.get('/hojas-vida/:equipoId/baja', requireInventoryAccess, async function (req, res) {
+  try {
+    const equipoId = parsePositiveId(req.params.equipoId);
+    if (!equipoId) {
+      return res.redirect(`${HOJAS_VIDA_BASE_URL}?error=Equipo%20invalido`);
+    }
+
+    const datos = await loadHojaVidaByEquipment(pool, equipoId);
+    if (!datos) {
+      return res.redirect(
+        `${HOJAS_VIDA_BASE_URL}?error=El%20equipo%20no%20tiene%20hoja%20de%20vida`
+      );
+    }
+    if (
+      !datos.hojaVida.equipo_ual_id ||
+      !(await hasLaboratoryAccess(pool, req, datos.hojaVida.equipo_ual_id))
+    ) {
+      return res.status(403).render('home/message_error', {
+        message: 'Acceso denegado',
+        message2: 'No tienes acceso al laboratorio seleccionado.',
+        limit: 'loginOnly',
+      });
+    }
+
+    const baja = await cargarBajaHojaVidaWeb(pool, datos.hojaVida.id);
+
+    return res.render('home/prestamos/hojas-vida/baja', {
+      hojaVida: datos.hojaVida,
+      equipo: datos.equipo,
+      baja,
+      estadosBaja: ESTADOS_BAJA_HOJA_VIDA,
+      successMessage: sanitizeText(req.query.success),
+      errorMessage: sanitizeText(req.query.error),
+    });
+  } catch (error) {
+    console.error('[inventarios] Error cargando gestión de baja HV:', error);
+    return res.redirect(
+      `${HOJAS_VIDA_BASE_URL}?error=No%20fue%20posible%20cargar%20la%20gestion%20de%20baja`
     );
   }
 });

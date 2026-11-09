@@ -111,6 +111,30 @@ CREATE TABLE IF NOT EXISTS mantenimiento (
         REFERENCES equipo(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS hoja_vida_baja (
+    id                      BIGSERIAL,
+    hoja_vida_id            BIGINT                  NOT NULL,
+    equipo_id               INT                     NOT NULL,
+    motivo                  TEXT                    NOT NULL,
+    fecha_baja              DATE                    NOT NULL,
+    responsable             VARCHAR(150)            NOT NULL,
+    estado                  VARCHAR(30)             NOT NULL,
+    observaciones           TEXT,
+    activo                  BOOLEAN                 NOT NULL DEFAULT TRUE,
+    fecha_creacion          TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion      TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuario_creacion        VARCHAR(50),
+    usuario_modificacion    VARCHAR(50),
+    CONSTRAINT pk_hoja_vida_baja PRIMARY KEY (id),
+    CONSTRAINT ck_estado_hoja_vida_baja CHECK (
+        estado IN ('REGISTRADA','APLICADA','REVERTIDA')
+    ),
+    CONSTRAINT fk_hoja_vida_baja_hoja_vida FOREIGN KEY (hoja_vida_id)
+        REFERENCES hoja_vida(id) ON DELETE CASCADE,
+    CONSTRAINT fk_hoja_vida_baja_equipo FOREIGN KEY (equipo_id)
+        REFERENCES equipo(id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS mantenimiento_config (
     id                      BIGSERIAL,
     dias_alerta_vencimiento INT                     NOT NULL DEFAULT 30,
@@ -216,6 +240,16 @@ CREATE INDEX IF NOT EXISTS idx_mantenimiento_fecha_realizacion
 
 CREATE INDEX IF NOT EXISTS idx_mantenimiento_activo
     ON mantenimiento (activo);
+
+CREATE INDEX IF NOT EXISTS idx_hoja_vida_baja_hoja_vida_id
+    ON hoja_vida_baja (hoja_vida_id);
+
+CREATE INDEX IF NOT EXISTS idx_hoja_vida_baja_equipo_id
+    ON hoja_vida_baja (equipo_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_hoja_vida_baja_activa_hoja_vida
+    ON hoja_vida_baja (hoja_vida_id)
+    WHERE activo = TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_hoja_vida_documento_hoja_vida_id
     ON hoja_vida_documento (hoja_vida_id);

@@ -27,6 +27,11 @@ const {
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
   SEVERIDAD_SITUACION,
 } = require('../../libs/hojas-vida-mantenimientos');
+const {
+  esEstadoBajaHojaVidaValido,
+  etiquetaEstadoBajaHojaVida,
+  bloqueaPrestamoPorBaja,
+} = require('../../libs/hojas-vida-bajas');
 
 const router = express.Router();
 
@@ -396,6 +401,229 @@ async function registrarEventoHistorial(
       opciones.referenciaId || null,
     ]
   );
+}
+
+async function cargarHojaVidaContexto(cliente, hojaVidaId) {
+  const result = await cliente.query(
+    `
+      SELECT
+        hv.id,
+        hv.equipo_id,
+        hv.estado,
+        ec.estado AS equipo_estado,
+        ec.activo AS equipo_activo,
+        ec.inventario_id,
+        inv.activo AS inventario_activo,
+        inv.disponible_prestamo AS inventario_disponible_prestamo,
+        inv.laboratorio_ual_id AS ual_id
+      FROM hoja_vida hv
+      JOIN equipo_catalogo ec ON ec.id = hv.equipo_id
+      LEFT JOIN inventario inv ON inv.id = ec.inventario_id
+      WHERE hv.id = $1
+        AND hv.activo = TRUE
+      LIMIT 1
+    `,
+    [hojaVidaId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function cargarBajaHojaVidaActiva(cliente, hojaVidaId, { forUpdate = false } = {}) {
+  try {
+    const result = await cliente.query(
+      `
+        SELECT
+          id,
+          hoja_vida_id,
+          equipo_id,
+          motivo,
+          fecha_baja,
+          responsable,
+          estado,
+          observaciones,
+          activo,
+          fecha_creacion,
+          fecha_modificacion,
+          usuario_creacion,
+          usuario_modificacion
+        FROM hoja_vida_baja
+        WHERE hoja_vida_id = $1
+          AND activo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+        ${forUpdate ? 'FOR UPDATE' : ''}
+      `,
+      [hojaVidaId]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    if (error?.code === '42P01') {
+      const schemaError = new Error(
+        'La tabla hoja_vida_baja no existe. Ejecuta primero el script SQL de obsolescencia.'
+      );
+      schemaError.statusCode = 500;
+      throw schemaError;
+    }
+    throw error;
+  }
+}
+
+function normalizarDatosBajaHojaVida(body) {
+  const motivo = normalizarTextoOpcional(body?.motivo);
+  if (!motivo) {
+    return {
+      ok: false,
+      message: 'El motivo de la baja es obligatorio.',
+      details: { campos_faltantes: ['motivo'] },
+    };
+  }
+
+  const fechaBaja = normalizarFechaDiaOpcional(body?.fecha_baja);
+  if (!fechaBaja) {
+    return {
+      ok: false,
+      message: 'La fecha de la baja es obligatoria y debe ser válida.',
+      details: { campos_faltantes: ['fecha_baja'] },
+    };
+  }
+
+  const responsable = normalizarTextoOpcional(body?.responsable);
+  if (!responsable) {
+    return {
+      ok: false,
+      message: 'El responsable de la baja es obligatorio.',
+      details: { campos_faltantes: ['responsable'] },
+    };
+  }
+
+  const estado = String(body?.estado || '')
+    .trim()
+    .toUpperCase();
+  if (!esEstadoBajaHojaVidaValido(estado)) {
+    return {
+      ok: false,
+      message: 'El estado de la baja no es válido.',
+      details: { campos_faltantes: ['estado'] },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      motivo,
+      fecha_baja: fechaBaja,
+      responsable,
+      estado,
+      observaciones: normalizarTextoOpcional(body?.observaciones),
+    },
+  };
+}
+
+function mismaBajaHojaVida(actual, siguiente) {
+  if (!actual) return false;
+  return (
+    normalizarTextoOpcional(actual.motivo) === siguiente.motivo &&
+    normalizarFechaDiaOpcional(actual.fecha_baja) === siguiente.fecha_baja &&
+    normalizarTextoOpcional(actual.responsable) === siguiente.responsable &&
+    String(actual.estado || '')
+      .trim()
+      .toUpperCase() === siguiente.estado &&
+    normalizarTextoOpcional(actual.observaciones) === siguiente.observaciones
+  );
+}
+
+async function aplicarRestriccionesBajaHojaVida(cliente, contexto, estadoAnterior, estadoNuevo) {
+  const bloqueabaAntes = bloqueaPrestamoPorBaja(estadoAnterior);
+  const bloqueaAhora = bloqueaPrestamoPorBaja(estadoNuevo);
+
+  let equipoEstado =
+    String(contexto.equipo_estado || '')
+      .trim()
+      .toLowerCase() || null;
+  let inventarioDisponible =
+    contexto.inventario_disponible_prestamo === null ||
+    contexto.inventario_disponible_prestamo === undefined
+      ? null
+      : Boolean(contexto.inventario_disponible_prestamo);
+
+  if (bloqueaAhora) {
+    if (equipoEstado === 'prestado') {
+      const conflict = new Error('No se puede aplicar la baja mientras el equipo está prestado.');
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+
+    if (contexto.equipo_activo !== false) {
+      await cliente.query(
+        `
+          UPDATE equipo
+          SET estado = 'fuera_servicio',
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [contexto.equipo_id]
+      );
+      equipoEstado = 'fuera_servicio';
+    }
+
+    if (contexto.inventario_id && contexto.inventario_activo !== false) {
+      await cliente.query(
+        `
+          UPDATE inventario
+          SET disponible_prestamo = FALSE,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [contexto.inventario_id]
+      );
+      inventarioDisponible = false;
+    }
+
+    return { equipoEstado, inventarioDisponible };
+  }
+
+  if (bloqueabaAntes && !bloqueaAhora) {
+    const ejecucionResult = await cliente.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM mantenimiento
+        WHERE equipo_id = $1
+          AND activo = TRUE
+          AND estado = 'EN_EJECUCION'
+      `,
+      [contexto.equipo_id]
+    );
+    const tieneMantenimientoEnEjecucion = Number(ejecucionResult.rows[0]?.total || 0) > 0;
+    equipoEstado = tieneMantenimientoEnEjecucion ? 'mantenimiento' : 'disponible';
+
+    if (contexto.equipo_activo !== false) {
+      await cliente.query(
+        `
+          UPDATE equipo
+          SET estado = $2,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [contexto.equipo_id, equipoEstado]
+      );
+    }
+
+    if (contexto.inventario_id && contexto.inventario_activo !== false) {
+      inventarioDisponible = equipoEstado === 'disponible';
+      await cliente.query(
+        `
+          UPDATE inventario
+          SET disponible_prestamo = $2,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [contexto.inventario_id, inventarioDisponible]
+      );
+    }
+  }
+
+  return { equipoEstado, inventarioDisponible };
 }
 
 const ESTADOS_PRESTAMO_COMPUTABLES = ['aprobado', 'activo', 'finalizado'];
@@ -2539,6 +2767,218 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /:hojaVidaId/baja
+ * Registra o actualiza la obsolescencia/baja del activo y sincroniza las
+ * restricciones operativas derivadas del estado seleccionado.
+ */
+router.post('/:hojaVidaId/baja', async function registrarBajaHojaVida(req, res) {
+  try {
+    const hojaVidaId = Number(req.params?.hojaVidaId);
+    if (!Number.isInteger(hojaVidaId) || hojaVidaId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El identificador de la hoja de vida es invalido.',
+      });
+    }
+
+    const validacion = normalizarDatosBajaHojaVida(req.body || {});
+    if (!validacion.ok) {
+      return res.status(400).json({
+        ok: false,
+        message: validacion.message,
+        details: validacion.details,
+      });
+    }
+
+    const datos = validacion.data;
+    const contexto = await cargarHojaVidaContexto(pool, hojaVidaId);
+    if (!contexto) {
+      return res.status(404).json({
+        ok: false,
+        message: 'La hoja de vida no existe.',
+      });
+    }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    if (
+      Array.isArray(accessibleLaboratoryIds) &&
+      (!contexto.ual_id || !accessibleLaboratoryIds.includes(Number(contexto.ual_id)))
+    ) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No tienes acceso al laboratorio seleccionado.',
+      });
+    }
+
+    if (contexto.estado !== 'ACTIVA') {
+      return res.status(409).json({
+        ok: false,
+        message: 'Solo se puede gestionar la baja de una hoja de vida confirmada.',
+        details: { hoja_vida_id: hojaVidaId, estado: contexto.estado },
+      });
+    }
+
+    const existente = await cargarBajaHojaVidaActiva(pool, hojaVidaId);
+    if (!existente && datos.estado === 'REVERTIDA') {
+      return res.status(409).json({
+        ok: false,
+        message: 'No existe una baja activa previa para marcarla como revertida.',
+      });
+    }
+
+    if (existente && mismaBajaHojaVida(existente, datos)) {
+      return res.status(200).json({
+        ok: true,
+        message: 'No se detectaron cambios en la gestión de baja.',
+        data: {
+          hoja_vida_id: hojaVidaId,
+          equipo_id: Number(contexto.equipo_id),
+          baja_id: Number(existente.id),
+          estado: existente.estado,
+          view_url: `/milab/inventarios/hojas-vida/${contexto.equipo_id}`,
+          gestion_url: `/milab/inventarios/hojas-vida/${contexto.equipo_id}/baja`,
+          sin_cambios: true,
+        },
+      });
+    }
+
+    const usuario = req.session?.user?.id || null;
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+
+      const contextoTx = await cargarHojaVidaContexto(cliente, hojaVidaId);
+      if (!contextoTx) {
+        const missingError = new Error('La hoja de vida no existe.');
+        missingError.statusCode = 404;
+        throw missingError;
+      }
+
+      const bajaActual = await cargarBajaHojaVidaActiva(cliente, hojaVidaId, { forUpdate: true });
+      if (!bajaActual && datos.estado === 'REVERTIDA') {
+        const conflict = new Error(
+          'No existe una baja activa previa para marcarla como revertida.'
+        );
+        conflict.statusCode = 409;
+        throw conflict;
+      }
+
+      let bajaId;
+      if (bajaActual) {
+        const updateResult = await cliente.query(
+          `
+            UPDATE hoja_vida_baja
+            SET motivo = $2,
+                fecha_baja = $3,
+                responsable = $4,
+                estado = $5,
+                observaciones = $6,
+                fecha_modificacion = CURRENT_TIMESTAMP,
+                usuario_modificacion = $7
+            WHERE id = $1
+            RETURNING id, estado
+          `,
+          [
+            bajaActual.id,
+            datos.motivo,
+            datos.fecha_baja,
+            datos.responsable,
+            datos.estado,
+            datos.observaciones,
+            usuario,
+          ]
+        );
+        bajaId = Number(updateResult.rows[0].id);
+      } else {
+        const insertResult = await cliente.query(
+          `
+            INSERT INTO hoja_vida_baja (
+              hoja_vida_id, equipo_id, motivo, fecha_baja, responsable, estado,
+              observaciones, usuario_creacion, usuario_modificacion
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+            RETURNING id, estado
+          `,
+          [
+            hojaVidaId,
+            contextoTx.equipo_id,
+            datos.motivo,
+            datos.fecha_baja,
+            datos.responsable,
+            datos.estado,
+            datos.observaciones,
+            usuario,
+          ]
+        );
+        bajaId = Number(insertResult.rows[0].id);
+      }
+
+      const efectos = await aplicarRestriccionesBajaHojaVida(
+        cliente,
+        contextoTx,
+        bajaActual?.estado || null,
+        datos.estado
+      );
+
+      const descripcion = !bajaActual
+        ? `Baja registrada con estado ${etiquetaEstadoBajaHojaVida(datos.estado)}. Motivo: ${datos.motivo}. Responsable: ${datos.responsable}.`
+        : `Baja actualizada de ${etiquetaEstadoBajaHojaVida(bajaActual.estado)} a ${etiquetaEstadoBajaHojaVida(datos.estado)}. Motivo: ${datos.motivo}. Responsable: ${datos.responsable}.`;
+
+      await cliente.query(
+        `
+          INSERT INTO hoja_vida_historial (
+            hoja_vida_id, equipo_id, tipo_evento, campo_modificado,
+            valor_anterior, valor_nuevo, descripcion, usuario, usuario_creacion,
+            referencia_tipo, referencia_id
+          ) VALUES ($1, $2, 'BAJA', 'estado_baja', $3, $4, $5, $6, $6, 'BAJA', $7)
+        `,
+        [
+          hojaVidaId,
+          contextoTx.equipo_id,
+          bajaActual?.estado || 'SIN_BAJA',
+          datos.estado,
+          descripcion,
+          usuario,
+          bajaId,
+        ]
+      );
+
+      await cliente.query('COMMIT');
+
+      return res.status(bajaActual ? 200 : 201).json({
+        ok: true,
+        message: bajaActual
+          ? 'La gestión de baja fue actualizada correctamente.'
+          : 'La baja fue registrada correctamente.',
+        data: {
+          hoja_vida_id: hojaVidaId,
+          equipo_id: Number(contextoTx.equipo_id),
+          baja_id: bajaId,
+          estado: datos.estado,
+          estado_etiqueta: etiquetaEstadoBajaHojaVida(datos.estado),
+          bloquea_prestamo: bloqueaPrestamoPorBaja(datos.estado),
+          equipo_estado: efectos.equipoEstado,
+          inventario_disponible_prestamo: efectos.inventarioDisponible,
+          view_url: `/milab/inventarios/hojas-vida/${contextoTx.equipo_id}`,
+          gestion_url: `/milab/inventarios/hojas-vida/${contextoTx.equipo_id}/baja`,
+        },
+      });
+    } catch (txError) {
+      await cliente.query('ROLLBACK');
+      throw txError;
+    } finally {
+      cliente.release();
+    }
+  } catch (error) {
+    console.error('[hojas-vida] Error registrando la baja:', error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.statusCode ? error.message : 'No fue posible registrar la baja.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
 
 /**
  * POST /:hojaVidaId/eventos
