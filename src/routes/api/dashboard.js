@@ -18,6 +18,10 @@ const { getAcademicServicePath, requestOati } = require('../../libs/oati-client'
 const { normalizeRoles } = require('../../libs/roles');
 const { buildSessionUser, fetchUserById } = require('../../libs/user-identity');
 const {
+  TIPOS_MANTENIMIENTO,
+  ESTADOS_MANTENIMIENTO,
+} = require('../../libs/hojas-vida-mantenimientos');
+const {
   normalizeRoleListForMatch,
   requireJsonRoles,
   requireRoles,
@@ -2662,6 +2666,16 @@ router.post(
     return res.redirect('/milab/api/dashboard');
   }
 );
+
+router.get('/hojas-vida', requireDashboardAccess, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.render('home/prestamos/hojas-vida/dashboard', {
+    tiposMantenimiento: TIPOS_MANTENIMIENTO,
+    estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+    successMessage: null,
+    errorMessage: null,
+  });
+});
 
 router.get('/inventarios', requireDashboardAccess, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

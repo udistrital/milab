@@ -212,3 +212,246 @@ test('hojas-vida baja rejects applying the decommission while the equipment is p
     loaded.restore();
   }
 });
+
+test('hojas-vida dashboard aggregates indicators and applies the alert rules', async () => {
+  const mantenimientos = [
+    {
+      id: 1,
+      equipo_id: 7,
+      tipo_mantenimiento: 'PREVENTIVO',
+      estado: 'PENDIENTE',
+      fecha_realizacion: '2020-01-01',
+      costo: 100,
+      equipo_codigo: 'EQ-1',
+      equipo_nombre: 'Equipo 1',
+      laboratorio: 'Lab A',
+      facultad: 'Facultad X',
+    },
+    {
+      id: 2,
+      equipo_id: 8,
+      tipo_mantenimiento: 'CORRECTIVO',
+      estado: 'CUMPLIDO',
+      fecha_realizacion: '2024-06-15',
+      costo: 300,
+      equipo_codigo: 'EQ-2',
+      equipo_nombre: 'Equipo 2',
+      laboratorio: 'Lab B',
+      facultad: 'Facultad Y',
+    },
+  ];
+
+  const handleQuery = async (sql) => {
+    if (sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')) {
+      return { rows: mantenimientos };
+    }
+    if (sql.includes('COUNT(DISTINCT hv.id)')) {
+      return { rows: [{ total_hojas: 3, hojas_activas: 2, hojas_pendientes: 1 }] };
+    }
+    if (sql.includes('FROM hoja_vida_baja b')) {
+      return { rows: [{ total: 1 }] };
+    }
+    return { rows: [] };
+  };
+
+  const loaded = loadRoute({ query: handleQuery });
+
+  try {
+    const response = await request(loaded.app).get('/dashboard');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    const data = response.body.data;
+    assert.equal(data.alcance, 'global');
+    assert.equal(data.resumen.mantenimientos_total, 2);
+    assert.equal(data.resumen.costo_total, 400);
+    assert.equal(data.resumen.costo_promedio, 200);
+    assert.equal(data.resumen.equipos_con_hoja_vida, 3);
+    assert.equal(data.resumen.hojas_activas, 2);
+    assert.equal(data.resumen.bajas_aplicadas, 1);
+    assert.equal(data.resumen.alertas_total, 1);
+
+    const cumplido = data.por_estado.find((item) => item.estado === 'CUMPLIDO');
+    assert.equal(cumplido.total, 1);
+    assert.equal(data.por_tipo.length, 2);
+    assert.equal(data.por_laboratorio.length, 2);
+    assert.equal(data.top_equipos_costo[0].equipo_id, 8);
+    assert.equal(data.alertas_por_situacion.length, 1);
+    assert.equal(data.alertas_por_situacion[0].situacion, 'VENCIDO');
+  } finally {
+    loaded.restore();
+  }
+});
+
+function fechaISO(desplazoDias) {
+  const base = new Date();
+  base.setDate(base.getDate() + desplazoDias);
+  const mes = String(base.getMonth() + 1).padStart(2, '0');
+  const dia = String(base.getDate()).padStart(2, '0');
+  return `${base.getFullYear()}-${mes}-${dia}`;
+}
+
+test('hojas-vida programacion lists scheduled maintenance and derives alerts by situacion', async () => {
+  const filas = [
+    {
+      mantenimiento_id: 1,
+      equipo_id: 7,
+      item: 'Cambio de aceite',
+      tipo_mantenimiento: 'PREVENTIVO',
+      fecha_realizacion: fechaISO(-5),
+      estado: 'PENDIENTE',
+      responsable: 'Ana',
+      formato_registro: null,
+      codigo_interno: 'EQ-1',
+      nombre_equipo: 'Equipo 1',
+      laboratorio: 'Lab A',
+      facultad: 'Facultad X',
+      codigo_inventario: 'P-1',
+    },
+    {
+      mantenimiento_id: 2,
+      equipo_id: 8,
+      item: 'Calibracion',
+      tipo_mantenimiento: 'CALIBRACION',
+      fecha_realizacion: fechaISO(10),
+      estado: 'PENDIENTE',
+      responsable: null,
+      formato_registro: null,
+      codigo_interno: 'EQ-2',
+      nombre_equipo: 'Equipo 2',
+      laboratorio: 'Lab B',
+      facultad: 'Facultad Y',
+      codigo_inventario: 'P-2',
+    },
+    {
+      mantenimiento_id: 3,
+      equipo_id: 9,
+      item: 'Limpieza',
+      tipo_mantenimiento: 'LIMPIEZA',
+      fecha_realizacion: fechaISO(200),
+      estado: 'PENDIENTE',
+      responsable: null,
+      formato_registro: null,
+      codigo_interno: 'EQ-3',
+      nombre_equipo: 'Equipo 3',
+      laboratorio: 'Lab C',
+      facultad: 'Facultad Z',
+      codigo_inventario: 'P-3',
+    },
+  ];
+
+  const handleQuery = async (sql) => {
+    if (sql.includes('FROM mantenimiento_config')) {
+      return { rows: [{ dias_alerta_vencimiento: 30 }] };
+    }
+    if (sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')) {
+      return { rows: filas };
+    }
+    return { rows: [] };
+  };
+
+  const loaded = loadRoute({ query: handleQuery });
+
+  try {
+    const response = await request(loaded.app).get('/programacion');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.resumen.total, 3);
+    assert.equal(response.body.resumen.programados, 3);
+    assert.equal(response.body.resumen.proximos, 1);
+    assert.equal(response.body.resumen.vencidos, 1);
+    assert.equal(response.body.alertas.length, 2);
+    assert.equal(response.body.data.length, 3);
+    assert.equal(response.body.dias_alerta_vencimiento, 30);
+    assert.equal(response.body.data[0].estado_etiqueta, 'Programado');
+    assert.equal(response.body.data[0].situacion.codigo, 'VENCIDO');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('hojas-vida programacion schedules the next maintenance and records the history event', async () => {
+  const clientCalls = [];
+  const client = {
+    query: async (sql, params) => {
+      clientCalls.push({ sql, params });
+      if (sql.includes('INSERT INTO mantenimiento')) {
+        return { rows: [{ id: 99, estado: 'PENDIENTE' }] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+
+  const handleQuery = async (sql) => {
+    if (sql.includes('FROM equipo_catalogo ec')) {
+      return {
+        rows: [
+          {
+            equipo_id: 7,
+            codigo_interno: 'EQ-1',
+            nombre_equipo: 'Equipo 1',
+            laboratorio: 'Lab A',
+            facultad: 'Facultad X',
+            codigo_inventario: 'P-1',
+            ual_id: 4,
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM hoja_vida') && sql.includes('equipo_id = $1')) {
+      return { rows: [{ id: 42, equipo_id: 7, estado: 'ACTIVA' }] };
+    }
+    if (sql.includes('FROM hoja_vida_baja')) return { rows: [] };
+    return { rows: [] };
+  };
+
+  const loaded = loadRoute({ query: handleQuery, connect: async () => client });
+
+  try {
+    const response = await request(loaded.app)
+      .post('/programacion')
+      .send({
+        equipo_id: 7,
+        item: 'Cambio de aceite',
+        tipo_mantenimiento: 'PREVENTIVO',
+        fecha_realizacion: fechaISO(15),
+      });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.data.mantenimiento_id, 99);
+    assert.equal(response.body.data.estado, 'PENDIENTE');
+    assert.ok(clientCalls.some(({ sql }) => sql.includes('INSERT INTO mantenimiento')));
+    assert.ok(clientCalls.some(({ sql }) => sql.includes('INSERT INTO hoja_vida_historial')));
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('hojas-vida programacion rejects a missing or past schedule date', async () => {
+  const loaded = loadRoute({});
+
+  try {
+    const sinFecha = await request(loaded.app).post('/programacion').send({
+      equipo_id: 7,
+      item: 'Cambio de aceite',
+      tipo_mantenimiento: 'PREVENTIVO',
+    });
+    assert.equal(sinFecha.status, 400);
+    assert.deepEqual(sinFecha.body.details.campos_faltantes, ['fecha_realizacion']);
+
+    const fechaPasada = await request(loaded.app)
+      .post('/programacion')
+      .send({
+        equipo_id: 7,
+        item: 'Cambio de aceite',
+        tipo_mantenimiento: 'PREVENTIVO',
+        fecha_realizacion: fechaISO(-3),
+      });
+    assert.equal(fechaPasada.status, 400);
+  } finally {
+    loaded.restore();
+  }
+});

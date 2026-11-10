@@ -1009,3 +1009,46 @@ test('hojas-vida reportes views render filters and data panels', async () => {
   assert.match(utilizacion, /id="ru-filtros"/);
   assert.match(utilizacion, /reportes\/mantenimientos/);
 });
+
+test('hojas-vida dashboard view renders filters, KPIs and charts', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/dashboard.ejs',
+    buildBaseViewLocals({
+      tiposMantenimiento: TIPOS_MANTENIMIENTO,
+      estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+  assert.match(html, /data-testid="dashboard-hojas-vida"/);
+  assert.match(html, /id="hvdb-filtros"/);
+  assert.match(html, /data-testid="hvdb-kpi-equipos"/);
+  assert.match(html, /data-testid="hvdb-kpi-alertas"/);
+  assert.match(html, /data-hvdb-chart="estado"/);
+  assert.match(html, /data-hvdb-chart="periodo"/);
+  assert.match(html, /\/milab\/api\/hojas-vida\/dashboard/);
+});
+
+test('hojas-vida programacion view renders the equipment selector, alerts and schedule form', async () => {
+  const html = await renderView(
+    'src/views/home/prestamos/hojas-vida/programacion.ejs',
+    buildBaseViewLocals({
+      tiposMantenimiento: TIPOS_MANTENIMIENTO,
+      equipoIdInicial: '7',
+      successMessage: null,
+      errorMessage: null,
+    })
+  );
+  assert.match(html, /data-testid="programacion-alertas"/);
+  assert.match(html, /data-testid="programacion-resumen"/);
+  assert.match(html, /id="hvp-equipo"/);
+  assert.match(html, /data-equipo-inicial="7"/);
+  assert.match(html, /name="equipo_id"/);
+  assert.match(html, /name="tipo_mantenimiento"/);
+  assert.match(html, /name="fecha_realizacion"/);
+  assert.match(html, /id="hvp-filtros"/);
+  assert.match(html, /id="hvp-tbody"/);
+  assert.match(html, /\/milab\/api\/hojas-vida\/programacion/);
+  assert.match(html, /X-CSRF-Token/);
+  assert.match(html, /nonce="test-nonce"/);
+});
