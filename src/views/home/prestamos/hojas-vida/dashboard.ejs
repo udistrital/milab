@@ -30,11 +30,15 @@
       <form id="hvdb-filtros" class="row g-3 align-items-end">
         <div class="col-md-3">
           <label for="hvdb-facultad" class="form-label">Facultad</label>
-          <input type="text" class="form-control" id="hvdb-facultad" name="facultad" />
+          <select class="form-select" id="hvdb-facultad" name="facultad_id" data-testid="hvdb-facultad">
+            <option value="">Todas las facultades de mi alcance</option>
+          </select>
         </div>
         <div class="col-md-3">
-          <label for="hvdb-laboratorio" class="form-label">Laboratorio</label>
-          <input type="text" class="form-control" id="hvdb-laboratorio" name="laboratorio" />
+          <label for="hvdb-laboratorio" class="form-label">Dependencia</label>
+          <select class="form-select" id="hvdb-laboratorio" name="ual_id" data-testid="hvdb-dependencia">
+            <option value="">Todas las dependencias de mi alcance</option>
+          </select>
         </div>
         <div class="col-md-2">
           <label for="hvdb-tipo" class="form-label">Tipo</label>
@@ -85,106 +89,66 @@
     <span id="hvdb-error-msg">No fue posible generar el dashboard.</span>
   </div>
 
-  <section id="hvdb-kpis" class="row g-3 mb-4 d-none">
-    <div class="col-6 col-lg-3">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-body">
-          <span class="text-muted d-block small">Equipos con hoja de vida</span>
-          <strong class="fs-4" data-testid="hvdb-kpi-equipos">0</strong>
-          <span class="d-block small text-muted" id="hvdb-kpi-equipos-detalle"></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-body">
-          <span class="text-muted d-block small">Mantenimientos</span>
-          <strong class="fs-4" data-testid="hvdb-kpi-mantenimientos">0</strong>
-          <span class="d-block small text-muted" id="hvdb-kpi-mantenimientos-detalle"></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-body">
-          <span class="text-muted d-block small">Costo total</span>
-          <strong class="fs-4" data-testid="hvdb-kpi-costo">$0</strong>
-          <span class="d-block small text-muted" id="hvdb-kpi-costo-detalle"></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-body">
-          <span class="text-muted d-block small">Alertas activas</span>
-          <strong class="fs-4" data-testid="hvdb-kpi-alertas">0</strong>
-          <span class="d-block small text-muted" id="hvdb-kpi-alertas-detalle"></span>
-        </div>
-      </div>
-    </div>
+  <section id="hvdb-kpis" class="dashboard-pys-cards mb-4 d-none">
+    <article class="dashboard-pys-card kpi-tone-info">
+      <span class="dashboard-pys-card-label"><i class="bi bi-journal-medical" aria-hidden="true"></i> Equipos con hoja de vida</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-equipos">0</strong>
+      <span class="dashboard-pys-card-hint" id="hvdb-kpi-equipos-detalle"></span>
+    </article>
+    <article class="dashboard-pys-card kpi-tone-labs">
+      <span class="dashboard-pys-card-label"><i class="bi bi-tools" aria-hidden="true"></i> Mantenimientos</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mantenimientos">0</strong>
+      <span class="dashboard-pys-card-hint" id="hvdb-kpi-mantenimientos-detalle"></span>
+    </article>
+    <article class="dashboard-pys-card kpi-tone-sanctions">
+      <span class="dashboard-pys-card-label"><i class="bi bi-cash-coin" aria-hidden="true"></i> Costo total</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-costo">$0</strong>
+      <span class="dashboard-pys-card-hint" id="hvdb-kpi-costo-detalle"></span>
+    </article>
+    <article class="dashboard-pys-card kpi-tone-alert">
+      <span class="dashboard-pys-card-label"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Alertas activas</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-alertas">0</strong>
+      <span class="dashboard-pys-card-hint" id="hvdb-kpi-alertas-detalle"></span>
+    </article>
   </section>
 
-  <section id="hvdb-charts" class="row g-4 d-none">
-    <div class="col-12 col-xl-6">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Mantenimientos por estado</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 280px">
-            <canvas data-hvdb-chart="estado" role="img" aria-label="Distribucion de mantenimientos por estado"></canvas>
-          </div>
-        </div>
+  <section id="hvdb-charts" class="dashboard-pys-panels d-none">
+    <article class="dashboard-pys-panel">
+      <h3>Mantenimientos por estado</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart--doughnut">
+        <canvas data-hvdb-chart="estado" role="img" aria-label="Distribucion de mantenimientos por estado"></canvas>
       </div>
-    </div>
-    <div class="col-12 col-xl-6">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Mantenimientos por tipo</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 280px">
-            <canvas data-hvdb-chart="tipo" role="img" aria-label="Mantenimientos por tipo"></canvas>
-          </div>
-        </div>
+    </article>
+    <article class="dashboard-pys-panel">
+      <h3>Mantenimientos por tipo</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart">
+        <canvas data-hvdb-chart="tipo" role="img" aria-label="Mantenimientos por tipo"></canvas>
       </div>
-    </div>
-    <div class="col-12">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Evolucion mensual de mantenimientos</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 300px">
-            <canvas data-hvdb-chart="periodo" role="img" aria-label="Mantenimientos y costo por mes"></canvas>
-          </div>
-        </div>
+    </article>
+    <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+      <h3>Evolucion mensual de mantenimientos</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart">
+        <canvas data-hvdb-chart="periodo" role="img" aria-label="Mantenimientos y costo por mes"></canvas>
       </div>
-    </div>
-    <div class="col-12 col-xl-6">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Alertas por situacion</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 280px">
-            <canvas data-hvdb-chart="alertas" role="img" aria-label="Alertas de mantenimiento por situacion"></canvas>
-          </div>
-        </div>
+    </article>
+    <article class="dashboard-pys-panel">
+      <h3>Alertas por situacion</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart--doughnut">
+        <canvas data-hvdb-chart="alertas" role="img" aria-label="Alertas de mantenimiento por situacion"></canvas>
       </div>
-    </div>
-    <div class="col-12 col-xl-6">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Laboratorios con mas mantenimientos</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 280px">
-            <canvas data-hvdb-chart="laboratorios" role="img" aria-label="Mantenimientos por laboratorio"></canvas>
-          </div>
-        </div>
+    </article>
+    <article class="dashboard-pys-panel">
+      <h3>Laboratorios con mas mantenimientos</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart">
+        <canvas data-hvdb-chart="laboratorios" role="img" aria-label="Mantenimientos por laboratorio"></canvas>
       </div>
-    </div>
-    <div class="col-12">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header"><h5 class="mb-0">Equipos con mayor costo de mantenimiento</h5></div>
-        <div class="card-body">
-          <div style="position: relative; height: 320px">
-            <canvas data-hvdb-chart="equipos" role="img" aria-label="Equipos con mayor costo de mantenimiento"></canvas>
-          </div>
-        </div>
+    </article>
+    <article class="dashboard-pys-panel dashboard-gen-panel--wide">
+      <h3>Equipos con mayor costo de mantenimiento</h3>
+      <div class="dashboard-pys-chart dashboard-inventory-chart--tall">
+        <canvas data-hvdb-chart="equipos" role="img" aria-label="Equipos con mayor costo de mantenimiento"></canvas>
       </div>
-    </div>
+    </article>
   </section>
 </main>
 
@@ -192,8 +156,11 @@
 <script nonce="<%= cspNonce %>">
   (function () {
     var ENDPOINT = '/milab/api/hojas-vida/dashboard';
+    var FILTER_OPTIONS_ENDPOINT = '/milab/api/hojas-vida/dashboard/opciones';
     var formEl = document.getElementById('hvdb-filtros');
     var resetBtn = document.getElementById('hvdb-reset');
+    var facultadEl = document.getElementById('hvdb-facultad');
+    var dependenciaEl = document.getElementById('hvdb-laboratorio');
     var loadingEl = document.getElementById('hvdb-loading');
     var errorEl = document.getElementById('hvdb-error');
     var errorMsgEl = document.getElementById('hvdb-error-msg');
@@ -201,27 +168,117 @@
     var chartsEl = document.getElementById('hvdb-charts');
     var chartInstances = {};
 
+    var CHART_COLORS = {
+      blue: '#1f7aec',
+      green: '#219653',
+      amber: '#e08a00',
+      red: '#d62839',
+      teal: '#0f9fb5',
+      purple: '#7b4fd6',
+      slate: '#5e7178',
+      orange: '#f2700d',
+      pink: '#d6409f',
+    };
+
+    function getChartTheme() {
+      var styles = getComputedStyle(document.documentElement);
+      return {
+        text: styles.getPropertyValue('--app-text-main').trim() || '#171717',
+        muted: styles.getPropertyValue('--app-text-muted').trim() || '#5f5a53',
+        grid: styles.getPropertyValue('--app-chart-grid').trim() || 'rgba(23, 23, 23, 0.1)',
+        surface: styles.getPropertyValue('--app-surface-strong').trim() || '#fffaf3',
+      };
+    }
+
+    function hexToRgba(hex, alpha) {
+      var value = String(hex || '').replace('#', '');
+      var red = parseInt(value.slice(0, 2), 16);
+      var green = parseInt(value.slice(2, 4), 16);
+      var blue = parseInt(value.slice(4, 6), 16);
+      return 'rgba(' + red + ', ' + green + ', ' + blue + ', ' + alpha + ')';
+    }
+
+    function buildAreaGradient(color) {
+      return function (context) {
+        var chart = context.chart;
+        var area = chart.chartArea;
+        if (!area) return hexToRgba(color, 0.15);
+        var gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        gradient.addColorStop(0, hexToRgba(color, 0.32));
+        gradient.addColorStop(1, hexToRgba(color, 0.02));
+        return gradient;
+      };
+    }
+
+    function actualizarDependencias() {
+      var facultadId = facultadEl.value;
+      Array.prototype.forEach.call(dependenciaEl.options, function (option, index) {
+        if (index === 0) return;
+        var coincide = !facultadId || option.getAttribute('data-facultad-id') === facultadId;
+        option.hidden = !coincide;
+        option.disabled = !coincide;
+      });
+      var seleccionada = dependenciaEl.options[dependenciaEl.selectedIndex];
+      if (seleccionada && seleccionada.disabled) dependenciaEl.value = '';
+    }
+
+    function cargarOpcionesFiltros() {
+      return fetch(FILTER_OPTIONS_ENDPOINT, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok && body && body.ok === true, body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error(
+              (result.body && result.body.message) ||
+                'No fue posible cargar las facultades y dependencias de tu alcance.'
+            );
+          }
+          var data = result.body.data || {};
+          (data.faculties || []).forEach(function (faculty) {
+            var option = document.createElement('option');
+            option.value = String(faculty.id);
+            option.textContent = faculty.nombre;
+            facultadEl.appendChild(option);
+          });
+          (data.dependencies || []).forEach(function (dependency) {
+            var option = document.createElement('option');
+            option.value = String(dependency.id);
+            option.textContent = dependency.nombre;
+            option.setAttribute('data-facultad-id', String(dependency.facultad_id));
+            dependenciaEl.appendChild(option);
+          });
+          actualizarDependencias();
+        });
+    }
+
     var ESTADO_COLORES = {
-      PENDIENTE: '#f59e0b',
-      EN_EJECUCION: '#3b82f6',
-      CUMPLIDO: '#22c55e',
-      VENCIDO: '#ef4444',
-      CANCELADO: '#94a3b8',
+      PENDIENTE: CHART_COLORS.amber,
+      EN_EJECUCION: CHART_COLORS.blue,
+      CUMPLIDO: CHART_COLORS.green,
+      VENCIDO: CHART_COLORS.red,
+      CANCELADO: CHART_COLORS.slate,
     };
     var PALETA = [
-      '#3b82f6',
-      '#f59e0b',
-      '#22c55e',
-      '#ef4444',
-      '#8b5cf6',
-      '#14b8a6',
-      '#ec4899',
-      '#64748b',
+      CHART_COLORS.blue,
+      CHART_COLORS.amber,
+      CHART_COLORS.purple,
+      CHART_COLORS.teal,
+      CHART_COLORS.pink,
+      CHART_COLORS.green,
+      CHART_COLORS.orange,
+      CHART_COLORS.slate,
     ];
     var SITUACION_COLORES = {
-      VENCIDO: '#ef4444',
-      PROXIMO_VENCER: '#f59e0b',
-      EN_EJECUCION: '#3b82f6',
+      VENCIDO: CHART_COLORS.red,
+      PROXIMO_VENCER: CHART_COLORS.amber,
+      EN_EJECUCION: CHART_COLORS.blue,
     };
 
     function numero(valor) {
@@ -257,6 +314,7 @@
     }
 
     function render(data) {
+      var theme = getChartTheme();
       var resumen = (data && data.resumen) || {};
       document.querySelector('[data-testid="hvdb-kpi-equipos"]').textContent = numero(
         resumen.equipos_con_hoja_vida
@@ -307,14 +365,21 @@
               backgroundColor: porEstado.map(function (item) {
                 return ESTADO_COLORES[item.estado] || '#64748b';
               }),
-              borderWidth: 0,
+              borderColor: theme.surface,
+              borderWidth: 2,
             },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+          cutout: '62%',
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+            },
+          },
         },
       });
 
@@ -334,7 +399,8 @@
               backgroundColor: porTipo.map(function (_, index) {
                 return PALETA[index % PALETA.length];
               }),
-              borderRadius: 4,
+              borderRadius: 6,
+              maxBarThickness: 24,
             },
           ],
         },
@@ -343,8 +409,15 @@
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
-            y: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 } },
+            x: {
+              ticks: { color: theme.muted, font: { size: 11 } },
+              grid: { display: false },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: theme.muted, precision: 0, font: { size: 11 } },
+              grid: { color: theme.grid },
+            },
           },
         },
       });
@@ -362,20 +435,30 @@
               data: porPeriodo.map(function (item) {
                 return item.total;
               }),
-              borderColor: '#3b82f6',
-              backgroundColor: 'rgba(59, 130, 246, 0.2)',
+              borderColor: CHART_COLORS.blue,
+              backgroundColor: buildAreaGradient(CHART_COLORS.blue),
               fill: true,
-              tension: 0.3,
+              tension: 0.35,
+              pointBackgroundColor: CHART_COLORS.blue,
+              pointBorderColor: theme.surface,
+              pointBorderWidth: 2,
+              pointRadius: 3,
+              borderWidth: 3,
             },
             {
               label: 'Costo',
               data: porPeriodo.map(function (item) {
                 return item.costo;
               }),
-              borderColor: '#f59e0b',
-              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              borderColor: CHART_COLORS.amber,
+              backgroundColor: buildAreaGradient(CHART_COLORS.amber),
               fill: false,
-              tension: 0.3,
+              tension: 0.35,
+              pointBackgroundColor: CHART_COLORS.amber,
+              pointBorderColor: theme.surface,
+              pointBorderWidth: 2,
+              pointRadius: 3,
+              borderWidth: 3,
               yAxisID: 'yCosto',
             },
           ],
@@ -383,14 +466,24 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+            },
+          },
           scales: {
-            x: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
-            y: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 }, title: { display: true, text: 'Mantenimientos', color: '#e5e7eb' } },
+            x: { ticks: { color: theme.muted, font: { size: 11 } }, grid: { display: false } },
+            y: {
+              beginAtZero: true,
+              ticks: { color: theme.muted, precision: 0, font: { size: 11 } },
+              grid: { color: theme.grid },
+              title: { display: true, text: 'Mantenimientos', color: theme.text },
+            },
             yCosto: {
               beginAtZero: true,
               position: 'right',
-              ticks: { color: '#f59e0b' },
+              ticks: { color: theme.muted, font: { size: 11 } },
               grid: { display: false },
             },
           },
@@ -412,14 +505,21 @@
               backgroundColor: alertas.map(function (item) {
                 return SITUACION_COLORES[item.situacion] || '#64748b';
               }),
-              borderWidth: 0,
+              borderColor: theme.surface,
+              borderWidth: 2,
             },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+          cutout: '62%',
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } },
+            },
+          },
         },
       });
 
@@ -436,8 +536,9 @@
               data: porLaboratorio.map(function (item) {
                 return item.total;
               }),
-              backgroundColor: '#8b5cf6',
-              borderRadius: 4,
+              backgroundColor: CHART_COLORS.purple,
+              borderRadius: 6,
+              maxBarThickness: 18,
             },
           ],
         },
@@ -447,8 +548,15 @@
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 } },
-            y: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+            x: {
+              beginAtZero: true,
+              ticks: { color: theme.muted, precision: 0, font: { size: 11 } },
+              grid: { color: theme.grid },
+            },
+            y: {
+              ticks: { color: theme.text, font: { size: 11 } },
+              grid: { display: false },
+            },
           },
         },
       });
@@ -466,8 +574,9 @@
               data: equipos.map(function (item) {
                 return item.costo;
               }),
-              backgroundColor: '#14b8a6',
-              borderRadius: 4,
+              backgroundColor: CHART_COLORS.teal,
+              borderRadius: 6,
+              maxBarThickness: 18,
             },
           ],
         },
@@ -480,13 +589,17 @@
             x: {
               beginAtZero: true,
               ticks: {
-                color: '#e5e7eb',
+                color: theme.muted,
+                font: { size: 11 },
                 callback: function (value) {
                   return moneda(value);
                 },
               },
             },
-            y: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+            y: {
+              ticks: { color: theme.text, font: { size: 11 } },
+              grid: { display: false },
+            },
           },
         },
       });
@@ -544,13 +657,33 @@
       cargar();
     });
 
+    facultadEl.addEventListener('change', actualizarDependencias);
+    dependenciaEl.addEventListener('change', function () {
+      var seleccionada = dependenciaEl.options[dependenciaEl.selectedIndex];
+      var facultadId = seleccionada && seleccionada.getAttribute('data-facultad-id');
+      if (facultadId) {
+        facultadEl.value = facultadId;
+        actualizarDependencias();
+        dependenciaEl.value = seleccionada.value;
+      }
+    });
+
     if (resetBtn) {
       resetBtn.addEventListener('click', function () {
-        setTimeout(cargar, 0);
+        setTimeout(function () {
+          actualizarDependencias();
+          cargar();
+        }, 0);
       });
     }
 
-    cargar();
+    cargarOpcionesFiltros()
+      .then(cargar)
+      .catch(function (error) {
+        loadingEl.classList.add('d-none');
+        errorMsgEl.textContent = error.message || 'No se pudieron cargar los filtros de alcance.';
+        errorEl.classList.remove('d-none');
+      });
   })();
 </script>
 
