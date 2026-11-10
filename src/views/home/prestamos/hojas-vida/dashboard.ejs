@@ -1,0 +1,557 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell" data-testid="dashboard-hojas-vida">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/inventarios/hojas-vida" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Dashboard de Hojas de Vida y Mantenimientos</h1>
+    <p class="app-page-subtitle">
+      Indicadores de equipos, mantenimientos, alertas y bajas. Los datos se ajustan automaticamente
+      al alcance de tu rol.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Filtros</h5>
+    </div>
+    <div class="card-body">
+      <form id="hvdb-filtros" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label for="hvdb-facultad" class="form-label">Facultad</label>
+          <input type="text" class="form-control" id="hvdb-facultad" name="facultad" />
+        </div>
+        <div class="col-md-3">
+          <label for="hvdb-laboratorio" class="form-label">Laboratorio</label>
+          <input type="text" class="form-control" id="hvdb-laboratorio" name="laboratorio" />
+        </div>
+        <div class="col-md-2">
+          <label for="hvdb-tipo" class="form-label">Tipo</label>
+          <select class="form-select" id="hvdb-tipo" name="tipo_mantenimiento">
+            <option value="">Todos</option>
+            <% tiposMantenimiento.forEach(function (tipo) { %>
+              <option value="<%= tipo.codigo %>"><%= tipo.etiqueta %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="hvdb-estado" class="form-label">Estado</label>
+          <select class="form-select" id="hvdb-estado" name="estado">
+            <option value="">Todos</option>
+            <% estadosMantenimiento.forEach(function (estado) { %>
+              <option value="<%= estado.codigo %>"><%= estado.etiqueta %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="hvdb-desde" class="form-label">Desde</label>
+          <input type="date" class="form-control" id="hvdb-desde" name="fecha_desde" />
+        </div>
+        <div class="col-md-2">
+          <label for="hvdb-hasta" class="form-label">Hasta</label>
+          <input type="date" class="form-control" id="hvdb-hasta" name="fecha_hasta" />
+        </div>
+        <div class="col-md-10 d-flex gap-2">
+          <button type="submit" class="btn btn-perso" data-submit-lock="true">
+            <i class="bi bi-search"></i>
+            <span>Actualizar dashboard</span>
+          </button>
+          <button type="reset" class="btn btn-outline-secondary" id="hvdb-reset">
+            <i class="bi bi-arrow-counterclockwise"></i>
+            <span>Limpiar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div id="hvdb-loading" class="alert alert-info">
+    <i class="bi bi-hourglass-split me-2"></i>Cargando indicadores...
+  </div>
+
+  <div id="hvdb-error" class="alert alert-danger d-none" role="alert">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span id="hvdb-error-msg">No fue posible generar el dashboard.</span>
+  </div>
+
+  <section id="hvdb-kpis" class="row g-3 mb-4 d-none">
+    <div class="col-6 col-lg-3">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Equipos con hoja de vida</span>
+          <strong class="fs-4" data-testid="hvdb-kpi-equipos">0</strong>
+          <span class="d-block small text-muted" id="hvdb-kpi-equipos-detalle"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Mantenimientos</span>
+          <strong class="fs-4" data-testid="hvdb-kpi-mantenimientos">0</strong>
+          <span class="d-block small text-muted" id="hvdb-kpi-mantenimientos-detalle"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Costo total</span>
+          <strong class="fs-4" data-testid="hvdb-kpi-costo">$0</strong>
+          <span class="d-block small text-muted" id="hvdb-kpi-costo-detalle"></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Alertas activas</span>
+          <strong class="fs-4" data-testid="hvdb-kpi-alertas">0</strong>
+          <span class="d-block small text-muted" id="hvdb-kpi-alertas-detalle"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="hvdb-charts" class="row g-4 d-none">
+    <div class="col-12 col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Mantenimientos por estado</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 280px">
+            <canvas data-hvdb-chart="estado" role="img" aria-label="Distribucion de mantenimientos por estado"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Mantenimientos por tipo</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 280px">
+            <canvas data-hvdb-chart="tipo" role="img" aria-label="Mantenimientos por tipo"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Evolucion mensual de mantenimientos</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 300px">
+            <canvas data-hvdb-chart="periodo" role="img" aria-label="Mantenimientos y costo por mes"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Alertas por situacion</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 280px">
+            <canvas data-hvdb-chart="alertas" role="img" aria-label="Alertas de mantenimiento por situacion"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Laboratorios con mas mantenimientos</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 280px">
+            <canvas data-hvdb-chart="laboratorios" role="img" aria-label="Mantenimientos por laboratorio"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-header"><h5 class="mb-0">Equipos con mayor costo de mantenimiento</h5></div>
+        <div class="card-body">
+          <div style="position: relative; height: 320px">
+            <canvas data-hvdb-chart="equipos" role="img" aria-label="Equipos con mayor costo de mantenimiento"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var ENDPOINT = '/milab/api/hojas-vida/dashboard';
+    var formEl = document.getElementById('hvdb-filtros');
+    var resetBtn = document.getElementById('hvdb-reset');
+    var loadingEl = document.getElementById('hvdb-loading');
+    var errorEl = document.getElementById('hvdb-error');
+    var errorMsgEl = document.getElementById('hvdb-error-msg');
+    var kpisEl = document.getElementById('hvdb-kpis');
+    var chartsEl = document.getElementById('hvdb-charts');
+    var chartInstances = {};
+
+    var ESTADO_COLORES = {
+      PENDIENTE: '#f59e0b',
+      EN_EJECUCION: '#3b82f6',
+      CUMPLIDO: '#22c55e',
+      VENCIDO: '#ef4444',
+      CANCELADO: '#94a3b8',
+    };
+    var PALETA = [
+      '#3b82f6',
+      '#f59e0b',
+      '#22c55e',
+      '#ef4444',
+      '#8b5cf6',
+      '#14b8a6',
+      '#ec4899',
+      '#64748b',
+    ];
+    var SITUACION_COLORES = {
+      VENCIDO: '#ef4444',
+      PROXIMO_VENCER: '#f59e0b',
+      EN_EJECUCION: '#3b82f6',
+    };
+
+    function numero(valor) {
+      try {
+        return new Intl.NumberFormat('es-CO').format(Number(valor || 0));
+      } catch (e) {
+        return String(Number(valor || 0));
+      }
+    }
+
+    function moneda(valor) {
+      try {
+        return new Intl.NumberFormat('es-CO', {
+          style: 'currency',
+          currency: 'COP',
+          maximumFractionDigits: 0,
+        }).format(Number(valor || 0));
+      } catch (e) {
+        return '$' + Number(valor || 0);
+      }
+    }
+
+    function toggle(el, visible) {
+      if (!el) return;
+      if (visible) el.classList.remove('d-none');
+      else el.classList.add('d-none');
+    }
+
+    function renderChart(nombre, canvas, config) {
+      if (!canvas || typeof window.Chart === 'undefined') return;
+      if (chartInstances[nombre]) chartInstances[nombre].destroy();
+      chartInstances[nombre] = new window.Chart(canvas, config);
+    }
+
+    function render(data) {
+      var resumen = (data && data.resumen) || {};
+      document.querySelector('[data-testid="hvdb-kpi-equipos"]').textContent = numero(
+        resumen.equipos_con_hoja_vida
+      );
+      document.getElementById('hvdb-kpi-equipos-detalle').textContent =
+        numero(resumen.hojas_activas) +
+        ' activas · ' +
+        numero(resumen.hojas_pendientes) +
+        ' por confirmar · ' +
+        numero(resumen.bajas_aplicadas) +
+        ' en baja';
+
+      document.querySelector('[data-testid="hvdb-kpi-mantenimientos"]').textContent = numero(
+        resumen.mantenimientos_total
+      );
+      document.getElementById('hvdb-kpi-mantenimientos-detalle').textContent =
+        'Promedio de costo ' + moneda(resumen.costo_promedio);
+
+      document.querySelector('[data-testid="hvdb-kpi-costo"]').textContent = moneda(
+        resumen.costo_total
+      );
+      document.getElementById('hvdb-kpi-costo-detalle').textContent =
+        'Dias de alerta: ' + numero(data.dias_alerta_vencimiento);
+
+      document.querySelector('[data-testid="hvdb-kpi-alertas"]').textContent = numero(
+        resumen.alertas_total
+      );
+      document.getElementById('hvdb-kpi-alertas-detalle').textContent =
+        'Alcance ' + (data.alcance === 'global' ? 'general' : 'por facultad/dependencia');
+
+      toggle(kpisEl, true);
+      toggle(chartsEl, true);
+
+      if (typeof window.Chart === 'undefined') return;
+
+      var porEstado = data.por_estado || [];
+      renderChart('estado', document.querySelector('[data-hvdb-chart="estado"]'), {
+        type: 'doughnut',
+        data: {
+          labels: porEstado.map(function (item) {
+            return item.etiqueta;
+          }),
+          datasets: [
+            {
+              data: porEstado.map(function (item) {
+                return item.total;
+              }),
+              backgroundColor: porEstado.map(function (item) {
+                return ESTADO_COLORES[item.estado] || '#64748b';
+              }),
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+        },
+      });
+
+      var porTipo = data.por_tipo || [];
+      renderChart('tipo', document.querySelector('[data-hvdb-chart="tipo"]'), {
+        type: 'bar',
+        data: {
+          labels: porTipo.map(function (item) {
+            return item.etiqueta;
+          }),
+          datasets: [
+            {
+              label: 'Mantenimientos',
+              data: porTipo.map(function (item) {
+                return item.total;
+              }),
+              backgroundColor: porTipo.map(function (_, index) {
+                return PALETA[index % PALETA.length];
+              }),
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+            y: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 } },
+          },
+        },
+      });
+
+      var porPeriodo = data.por_periodo || [];
+      renderChart('periodo', document.querySelector('[data-hvdb-chart="periodo"]'), {
+        type: 'line',
+        data: {
+          labels: porPeriodo.map(function (item) {
+            return item.periodo;
+          }),
+          datasets: [
+            {
+              label: 'Mantenimientos',
+              data: porPeriodo.map(function (item) {
+                return item.total;
+              }),
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.2)',
+              fill: true,
+              tension: 0.3,
+            },
+            {
+              label: 'Costo',
+              data: porPeriodo.map(function (item) {
+                return item.costo;
+              }),
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              fill: false,
+              tension: 0.3,
+              yAxisID: 'yCosto',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+          scales: {
+            x: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+            y: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 }, title: { display: true, text: 'Mantenimientos', color: '#e5e7eb' } },
+            yCosto: {
+              beginAtZero: true,
+              position: 'right',
+              ticks: { color: '#f59e0b' },
+              grid: { display: false },
+            },
+          },
+        },
+      });
+
+      var alertas = data.alertas_por_situacion || [];
+      renderChart('alertas', document.querySelector('[data-hvdb-chart="alertas"]'), {
+        type: 'doughnut',
+        data: {
+          labels: alertas.map(function (item) {
+            return item.etiqueta;
+          }),
+          datasets: [
+            {
+              data: alertas.map(function (item) {
+                return item.total;
+              }),
+              backgroundColor: alertas.map(function (item) {
+                return SITUACION_COLORES[item.situacion] || '#64748b';
+              }),
+              borderWidth: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#e5e7eb' } } },
+        },
+      });
+
+      var porLaboratorio = (data.por_laboratorio || []).slice(0, 8);
+      renderChart('laboratorios', document.querySelector('[data-hvdb-chart="laboratorios"]'), {
+        type: 'bar',
+        data: {
+          labels: porLaboratorio.map(function (item) {
+            return item.laboratorio;
+          }),
+          datasets: [
+            {
+              label: 'Mantenimientos',
+              data: porLaboratorio.map(function (item) {
+                return item.total;
+              }),
+              backgroundColor: '#8b5cf6',
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, ticks: { color: '#e5e7eb', precision: 0 } },
+            y: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+          },
+        },
+      });
+
+      var equipos = data.top_equipos_costo || [];
+      renderChart('equipos', document.querySelector('[data-hvdb-chart="equipos"]'), {
+        type: 'bar',
+        data: {
+          labels: equipos.map(function (item) {
+            return item.equipo_nombre || item.equipo_codigo || 'Equipo';
+          }),
+          datasets: [
+            {
+              label: 'Costo',
+              data: equipos.map(function (item) {
+                return item.costo;
+              }),
+              backgroundColor: '#14b8a6',
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              beginAtZero: true,
+              ticks: {
+                color: '#e5e7eb',
+                callback: function (value) {
+                  return moneda(value);
+                },
+              },
+            },
+            y: { ticks: { color: '#e5e7eb' }, grid: { display: false } },
+          },
+        },
+      });
+    }
+
+    function cargar() {
+      loadingEl.classList.remove('d-none');
+      errorEl.classList.add('d-none');
+
+      var formData = new FormData(formEl);
+      var params = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        var val = String(value || '').trim();
+        if (val) params.append(key, val);
+      });
+      var qs = params.toString();
+      var url = qs ? ENDPOINT + '?' + qs : ENDPOINT;
+
+      fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (res) {
+          return res
+            .json()
+            .then(function (body) {
+              return { ok: res.ok && body && body.ok === true, body: body };
+            })
+            .catch(function () {
+              return { ok: false, body: null };
+            });
+        })
+        .then(function (result) {
+          loadingEl.classList.add('d-none');
+          if (result.ok) {
+            render(result.body.data || {});
+            return;
+          }
+          errorMsgEl.textContent =
+            result.body && result.body.message
+              ? result.body.message
+              : 'No fue posible generar el dashboard.';
+          errorEl.classList.remove('d-none');
+        })
+        .catch(function () {
+          loadingEl.classList.add('d-none');
+          errorMsgEl.textContent = 'No se pudo conectar con el servidor. Intenta nuevamente.';
+          errorEl.classList.remove('d-none');
+        });
+    }
+
+    formEl.addEventListener('submit', function (event) {
+      event.preventDefault();
+      cargar();
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        setTimeout(cargar, 0);
+      });
+    }
+
+    cargar();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>

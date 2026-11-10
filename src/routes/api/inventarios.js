@@ -1655,6 +1655,24 @@ router.get('/hojas-vida/reportes/utilizacion', requireInventoryAccess, function 
   });
 });
 
+router.get('/hojas-vida/dashboard', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/dashboard', {
+    tiposMantenimiento: TIPOS_MANTENIMIENTO,
+    estadosMantenimiento: ESTADOS_MANTENIMIENTO,
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
+router.get('/hojas-vida/programacion', requireInventoryAccess, function (req, res) {
+  return res.render('home/prestamos/hojas-vida/programacion', {
+    tiposMantenimiento: TIPOS_MANTENIMIENTO,
+    equipoIdInicial: sanitizeText(req.query.equipo_id),
+    successMessage: sanitizeText(req.query.success),
+    errorMessage: sanitizeText(req.query.error),
+  });
+});
+
 router.get('/hojas-vida/:equipoId/cargar', requireInventoryAccess, async function (req, res) {
   try {
     const equipoId = parsePositiveId(req.params.equipoId);

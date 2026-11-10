@@ -32,6 +32,7 @@ const {
   etiquetaEstadoBajaHojaVida,
   bloqueaPrestamoPorBaja,
 } = require('../../libs/hojas-vida-bajas');
+const { notificarMantenimientoProgramado } = require('../../libs/hojas-vida-alertas');
 
 const router = express.Router();
 
@@ -1199,6 +1200,643 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
     return res.status(500).json({
       ok: false,
       message: 'No fue posible generar el reporte de utilización.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
+  try {
+    const params = [];
+    const conditions = [];
+
+    const tipo = String(req.query.tipo_mantenimiento || '')
+      .trim()
+      .toUpperCase();
+    if (tipo) {
+      if (!esTipoMantenimientoValido(tipo)) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'El tipo de mantenimiento no es valido.' });
+      }
+      params.push(tipo);
+      conditions.push(`m.tipo_mantenimiento = $${params.length}`);
+    }
+
+    const estado = String(req.query.estado || '')
+      .trim()
+      .toUpperCase();
+    if (estado) {
+      if (!esEstadoMantenimientoValido(estado)) {
+        return res
+          .status(400)
+          .json({ ok: false, message: 'El estado del mantenimiento no es valido.' });
+      }
+      params.push(estado);
+      conditions.push(`m.estado = $${params.length}`);
+    }
+
+    const fechaDesde = normalizarFechaDiaOpcional(req.query.fecha_desde);
+    if (fechaDesde) {
+      params.push(fechaDesde);
+      conditions.push(`m.fecha_realizacion >= $${params.length}`);
+    }
+
+    const fechaHasta = normalizarFechaDiaOpcional(req.query.fecha_hasta);
+    if (fechaHasta) {
+      params.push(fechaHasta);
+      conditions.push(`m.fecha_realizacion <= $${params.length}`);
+    }
+
+    const facultad = sanitizeLikeValue(req.query.facultad);
+    if (facultad) {
+      params.push(`%${facultad}%`);
+      conditions.push(`ec.facultad ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const laboratorio = sanitizeLikeValue(req.query.laboratorio);
+    if (laboratorio) {
+      params.push(`%${laboratorio}%`);
+      conditions.push(`ec.laboratorio ILIKE $${params.length} ESCAPE '\\'`);
+    }
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+    const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+
+    const mantenimientosResult = await pool.query(
+      `
+        SELECT m.id, m.equipo_id, m.tipo_mantenimiento, m.estado, m.fecha_realizacion, m.costo,
+               ec.codigo AS equipo_codigo, ec.nombre AS equipo_nombre,
+               ec.laboratorio AS laboratorio, ec.facultad AS facultad
+        FROM mantenimiento m
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE m.activo = TRUE AND ec.activo = TRUE ${whereClause}
+        ORDER BY m.fecha_realizacion DESC NULLS LAST, m.id DESC
+      `,
+      params
+    );
+
+    const porEstado = {};
+    CODIGOS_ESTADO_MANTENIMIENTO.forEach(function (codigo) {
+      porEstado[codigo] = 0;
+    });
+    const porTipoMap = new Map();
+    const porPeriodoMap = new Map();
+    const porLaboratorioMap = new Map();
+    const porEquipoMap = new Map();
+    const porSituacionMap = new Map();
+    let costoTotal = 0;
+    let alertasTotal = 0;
+
+    mantenimientosResult.rows.forEach(function (fila) {
+      const estadoFila = String(fila.estado || '').toUpperCase();
+      porEstado[estadoFila] = (porEstado[estadoFila] || 0) + 1;
+      const costo = Number(fila.costo || 0);
+      costoTotal += costo;
+
+      const tipoFila = String(fila.tipo_mantenimiento || '').toUpperCase();
+      if (!porTipoMap.has(tipoFila)) {
+        porTipoMap.set(tipoFila, {
+          tipo: tipoFila,
+          etiqueta: etiquetaTipoMantenimiento(tipoFila),
+          total: 0,
+          costo: 0,
+        });
+      }
+      const tipoItem = porTipoMap.get(tipoFila);
+      tipoItem.total += 1;
+      tipoItem.costo += costo;
+
+      const periodo = fila.fecha_realizacion
+        ? String(fila.fecha_realizacion).slice(0, 7)
+        : 'Sin fecha';
+      if (!porPeriodoMap.has(periodo)) {
+        porPeriodoMap.set(periodo, { periodo: periodo, total: 0, costo: 0 });
+      }
+      const periodoItem = porPeriodoMap.get(periodo);
+      periodoItem.total += 1;
+      periodoItem.costo += costo;
+
+      const labKey = fila.laboratorio || 'Sin laboratorio';
+      if (!porLaboratorioMap.has(labKey)) {
+        porLaboratorioMap.set(labKey, {
+          laboratorio: labKey,
+          facultad: fila.facultad,
+          total: 0,
+          costo: 0,
+        });
+      }
+      const labItem = porLaboratorioMap.get(labKey);
+      labItem.total += 1;
+      labItem.costo += costo;
+
+      const eqKey = Number(fila.equipo_id);
+      if (!porEquipoMap.has(eqKey)) {
+        porEquipoMap.set(eqKey, {
+          equipo_id: eqKey,
+          equipo_codigo: fila.equipo_codigo,
+          equipo_nombre: fila.equipo_nombre,
+          laboratorio: fila.laboratorio,
+          facultad: fila.facultad,
+          total: 0,
+          costo: 0,
+        });
+      }
+      const eqItem = porEquipoMap.get(eqKey);
+      eqItem.total += 1;
+      eqItem.costo += costo;
+
+      const situacion =
+        estadoFila === 'CUMPLIDO' || estadoFila === 'CANCELADO'
+          ? null
+          : situacionMantenimiento(
+              { estado: fila.estado, fecha_realizacion: fila.fecha_realizacion },
+              diasAlerta
+            );
+      if (situacion && situacion.codigo !== 'VIGENTE') {
+        alertasTotal += 1;
+        const situacionActual = porSituacionMap.get(situacion.codigo);
+        porSituacionMap.set(situacion.codigo, {
+          situacion: situacion.codigo,
+          etiqueta: situacion.etiqueta,
+          total: situacionActual ? situacionActual.total + 1 : 1,
+        });
+      }
+    });
+
+    const equipoParams = [];
+    const equipoConditions = [];
+    if (facultad) {
+      equipoParams.push(`%${facultad}%`);
+      equipoConditions.push(`ec.facultad ILIKE $${equipoParams.length} ESCAPE '\\'`);
+    }
+    if (laboratorio) {
+      equipoParams.push(`%${laboratorio}%`);
+      equipoConditions.push(`ec.laboratorio ILIKE $${equipoParams.length} ESCAPE '\\'`);
+    }
+    if (Array.isArray(accessibleLaboratoryIds)) {
+      if (accessibleLaboratoryIds.length === 0) {
+        equipoConditions.push('1 = 0');
+      } else {
+        equipoParams.push(accessibleLaboratoryIds);
+        equipoConditions.push(`inv.laboratorio_ual_id = ANY($${equipoParams.length}::int[])`);
+      }
+    }
+    const equipoWhere = equipoConditions.length ? `AND ${equipoConditions.join(' AND ')}` : '';
+
+    const hojasResult = await pool.query(
+      `
+        SELECT
+          COUNT(DISTINCT hv.id)::int AS total_hojas,
+          COUNT(DISTINCT hv.id) FILTER (WHERE UPPER(hv.estado) = 'ACTIVA')::int AS hojas_activas,
+          COUNT(DISTINCT hv.id) FILTER (WHERE UPPER(hv.estado) = 'PENDIENTE_CONFIRMACION')::int AS hojas_pendientes
+        FROM equipo_catalogo ec
+        JOIN hoja_vida hv ON hv.equipo_id = ec.id AND hv.activo = TRUE
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ec.activo = TRUE ${equipoWhere}
+      `,
+      equipoParams
+    );
+
+    const bajasResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM hoja_vida_baja b
+        JOIN equipo_catalogo ec ON ec.id = b.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE b.activo = TRUE AND UPPER(b.estado) = 'APLICADA' ${equipoWhere}
+      `,
+      equipoParams
+    );
+
+    const hojasRow = hojasResult.rows[0] || {};
+    const bajasRow = bajasResult.rows[0] || {};
+
+    return res.json({
+      ok: true,
+      data: {
+        alcance: Array.isArray(accessibleLaboratoryIds) ? 'restringido' : 'global',
+        dias_alerta_vencimiento: diasAlerta,
+        resumen: {
+          equipos_con_hoja_vida: Number(hojasRow.total_hojas || 0),
+          hojas_activas: Number(hojasRow.hojas_activas || 0),
+          hojas_pendientes: Number(hojasRow.hojas_pendientes || 0),
+          mantenimientos_total: mantenimientosResult.rows.length,
+          costo_total: costoTotal,
+          costo_promedio: mantenimientosResult.rows.length
+            ? costoTotal / mantenimientosResult.rows.length
+            : 0,
+          alertas_total: alertasTotal,
+          bajas_aplicadas: Number(bajasRow.total || 0),
+        },
+        por_estado: CODIGOS_ESTADO_MANTENIMIENTO.map(function (codigo) {
+          return {
+            estado: codigo,
+            etiqueta: etiquetaEstadoMantenimiento(codigo),
+            total: porEstado[codigo] || 0,
+          };
+        }),
+        por_tipo: Array.from(porTipoMap.values()),
+        por_periodo: Array.from(porPeriodoMap.values()).sort(function (a, b) {
+          return String(a.periodo).localeCompare(String(b.periodo));
+        }),
+        por_laboratorio: Array.from(porLaboratorioMap.values()).sort(function (a, b) {
+          return b.total - a.total;
+        }),
+        top_equipos_costo: Array.from(porEquipoMap.values())
+          .sort(function (a, b) {
+            return b.costo - a.costo;
+          })
+          .slice(0, 8),
+        alertas_por_situacion: Array.from(porSituacionMap.values()),
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error generando el dashboard:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible generar el dashboard.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+router.get('/programacion', async function programacionMantenimientosHV(req, res) {
+  try {
+    const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+
+    const resumenVacio = {
+      total: 0,
+      programados: 0,
+      en_ejecucion: 0,
+      proximos: 0,
+      vencidos: 0,
+    };
+
+    if (Array.isArray(accessibleLaboratoryIds) && accessibleLaboratoryIds.length === 0) {
+      return res.json({
+        ok: true,
+        data: [],
+        resumen: resumenVacio,
+        alertas: [],
+        dias_alerta_vencimiento: diasAlerta,
+      });
+    }
+
+    const params = [];
+    const conditions = ['m.activo = TRUE', "m.estado IN ('PENDIENTE','EN_EJECUCION')"];
+
+    const equipoId = Number(req.query?.equipo_id);
+    if (Number.isInteger(equipoId) && equipoId > 0) {
+      params.push(equipoId);
+      conditions.push(`m.equipo_id = $${params.length}`);
+    }
+
+    const laboratorio = Number(req.query?.laboratorio);
+    if (Number.isInteger(laboratorio) && laboratorio > 0) {
+      params.push(laboratorio);
+      conditions.push(`inv.laboratorio_ual_id = $${params.length}`);
+    }
+
+    const buscar = sanitizeLikeValue(req.query?.buscar);
+    if (buscar) {
+      params.push(`%${buscar}%`);
+      const idx = params.length;
+      conditions.push(
+        `(ec.codigo ILIKE $${idx} ESCAPE '\\' OR ec.nombre ILIKE $${idx} ESCAPE '\\' OR ` +
+          `inv.placa ILIKE $${idx} ESCAPE '\\' OR m.item ILIKE $${idx} ESCAPE '\\')`
+      );
+    }
+
+    const fechaDesde = normalizarFechaDiaOpcional(req.query?.fecha_desde);
+    if (fechaDesde) {
+      params.push(fechaDesde);
+      conditions.push(`m.fecha_realizacion >= $${params.length}::date`);
+    }
+
+    const fechaHasta = normalizarFechaDiaOpcional(req.query?.fecha_hasta);
+    if (fechaHasta) {
+      params.push(fechaHasta);
+      conditions.push(`m.fecha_realizacion <= $${params.length}::date`);
+    }
+
+    if (Array.isArray(accessibleLaboratoryIds)) {
+      params.push(accessibleLaboratoryIds);
+      conditions.push(`inv.laboratorio_ual_id = ANY($${params.length}::int[])`);
+    }
+
+    const situacionFiltro = String(req.query?.situacion || '')
+      .trim()
+      .toUpperCase();
+
+    const result = await pool.query(
+      `
+        SELECT
+          m.id AS mantenimiento_id,
+          m.equipo_id,
+          m.item,
+          m.tipo_mantenimiento,
+          m.fecha_realizacion,
+          m.estado,
+          m.responsable,
+          m.formato_registro,
+          ec.codigo AS codigo_interno,
+          ec.nombre AS nombre_equipo,
+          ec.laboratorio,
+          ec.facultad,
+          inv.placa AS codigo_inventario
+        FROM mantenimiento m
+        JOIN hoja_vida hv ON hv.id = m.hoja_vida_id AND hv.activo = TRUE
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY m.fecha_realizacion ASC NULLS LAST, m.id ASC
+      `,
+      params
+    );
+
+    const resumen = {
+      total: 0,
+      programados: 0,
+      en_ejecucion: 0,
+      proximos: 0,
+      vencidos: 0,
+    };
+
+    const data = [];
+    const alertas = [];
+
+    // Cada item derivado se normaliza con la fecha de referencia para que el
+    // indicador de dias restantes sea consistente con el reporte de alertas.
+    result.rows.forEach(function (fila) {
+      const estado = String(fila.estado || '').toUpperCase();
+      const mantenimiento = { estado: estado, fecha_realizacion: fila.fecha_realizacion };
+      const situacion = situacionMantenimiento(mantenimiento, diasAlerta);
+      const diasRestantes = diasRestantesMantenimiento(mantenimiento, new Date());
+
+      const item = {
+        mantenimiento_id: Number(fila.mantenimiento_id),
+        equipo_id: Number(fila.equipo_id),
+        codigo_interno: fila.codigo_interno || null,
+        codigo_inventario: fila.codigo_inventario || null,
+        nombre_equipo: fila.nombre_equipo || null,
+        laboratorio: fila.laboratorio || null,
+        facultad: fila.facultad || null,
+        item: fila.item || null,
+        tipo_mantenimiento: fila.tipo_mantenimiento || null,
+        tipo_mantenimiento_etiqueta: etiquetaTipoMantenimiento(fila.tipo_mantenimiento),
+        fecha_programada: fila.fecha_realizacion || null,
+        estado: estado,
+        estado_etiqueta: etiquetaEstadoMantenimiento(estado),
+        responsable: fila.responsable || null,
+        formato_registro: fila.formato_registro || null,
+        situacion: {
+          codigo: situacion.codigo,
+          etiqueta: situacion.etiqueta,
+          clase: situacion.clase,
+        },
+        dias_restantes: diasRestantes,
+      };
+
+      resumen.total += 1;
+      if (estado === 'PENDIENTE') resumen.programados += 1;
+      if (estado === 'EN_EJECUCION') resumen.en_ejecucion += 1;
+      if (situacion.codigo === 'PROXIMO_VENCER') resumen.proximos += 1;
+      if (situacion.codigo === 'VENCIDO') resumen.vencidos += 1;
+
+      if (situacion.codigo === 'PROXIMO_VENCER' || situacion.codigo === 'VENCIDO') {
+        alertas.push(item);
+      }
+
+      if (!situacionFiltro || situacion.codigo === situacionFiltro) {
+        data.push(item);
+      }
+    });
+
+    return res.json({
+      ok: true,
+      data,
+      resumen,
+      alertas,
+      dias_alerta_vencimiento: diasAlerta,
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error consultando la programacion de mantenimientos:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible consultar la programacion de mantenimientos.',
+      details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
+    });
+  }
+});
+
+router.post('/programacion', async function programarMantenimientoHV(req, res) {
+  try {
+    const equipoId = Number(req.body?.equipo_id);
+    if (!Number.isInteger(equipoId) || equipoId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'El identificador del equipo es invalido.',
+      });
+    }
+
+    const fechaProgramada = normalizarFechaDiaOpcional(req.body?.fecha_realizacion);
+    if (!fechaProgramada) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La fecha programada del mantenimiento es obligatoria.',
+        details: { campos_faltantes: ['fecha_realizacion'] },
+      });
+    }
+
+    const hoy = normalizarFechaDiaOpcional(new Date());
+    if (hoy && fechaProgramada < hoy) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La fecha programada no puede ser anterior al dia de hoy.',
+        details: { campos_faltantes: ['fecha_realizacion'] },
+      });
+    }
+
+    const normalizado = normalizarDatosMantenimiento({
+      ...req.body,
+      estado: ESTADO_MANTENIMIENTO_DEFAULT,
+    });
+    if (normalizado.error) {
+      return res.status(400).json({
+        ok: false,
+        message: normalizado.error.message,
+        details: { campos_faltantes: normalizado.error.campos },
+      });
+    }
+    const datos = normalizado.datos;
+
+    const equipoResult = await pool.query(
+      `
+        SELECT
+          ec.id AS equipo_id,
+          ec.codigo AS codigo_interno,
+          ec.nombre AS nombre_equipo,
+          ec.laboratorio,
+          ec.facultad,
+          inv.placa AS codigo_inventario,
+          inv.laboratorio_ual_id AS ual_id
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        WHERE ec.id = $1 AND ec.activo = TRUE
+      `,
+      [equipoId]
+    );
+    if (equipoResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'El equipo no existe en Inventario.',
+      });
+    }
+    const equipo = equipoResult.rows[0];
+
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    if (
+      Array.isArray(accessibleLaboratoryIds) &&
+      (!equipo.ual_id || !accessibleLaboratoryIds.includes(Number(equipo.ual_id)))
+    ) {
+      return res.status(403).json({
+        ok: false,
+        message: 'No tienes acceso al laboratorio del equipo seleccionado.',
+      });
+    }
+
+    const hvResult = await pool.query(
+      `
+        SELECT id, equipo_id, estado
+        FROM hoja_vida
+        WHERE equipo_id = $1 AND activo = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [equipoId]
+    );
+    if (hvResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: 'El equipo no tiene una hoja de vida registrada.',
+      });
+    }
+    const hojaVida = hvResult.rows[0];
+    if (String(hojaVida.estado || '').toUpperCase() !== 'ACTIVA') {
+      return res.status(409).json({
+        ok: false,
+        message: 'La hoja de vida del equipo aun no ha sido confirmada.',
+      });
+    }
+
+    const bajaResult = await pool.query(
+      `
+        SELECT 1
+        FROM hoja_vida_baja
+        WHERE hoja_vida_id = $1 AND activo = TRUE AND estado = 'APLICADA'
+        LIMIT 1
+      `,
+      [hojaVida.id]
+    );
+    if (bajaResult.rows.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        message: 'El equipo esta dado de baja; no se pueden programar mantenimientos.',
+      });
+    }
+
+    const usuario = req.session?.user?.id || null;
+
+    const cliente = await pool.connect();
+    let mantenimientoId;
+    try {
+      await cliente.query('BEGIN');
+
+      const insertResult = await cliente.query(
+        `
+          INSERT INTO mantenimiento (
+            hoja_vida_id, equipo_id, item, formato_registro, tipo_mantenimiento, fecha_realizacion,
+            datos_empresa_contratada, tiempo_garantia, especificaciones_mantenimiento, responsable,
+            observaciones_repuestos, costo, estado, usuario_creacion
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10,
+            $11, $12, $13, $14
+          )
+          RETURNING id, estado
+        `,
+        [
+          hojaVida.id,
+          equipoId,
+          datos.item,
+          datos.formato_registro,
+          datos.tipo_mantenimiento,
+          fechaProgramada,
+          datos.datos_empresa_contratada,
+          datos.tiempo_garantia,
+          datos.especificaciones_mantenimiento,
+          datos.responsable,
+          datos.observaciones_repuestos,
+          datos.costo,
+          ESTADO_MANTENIMIENTO_DEFAULT,
+          usuario,
+        ]
+      );
+
+      mantenimientoId = Number(insertResult.rows[0].id);
+
+      await registrarEventoHistorial(
+        cliente,
+        hojaVida.id,
+        equipoId,
+        `Mantenimiento programado (${etiquetaTipoMantenimiento(datos.tipo_mantenimiento)}): "${datos.item}" para ${fechaProgramada}.`,
+        usuario,
+        { referenciaTipo: 'MANTENIMIENTO', referenciaId: mantenimientoId }
+      );
+
+      await cliente.query('COMMIT');
+    } catch (txError) {
+      await cliente.query('ROLLBACK');
+      throw txError;
+    } finally {
+      cliente.release();
+    }
+
+    await notificarMantenimientoProgramado({
+      equipo: equipo,
+      usuario: usuario,
+      mantenimiento: {
+        id: mantenimientoId,
+        tipo_mantenimiento: datos.tipo_mantenimiento,
+        fecha_realizacion: fechaProgramada,
+        item: datos.item,
+        responsable: datos.responsable,
+      },
+    });
+
+    return res.status(201).json({
+      ok: true,
+      message: 'Mantenimiento programado correctamente.',
+      data: {
+        mantenimiento_id: mantenimientoId,
+        hoja_vida_id: Number(hojaVida.id),
+        equipo_id: equipoId,
+        estado: ESTADO_MANTENIMIENTO_DEFAULT,
+        fecha_programada: fechaProgramada,
+        listado_url: `/milab/inventarios/hojas-vida/${equipoId}/mantenimientos`,
+      },
+    });
+  } catch (error) {
+    console.error('[hojas-vida] Error programando mantenimiento:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible programar el mantenimiento.',
       details: process.env.NODE_ENV === 'production' ? undefined : String(error && error.message),
     });
   }

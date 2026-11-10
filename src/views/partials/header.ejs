@@ -36,6 +36,9 @@
   //   pendingSanctionsCount > 0 && link && link.href === '/milab/api/aprobacion_multa';
   const shouldShowInventoryApprovalsBadge = (link) =>
     pendingInventoryApprovalsCount > 0 && link && link.href === '/milab/inventarios/aprobaciones';
+  const hojasVidaAlertsCount = Number(locals.hojasVidaAlertsCount || 0);
+  const shouldShowHojasVidaAlertsBadge = (link) =>
+    hojasVidaAlertsCount > 0 && link && link.href === '/milab/inventarios/hojas-vida';
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? navigation.primaryLinks : [];
   const secondaryGroups = Array.isArray(navigation.secondaryGroups) ? navigation.secondaryGroups : [];
   const navigationPrimaryLinks = primaryLinks.filter(
@@ -757,6 +760,9 @@
                     <% if (shouldShowInventoryApprovalsBadge(link)) { %>
                       <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
                     <% } %>
+                    <% if (shouldShowHojasVidaAlertsBadge(link)) { %>
+                      <span class="app-nav-badge" aria-label="<%= hojasVidaAlertsCount %> alertas de mantenimiento programado"><%= hojasVidaAlertsCount %></span>
+                    <% } %>
                   </a>
                 </li>
               <% }) %>
@@ -801,6 +807,9 @@
                                 <%# Antes, shouldShowSanctionsBadge(item) mostraba las sanciones pendientes en el menú. %>
                                 <% if (shouldShowInventoryApprovalsBadge(item)) { %>
                                   <span class="app-nav-badge" aria-label="<%= pendingInventoryApprovalsCount %> aprobaciones de inventario pendientes"><%= pendingInventoryApprovalsCount %></span>
+                                <% } %>
+                                <% if (shouldShowHojasVidaAlertsBadge(item)) { %>
+                                  <span class="app-nav-badge" aria-label="<%= hojasVidaAlertsCount %> alertas de mantenimiento programado"><%= hojasVidaAlertsCount %></span>
                                 <% } %>
                               </a>
                             </li>

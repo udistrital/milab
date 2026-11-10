@@ -6,6 +6,20 @@
     <p class="app-page-subtitle">Gestiona la informacion documental, tecnica e historica de los equipos del inventario.</p>
     <div class="d-flex gap-2 flex-wrap mt-3">
       <a
+        href="/milab/inventarios/hojas-vida/dashboard"
+        class="btn btn-perso btn-sm"
+        data-testid="action-dashboard-hv"
+      >
+        <i class="bi bi-bar-chart-line"></i> Dashboard
+      </a>
+      <a
+        href="/milab/inventarios/hojas-vida/programacion"
+        class="btn btn-outline-success btn-sm"
+        data-testid="action-programacion-hv"
+      >
+        <i class="bi bi-calendar-plus"></i> Programar mantenimientos
+      </a>
+      <a
         href="/milab/inventarios/hojas-vida/reportes/mantenimientos"
         class="btn btn-outline-primary btn-sm"
         data-testid="action-reporte-mantenimientos"
@@ -199,6 +213,7 @@
           '<a class="btn btn-outline-info btn-sm" href="' + base + '/' + equipo.equipo_id + '"><i class="bi bi-eye"></i> <span>Ver HV</span></a>' +
           '<a class="btn btn-outline-warning btn-sm" href="' + base + '/' + equipo.equipo_id + '/editar"><i class="bi bi-pencil"></i> <span>Editar HV</span></a>' +
           '<a class="btn btn-outline-primary btn-sm" href="' + base + '/' + equipo.equipo_id + '/mantenimientos/nuevo"><i class="bi bi-tools"></i> <span>Agregar Mantenimiento</span></a>' +
+          '<a class="btn btn-outline-success btn-sm" data-testid="action-programar-mto" href="' + base + '/programacion?equipo_id=' + equipo.equipo_id + '"><i class="bi bi-calendar-plus"></i> <span>Programar Mto.</span></a>' +
           '<a class="btn btn-outline-secondary btn-sm" href="' + base + '/' + equipo.equipo_id + '/historial"><i class="bi bi-clock-history"></i> <span>Ver Historial</span></a>' +
           '<a class="btn btn-outline-dark btn-sm" href="' + base + '/' + equipo.equipo_id + '/imprimir" target="_blank" rel="noopener noreferrer"><i class="bi bi-printer"></i> <span>Imprimir</span></a>' +
           '</div>';

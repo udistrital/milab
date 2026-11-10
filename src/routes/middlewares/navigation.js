@@ -146,9 +146,44 @@ function ensureCoordinatorSignatureAccountLink(navigation, roles) {
   };
 }
 
+// Agrega el enlace de monitoreo de hojas de vida y mantenimientos a la sección
+// de monitoreo para los roles con acceso al dashboard.
+function ensureHojasVidaMonitoringLink(navigation, roles) {
+  const normalizedRoles = normalizeRoles(roles);
+  const allowed = normalizedRoles.some((role) =>
+    [
+      'admin',
+      'administrador',
+      'coordinador_general',
+      'coordinador',
+      'laboratorista',
+      'gestor_laboratorio',
+    ].includes(role)
+  );
+  if (!allowed) {
+    return navigation;
+  }
+
+  const targetHref = '/milab/api/dashboard/hojas-vida';
+  const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
+  if (primaryLinks.some((item) => item?.href === targetHref)) {
+    return { ...navigation, primaryLinks };
+  }
+
+  const item = createLink('Monitoreo de hojas de vida', targetHref, 'bi-journal-medical');
+  const monitoringIndex = primaryLinks.findIndex((link) => link?.href === '/milab/api/dashboard');
+  if (monitoringIndex >= 0) {
+    primaryLinks.splice(monitoringIndex + 1, 0, item);
+  } else {
+    primaryLinks.push(item);
+  }
+
+  return { ...navigation, primaryLinks };
+}
+
 function ensureDashboardMonitoringLink(navigation, roles) {
   if (!normalizeRoles(roles).includes('gestor_laboratorio')) {
-    return navigation;
+    return ensureHojasVidaMonitoringLink(navigation, roles);
   }
 
   const primaryLinks = Array.isArray(navigation.primaryLinks) ? [...navigation.primaryLinks] : [];
@@ -157,7 +192,7 @@ function ensureDashboardMonitoringLink(navigation, roles) {
     primaryLinks.push(createLink('Monitoreo', dashboardHref, 'bi-activity'));
   }
 
-  return { ...navigation, primaryLinks };
+  return ensureHojasVidaMonitoringLink({ ...navigation, primaryLinks }, roles);
 }
 
 function ensureInventoryHojasVidaLink(navigation, roles) {
@@ -480,6 +515,84 @@ async function getPendingInventoryApprovalsCount(user) {
   }
 }
 
+async function getHojasVidaAlertsCount(user) {
+  const roles = normalizeRoles(user?.roles || user?.tipo);
+  const canAccess = roles.some((role) =>
+    [
+      'admin',
+      'administrador',
+      'coordinador_general',
+      'coordinador',
+      'laboratorista',
+      'laboratorista_ud',
+      'laboratorista_ual',
+    ].includes(role)
+  );
+  if (!user || !canAccess) return 0;
+
+  const globalViewer = roles.some((role) =>
+    ['admin', 'administrador', 'coordinador_general'].includes(role)
+  );
+  const isLaboratorista = roles.some((role) =>
+    ['laboratorista', 'laboratorista_ud', 'laboratorista_ual'].includes(role)
+  );
+  const isCoordinador = roles.some((role) =>
+    ['coordinador', 'coordinador_facultad', 'coordinador de facultad'].includes(role)
+  );
+
+  try {
+    const result = await pool.query(
+      `
+        WITH dias AS (
+          SELECT COALESCE(
+            (SELECT dias_alerta_vencimiento FROM mantenimiento_config ORDER BY id DESC LIMIT 1),
+            30
+          )::int AS dias
+        )
+        SELECT COUNT(*)::int AS total
+        FROM mantenimiento m
+        JOIN hoja_vida hv ON hv.id = m.hoja_vida_id AND hv.activo = TRUE
+        JOIN equipo_catalogo ec ON ec.id = m.equipo_id
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        CROSS JOIN dias
+        WHERE m.activo = TRUE
+          AND m.estado IN ('PENDIENTE','EN_EJECUCION')
+          AND m.fecha_realizacion IS NOT NULL
+          AND m.fecha_realizacion <= CURRENT_DATE + dias.dias
+          AND (
+            $1::boolean
+            OR (
+              $2::boolean
+              AND inv.laboratorio_ual_id IN (
+                SELECT lu.ual_id FROM laboratorista_ual lu
+                WHERE lu.laboratorista_documento_id = $4 AND lu.activo = TRUE
+              )
+            )
+            OR (
+              $3::boolean
+              AND inv.laboratorio_ual_id IN (
+                SELECT u.ual_id FROM ual u
+                JOIN coordinador_facultad_alcance ca
+                  ON ca.facultad_id = u.facultad_id AND ca.activo = TRUE
+                JOIN coordinador c
+                  ON c.documento = ca.coordinador_documento_id AND c.activo = TRUE
+                WHERE ca.coordinador_documento_id = $4 AND u.activo = TRUE
+              )
+            )
+          )
+      `,
+      [globalViewer, isLaboratorista, isCoordinador, user.documento || null]
+    );
+    return Number(result.rows[0]?.total) || 0;
+  } catch (error) {
+    console.warn(
+      'Navegación: no fue posible consultar alertas de mantenimiento programado:',
+      error.message
+    );
+    return 0;
+  }
+}
+
 async function getActiveSanctionsSummary(user, role) {
   if (!user || !['estudiante', 'docente'].includes(role)) {
     return {
@@ -632,6 +745,7 @@ async function navigationMiddleware(req, res, next) {
     const primaryRole = getPrimaryRole(roles);
     // const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
+    const hojasVidaAlertsCount = await getHojasVidaAlertsCount(sessionUser);
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
     // Un contador del menú no debe impedir cargar la página.
@@ -656,6 +770,7 @@ async function navigationMiddleware(req, res, next) {
     res.locals.sessionRoleLabel = navigation.roleLabel;
     // res.locals.pendingSanctionsCount = pendingSanctionsCount;
     res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
+    res.locals.hojasVidaAlertsCount = hojasVidaAlertsCount;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;

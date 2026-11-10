@@ -1,0 +1,553 @@
+<%- include('../../../partials/header'); -%>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <a href="/milab/inventarios/hojas-vida" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver
+      </a>
+    </div>
+    <h1 class="app-page-title">Programación de mantenimientos</h1>
+    <p class="app-page-subtitle">
+      Selecciona un equipo y agenda sus próximos mantenimientos. Los coordinadores y laboratoristas
+      de la dependencia reciben una alerta por correo y en el sistema.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="alert"><%= successMessage %></div>
+  <% } %>
+
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section
+    id="hvp-alertas-panel"
+    class="alert alert-warning d-none mb-4"
+    role="alert"
+    data-testid="programacion-alertas"
+  >
+    <h5 class="alert-heading d-flex align-items-center gap-2">
+      <i class="bi bi-exclamation-triangle"></i> Alertas de mantenimiento
+    </h5>
+    <p class="mb-2">
+      Hay <strong id="hvp-alertas-total">0</strong> mantenimiento(s) programado(s) próximos a vencer
+      o vencidos.
+    </p>
+    <ul id="hvp-alertas-lista" class="mb-0 small"></ul>
+  </section>
+
+  <section class="row g-3 mb-4" data-testid="programacion-resumen">
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Programados</span>
+          <span class="h4 d-block mb-0" id="hvp-kpi-total">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Pendientes</span>
+          <span class="h4 d-block mb-0" id="hvp-kpi-programados">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">En ejecución</span>
+          <span class="h4 d-block mb-0" id="hvp-kpi-ejecucion">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Próximos a vencer</span>
+          <span class="h4 d-block mb-0" id="hvp-kpi-proximos">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card app-table-panel text-light h-100">
+        <div class="card-body">
+          <span class="text-muted d-block small">Vencidos</span>
+          <span class="h4 d-block mb-0" id="hvp-kpi-vencidos">0</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Programar próximo mantenimiento</h5>
+    </div>
+    <div class="card-body">
+      <form id="hvp-form">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="hvp-buscar-equipo" class="form-label">Buscar equipo</label>
+            <div class="input-group">
+              <input
+                type="text"
+                class="form-control"
+                id="hvp-buscar-equipo"
+                placeholder="Código, nombre o placa"
+              />
+              <button class="btn btn-outline-secondary" type="button" id="hvp-buscar-btn">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label for="hvp-equipo" class="form-label">
+              Equipo <span class="text-danger">*</span>
+            </label>
+            <select
+              class="form-select"
+              id="hvp-equipo"
+              name="equipo_id"
+              data-equipo-inicial="<%= locals.equipoIdInicial || '' %>"
+              required
+            >
+              <option value="">Seleccione un equipo...</option>
+            </select>
+          </div>
+
+          <div class="col-md-8">
+            <label for="hvp-item" class="form-label">
+              Ítem o descripción <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              class="form-control"
+              id="hvp-item"
+              name="item"
+              placeholder="Ej: Cambio de aceite y revisión general"
+              required
+            />
+          </div>
+          <div class="col-md-4">
+            <label for="hvp-tipo" class="form-label">
+              Tipo de mantenimiento <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="hvp-tipo" name="tipo_mantenimiento" required>
+              <option value="">Seleccione un tipo...</option>
+              <% tiposMantenimiento.forEach(function (tipo) { %>
+                <option value="<%= tipo.codigo %>"><%= tipo.etiqueta %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="hvp-fecha" class="form-label">
+              Fecha programada <span class="text-danger">*</span>
+            </label>
+            <input type="date" class="form-control" id="hvp-fecha" name="fecha_realizacion" required />
+          </div>
+          <div class="col-md-4">
+            <label for="hvp-responsable" class="form-label">Responsable</label>
+            <input type="text" class="form-control" id="hvp-responsable" name="responsable" />
+          </div>
+          <div class="col-md-4">
+            <label for="hvp-costo" class="form-label">Costo estimado</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="form-control"
+              id="hvp-costo"
+              name="costo"
+              placeholder="0.00"
+            />
+          </div>
+          <div class="col-md-12">
+            <label for="hvp-especificaciones" class="form-label">Especificaciones del mantenimiento</label>
+            <textarea
+              class="form-control"
+              id="hvp-especificaciones"
+              name="especificaciones_mantenimiento"
+              rows="2"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          <button type="submit" class="btn btn-perso" id="hvp-submit-btn" data-submit-lock="true">
+            <i class="bi bi-calendar-plus"></i>
+            <span>Programar mantenimiento</span>
+          </button>
+        </div>
+
+        <div id="hvp-form-loading" class="d-none mt-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span class="ms-2">Programando mantenimiento...</span>
+        </div>
+        <div id="hvp-form-error" class="alert alert-danger d-none mt-3" role="alert"></div>
+        <div id="hvp-form-ok" class="alert alert-success d-none mt-3" role="alert"></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-0">Mantenimientos programados</h5>
+      </div>
+      <span id="hvp-count" class="badge bg-secondary">0 registros</span>
+    </div>
+    <div class="card-body">
+      <form id="hvp-filtros" class="row g-3 align-items-end mb-3">
+        <div class="col-md-3">
+          <label for="hvp-f-buscar" class="form-label">Buscar</label>
+          <input type="text" class="form-control" id="hvp-f-buscar" name="buscar" placeholder="Equipo, placa o ítem" />
+        </div>
+        <div class="col-md-3">
+          <label for="hvp-f-situacion" class="form-label">Situación</label>
+          <select class="form-select" id="hvp-f-situacion" name="situacion">
+            <option value="">Todas</option>
+            <option value="VIGENTE">Vigente</option>
+            <option value="PROXIMO_VENCER">Próximo a vencer</option>
+            <option value="VENCIDO">Vencido</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="hvp-f-desde" class="form-label">Desde</label>
+          <input type="date" class="form-control" id="hvp-f-desde" name="fecha_desde" />
+        </div>
+        <div class="col-md-2">
+          <label for="hvp-f-hasta" class="form-label">Hasta</label>
+          <input type="date" class="form-control" id="hvp-f-hasta" name="fecha_hasta" />
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+          <button type="submit" class="btn btn-perso" data-submit-lock="true">
+            <i class="bi bi-funnel"></i>
+          </button>
+          <button type="reset" class="btn btn-outline-secondary" id="hvp-f-reset">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>
+        </div>
+      </form>
+
+      <div id="hvp-loading" class="alert alert-info mb-0">
+        <i class="bi bi-hourglass-split me-2"></i>Cargando mantenimientos programados...
+      </div>
+      <div id="hvp-error" class="alert alert-danger mb-0 d-none" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <span id="hvp-error-message">No fue posible cargar la programación.</span>
+      </div>
+      <div id="hvp-empty" class="alert alert-warning mb-0 d-none" role="alert">
+        <i class="bi bi-info-circle me-2"></i>No hay mantenimientos programados con los criterios seleccionados.
+      </div>
+      <div id="hvp-table-wrapper" class="table-responsive d-none">
+        <table class="table table-bordered table-striped app-table-compact">
+          <thead class="text-light">
+            <tr>
+              <th>Equipo</th>
+              <th>Placa</th>
+              <th>Laboratorio</th>
+              <th>Ítem</th>
+              <th>Tipo</th>
+              <th>Fecha programada</th>
+              <th>Días</th>
+              <th>Situación</th>
+              <th>Estado</th>
+              <th>Responsable</th>
+            </tr>
+          </thead>
+          <tbody id="hvp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script nonce="<%= cspNonce %>">
+  (function () {
+    var LISTADO_ENDPOINT = '/milab/api/hojas-vida/programacion';
+    var EQUIPOS_ENDPOINT = '/milab/api/hojas-vida/equipos';
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta && csrfMeta.content ? csrfMeta.content : '';
+
+    var form = document.getElementById('hvp-form');
+    var formError = document.getElementById('hvp-form-error');
+    var formOk = document.getElementById('hvp-form-ok');
+    var formLoading = document.getElementById('hvp-form-loading');
+    var submitBtn = document.getElementById('hvp-submit-btn');
+    var equipoSelect = document.getElementById('hvp-equipo');
+    var buscarEquipoInput = document.getElementById('hvp-buscar-equipo');
+    var buscarEquipoBtn = document.getElementById('hvp-buscar-btn');
+    var fechaInput = document.getElementById('hvp-fecha');
+    var primeraCarga = true;
+
+    var filtrosForm = document.getElementById('hvp-filtros');
+    var filtrosReset = document.getElementById('hvp-f-reset');
+    var loadingEl = document.getElementById('hvp-loading');
+    var errorEl = document.getElementById('hvp-error');
+    var errorMsgEl = document.getElementById('hvp-error-message');
+    var emptyEl = document.getElementById('hvp-empty');
+    var tableWrapper = document.getElementById('hvp-table-wrapper');
+    var tbodyEl = document.getElementById('hvp-tbody');
+    var countEl = document.getElementById('hvp-count');
+
+    var alertasPanel = document.getElementById('hvp-alertas-panel');
+    var alertasTotal = document.getElementById('hvp-alertas-total');
+    var alertasLista = document.getElementById('hvp-alertas-lista');
+
+    function escapeHtml(str) {
+      var s = str == null ? '' : String(str);
+      return s.replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function hoyISO() {
+      var d = new Date();
+      var mes = String(d.getMonth() + 1).padStart(2, '0');
+      var dia = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + mes + '-' + dia;
+    }
+
+    function setKpi(id, valor) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = String(valor == null ? 0 : valor);
+    }
+
+    function descripcionEquipo(item) {
+      var partes = [];
+      if (item.codigo_interno) partes.push(item.codigo_interno);
+      if (item.nombre_equipo) partes.push(item.nombre_equipo);
+      if (item.codigo_inventario) partes.push('(' + item.codigo_inventario + ')');
+      return partes.join(' - ') || ('Equipo ' + item.equipo_id);
+    }
+
+    function cargarEquipos() {
+      var buscar = String(buscarEquipoInput && buscarEquipoInput.value ? buscarEquipoInput.value : '').trim();
+      var url = buscar ? EQUIPOS_ENDPOINT + '?buscar=' + encodeURIComponent(buscar) : EQUIPOS_ENDPOINT;
+      fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (body) {
+          var equipos = body && Array.isArray(body.data) ? body.data : [];
+          var inicial = String(equipoSelect.getAttribute('data-equipo-inicial') || '').trim();
+          var actual = equipoSelect.value || (primeraCarga ? inicial : '');
+          primeraCarga = false;
+          equipoSelect.innerHTML = '<option value="">Seleccione un equipo...</option>';
+          equipos.forEach(function (item) {
+            var opt = document.createElement('option');
+            opt.value = String(item.equipo_id);
+            opt.textContent = descripcionEquipo(item);
+            if (!item.tiene_hoja_vida || item.hoja_vida_estado !== 'ACTIVA') {
+              opt.textContent += ' (sin HV confirmada)';
+            }
+            equipoSelect.appendChild(opt);
+          });
+          if (actual) equipoSelect.value = actual;
+        })
+        .catch(function () {
+          /* silencioso: el listado principal sigue disponible */
+        });
+    }
+
+    function showOnly(target) {
+      if (loadingEl) loadingEl.classList.add('d-none');
+      if (errorEl) errorEl.classList.add('d-none');
+      if (emptyEl) emptyEl.classList.add('d-none');
+      if (tableWrapper) tableWrapper.classList.add('d-none');
+      if (target) target.classList.remove('d-none');
+    }
+
+    function diasTexto(dias) {
+      if (dias === null || dias === undefined) return '-';
+      if (dias < 0) return '<span class="text-danger">' + Math.abs(dias) + ' vencido(s)</span>';
+      return dias + ' día(s)';
+    }
+
+    function renderListado(data) {
+      if (!Array.isArray(data) || data.length === 0) {
+        if (countEl) countEl.textContent = '0 registros';
+        showOnly(emptyEl);
+        return;
+      }
+      if (countEl) {
+        countEl.textContent = String(data.length) + ' registro' + (data.length === 1 ? '' : 's');
+      }
+      showOnly(tableWrapper);
+      tbodyEl.innerHTML = '';
+      var frag = document.createDocumentFragment();
+      data.forEach(function (item) {
+        var tr = document.createElement('tr');
+        var celdas = [
+          escapeHtml(descripcionEquipo(item)),
+          escapeHtml(item.codigo_inventario || '-'),
+          escapeHtml(item.laboratorio || '-'),
+          escapeHtml(item.item || '-'),
+          escapeHtml(item.tipo_mantenimiento_etiqueta || '-'),
+          escapeHtml(item.fecha_programada ? String(item.fecha_programada).slice(0, 10) : '-'),
+          diasTexto(item.dias_restantes),
+          '<span class="badge bg-' + escapeHtml((item.situacion && item.situacion.clase) || 'secondary') + '">' +
+            escapeHtml((item.situacion && item.situacion.etiqueta) || '-') + '</span>',
+          escapeHtml(item.estado_etiqueta || item.estado || '-'),
+          escapeHtml(item.responsable || '-'),
+        ];
+        celdas.forEach(function (html) {
+          var td = document.createElement('td');
+          td.className = 'text-light';
+          td.innerHTML = html;
+          tr.appendChild(td);
+        });
+        frag.appendChild(tr);
+      });
+      tbodyEl.appendChild(frag);
+    }
+
+    function renderAlertas(alertas) {
+      if (!alertasPanel) return;
+      var items = Array.isArray(alertas) ? alertas : [];
+      if (items.length === 0) {
+        alertasPanel.classList.add('d-none');
+        return;
+      }
+      if (alertasTotal) alertasTotal.textContent = String(items.length);
+      if (alertasLista) {
+        alertasLista.innerHTML = '';
+        items.slice(0, 12).forEach(function (item) {
+          var li = document.createElement('li');
+          li.innerHTML =
+            escapeHtml(descripcionEquipo(item)) + ' — ' + escapeHtml(item.item || '-') +
+            ' — ' + escapeHtml(item.fecha_programada ? String(item.fecha_programada).slice(0, 10) : '-') +
+            ' (' + escapeHtml((item.situacion && item.situacion.etiqueta) || '') + ')';
+          alertasLista.appendChild(li);
+        });
+      }
+      alertasPanel.classList.remove('d-none');
+    }
+
+    function renderResumen(resumen) {
+      var r = resumen || {};
+      setKpi('hvp-kpi-total', r.total);
+      setKpi('hvp-kpi-programados', r.programados);
+      setKpi('hvp-kpi-ejecucion', r.en_ejecucion);
+      setKpi('hvp-kpi-proximos', r.proximos);
+      setKpi('hvp-kpi-vencidos', r.vencidos);
+    }
+
+    function cargarListado() {
+      showOnly(loadingEl);
+      tbodyEl.innerHTML = '';
+      var fd = new FormData(filtrosForm);
+      var params = new URLSearchParams();
+      ['buscar', 'situacion', 'fecha_desde', 'fecha_hasta'].forEach(function (key) {
+        var val = String(fd.get(key) || '').trim();
+        if (val) params.append(key, val);
+      });
+      var qs = params.toString();
+      var url = qs ? LISTADO_ENDPOINT + '?' + qs : LISTADO_ENDPOINT;
+      fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok && body && body.ok === true, status: res.status, body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            if (errorMsgEl) {
+              errorMsgEl.textContent =
+                (result.body && result.body.message) || 'HTTP ' + (result.status || 'desconocido');
+            }
+            showOnly(errorEl);
+            return;
+          }
+          renderResumen(result.body.resumen);
+          renderListado(result.body.data);
+          renderAlertas(result.body.alertas);
+        })
+        .catch(function () {
+          if (errorMsgEl) errorMsgEl.textContent = 'No se pudo conectar con el servidor.';
+          showOnly(errorEl);
+        });
+    }
+
+    filtrosForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      cargarListado();
+    });
+    if (filtrosReset) {
+      filtrosReset.addEventListener('click', function () {
+        setTimeout(cargarListado, 0);
+      });
+    }
+    if (buscarEquipoBtn) buscarEquipoBtn.addEventListener('click', cargarEquipos);
+    if (buscarEquipoInput) {
+      buscarEquipoInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          cargarEquipos();
+        }
+      });
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      formError.classList.add('d-none');
+      formOk.classList.add('d-none');
+      formLoading.classList.remove('d-none');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var fd = new FormData(form);
+      var cuerpo = new URLSearchParams();
+      fd.forEach(function (value, key) {
+        cuerpo.append(key, value);
+      });
+
+      fetch(LISTADO_ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        },
+        body: cuerpo.toString(),
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok && body && body.ok === true, body: body };
+          });
+        })
+        .then(function (result) {
+          formLoading.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+          if (result.ok) {
+            formOk.textContent =
+              (result.body && result.body.message) || 'Mantenimiento programado correctamente.';
+            formOk.classList.remove('d-none');
+            form.reset();
+            cargarListado();
+            return;
+          }
+          var msg =
+            (result.body && (result.body.message || result.body.message2)) ||
+            'No fue posible programar el mantenimiento.';
+          formError.textContent = msg;
+          formError.classList.remove('d-none');
+        })
+        .catch(function () {
+          formLoading.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+          formError.textContent = 'No se pudo conectar con el servidor. Intenta nuevamente.';
+          formError.classList.remove('d-none');
+        });
+    });
+
+    if (fechaInput) fechaInput.min = hoyISO();
+
+    cargarEquipos();
+    cargarListado();
+  })();
+</script>
+
+<%- include('../../../partials/footer'); -%>
