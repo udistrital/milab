@@ -1022,10 +1022,23 @@ test('hojas-vida dashboard view renders filters, KPIs and charts', async () => {
   );
   assert.match(html, /data-testid="dashboard-hojas-vida"/);
   assert.match(html, /id="hvdb-filtros"/);
+  assert.match(html, /data-testid="hvdb-facultad"/);
+  assert.match(html, /data-testid="hvdb-dependencia"/);
+  assert.match(html, /Todas las facultades de mi alcance/);
+  assert.match(html, /Todas las dependencias de mi alcance/);
+  assert.match(html, /dashboard\/opciones/);
+  assert.doesNotMatch(html, /<input[^>]+name="facultad"/);
+  assert.doesNotMatch(html, /<input[^>]+name="laboratorio"/);
   assert.match(html, /data-testid="hvdb-kpi-equipos"/);
   assert.match(html, /data-testid="hvdb-kpi-alertas"/);
   assert.match(html, /data-hvdb-chart="estado"/);
   assert.match(html, /data-hvdb-chart="periodo"/);
+  assert.match(html, /class="dashboard-pys-cards mb-4 d-none"/);
+  assert.match(html, /class="dashboard-pys-panels d-none"/);
+  assert.match(html, /function getChartTheme\(\)/);
+  assert.match(html, /--app-text-main/);
+  assert.match(html, /labels: \{ color: theme\.text/);
+  assert.doesNotMatch(html, /color: '#e5e7eb'/);
   assert.match(html, /\/milab\/api\/hojas-vida\/dashboard/);
 });
 

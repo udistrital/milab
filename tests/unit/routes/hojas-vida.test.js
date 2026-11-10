@@ -283,6 +283,112 @@ test('hojas-vida dashboard aggregates indicators and applies the alert rules', a
   }
 });
 
+test('hojas-vida dashboard filter options are limited to the coordinators assigned dependencies', async () => {
+  const calls = [];
+  const handleQuery = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('SELECT DISTINCT u.ual_id') && sql.includes('FROM ual u')) {
+      return { rows: [{ ual_id: 4 }] };
+    }
+    if (sql.includes('FROM ual u') && sql.includes('JOIN dependencia_facultad f')) {
+      return {
+        rows: [
+          {
+            dependency_id: 4,
+            dependency_name: 'Laboratorio autorizado',
+            faculty_id: 31,
+            faculty_name: 'Facultad autorizada',
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  };
+  const loaded = loadRoute({
+    query: handleQuery,
+    user: { tipo: 'coordinador', roles: ['coordinador'], documento: 'coord-1' },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/dashboard/opciones');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.deepEqual(response.body.data.faculties, [{ id: 31, nombre: 'Facultad autorizada' }]);
+    assert.deepEqual(response.body.data.dependencies, [
+      { id: 4, nombre: 'Laboratorio autorizado', facultad_id: 31 },
+    ]);
+    const dependencyOptionsQuery = calls.find(({ sql }) =>
+      sql.includes('JOIN dependencia_facultad f')
+    );
+    assert.deepEqual(dependencyOptionsQuery.params, [[4]]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('hojas-vida dashboard applies authorized faculty and dependency selections', async () => {
+  const calls = [];
+  const handleQuery = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('FROM ual u') && sql.includes('JOIN dependencia_facultad f')) {
+      return {
+        rows: [
+          {
+            dependency_id: 4,
+            dependency_name: 'Laboratorio autorizado',
+            faculty_id: 31,
+            faculty_name: 'Facultad autorizada',
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')) {
+      return { rows: [] };
+    }
+    if (sql.includes('COUNT(DISTINCT hv.id)')) {
+      return { rows: [{ total_hojas: 0, hojas_activas: 0, hojas_pendientes: 0 }] };
+    }
+    if (sql.includes('FROM hoja_vida_baja b')) return { rows: [{ total: 0 }] };
+    return { rows: [] };
+  };
+  const loaded = loadRoute({ query: handleQuery });
+
+  try {
+    const response = await request(loaded.app).get('/dashboard?facultad_id=31&ual_id=4');
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    const maintenanceQuery = calls.find(
+      ({ sql }) => sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')
+    );
+    assert.match(maintenanceQuery.sql, /u\.facultad_id = \$1/);
+    assert.match(maintenanceQuery.sql, /inv\.laboratorio_ual_id = \$2/);
+    assert.deepEqual(maintenanceQuery.params, [31, 4]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('hojas-vida dashboard rejects selections outside the authorized options', async () => {
+  const loaded = loadRoute({
+    query: async (sql) => {
+      if (sql.includes('FROM ual u') && sql.includes('JOIN dependencia_facultad f')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const response = await request(loaded.app).get('/dashboard?facultad_id=999');
+    assert.equal(response.status, 403);
+    assert.match(response.body.message, /fuera de tu alcance/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 function fechaISO(desplazoDias) {
   const base = new Date();
   base.setDate(base.getDate() + desplazoDias);

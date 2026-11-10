@@ -1205,6 +1205,82 @@ router.get('/reportes/utilizacion', async function reporteUtilizacionHV(req, res
   }
 });
 
+async function obtenerOpcionesFiltroDashboardHojasVida(accessibleLaboratoryIds) {
+  const params = [];
+  let scopeCondition = '';
+  if (Array.isArray(accessibleLaboratoryIds)) {
+    if (accessibleLaboratoryIds.length === 0) {
+      return { faculties: [], dependencies: [] };
+    }
+    params.push(accessibleLaboratoryIds);
+    scopeCondition = `AND u.ual_id = ANY($${params.length}::int[])`;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT u.ual_id AS dependency_id,
+             u.nombre AS dependency_name,
+             u.facultad_id AS faculty_id,
+             f.nombre AS faculty_name
+      FROM ual u
+      JOIN dependencia_facultad f
+        ON f.dependencia_facultad_id = u.facultad_id
+       AND f.activo = TRUE
+      WHERE u.activo = TRUE ${scopeCondition}
+      ORDER BY f.nombre, u.nombre
+    `,
+    params
+  );
+  const facultiesById = new Map();
+  const dependencies = result.rows
+    .map((row) => {
+      const facultyId = Number(row.faculty_id);
+      const dependencyId = Number(row.dependency_id);
+      const facultyName = String(row.faculty_name || '').trim();
+      const dependencyName = String(row.dependency_name || '').trim();
+      if (
+        !Number.isSafeInteger(facultyId) ||
+        facultyId <= 0 ||
+        !Number.isSafeInteger(dependencyId) ||
+        dependencyId <= 0 ||
+        !facultyName ||
+        !dependencyName
+      ) {
+        return null;
+      }
+      facultiesById.set(facultyId, { id: facultyId, nombre: facultyName });
+      return { id: dependencyId, nombre: dependencyName, facultad_id: facultyId };
+    })
+    .filter(Boolean);
+
+  return {
+    faculties: Array.from(facultiesById.values()).sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, 'es')
+    ),
+    dependencies,
+  };
+}
+
+function parseDashboardFilterId(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : NaN;
+}
+
+router.get('/dashboard/opciones', async function dashboardHojasVidaFilterOptions(req, res) {
+  try {
+    const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
+    const opciones = await obtenerOpcionesFiltroDashboardHojasVida(accessibleLaboratoryIds);
+    return res.json({ ok: true, data: opciones });
+  } catch (error) {
+    console.error('[hojas-vida] Error cargando opciones de filtros del dashboard:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible cargar las facultades y dependencias de tu alcance.',
+    });
+  }
+});
+
 router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
   try {
     const params = [];
@@ -1262,6 +1338,46 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
 
     const accessibleLaboratoryIds = await getAccessibleHojasVidaLaboratoryIds(req);
     aplicarAlcanceLaboratorios(accessibleLaboratoryIds, params, conditions);
+    const facultadId = parseDashboardFilterId(req.query.facultad_id);
+    const ualId = parseDashboardFilterId(req.query.ual_id);
+    if (Number.isNaN(facultadId) || Number.isNaN(ualId)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'La facultad o dependencia seleccionada no es válida.',
+      });
+    }
+
+    if (facultadId || ualId) {
+      const opciones = await obtenerOpcionesFiltroDashboardHojasVida(accessibleLaboratoryIds);
+      const facultadPermitida = facultadId
+        ? opciones.faculties.find((item) => item.id === facultadId)
+        : null;
+      const dependenciaPermitida = ualId
+        ? opciones.dependencies.find((item) => item.id === ualId)
+        : null;
+      if ((facultadId && !facultadPermitida) || (ualId && !dependenciaPermitida)) {
+        return res.status(403).json({
+          ok: false,
+          message: 'La facultad o dependencia seleccionada está fuera de tu alcance.',
+        });
+      }
+      if (facultadId && ualId && dependenciaPermitida.facultad_id !== facultadId) {
+        return res.status(400).json({
+          ok: false,
+          message: 'La dependencia seleccionada no pertenece a la facultad indicada.',
+        });
+      }
+      if (facultadId) {
+        params.push(facultadId);
+        conditions.push(
+          `inv.laboratorio_ual_id IN (SELECT u.ual_id FROM ual u WHERE u.facultad_id = $${params.length} AND u.activo = TRUE)`
+        );
+      }
+      if (ualId) {
+        params.push(ualId);
+        conditions.push(`inv.laboratorio_ual_id = $${params.length}`);
+      }
+    }
     const whereClause = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
 
     const diasAlerta = await obtenerDiasAlertaVencimiento(pool);
@@ -1377,6 +1493,16 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
     if (laboratorio) {
       equipoParams.push(`%${laboratorio}%`);
       equipoConditions.push(`ec.laboratorio ILIKE $${equipoParams.length} ESCAPE '\\'`);
+    }
+    if (facultadId) {
+      equipoParams.push(facultadId);
+      equipoConditions.push(
+        `inv.laboratorio_ual_id IN (SELECT u.ual_id FROM ual u WHERE u.facultad_id = $${equipoParams.length} AND u.activo = TRUE)`
+      );
+    }
+    if (ualId) {
+      equipoParams.push(ualId);
+      equipoConditions.push(`inv.laboratorio_ual_id = $${equipoParams.length}`);
     }
     if (Array.isArray(accessibleLaboratoryIds)) {
       if (accessibleLaboratoryIds.length === 0) {
