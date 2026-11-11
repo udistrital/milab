@@ -333,6 +333,7 @@ function getInventorySearchStatus(error) {
   if (error.code === 'ARKA_THIRD_PARTY_NOT_FOUND') return 404;
   if (error.code === 'ARKA_AMBIGUOUS_THIRD_PARTY') return 409;
   if (error.code === 'ARKA_CONFIGURATION_ERROR') return 503;
+  if (['ARKA_OATI_UNAVAILABLE', 'ARKA_OATI_NETWORK_ERROR'].includes(error.code)) return 503;
   return 502;
 }
 

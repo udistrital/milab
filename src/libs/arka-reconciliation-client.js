@@ -136,6 +136,50 @@ function requestError(error) {
   );
 }
 
+function tokenProviderError(error) {
+  if (error?.code === 'OATI_UNAVAILABLE') {
+    return new ArkaIntegrationError(
+      'El servicio de autenticación OATI no está disponible temporalmente. Inténtalo de nuevo más tarde.',
+      'ARKA_OATI_UNAVAILABLE',
+      503
+    );
+  }
+
+  const status = Number(error?.response?.status) || null;
+  if (status === 401 || status === 403) {
+    return new ArkaIntegrationError(
+      `OATI rechazó la autenticación OAuth (HTTP ${status}). Verifica OATI_CLIENT_ID, OATI_SECRET y OATI_TOKEN_URL.`,
+      'ARKA_OATI_AUTHENTICATION_ERROR',
+      502
+    );
+  }
+  if (status) {
+    return new ArkaIntegrationError(
+      `OATI respondió con estado HTTP ${status} al solicitar el token OAuth. Verifica OATI_TOKEN_URL y la disponibilidad del servicio.`,
+      'ARKA_OATI_TOKEN_HTTP_ERROR',
+      502
+    );
+  }
+
+  const networkCode = String(error?.code || '').toUpperCase();
+  if (
+    ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN', 'ENOTFOUND'].includes(
+      networkCode
+    )
+  ) {
+    return new ArkaIntegrationError(
+      `No fue posible conectar con el servicio de autenticación OATI (${networkCode}). Verifica OATI_TOKEN_URL y la conectividad del servidor.`,
+      'ARKA_OATI_NETWORK_ERROR',
+      503
+    );
+  }
+
+  return new ArkaIntegrationError(
+    'No fue posible obtener el token OAuth para consultar ARKA.',
+    'ARKA_TOKEN_ERROR'
+  );
+}
+
 function createArkaClient({
   configuration = getArkaConfiguration(),
   httpClient = axios,
@@ -147,11 +191,8 @@ function createArkaClient({
     let accessToken;
     try {
       accessToken = await accessTokenProvider();
-    } catch {
-      throw new ArkaIntegrationError(
-        'No fue posible obtener el token OAuth para consultar ARKA.',
-        'ARKA_TOKEN_ERROR'
-      );
+    } catch (error) {
+      throw tokenProviderError(error);
     }
 
     if (typeof accessToken !== 'string' || !accessToken.trim()) {

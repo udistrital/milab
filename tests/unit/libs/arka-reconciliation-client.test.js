@@ -203,3 +203,26 @@ test('client turns OAuth failures into safe integration errors', async () => {
     return true;
   });
 });
+
+test('client explains OAuth authentication failures without exposing credentials', async () => {
+  const client = createArkaClient({
+    configuration: createConfiguration(),
+    accessTokenProvider: async () => {
+      const error = new Error('request included a private secret');
+      error.response = { status: 401 };
+      throw error;
+    },
+    httpClient: {
+      get() {
+        assert.fail('No debe consultarse ARKA si OAuth rechazó la autenticación.');
+      },
+    },
+  });
+
+  await assert.rejects(client.resolveThirdPartyId('1030672'), (error) => {
+    assert.equal(error.code, 'ARKA_OATI_AUTHENTICATION_ERROR');
+    assert.match(error.message, /OATI_CLIENT_ID, OATI_SECRET y OATI_TOKEN_URL/);
+    assert.doesNotMatch(error.message, /private secret|1030672/);
+    return true;
+  });
+});
