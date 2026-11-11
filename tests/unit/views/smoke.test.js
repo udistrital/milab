@@ -45,6 +45,49 @@ function buildBaseViewLocals(overrides = {}) {
   };
 }
 
+test('ARKA reconciliation page renders its inventory search and results', async () => {
+  const html = await renderView(
+    'src/views/home/inventarios/conciliaciones-arka.ejs',
+    buildBaseViewLocals({
+      canRunAll: false,
+      dependencies: [],
+      errorMessage: '',
+      faculties: [],
+      failedRun: null,
+      inventorySearch: {
+        documento: '1030672',
+        terceroId: 1165,
+        items: [
+          {
+            arkaId: 41,
+            elementoActaId: 7,
+            placa: 'ARKA-001',
+            serie: 'SER-001',
+            nombre: 'Microscopio',
+            marca: 'Acme',
+            valor: 1234,
+          },
+        ],
+      },
+      inventorySearchDocument: '1030672',
+      inventorySearchError: '',
+      laboratories: [],
+      pageUrl: '/milab/inventarios/conciliaciones-arka',
+      report: null,
+      selectedLaboratory: null,
+      successMessage: '',
+      activeRun: null,
+    }),
+    { async: false }
+  );
+
+  assert.match(html, /Búsqueda de Inventario en ARKA/);
+  assert.match(html, /action="\/milab\/inventarios\/conciliaciones-arka\/buscar-inventario"/);
+  assert.match(html, /ID de tercero: <strong>1165<\/strong>/);
+  assert.match(html, /ARKA-001/);
+  assert.match(html, /Microscopio/);
+});
+
 test('inventory approval navigation shows a pending-count badge only when needed', async () => {
   const appNavigation = {
     primaryLinks: [],

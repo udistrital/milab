@@ -26,6 +26,85 @@
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
+  <section id="busqueda-inventario-arka" class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <h2 class="h5 mb-1">Búsqueda de Inventario en ARKA</h2>
+      <p class="mb-3">
+        Consulta los elementos asignados en ARKA ingresando el número de documento del usuario.
+      </p>
+      <form method="post" action="<%= pageUrl %>/buscar-inventario" class="row g-3 align-items-end">
+        <%- include('../../partials/csrf_field'); -%>
+        <div class="col-md-8">
+          <label for="arka-document-search" class="form-label">Número de documento</label>
+          <input
+            id="arka-document-search"
+            class="form-control"
+            type="text"
+            name="documento"
+            value="<%= inventorySearchDocument %>"
+            maxlength="50"
+            autocomplete="off"
+            required
+          >
+        </div>
+        <div class="col-md-4">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-search me-1" aria-hidden="true"></i>
+            Buscar inventario
+          </button>
+        </div>
+      </form>
+
+      <% if (inventorySearchError) { %>
+        <div class="alert alert-danger mt-3 mb-0" role="alert"><%= inventorySearchError %></div>
+      <% } %>
+
+      <% if (inventorySearch) { %>
+        <div class="mt-4" aria-live="polite">
+          <p class="mb-3">
+            Documento: <strong><%= inventorySearch.documento %></strong>
+            · ID de tercero: <strong><%= inventorySearch.terceroId %></strong>
+            · Elementos encontrados: <strong><%= inventorySearch.items.length %></strong>
+          </p>
+          <% if (inventorySearch.items.length) { %>
+            <div class="table-responsive">
+              <table class="table table-striped table-hover align-middle">
+                <thead>
+                  <tr>
+                    <th scope="col">ID ARKA</th>
+                    <th scope="col">ID elemento de acta</th>
+                    <th scope="col">Placa</th>
+                    <th scope="col">Serie</th>
+                    <th scope="col">Descripción</th>
+                    <th scope="col">Marca</th>
+                    <th scope="col">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% inventorySearch.items.forEach(function(item) { %>
+                    <tr>
+                      <td><%= item.arkaId || '—' %></td>
+                      <td><%= item.elementoActaId || '—' %></td>
+                      <td><%= item.placa || '—' %></td>
+                      <td><%= item.serie || '—' %></td>
+                      <td><%= item.nombre || '—' %></td>
+                      <td><%= item.marca || '—' %></td>
+                      <td><%= item.valor === null ? '—' : item.valor %></td>
+                    </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <div class="alert alert-info mb-0" role="status">
+              El usuario no tiene elementos asignados en ARKA.
+            </div>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
   <% if (canRunAll) { %>
     <section class="card app-form-panel text-light mb-4">
       <div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">

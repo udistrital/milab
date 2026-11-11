@@ -58,9 +58,11 @@ test('client resolves the third party with document-only query and maps ArkaMid 
     httpClient,
   });
 
-  const result = await client.getCoordinatorInventory('1030672');
+  const result = await client.getInventoryByDocument('1030672');
+  const coordinatorResult = await client.getCoordinatorInventory('1030672');
 
   assert.equal(result.terceroId, 1165);
+  assert.deepEqual(coordinatorResult, result);
   assert.deepEqual(result.items, [
     {
       sourceIndex: 0,
@@ -73,7 +75,7 @@ test('client resolves the third party with document-only query and maps ArkaMid 
       valor: 1234,
     },
   ]);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
   assert.equal(calls[0].options.params.query, '1030672');
   assert.equal(calls[0].options.headers.Authorization, 'Bearer test-token-value');
   assert.match(calls[1].url, /\/traslados\/funcionario\/1165$/);

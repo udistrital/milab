@@ -1,7 +1,7 @@
 const express = require('express');
 const XLSX = require('xlsx');
 const pool = require('../../libs/db');
-const { ArkaIntegrationError } = require('../../libs/arka-reconciliation-client');
+const { ArkaIntegrationError, createArkaClient } = require('../../libs/arka-reconciliation-client');
 const { createArkaReconciliationService } = require('../../libs/arka-reconciliation-service');
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
@@ -31,6 +31,15 @@ function parsePositiveId(value) {
 
 function getUserRoles(req) {
   return normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+}
+
+function requireReconciliationSearchAccess(req, res, next) {
+  const roles = getUserRoles(req);
+  if (roles.some((role) => ['coordinador_general', 'coordinador general'].includes(role))) {
+    // Esta búsqueda es de solo lectura, por lo que también aplica para coordinación general.
+    return next();
+  }
+  return requireReconciliationAccess(req, res, next);
 }
 
 function isGlobalViewer(req) {
@@ -309,11 +318,22 @@ function renderPage(res, req, data, status = 200) {
   return res.status(status).render('home/inventarios/conciliaciones-arka', {
     ...data,
     ...filters,
+    inventorySearch: data.inventorySearch || null,
+    inventorySearchDocument: data.inventorySearchDocument || '',
+    inventorySearchError: data.inventorySearchError || '',
     canRunAll: getUserRoles(req).some((role) => ['admin', 'administrador'].includes(role)),
     successMessage: String(req.query.success || ''),
     errorMessage: String(req.query.error || ''),
     pageUrl: PAGE_URL,
   });
+}
+
+function getInventorySearchStatus(error) {
+  if (error.code === 'ARKA_INVALID_DOCUMENT') return 400;
+  if (error.code === 'ARKA_THIRD_PARTY_NOT_FOUND') return 404;
+  if (error.code === 'ARKA_AMBIGUOUS_THIRD_PARTY') return 409;
+  if (error.code === 'ARKA_CONFIGURATION_ERROR') return 503;
+  return 502;
 }
 
 router.get('/', requireReconciliationAccess, async (req, res, next) => {
@@ -334,6 +354,50 @@ router.get('/', requireReconciliationAccess, async (req, res, next) => {
       });
     }
     return renderPage(res, req, data);
+  } catch (error) {
+    console.error('Error cargando conciliaciones ARKA:', error);
+    return next(error);
+  }
+});
+
+router.post('/buscar-inventario', requireReconciliationSearchAccess, async (req, res, next) => {
+  const documento = typeof req.body?.documento === 'string' ? req.body.documento.trim() : '';
+  let inventorySearch = null;
+  let inventorySearchError = '';
+  let status = 200;
+
+  if (!documento || documento.length > 50) {
+    inventorySearchError = 'Ingresa un número de documento válido (máximo 50 caracteres).';
+    status = 400;
+  } else {
+    try {
+      inventorySearch = {
+        documento,
+        ...(await createArkaClient().getInventoryByDocument(documento)),
+      };
+    } catch (error) {
+      if (!(error instanceof ArkaIntegrationError)) {
+        console.error('Error buscando inventario en ARKA:', error);
+        return next(error);
+      }
+      inventorySearchError = error.message;
+      status = getInventorySearchStatus(error);
+    }
+  }
+
+  try {
+    const data = await loadPageData(req);
+    return renderPage(
+      res,
+      req,
+      {
+        ...data,
+        inventorySearch,
+        inventorySearchDocument: documento,
+        inventorySearchError,
+      },
+      status
+    );
   } catch (error) {
     console.error('Error cargando conciliaciones ARKA:', error);
     return next(error);

@@ -181,8 +181,8 @@ function createArkaClient({
     const query = String(document || '').trim();
     if (!query || query.length > 50) {
       throw new ArkaIntegrationError(
-        'El documento del coordinador no es válido.',
-        'ARKA_INVALID_COORDINATOR_DOCUMENT'
+        'El número de documento no es válido.',
+        'ARKA_INVALID_DOCUMENT'
       );
     }
 
@@ -202,8 +202,8 @@ function createArkaClient({
     if (thirdPartyIds.length !== 1) {
       throw new ArkaIntegrationError(
         thirdPartyIds.length
-          ? 'Terceros devolvió más de un identificador para el documento del coordinador.'
-          : 'Terceros no encontró un identificador para el documento del coordinador.',
+          ? 'Terceros devolvió más de un identificador para el documento consultado.'
+          : 'Terceros no encontró un identificador para el documento consultado.',
         thirdPartyIds.length ? 'ARKA_AMBIGUOUS_THIRD_PARTY' : 'ARKA_THIRD_PARTY_NOT_FOUND'
       );
     }
@@ -211,7 +211,7 @@ function createArkaClient({
     return thirdPartyIds[0];
   }
 
-  async function getCoordinatorInventory(document) {
+  async function getInventoryByDocument(document) {
     const terceroId = await resolveThirdPartyId(document);
     const data = await get(
       `${clientConfiguration.arkaBaseUrl}/traslados/funcionario/${encodeURIComponent(terceroId)}`
@@ -246,8 +246,13 @@ function createArkaClient({
     return { terceroId, items };
   }
 
+  async function getCoordinatorInventory(document) {
+    return getInventoryByDocument(document);
+  }
+
   return {
     getCoordinatorInventory,
+    getInventoryByDocument,
     resolveThirdPartyId,
   };
 }
