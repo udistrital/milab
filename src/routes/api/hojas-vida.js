@@ -1406,7 +1406,6 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
     const porEquipoMap = new Map();
     const porSituacionMap = new Map();
     let costoTotal = 0;
-    let alertasTotal = 0;
 
     mantenimientosResult.rows.forEach(function (fila) {
       const estadoFila = String(fila.estado || '').toUpperCase();
@@ -1474,7 +1473,6 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
               diasAlerta
             );
       if (situacion && situacion.codigo !== 'VIGENTE') {
-        alertasTotal += 1;
         const situacionActual = porSituacionMap.get(situacion.codigo);
         porSituacionMap.set(situacion.codigo, {
           situacion: situacion.codigo,
@@ -1517,9 +1515,7 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
     const hojasResult = await pool.query(
       `
         SELECT
-          COUNT(DISTINCT hv.id)::int AS total_hojas,
-          COUNT(DISTINCT hv.id) FILTER (WHERE UPPER(hv.estado) = 'ACTIVA')::int AS hojas_activas,
-          COUNT(DISTINCT hv.id) FILTER (WHERE UPPER(hv.estado) = 'PENDIENTE_CONFIRMACION')::int AS hojas_pendientes
+          COUNT(DISTINCT hv.id) FILTER (WHERE UPPER(hv.estado) = 'ACTIVA')::int AS hojas_activas
         FROM equipo_catalogo ec
         JOIN hoja_vida hv ON hv.equipo_id = ec.id AND hv.activo = TRUE
         LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
@@ -1539,6 +1535,87 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
       equipoParams
     );
 
+    const equiposResult = await pool.query(
+      `
+        SELECT
+          ec.id AS equipo_id,
+          hv.id AS hoja_vida_id,
+          hv.estado AS hoja_vida_estado,
+          m.id AS mantenimiento_id,
+          m.estado AS mantenimiento_estado,
+          m.fecha_realizacion AS mantenimiento_fecha
+        FROM equipo_catalogo ec
+        LEFT JOIN inventario inv ON inv.id = ec.inventario_id AND inv.activo = TRUE
+        LEFT JOIN hoja_vida hv ON hv.equipo_id = ec.id AND hv.activo = TRUE
+        LEFT JOIN mantenimiento m ON m.equipo_id = ec.id AND m.activo = TRUE
+        WHERE ec.activo = TRUE ${equipoWhere}
+        ORDER BY ec.id
+      `,
+      equipoParams
+    );
+
+    const equiposResumen = new Map();
+    equiposResult.rows.forEach(function (fila) {
+      const equipoId = Number(fila.equipo_id);
+      if (!equiposResumen.has(equipoId)) {
+        equiposResumen.set(equipoId, {
+          tieneHojaVida: false,
+          hojaPendiente: false,
+          tieneMantenimientoCumplido: false,
+          situacion: null,
+          severidad: -1,
+        });
+      }
+
+      const equipo = equiposResumen.get(equipoId);
+      if (fila.hoja_vida_id) {
+        equipo.tieneHojaVida = true;
+        if (String(fila.hoja_vida_estado || '').toUpperCase() === 'PENDIENTE_CONFIRMACION') {
+          equipo.hojaPendiente = true;
+        }
+      }
+
+      if (!fila.mantenimiento_id) return;
+
+      const estadoMantenimiento = String(fila.mantenimiento_estado || '').toUpperCase();
+      if (estadoMantenimiento === 'CUMPLIDO') {
+        equipo.tieneMantenimientoCumplido = true;
+        return;
+      }
+      if (estadoMantenimiento === 'CANCELADO') return;
+
+      const situacion = situacionMantenimiento(
+        { estado: estadoMantenimiento, fecha_realizacion: fila.mantenimiento_fecha },
+        diasAlerta
+      ).codigo;
+      const severidad = SEVERIDAD_SITUACION[situacion] || 0;
+      if (severidad > equipo.severidad) {
+        equipo.situacion = situacion;
+        equipo.severidad = severidad;
+      }
+    });
+
+    const mantenimientoPorSituacion = {
+      VENCIDO: 0,
+      PROXIMO_VENCER: 0,
+      EN_EJECUCION: 0,
+      VIGENTE: 0,
+      CUMPLIDO: 0,
+      SIN_MANTENIMIENTO: 0,
+    };
+    let equiposConHojaVida = 0;
+    let equiposSinHojaVida = 0;
+    let hojasPendientes = 0;
+    equiposResumen.forEach(function (equipo) {
+      if (equipo.tieneHojaVida) equiposConHojaVida += 1;
+      else equiposSinHojaVida += 1;
+      if (equipo.hojaPendiente) hojasPendientes += 1;
+
+      const situacion =
+        equipo.situacion || (equipo.tieneMantenimientoCumplido ? 'CUMPLIDO' : 'SIN_MANTENIMIENTO');
+      mantenimientoPorSituacion[situacion] += 1;
+    });
+
     const hojasRow = hojasResult.rows[0] || {};
     const bajasRow = bajasResult.rows[0] || {};
 
@@ -1548,15 +1625,17 @@ router.get('/dashboard', async function dashboardHojasVidaHV(req, res) {
         alcance: Array.isArray(accessibleLaboratoryIds) ? 'restringido' : 'global',
         dias_alerta_vencimiento: diasAlerta,
         resumen: {
-          equipos_con_hoja_vida: Number(hojasRow.total_hojas || 0),
+          equipos_total: equiposResumen.size,
+          equipos_con_hoja_vida: equiposConHojaVida,
+          equipos_sin_hoja_vida: equiposSinHojaVida,
           hojas_activas: Number(hojasRow.hojas_activas || 0),
-          hojas_pendientes: Number(hojasRow.hojas_pendientes || 0),
+          hojas_pendientes: hojasPendientes,
           mantenimientos_total: mantenimientosResult.rows.length,
+          mantenimiento_por_situacion: mantenimientoPorSituacion,
           costo_total: costoTotal,
           costo_promedio: mantenimientosResult.rows.length
             ? costoTotal / mantenimientosResult.rows.length
             : 0,
-          alertas_total: alertasTotal,
           bajas_aplicadas: Number(bajasRow.total || 0),
         },
         por_estado: CODIGOS_ESTADO_MANTENIMIENTO.map(function (codigo) {

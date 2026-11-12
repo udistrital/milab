@@ -214,6 +214,49 @@ test('hojas-vida baja rejects applying the decommission while the equipment is p
 });
 
 test('hojas-vida dashboard aggregates indicators and applies the alert rules', async () => {
+  const equiposResumen = [
+    {
+      equipo_id: 7,
+      hoja_vida_id: 71,
+      hoja_vida_estado: 'ACTIVA',
+      mantenimiento_id: 1,
+      mantenimiento_estado: 'PENDIENTE',
+      mantenimiento_fecha: '2020-01-01',
+    },
+    {
+      equipo_id: 8,
+      hoja_vida_id: 81,
+      hoja_vida_estado: 'ACTIVA',
+      mantenimiento_id: 2,
+      mantenimiento_estado: 'CUMPLIDO',
+      mantenimiento_fecha: '2024-06-15',
+    },
+    { equipo_id: 9, mantenimiento_id: null },
+    {
+      equipo_id: 10,
+      hoja_vida_id: 101,
+      hoja_vida_estado: 'PENDIENTE_CONFIRMACION',
+      mantenimiento_id: null,
+    },
+    {
+      equipo_id: 11,
+      mantenimiento_id: 3,
+      mantenimiento_estado: 'PENDIENTE',
+      mantenimiento_fecha: fechaISO(5),
+    },
+    {
+      equipo_id: 12,
+      mantenimiento_id: 4,
+      mantenimiento_estado: 'EN_EJECUCION',
+      mantenimiento_fecha: fechaISO(45),
+    },
+    {
+      equipo_id: 13,
+      mantenimiento_id: 5,
+      mantenimiento_estado: 'PENDIENTE',
+      mantenimiento_fecha: fechaISO(45),
+    },
+  ];
   const mantenimientos = [
     {
       id: 1,
@@ -242,6 +285,9 @@ test('hojas-vida dashboard aggregates indicators and applies the alert rules', a
   ];
 
   const handleQuery = async (sql) => {
+    if (sql.includes('LEFT JOIN mantenimiento m ON m.equipo_id = ec.id')) {
+      return { rows: equiposResumen };
+    }
     if (sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')) {
       return { rows: mantenimientos };
     }
@@ -267,9 +313,20 @@ test('hojas-vida dashboard aggregates indicators and applies the alert rules', a
     assert.equal(data.resumen.costo_total, 400);
     assert.equal(data.resumen.costo_promedio, 200);
     assert.equal(data.resumen.equipos_con_hoja_vida, 3);
+    assert.equal(data.resumen.equipos_total, 7);
+    assert.equal(data.resumen.equipos_sin_hoja_vida, 4);
     assert.equal(data.resumen.hojas_activas, 2);
+    assert.equal(data.resumen.hojas_pendientes, 1);
     assert.equal(data.resumen.bajas_aplicadas, 1);
-    assert.equal(data.resumen.alertas_total, 1);
+    assert.equal(data.resumen.alertas_total, undefined);
+    assert.deepEqual(data.resumen.mantenimiento_por_situacion, {
+      VENCIDO: 1,
+      PROXIMO_VENCER: 1,
+      EN_EJECUCION: 1,
+      VIGENTE: 1,
+      CUMPLIDO: 1,
+      SIN_MANTENIMIENTO: 2,
+    });
 
     const cumplido = data.por_estado.find((item) => item.estado === 'CUMPLIDO');
     assert.equal(cumplido.total, 1);
@@ -362,9 +419,15 @@ test('hojas-vida dashboard applies authorized faculty and dependency selections'
     const maintenanceQuery = calls.find(
       ({ sql }) => sql.includes('FROM mantenimiento m') && sql.includes('JOIN equipo_catalogo ec')
     );
+    const equipmentQuery = calls.find(({ sql }) =>
+      sql.includes('LEFT JOIN mantenimiento m ON m.equipo_id = ec.id')
+    );
     assert.match(maintenanceQuery.sql, /u\.facultad_id = \$1/);
     assert.match(maintenanceQuery.sql, /inv\.laboratorio_ual_id = \$2/);
     assert.deepEqual(maintenanceQuery.params, [31, 4]);
+    assert.match(equipmentQuery.sql, /u\.facultad_id = \$1/);
+    assert.match(equipmentQuery.sql, /inv\.laboratorio_ual_id = \$2/);
+    assert.deepEqual(equipmentQuery.params, [31, 4]);
   } finally {
     loaded.restore();
   }

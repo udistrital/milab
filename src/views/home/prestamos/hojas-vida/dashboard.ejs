@@ -9,8 +9,7 @@
     </div>
     <h1 class="app-page-title">Dashboard de Hojas de Vida y Mantenimientos</h1>
     <p class="app-page-subtitle">
-      Indicadores de equipos, mantenimientos, alertas y bajas. Los datos se ajustan automaticamente
-      al alcance de tu rol.
+      Consulta el estado de las hojas de vida y el semaforo de mantenimientos segun el alcance de tu rol.
     </p>
   </section>
 
@@ -90,25 +89,60 @@
   </div>
 
   <section id="hvdb-kpis" class="dashboard-pys-cards mb-4 d-none">
-    <article class="dashboard-pys-card kpi-tone-info">
+    <article class="dashboard-pys-card pys-tone-info">
       <span class="dashboard-pys-card-label"><i class="bi bi-journal-medical" aria-hidden="true"></i> Equipos con hoja de vida</span>
       <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-equipos">0</strong>
       <span class="dashboard-pys-card-hint" id="hvdb-kpi-equipos-detalle"></span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-warn">
+      <span class="dashboard-pys-card-label"><i class="bi bi-hourglass-split" aria-hidden="true"></i> Hojas pendientes de confirmar</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-hojas-pendientes">0</strong>
+      <span class="dashboard-pys-card-hint">Requieren confirmacion</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-danger">
+      <span class="dashboard-pys-card-label"><i class="bi bi-journal-x" aria-hidden="true"></i> Equipos sin hoja de vida</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-sin-hoja">0</strong>
+      <span class="dashboard-pys-card-hint">Equipos activos sin registro</span>
     </article>
     <article class="dashboard-pys-card kpi-tone-labs">
       <span class="dashboard-pys-card-label"><i class="bi bi-tools" aria-hidden="true"></i> Mantenimientos</span>
       <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mantenimientos">0</strong>
       <span class="dashboard-pys-card-hint" id="hvdb-kpi-mantenimientos-detalle"></span>
     </article>
+    <article class="dashboard-pys-card pys-tone-danger">
+      <span class="dashboard-pys-card-label"><i class="bi bi-exclamation-octagon" aria-hidden="true"></i> Mantenimiento vencido</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-vencido">0</strong>
+      <span class="dashboard-pys-card-hint">Equipos que requieren atencion</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-warn">
+      <span class="dashboard-pys-card-label"><i class="bi bi-clock-history" aria-hidden="true"></i> Proximo mantenimiento</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-proximo">0</strong>
+      <span class="dashboard-pys-card-hint">Dentro del periodo de alerta</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-info">
+      <span class="dashboard-pys-card-label"><i class="bi bi-wrench-adjustable" aria-hidden="true"></i> En mantenimiento</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-ejecucion">0</strong>
+      <span class="dashboard-pys-card-hint">Trabajos en ejecucion</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-ok">
+      <span class="dashboard-pys-card-label"><i class="bi bi-check-circle" aria-hidden="true"></i> Mantenimiento al dia</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-vigente">0</strong>
+      <span class="dashboard-pys-card-hint">Sin alerta proxima o vencida</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-ok">
+      <span class="dashboard-pys-card-label"><i class="bi bi-check2-all" aria-hidden="true"></i> Mantenimiento realizado</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-cumplido">0</strong>
+      <span class="dashboard-pys-card-hint">Equipos con trabajo cumplido</span>
+    </article>
+    <article class="dashboard-pys-card pys-tone-info">
+      <span class="dashboard-pys-card-label"><i class="bi bi-tools" aria-hidden="true"></i> Sin mantenimiento</span>
+      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-mto-sin-registro">0</strong>
+      <span class="dashboard-pys-card-hint">Equipos sin mantenimiento registrado</span>
+    </article>
     <article class="dashboard-pys-card kpi-tone-sanctions">
       <span class="dashboard-pys-card-label"><i class="bi bi-cash-coin" aria-hidden="true"></i> Costo total</span>
       <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-costo">$0</strong>
       <span class="dashboard-pys-card-hint" id="hvdb-kpi-costo-detalle"></span>
-    </article>
-    <article class="dashboard-pys-card kpi-tone-alert">
-      <span class="dashboard-pys-card-label"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> Alertas activas</span>
-      <strong class="dashboard-pys-card-value" data-testid="hvdb-kpi-alertas">0</strong>
-      <span class="dashboard-pys-card-hint" id="hvdb-kpi-alertas-detalle"></span>
     </article>
   </section>
 
@@ -132,9 +166,9 @@
       </div>
     </article>
     <article class="dashboard-pys-panel">
-      <h3>Alertas por situacion</h3>
+      <h3>Equipos por estado de mantenimiento</h3>
       <div class="dashboard-pys-chart dashboard-inventory-chart--doughnut">
-        <canvas data-hvdb-chart="alertas" role="img" aria-label="Alertas de mantenimiento por situacion"></canvas>
+        <canvas data-hvdb-chart="situacion" role="img" aria-label="Equipos por estado de mantenimiento"></canvas>
       </div>
     </article>
     <article class="dashboard-pys-panel">
@@ -279,6 +313,9 @@
       VENCIDO: CHART_COLORS.red,
       PROXIMO_VENCER: CHART_COLORS.amber,
       EN_EJECUCION: CHART_COLORS.blue,
+      VIGENTE: CHART_COLORS.green,
+      CUMPLIDO: CHART_COLORS.teal,
+      SIN_MANTENIMIENTO: CHART_COLORS.slate,
     };
 
     function numero(valor) {
@@ -321,29 +358,46 @@
       );
       document.getElementById('hvdb-kpi-equipos-detalle').textContent =
         numero(resumen.hojas_activas) +
-        ' activas · ' +
-        numero(resumen.hojas_pendientes) +
-        ' por confirmar · ' +
-        numero(resumen.bajas_aplicadas) +
-        ' en baja';
+        ' hojas activas';
+
+      document.querySelector('[data-testid="hvdb-kpi-hojas-pendientes"]').textContent = numero(
+        resumen.hojas_pendientes
+      );
+      document.querySelector('[data-testid="hvdb-kpi-sin-hoja"]').textContent = numero(
+        resumen.equipos_sin_hoja_vida
+      );
 
       document.querySelector('[data-testid="hvdb-kpi-mantenimientos"]').textContent = numero(
         resumen.mantenimientos_total
       );
       document.getElementById('hvdb-kpi-mantenimientos-detalle').textContent =
-        'Promedio de costo ' + moneda(resumen.costo_promedio);
+        'Registros · promedio ' + moneda(resumen.costo_promedio);
+
+      var mantenimiento = resumen.mantenimiento_por_situacion || {};
+      document.querySelector('[data-testid="hvdb-kpi-mto-vencido"]').textContent = numero(
+        mantenimiento.VENCIDO
+      );
+      document.querySelector('[data-testid="hvdb-kpi-mto-proximo"]').textContent = numero(
+        mantenimiento.PROXIMO_VENCER
+      );
+      document.querySelector('[data-testid="hvdb-kpi-mto-ejecucion"]').textContent = numero(
+        mantenimiento.EN_EJECUCION
+      );
+      document.querySelector('[data-testid="hvdb-kpi-mto-vigente"]').textContent = numero(
+        mantenimiento.VIGENTE
+      );
+      document.querySelector('[data-testid="hvdb-kpi-mto-cumplido"]').textContent = numero(
+        mantenimiento.CUMPLIDO
+      );
+      document.querySelector('[data-testid="hvdb-kpi-mto-sin-registro"]').textContent = numero(
+        mantenimiento.SIN_MANTENIMIENTO
+      );
 
       document.querySelector('[data-testid="hvdb-kpi-costo"]').textContent = moneda(
         resumen.costo_total
       );
       document.getElementById('hvdb-kpi-costo-detalle').textContent =
-        'Dias de alerta: ' + numero(data.dias_alerta_vencimiento);
-
-      document.querySelector('[data-testid="hvdb-kpi-alertas"]').textContent = numero(
-        resumen.alertas_total
-      );
-      document.getElementById('hvdb-kpi-alertas-detalle').textContent =
-        'Alcance ' + (data.alcance === 'global' ? 'general' : 'por facultad/dependencia');
+        'Equipos activos: ' + numero(resumen.equipos_total);
 
       toggle(kpisEl, true);
       toggle(chartsEl, true);
@@ -490,19 +544,38 @@
         },
       });
 
-      var alertas = data.alertas_por_situacion || [];
-      renderChart('alertas', document.querySelector('[data-hvdb-chart="alertas"]'), {
+      var semaforo = [
+        { situacion: 'VENCIDO', etiqueta: 'Vencido', total: mantenimiento.VENCIDO },
+        {
+          situacion: 'PROXIMO_VENCER',
+          etiqueta: 'Proximo mantenimiento',
+          total: mantenimiento.PROXIMO_VENCER,
+        },
+        {
+          situacion: 'EN_EJECUCION',
+          etiqueta: 'En mantenimiento',
+          total: mantenimiento.EN_EJECUCION,
+        },
+        { situacion: 'VIGENTE', etiqueta: 'Al dia', total: mantenimiento.VIGENTE },
+        { situacion: 'CUMPLIDO', etiqueta: 'Realizado', total: mantenimiento.CUMPLIDO },
+        {
+          situacion: 'SIN_MANTENIMIENTO',
+          etiqueta: 'Sin mantenimiento',
+          total: mantenimiento.SIN_MANTENIMIENTO,
+        },
+      ];
+      renderChart('situacion', document.querySelector('[data-hvdb-chart="situacion"]'), {
         type: 'doughnut',
         data: {
-          labels: alertas.map(function (item) {
+          labels: semaforo.map(function (item) {
             return item.etiqueta;
           }),
           datasets: [
             {
-              data: alertas.map(function (item) {
+              data: semaforo.map(function (item) {
                 return item.total;
               }),
-              backgroundColor: alertas.map(function (item) {
+              backgroundColor: semaforo.map(function (item) {
                 return SITUACION_COLORES[item.situacion] || '#64748b';
               }),
               borderColor: theme.surface,
