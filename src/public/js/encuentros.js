@@ -942,10 +942,7 @@
     const confirmationMessage = sendEmail
       ? 'La participación se completó. ¿Generar el certificado ahora y enviarlo por correo?'
       : 'La participación se completó. ¿Generar el certificado sin enviar correo?';
-    if (
-      !(await window.MiLabDialogs.confirm(confirmationMessage))
-    )
-      return;
+    if (!(await window.MiLabDialogs.confirm(confirmationMessage))) return;
     try {
       const result = await request(
         `/eventos/${eventId}/participantes/${participantId}/certificado/generar`,
