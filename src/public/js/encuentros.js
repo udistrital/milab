@@ -12,6 +12,7 @@
     previewRows: [],
     historicalPreviewRows: [],
     templateOnly: false,
+    missingStoredTemplate: false,
   };
   const eventFormCard = document.getElementById('event-form-card');
   const eventForm = document.getElementById('event-form');
@@ -194,6 +195,7 @@
     window.EncounterTemplateEditor.reset();
     eventForm.reset();
     pageState.templateOnly = Boolean(event && templateOnly);
+    pageState.missingStoredTemplate = false;
     document.getElementById('event-id').value = event?.id || '';
     document.getElementById('event-form-title').textContent = pageState.templateOnly
       ? 'Editar plantilla del certificado'
@@ -227,8 +229,13 @@
     if (event?.id) {
       window.EncounterTemplateEditor.loadUrl(`${apiBase}/eventos/${event.id}/plantilla-pdf`).catch(
         (error) => {
+          pageState.missingStoredTemplate = true;
           console.error('[encuentros:load-template]', error);
-          showAlert(error.message || 'No fue posible cargar la plantilla PDF.', 'danger');
+          showAlert(
+            error.message ||
+              'No fue posible cargar la plantilla PDF. Carga una nueva plantilla para recuperarla.',
+            'danger'
+          );
         }
       );
     }
@@ -1595,8 +1602,18 @@
     event.preventDefault();
     const templateOnly = pageState.templateOnly;
     if (!templateOnly && !eventForm.reportValidity()) return;
+    const selectedTemplateFile = document.getElementById('event-template').files[0];
+    if (templateOnly && pageState.missingStoredTemplate && !selectedTemplateFile) {
+      const message =
+        'Debes cargar un archivo PDF de plantilla para reemplazar la plantilla faltante del evento.';
+      showAlert(message, 'danger');
+      await window.MiLabDialogs.alert(message);
+      return;
+    }
     if (!window.EncounterTemplateEditor.hasQrPlacement()) {
-      showAlert('Ubica el código QR de verificación en la plantilla antes de guardar.', 'danger');
+      const message = 'Ubica el código QR de verificación en la plantilla antes de guardar.';
+      showAlert(message, 'danger');
+      if (templateOnly) await window.MiLabDialogs.alert(message);
       return;
     }
     const eventId = document.getElementById('event-id').value;
@@ -1607,8 +1624,7 @@
       const formData = templateOnly ? new FormData() : new FormData(eventForm);
       if (templateOnly) {
         formData.append('plantilla_config', configJson);
-        const templateFile = document.getElementById('event-template').files[0];
-        if (templateFile) formData.append('plantilla_pdf', templateFile);
+        if (selectedTemplateFile) formData.append('plantilla_pdf', selectedTemplateFile);
       } else {
         formData.delete('eventId');
       }
