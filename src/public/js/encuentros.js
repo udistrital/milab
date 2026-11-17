@@ -458,7 +458,13 @@
       if (participant.salida_en && !participant.certificado_id) {
         actions.appendChild(
           actionButton('Generar y enviar certificado', 'btn-outline-primary btn-sm', () =>
-            generateCertificate(event.id, participant.id)
+            generateCertificate(event.id, participant.id, true)
+          )
+        );
+        if (actions.childNodes.length) actions.appendChild(document.createTextNode(' '));
+        actions.appendChild(
+          actionButton('Generar sin correo', 'btn-outline-secondary btn-sm', () =>
+            generateCertificate(event.id, participant.id, false)
           )
         );
       }
@@ -932,22 +938,28 @@
     }
   }
 
-  async function generateCertificate(eventId, participantId) {
+  async function generateCertificate(eventId, participantId, sendEmail) {
+    const confirmationMessage = sendEmail
+      ? 'La participación se completó. ¿Generar el certificado ahora y enviarlo por correo?'
+      : 'La participación se completó. ¿Generar el certificado sin enviar correo?';
     if (
-      !(await window.MiLabDialogs.confirm(
-        'La participación se completó. ¿Generar el certificado ahora y enviarlo por correo?'
-      ))
+      !(await window.MiLabDialogs.confirm(confirmationMessage))
     )
       return;
     try {
       const result = await request(
         `/eventos/${eventId}/participantes/${participantId}/certificado/generar`,
-        { method: 'POST', body: '{}' }
+        {
+          method: 'POST',
+          body: JSON.stringify({ enviar_correo: sendEmail }),
+        }
       );
       showAlert(
-        result.estado_envio === 'sent'
-          ? 'Certificado generado y enviado.'
-          : 'Certificado generado; revisa el estado del envío.',
+        sendEmail
+          ? result.estado_envio === 'sent'
+            ? 'Certificado generado y enviado.'
+            : 'Certificado generado; revisa el estado del envío.'
+          : 'Certificado generado sin envío de correo.',
         'success'
       );
       await refreshDetail();

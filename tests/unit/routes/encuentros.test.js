@@ -962,6 +962,70 @@ test('certificate generation can omit email while still linking the participatio
   }
 });
 
+test('certificate generation reports a recoverable error when template file is missing', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-missing-template-test-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const templateConfig = {
+    qr_verificacion: { type: 'qr', x: 12, y: 12, width: 40 },
+  };
+  const participant = {
+    participante_id: 31,
+    evento_id: 14,
+    nombre: 'Ana Pérez',
+    documento: '000123',
+    documento_normalizado: '000123',
+    correo: 'ana@example.edu',
+    rol: 'Docente',
+    facultad: 'Ingeniería',
+    laboratorio: 'Lab 1',
+    evento: 'Encuentro histórico',
+    fecha_evento: '2026-10-20',
+    lugar: 'Sede',
+    organizador: 'MiLab',
+    plantilla_pdf_path: 'templates/missing.pdf',
+    plantilla_config: templateConfig,
+    entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+    salida_en: new Date('2026-10-20T16:00:00.000Z'),
+  };
+  const statements = [];
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql, values) => {
+      statements.push({ sql, values });
+      if (sql.includes('FOR UPDATE OF p, e')) return { rows: [participant] };
+      if (sql.includes('SELECT 1') && sql.includes('FROM encuentro_participante p')) {
+        return { rows: [{ id: 31 }] };
+      }
+      if (
+        sql.includes('SELECT id, estado, email_estado FROM encuentro_certificado') &&
+        !sql.includes('FOR UPDATE')
+      ) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes/31/certificado/generar')
+      .set('x-test-role', 'admin')
+      .send({ enviar_correo: false });
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /plantilla pdf del evento no está disponible/i);
+    assert.equal(
+      statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_certificado')),
+      false
+    );
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test('finalized encounter report downloads an aggregate PDF grouped by faculty', async () => {
   const statements = [];
   const setup = buildTestApp(async (sql, values) => {
