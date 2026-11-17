@@ -685,6 +685,7 @@ test('historical participation import records timestamps only for finalized even
       12,
     ]);
     assert.match(attendanceInsert.sql, /entrada_por_usuario_id, salida_por_usuario_id/);
+    assert.match(attendanceInsert.sql, /\$5::bigint/);
 
     const participantInsert = statements.find(({ sql }) =>
       sql.includes('INSERT INTO encuentro_participante')
