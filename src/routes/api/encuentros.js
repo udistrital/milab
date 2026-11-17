@@ -267,6 +267,10 @@ function sanitizeDeliveryError(error) {
     .slice(0, 1000);
 }
 
+function isTemplateUnavailableError(error) {
+  return error?.code === 'ENCUENTRO_TEMPLATE_UNAVAILABLE';
+}
+
 async function getRegisteredUserMatch(client, normalizedDocument) {
   const result = await client.query(
     `
@@ -368,7 +372,17 @@ async function createCertificate(eventId, participantId, req) {
           .filter((key) => key !== 'qr_verificacion')
           .map((key) => [key, values[key] || ''])
       );
-      const templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+      let templateBuffer;
+      try {
+        templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          const templateError = new Error('La plantilla PDF configurada no está disponible.');
+          templateError.code = 'ENCUENTRO_TEMPLATE_UNAVAILABLE';
+          throw templateError;
+        }
+        throw error;
+      }
       const pdfBuffer = await generateCertificatePdf({
         templateBuffer,
         templateConfig: config,
@@ -2867,8 +2881,8 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
                 evento_id, participante_id, entrada_en, salida_en,
                 entrada_por_usuario_id, salida_por_usuario_id
               )
-              VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5,
-                      CASE WHEN $4::timestamptz IS NULL THEN NULL ELSE $5 END)
+              VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5::bigint,
+                      CASE WHEN $4::timestamptz IS NULL THEN NULL::bigint ELSE $5::bigint END)
             `,
             [eventId, participantId, row.entrada_en, row.salida_en, getSessionUserId(req)]
           );
@@ -3133,6 +3147,14 @@ router.post('/api/eventos/:eventId/asistencia/salida', requireManager, async (re
     try {
       certificate = await createCertificate(eventId, attendance.participante_id, req);
     } catch (error) {
+      if (isTemplateUnavailableError(error)) {
+        return res.status(409).json({
+          ok: false,
+          salida_registrada: true,
+          message:
+            'La salida se registró, pero la plantilla del certificado no está disponible. Actualiza la plantilla y vuelve a intentar.',
+        });
+      }
       logFailure(req, error, 'certificate_generation');
       return res.status(500).json({
         ok: false,
@@ -3230,6 +3252,13 @@ router.post(
         medalla_otorgada: Boolean(delivery.medal?.otorgada),
       });
     } catch (error) {
+      if (isTemplateUnavailableError(error)) {
+        return res.status(409).json({
+          ok: false,
+          message:
+            'La plantilla PDF del evento no está disponible. Actualízala y vuelve a intentar.',
+        });
+      }
       return handleServerError(req, res, error, 'No fue posible generar el certificado.');
     }
   }
@@ -3383,9 +3412,21 @@ router.patch(
 
       let emailState = null;
       if (result.completada) {
-        const certificate = await createCertificate(eventId, result.participante_id, req);
-        const delivery = await deliverCertificate(certificate.id, req);
-        emailState = delivery.status;
+        try {
+          const certificate = await createCertificate(eventId, result.participante_id, req);
+          const delivery = await deliverCertificate(certificate.id, req);
+          emailState = delivery.status;
+        } catch (error) {
+          if (isTemplateUnavailableError(error)) {
+            return res.status(200).json({
+              ok: true,
+              message:
+                'Asistencia corregida. La plantilla del certificado no está disponible, así que no fue posible generarlo todavía.',
+              estado_envio: null,
+            });
+          }
+          throw error;
+        }
       }
       return res.json({
         ok: true,
