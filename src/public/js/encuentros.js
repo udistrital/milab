@@ -961,6 +961,9 @@
       );
       await refreshDetail();
     } catch (error) {
+      if (document.getElementById('event-detail-modal')?.classList.contains('show')) {
+        await window.MiLabDialogs.alert(error.message);
+      }
       showAlert(error.message, 'danger');
     }
   }
