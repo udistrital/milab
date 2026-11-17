@@ -394,6 +394,13 @@
             ? 'pendiente'
             : participant.estado_certificado || 'pendiente'
         : 'sin_certificado';
+      const certificateLabel = participant.certificado_id
+        ? participant.estado_certificado === 'pendiente'
+          ? 'correo pendiente'
+          : participant.estado_certificado === 'enviando'
+            ? 'correo enviándose'
+            : participant.estado_certificado || 'pendiente'
+        : 'Pendiente';
       row.dataset.certificateState = certificateState;
       if (allowSelection) {
         const selectCell = document.createElement('td');
@@ -425,7 +432,7 @@
       const certCell = element(
         'td',
         participant.certificado_id
-          ? `${participant.estado_certificado || 'pendiente'}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}${participant.medalla_vinculada ? ' · medalla enlazada' : ''}`
+          ? `${certificateLabel}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}${participant.medalla_vinculada ? ' · medalla enlazada' : ''}`
           : 'Pendiente'
       );
       if (participant.certificado_id && participant.validez_certificado !== 'anulado') {
@@ -991,7 +998,7 @@
     const send = sendEmail.checked;
     const deliveryMessage = send
       ? 'Se generarán los certificados y se enviarán por correo.'
-      : 'Se generarán los certificados sin enviar correos; las medallas se enlazarán cuando haya una cuenta MiLab asociada.';
+      : 'Se generarán los certificados sin enviar correos; la medalla se intentará enlazar automáticamente cuando la participación tenga cuenta MiLab asociada.';
     if (
       !(await window.MiLabDialogs.confirm(
         `${deliveryMessage} Participantes seleccionados: ${participants.length}.`
