@@ -2867,8 +2867,8 @@ router.post('/api/eventos/:eventId/participaciones/importar', requireManager, as
                 evento_id, participante_id, entrada_en, salida_en,
                 entrada_por_usuario_id, salida_por_usuario_id
               )
-              VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5,
-                      CASE WHEN $4::timestamptz IS NULL THEN NULL ELSE $5 END)
+              VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5::bigint,
+                      CASE WHEN $4::timestamptz IS NULL THEN NULL::bigint ELSE $5::bigint END)
             `,
             [eventId, participantId, row.entrada_en, row.salida_en, getSessionUserId(req)]
           );
