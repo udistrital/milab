@@ -618,6 +618,16 @@
         banner.alt = `Banner de ${event.nombre}`;
         banner.className = 'img-fluid rounded my-3';
         banner.style.maxHeight = '240px';
+        banner.addEventListener('error', () => {
+          banner.remove();
+          body.appendChild(
+            element(
+              'div',
+              'El banner guardado no está disponible. Vuelve a cargarlo desde “Editar plantilla del certificado”.',
+              'alert alert-warning my-3'
+            )
+          );
+        });
         body.appendChild(banner);
       }
 
@@ -1606,6 +1616,8 @@
         formData.append('plantilla_config', configJson);
         const templateFile = document.getElementById('event-template').files[0];
         if (templateFile) formData.append('plantilla_pdf', templateFile);
+        const bannerFile = document.getElementById('event-banner').files[0];
+        if (bannerFile) formData.append('banner', bannerFile);
       } else {
         formData.delete('eventId');
       }
