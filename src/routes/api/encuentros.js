@@ -2421,7 +2421,12 @@ router.get('/api/eventos/:eventId/plantilla-pdf', requireManager, async (req, re
 router.patch(
   '/api/eventos/:eventId/plantilla',
   requireManager,
-  withUpload(upload.fields([{ name: 'plantilla_pdf', maxCount: 1 }])),
+  withUpload(
+    upload.fields([
+      { name: 'plantilla_pdf', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
+    ])
+  ),
   async (req, res) => {
     const eventId = parsePositiveId(req.params.eventId);
     if (!eventId)
@@ -2442,6 +2447,7 @@ router.patch(
     }
 
     const pdf = files.plantilla_pdf?.[0];
+    const banner = files.banner?.[0];
     if (pdf) {
       try {
         await validatePdfTemplate(pdf.buffer);
@@ -2453,8 +2459,15 @@ router.patch(
     }
 
     let newPdfPath;
+    let newBannerPath;
     try {
       if (pdf) newPdfPath = await saveUpload(pdf, 'templates', 'pdf');
+      if (banner)
+        newBannerPath = await saveUpload(
+          banner,
+          'banners',
+          hasFileSignature(banner, 'png') ? 'png' : 'jpg'
+        );
       const result = await withTransaction(async (client) => {
         const existing = await client.query(
           'SELECT id, estado FROM encuentro_evento WHERE id = $1 AND activo = TRUE FOR UPDATE',
@@ -2472,7 +2485,8 @@ router.patch(
                 plantilla_pdf_nombre = COALESCE($3, plantilla_pdf_nombre),
                 plantilla_config = $4::jsonb,
                 modificado_por_usuario_id = $5,
-                fecha_modificacion = CURRENT_TIMESTAMP
+                fecha_modificacion = CURRENT_TIMESTAMP,
+                banner_path = COALESCE($6, banner_path)
             WHERE id = $1 AND activo = TRUE
           `,
           [
@@ -2481,17 +2495,27 @@ router.patch(
             pdf ? path.basename(pdf.originalname).slice(0, 255) : null,
             JSON.stringify(config),
             getSessionUserId(req),
+            newBannerPath || null,
           ]
         );
-        await writeAudit(client, req, 'plantilla de certificado modificada', eventId);
+        await writeAudit(
+          client,
+          req,
+          newBannerPath
+            ? 'plantilla de certificado y banner modificados'
+            : 'plantilla de certificado modificada',
+          eventId
+        );
         return { updated: true };
       });
       if (result.error === 'not_found') {
         if (newPdfPath) await removeStoredFile(newPdfPath);
+        if (newBannerPath) await removeStoredFile(newBannerPath);
         return res.status(404).json({ ok: false, message: 'El evento no existe.' });
       }
       if (result.error === 'not_started') {
         if (newPdfPath) await removeStoredFile(newPdfPath);
+        if (newBannerPath) await removeStoredFile(newBannerPath);
         return res.status(409).json({
           ok: false,
           message: 'La plantilla solo puede modificarse después de iniciar el evento.',
@@ -2499,10 +2523,13 @@ router.patch(
       }
       return res.json({
         ok: true,
-        message: 'La plantilla de certificados se actualizó. Los certificados emitidos no cambian.',
+        message: newBannerPath
+          ? 'La plantilla y el banner se actualizaron. Los certificados emitidos no cambian.'
+          : 'La plantilla de certificados se actualizó. Los certificados emitidos no cambian.',
       });
     } catch (error) {
       if (newPdfPath) await removeStoredFile(newPdfPath);
+      if (newBannerPath) await removeStoredFile(newBannerPath);
       return handleServerError(req, res, error, 'No fue posible actualizar la plantilla.');
     }
   }

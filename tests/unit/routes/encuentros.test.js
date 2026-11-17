@@ -523,6 +523,49 @@ test('authorized manager can replace the certificate PDF after an event is final
   }
 });
 
+test('authorized manager can replace the event banner after an event is finalized', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-banner-test-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const pngBuffer = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+  let updateValues;
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql, values) => {
+      if (sql.includes('SELECT id, estado FROM encuentro_evento')) {
+        return { rows: [{ id: 14, estado: 'finalizado' }] };
+      }
+      if (sql.includes('UPDATE encuentro_evento')) updateValues = values;
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .patch('/encuentros/api/eventos/14/plantilla')
+      .set('x-test-role', 'admin')
+      .field(
+        'plantilla_config',
+        JSON.stringify({
+          qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+        })
+      )
+      .attach('banner', pngBuffer, {
+        filename: 'banner.png',
+        contentType: 'image/png',
+      });
+
+    assert.equal(response.status, 200);
+    assert.match(response.body.message, /plantilla y el banner se actualizaron/i);
+    assert.ok(updateValues[5].startsWith('banners/'));
+    assert.equal((await fs.stat(path.join(storageRoot, updateValues[5]))).size, pngBuffer.length);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test('event detail returns database-backed statistics for the visual summary', async () => {
   const setup = buildTestApp(async (sql) => {
     if (sql.includes('COUNT(DISTINCT p.id)')) {
