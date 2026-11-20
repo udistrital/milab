@@ -147,6 +147,63 @@ const SGA_OTHER_CONCEPT_TYPES = Object.freeze({
   58: 'BIBLIOTECA',
 });
 
+// Código de concepto usado al crear deudas de bloqueo desde MILab.
+
+const SGA_MILAB_CONCEPT_CODE = 9;
+const SGA_ACTIVE_DEBT_STATE = '2';
+const SGA_ACADEMIC_PERIOD_SEGMENT = 'A';
+
+function normalizeSgaScalar(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'string') return value.trim();
+  return '';
+}
+
+function findSgaScalarByKeyPattern(node, pattern, depth = 0) {
+  if (depth > 3 || node === null || node === undefined) return '';
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findSgaScalarByKeyPattern(item, pattern, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  }
+  if (typeof node !== 'object') return '';
+
+  for (const [key, value] of Object.entries(node)) {
+    if (!pattern.test(key)) continue;
+    const scalar = normalizeSgaScalar(value);
+    if (scalar) return scalar;
+  }
+  for (const value of Object.values(node)) {
+    const found = findSgaScalarByKeyPattern(value, pattern, depth + 1);
+    if (found) return found;
+  }
+  return '';
+}
+
+function parseSgaJsonResponse(response) {
+  if (typeof response !== 'string') return response;
+  try {
+    return JSON.parse(response);
+  } catch {
+    return null;
+  }
+}
+
+function extractSgaDebtSequence(payload) {
+  const idNode = payload?.deudores?.id;
+  const records = Array.isArray(idNode) ? idNode : idNode ? [idNode] : [];
+  for (const record of records) {
+    const sequence = normalizeNumericIdentifier(
+      record?.P_RESULTADO_SECUENCIA ?? record?.p_resultado_secuencia
+    );
+    if (sequence) return sequence;
+  }
+  return '';
+}
+
 function normalizeSgaConceptCode(rawCode) {
   const code = String(rawCode ?? '').trim();
   if (!code) return '';
@@ -314,12 +371,7 @@ class SgaDebtService {
     );
   }
 
-  buildServicePath(codigoEstudiante) {
-    const normalizedCode = String(codigoEstudiante || '').trim();
-    if (!/^\d+$/.test(normalizedCode)) {
-      throw new Error('El código de estudiante no es válido para consultar multas en SGA.');
-    }
-
+  buildDebtorsPath(suffix = '') {
     const serviceName = String(this.config.oatiDebtorsServiceName || '').trim();
     if (!serviceName) {
       throw new Error('El servicio SGA de deudores no está configurado para este ambiente.');
@@ -328,7 +380,88 @@ class SgaDebtService {
       throw new Error('El nombre del servicio SGA de deudores no es válido.');
     }
 
-    return `wso2eiserver/services/${serviceName}/deudores/${encodeURIComponent(normalizedCode)}`;
+    const basePath = `wso2eiserver/services/${serviceName}`;
+    return suffix ? `${basePath}/${suffix}` : basePath;
+  }
+
+  buildServicePath(codigoEstudiante) {
+    const normalizedCode = String(codigoEstudiante || '').trim();
+    if (!/^\d+$/.test(normalizedCode)) {
+      throw new Error('El código de estudiante no es válido para consultar multas en SGA.');
+    }
+
+    return `${this.buildDebtorsPath('deudores')}/${encodeURIComponent(normalizedCode)}`;
+  }
+
+  // Consulta el período académico vigente en SGA (previo a crear la deuda).
+  async fetchAcademicPeriod() {
+    if (!this.isConfigured()) {
+      throw new Error('El servicio SGA no está configurado en este ambiente.');
+    }
+
+    const response = await this.requestAcademicData(
+      this.buildDebtorsPath(`periodo_academico/${SGA_ACADEMIC_PERIOD_SEGMENT}`)
+    );
+    const period = findSgaScalarByKeyPattern(response, /(^|_)(per|periodo)(_|$)/i);
+    if (!/^\d+$/.test(period)) {
+      throw new Error('No fue posible determinar el período académico vigente en SGA.');
+    }
+    return period;
+  }
+
+  // Arma el cuerpo _postdeudores a partir de la sanción local.
+  buildDebtRegistrationPayload({ codigo, documento, nombre, observacion, fecha, periodo } = {}) {
+    const codigoEstudiante = normalizeNumericIdentifier(codigo);
+    if (!codigoEstudiante) {
+      throw new Error('La sanción no tiene un código de estudiante válido para SGA.');
+    }
+
+    const documentoIdentidad = normalizeNumericIdentifier(documento);
+    if (!documentoIdentidad) {
+      throw new Error('La sanción no tiene un documento válido para SGA.');
+    }
+
+    const fechaSancion = String(fecha || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaSancion)) {
+      throw new Error('La sanción no tiene una fecha válida para SGA.');
+    }
+
+    const periodoAcademico = Number(periodo);
+    if (!Number.isInteger(periodoAcademico) || periodoAcademico <= 0) {
+      throw new Error('El período académico no es válido para SGA.');
+    }
+
+    return {
+      DEU_EST_COD: Number(codigoEstudiante),
+      DEU_CPTO_COD: SGA_MILAB_CONCEPT_CODE,
+      DEU_MATERIAL: String(observacion || '').trim(),
+      DEU_ANO: Number(fechaSancion.slice(0, 4)),
+      DEU_PER: periodoAcademico,
+      DEU_ESTADO: SGA_ACTIVE_DEBT_STATE,
+      DEU_FECHA: fechaSancion,
+      DEU_MULTA: 0,
+      DEU_USUARIO: documentoIdentidad,
+      DEU_DEUDOR_NOMBRE: String(nombre || '').trim(),
+      DEU_DEUDOR_ID: documentoIdentidad,
+    };
+  }
+
+  // Inserta la deuda en SGA y devuelve el identificador (P_RESULTADO_SECUENCIA).
+  async registerStudentDebt(payload) {
+    if (!this.isConfigured()) {
+      throw new Error('El servicio SGA no está configurado en este ambiente.');
+    }
+
+    const response = await this.requestPost(
+      this.buildDebtorsPath('deudores'),
+      { _postdeudores: payload },
+      'application/json'
+    );
+    const deudaId = extractSgaDebtSequence(parseSgaJsonResponse(response));
+    if (!deudaId) {
+      throw new Error('El servicio SGA no devolvió el identificador de la deuda creada.');
+    }
+    return deudaId;
   }
 
   parseResponse(response) {

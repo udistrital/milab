@@ -684,6 +684,17 @@ router.post('/aplazar', requireApprovalAction, async function (req, res) {
     }
 
     const scopeFilter = buildMultaScopeFilter(scope, 2);
+    const blockedResult = await pool.query('SELECT sga_deuda_id FROM multa WHERE id = $1', [
+      multa_id,
+    ]);
+    if (blockedResult.rows[0]?.sga_deuda_id) {
+      return res.render('home/message_error', {
+        message: 'No se puede aplazar la sanción.',
+        message2: 'La sanción tiene un bloqueo de recibo de pago generado en SGA.',
+        limit: null,
+      });
+    }
+
     const result = await pool.query(
       `
       UPDATE multa AS m
@@ -691,6 +702,7 @@ router.post('/aplazar', requireApprovalAction, async function (req, res) {
       FROM ual u
       WHERE m.id = $1
         AND m.con_estado_multa = 'ACTIVA'
+        AND m.sga_deuda_id IS NULL
         AND u.ual_id = m.ual_id
         AND ${scopeFilter.sql}
     `,

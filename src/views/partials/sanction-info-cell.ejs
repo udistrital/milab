@@ -32,5 +32,18 @@
       <dt>Estado</dt>
       <dd><span class="badge rounded-pill text-bg-<%= stateStyle %> app-sanction-state"><%= state || 'Sin estado' %></span></dd>
     </div>
+    <% if (sanction.sga_deuda_id) { %>
+    <div>
+      <dt>Bloqueo de recibo</dt>
+      <dd>
+        <span
+          class="badge rounded-pill text-bg-dark app-sanction-sga-block"
+          title="Bloqueo de recibo de pago generado en SGA"
+        >
+          <i class="bi bi-shield-lock" aria-hidden="true"></i> SGA
+        </span>
+      </dd>
+    </div>
+    <% } %>
   </dl>
 </td>
