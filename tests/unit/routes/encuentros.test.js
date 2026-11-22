@@ -1005,6 +1005,65 @@ test('certificate generation can omit email while still linking the participatio
   }
 });
 
+test('manual medal assignment does not trigger certificate email delivery', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('c.id AS certificado_id') && sql.includes('FROM encuentro_participante p')) {
+      return {
+        rows: [
+          {
+            certificado_id: 88,
+            certificado_estado: 'valido',
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM encuentro_certificado c') && sql.includes('FOR UPDATE OF c')) {
+      return {
+        rows: [
+          {
+            certificado_id: 88,
+            evento_id: 14,
+            participante_id: 31,
+            documento_normalizado: '000123',
+            entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+            salida_en: new Date('2026-10-20T16:00:00.000Z'),
+            certificado_estado: 'valido',
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM usuario')) return { rows: [{ id: 12 }] };
+    if (sql.includes('UPDATE encuentro_participante') && sql.includes('RETURNING usuario_id')) {
+      return { rows: [{ usuario_id: 12 }] };
+    }
+    if (sql.includes('INSERT INTO encuentro_logro')) return { rows: [{ id: 77 }] };
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes/31/medalla/asignar')
+      .set('x-test-role', 'admin')
+      .send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.certificado_id, 88);
+    assert.equal(response.body.certificado_generado, false);
+    assert.equal(response.body.correo_enviado, false);
+    assert.equal(response.body.medalla_otorgada, true);
+    assert.ok(statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_logro')));
+    assert.equal(
+      statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_envio_certificado')),
+      false
+    );
+  } finally {
+    setup.restore();
+  }
+});
+
 test('certificate generation reports a recoverable error when template file is missing', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-missing-template-test-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;

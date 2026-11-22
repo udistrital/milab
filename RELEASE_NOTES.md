@@ -1,5 +1,9 @@
 # Release Notes
 
+## 3.2.1 - 2026-11-22
+
+1. En Encuentros se agrega la acción **Asignar medalla** por participante con asistencia completa (entrada y salida), sin desencadenar el envío de correos de certificado.
+
 ## 3.2.0 - 2026-10-27
 
 1. La consulta masiva de sanciones procesa hasta 50 documentos o códigos con progreso visible; las multas ajenas al catálogo de laboratorio no se tipifican como sanciones y los administradores pueden consultar otras multas SGA.

@@ -489,6 +489,18 @@
           )
         );
       }
+      if (
+        participant.salida_en &&
+        participant.validez_certificado !== 'anulado' &&
+        !participant.medalla_vinculada
+      ) {
+        if (actions.childNodes.length) actions.appendChild(document.createTextNode(' '));
+        actions.appendChild(
+          actionButton('Asignar medalla', 'btn-outline-success btn-sm', () =>
+            assignMedal(event.id, participant.id)
+          )
+        );
+      }
       if (!actions.childNodes.length) actions.appendChild(element('span', '—', 'text-muted small'));
       actions.classList.add('app-grid-sticky-action');
       row.appendChild(actions);
@@ -975,6 +987,32 @@
             : 'Certificado generado; revisa el estado del envío.'
           : 'Certificado generado sin envío de correo.',
         'success'
+      );
+      await refreshDetail();
+    } catch (error) {
+      showAlert(error.message, 'danger');
+    }
+  }
+
+  async function assignMedal(eventId, participantId) {
+    if (
+      !(await window.MiLabDialogs.confirm(
+        '¿Asignar la medalla de este encuentro sin enviar correo del certificado?'
+      ))
+    ) {
+      return;
+    }
+    try {
+      const result = await request(
+        `/eventos/${eventId}/participantes/${participantId}/medalla/asignar`,
+        {
+          method: 'POST',
+          body: '{}',
+        }
+      );
+      showAlert(
+        result.message || 'Medalla asignada sin envío de correo del certificado.',
+        result.medalla_otorgada ? 'success' : 'info'
       );
       await refreshDetail();
     } catch (error) {

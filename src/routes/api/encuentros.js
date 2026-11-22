@@ -3291,6 +3291,113 @@ router.post(
   }
 );
 
+router.post(
+  '/api/eventos/:eventId/participantes/:participantId/medalla/asignar',
+  requireManager,
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const participantId = parsePositiveId(req.params.participantId);
+    if (!eventId || !participantId) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Identificadores de evento o participante inválidos.' });
+    }
+    try {
+      const eligibleResult = await pool.query(
+        `
+          SELECT
+            c.id AS certificado_id,
+            c.estado AS certificado_estado
+          FROM encuentro_participante p
+          JOIN encuentro_asistencia a
+            ON a.participante_id = p.id
+           AND a.evento_id = p.evento_id
+          LEFT JOIN encuentro_certificado c
+            ON c.participante_id = p.id
+           AND c.evento_id = p.evento_id
+           AND c.activo = TRUE
+          WHERE p.id = $1
+            AND p.evento_id = $2
+            AND p.activo = TRUE
+            AND a.entrada_en IS NOT NULL
+            AND a.salida_en IS NOT NULL
+          LIMIT 1
+        `,
+        [participantId, eventId]
+      );
+      const eligible = eligibleResult.rows[0];
+      if (!eligible) {
+        return res
+          .status(409)
+          .json({ ok: false, message: 'El participante no tiene una participación completada.' });
+      }
+      if (eligible.certificado_id && eligible.certificado_estado !== 'valido') {
+        return res.status(409).json({
+          ok: false,
+          message: 'No se puede asignar medalla con un certificado anulado.',
+        });
+      }
+
+      let certificateId = eligible.certificado_id;
+      let certificateCreated = false;
+      if (!certificateId) {
+        const certificate = await createCertificate(eventId, participantId, req);
+        certificateId = certificate.id;
+        certificateCreated = true;
+      }
+
+      const medal = await awardMedal(certificateId, req);
+      if (medal?.motivo === 'usuario_inexistente_o_ambiguo') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message:
+            'No se encontró una cuenta MiLab activa y única para este documento. Verifica el registro del usuario.',
+        });
+      }
+      if (medal?.motivo === 'identidad_participante_inconsistente') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message:
+            'La identidad del participante no pudo vincularse de forma consistente. Revisa el documento y vuelve a intentar.',
+        });
+      }
+      if (medal?.motivo === 'no_cumple_condiciones') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message: 'No se cumplen las condiciones para asignar la medalla.',
+        });
+      }
+
+      return res.json({
+        ok: true,
+        certificado_id: certificateId,
+        certificado_generado: certificateCreated,
+        correo_enviado: false,
+        medalla_otorgada: Boolean(medal?.otorgada),
+        message:
+          medal?.motivo === 'ya_otorgada'
+            ? 'La medalla ya estaba asignada para esta participación.'
+            : 'Medalla asignada sin enviar correo de certificado.',
+      });
+    } catch (error) {
+      if (isTemplateUnavailableError(error)) {
+        return res.status(409).json({
+          ok: false,
+          message:
+            'La plantilla PDF del evento no está disponible. Actualízala y vuelve a intentar.',
+        });
+      }
+      return handleServerError(req, res, error, 'No fue posible asignar la medalla.');
+    }
+  }
+);
+
 router.patch(
   '/api/eventos/:eventId/asistencia/:documento/corregir',
   requireAttendanceCorrection,
