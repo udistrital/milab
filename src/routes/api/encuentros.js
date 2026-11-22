@@ -439,57 +439,34 @@ async function createCertificate(eventId, participantId, req) {
   }
 }
 
-async function buildFallbackCertificatePdf({ values, verificationUrl }) {
-  const document = new PDFDocument({ size: 'A4', margin: 56 });
-  const chunks = [];
-  const completion = new Promise((resolve, reject) => {
-    document.on('data', (chunk) => chunks.push(chunk));
-    document.on('end', () => resolve(Buffer.concat(chunks)));
-    document.on('error', reject);
-  });
+function buildRecoveryCertificateValues(certificate) {
+  const baseValues = {
+    nombre: certificate.participante_nombre || '',
+    documento: certificate.participante_documento || '',
+    correo: certificate.participante_correo || '',
+    facultad: certificate.participante_facultad || '',
+    laboratorio: certificate.participante_laboratorio || '',
+    evento: certificate.evento_nombre || '',
+    fecha_evento: formatDateForDisplay(certificate.evento_fecha),
+    lugar: certificate.evento_lugar || '',
+    organizador: certificate.evento_organizador || '',
+    rol: certificate.participante_rol || '',
+    fecha_emision:
+      certificate.certificado_creado_en &&
+      !Number.isNaN(Date.parse(certificate.certificado_creado_en))
+        ? new Intl.DateTimeFormat('es-CO', {
+            dateStyle: 'long',
+            timeZone: 'America/Bogota',
+          }).format(new Date(certificate.certificado_creado_en))
+        : '',
+    codigo_certificado: certificate.codigo || '',
+  };
 
-  const qrData = verificationUrl
-    ? await QRCode.toDataURL(verificationUrl, {
-        width: 220,
-        margin: 1,
-        errorCorrectionLevel: 'M',
-      })
-    : null;
-  const qrBuffer = qrData ? Buffer.from(qrData.split(',')[1], 'base64') : null;
-
-  document.font('Helvetica-Bold').fontSize(22).text('Certificado de participación', {
-    align: 'center',
-  });
-  document.moveDown(1);
-  document.font('Helvetica').fontSize(12);
-  document.text('Este certificado acredita la participación en el encuentro institucional.');
-  document.moveDown(1);
-  document.text(`Nombre: ${values?.nombre || 'No disponible'}`);
-  document.text(`Documento: ${values?.documento || 'No disponible'}`);
-  document.text(`Evento: ${values?.evento || 'No disponible'}`);
-  document.text(`Fecha del evento: ${values?.fecha_evento || 'No disponible'}`);
-  document.text(`Lugar: ${values?.lugar || 'No disponible'}`);
-  document.text(`Organizador: ${values?.organizador || 'No disponible'}`);
-  document.text(`Código del certificado: ${values?.codigo_certificado || 'No disponible'}`);
-  document.text(`Fecha de emisión: ${values?.fecha_emision || 'No disponible'}`);
-
-  if (verificationUrl) {
-    document.moveDown(1.5);
-    document.fontSize(10).text(
-      'Este archivo se reconstruyó desde el respaldo del certificado. Verifica su validez con el enlace o QR:'
-    );
-    document.fillColor('#0d6efd').text(verificationUrl, { link: verificationUrl, underline: true });
-    document.fillColor('black');
+  const snapshotValues = certificate.datos_snapshot_snapshot || certificate.datos_snapshot;
+  if (!snapshotValues || typeof snapshotValues !== 'object' || Array.isArray(snapshotValues)) {
+    return baseValues;
   }
-
-  if (qrBuffer) {
-    document.image(qrBuffer, document.page.width - 220, document.page.height - 260, {
-      width: 140,
-      height: 140,
-    });
-  }
-  document.end();
-  return completion;
+  return { ...baseValues, ...snapshotValues };
 }
 
 async function ensureCertificateFile(certificate) {
@@ -522,14 +499,9 @@ async function ensureCertificateFile(certificate) {
   }
 
   const templateConfig = certificate.plantilla_config_snapshot || certificate.plantilla_config;
-  const values = certificate.datos_snapshot_snapshot || certificate.datos_snapshot;
+  const values = buildRecoveryCertificateValues(certificate);
   if (!templateConfig || typeof templateConfig !== 'object' || Array.isArray(templateConfig)) {
     const missingSnapshot = new Error('No existe una configuración de plantilla para reconstruir.');
-    missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
-    throw missingSnapshot;
-  }
-  if (!values || typeof values !== 'object' || Array.isArray(values)) {
-    const missingSnapshot = new Error('No existen datos de certificado para reconstruir.');
     missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
     throw missingSnapshot;
   }
@@ -541,26 +513,25 @@ async function ensureCertificateFile(certificate) {
   }
 
   let templateBuffer = null;
-  let shouldUseFallbackPdf = false;
   try {
     templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
   } catch (error) {
     if (error.code === 'ENOENT') {
-      shouldUseFallbackPdf = true;
+      const templateMissing = new Error('La plantilla PDF para reconstrucción no está disponible.');
+      templateMissing.code = 'CERTIFICATE_FILE_MISSING';
+      throw templateMissing;
     } else {
       throw error;
     }
   }
 
   const verificationUrl = buildAppUrl(`/encuentros/verificar/${certificate.token_verificacion}`);
-  const pdfBuffer = shouldUseFallbackPdf
-    ? await buildFallbackCertificatePdf({ values, verificationUrl })
-    : await generateCertificatePdf({
-        templateBuffer,
-        templateConfig,
-        values,
-        verificationUrl,
-      });
+  const pdfBuffer = await generateCertificatePdf({
+    templateBuffer,
+    templateConfig,
+    values,
+    verificationUrl,
+  });
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   try {
     await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
@@ -3815,9 +3786,20 @@ router.get(
           c.archivo_actual,
           c.codigo,
           c.token_verificacion,
+          c.creado_en AS certificado_creado_en,
           c.datos_snapshot,
           e.plantilla_pdf_path,
           e.plantilla_config,
+          e.nombre AS evento_nombre,
+          e.fecha AS evento_fecha,
+          e.lugar AS evento_lugar,
+          e.organizador AS evento_organizador,
+          p.nombre AS participante_nombre,
+          p.documento AS participante_documento,
+          p.correo AS participante_correo,
+          p.rol AS participante_rol,
+          p.facultad AS participante_facultad,
+          p.laboratorio AS participante_laboratorio,
           latest.archivo_path AS latest_archivo_path,
           latest.plantilla_config_snapshot,
           latest.datos_snapshot AS datos_snapshot_snapshot

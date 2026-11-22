@@ -1138,7 +1138,7 @@ test('certificate download rebuilds a missing file from stored snapshots', async
   }
 });
 
-test('certificate download falls back to snapshot PDF when template file is missing', async () => {
+test('certificate download returns unavailable when template file is missing', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-download-fallback-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
   const certificateRelativePath = 'certificates/14/FALLBACK-DOWNLOAD.pdf';
@@ -1195,18 +1195,12 @@ test('certificate download falls back to snapshot PDF when template file is miss
 
     const response = await request(setup.app)
       .get('/encuentros/api/certificados/85/descargar')
-      .set('x-test-role', 'admin')
-      .buffer(true)
-      .parse((incoming, callback) => {
-        const chunks = [];
-        incoming.on('data', (chunk) => chunks.push(chunk));
-        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
-      });
+      .set('x-test-role', 'admin');
 
-    assert.equal(response.status, 200);
-    assert.ok(Buffer.isBuffer(response.body));
-    assert.match(response.headers['content-disposition'], /certificado-FALLBACK-DOWNLOAD\.pdf/i);
-    assert.ok((await fs.stat(certificatePath)).size > 0);
+    assert.equal(response.status, 404);
+    assert.equal(response.body.ok, false);
+    assert.match(response.body.message, /archivo del certificado no está disponible/i);
+    await assert.rejects(fs.stat(certificatePath));
   } finally {
     setup?.restore();
     if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
