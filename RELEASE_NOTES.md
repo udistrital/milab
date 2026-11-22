@@ -4,6 +4,7 @@
 
 1. En Encuentros se agrega la acción **Asignar medalla** por participante con asistencia completa (entrada y salida), sin desencadenar el envío de correos de certificado.
 2. La descarga de certificados en Encuentros ahora reconstruye el PDF desde snapshots cuando el archivo físico no está disponible, evitando enlaces rotos en **Mis logros**.
+3. Cuando falta la plantilla en el contenedor, la descarga de certificados para el dueño genera un PDF básico temporal; al restaurarse la plantilla, los siguientes intentos vuelven a regenerar el certificado con la plantilla del encuentro.
 
 ## 3.2.0 - 2026-10-27
 

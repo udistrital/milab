@@ -38,6 +38,8 @@ const STORAGE_ROOT = path.resolve(
 const MAX_TEMPLATE_BYTES = 8 * 1024 * 1024;
 const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_BYTES = 3 * 1024 * 1024;
+const FALLBACK_CERTIFICATE_MARKER =
+  'Este archivo se reconstruyó desde el respaldo del certificado.';
 
 const MANAGER_ROLES = [
   'admin',
@@ -289,7 +291,7 @@ async function getRegisteredUserMatch(client, normalizedDocument) {
   return result.rows.length === 1 ? result.rows[0].id : null;
 }
 
-async function createCertificate(eventId, participantId, req) {
+async function createCertificate(eventId, participantId, req, { allowFallbackPdf = false } = {}) {
   let createdFilePath;
   try {
     return await withTransaction(async (client) => {
@@ -372,23 +374,27 @@ async function createCertificate(eventId, participantId, req) {
           .filter((key) => key !== 'qr_verificacion')
           .map((key) => [key, values[key] || ''])
       );
-      let templateBuffer;
+      const verificationUrl = buildAppUrl(`/encuentros/verificar/${verificationToken}`);
+      let pdfBuffer;
       try {
-        templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+        const templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+        pdfBuffer = await generateCertificatePdf({
+          templateBuffer,
+          templateConfig: config,
+          values,
+          verificationUrl,
+        });
       } catch (error) {
-        if (error.code === 'ENOENT') {
+        if (error.code === 'ENOENT' && allowFallbackPdf) {
+          pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
+        } else if (error.code === 'ENOENT') {
           const templateError = new Error('La plantilla PDF configurada no está disponible.');
           templateError.code = 'ENCUENTRO_TEMPLATE_UNAVAILABLE';
           throw templateError;
+        } else {
+          throw error;
         }
-        throw error;
       }
-      const pdfBuffer = await generateCertificatePdf({
-        templateBuffer,
-        templateConfig: config,
-        values,
-        verificationUrl: buildAppUrl(`/encuentros/verificar/${verificationToken}`),
-      });
       createdFilePath = path.join('certificates', String(eventId), `${code}.pdf`);
       const absoluteCertificatePath = resolveStoredPath(createdFilePath);
       await fs.mkdir(path.dirname(absoluteCertificatePath), { recursive: true });
@@ -507,9 +513,7 @@ async function buildFallbackCertificatePdf({ values, verificationUrl }) {
     document.moveDown(1.5);
     document
       .fontSize(10)
-      .text(
-        'Este archivo se reconstruyó desde el respaldo del certificado. Verifica su validez con el enlace o QR:'
-      );
+      .text(`${FALLBACK_CERTIFICATE_MARKER} Verifica su validez con el enlace o QR:`);
     document.fillColor('#0d6efd').text(verificationUrl, { link: verificationUrl, underline: true });
     document.fillColor('black');
   }
@@ -524,6 +528,12 @@ async function buildFallbackCertificatePdf({ values, verificationUrl }) {
   return completion;
 }
 
+function isFallbackCertificatePdfBuffer(buffer) {
+  return (
+    Buffer.isBuffer(buffer) && buffer.includes(Buffer.from(FALLBACK_CERTIFICATE_MARKER, 'utf8'))
+  );
+}
+
 async function ensureCertificateFile(certificate, { allowFallbackPdf = false } = {}) {
   const resolveCandidatePath = (relativePath) => {
     if (!relativePath || typeof relativePath !== 'string') return null;
@@ -534,12 +544,58 @@ async function ensureCertificateFile(certificate, { allowFallbackPdf = false } =
     }
   };
 
+  const templateConfig = certificate.plantilla_config_snapshot || certificate.plantilla_config;
+  const values = buildRecoveryCertificateValues(certificate);
+  const verificationUrl = buildAppUrl(`/encuentros/verificar/${certificate.token_verificacion}`);
+  const buildTemplateCertificateBuffer = async () => {
+    if (!templateConfig || typeof templateConfig !== 'object' || Array.isArray(templateConfig)) {
+      const missingSnapshot = new Error(
+        'No existe una configuración de plantilla para reconstruir.'
+      );
+      missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
+      throw missingSnapshot;
+    }
+    const configErrors = validateTemplateConfig(templateConfig);
+    if (configErrors.length) {
+      const invalidConfig = new Error(configErrors.join(' '));
+      invalidConfig.code = 'CERTIFICATE_FILE_MISSING';
+      throw invalidConfig;
+    }
+    let templateBuffer = null;
+    try {
+      templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        const templateMissing = new Error(
+          'La plantilla PDF para reconstrucción no está disponible.'
+        );
+        templateMissing.code = 'CERTIFICATE_FILE_MISSING';
+        throw templateMissing;
+      }
+      throw error;
+    }
+    return generateCertificatePdf({
+      templateBuffer,
+      templateConfig,
+      values,
+      verificationUrl,
+    });
+  };
+
   const primaryPath = resolveCandidatePath(certificate.archivo_actual);
   const versionPath = resolveCandidatePath(certificate.latest_archivo_path);
   const existingCandidates = [primaryPath, versionPath].filter(Boolean);
   for (const candidate of existingCandidates) {
     try {
       await fs.access(candidate);
+      const currentBuffer = await fs.readFile(candidate);
+      if (!isFallbackCertificatePdfBuffer(currentBuffer)) return candidate;
+      try {
+        const upgradedBuffer = await buildTemplateCertificateBuffer();
+        await fs.writeFile(candidate, upgradedBuffer, { flag: 'w', mode: 0o600 });
+      } catch (error) {
+        if (error.code !== 'CERTIFICATE_FILE_MISSING') throw error;
+      }
       return candidate;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -553,55 +609,16 @@ async function ensureCertificateFile(certificate, { allowFallbackPdf = false } =
     throw invalidPath;
   }
 
-  const templateConfig = certificate.plantilla_config_snapshot || certificate.plantilla_config;
-  const values = buildRecoveryCertificateValues(certificate);
-  if (!templateConfig || typeof templateConfig !== 'object' || Array.isArray(templateConfig)) {
-    const missingSnapshot = new Error('No existe una configuración de plantilla para reconstruir.');
-    missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
-    throw missingSnapshot;
-  }
-  const configErrors = validateTemplateConfig(templateConfig);
-  if (configErrors.length) {
-    const invalidConfig = new Error(configErrors.join(' '));
-    invalidConfig.code = 'CERTIFICATE_FILE_MISSING';
-    throw invalidConfig;
-  }
-
-  let templateBuffer = null;
+  let pdfBuffer;
   try {
-    templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
+    pdfBuffer = await buildTemplateCertificateBuffer();
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      if (!allowFallbackPdf) {
-        const templateMissing = new Error(
-          'La plantilla PDF para reconstrucción no está disponible.'
-        );
-        templateMissing.code = 'CERTIFICATE_FILE_MISSING';
-        throw templateMissing;
-      }
-      const verificationUrl = buildAppUrl(
-        `/encuentros/verificar/${certificate.token_verificacion}`
-      );
-      const pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      try {
-        await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
-      } catch (writeError) {
-        if (writeError.code !== 'EEXIST') throw writeError;
-      }
-      return filePath;
+    if (error.code === 'CERTIFICATE_FILE_MISSING' && allowFallbackPdf) {
+      pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
     } else {
       throw error;
     }
   }
-
-  const verificationUrl = buildAppUrl(`/encuentros/verificar/${certificate.token_verificacion}`);
-  const pdfBuffer = await generateCertificatePdf({
-    templateBuffer,
-    templateConfig,
-    values,
-    verificationUrl,
-  });
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   try {
     await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
@@ -3525,7 +3542,9 @@ router.post(
       let certificateId = eligible.certificado_id;
       let certificateCreated = false;
       if (!certificateId) {
-        const certificate = await createCertificate(eventId, participantId, req);
+        const certificate = await createCertificate(eventId, participantId, req, {
+          allowFallbackPdf: true,
+        });
         certificateId = certificate.id;
         certificateCreated = true;
       }
