@@ -3882,6 +3882,7 @@ router.get(
           p.rol AS participante_rol,
           p.facultad AS participante_facultad,
           p.laboratorio AS participante_laboratorio,
+          COALESCE(p.usuario_id = $3, FALSE) AS es_propietario,
           latest.archivo_path AS latest_archivo_path,
           latest.plantilla_config_snapshot,
           latest.datos_snapshot AS datos_snapshot_snapshot
@@ -3907,7 +3908,7 @@ router.get(
           .status(404)
           .json({ ok: false, message: 'El certificado no existe o no tienes acceso.' });
       const filePath = await ensureCertificateFile(result.rows[0], {
-        allowFallbackPdf: !isManager,
+        allowFallbackPdf: !isManager || Boolean(result.rows[0].es_propietario),
       });
       return res.download(filePath, `certificado-${result.rows[0].codigo}.pdf`);
     } catch (error) {

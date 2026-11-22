@@ -1318,6 +1318,88 @@ test('certificate download for attendees falls back to backup PDF when template 
   }
 });
 
+test('certificate download for owner admin session also falls back to backup PDF', async () => {
+  const storageRoot = path.join(
+    root,
+    'private',
+    `encuentros-download-owner-admin-fallback-${process.pid}`
+  );
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const certificateRelativePath = 'certificates/14/FALLBACK-OWNER-ADMIN.pdf';
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'FALLBACK-OWNER-ADMIN',
+              token_verificacion:
+                'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+              plantilla_pdf_path: 'templates/missing-template.pdf',
+              plantilla_config: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              plantilla_config_snapshot: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-OWNER-ADMIN',
+              },
+              datos_snapshot_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-OWNER-ADMIN',
+              },
+              es_propietario: true,
+              latest_archivo_path: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/87/descargar')
+      .set('x-test-role', 'admin')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.match(response.headers['content-disposition'], /certificado-FALLBACK-OWNER-ADMIN\.pdf/i);
+    assert.ok((await fs.stat(certificatePath)).size > 0);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test('certificate generation reports a recoverable error when template file is missing', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-missing-template-test-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
