@@ -1064,6 +1064,80 @@ test('manual medal assignment does not trigger certificate email delivery', asyn
   }
 });
 
+test('certificate download rebuilds a missing file from stored snapshots', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-download-rebuild-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const templateRelativePath = 'templates/template-download.pdf';
+  const certificateRelativePath = 'certificates/14/RECOVER-DOWNLOAD.pdf';
+  const templatePath = path.join(storageRoot, templateRelativePath);
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  const templateConfig = {
+    nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+    qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+  };
+  const templatePdf = await PDFDocument.create();
+  templatePdf.addPage([400, 240]);
+  const templateBuffer = Buffer.from(await templatePdf.save());
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    await fs.mkdir(path.dirname(templatePath), { recursive: true });
+    await fs.writeFile(templatePath, templateBuffer);
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'RECOVER-DOWNLOAD',
+              token_verificacion:
+                '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+              plantilla_pdf_path: templateRelativePath,
+              plantilla_config_snapshot: templateConfig,
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                correo: 'ana@example.edu',
+                facultad: 'Ingeniería',
+                laboratorio: 'Lab 1',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                rol: 'Docente',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'RECOVER-DOWNLOAD',
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/84/descargar')
+      .set('x-test-role', 'admin')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.match(response.headers['content-disposition'], /certificado-RECOVER-DOWNLOAD\.pdf/i);
+    assert.ok((await fs.stat(certificatePath)).size > 0);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
 test('certificate generation reports a recoverable error when template file is missing', async () => {
   const storageRoot = path.join(root, 'private', `encuentros-missing-template-test-${process.pid}`);
   const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;

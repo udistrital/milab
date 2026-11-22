@@ -3,6 +3,7 @@
 ## 3.2.1 - 2026-11-22
 
 1. En Encuentros se agrega la acción **Asignar medalla** por participante con asistencia completa (entrada y salida), sin desencadenar el envío de correos de certificado.
+2. La descarga de certificados en Encuentros ahora reconstruye el PDF desde snapshots cuando el archivo físico no está disponible, evitando enlaces rotos en **Mis logros**.
 
 ## 3.2.0 - 2026-10-27
 

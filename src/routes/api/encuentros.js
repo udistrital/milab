@@ -439,6 +439,61 @@ async function createCertificate(eventId, participantId, req) {
   }
 }
 
+async function ensureCertificateFile(certificate) {
+  const filePath = resolveStoredPath(certificate.archivo_actual);
+  try {
+    await fs.access(filePath);
+    return filePath;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const templateConfig = certificate.plantilla_config_snapshot;
+  const values = certificate.datos_snapshot;
+  if (!templateConfig || typeof templateConfig !== 'object' || Array.isArray(templateConfig)) {
+    const missingSnapshot = new Error('No existe una configuración de plantilla para reconstruir.');
+    missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
+    throw missingSnapshot;
+  }
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    const missingSnapshot = new Error('No existen datos de certificado para reconstruir.');
+    missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
+    throw missingSnapshot;
+  }
+  const configErrors = validateTemplateConfig(templateConfig);
+  if (configErrors.length) {
+    const invalidConfig = new Error(configErrors.join(' '));
+    invalidConfig.code = 'CERTIFICATE_FILE_MISSING';
+    throw invalidConfig;
+  }
+
+  let templateBuffer;
+  try {
+    templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      const templateMissing = new Error('La plantilla PDF para reconstrucción no está disponible.');
+      templateMissing.code = 'CERTIFICATE_FILE_MISSING';
+      throw templateMissing;
+    }
+    throw error;
+  }
+
+  const pdfBuffer = await generateCertificatePdf({
+    templateBuffer,
+    templateConfig,
+    values,
+    verificationUrl: buildAppUrl(`/encuentros/verificar/${certificate.token_verificacion}`),
+  });
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  try {
+    await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  return filePath;
+}
+
 async function awardMedal(certificateId, req) {
   return withTransaction(async (client) => {
     const eligibleResult = await client.query(
@@ -3680,10 +3735,24 @@ router.get(
       const userId = getSessionUserId(req);
       const result = await pool.query(
         `
-        SELECT c.archivo_actual, c.codigo
+        SELECT
+          c.archivo_actual,
+          c.codigo,
+          c.token_verificacion,
+          e.plantilla_pdf_path,
+          latest.plantilla_config_snapshot,
+          latest.datos_snapshot
         FROM encuentro_certificado c
+        JOIN encuentro_evento e ON e.id = c.evento_id
         JOIN encuentro_participante p
           ON p.id = c.participante_id AND p.evento_id = c.evento_id
+        LEFT JOIN LATERAL (
+          SELECT plantilla_config_snapshot, datos_snapshot
+          FROM encuentro_certificado_version
+          WHERE certificado_id = c.id
+          ORDER BY numero_version DESC
+          LIMIT 1
+        ) latest ON TRUE
         WHERE c.id = $1
           AND c.estado = 'valido'
           AND ($2::boolean = TRUE OR p.usuario_id = $3)
@@ -3694,11 +3763,10 @@ router.get(
         return res
           .status(404)
           .json({ ok: false, message: 'El certificado no existe o no tienes acceso.' });
-      const filePath = resolveStoredPath(result.rows[0].archivo_actual);
-      await fs.access(filePath);
+      const filePath = await ensureCertificateFile(result.rows[0]);
       return res.download(filePath, `certificado-${result.rows[0].codigo}.pdf`);
     } catch (error) {
-      if (error.code === 'ENOENT')
+      if (error.code === 'ENOENT' || error.code === 'CERTIFICATE_FILE_MISSING')
         return res
           .status(404)
           .json({ ok: false, message: 'El archivo del certificado no está disponible.' });
