@@ -567,6 +567,7 @@ test('authorized manager can replace the event banner after an event is finalize
 });
 
 test('event detail returns database-backed statistics for the visual summary', async () => {
+  let participantsQuery;
   const setup = buildTestApp(async (sql) => {
     if (sql.includes('COUNT(DISTINCT p.id)')) {
       return {
@@ -588,6 +589,31 @@ test('event detail returns database-backed statistics for the visual summary', a
         ],
       };
     }
+    if (sql.includes('FROM encuentro_participante p') && sql.includes('AS medalla_vinculada')) {
+      participantsQuery = sql;
+      return {
+        rows: [
+          {
+            id: 31,
+            nombre: 'Ana Pérez',
+            documento: '000123',
+            correo: 'ana@example.edu',
+            rol: 'Docente',
+            facultad: 'Ingeniería',
+            laboratorio: 'Lab 1',
+            entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+            salida_en: new Date('2026-10-20T16:00:00.000Z'),
+            estado_asistencia: 'completada',
+            certificado_id: 44,
+            codigo_certificado: 'CERT-44',
+            estado_certificado: 'enviado',
+            validez_certificado: 'valido',
+            tiene_usuario_milab: true,
+            medalla_vinculada: false,
+          },
+        ],
+      };
+    }
     return { rows: [] };
   });
 
@@ -604,6 +630,8 @@ test('event detail returns database-backed statistics for the visual summary', a
     assert.equal(response.body.estadisticas.porcentaje_completado, 50);
     assert.equal(response.body.estadisticas.certificados_enviados, 1);
     assert.equal(response.body.estadisticas.certificados_con_error, 1);
+    assert.equal(response.body.participantes[0].tiene_usuario_milab, true);
+    assert.match(participantsQuery, /AS tiene_usuario_milab/);
   } finally {
     setup.restore();
   }
@@ -997,6 +1025,558 @@ test('certificate generation can omit email while still linking the participatio
     assert.ok(
       !statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_envio_certificado'))
     );
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('manual medal assignment does not trigger certificate email delivery', async () => {
+  const statements = [];
+  const setup = buildTestApp(async (sql, values) => {
+    statements.push({ sql, values });
+    if (sql.includes('c.id AS certificado_id') && sql.includes('FROM encuentro_participante p')) {
+      return {
+        rows: [
+          {
+            certificado_id: 88,
+            certificado_estado: 'valido',
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM encuentro_certificado c') && sql.includes('FOR UPDATE OF c')) {
+      return {
+        rows: [
+          {
+            certificado_id: 88,
+            evento_id: 14,
+            participante_id: 31,
+            documento_normalizado: '000123',
+            entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+            salida_en: new Date('2026-10-20T16:00:00.000Z'),
+            certificado_estado: 'valido',
+          },
+        ],
+      };
+    }
+    if (sql.includes('FROM usuario')) return { rows: [{ id: 12 }] };
+    if (sql.includes('UPDATE encuentro_participante') && sql.includes('RETURNING usuario_id')) {
+      return { rows: [{ usuario_id: 12 }] };
+    }
+    if (sql.includes('INSERT INTO encuentro_logro')) return { rows: [{ id: 77 }] };
+    return { rows: [] };
+  });
+
+  try {
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes/31/medalla/asignar')
+      .set('x-test-role', 'admin')
+      .send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.certificado_id, 88);
+    assert.equal(response.body.certificado_generado, false);
+    assert.equal(response.body.correo_enviado, false);
+    assert.equal(response.body.medalla_otorgada, true);
+    assert.ok(statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_logro')));
+    assert.equal(
+      statements.some(({ sql }) => sql.includes('INSERT INTO encuentro_envio_certificado')),
+      false
+    );
+  } finally {
+    setup.restore();
+  }
+});
+
+test('certificate download rebuilds a missing file from stored snapshots', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-download-rebuild-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const templateRelativePath = 'templates/template-download.pdf';
+  const certificateRelativePath = 'certificates/14/RECOVER-DOWNLOAD.pdf';
+  const templatePath = path.join(storageRoot, templateRelativePath);
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  const templateConfig = {
+    nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+    qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+  };
+  const templatePdf = await PDFDocument.create();
+  templatePdf.addPage([400, 240]);
+  const templateBuffer = Buffer.from(await templatePdf.save());
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    await fs.mkdir(path.dirname(templatePath), { recursive: true });
+    await fs.writeFile(templatePath, templateBuffer);
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'RECOVER-DOWNLOAD',
+              token_verificacion:
+                '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+              plantilla_pdf_path: templateRelativePath,
+              plantilla_config_snapshot: templateConfig,
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                correo: 'ana@example.edu',
+                facultad: 'Ingeniería',
+                laboratorio: 'Lab 1',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                rol: 'Docente',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'RECOVER-DOWNLOAD',
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/84/descargar')
+      .set('x-test-role', 'admin')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.match(response.headers['content-disposition'], /certificado-RECOVER-DOWNLOAD\.pdf/i);
+    assert.ok((await fs.stat(certificatePath)).size > 0);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('certificate download returns unavailable when template file is missing', async () => {
+  const storageRoot = path.join(root, 'private', `encuentros-download-fallback-${process.pid}`);
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const certificateRelativePath = 'certificates/14/FALLBACK-DOWNLOAD.pdf';
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'FALLBACK-DOWNLOAD',
+              token_verificacion:
+                'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+              plantilla_pdf_path: 'templates/missing-template.pdf',
+              plantilla_config: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              plantilla_config_snapshot: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-DOWNLOAD',
+              },
+              datos_snapshot_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-DOWNLOAD',
+              },
+              latest_archivo_path: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/85/descargar')
+      .set('x-test-role', 'admin');
+
+    assert.equal(response.status, 404);
+    assert.equal(response.body.ok, false);
+    assert.match(response.body.message, /archivo del certificado no está disponible/i);
+    await assert.rejects(fs.stat(certificatePath));
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('certificate download for attendees falls back to backup PDF when template is missing', async () => {
+  const storageRoot = path.join(
+    root,
+    'private',
+    `encuentros-download-attendee-fallback-${process.pid}`
+  );
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const certificateRelativePath = 'certificates/14/FALLBACK-ATTENDEE.pdf';
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'FALLBACK-ATTENDEE',
+              token_verificacion:
+                'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+              plantilla_pdf_path: 'templates/missing-template.pdf',
+              plantilla_config: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              plantilla_config_snapshot: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-ATTENDEE',
+              },
+              datos_snapshot_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-ATTENDEE',
+              },
+              latest_archivo_path: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/86/descargar')
+      .set('x-test-role', 'estudiante')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.match(response.headers['content-disposition'], /certificado-FALLBACK-ATTENDEE\.pdf/i);
+    assert.ok((await fs.stat(certificatePath)).size > 0);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('certificate download for owner admin session also falls back to backup PDF', async () => {
+  const storageRoot = path.join(
+    root,
+    'private',
+    `encuentros-download-owner-admin-fallback-${process.pid}`
+  );
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const certificateRelativePath = 'certificates/14/FALLBACK-OWNER-ADMIN.pdf';
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'FALLBACK-OWNER-ADMIN',
+              token_verificacion:
+                'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+              plantilla_pdf_path: 'templates/missing-template.pdf',
+              plantilla_config: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              plantilla_config_snapshot: {
+                nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+                qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+              },
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-OWNER-ADMIN',
+              },
+              datos_snapshot_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-OWNER-ADMIN',
+              },
+              es_propietario: true,
+              latest_archivo_path: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/87/descargar')
+      .set('x-test-role', 'admin')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    assert.ok(Buffer.isBuffer(response.body));
+    assert.match(response.headers['content-disposition'], /certificado-FALLBACK-OWNER-ADMIN\.pdf/i);
+    assert.ok((await fs.stat(certificatePath)).size > 0);
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('certificate download upgrades previously generated fallback when template is restored', async () => {
+  const storageRoot = path.join(
+    root,
+    'private',
+    `encuentros-download-upgrade-fallback-${process.pid}`
+  );
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const templateRelativePath = 'templates/template-upgrade.pdf';
+  const certificateRelativePath = 'certificates/14/FALLBACK-UPGRADE.pdf';
+  const templatePath = path.join(storageRoot, templateRelativePath);
+  const certificatePath = path.join(storageRoot, certificateRelativePath);
+  const templateConfig = {
+    nombre: { x: 120, y: 80, fontSize: 18, align: 'center' },
+    qr_verificacion: { type: 'qr', x: 24, y: 24, width: 70 },
+  };
+  const templatePdf = await PDFDocument.create();
+  templatePdf.addPage([400, 240]);
+  const templateBuffer = Buffer.from(await templatePdf.save());
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    await fs.mkdir(path.dirname(templatePath), { recursive: true });
+    await fs.writeFile(templatePath, templateBuffer);
+    await fs.mkdir(path.dirname(certificatePath), { recursive: true });
+    await fs.writeFile(
+      certificatePath,
+      Buffer.from(
+        '%PDF-1.4\nEste archivo se reconstruyó desde el respaldo del certificado.\n%%EOF',
+        'utf8'
+      )
+    );
+    setup = buildTestApp(async (sql) => {
+      if (sql.includes('c.token_verificacion') && sql.includes('FROM encuentro_certificado c')) {
+        return {
+          rows: [
+            {
+              archivo_actual: certificateRelativePath,
+              codigo: 'FALLBACK-UPGRADE',
+              token_verificacion:
+                '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+              plantilla_pdf_path: templateRelativePath,
+              plantilla_config_snapshot: templateConfig,
+              datos_snapshot: {
+                nombre: 'Ana Pérez',
+                documento: '000123',
+                evento: 'Encuentro',
+                fecha_evento: '20/10/2026',
+                lugar: 'Sede',
+                organizador: 'MiLab',
+                fecha_emision: '20 de octubre de 2026',
+                codigo_certificado: 'FALLBACK-UPGRADE',
+              },
+              latest_archivo_path: null,
+              es_propietario: true,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .get('/encuentros/api/certificados/88/descargar')
+      .set('x-test-role', 'admin')
+      .buffer(true)
+      .parse((incoming, callback) => {
+        const chunks = [];
+        incoming.on('data', (chunk) => chunks.push(chunk));
+        incoming.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    assert.equal(response.status, 200);
+    const regenerated = await fs.readFile(certificatePath);
+    assert.equal(
+      regenerated.includes(
+        Buffer.from('Este archivo se reconstruyó desde el respaldo del certificado.', 'utf8')
+      ),
+      false
+    );
+  } finally {
+    setup?.restore();
+    if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;
+    else process.env.ENCUENTROS_STORAGE_DIR = previousStorageRoot;
+    await fs.rm(storageRoot, { recursive: true, force: true });
+  }
+});
+
+test('manual medal assignment creates fallback certificate when template file is missing', async () => {
+  const storageRoot = path.join(
+    root,
+    'private',
+    `encuentros-medal-fallback-generation-${process.pid}`
+  );
+  const previousStorageRoot = process.env.ENCUENTROS_STORAGE_DIR;
+  const statements = [];
+  let setup;
+  process.env.ENCUENTROS_STORAGE_DIR = storageRoot;
+
+  try {
+    setup = buildTestApp(async (sql, values) => {
+      statements.push({ sql, values });
+      if (sql.includes('c.id AS certificado_id') && sql.includes('FROM encuentro_participante p')) {
+        return { rows: [{ certificado_id: null, certificado_estado: null }] };
+      }
+      if (sql.includes('FOR UPDATE OF p, e')) {
+        return {
+          rows: [
+            {
+              participante_id: 31,
+              evento_id: 14,
+              nombre: 'Ana Pérez',
+              documento: '000123',
+              documento_normalizado: '000123',
+              correo: 'ana@example.edu',
+              rol: 'Docente',
+              facultad: 'Ingeniería',
+              laboratorio: 'Lab 1',
+              entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+              salida_en: new Date('2026-10-20T16:00:00.000Z'),
+              evento: 'Encuentro histórico',
+              fecha_evento: '2026-10-20',
+              lugar: 'Sede',
+              organizador: 'MiLab',
+              plantilla_pdf_path: 'templates/missing.pdf',
+              plantilla_config: {
+                qr_verificacion: { type: 'qr', x: 12, y: 12, width: 40 },
+              },
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes('SELECT id, estado, email_estado FROM encuentro_certificado') &&
+        !sql.includes('FOR UPDATE')
+      ) {
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO encuentro_certificado')) {
+        return { rows: [{ id: 99, estado: 'valido', email_estado: 'pendiente' }] };
+      }
+      if (sql.includes('FROM encuentro_certificado c') && sql.includes('FOR UPDATE OF c')) {
+        return {
+          rows: [
+            {
+              certificado_id: 99,
+              evento_id: 14,
+              participante_id: 31,
+              documento_normalizado: '000123',
+              entrada_en: new Date('2026-10-20T14:00:00.000Z'),
+              salida_en: new Date('2026-10-20T16:00:00.000Z'),
+              certificado_estado: 'valido',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM usuario')) return { rows: [{ id: 12 }] };
+      if (sql.includes('UPDATE encuentro_participante') && sql.includes('RETURNING usuario_id')) {
+        return { rows: [{ usuario_id: 12 }] };
+      }
+      if (sql.includes('INSERT INTO encuentro_logro')) return { rows: [{ id: 77 }] };
+      return { rows: [] };
+    });
+
+    const response = await request(setup.app)
+      .post('/encuentros/api/eventos/14/participantes/31/medalla/asignar')
+      .set('x-test-role', 'admin')
+      .send({});
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    const insertCertificate = statements.find(({ sql }) =>
+      sql.includes('INSERT INTO encuentro_certificado')
+    );
+    assert.ok(insertCertificate);
+    const certificateRelativePath = insertCertificate.values[4];
+    assert.ok((await fs.stat(path.join(storageRoot, certificateRelativePath))).size > 0);
   } finally {
     setup?.restore();
     if (previousStorageRoot === undefined) delete process.env.ENCUENTROS_STORAGE_DIR;

@@ -394,6 +394,13 @@
             ? 'pendiente'
             : participant.estado_certificado || 'pendiente'
         : 'sin_certificado';
+      const certificateLabel = participant.certificado_id
+        ? participant.estado_certificado === 'pendiente'
+          ? 'correo pendiente'
+          : participant.estado_certificado === 'enviando'
+            ? 'correo enviándose'
+            : participant.estado_certificado || 'pendiente'
+        : 'Pendiente';
       row.dataset.certificateState = certificateState;
       if (allowSelection) {
         const selectCell = document.createElement('td');
@@ -425,7 +432,7 @@
       const certCell = element(
         'td',
         participant.certificado_id
-          ? `${participant.estado_certificado || 'pendiente'}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}${participant.medalla_vinculada ? ' · medalla enlazada' : ''}`
+          ? `${certificateLabel}${participant.validez_certificado === 'anulado' ? ' · anulado' : ''}${participant.medalla_vinculada ? ' · medalla enlazada' : ''}`
           : 'Pendiente'
       );
       if (participant.certificado_id && participant.validez_certificado !== 'anulado') {
@@ -481,6 +488,24 @@
             () => retryEmail(participant.certificado_id)
           )
         );
+      }
+      if (
+        participant.salida_en &&
+        participant.validez_certificado !== 'anulado' &&
+        !participant.medalla_vinculada
+      ) {
+        if (actions.childNodes.length) actions.appendChild(document.createTextNode(' '));
+        if (participant.tiene_usuario_milab) {
+          actions.appendChild(
+            actionButton('Asignar medalla', 'btn-outline-success btn-sm', () =>
+              assignMedal(event.id, participant.id)
+            )
+          );
+        } else {
+          actions.appendChild(
+            element('span', 'Sin cuenta MiLab vinculable', 'small text-muted fw-semibold')
+          );
+        }
       }
       if (!actions.childNodes.length) actions.appendChild(element('span', '—', 'text-muted small'));
       actions.classList.add('app-grid-sticky-action');
@@ -975,6 +1000,32 @@
     }
   }
 
+  async function assignMedal(eventId, participantId) {
+    if (
+      !(await window.MiLabDialogs.confirm(
+        '¿Asignar la medalla de este encuentro sin enviar correo del certificado?'
+      ))
+    ) {
+      return;
+    }
+    try {
+      const result = await request(
+        `/eventos/${eventId}/participantes/${participantId}/medalla/asignar`,
+        {
+          method: 'POST',
+          body: '{}',
+        }
+      );
+      showAlert(
+        result.message || 'Medalla asignada sin envío de correo del certificado.',
+        result.medalla_otorgada ? 'success' : 'info'
+      );
+      await refreshDetail();
+    } catch (error) {
+      showAlert(error.message, 'danger');
+    }
+  }
+
   async function generateSelectedCertificates(eventId, table, sendEmail, button) {
     const selectedIds = new Set(
       Array.from(table.querySelectorAll('input[name="selected-participant"]:checked')).map(
@@ -991,7 +1042,7 @@
     const send = sendEmail.checked;
     const deliveryMessage = send
       ? 'Se generarán los certificados y se enviarán por correo.'
-      : 'Se generarán los certificados sin enviar correos; las medallas se enlazarán cuando haya una cuenta MiLab asociada.';
+      : 'Se generarán los certificados sin enviar correos; la medalla se intentará enlazar automáticamente cuando la participación tenga cuenta MiLab asociada.';
     if (
       !(await window.MiLabDialogs.confirm(
         `${deliveryMessage} Participantes seleccionados: ${participants.length}.`
