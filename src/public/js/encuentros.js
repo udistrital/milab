@@ -495,11 +495,17 @@
         !participant.medalla_vinculada
       ) {
         if (actions.childNodes.length) actions.appendChild(document.createTextNode(' '));
-        actions.appendChild(
-          actionButton('Asignar medalla', 'btn-outline-success btn-sm', () =>
-            assignMedal(event.id, participant.id)
-          )
-        );
+        if (participant.tiene_usuario_milab) {
+          actions.appendChild(
+            actionButton('Asignar medalla', 'btn-outline-success btn-sm', () =>
+              assignMedal(event.id, participant.id)
+            )
+          );
+        } else {
+          actions.appendChild(
+            element('span', 'Sin cuenta MiLab vinculable', 'small text-muted fw-semibold')
+          );
+        }
       }
       if (!actions.childNodes.length) actions.appendChild(element('span', '—', 'text-muted small'));
       actions.classList.add('app-grid-sticky-action');

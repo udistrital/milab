@@ -469,7 +469,62 @@ function buildRecoveryCertificateValues(certificate) {
   return { ...baseValues, ...snapshotValues };
 }
 
-async function ensureCertificateFile(certificate) {
+async function buildFallbackCertificatePdf({ values, verificationUrl }) {
+  const document = new PDFDocument({ size: 'A4', margin: 56 });
+  const chunks = [];
+  const completion = new Promise((resolve, reject) => {
+    document.on('data', (chunk) => chunks.push(chunk));
+    document.on('end', () => resolve(Buffer.concat(chunks)));
+    document.on('error', reject);
+  });
+
+  const qrData = verificationUrl
+    ? await QRCode.toDataURL(verificationUrl, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+      })
+    : null;
+  const qrBuffer = qrData ? Buffer.from(qrData.split(',')[1], 'base64') : null;
+
+  document.font('Helvetica-Bold').fontSize(22).text('Certificado de participación', {
+    align: 'center',
+  });
+  document.moveDown(1);
+  document.font('Helvetica').fontSize(12);
+  document.text('Este certificado acredita la participación en el encuentro institucional.');
+  document.moveDown(1);
+  document.text(`Nombre: ${values.nombre || 'No disponible'}`);
+  document.text(`Documento: ${values.documento || 'No disponible'}`);
+  document.text(`Evento: ${values.evento || 'No disponible'}`);
+  document.text(`Fecha del evento: ${values.fecha_evento || 'No disponible'}`);
+  document.text(`Lugar: ${values.lugar || 'No disponible'}`);
+  document.text(`Organizador: ${values.organizador || 'No disponible'}`);
+  document.text(`Código del certificado: ${values.codigo_certificado || 'No disponible'}`);
+  document.text(`Fecha de emisión: ${values.fecha_emision || 'No disponible'}`);
+
+  if (verificationUrl) {
+    document.moveDown(1.5);
+    document
+      .fontSize(10)
+      .text(
+        'Este archivo se reconstruyó desde el respaldo del certificado. Verifica su validez con el enlace o QR:'
+      );
+    document.fillColor('#0d6efd').text(verificationUrl, { link: verificationUrl, underline: true });
+    document.fillColor('black');
+  }
+
+  if (qrBuffer) {
+    document.image(qrBuffer, document.page.width - 220, document.page.height - 260, {
+      width: 140,
+      height: 140,
+    });
+  }
+  document.end();
+  return completion;
+}
+
+async function ensureCertificateFile(certificate, { allowFallbackPdf = false } = {}) {
   const resolveCandidatePath = (relativePath) => {
     if (!relativePath || typeof relativePath !== 'string') return null;
     try {
@@ -517,9 +572,24 @@ async function ensureCertificateFile(certificate) {
     templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
   } catch (error) {
     if (error.code === 'ENOENT') {
-      const templateMissing = new Error('La plantilla PDF para reconstrucción no está disponible.');
-      templateMissing.code = 'CERTIFICATE_FILE_MISSING';
-      throw templateMissing;
+      if (!allowFallbackPdf) {
+        const templateMissing = new Error(
+          'La plantilla PDF para reconstrucción no está disponible.'
+        );
+        templateMissing.code = 'CERTIFICATE_FILE_MISSING';
+        throw templateMissing;
+      }
+      const verificationUrl = buildAppUrl(
+        `/encuentros/verificar/${certificate.token_verificacion}`
+      );
+      const pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      try {
+        await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
+      } catch (writeError) {
+        if (writeError.code !== 'EEXIST') throw writeError;
+      }
+      return filePath;
     } else {
       throw error;
     }
@@ -819,6 +889,18 @@ async function fetchEventDetail(eventId) {
         c.codigo AS codigo_certificado,
         c.email_estado AS estado_certificado,
         c.estado AS validez_certificado,
+        (
+          p.usuario_id IS NOT NULL
+          OR (
+            SELECT COUNT(*)
+            FROM usuario u
+            WHERE COALESCE(u.activo, TRUE) = TRUE
+              AND regexp_replace(
+                translate(upper(btrim(u.documento)), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'),
+                '[^A-Z0-9]', '', 'g'
+              ) = p.documento_normalizado
+          ) = 1
+        ) AS tiene_usuario_milab,
         EXISTS (
           SELECT 1 FROM encuentro_logro l
           WHERE l.participante_id = p.id AND l.evento_id = p.evento_id
@@ -3824,7 +3906,9 @@ router.get(
         return res
           .status(404)
           .json({ ok: false, message: 'El certificado no existe o no tienes acceso.' });
-      const filePath = await ensureCertificateFile(result.rows[0]);
+      const filePath = await ensureCertificateFile(result.rows[0], {
+        allowFallbackPdf: !isManager,
+      });
       return res.download(filePath, `certificado-${result.rows[0].codigo}.pdf`);
     } catch (error) {
       if (error.code === 'ENOENT' || error.code === 'CERTIFICATE_FILE_MISSING')
