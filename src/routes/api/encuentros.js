@@ -3786,7 +3786,7 @@ router.get(
           c.archivo_actual,
           c.codigo,
           c.token_verificacion,
-          c.creado_en AS certificado_creado_en,
+          c.fecha_creacion AS certificado_creado_en,
           c.datos_snapshot,
           e.plantilla_pdf_path,
           e.plantilla_config,
