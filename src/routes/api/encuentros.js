@@ -528,12 +528,6 @@ async function buildFallbackCertificatePdf({ values, verificationUrl }) {
   return completion;
 }
 
-function isFallbackCertificatePdfBuffer(buffer) {
-  return (
-    Buffer.isBuffer(buffer) && buffer.includes(Buffer.from(FALLBACK_CERTIFICATE_MARKER, 'utf8'))
-  );
-}
-
 async function ensureCertificateFile(certificate, { allowFallbackPdf = false } = {}) {
   const resolveCandidatePath = (relativePath) => {
     if (!relativePath || typeof relativePath !== 'string') return null;
@@ -588,11 +582,11 @@ async function ensureCertificateFile(certificate, { allowFallbackPdf = false } =
   for (const candidate of existingCandidates) {
     try {
       await fs.access(candidate);
-      const currentBuffer = await fs.readFile(candidate);
-      if (!isFallbackCertificatePdfBuffer(currentBuffer)) return candidate;
+      if (!allowFallbackPdf) return candidate;
       try {
         const upgradedBuffer = await buildTemplateCertificateBuffer();
         await fs.writeFile(candidate, upgradedBuffer, { flag: 'w', mode: 0o600 });
+        return candidate;
       } catch (error) {
         if (error.code !== 'CERTIFICATE_FILE_MISSING') throw error;
       }
