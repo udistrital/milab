@@ -45,8 +45,9 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 ## Consulta de multas SGA
 
-- `dev`, `development`, `test` y `testing` usan `academica_pruebas` mediante `OATI_PUBLIC_BASE_URL` (por defecto `https://autenticacion.portaloas.udistrital.edu.co`) y no solicitan token OAuth, tanto para GET como para POST. Los demás ambientes usan `servicios_academicos_produccion` en el gateway `OATI_BASE_URL` y se autentican mediante `OATI_TOKEN_URL`. Los nombres de servicio se definen en [src/config/sga-services.js](src/config/sga-services.js); `OATI_DEBT_SERVICE_NAME` no tiene efecto.
-- En dev/test, usa únicamente identificadores de prueba autorizados: el servicio público puede devolver información estudiantil. El endpoint de estado usa `carrera/0` para evitar consultar documentos personales.
+- Todos los ambientes consultan OATI por el gateway `OATI_BASE_URL` y se autentican con OAuth2 contra `OATI_TOKEN_URL`, usando `OATI_CLIENT_ID` y `OATI_SECRET`.
+- La URL pública `OATI_PUBLIC_BASE_URL` permanece disponible para despliegues que la requieran, pero el flujo operativo de consulta usa token como en producción.
+- El nombre del servicio académico se controla desde `.env` con `OATI_SERVICE_NAME` (o `OATI_DEBTORS_SERVICE_NAME` por compatibilidad). Si no se define, se usa `servicios_academicos_produccion`.
 - Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
 - Se consideran deudas activas las de `DEU_ESTADO = 1` o `2` (se aceptan valores numéricos o texto), excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea. El estado `3` (saldada) y los demás estados no se incluyen.
 - Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes; una respuesta válida sin registros no es un error de conexión.
