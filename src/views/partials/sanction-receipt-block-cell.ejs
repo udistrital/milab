@@ -1,0 +1,29 @@
+<%
+  const bloqueado = Boolean(sanction.sga_deuda_id);
+  const puedeBloquear = Boolean(sanction.canBloquearRecibo);
+%>
+<td class="app-sanction-receipt-block-cell text-center">
+  <% if (puedeBloquear) { %>
+    <div class="form-check d-inline-flex align-items-center me-2" title="Seleccionar para bloqueo masivo">
+      <input
+        class="form-check-input app-sga-block-select"
+        type="checkbox"
+        value="<%= sanction.id %>"
+        id="sga-block-select-<%= sanction.id %>"
+        aria-label="Seleccionar la sanción <%= sanction.id %> para bloqueo masivo"
+      >
+    </div>
+  <% } %>
+  <div class="form-check form-switch d-inline-flex align-items-center" title="Bloqueo de recibo de pago en SGA">
+    <input
+      class="form-check-input app-sga-block-toggle"
+      type="checkbox"
+      role="switch"
+      id="sga-block-toggle-<%= sanction.id %>"
+      value="<%= sanction.id %>"
+      <%= bloqueado ? 'checked' : '' %>
+      <%= (bloqueado || !puedeBloquear) ? 'disabled' : '' %>
+      aria-label="Bloqueo de recibo de pago de la sanción <%= sanction.id %>"
+    >
+  </div>
+</td>
