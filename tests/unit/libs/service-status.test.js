@@ -18,10 +18,7 @@ function createLog() {
   };
 }
 
-function loadServiceStatus({
-  oatiImpl = async () => ({}),
-  edxHealthy = true,
-} = {}) {
+function loadServiceStatus({ oatiImpl = async () => ({}), edxHealthy = true } = {}) {
   const originals = new Map();
   const oatiCalls = [];
   const edxCalls = [];
@@ -29,8 +26,7 @@ function loadServiceStatus({
     [
       configPath,
       {
-        config: {
-        },
+        config: {},
       },
     ],
     [

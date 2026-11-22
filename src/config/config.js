@@ -4,7 +4,9 @@ require('dotenv').config();
 
 const envName = (process.env.NODE_ENV || '').toLowerCase();
 const oatiServiceName =
-  process.env.OATI_SERVICE_NAME || process.env.OATI_DEBTORS_SERVICE_NAME || 'servicios_academicos_produccion';
+  process.env.OATI_SERVICE_NAME ||
+  process.env.OATI_DEBTORS_SERVICE_NAME ||
+  'servicios_academicos_produccion';
 const rawDbSecretEnabled = (process.env.DB_SECRET_ENABLED || '').toLowerCase();
 const dbSecretEnabledDefault = envName === 'production';
 const dbSecretEnabled =
