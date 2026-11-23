@@ -16,11 +16,12 @@ const {
 } = require('../../libs/hojas-vida-eventos');
 const {
   TIPOS_MANTENIMIENTO,
-  FORMATOS_REGISTRO_MANTENIMIENTO,
   ESTADOS_MANTENIMIENTO,
   ESTADO_MANTENIMIENTO_DEFAULT,
   DIAS_ALERTA_VENCIMIENTO_DEFAULT,
   etiquetaTipoMantenimiento,
+  obtenerFormatoRegistroMantenimiento,
+  formatosRegistroMantenimientoActivos,
   etiquetaFormatoRegistroMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,
@@ -41,6 +42,15 @@ const {
   sendCronogramaMantenimientoPdf,
   sendMantenimientoPreventivoPdf,
 } = require('../../libs/mantenimiento-formatos-pdf');
+
+// Despacho de impresión por la clave `impresion` de cada formato SIGUD
+// (ver src/libs/hojas-vida-mantenimientos.js). Para cambiar el PDF de un formato
+// basta con actualizar su atributo `impresion` en la lista parametrizable.
+const IMPRESIONES_FORMATO_MANTENIMIENTO = {
+  MANTENIMIENTO_CORRECTIVO: sendMantenimientoCorrectivoPdf,
+  CRONOGRAMA_MANTENIMIENTO: sendCronogramaMantenimientoPdf,
+  MANTENIMIENTO_PREVENTIVO: sendMantenimientoPreventivoPdf,
+};
 const { normalizeRoles } = require('../../libs/roles');
 const { requireRoles } = require('../middlewares/auth');
 const { verifyCsrfToken: verifyUploadCsrfToken } = require('../middlewares/csrf');
@@ -2300,7 +2310,7 @@ router.get(
       return res.render('home/prestamos/hojas-vida/mantenimiento-nuevo', {
         hojaVida: datos.hojaVida,
         equipo: datos.equipo,
-        formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
+        formatosMantenimiento: formatosRegistroMantenimientoActivos(),
         tiposMantenimiento: TIPOS_MANTENIMIENTO,
         estadosMantenimiento: ESTADOS_MANTENIMIENTO,
         estadoDefault: ESTADO_MANTENIMIENTO_DEFAULT,
@@ -2437,7 +2447,7 @@ router.get(
           ...mantenimiento,
           fecha_realizacion_display: formatHvDate(mantenimiento.fecha_realizacion),
         },
-        formatosMantenimiento: FORMATOS_REGISTRO_MANTENIMIENTO,
+        formatosMantenimiento: formatosRegistroMantenimientoActivos(),
         tiposMantenimiento: TIPOS_MANTENIMIENTO,
         estadosMantenimiento: estadosPermitidos,
         editable: esEstadoEditableMantenimiento(estadoCodigo),
@@ -2518,14 +2528,12 @@ router.get(
           `${HOJAS_VIDA_BASE_URL}/${equipoId}/mantenimientos?error=El%20mantenimiento%20solo%20puede%20imprimirse%20con%20su%20formato%20asociado`
         );
       }
-      if (formato === 'FR-026') {
-        return sendMantenimientoCorrectivoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
-      }
-      if (formato === 'FR-028') {
-        return sendCronogramaMantenimientoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
-      }
-      if (formato === 'FR-029') {
-        return sendMantenimientoPreventivoPdf(res, datos.hojaVida, datos.equipo, mantenimiento);
+      const formatoConfig = obtenerFormatoRegistroMantenimiento(formato);
+      const imprimirFormato = formatoConfig
+        ? IMPRESIONES_FORMATO_MANTENIMIENTO[formatoConfig.impresion]
+        : null;
+      if (imprimirFormato) {
+        return imprimirFormato(res, datos.hojaVida, datos.equipo, mantenimiento);
       }
 
       return res.redirect(
