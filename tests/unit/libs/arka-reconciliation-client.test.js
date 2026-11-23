@@ -143,28 +143,35 @@ test('client converts HTTP failures into safe integration errors', async () => {
   });
 });
 
-test('production does not silently fall back to the test API URLs', () => {
+test('all environments derive ARKA endpoints from OATI_PUBLIC_BASE_URL', () => {
   const configuration = getArkaConfiguration({
     NODE_ENV: 'production',
+    OATI_PUBLIC_BASE_URL: 'https://api.intranetoas.udistrital.edu.co',
     OATI_CLIENT_ID: 'test-client-id',
     OATI_SECRET: 'test-client-secret',
   });
 
-  assert.equal(configuration.arkaBaseUrl, '');
-  assert.equal(configuration.tercerosBaseUrl, '');
+  assert.equal(
+    configuration.arkaBaseUrl,
+    'https://api.intranetoas.udistrital.edu.co/apioas/arka_mid/v1'
+  );
+  assert.equal(
+    configuration.tercerosBaseUrl,
+    'https://api.intranetoas.udistrital.edu.co/apioas/terceros_crud/v1'
+  );
   assert.equal(
     isArkaConfigured({
       NODE_ENV: 'production',
+      OATI_PUBLIC_BASE_URL: 'https://api.intranetoas.udistrital.edu.co',
       OATI_CLIENT_ID: 'test-client-id',
       OATI_SECRET: 'test-client-secret',
     }),
-    false
+    true
   );
 });
 
-test('test environments use the configured OATI credentials and test API bases', () => {
+test('uses default apioas bases when OATI_PUBLIC_BASE_URL is not provided', () => {
   const environment = {
-    NODE_ENV: 'test',
     OATI_CLIENT_ID: 'test-client-id',
     OATI_SECRET: 'test-client-secret',
   };

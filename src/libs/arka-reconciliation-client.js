@@ -5,6 +5,7 @@ const DEFAULT_TEST_ARKA_API_BASE_URL =
   'https://autenticacion.portaloas.udistrital.edu.co/apioas/arka_mid/v1';
 const DEFAULT_TEST_TERCEROS_API_BASE_URL =
   'https://autenticacion.portaloas.udistrital.edu.co/apioas/terceros_crud/v1';
+const DEFAULT_OATI_PUBLIC_BASE_URL = 'https://autenticacion.portaloas.udistrital.edu.co';
 
 class ArkaIntegrationError extends Error {
   constructor(message, code = 'ARKA_INTEGRATION_ERROR', status = null) {
@@ -37,23 +38,22 @@ function normalizeBaseUrl(value, variableName) {
   return url.href.replace(/\/+$/, '');
 }
 
+function resolveApioasRoot(env = process.env) {
+  const publicBaseUrl = normalizeBaseUrl(
+    String(env.OATI_PUBLIC_BASE_URL || DEFAULT_OATI_PUBLIC_BASE_URL).trim(),
+    'OATI_PUBLIC_BASE_URL'
+  );
+  return publicBaseUrl.endsWith('/apioas') ? publicBaseUrl : `${publicBaseUrl}/apioas`;
+}
+
 function getArkaConfiguration(env = process.env) {
-  const isProduction =
-    String(env.NODE_ENV || '')
-      .trim()
-      .toLowerCase() === 'production';
-  const arkaBaseUrl = String(
-    env.ARKA_API_BASE_URL || (isProduction ? '' : DEFAULT_TEST_ARKA_API_BASE_URL)
-  ).trim();
-  const tercerosBaseUrl = String(
-    env.ARKA_TERCEROS_API_BASE_URL || (isProduction ? '' : DEFAULT_TEST_TERCEROS_API_BASE_URL)
-  ).trim();
+  const apioasRoot = resolveApioasRoot(env);
+  const arkaBaseUrl = `${apioasRoot}/arka_mid/v1`;
+  const tercerosBaseUrl = `${apioasRoot}/terceros_crud/v1`;
 
   return {
-    arkaBaseUrl: arkaBaseUrl ? normalizeBaseUrl(arkaBaseUrl, 'ARKA_API_BASE_URL') : '',
-    tercerosBaseUrl: tercerosBaseUrl
-      ? normalizeBaseUrl(tercerosBaseUrl, 'ARKA_TERCEROS_API_BASE_URL')
-      : '',
+    arkaBaseUrl,
+    tercerosBaseUrl,
     hasOatiCredentials: Boolean(
       String(env.OATI_CLIENT_ID || '').trim() && String(env.OATI_SECRET || '').trim()
     ),
@@ -86,7 +86,7 @@ function assertArkaConfiguration(configuration) {
     configuration.maxResponseBytes <= 0
   ) {
     throw new ArkaIntegrationError(
-      'Configura las URL de ARKA y las credenciales OATI_CLIENT_ID y OATI_SECRET.',
+      'Configura OATI_PUBLIC_BASE_URL y las credenciales OATI_CLIENT_ID y OATI_SECRET.',
       'ARKA_CONFIGURATION_ERROR'
     );
   }
@@ -284,7 +284,9 @@ function createArkaClient({
       );
     }
 
-    const thirdPartyIds = [...new Set(data.map((row) => resolveThirdPartyIdFromRow(row)).filter(Boolean))];
+    const thirdPartyIds = [
+      ...new Set(data.map((row) => resolveThirdPartyIdFromRow(row)).filter(Boolean)),
+    ];
     if (thirdPartyIds.length !== 1) {
       throw new ArkaIntegrationError(
         thirdPartyIds.length
