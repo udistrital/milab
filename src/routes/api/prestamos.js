@@ -482,13 +482,17 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
     ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole) &&
     !cards.some((item) => item.href === '/milab/prestamos/activacion/laboratorios')
   ) {
-    const activationMeta = resolveModuleCardMeta('/milab/prestamos/activacion/laboratorios', primaryRole);
+    const activationMeta = resolveModuleCardMeta(
+      '/milab/prestamos/activacion/laboratorios',
+      primaryRole
+    );
     cards.push({
       label: 'Activacion laboratorios',
       href: '/milab/prestamos/activacion/laboratorios',
       icon: activationMeta?.icon || 'bi-diagram-3',
       tone: activationMeta?.tone || 'emerald',
-      description: activationMeta?.description || 'Consulta el estado de activacion de laboratorios.',
+      description:
+        activationMeta?.description || 'Consulta el estado de activacion de laboratorios.',
     });
   }
   const order = Array.from(PRESTAMOS_QUICK_LINK_PRIORITY.keys());
@@ -2153,7 +2157,13 @@ async function persistLaboratoryLoanActivation({
           fecha_activacion = EXCLUDED.fecha_activacion,
           fecha_modificacion = CURRENT_TIMESTAMP
     `,
-    [Number(ualId), JSON.stringify(checklist || []), JSON.stringify(payload), actorId, actorDocument]
+    [
+      Number(ualId),
+      JSON.stringify(checklist || []),
+      JSON.stringify(payload),
+      actorId,
+      actorDocument,
+    ]
   );
 
   return true;
@@ -2850,7 +2860,9 @@ function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }
     return 'No fue posible validar las reglas del prestamo en clase.';
   }
 
-  const requestDeadline = new Date(slotStart.getTime() + CLASS_REQUEST_MAX_DELAY_MINUTES * 60 * 1000);
+  const requestDeadline = new Date(
+    slotStart.getTime() + CLASS_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+  );
   if (now.getTime() > requestDeadline.getTime()) {
     return 'Para prestamos en clase solo puedes solicitar hasta 15 minutos despues de iniciada la clase.';
   }
@@ -3907,37 +3919,6 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
   return { rows, errors };
 }
 
-function buildSalaScheduleTemplateWorkbook() {
-  const headers = [
-    'dia_semana',
-    'fecha',
-    'hora_inicio',
-    'hora_fin',
-    'tipo_practica',
-    'modalidad_libre',
-    'activo',
-  ];
-  const examples = [
-    ['1', '', '08:00', '10:00', 'docente', '', 'true'],
-    ['', '2026-11-24', '14:00', '16:00', 'libre', 'uno_a_uno', 'true'],
-  ];
-
-  const worksheet = XLSX.utils.aoa_to_sheet([headers].concat(examples));
-  const notes = XLSX.utils.aoa_to_sheet([
-    ['Reglas de carga'],
-    ['Usa dia_semana (0=domingo, 1=lunes ... 6=sabado) o fecha (YYYY-MM-DD), pero no ambos.'],
-    ['hora_inicio y hora_fin deben estar en formato HH:MM.'],
-    ['tipo_practica permite: libre o docente.'],
-    ['modalidad_libre aplica para tipo libre: uno_a_uno, uno_a_varios o varios_a_uno.'],
-    ['activo es opcional (true/false). Si no se envía, queda en true.'],
-  ]);
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Horarios');
-  XLSX.utils.book_append_sheet(workbook, notes, 'Instrucciones');
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-}
-
 function timeKeyToMinutes(value) {
   const parts = String(value || '').split(':');
   const hour = Number(parts[0]);
@@ -3962,12 +3943,7 @@ function hasSalaScheduleOverlap(left, right) {
   const leftEnd = timeKeyToMinutes(left.hora_fin);
   const rightStart = timeKeyToMinutes(right.hora_inicio);
   const rightEnd = timeKeyToMinutes(right.hora_fin);
-  if (
-    leftStart === null ||
-    leftEnd === null ||
-    rightStart === null ||
-    rightEnd === null
-  ) {
+  if (leftStart === null || leftEnd === null || rightStart === null || rightEnd === null) {
     return false;
   }
   return leftStart < rightEnd && leftEnd > rightStart;
@@ -4555,13 +4531,21 @@ function resolveInventoryActivationStatus(rawState, sinInventario = false, optio
 
 function buildLaboratoryActivationModel(row) {
   const inventory = {
-    oficial: resolveInventoryActivationStatus(row.estado_oficial, row.oficial_sin_inventario, false),
+    oficial: resolveInventoryActivationStatus(
+      row.estado_oficial,
+      row.oficial_sin_inventario,
+      false
+    ),
     complementario: resolveInventoryActivationStatus(
       row.estado_complementario,
       row.complementario_sin_inventario,
       false
     ),
-    reactivo: resolveInventoryActivationStatus(row.estado_reactivo, row.reactivo_sin_inventario, true),
+    reactivo: resolveInventoryActivationStatus(
+      row.estado_reactivo,
+      row.reactivo_sin_inventario,
+      true
+    ),
   };
 
   const checklist = {
@@ -4710,8 +4694,7 @@ function buildActivationWizardSteps(laboratorio) {
       order: 2,
       key: 'inventario_complementario',
       title: 'Configurar inventario complementario',
-      description:
-        'Registra y envía el inventario complementario para aprobación del coordinador.',
+      description: 'Registra y envía el inventario complementario para aprobación del coordinador.',
       statusLabel: laboratorio?.inventory?.complementario?.label || 'Pendiente',
       done: hasComplementary,
       blocked: !hasOfficial,
@@ -9014,7 +8997,10 @@ async function buildEquipmentLoanAvailability(equipmentId) {
         (interval) =>
           schedule.hora_inicio < interval.hora_fin && schedule.hora_fin > interval.hora_inicio
       );
-      const horaFinClase = subtractMinutesFromTimeKey(schedule.hora_fin, CLASS_RETURN_CUTOFF_MINUTES);
+      const horaFinClase = subtractMinutesFromTimeKey(
+        schedule.hora_fin,
+        CLASS_RETURN_CUTOFF_MINUTES
+      );
 
       return {
         fecha: schedule.fecha,

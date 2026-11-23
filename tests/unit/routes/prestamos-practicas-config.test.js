@@ -654,10 +654,11 @@ test('prestamos clasifica estado de activacion de inventario', () => {
       loaded.route.__private.resolveInventoryActivationStatus('aprobado', true, false),
       { key: 'aprobado_sin_inventario', label: 'Aprobado sin inventario', ready: true }
     );
-    assert.deepEqual(
-      loaded.route.__private.resolveInventoryActivationStatus('', false, true),
-      { key: 'opcional', label: 'Opcional', ready: true }
-    );
+    assert.deepEqual(loaded.route.__private.resolveInventoryActivationStatus('', false, true), {
+      key: 'opcional',
+      label: 'Opcional',
+      ready: true,
+    });
     assert.deepEqual(
       loaded.route.__private.resolveInventoryActivationStatus('devuelta', false, false),
       { key: 'devuelta', label: 'Devuelta para correccion', ready: false }
