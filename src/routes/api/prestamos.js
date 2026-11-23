@@ -3,6 +3,8 @@ const express = require('express');
 const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
+const QRCode = require('qrcode');
+const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
 const { PDFDocument: PdfLibDocument, StandardFonts } = require('pdf-lib');
 
@@ -51,6 +53,32 @@ const incidentEvidenceUpload = multer({
   },
 });
 
+const scheduleSpreadsheetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fields: 10,
+    parts: 16,
+    fieldNameSize: 100,
+    fieldSize: 16 * 1024,
+  },
+  fileFilter: function (req, file, cb) {
+    const ext = String(path.extname(file?.originalname || '') || '').toLowerCase();
+    const mime = String(file?.mimetype || '').toLowerCase();
+    const isExcelMime =
+      mime.includes('spreadsheetml') ||
+      mime.includes('excel') ||
+      mime === 'application/octet-stream';
+    if (!['.xls', '.xlsx'].includes(ext) || !isExcelMime) {
+      cb(new Error('Selecciona un archivo de Excel valido (.xls o .xlsx).'));
+      return;
+    }
+
+    cb(null, true);
+  },
+});
+
 function parseIncidentEvidenceUpload(req, res, next) {
   incidentEvidenceUpload.single('evidencia')(req, res, function (error) {
     if (error) {
@@ -61,6 +89,26 @@ function parseIncidentEvidenceUpload(req, res, next) {
     }
 
     return validateFormTextLengths(req, res, next);
+  });
+}
+
+function parseScheduleSpreadsheetUpload(req, res, next) {
+  scheduleSpreadsheetUpload.single('archivo')(req, res, function (error) {
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: sanitizeText(error.message) || 'No fue posible procesar el archivo de horarios.',
+      });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debes seleccionar un archivo de Excel para importar horarios.',
+      });
+    }
+
+    return next();
   });
 }
 
@@ -281,6 +329,17 @@ const PRESTAMOS_MODULE_CARD_META = {
       fallback: 'Ajusta la parametrizacion del ciclo de practicas.',
     },
   },
+  '/milab/prestamos/activacion/laboratorios': {
+    icon: 'bi-diagram-3',
+    tone: 'emerald',
+    descriptions: {
+      admin: 'Revisa el estado de activacion operativa por laboratorio.',
+      coordinador: 'Supervisa el avance de activacion de laboratorios en su alcance.',
+      laboratorista: 'Configura paso a paso tus laboratorios para habilitar prestamos.',
+      monitor: 'Consulta el avance de activacion de laboratorios asignados.',
+      fallback: 'Consulta el estado de activacion de laboratorios.',
+    },
+  },
   '/milab/prestamos/practicas/solicitar': {
     icon: 'bi-mortarboard',
     tone: 'warm',
@@ -307,6 +366,7 @@ const PRESTAMOS_QUICK_LINK_ALIASES = {
   '/milab/prestamos/practicas/solicitar': 'Solicitar practica',
   '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
   '/milab/prestamos/salas': 'Salas disponibles',
+  '/milab/prestamos/activacion/laboratorios': 'Activacion laboratorios',
   '/milab/prestamos/inventario': 'Inventario',
   '/milab/prestamos/equipos': 'Equipos',
   '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
@@ -325,6 +385,7 @@ const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
   ['/milab/prestamos/practicas/solicitar', 8],
   ['/milab/prestamos/practicas/mis-reservas', 9],
   ['/milab/prestamos/salas', 10],
+  ['/milab/prestamos/activacion/laboratorios', 11],
 ]);
 
 async function fetchPrestamosAllowedMenuRoutes(roles, client = pool) {
@@ -402,6 +463,7 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
       ['/milab/prestamos/practicas/mis-reservas', 'Mis practicas'],
       ['/milab/prestamos/admin/parametrizaciones', 'Parametrizaciones'],
       ['/milab/prestamos/coordinador/practicas/config', 'Configuracion de practicas'],
+      ['/milab/prestamos/activacion/laboratorios', 'Activacion laboratorios'],
     ])
   );
   const cards = [];
@@ -414,6 +476,19 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
       icon: meta.icon,
       tone: meta.tone,
       description: meta.description,
+    });
+  }
+  if (
+    ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole) &&
+    !cards.some((item) => item.href === '/milab/prestamos/activacion/laboratorios')
+  ) {
+    const activationMeta = resolveModuleCardMeta('/milab/prestamos/activacion/laboratorios', primaryRole);
+    cards.push({
+      label: 'Activacion laboratorios',
+      href: '/milab/prestamos/activacion/laboratorios',
+      icon: activationMeta?.icon || 'bi-diagram-3',
+      tone: activationMeta?.tone || 'emerald',
+      description: activationMeta?.description || 'Consulta el estado de activacion de laboratorios.',
     });
   }
   const order = Array.from(PRESTAMOS_QUICK_LINK_PRIORITY.keys());
@@ -443,6 +518,16 @@ function buildDashboardQuickLinksFromRoutes(allowedRoutes, primaryRole) {
       label,
       href: route,
       icon: resolveModuleCardMeta(route, primaryRole)?.icon || 'bi-grid-3x3-gap-fill',
+    });
+  }
+  if (
+    ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(primaryRole) &&
+    !links.some((item) => item.href === '/milab/prestamos/activacion/laboratorios')
+  ) {
+    links.push({
+      label: PRESTAMOS_QUICK_LINK_ALIASES['/milab/prestamos/activacion/laboratorios'],
+      href: '/milab/prestamos/activacion/laboratorios',
+      icon: 'bi-diagram-3',
     });
   }
   links.sort((a, b) => {
@@ -552,6 +637,13 @@ function buildDashboardModuleCardsForRole(role) {
       tone: 'sand',
       description: 'Ajusta parametros operativos de la gestion de practicas.',
     });
+    cards.push({
+      label: 'Activacion laboratorios',
+      href: '/milab/prestamos/activacion/laboratorios',
+      icon: 'bi-diagram-3',
+      tone: 'emerald',
+      description: 'Revisa el estado de activacion operativa por laboratorio.',
+    });
   } else if (role === 'coordinador') {
     cards.push({
       label: 'Inventario',
@@ -630,6 +722,13 @@ function buildDashboardModuleCardsForRole(role) {
       tone: 'sand',
       description: 'Ajusta la parametrizacion del ciclo de practicas.',
     });
+    cards.push({
+      label: 'Activacion laboratorios',
+      href: '/milab/prestamos/activacion/laboratorios',
+      icon: 'bi-diagram-3',
+      tone: 'emerald',
+      description: 'Supervisa el avance de activacion de laboratorios en su alcance.',
+    });
   } else if (role === 'laboratorista' || role === 'monitor') {
     cards.push({
       label: 'Inventario',
@@ -707,6 +806,13 @@ function buildDashboardModuleCardsForRole(role) {
       icon: 'bi-receipt-cutoff',
       tone: 'amber',
       description: 'Revisa el historial y la trazabilidad de movimientos.',
+    });
+    cards.push({
+      label: 'Activacion laboratorios',
+      href: '/milab/prestamos/activacion/laboratorios',
+      icon: 'bi-diagram-3',
+      tone: 'emerald',
+      description: 'Configura paso a paso tus laboratorios para habilitar prestamos.',
     });
   } else if (role === 'estudiante' || role === 'docente') {
     cards.push({
@@ -1048,7 +1154,7 @@ async function fetchActiveLoansForManagement(req) {
         LIMIT 8`,
         params
       );
-      return result.rows || [];
+      return (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item, 'finalidad'));
     },
     [],
     'fetchActiveLoansForManagement'
@@ -1091,7 +1197,7 @@ async function fetchPendingRequestsForManagement(req) {
         LIMIT 8`,
         params
       );
-      return result.rows || [];
+      return (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item, 'finalidad'));
     },
     [],
     'fetchPendingRequestsForManagement'
@@ -1129,7 +1235,7 @@ async function fetchActiveLoansForUser(usuarioId) {
         LIMIT 8`,
         [usuarioId || null]
       );
-      return result.rows || [];
+      return (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item, 'finalidad'));
     },
     [],
     'fetchActiveLoansForUser'
@@ -1167,7 +1273,7 @@ async function fetchPendingRequestsForUser(usuarioId) {
         LIMIT 8`,
         [usuarioId || null]
       );
-      return result.rows || [];
+      return (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item, 'finalidad'));
     },
     [],
     'fetchPendingRequestsForUser'
@@ -1305,6 +1411,7 @@ const REPORTES_MENU_ROUTE = '/milab/prestamos/reportes';
 const AUDITORIA_MENU_ROUTE = '/milab/prestamos/auditoria';
 const PARAMETRIZACIONES_MENU_ROUTE = '/milab/prestamos/admin/parametrizaciones';
 const PRACTICAS_CONFIG_MENU_ROUTE = '/milab/prestamos/coordinador/practicas/config';
+const ACTIVACION_LABS_MENU_ROUTE = '/milab/prestamos/activacion/laboratorios';
 const COORDINADOR_FIRMA_ROUTE = '/milab/prestamos/coordinador/firma';
 
 const ROLES_RESERVATION_RULES_EDITORS = new Set(['admin', 'coordinador']);
@@ -1563,6 +1670,20 @@ const requireParametrizacionesAuthorized = [
   createMenuPermissionMiddleware(PARAMETRIZACIONES_MENU_ROUTE),
 ];
 
+const requireActivacionLaboratoriosAccess = requireRoles(
+  ['admin', 'coordinador', 'laboratorista', 'monitor'],
+  {
+    message: 'Acceso denegado',
+    message2: 'No tienes permisos para consultar la activacion de laboratorios.',
+    limit: 'loginOnly',
+  }
+);
+
+const requireActivacionLaboratoriosAuthorized = [
+  requireActivacionLaboratoriosAccess,
+  createMenuPermissionMiddleware(ACTIVACION_LABS_MENU_ROUTE),
+];
+
 const requirePracticasConfigAccess = requirePermissions(
   APP_PERMISSIONS.PRESTAMOS_PRACTICES_CONFIG,
   {
@@ -1587,6 +1708,241 @@ const requireCoordinatorSignatureAccess = requirePermissions(
 );
 
 const requireCoordinatorSignatureAuthorized = [requireCoordinatorSignatureAccess];
+
+router.get(
+  '/activacion/laboratorios',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req);
+      return res.render('home/prestamos/activacion/laboratorios', {
+        laboratorios,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('Error cargando activacion de laboratorios MiLab:', error);
+      return res.render('home/prestamos/activacion/laboratorios', {
+        laboratorios: [],
+        successMessage: '',
+        errorMessage: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible cargar la activacion de laboratorios.'
+        ),
+      });
+    }
+  }
+);
+
+router.get(
+  '/activacion/laboratorios/:ualId',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.redirect(
+        '/milab/prestamos/activacion/laboratorios?error=El laboratorio seleccionado no es valido.'
+      );
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+
+      if (!laboratorio) {
+        return res.redirect(
+          '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
+        );
+      }
+
+      return res.render('home/prestamos/activacion/wizard', {
+        laboratorio,
+        steps: buildActivationWizardSteps(laboratorio),
+        checklist: buildLoanActivationChecklist(laboratorio),
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('Error cargando wizard de activacion de laboratorio MiLab:', error);
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios?error=${encodeURIComponent(
+          resolveLoanDbErrorMessage(
+            error,
+            'No fue posible cargar el paso a paso de activacion del laboratorio.'
+          )
+        )}`
+      );
+    }
+  }
+);
+
+router.get(
+  '/activacion/laboratorios/:ualId/activar-prestamos',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.redirect(
+        '/milab/prestamos/activacion/laboratorios?error=El laboratorio seleccionado no es valido.'
+      );
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+
+      if (!laboratorio) {
+        return res.redirect(
+          '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
+        );
+      }
+
+      const checklist = buildLoanActivationChecklist(laboratorio);
+      if (!laboratorio.canActivateLoans) {
+        const missingChecks = summarizeMissingActivationChecks(checklist);
+        return res.redirect(
+          `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent(
+            missingChecks
+              ? `Faltan criterios para activar prestamos: ${missingChecks}.`
+              : 'Aun no se cumplen todos los criterios para activar prestamos.'
+          )}`
+        );
+      }
+
+      try {
+        await persistLaboratoryLoanActivation({
+          req,
+          ualId,
+          laboratorio,
+          checklist,
+        });
+      } catch (persistError) {
+        console.error(
+          'Error persistiendo estado de activacion de prestamos por laboratorio:',
+          persistError
+        );
+      }
+
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'activacion_prestamos_laboratorio',
+        persona: `ual=${ualId} laboratorio=${laboratorio.laboratorio || '-'}`,
+      });
+
+      return res.redirect(
+        `/milab/prestamos/coordinador/practicas/config?ual_id=${encodeURIComponent(
+          String(ualId)
+        )}&success=${encodeURIComponent(
+          `Laboratorio ${laboratorio.laboratorio} listo para activar prestamos.`
+        )}`
+      );
+    } catch (error) {
+      console.error('Error validando activacion de prestamos MiLab:', error);
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(
+          String(ualId)
+        )}?error=${encodeURIComponent(
+          resolveLoanDbErrorMessage(
+            error,
+            'No fue posible validar los criterios de activacion de prestamos.'
+          )
+        )}`
+      );
+    }
+  }
+);
+
+router.get(
+  '/activacion/laboratorios/:ualId/by-request',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.redirect(
+        '/milab/prestamos/activacion/laboratorios?error=El laboratorio seleccionado no es valido.'
+      );
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+
+      if (!laboratorio) {
+        return res.redirect(
+          '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
+        );
+      }
+
+      const appUrl = getMilabAppUrlFromRequest(req);
+      const byRequestPath = buildByRequestLoanPath(laboratorio);
+      const byRequestUrl = appUrl ? `${appUrl}${byRequestPath}` : byRequestPath;
+      const qrDataUrl = await QRCode.toDataURL(byRequestUrl, {
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        width: 420,
+      });
+
+      return res.render('home/prestamos/activacion/by-request', {
+        laboratorio,
+        byRequestPath,
+        byRequestUrl,
+        qrDataUrl,
+        successMessage: sanitizeText(req.query.success),
+        errorMessage: sanitizeText(req.query.error),
+      });
+    } catch (error) {
+      console.error('Error cargando poster QR de prestamo by-request MiLab:', error);
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(
+          String(ualId)
+        )}?error=${encodeURIComponent(
+          resolveLoanDbErrorMessage(
+            error,
+            'No fue posible generar el poster de prestamos by request.'
+          )
+        )}`
+      );
+    }
+  }
+);
+
+router.get(
+  '/activacion/laboratorios/:ualId/by-request/qr.png',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.status(400).send('El laboratorio seleccionado no es valido.');
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+      if (!laboratorio) {
+        return res.status(404).send('No tienes acceso al laboratorio seleccionado.');
+      }
+
+      const appUrl = getMilabAppUrlFromRequest(req);
+      const byRequestPath = buildByRequestLoanPath(laboratorio);
+      const byRequestUrl = appUrl ? `${appUrl}${byRequestPath}` : byRequestPath;
+      const buffer = await QRCode.toBuffer(byRequestUrl, {
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        width: 1024,
+      });
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="qr_prestamo_by_request_ual_${ualId}.png"`
+      );
+      return res.send(buffer);
+    } catch (error) {
+      console.error('Error descargando QR by-request MiLab:', error);
+      return res.status(500).send('No fue posible descargar el codigo QR.');
+    }
+  }
+);
 
 const requirePrestamosDocumentAccess = requireRoles(
   ['admin', 'laboratorista', 'monitor', 'coordinador', 'estudiante', 'docente'],
@@ -1748,6 +2104,59 @@ async function fetchTableColumns(tableName, client = pool) {
   const columns = new Set(result.rows.map((row) => String(row.column_name || '')));
   tableColumnCache.set(normalizedTableName, columns);
   return columns;
+}
+
+async function persistLaboratoryLoanActivation({
+  req,
+  ualId,
+  laboratorio,
+  checklist,
+  client = pool,
+}) {
+  const tableColumns = await fetchTableColumns('prestamo_activacion_laboratorio', client);
+  if (!tableColumns.size) {
+    console.warn(
+      'Tabla prestamo_activacion_laboratorio no disponible; se omite persistencia de activacion.'
+    );
+    return false;
+  }
+
+  const user = req?.session?.user || {};
+  const actorId = Number(user.id || 0) || null;
+  const actorDocument = sanitizeText(user.documento) || null;
+  const payload = {
+    checklist,
+    counters: laboratorio?.counters || {},
+    completion: laboratorio?.completion || {},
+    source: 'wizard_hu05',
+  };
+
+  await client.query(
+    `
+      INSERT INTO prestamo_activacion_laboratorio (
+        ual_id,
+        estado_activacion,
+        checklist_json,
+        configuracion_json,
+        activado_por_id,
+        activado_por_documento,
+        fecha_activacion,
+        fecha_modificacion
+      )
+      VALUES ($1, TRUE, $2::jsonb, $3::jsonb, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (ual_id) DO UPDATE
+      SET estado_activacion = EXCLUDED.estado_activacion,
+          checklist_json = EXCLUDED.checklist_json,
+          configuracion_json = EXCLUDED.configuracion_json,
+          activado_por_id = EXCLUDED.activado_por_id,
+          activado_por_documento = EXCLUDED.activado_por_documento,
+          fecha_activacion = EXCLUDED.fecha_activacion,
+          fecha_modificacion = CURRENT_TIMESTAMP
+    `,
+    [Number(ualId), JSON.stringify(checklist || []), JSON.stringify(payload), actorId, actorDocument]
+  );
+
+  return true;
 }
 
 async function ensurePracticeIncidenceSchema(client = pool) {
@@ -2303,6 +2712,7 @@ function buildLoanRequestPayload(body = {}) {
     equipo_id: sanitizeText(body.equipoId || body.equipo_id),
     fecha_inicio: sanitizeLocalDateTime(body.fechaInicio || body.fecha_inicio),
     fecha_fin: sanitizeLocalDateTime(body.fechaFin || body.fecha_fin),
+    tipo_prestamo: sanitizeText(body.tipo_prestamo || body.tipoPrestamo || 'libre'),
     justificacion_academica: sanitizeText(body.justificacion || body.justificacion_academica),
     categoria_practica: sanitizeText(body.categoria_practica),
     firma_digital: sanitizeText(body.firma_digital),
@@ -2334,8 +2744,12 @@ function validateLoanRequestPayload(payload) {
     return 'Las fechas de la solicitud no tienen un formato valido.';
   }
 
-  if (fechaInicio <= new Date()) {
-    return 'La fecha de inicio debe ser posterior a la fecha actual.';
+  if (!['clase', 'libre'].includes(String(payload.tipo_prestamo || '').toLowerCase())) {
+    return 'El tipo de prestamo no es valido.';
+  }
+
+  if (String(payload.tipo_prestamo || '').toLowerCase() !== 'clase' && fechaInicio <= new Date()) {
+    return 'La fecha de inicio debe ser posterior a la fecha actual para prestamos de practica libre.';
   }
 
   if (fechaFin <= fechaInicio) {
@@ -2360,6 +2774,94 @@ function validateLoanRequestPayload(payload) {
 
   if (!payload.firma_digital || payload.firma_digital.length < 5) {
     return 'La firma digital es obligatoria y debe tener al menos 5 caracteres.';
+  }
+
+  return '';
+}
+
+const CLASS_REQUEST_MAX_DELAY_MINUTES = 15;
+const CLASS_RETURN_CUTOFF_MINUTES = 15;
+const LOAN_MODE_MARKER_REGEX = /^\[modo:(clase|libre)\]\s*/i;
+
+function subtractMinutesFromTimeKey(timeKey, minutes) {
+  const parts = String(timeKey || '').split(':');
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return '';
+  const total = hour * 60 + minute - Number(minutes || 0);
+  if (!Number.isFinite(total) || total < 0) return '';
+  const normalizedHour = Math.floor(total / 60);
+  const normalizedMinute = total % 60;
+  return `${String(normalizedHour).padStart(2, '0')}:${String(normalizedMinute).padStart(2, '0')}`;
+}
+
+function buildLoanJustificationWithMode(justificacion, tipoPrestamo) {
+  const mode = String(tipoPrestamo || '').toLowerCase() === 'clase' ? 'clase' : 'libre';
+  return `[modo:${mode}] ${String(justificacion || '').trim()}`;
+}
+
+function parseLoanModeAndJustification(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(LOAN_MODE_MARKER_REGEX);
+  if (!match) {
+    return {
+      tipo_prestamo: 'libre',
+      justificacion_academica: raw,
+    };
+  }
+
+  return {
+    tipo_prestamo: String(match[1] || 'libre').toLowerCase(),
+    justificacion_academica: raw.replace(LOAN_MODE_MARKER_REGEX, '').trim(),
+  };
+}
+
+function resolveLoanModeLabel(mode) {
+  return String(mode || '').toLowerCase() === 'clase' ? 'Prestamo en clase' : 'Practica libre';
+}
+
+function normalizeLoanRecordForDisplay(record = {}, fieldName = 'justificacion_academica') {
+  const modeData = parseLoanModeAndJustification(record[fieldName]);
+  return {
+    ...record,
+    tipo_prestamo: modeData.tipo_prestamo,
+    tipo_prestamo_label: resolveLoanModeLabel(modeData.tipo_prestamo),
+    [fieldName]: modeData.justificacion_academica || record[fieldName],
+  };
+}
+
+function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }) {
+  const mode = String(payload?.tipo_prestamo || '').toLowerCase();
+  if (!selectedSlot || mode !== 'clase') {
+    return '';
+  }
+
+  const slotStart = parseBogotaDateTime(`${selectedSlot.fecha}T${selectedSlot.horaInicio}`);
+  const slotEnd = parseBogotaDateTime(`${selectedSlot.fecha}T${selectedSlot.horaFin}`);
+  const selectedEnd = parseBogotaDateTime(payload.fecha_fin);
+  if (
+    !slotStart ||
+    !slotEnd ||
+    !selectedEnd ||
+    Number.isNaN(slotStart.getTime()) ||
+    Number.isNaN(slotEnd.getTime()) ||
+    Number.isNaN(selectedEnd.getTime())
+  ) {
+    return 'No fue posible validar las reglas del prestamo en clase.';
+  }
+
+  const requestDeadline = new Date(slotStart.getTime() + CLASS_REQUEST_MAX_DELAY_MINUTES * 60 * 1000);
+  if (now.getTime() > requestDeadline.getTime()) {
+    return 'Para prestamos en clase solo puedes solicitar hasta 15 minutos despues de iniciada la clase.';
+  }
+
+  const returnDeadline = new Date(slotEnd.getTime() - CLASS_RETURN_CUTOFF_MINUTES * 60 * 1000);
+  if (returnDeadline.getTime() <= slotStart.getTime()) {
+    return 'El horario configurado para clase no permite aplicar la ventana de devolucion.';
+  }
+
+  if (selectedEnd.getTime() > returnDeadline.getTime()) {
+    return 'Para prestamos en clase la devolucion maxima es 15 minutos antes de finalizar el bloque.';
   }
 
   return '';
@@ -3158,6 +3660,7 @@ function buildSalaSchedulePayload(body = {}) {
     hora_fin: sanitizeText(body.hora_fin),
     tipo_practica: sanitizeText(body.tipo_practica),
     modalidad_libre: sanitizeText(body.modalidad_libre),
+    activo: toBoolean(body.activo),
   };
 }
 
@@ -3204,6 +3707,325 @@ function validateSalaSchedulePayload(payload) {
   }
 
   return '';
+}
+
+function normalizeSpreadsheetHeader(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeScheduleDayValue(value) {
+  const raw = sanitizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (!raw) return '';
+
+  if (/^\d+$/.test(raw)) {
+    return raw;
+  }
+
+  const dayMap = {
+    domingo: '0',
+    lunes: '1',
+    martes: '2',
+    miercoles: '3',
+    jueves: '4',
+    viernes: '5',
+    sabado: '6',
+  };
+  return dayMap[raw] || '';
+}
+
+function normalizeScheduleDateValue(value) {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = sanitizeText(value);
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const ddmmyyyy = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (ddmmyyyy) {
+    const day = String(ddmmyyyy[1]).padStart(2, '0');
+    const month = String(ddmmyyyy[2]).padStart(2, '0');
+    const year = ddmmyyyy[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  return '';
+}
+
+function normalizeScheduleTimeValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const totalMinutes = Math.round(value * 24 * 60);
+    const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+    const hour = String(Math.floor(normalized / 60)).padStart(2, '0');
+    const minute = String(normalized % 60).padStart(2, '0');
+    return `${hour}:${minute}`;
+  }
+
+  const raw = sanitizeText(value);
+  if (!raw) return '';
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return '';
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23) {
+    return '';
+  }
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function normalizeHourTokenTo24h(token, meridiem) {
+  const raw = sanitizeText(token).toUpperCase().replace(/\s+/g, '');
+  const hour = Number(raw);
+  if (!Number.isInteger(hour) || hour < 1 || hour > 12) return '';
+  const normalizedMeridiem = sanitizeText(meridiem).toUpperCase();
+  if (!['AM', 'PM'].includes(normalizedMeridiem)) return '';
+
+  let hour24 = hour % 12;
+  if (normalizedMeridiem === 'PM') {
+    hour24 += 12;
+  }
+  return `${String(hour24).padStart(2, '0')}:00`;
+}
+
+function parseTemplateHourRange(value) {
+  const raw = sanitizeText(value).toUpperCase().replace(/\s+/g, '');
+  const match = raw.match(/^(\d{1,2})(AM|PM)-(\d{1,2})(AM|PM)$/);
+  if (!match) {
+    return { hora_inicio: '', hora_fin: '' };
+  }
+
+  return {
+    hora_inicio: normalizeHourTokenTo24h(match[1], match[2]),
+    hora_fin: normalizeHourTokenTo24h(match[3], match[4]),
+  };
+}
+
+function parseSalaScheduleSpreadsheet(buffer, options = {}) {
+  const expectedSalaName = sanitizeText(options.expectedSalaName).toLowerCase();
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: false });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+  if (!worksheet) {
+    return { rows: [], errors: ['El archivo de horarios no contiene hojas validas.'] };
+  }
+
+  const records = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+  if (!records.length) {
+    return { rows: [], errors: ['El archivo no contiene filas de horarios para importar.'] };
+  }
+
+  const headerMap = {
+    dia_semana: ['dia_semana', 'dia', 'dia_de_semana'],
+    fecha: ['fecha', 'fecha_especifica'],
+    hora_inicio: ['hora_inicio', 'inicio', 'hora_inicial'],
+    hora_fin: ['hora_fin', 'fin', 'hora_final'],
+    tipo_practica: ['tipo_practica', 'tipo', 'tipo_de_practica'],
+    modalidad_libre: ['modalidad_libre', 'modalidad'],
+    activo: ['activo', 'estado_activo'],
+    hora_rango: ['hora'],
+    sala: ['sala', 'salon'],
+    asignatura: ['asignatura'],
+    laboratorio: ['laboratorio', 'proyecto'],
+  };
+
+  const rows = [];
+  const errors = [];
+
+  records.forEach(function (record, index) {
+    const normalizedRecord = {};
+    Object.keys(record || {}).forEach(function (key) {
+      normalizedRecord[normalizeSpreadsheetHeader(key)] = record[key];
+    });
+
+    function pick(field) {
+      const aliases = headerMap[field] || [];
+      for (const alias of aliases) {
+        if (Object.prototype.hasOwnProperty.call(normalizedRecord, alias)) {
+          return normalizedRecord[alias];
+        }
+      }
+      return '';
+    }
+
+    const hourRange = parseTemplateHourRange(pick('hora_rango'));
+    const scheduleSalaName = sanitizeText(pick('sala'));
+    const templateAsig = sanitizeText(pick('asignatura'));
+    const templateLab = sanitizeText(pick('laboratorio'));
+    const rawTipoPractica = sanitizeText(pick('tipo_practica')).toLowerCase();
+    const inferredTipo = rawTipoPractica || (templateAsig ? 'docente' : 'libre');
+    const normalizedScheduleSala = scheduleSalaName.toLowerCase();
+    if (expectedSalaName && normalizedScheduleSala && normalizedScheduleSala !== expectedSalaName) {
+      return;
+    }
+
+    const payload = buildSalaSchedulePayload({
+      dia_semana: normalizeScheduleDayValue(pick('dia_semana')),
+      fecha: normalizeScheduleDateValue(pick('fecha')),
+      hora_inicio: normalizeScheduleTimeValue(pick('hora_inicio')) || hourRange.hora_inicio,
+      hora_fin: normalizeScheduleTimeValue(pick('hora_fin')) || hourRange.hora_fin,
+      tipo_practica: inferredTipo || 'libre',
+      modalidad_libre: sanitizeText(pick('modalidad_libre')).toLowerCase(),
+      activo: pick('activo'),
+    });
+
+    const validation = validateSalaSchedulePayload(payload);
+    if (validation) {
+      errors.push(`Fila ${index + 2}: ${validation}`);
+      return;
+    }
+
+    rows.push({
+      ...payload,
+      sala: scheduleSalaName,
+      asignatura: templateAsig,
+      laboratorio: templateLab,
+      lineNumber: index + 2,
+    });
+  });
+
+  if (!rows.length && expectedSalaName) {
+    errors.push(
+      'El archivo no contiene filas para la sala seleccionada. Verifica la columna "Salón".'
+    );
+  }
+
+  return { rows, errors };
+}
+
+function buildSalaScheduleTemplateWorkbook() {
+  const headers = [
+    'dia_semana',
+    'fecha',
+    'hora_inicio',
+    'hora_fin',
+    'tipo_practica',
+    'modalidad_libre',
+    'activo',
+  ];
+  const examples = [
+    ['1', '', '08:00', '10:00', 'docente', '', 'true'],
+    ['', '2026-11-24', '14:00', '16:00', 'libre', 'uno_a_uno', 'true'],
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet([headers].concat(examples));
+  const notes = XLSX.utils.aoa_to_sheet([
+    ['Reglas de carga'],
+    ['Usa dia_semana (0=domingo, 1=lunes ... 6=sabado) o fecha (YYYY-MM-DD), pero no ambos.'],
+    ['hora_inicio y hora_fin deben estar en formato HH:MM.'],
+    ['tipo_practica permite: libre o docente.'],
+    ['modalidad_libre aplica para tipo libre: uno_a_uno, uno_a_varios o varios_a_uno.'],
+    ['activo es opcional (true/false). Si no se envía, queda en true.'],
+  ]);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Horarios');
+  XLSX.utils.book_append_sheet(workbook, notes, 'Instrucciones');
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+function timeKeyToMinutes(value) {
+  const parts = String(value || '').split(':');
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  return hour * 60 + minute;
+}
+
+function buildSalaScheduleContextKey(schedule) {
+  if (schedule?.fecha) {
+    return `fecha:${schedule.fecha}`;
+  }
+  return `dia:${Number(schedule?.dia_semana)}`;
+}
+
+function hasSalaScheduleOverlap(left, right) {
+  if (buildSalaScheduleContextKey(left) !== buildSalaScheduleContextKey(right)) {
+    return false;
+  }
+
+  const leftStart = timeKeyToMinutes(left.hora_inicio);
+  const leftEnd = timeKeyToMinutes(left.hora_fin);
+  const rightStart = timeKeyToMinutes(right.hora_inicio);
+  const rightEnd = timeKeyToMinutes(right.hora_fin);
+  if (
+    leftStart === null ||
+    leftEnd === null ||
+    rightStart === null ||
+    rightEnd === null
+  ) {
+    return false;
+  }
+  return leftStart < rightEnd && leftEnd > rightStart;
+}
+
+async function insertSalaSchedule(client, salaId, payload, options = {}) {
+  const source = sanitizeText(options.source || 'manual').toLowerCase();
+  const actorId = Number(options.actorId || 0) || null;
+  const actorDocument = sanitizeText(options.actorDocument);
+  const tableColumns = await fetchTableColumns('horario_sala', client);
+  const insertColumns = [
+    'sala_id',
+    'dia_semana',
+    'hora_inicio',
+    'hora_fin',
+    'fecha',
+    'activo',
+    'tipo_practica',
+    'modalidad_libre',
+    'fecha_modificacion',
+  ];
+  const insertValues = [
+    salaId,
+    payload.fecha ? null : Number(payload.dia_semana),
+    payload.hora_inicio,
+    payload.hora_fin,
+    payload.fecha || null,
+    payload.activo !== false,
+    payload.tipo_practica || 'libre',
+    payload.tipo_practica === 'libre' ? payload.modalidad_libre || 'uno_a_uno' : null,
+    new Date(),
+  ];
+
+  if (tableColumns.has('origen_carga')) {
+    insertColumns.push('origen_carga');
+    insertValues.push(source === 'excel' ? 'excel' : 'manual');
+  }
+  if (tableColumns.has('cargado_por_id')) {
+    insertColumns.push('cargado_por_id');
+    insertValues.push(actorId);
+  }
+  if (tableColumns.has('cargado_por_documento')) {
+    insertColumns.push('cargado_por_documento');
+    insertValues.push(actorDocument || null);
+  }
+
+  const placeholders = insertValues.map(function (_, index) {
+    return `$${index + 1}`;
+  });
+  await client.query(
+    `
+      INSERT INTO horario_sala (
+        ${insertColumns.join(', ')}
+      )
+      VALUES (${placeholders.join(', ')})
+    `,
+    insertValues
+  );
 }
 
 function isValidSalaId(id) {
@@ -3692,6 +4514,344 @@ async function resolveLoanManagementScope(req) {
   };
 }
 
+function resolveInventoryActivationStatus(rawState, sinInventario = false, optional = false) {
+  const state = String(sanitizeText(rawState) || '').toLowerCase();
+  if (!state) {
+    if (optional) {
+      return { key: 'opcional', label: 'Opcional', ready: true };
+    }
+    return { key: 'pendiente', label: 'Pendiente', ready: false };
+  }
+
+  if (state === 'aprobado') {
+    if (sinInventario) {
+      return { key: 'aprobado_sin_inventario', label: 'Aprobado sin inventario', ready: true };
+    }
+    return { key: 'aprobado', label: 'Aprobado', ready: true };
+  }
+
+  if (state === 'pendiente_aprobacion') {
+    return { key: 'pendiente_aprobacion', label: 'Pendiente de aprobacion', ready: false };
+  }
+
+  if (state === 'previsualizada') {
+    return { key: 'previsualizada', label: 'Previsualizada', ready: false };
+  }
+
+  if (state === 'devuelta') {
+    return { key: 'devuelta', label: 'Devuelta para correccion', ready: false };
+  }
+
+  if (state === 'rechazado') {
+    return { key: 'rechazado', label: 'Rechazado', ready: false };
+  }
+
+  if (state === 'opcional' && optional) {
+    return { key: 'opcional', label: 'Opcional', ready: true };
+  }
+
+  return { key: state, label: state.replaceAll('_', ' '), ready: false };
+}
+
+function buildLaboratoryActivationModel(row) {
+  const inventory = {
+    oficial: resolveInventoryActivationStatus(row.estado_oficial, row.oficial_sin_inventario, false),
+    complementario: resolveInventoryActivationStatus(
+      row.estado_complementario,
+      row.complementario_sin_inventario,
+      false
+    ),
+    reactivo: resolveInventoryActivationStatus(row.estado_reactivo, row.reactivo_sin_inventario, true),
+  };
+
+  const checklist = {
+    inventarioOficial: inventory.oficial.ready,
+    inventarioComplementario: inventory.complementario.ready,
+    salasActivas: Number(row.total_salas_activas || 0) > 0,
+    horariosActivos: Number(row.total_horarios_activos || 0) > 0,
+    equiposListos: Number(row.total_equipos_listos || 0) > 0,
+  };
+
+  let nextStep = {
+    title: 'Completar inventario oficial',
+    href: `/milab/inventarios/gestion_inventario?ual_id=${encodeURIComponent(String(row.ual_id || ''))}&panel=equipo_arka`,
+  };
+
+  if (checklist.inventarioOficial) {
+    nextStep = {
+      title: 'Completar inventario complementario',
+      href: `/milab/inventarios/gestion_inventario?ual_id=${encodeURIComponent(String(row.ual_id || ''))}&panel=complementario`,
+    };
+  }
+
+  if (checklist.inventarioOficial && checklist.inventarioComplementario) {
+    nextStep = {
+      title: 'Revisar inventario de reactivos',
+      href: `/milab/inventarios/gestion_inventario?ual_id=${encodeURIComponent(String(row.ual_id || ''))}&panel=reactivo`,
+    };
+  }
+
+  const canActivateLoans =
+    checklist.inventarioOficial &&
+    checklist.inventarioComplementario &&
+    checklist.salasActivas &&
+    checklist.horariosActivos &&
+    checklist.equiposListos;
+
+  if (canActivateLoans) {
+    nextStep = {
+      title: 'Activar y parametrizar prestamos',
+      href: '/milab/prestamos/coordinador/practicas/config',
+    };
+  } else if (
+    checklist.inventarioOficial &&
+    checklist.inventarioComplementario &&
+    (!checklist.salasActivas || !checklist.horariosActivos)
+  ) {
+    nextStep = {
+      title: 'Configurar salas y horarios',
+      href: '/milab/prestamos/salas',
+    };
+  }
+
+  const completedCount = Object.values(checklist).filter(Boolean).length;
+  const totalCount = Object.keys(checklist).length;
+
+  return {
+    ualId: Number(row.ual_id),
+    laboratorio: sanitizeText(row.laboratorio),
+    facultad: sanitizeText(row.facultad),
+    inventory,
+    checklist,
+    counters: {
+      salasActivas: Number(row.total_salas_activas || 0),
+      horariosActivos: Number(row.total_horarios_activos || 0),
+      equiposListos: Number(row.total_equipos_listos || 0),
+    },
+    completion: {
+      completedCount,
+      totalCount,
+      percent: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+    },
+    canActivateLoans,
+    nextStep,
+  };
+}
+
+function buildLoanActivationChecklist(laboratorio) {
+  const checks = laboratorio?.checklist || {};
+  const counters = laboratorio?.counters || {};
+
+  return [
+    {
+      key: 'inventario_oficial',
+      label: 'Inventario oficial aprobado',
+      ready: Boolean(checks.inventarioOficial),
+      detail: laboratorio?.inventory?.oficial?.label || 'Pendiente',
+    },
+    {
+      key: 'inventario_complementario',
+      label: 'Inventario complementario aprobado',
+      ready: Boolean(checks.inventarioComplementario),
+      detail: laboratorio?.inventory?.complementario?.label || 'Pendiente',
+    },
+    {
+      key: 'salas_activas',
+      label: 'Salas activas registradas',
+      ready: Boolean(checks.salasActivas),
+      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s)`,
+    },
+    {
+      key: 'horarios_activos',
+      label: 'Horarios activos configurados',
+      ready: Boolean(checks.horariosActivos),
+      detail: `${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
+    },
+    {
+      key: 'equipos_listos',
+      label: 'Equipos listos para préstamo',
+      ready: Boolean(checks.equiposListos),
+      detail: `${Number(counters.equiposListos || 0)} equipo(s) disponible(s)`,
+    },
+  ];
+}
+
+function summarizeMissingActivationChecks(checklist) {
+  return (Array.isArray(checklist) ? checklist : [])
+    .filter((item) => !item.ready)
+    .map((item) => item.label)
+    .join(', ');
+}
+
+function buildActivationWizardSteps(laboratorio) {
+  const ualId = Number(laboratorio?.ualId || 0);
+  const inventoryBaseHref = `/milab/inventarios/gestion_inventario?ual_id=${encodeURIComponent(String(ualId || ''))}`;
+  const hasOfficial = Boolean(laboratorio?.checklist?.inventarioOficial);
+  const hasComplementary = Boolean(laboratorio?.checklist?.inventarioComplementario);
+  const hasReactives = Boolean(laboratorio?.inventory?.reactivo?.ready);
+  const canProceedToLoans = hasOfficial && hasComplementary;
+  const salasBaseHref = `/milab/prestamos/salas?facultad=${encodeURIComponent(
+    sanitizeText(laboratorio?.facultad)
+  )}&laboratorio=${encodeURIComponent(sanitizeText(laboratorio?.laboratorio))}`;
+
+  return [
+    {
+      order: 1,
+      key: 'inventario_oficial',
+      title: 'Configurar inventario oficial',
+      description: 'Carga y aprueba el inventario oficial (equipo_arka) del laboratorio.',
+      statusLabel: laboratorio?.inventory?.oficial?.label || 'Pendiente',
+      done: hasOfficial,
+      blocked: false,
+      actionHref: `${inventoryBaseHref}&panel=equipo_arka`,
+      actionLabel: hasOfficial ? 'Revisar inventario oficial' : 'Configurar inventario oficial',
+    },
+    {
+      order: 2,
+      key: 'inventario_complementario',
+      title: 'Configurar inventario complementario',
+      description:
+        'Registra y envía el inventario complementario para aprobación del coordinador.',
+      statusLabel: laboratorio?.inventory?.complementario?.label || 'Pendiente',
+      done: hasComplementary,
+      blocked: !hasOfficial,
+      actionHref: `${inventoryBaseHref}&panel=complementario`,
+      actionLabel: hasComplementary
+        ? 'Revisar inventario complementario'
+        : 'Configurar inventario complementario',
+    },
+    {
+      order: 3,
+      key: 'inventario_reactivos',
+      title: 'Revisar inventario de reactivos',
+      description:
+        'Este paso es opcional. Si aplica, registra reactivos para completar la caracterización del laboratorio.',
+      statusLabel: laboratorio?.inventory?.reactivo?.label || 'Opcional',
+      done: hasReactives,
+      blocked: !hasComplementary,
+      optional: true,
+      actionHref: `${inventoryBaseHref}&panel=reactivo`,
+      actionLabel: 'Revisar inventario de reactivos',
+    },
+    {
+      order: 4,
+      key: 'activar_prestamos',
+      title: 'Activar y parametrizar préstamos',
+      description:
+        'Con inventario oficial y complementario aprobados, configura salas, horarios y reglas para iniciar préstamos.',
+      statusLabel: laboratorio?.canActivateLoans ? 'Listo para activar' : 'Pendiente',
+      done: laboratorio?.canActivateLoans || false,
+      blocked: !canProceedToLoans,
+      actionHref: laboratorio?.canActivateLoans
+        ? `/milab/prestamos/coordinador/practicas/config?ual_id=${encodeURIComponent(String(ualId))}`
+        : salasBaseHref,
+      actionLabel: laboratorio?.nextStep?.title || 'Continuar configuración',
+    },
+  ];
+}
+
+async function fetchLaboratoryActivationOverview(req, options = {}) {
+  const selectedUalId = Number.parseInt(String(options.ualId || ''), 10);
+  const scope = await resolveLoanManagementScope(req);
+  const params = [];
+  const whereParts = ['u.activo = TRUE'];
+
+  if (!scope.unrestricted) {
+    if (scope.facultyIds.length) {
+      params.push(scope.facultyIds);
+      whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
+    }
+    if (scope.restrictToLaboratories && scope.laboratoryNames.length) {
+      params.push(scope.laboratoryNames.map((name) => String(name || '').toUpperCase()));
+      whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+    }
+  }
+
+  if (!scope.unrestricted && !scope.facultyIds.length && !scope.laboratoryNames.length) {
+    return [];
+  }
+
+  if (Number.isInteger(selectedUalId) && selectedUalId > 0) {
+    params.push(selectedUalId);
+    whereParts.push(`u.ual_id = $${params.length}`);
+  }
+
+  const result = await pool.query(
+    `
+      WITH labs AS (
+        SELECT
+          u.ual_id,
+          u.nombre AS laboratorio,
+          f.nombre AS facultad
+        FROM ual u
+        JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
+        WHERE ${whereParts.join(' AND ')}
+      )
+      SELECT
+        labs.ual_id,
+        labs.laboratorio,
+        labs.facultad,
+        inv.estado_oficial,
+        inv.oficial_sin_inventario,
+        inv.estado_complementario,
+        inv.complementario_sin_inventario,
+        inv.estado_reactivo,
+        inv.reactivo_sin_inventario,
+        COALESCE(salas.total_salas_activas, 0) AS total_salas_activas,
+        COALESCE(horarios.total_horarios_activos, 0) AS total_horarios_activos,
+        COALESCE(equipos.total_equipos_listos, 0) AS total_equipos_listos
+      FROM labs
+      LEFT JOIN LATERAL (
+        SELECT
+          MAX(CASE WHEN tipo_inventario = 'equipo_arka' THEN estado END) AS estado_oficial,
+          COALESCE(BOOL_OR(tipo_inventario = 'equipo_arka' AND sin_inventario = TRUE), FALSE) AS oficial_sin_inventario,
+          MAX(CASE WHEN tipo_inventario = 'complementario' THEN estado END) AS estado_complementario,
+          COALESCE(BOOL_OR(tipo_inventario = 'complementario' AND sin_inventario = TRUE), FALSE) AS complementario_sin_inventario,
+          MAX(CASE WHEN tipo_inventario = 'reactivo' THEN estado END) AS estado_reactivo,
+          COALESCE(BOOL_OR(tipo_inventario = 'reactivo' AND sin_inventario = TRUE), FALSE) AS reactivo_sin_inventario
+        FROM inventario_estado_laboratorio
+        WHERE ual_id = labs.ual_id
+      ) inv ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total_salas_activas
+        FROM sala s
+        WHERE s.ual_id = labs.ual_id
+          AND s.activo = TRUE
+      ) salas ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total_horarios_activos
+        FROM sala s
+        JOIN horario_sala hs ON hs.sala_id = s.id
+        WHERE s.ual_id = labs.ual_id
+          AND s.activo = TRUE
+          AND hs.activo = TRUE
+      ) horarios ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total_equipos_listos
+        FROM inventario i
+        JOIN equipo e ON e.inventario_id = i.id
+        WHERE i.laboratorio_ual_id = labs.ual_id
+          AND i.tipo_inventario = 'equipo_arka'
+          AND i.estado_aprobacion = 'aprobado'
+          AND i.activo = TRUE
+          AND i.disponible_prestamo = TRUE
+          AND e.estado = 'disponible'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mantenimiento m
+            WHERE m.equipo_id = e.id
+              AND m.activo = TRUE
+              AND m.estado = 'EN_EJECUCION'
+          )
+      ) equipos ON TRUE
+      ORDER BY labs.facultad ASC, labs.laboratorio ASC
+    `,
+    params
+  );
+
+  return (result.rows || []).map(buildLaboratoryActivationModel);
+}
+
 async function fetchEquipmentFormOptions(req, currentItem = {}) {
   const sessionUser = req.session?.user;
   const roles = normalizeRoles(sessionUser?.roles || sessionUser?.tipo);
@@ -4149,6 +5309,30 @@ function getMilabAppUrl() {
   }
 
   return raw.endsWith('/milab') ? raw : `${raw}/milab`;
+}
+
+function getMilabAppUrlFromRequest(req) {
+  const envUrl = getMilabAppUrl();
+  if (envUrl) {
+    return envUrl;
+  }
+
+  const protocol = sanitizeText(req?.headers?.['x-forwarded-proto']) || req?.protocol || 'https';
+  const host = sanitizeText(req?.headers?.['x-forwarded-host']) || sanitizeText(req?.get?.('host'));
+  if (!host) {
+    return '';
+  }
+  return `${protocol}://${host}/milab`;
+}
+
+function buildByRequestLoanPath(laboratorio) {
+  const params = new URLSearchParams({
+    facultad: sanitizeText(laboratorio?.facultad),
+    laboratorio: sanitizeText(laboratorio?.laboratorio),
+    auto_consultar: '1',
+    origen: 'by_request',
+  });
+  return `/prestamos/solicitar?${params.toString()}`;
 }
 
 async function fetchUserNotificationProfile(userId) {
@@ -5275,7 +6459,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
     );
 
     if (ownResult.rows.length) {
-      return ownResult.rows[0];
+      return normalizeLoanRecordForDisplay(ownResult.rows[0]);
     }
   }
 
@@ -5353,7 +6537,7 @@ async function fetchLoanDocumentRecord(req, loanId) {
     params
   );
 
-  return result.rows[0] || null;
+  return result.rows[0] ? normalizeLoanRecordForDisplay(result.rows[0]) : null;
 }
 
 async function fetchPracticeDocumentRecord(req, reservationId) {
@@ -5559,6 +6743,7 @@ function sendLoanComprobantePdf(res, loan) {
   }
   doc.text(`Fecha Inicio: ${formatPdfDateTime(loan.fecha_inicio)}`);
   doc.text(`Fecha Fin (Devolucion): ${formatPdfDateTime(loan.fecha_fin)}`);
+  doc.text(`Modalidad: ${loan.tipo_prestamo_label || resolveLoanModeLabel(loan.tipo_prestamo)}`);
   doc.text(`Justificacion: ${loan.justificacion_academica || '-'}`);
   doc.moveDown(2);
 
@@ -7829,11 +9014,15 @@ async function buildEquipmentLoanAvailability(equipmentId) {
         (interval) =>
           schedule.hora_inicio < interval.hora_fin && schedule.hora_fin > interval.hora_inicio
       );
+      const horaFinClase = subtractMinutesFromTimeKey(schedule.hora_fin, CLASS_RETURN_CUTOFF_MINUTES);
 
       return {
         fecha: schedule.fecha,
         horaInicio: schedule.hora_inicio,
         horaFin: schedule.hora_fin,
+        horaFinClase,
+        permitePrestamoClase:
+          Boolean(horaFinClase) && String(horaFinClase) > String(schedule.hora_inicio),
         disponible: !hasConflict,
       };
     });
@@ -8644,6 +9833,9 @@ router.post('/equipos/:id/eliminar', requireEquiposAuthorized, async function (r
 });
 
 router.get('/solicitar', requireSolicitudesAuthorized, async function (req, res) {
+  const selectedFacultad = sanitizeText(req.query.facultad);
+  const selectedLaboratorio = sanitizeText(req.query.laboratorio);
+  const autoConsultar = toBoolean(req.query.auto_consultar);
   try {
     const usuario = await fetchSessionUsuario(req);
     const sancionesActivas = usuario ? await fetchActiveSanctionsCount(usuario.id) : 0;
@@ -8652,6 +9844,9 @@ router.get('/solicitar', requireSolicitudesAuthorized, async function (req, res)
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
       sancionesActivas,
+      selectedFacultad,
+      selectedLaboratorio,
+      autoConsultar,
     });
   } catch (error) {
     console.error('Error cargando formulario de solicitudes MiLab:', error);
@@ -8659,6 +9854,9 @@ router.get('/solicitar', requireSolicitudesAuthorized, async function (req, res)
       successMessage: '',
       errorMessage: 'No fue posible cargar el formulario de solicitudes.',
       sancionesActivas: 0,
+      selectedFacultad,
+      selectedLaboratorio,
+      autoConsultar: false,
     });
   }
 });
@@ -8871,6 +10069,7 @@ const MENSAJE_EQUIPO_EN_MANTENIMIENTO =
 
 router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (req, res) {
   const payload = buildLoanRequestPayload(req.body);
+  payload.tipo_prestamo = String(payload.tipo_prestamo || '').toLowerCase();
   const validationError = validateLoanRequestPayload(payload);
 
   if (validationError) {
@@ -8963,12 +10162,22 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
     const selectedStartTime = payload.fecha_inicio.slice(11, 16);
     const selectedEndTime = payload.fecha_fin.slice(11, 16);
 
-    const selectedSlot = disponibilidad.horariosDisponibles.find(
+    let selectedSlot = disponibilidad.horariosDisponibles.find(
       (slot) =>
         slot.fecha === selectedDate &&
         slot.horaInicio === selectedStartTime &&
         slot.horaFin === selectedEndTime
     );
+
+    if (!selectedSlot && payload.tipo_prestamo === 'clase') {
+      selectedSlot = disponibilidad.horariosDisponibles.find(
+        (slot) =>
+          slot.fecha === selectedDate &&
+          slot.horaInicio === selectedStartTime &&
+          selectedEndTime <= slot.horaFin &&
+          selectedEndTime > slot.horaInicio
+      );
+    }
 
     if (!selectedSlot) {
       return res.status(400).json({
@@ -8977,10 +10186,22 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       });
     }
 
+    const modeValidationError = evaluateLoanModeConstraints({ payload, selectedSlot });
+    if (modeValidationError) {
+      return res.status(400).json({
+        success: false,
+        message: modeValidationError,
+      });
+    }
+
     const shouldQueueRequest = !selectedSlot.disponible;
 
     const fechaInicio = parseBogotaDateTime(payload.fecha_inicio);
     const fechaFin = parseBogotaDateTime(payload.fecha_fin);
+    const justificacionPersistida = buildLoanJustificationWithMode(
+      payload.justificacion_academica,
+      payload.tipo_prestamo
+    );
     const requestedHours = (fechaFin.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60);
 
     const globalParameters = await fetchGlobalLoanPracticeParameters();
@@ -9028,7 +10249,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
         Number(payload.equipo_id),
         fechaInicio,
         fechaFin,
-        payload.justificacion_academica,
+        justificacionPersistida,
         payload.categoria_practica,
         shouldQueueRequest ? 'en_cola' : 'pendiente',
         'manual',
@@ -9072,7 +10293,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
             sanitizeText(equipo?.laboratorio),
             fechaInicio,
             fechaFin,
-            payload.justificacion_academica,
+            justificacionPersistida,
             result.rows[0]?.id || null,
           ]
         );
@@ -9104,6 +10325,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       return res.json({
         success: true,
         en_cola: shouldQueueRequest,
+        tipo_prestamo: payload.tipo_prestamo,
         message: shouldQueueRequest
           ? 'Horario ocupado. Tu solicitud quedo en cola de espera.'
           : 'Solicitud de prestamo creada exitosamente',
@@ -9209,8 +10431,10 @@ router.get('/mis-solicitudes', requireMisSolicitudesAuthorized, async function (
       [usuario.id]
     );
 
+    const solicitudes = (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item));
+
     return res.render('home/prestamos/solicitudes/mis-solicitudes', {
-      solicitudes: result.rows || [],
+      solicitudes,
       ultimaHoraSolicitudes: ultimaHoraResult.rows || [],
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
@@ -9345,7 +10569,7 @@ router.get('/gestion-solicitudes', requireGestionSolicitudesAuthorized, async fu
         params
       );
 
-      solicitudes = result.rows || [];
+      solicitudes = (result.rows || []).map((item) => normalizeLoanRecordForDisplay(item));
       const now = new Date();
 
       for (const solicitud of solicitudes) {
@@ -9758,7 +10982,8 @@ router.get('/entrega-equipos', requireEntregaEquiposAuthorized, async function (
         params
       );
 
-      solicitudes = (result.rows || []).map(function (item) {
+      solicitudes = (result.rows || []).map(function (row) {
+        const item = normalizeLoanRecordForDisplay(row);
         const eligibility = buildLastMinuteEligibilityResult(item.fecha_inicio, item.fecha_fin);
         return {
           ...item,
@@ -15614,6 +16839,35 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
   }
 });
 
+router.get('/salas/:id/horarios/plantilla', requireSalasAuthorized, async function (req, res) {
+  if (!isValidSalaId(req.params.id)) {
+    return res.status(400).send('La sala seleccionada no es valida.');
+  }
+
+  try {
+    const scope = await resolveLoanManagementScope(req);
+    const sala = await fetchManagedSala(req.params.id, scope);
+    if (!sala) {
+      return res.status(404).send('La sala no existe o no pertenece a tu alcance de gestion.');
+    }
+
+    const templatePath = path.resolve(__dirname, '../../../docs/ejemplo_horarios.xlsx');
+    const buffer = fs.readFileSync(templatePath);
+    const safeName = 'ejemplo_horarios.xlsx';
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error('Error generando plantilla de horarios de sala MiLab:', error);
+    return res
+      .status(500)
+      .send('No fue posible generar la plantilla de carga de horarios para la sala.');
+  }
+});
+
 router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, res) {
   if (!isValidSalaId(req.params.id)) {
     return res.status(400).json({
@@ -15672,31 +16926,12 @@ router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, 
       });
     }
 
-    await pool.query(
-      `
-        INSERT INTO horario_sala (
-          sala_id,
-          dia_semana,
-          hora_inicio,
-          hora_fin,
-          fecha,
-          activo,
-          tipo_practica,
-          modalidad_libre,
-          fecha_modificacion
-        )
-        VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, CURRENT_TIMESTAMP)
-      `,
-      [
-        sala.id,
-        payload.fecha ? null : Number(payload.dia_semana),
-        payload.hora_inicio,
-        payload.hora_fin,
-        payload.fecha || null,
-        payload.tipo_practica || 'libre',
-        payload.tipo_practica === 'libre' ? payload.modalidad_libre || 'uno_a_uno' : null,
-      ]
-    );
+    const sessionUser = req.session?.user || null;
+    await insertSalaSchedule(pool, sala.id, payload, {
+      source: 'manual',
+      actorId: sessionUser?.id || null,
+      actorDocument: sessionUser?.documento || null,
+    });
 
     return res.json({
       success: true,
@@ -15710,6 +16945,118 @@ router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, 
     });
   }
 });
+
+router.post(
+  '/salas/:id/horarios/importar',
+  requireSalasAuthorized,
+  parseScheduleSpreadsheetUpload,
+  async function (req, res) {
+    if (!isValidSalaId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La sala seleccionada no es valida.',
+      });
+    }
+
+    try {
+      const scope = await resolveLoanManagementScope(req);
+      const sala = await fetchManagedSala(req.params.id, scope);
+
+      if (!sala) {
+        return res.status(404).json({
+          success: false,
+          message: 'La sala no existe o no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      const parsed = parseSalaScheduleSpreadsheet(req.file.buffer, {
+        expectedSalaName: sala.nombre,
+      });
+      if (parsed.errors.length) {
+        return res.status(400).json({
+          success: false,
+          message: parsed.errors[0],
+          errors: parsed.errors,
+        });
+      }
+
+      if (!parsed.rows.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se encontraron filas validas para importar.',
+        });
+      }
+
+      const existingResult = await pool.query(
+        `
+          SELECT dia_semana, fecha, hora_inicio, hora_fin
+          FROM horario_sala
+          WHERE sala_id = $1
+        `,
+        [sala.id]
+      );
+      const scheduleBuffer = (existingResult.rows || []).map((item) => ({
+        dia_semana: item.fecha ? null : item.dia_semana,
+        fecha:
+          typeof item.fecha === 'string'
+            ? item.fecha
+            : item.fecha?.toISOString?.().slice(0, 10) || '',
+        hora_inicio: String(item.hora_inicio || '').slice(0, 5),
+        hora_fin: String(item.hora_fin || '').slice(0, 5),
+      }));
+
+      for (const row of parsed.rows) {
+        const colliding = scheduleBuffer.find((existing) => hasSalaScheduleOverlap(existing, row));
+        if (colliding) {
+          return res.status(409).json({
+            success: false,
+            message: `Fila ${row.lineNumber}: el horario se solapa con una franja existente (${colliding.hora_inicio}-${colliding.hora_fin}).`,
+          });
+        }
+        scheduleBuffer.push(row);
+      }
+
+      const sessionUser = req.session?.user || null;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const row of parsed.rows) {
+          await insertSalaSchedule(client, sala.id, row, {
+            source: 'excel',
+            actorId: sessionUser?.id || null,
+            actorDocument: sessionUser?.documento || null,
+          });
+        }
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Carga horario sala Excel',
+        persona: `Sala ${sala.id} - ${parsed.rows.length} horario(s) importado(s)`,
+      });
+
+      return res.json({
+        success: true,
+        message: `Se importaron ${parsed.rows.length} horario(s) en la sala ${sala.nombre}.`,
+      });
+    } catch (error) {
+      console.error('Error importando horarios de sala MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible importar los horarios de la sala.'
+        ),
+      });
+    }
+  }
+);
 
 router.post('/salas/horarios/:id/eliminar', requireSalasAuthorized, async function (req, res) {
   if (!isValidSalaId(req.params.id)) {
@@ -16290,6 +17637,24 @@ router.__private = {
   buildAcademicPracticePayload,
   validateAcademicPracticePayload,
   normalizePracticeDocumentList,
+  resolveInventoryActivationStatus,
+  buildLaboratoryActivationModel,
+  buildLoanActivationChecklist,
+  summarizeMissingActivationChecks,
+  buildActivationWizardSteps,
+  subtractMinutesFromTimeKey,
+  evaluateLoanModeConstraints,
+  buildLoanRequestPayload,
+  validateLoanRequestPayload,
+  buildLoanJustificationWithMode,
+  parseLoanModeAndJustification,
+  resolveLoanModeLabel,
+  normalizeLoanRecordForDisplay,
+  normalizeScheduleDayValue,
+  normalizeScheduleDateValue,
+  normalizeScheduleTimeValue,
+  parseSalaScheduleSpreadsheet,
+  hasSalaScheduleOverlap,
 };
 
 module.exports = router;

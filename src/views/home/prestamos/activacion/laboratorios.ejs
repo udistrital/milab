@@ -1,0 +1,120 @@
+<%- include('../../../partials/header'); -%>
+
+<style>
+  .activation-progress {
+    height: 0.6rem;
+  }
+
+  .activation-pill {
+    font-size: 0.75rem;
+    padding: 0.32rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+  }
+
+  .activation-pill--ok {
+    color: var(--bs-success-text-emphasis);
+    border-color: var(--bs-success-border-subtle);
+    background: var(--bs-success-bg-subtle);
+  }
+
+  .activation-pill--pending {
+    color: var(--bs-warning-text-emphasis);
+    border-color: var(--bs-warning-border-subtle);
+    background: var(--bs-warning-bg-subtle);
+  }
+</style>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Activacion de laboratorios</h1>
+    <p class="app-page-subtitle">
+      Consulta los laboratorios asignados y el avance para habilitar prestamos.
+    </p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="status"><%= successMessage %></div>
+  <% } %>
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <% if (!Array.isArray(laboratorios) || laboratorios.length === 0) { %>
+    <div class="alert alert-info" role="status">
+      No hay laboratorios asignados en tu alcance actual.
+    </div>
+  <% } else { %>
+    <section class="row g-3">
+      <% laboratorios.forEach(function(item) { %>
+        <article class="col-12 col-xl-6">
+          <div class="card app-table-panel text-light h-100">
+            <div class="card-body d-flex flex-column gap-3">
+              <div>
+                <h2 class="h5 mb-1"><%= item.laboratorio %></h2>
+                <p class="small text-light-emphasis mb-0"><%= item.facultad %></p>
+              </div>
+
+              <div>
+                <div class="d-flex justify-content-between align-items-center small mb-1">
+                  <span>Avance de activacion</span>
+                  <strong><%= item.completion.percent %>%</strong>
+                </div>
+                <div class="progress activation-progress">
+                  <div
+                    class="progress-bar <%= item.canActivateLoans ? 'bg-success' : 'bg-warning' %>"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow="<%= item.completion.percent %>"
+                    style="width: <%= item.completion.percent %>%"
+                  ></div>
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2">
+                <span class="activation-pill <%= item.checklist.inventarioOficial ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Inventario oficial: <%= item.inventory.oficial.label %>
+                </span>
+                <span class="activation-pill <%= item.checklist.inventarioComplementario ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Complementario: <%= item.inventory.complementario.label %>
+                </span>
+                <span class="activation-pill <%= item.inventory.reactivo.ready ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Reactivos: <%= item.inventory.reactivo.label %>
+                </span>
+                <span class="activation-pill <%= item.checklist.salasActivas ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Salas activas: <%= item.counters.salasActivas %>
+                </span>
+                <span class="activation-pill <%= item.checklist.horariosActivos ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Horarios activos: <%= item.counters.horariosActivos %>
+                </span>
+                <span class="activation-pill <%= item.checklist.equiposListos ? 'activation-pill--ok' : 'activation-pill--pending' %>">
+                  Equipos listos: <%= item.counters.equiposListos %>
+                </span>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 mt-auto">
+                <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>">
+                  Paso a paso
+                </a>
+                <a class="btn btn-outline-light btn-sm" href="/milab/inventarios/gestion_inventario?ual_id=<%= item.ualId %>">
+                  Inventario
+                </a>
+                <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/salas">
+                  Salas y horarios
+                </a>
+                <a class="btn btn-outline-warning btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/by-request">
+                  QR by Request
+                </a>
+                <a class="btn btn-perso btn-sm" href="<%= item.nextStep.href %>">
+                  <%= item.nextStep.title %>
+                </a>
+              </div>
+            </div>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  <% } %>
+</main>

@@ -77,6 +77,37 @@
     </div>
   </section>
 
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0">Carga masiva de horarios</h5>
+      <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/salas/<%= sala.id %>/horarios/plantilla">
+        Descargar plantilla
+      </a>
+    </div>
+    <div class="card-body">
+      <form id="importarHorarioSalaForm" class="row g-3" novalidate>
+        <div class="col-md-8">
+          <label for="archivoHorariosSala" class="form-label">Archivo Excel (.xls/.xlsx)</label>
+          <input
+            type="file"
+            class="form-control"
+            id="archivoHorariosSala"
+            accept=".xls,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            required
+          >
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-outline-info w-100" id="importarHorarioSalaSubmitBtn" data-submit-lock="true">
+            Importar horarios
+          </button>
+        </div>
+      </form>
+      <div class="form-text mt-3">
+        Se usa la plantilla oficial <code>docs/ejemplo_horarios.xlsx</code>. Solo se importan filas cuyo valor en la columna <strong>Salón</strong> coincide con esta sala.
+      </div>
+    </div>
+  </section>
+
   <section class="card app-table-panel text-light">
     <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
       <h5 class="mb-0">Horarios registrados</h5>
@@ -156,6 +187,9 @@
     var alertsContainer = document.getElementById('horariosSalaAlerts');
     var form = document.getElementById('crearHorarioSalaForm');
     var submitButton = document.getElementById('crearHorarioSalaSubmitBtn');
+    var importForm = document.getElementById('importarHorarioSalaForm');
+    var importInput = document.getElementById('archivoHorariosSala');
+    var importButton = document.getElementById('importarHorarioSalaSubmitBtn');
     var tipoPracticaSelect = document.getElementById('tipoPracticaHorario');
     var modalidadLibreSelect = document.getElementById('modalidadLibre');
     var diaSemanaInput = document.getElementById('diaSemana');
@@ -183,6 +217,24 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
         body: JSON.stringify(payload || {}),
+      });
+
+      var data = await response.json().catch(function() {
+        return { success: false, message: 'No fue posible procesar la respuesta del servidor.' };
+      });
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'La operacion no pudo completarse.');
+      }
+
+      return data;
+    }
+
+    async function postFormData(url, formData) {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
+        body: formData,
       });
 
       var data = await response.json().catch(function() {
@@ -242,6 +294,38 @@
         window.MiLabSubmitLock.release(btn);
       }
     });
+
+    if (importForm && importInput && importButton) {
+      importForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        if (!importInput.files || !importInput.files.length) {
+          showAlert('danger', 'Selecciona un archivo de Excel para importar.');
+          return;
+        }
+
+        var file = importInput.files[0];
+        var formData = new FormData();
+        formData.append('archivo', file);
+
+        try {
+          window.MiLabSubmitLock.lock(importButton, 'Importando horarios...');
+          var result = await postFormData(
+            '/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios/importar',
+            formData
+          );
+          showAlert('success', result.message || 'Horarios importados correctamente.');
+          importForm.reset();
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible importar el archivo de horarios.');
+        } finally {
+          window.MiLabSubmitLock.release(importButton);
+        }
+      });
+    }
 
     document.querySelectorAll('.js-delete-horario-sala').forEach(function(button) {
       button.addEventListener('click', async function() {
