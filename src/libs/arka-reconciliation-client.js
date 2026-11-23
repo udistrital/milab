@@ -114,6 +114,17 @@ function toOptionalNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function resolveThirdPartyIdFromRow(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  return (
+    toPositiveInteger(row.tercero_id) ||
+    toPositiveInteger(row.terceroId) ||
+    toPositiveInteger(row.TerceroId) ||
+    toPositiveInteger(row?.TerceroId?.Id) ||
+    null
+  );
+}
+
 function requestError(error) {
   const status = Number(error?.response?.status) || null;
   if (status === 401 || status === 403) {
@@ -123,6 +134,7 @@ function requestError(error) {
       status
     );
   }
+
   if (status) {
     return new ArkaIntegrationError(
       `El API de ARKA respondió con estado HTTP ${status}.`,
@@ -134,6 +146,11 @@ function requestError(error) {
     'No fue posible conectar con los servicios de ARKA.',
     'ARKA_NETWORK_ERROR'
   );
+}
+
+function canFallbackThirdPartyLookup(error) {
+  const status = Number(error?.status) || null;
+  return status === 403 || status === 404 || status === 405;
 }
 
 function tokenProviderError(error) {
@@ -227,9 +244,39 @@ function createArkaClient({
       );
     }
 
-    const data = await get(`${clientConfiguration.tercerosBaseUrl}/tercero/identificacion`, {
-      query,
-    });
+    const lookups = [
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/datos_identificacion/`,
+        params: { query: `Numero:${query}` },
+      },
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/tercero/datos_identificacion`,
+        params: { query },
+      },
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/tercero/identificacion`,
+        params: { query },
+      },
+    ];
+
+    let data = null;
+    let lastLookupError = null;
+    for (const lookup of lookups) {
+      try {
+        data = await get(lookup.url, lookup.params);
+        break;
+      } catch (error) {
+        if (!canFallbackThirdPartyLookup(error)) {
+          throw error;
+        }
+        lastLookupError = error;
+      }
+    }
+
+    if (!data) {
+      throw lastLookupError || new ArkaIntegrationError('No fue posible consultar Terceros.');
+    }
+
     if (!Array.isArray(data)) {
       throw new ArkaIntegrationError(
         'Terceros devolvió una respuesta con formato no válido.',
@@ -237,9 +284,7 @@ function createArkaClient({
       );
     }
 
-    const thirdPartyIds = [
-      ...new Set(data.map((row) => toPositiveInteger(row?.tercero_id)).filter(Boolean)),
-    ];
+    const thirdPartyIds = [...new Set(data.map((row) => resolveThirdPartyIdFromRow(row)).filter(Boolean))];
     if (thirdPartyIds.length !== 1) {
       throw new ArkaIntegrationError(
         thirdPartyIds.length

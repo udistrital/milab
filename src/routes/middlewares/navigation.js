@@ -218,7 +218,7 @@ function ensureInventoryHojasVidaLink(navigation, roles) {
   ) {
     targetLinks.push(
       createLink(
-        'Conciliaciones ARKA',
+        'Conciliaciones por inventario ARKA',
         '/milab/inventarios/conciliaciones-arka',
         'bi-arrow-left-right'
       )

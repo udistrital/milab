@@ -82,7 +82,7 @@ function createArkaReconciliationService({
 
     if (!isReconciliationEnabled()) {
       throw new ArkaIntegrationError(
-        'Las conciliaciones ARKA están deshabilitadas en este ambiente.',
+        'Las conciliaciones por inventario ARKA están deshabilitadas en este ambiente.',
         'ARKA_RECONCILIATION_DISABLED'
       );
     }

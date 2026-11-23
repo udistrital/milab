@@ -14,13 +14,13 @@ const requireReconciliationAccess = requireRoles(
   ['admin', 'administrador', 'coordinador_general', 'coordinador'],
   {
     message: 'Acceso denegado',
-    message2: 'No tienes permisos para consultar conciliaciones ARKA.',
+    message2: 'No tienes permisos para consultar conciliaciones por inventario ARKA.',
     limit: 'loginOnly',
   }
 );
 const requireReconciliationAdmin = requireRoles(['admin', 'administrador'], {
   message: 'Acceso denegado',
-  message2: 'Solo un administrador puede iniciar las corridas de conciliación ARKA.',
+  message2: 'Solo un administrador puede iniciar las corridas de conciliación por inventario ARKA.',
   limit: 'loginOnly',
 });
 
@@ -267,7 +267,7 @@ async function loadPageData(req) {
 
 function createWorkbook(report, laboratory) {
   const summaryRows = [
-    ['Conciliación ARKA'],
+    ['Conciliación por inventario ARKA'],
     ['Laboratorio', laboratory.laboratorio],
     ['Facultad', laboratory.facultad],
     ['Dependencia', laboratory.dependencia || '—'],
@@ -423,7 +423,7 @@ router.post('/corridas', requireReconciliationAdmin, async (req, res) => {
     }
     console.error('Error encolando conciliaciones ARKA:', error);
     return res.redirect(
-      `${PAGE_URL}?error=${encodeURIComponent('No fue posible encolar las conciliaciones ARKA.')}`
+      `${PAGE_URL}?error=${encodeURIComponent('No fue posible encolar las conciliaciones por inventario ARKA.')}`
     );
   }
 });
