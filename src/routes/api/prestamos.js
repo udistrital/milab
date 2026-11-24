@@ -4600,22 +4600,45 @@ function buildLaboratoryActivationModel(row) {
 
   const completedCount = Object.values(checklist).filter(Boolean).length;
   const totalCount = Object.keys(checklist).length;
+  const pendingInventoryCount = [
+    inventory.oficial.ready,
+    inventory.complementario.ready,
+    inventory.reactivo.ready,
+  ].filter((value) => !value).length;
+
+  const stateKey = canActivateLoans
+    ? 'completo'
+    : checklist.inventarioOficial || checklist.inventarioComplementario
+      ? 'proceso'
+      : 'pendiente';
 
   return {
     ualId: Number(row.ual_id),
     laboratorio: sanitizeText(row.laboratorio),
     facultad: sanitizeText(row.facultad),
+    dependencia: sanitizeText(row.dependencia),
     inventory,
     checklist,
     counters: {
       salasActivas: Number(row.total_salas_activas || 0),
       horariosActivos: Number(row.total_horarios_activos || 0),
       equiposListos: Number(row.total_equipos_listos || 0),
+      aprobadosOficial: Number(row.aprobados_oficial || 0),
+      aprobadosComplementario: Number(row.aprobados_complementario || 0),
+      aprobadosReactivo: Number(row.aprobados_reactivo || 0),
+      totalCargasRecientes: Number(row.total_cargas_recientes || 0),
+      cargasAtencion: Number(row.cargas_atencion || 0),
+      pendingInventories: pendingInventoryCount,
     },
     completion: {
       completedCount,
       totalCount,
       percent: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+    },
+    state: {
+      key: stateKey,
+      label:
+        stateKey === 'completo' ? 'Completo' : stateKey === 'proceso' ? 'En proceso' : 'Pendiente',
     },
     canActivateLoans,
     nextStep,
@@ -4782,7 +4805,12 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         inv.reactivo_sin_inventario,
         COALESCE(salas.total_salas_activas, 0) AS total_salas_activas,
         COALESCE(horarios.total_horarios_activos, 0) AS total_horarios_activos,
-        COALESCE(equipos.total_equipos_listos, 0) AS total_equipos_listos
+        COALESCE(equipos.total_equipos_listos, 0) AS total_equipos_listos,
+        COALESCE(inventarios.aprobados_oficial, 0) AS aprobados_oficial,
+        COALESCE(inventarios.aprobados_complementario, 0) AS aprobados_complementario,
+        COALESCE(inventarios.aprobados_reactivo, 0) AS aprobados_reactivo,
+        COALESCE(cargas.total_cargas_recientes, 0) AS total_cargas_recientes,
+        COALESCE(cargas.cargas_atencion, 0) AS cargas_atencion
       FROM labs
       LEFT JOIN LATERAL (
         SELECT
@@ -4827,6 +4855,35 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
               AND m.estado = 'EN_EJECUCION'
           )
       ) equipos ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (
+            WHERE i.tipo_inventario = 'equipo_arka'
+              AND i.estado_aprobacion = 'aprobado'
+              AND i.activo = TRUE
+          )::int AS aprobados_oficial,
+          COUNT(*) FILTER (
+            WHERE i.tipo_inventario = 'complementario'
+              AND i.estado_aprobacion = 'aprobado'
+              AND i.activo = TRUE
+          )::int AS aprobados_complementario,
+          COUNT(*) FILTER (
+            WHERE i.tipo_inventario = 'reactivo'
+              AND i.estado_aprobacion = 'aprobado'
+              AND i.activo = TRUE
+          )::int AS aprobados_reactivo
+        FROM inventario i
+        WHERE i.laboratorio_ual_id = labs.ual_id
+      ) inventarios ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*)::int AS total_cargas_recientes,
+          COUNT(*) FILTER (
+            WHERE c.estado IN ('previsualizada', 'devuelta')
+          )::int AS cargas_atencion
+        FROM inventario_carga c
+        WHERE c.ual_id = labs.ual_id
+      ) cargas ON TRUE
       ORDER BY labs.facultad ASC, labs.laboratorio ASC
     `,
     params
