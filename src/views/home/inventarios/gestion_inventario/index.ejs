@@ -170,6 +170,117 @@
     background: #98a2b3;
   }
 
+  .inventory-lab-carousel {
+    position: relative;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .inventory-lab-carousel__viewport {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    padding-bottom: 0.25rem;
+  }
+
+  .inventory-lab-carousel__slide {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+  }
+
+  .inventory-lab-carousel__controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .inventory-lab-carousel__arrows {
+    display: inline-flex;
+    gap: 0.5rem;
+  }
+
+  .inventory-lab-carousel__arrow {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid #d0d5dd;
+    border-radius: 999px;
+    background: #fff;
+    color: #344054;
+    display: grid;
+    place-items: center;
+  }
+
+  .inventory-lab-carousel__arrow:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .inventory-lab-carousel__indicators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .inventory-lab-carousel__indicator {
+    width: 0.55rem;
+    height: 0.55rem;
+    border: 0;
+    border-radius: 999px;
+    background: #d0d5dd;
+    padding: 0;
+  }
+
+  .inventory-lab-carousel__indicator.is-active {
+    background: #b42372;
+  }
+
+  .inventory-detail-tabs .nav-link {
+    color: #344054;
+    border-radius: 0.6rem 0.6rem 0 0;
+  }
+
+  .inventory-detail-tabs .nav-link.active {
+    color: #b42372;
+    font-weight: 600;
+  }
+
+  .inventory-accordion .accordion-item {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.9rem;
+    overflow: hidden;
+  }
+
+  .inventory-accordion .accordion-button {
+    box-shadow: none;
+    background: #fff;
+  }
+
+  .inventory-accordion .accordion-button:not(.collapsed) {
+    color: inherit;
+    background: #fff;
+  }
+
+  .inventory-accordion__meta {
+    color: var(--app-text-muted, #6c757d);
+    font-size: 0.9rem;
+  }
+
+  .inventory-accordion__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.8rem;
+  }
+
+  @media (min-width: 768px) {
+    .inventory-lab-carousel__slide {
+      flex-basis: calc((100% - 1rem) / 2);
+    }
+  }
+
   .inventory-action-card {
     display: block;
     width: 100%;
@@ -381,32 +492,55 @@
         </div>
       </div>
       <% if (laboratoryCards.length) { %>
-        <div class="d-flex flex-column gap-3">
-          <% laboratoryCards.forEach(function(laboratoryCard) { %>
-            <% const semaphoreVisual = getSemaphoreVisual(laboratoryCard.semaphore.color); %>
-            <article class="inventory-laboratory-card p-4">
-              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
-                <div>
-                  <h3 class="h3 mb-1"><%= laboratoryCard.nombre %></h3>
-                  <p class="mb-0 inventory-laboratory-card__meta">
-                    <%= [laboratoryCard.facultad, laboratoryCard.dependencia].filter(Boolean).join(' · ') || 'Sin dependencia registrada' %>
-                  </p>
+        <div class="inventory-lab-carousel" data-inventory-lab-carousel>
+          <div class="inventory-lab-carousel__viewport" data-carousel-viewport>
+            <% laboratoryCards.forEach(function(laboratoryCard, cardIndex) { %>
+              <% const semaphoreVisual = getSemaphoreVisual(laboratoryCard.semaphore.color); %>
+              <article class="inventory-laboratory-card inventory-lab-carousel__slide p-4" data-carousel-slide data-carousel-index="<%= cardIndex %>">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
+                  <div>
+                    <h3 class="h3 mb-1"><%= laboratoryCard.nombre %></h3>
+                    <p class="mb-0 inventory-laboratory-card__meta">
+                      <%= [laboratoryCard.facultad, laboratoryCard.dependencia].filter(Boolean).join(' · ') || 'Sin dependencia registrada' %>
+                    </p>
+                  </div>
+                  <span class="<%= semaphoreVisual.badge %>"><span class="<%= semaphoreVisual.dot %>"></span><%= laboratoryCard.semaphore.label %></span>
                 </div>
-                <span class="<%= semaphoreVisual.badge %>"><span class="<%= semaphoreVisual.dot %>"></span><%= laboratoryCard.semaphore.label %></span>
-              </div>
-              <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
-                <strong class="display-6 mb-0"><%= laboratoryCard.progress %>%</strong>
-                <span class="inventory-laboratory-card__meta"><%= laboratoryCard.completedComponents %> de <%= laboratoryCard.totalComponents %> componentes</span>
-              </div>
-              <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Progreso <%= laboratoryCard.progress %> por ciento">
-                <span class="inventory-progress-bar--<%= laboratoryCard.semaphore.color %>" style="width: <%= laboratoryCard.progress %>%"></span>
-              </div>
-              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span class="inventory-laboratory-card__meta"><%= laboratoryCard.pendingComponents %> pendientes</span>
-                <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratoryCard.ual_id %>">Gestionar laboratorio</a>
-              </div>
-            </article>
-          <% }) %>
+                <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+                  <strong class="display-6 mb-0"><%= laboratoryCard.progress %>%</strong>
+                  <span class="inventory-laboratory-card__meta"><%= laboratoryCard.completedComponents %> de <%= laboratoryCard.totalComponents %> componentes</span>
+                </div>
+                <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Progreso <%= laboratoryCard.progress %> por ciento">
+                  <span class="inventory-progress-bar--<%= laboratoryCard.semaphore.color %>" style="width: <%= laboratoryCard.progress %>%"></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <span class="inventory-laboratory-card__meta"><%= laboratoryCard.pendingComponents %> pendientes</span>
+                  <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratoryCard.ual_id %>">Gestionar laboratorio</a>
+                </div>
+              </article>
+            <% }) %>
+          </div>
+          <div class="inventory-lab-carousel__controls">
+            <div class="inventory-lab-carousel__arrows">
+              <button type="button" class="inventory-lab-carousel__arrow" data-carousel-prev aria-label="Anterior laboratorio">
+                <i class="bi bi-chevron-left" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="inventory-lab-carousel__arrow" data-carousel-next aria-label="Siguiente laboratorio">
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="inventory-lab-carousel__indicators" aria-label="Posición en laboratorios">
+              <% laboratoryCards.forEach(function(_, cardIndex) { %>
+                <button
+                  type="button"
+                  class="inventory-lab-carousel__indicator <%= cardIndex === 0 ? 'is-active' : '' %>"
+                  data-carousel-indicator
+                  data-carousel-go-to="<%= cardIndex %>"
+                  aria-label="Ir al laboratorio <%= cardIndex + 1 %>"
+                ></button>
+              <% }) %>
+            </div>
+          </div>
         </div>
       <% } else { %>
         <div class="alert alert-info mt-3 mb-0">
@@ -523,46 +657,142 @@
         <h2 id="inventoryPanelsTitle" class="h3 mb-1"><%= selectedLaboratory.nombre %></h2>
         <p class="inventory-laboratory-card__meta mb-0"><%= [selectedLaboratory.facultad, selectedLaboratory.dependencia].filter(Boolean).join(' · ') %></p>
       </div>
-      <div class="row g-3">
-        <% statuses.forEach(function(status) { %>
-          <% const statusVisual = getInventoryStatusVisual(status.estado); %>
-          <% const percent = inventoryStatusPercent(status); %>
-          <% const semaphore = getSemaphoreVisual(resolveSemaphoreColor(percent, status.hasRealData || percent > 0)); %>
-          <div class="col-md-6">
-            <a
-              class="card app-table-panel h-100 inventory-menu-card"
-              href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=<%= status.tipo_inventario %>"
-            >
-              <div class="card-body d-flex flex-column gap-2">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                  <h3 class="h4 mb-0"><%= status.etiqueta %></h3>
-                  <span class="<%= semaphore.badge %>"><span class="<%= semaphore.dot %>"></span><%= statusVisual.label %></span>
-                </div>
-                <div class="display-6 fw-semibold"><%= percent %>%</div>
-                <p class="mb-0 text-muted"><%= status.elementos_aprobados %> registros aprobados</p>
-                <span class="btn btn-outline-secondary mt-auto">Ver inventario</span>
+      <% const pendingStatuses = statuses.filter(function(status) {
+        return ['previsualizada', 'pendiente_aprobacion', 'devuelta', 'pendiente'].includes(status.estado) || Number(status.progreso || 0) < 100;
+      }); %>
+      <% const summaryProgress = statuses.length
+        ? Math.round(statuses.reduce(function(acc, status) { return acc + inventoryStatusPercent(status); }, 0) / statuses.length)
+        : 0; %>
+      <div class="inventory-detail-tabs">
+        <ul class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#inventory-tab-summary" type="button" role="tab" aria-controls="inventory-tab-summary" aria-selected="true">Resumen</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory-tab-components" type="button" role="tab" aria-controls="inventory-tab-components" aria-selected="false">Inventarios</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory-tab-history" type="button" role="tab" aria-controls="inventory-tab-history" aria-selected="false">Historial de cargas</button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <section class="tab-pane fade show active" id="inventory-tab-summary" role="tabpanel" tabindex="0">
+            <div class="inventory-laboratory-card p-4">
+              <% const summarySemaphore = getSemaphoreVisual(resolveSemaphoreColor(summaryProgress, statuses.some(function(status) { return status.hasRealData || status.progreso > 0; }))); %>
+              <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-2">
+                <h3 class="h4 mb-0">Avance general del laboratorio</h3>
+                <span class="<%= summarySemaphore.badge %>"><span class="<%= summarySemaphore.dot %>"></span><%= summaryProgress %>%</span>
               </div>
-            </a>
-          </div>
-        <% }) %>
-        <div class="col-md-6">
-          <% const recentCount = recentLoads.length; %>
-          <% const recentPercent = recentCount > 0 ? 100 : 0; %>
-          <% const recentSemaphore = getSemaphoreVisual(resolveSemaphoreColor(recentPercent, recentCount > 0)); %>
-          <a
-            class="card app-table-panel h-100 inventory-menu-card"
-            href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=recent"
-          >
-            <div class="card-body d-flex flex-column gap-2">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <h3 class="h4 mb-0">Cargas recientes</h3>
-                <span class="<%= recentSemaphore.badge %>"><span class="<%= recentSemaphore.dot %>"></span><%= recentCount > 0 ? 'Historial' : 'Sin cargas' %></span>
+              <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Avance general <%= summaryProgress %> por ciento">
+                <span class="inventory-progress-bar--<%= resolveSemaphoreColor(summaryProgress, true) %>" style="width: <%= summaryProgress %>%"></span>
               </div>
-              <div class="display-6 fw-semibold"><%= recentCount %></div>
-              <p class="mb-0 text-muted">Cargas registradas</p>
-              <span class="btn btn-outline-secondary mt-auto">Ver cargas</span>
+              <p class="inventory-laboratory-card__meta mb-0">
+                Componentes pendientes: <strong><%= pendingStatuses.length %></strong> de <strong><%= statuses.length %></strong>.
+              </p>
             </div>
-          </a>
+          </section>
+          <section class="tab-pane fade" id="inventory-tab-components" role="tabpanel" tabindex="0">
+            <% const expandedIndex = statuses.findIndex(function(status) { return ['devuelta', 'previsualizada', 'pendiente_aprobacion', 'pendiente'].includes(status.estado); }); %>
+            <div class="accordion inventory-accordion" id="inventoryComponentsAccordion">
+              <% statuses.forEach(function(status, index) { %>
+                <% const statusVisual = getInventoryStatusVisual(status.estado); %>
+                <% const percent = inventoryStatusPercent(status); %>
+                <% const semaphore = getSemaphoreVisual(resolveSemaphoreColor(percent, status.hasRealData || percent > 0)); %>
+                <% const expanded = index === (expandedIndex >= 0 ? expandedIndex : 0); %>
+                <article class="accordion-item mb-3">
+                  <h3 class="accordion-header" id="heading-<%= status.tipo_inventario %>">
+                    <button
+                      class="accordion-button <%= expanded ? '' : 'collapsed' %>"
+                      type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#collapse-<%= status.tipo_inventario %>"
+                      aria-expanded="<%= expanded ? 'true' : 'false' %>"
+                      aria-controls="collapse-<%= status.tipo_inventario %>"
+                    >
+                      <span class="d-flex flex-column gap-1 w-100 pe-3">
+                        <span class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                          <strong><%= status.etiqueta %></strong>
+                          <span class="<%= semaphore.badge %>"><span class="<%= semaphore.dot %>"></span><%= statusVisual.label %></span>
+                        </span>
+                        <span class="inventory-accordion__summary">
+                          <span class="inventory-accordion__meta">Activación: <strong><%= status.bloqueado ? 'Restringida' : 'Disponible' %></strong></span>
+                          <span class="inventory-accordion__meta">Cumplimiento: <strong><%= percent %>%</strong></span>
+                          <span class="inventory-accordion__meta">Registros aprobados: <strong><%= status.elementos_aprobados %></strong></span>
+                        </span>
+                      </span>
+                    </button>
+                  </h3>
+                  <div
+                    id="collapse-<%= status.tipo_inventario %>"
+                    class="accordion-collapse collapse <%= expanded ? 'show' : '' %>"
+                    aria-labelledby="heading-<%= status.tipo_inventario %>"
+                    data-bs-parent="#inventoryComponentsAccordion"
+                  >
+                    <div class="accordion-body">
+                      <p class="mb-2">
+                        <% if (status.tipo_inventario === 'reactivo' && status.estado === 'opcional') { %>
+                          Opcional. Este laboratorio no ha declarado reactivos.
+                        <% } else if (status.sin_inventario && status.estado === 'aprobado') { %>
+                          Declaración de inventario complementario aprobada.
+                        <% } else if (status.estado === 'devuelta') { %>
+                          El coordinador devolvió la última carga para corrección.
+                        <% } else if (status.estado === 'previsualizada') { %>
+                          Hay una carga leída pendiente de envío.
+                        <% } else if (status.estado === 'pendiente_aprobacion') { %>
+                          Hay una carga enviada, pendiente de aprobación.
+                        <% } else { %>
+                          Consulta y gestiona este componente de inventario.
+                        <% } %>
+                      </p>
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="inventory-accordion__meta">Estado de declaraciones y registros actualizado con la última carga del laboratorio.</span>
+                        <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=<%= status.tipo_inventario %>">
+                          Continuar
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              <% }) %>
+            </div>
+          </section>
+          <section class="tab-pane fade" id="inventory-tab-history" role="tabpanel" tabindex="0">
+            <div class="inventory-laboratory-card p-4">
+              <% if (recentLoads.length) { %>
+                <div class="table-responsive">
+                  <table class="table table-bordered app-table-compact align-middle mb-3">
+                    <thead class="text-light">
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Estado</th>
+                        <th>Archivo/declaración</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <% recentLoads.forEach(function(load) { %>
+                        <% const loadVisual = getInventoryStatusVisual(load.estado); %>
+                        <tr>
+                          <td><%= new Date(load.fecha_creacion).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) %></td>
+                          <td><%= inventoryLabels[load.tipo_inventario] || load.tipo_inventario %></td>
+                          <td>
+                            <span class="badge rounded-pill <%= loadVisual.badge %>">
+                              <i class="bi <%= loadVisual.icon %> me-1" aria-hidden="true"></i>
+                              <%= loadVisual.label %>
+                            </span>
+                          </td>
+                          <td><%= load.archivo_nombre %></td>
+                        </tr>
+                      <% }) %>
+                    </tbody>
+                  </table>
+                </div>
+              <% } else { %>
+                <p class="mb-3">Todavía no hay cargas registradas para este laboratorio.</p>
+              <% } %>
+              <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=recent">Consultar historial completo</a>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -1353,4 +1583,5 @@
 </main>
 
 <script src="/milab/public/js/inventory-location-filters.js" defer></script>
+<script src="/milab/public/js/inventory-navigation.js" defer></script>
 <%- include('../../../partials/footer'); -%>
