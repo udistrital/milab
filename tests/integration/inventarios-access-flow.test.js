@@ -200,19 +200,23 @@ test('inventory location selectors match each role and restore the selected UAL 
       const response = await request(loaded.app).get('/gestion_inventario?ual_id=4');
       assert.equal(response.status, 200, role);
       const html = ejs.render(template, { ...response.body.locals, include: () => '' });
-      assert.equal(html.includes('id="inventory-faculty"'), role !== 'laboratorista', role);
-      assert.equal(html.includes('id="inventory-dependency"'), role !== 'laboratorista', role);
       assert.doesNotMatch(html, /Todas las (facultades|dependencias)/);
-      assert.match(html, /data-faculty-id="1"/);
-      assert.match(html, /data-dependency-id="10"/);
-      assert.match(html, /value="4"[\s\S]*?selected/);
       assert.match(html, /\/milab\/public\/js\/inventory-location-filters\.js/);
       const unitsQuery = loaded.queries.find(({ sql }) =>
         sql.includes('FROM dependencia_facultad df')
       );
       if (role === 'laboratorista') {
         assert.equal(unitsQuery, undefined);
+        assert.doesNotMatch(html, /id="inventory-faculty"/);
+        assert.doesNotMatch(html, /id="inventory-dependency"/);
+        assert.match(html, /Mis laboratorios/);
+        assert.match(html, /Gestionar laboratorio/);
       } else {
+        assert.match(html, /id="inventory-faculty"/);
+        assert.match(html, /id="inventory-dependency"/);
+        assert.match(html, /data-faculty-id="1"/);
+        assert.match(html, /data-dependency-id="10"/);
+        assert.match(html, /value="4"[\s\S]*?selected/);
         assert.deepEqual(unitsQuery.params, [globalViewer, role === 'coordinador', 'user-1']);
         assert.match(unitsQuery.sql, /ca\.facultad_id = df\.dependencia_facultad_id/);
         assert.match(unitsQuery.sql, /ca\.activo = TRUE/);

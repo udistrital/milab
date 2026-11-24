@@ -32,6 +32,25 @@
       icon: 'bi-info-circle',
     };
   }
+  const semaphoreVisuals = {
+    verde: { badge: 'inventory-semaphore inventory-semaphore--verde', dot: 'inventory-dot inventory-dot--verde' },
+    amarillo: { badge: 'inventory-semaphore inventory-semaphore--amarillo', dot: 'inventory-dot inventory-dot--amarillo' },
+    rojo: { badge: 'inventory-semaphore inventory-semaphore--rojo', dot: 'inventory-dot inventory-dot--rojo' },
+    gris: { badge: 'inventory-semaphore inventory-semaphore--gris', dot: 'inventory-dot inventory-dot--gris' },
+  };
+  function getSemaphoreVisual(color) {
+    return semaphoreVisuals[color] || semaphoreVisuals.gris;
+  }
+  function resolveSemaphoreColor(progress, hasData) {
+    if (!hasData) return 'gris';
+    if (progress >= 100) return 'verde';
+    if (progress >= 50) return 'amarillo';
+    return 'rojo';
+  }
+  function inventoryStatusPercent(status) {
+    return Number(status?.progreso || 0);
+  }
+  const showLaboratoryCardsLayout = isLaboratorista && !isGlobalInventoryViewer && !showDependencyFilter;
 %>
 
 <style>
@@ -57,6 +76,98 @@
     font-size: 1.75rem;
     font-weight: 700;
     line-height: 1;
+  }
+
+  .inventory-laboratory-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow: 0 8px 20px rgb(15 23 42 / 6%);
+  }
+
+  .inventory-laboratory-card__meta {
+    color: var(--app-text-muted, #6c757d);
+  }
+
+  .inventory-laboratory-card__progress {
+    height: 0.75rem;
+    border-radius: 999px;
+    background: #edf1f5;
+  }
+
+  .inventory-laboratory-card__progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .inventory-progress-bar--verde {
+    background: #169f45;
+  }
+
+  .inventory-progress-bar--amarillo {
+    background: #d3962e;
+  }
+
+  .inventory-progress-bar--rojo {
+    background: #d33f49;
+  }
+
+  .inventory-progress-bar--gris {
+    background: #94a3b8;
+  }
+
+  .inventory-semaphore {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    font-weight: 600;
+  }
+
+  .inventory-semaphore--verde {
+    color: #0a7d34;
+    background: #d7f5e1;
+  }
+
+  .inventory-semaphore--amarillo {
+    color: #8b5d00;
+    background: #fdecc8;
+  }
+
+  .inventory-semaphore--rojo {
+    color: #b42318;
+    background: #fee4e2;
+  }
+
+  .inventory-semaphore--gris {
+    color: #475467;
+    background: #eaecf0;
+  }
+
+  .inventory-dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .inventory-dot--verde {
+    background: #16a34a;
+  }
+
+  .inventory-dot--amarillo {
+    background: #d97706;
+  }
+
+  .inventory-dot--rojo {
+    background: #dc2626;
+  }
+
+  .inventory-dot--gris {
+    background: #98a2b3;
   }
 
   .inventory-action-card {
@@ -250,162 +361,206 @@
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
-  <section class="card app-form-panel text-light mb-4">
-    <div class="card-body">
-      <form id="inventory-location-filters" method="get" action="/milab/inventarios/gestion_inventario" class="row g-3 align-items-end">
-        <% if (showDependencyFilter) { %>
-          <div class="col-md-4">
-            <label for="inventory-faculty" class="form-label">Facultad</label>
-            <select id="inventory-faculty" class="form-select" required>
-              <option value="">Selecciona una facultad</option>
-              <% inventoryUnits.filter(function(unit) { return unit.facultad_id === null; }).forEach(function(unit) { %>
-                <option value="<%= unit.id %>" <%= selectedLaboratory && selectedLaboratory.facultad_id === unit.id ? 'selected' : '' %>><%= unit.nombre %></option>
-              <% }) %>
-            </select>
-          </div>
-        <% } %>
-        <% if (showDependencyFilter) { %>
-          <div class="col-md-4">
-            <label for="inventory-dependency" class="form-label">Dependencia</label>
-            <select id="inventory-dependency" class="form-select" required disabled>
-              <option value="">Selecciona primero una facultad</option>
-              <% inventoryUnits.filter(function(unit) { return unit.facultad_id !== null; }).forEach(function(unit) { %>
-                <option
-                  value="<%= unit.id %>"
-                  data-faculty-id="<%= unit.facultad_id %>"
-                  <%= selectedLaboratory && selectedLaboratory.dependencia_id === unit.id ? 'selected' : 'hidden disabled' %>
-                ><%= unit.nombre %></option>
-              <% }) %>
-              <% inventoryUnits.filter(function(unit) {
-                return unit.facultad_id === null && laboratories.some(function(laboratory) {
-                  return laboratory.facultad_id === unit.id && !laboratory.dependencia_id;
-                });
-              }).forEach(function(unit) { %>
-                <option
-                  value="direct-<%= unit.id %>"
-                  data-faculty-id="<%= unit.id %>"
-                  data-direct-labs="true"
-                  <%= selectedLaboratory && !selectedLaboratory.dependencia_id && selectedLaboratory.facultad_id === unit.id ? 'selected' : 'hidden disabled' %>
-                >Sin dependencia (laboratorios directos de la facultad)</option>
-              <% }) %>
-            </select>
-          </div>
-        <% } %>
-        <div class="<%= showDependencyFilter ? 'col-md-4' : 'col-md-8' %>">
-          <label for="ual_id" class="form-label">
-            <%= isGlobalInventoryViewer ? 'Laboratorio' : 'Laboratorio asignado' %>
-          </label>
-          <select id="ual_id" name="ual_id" class="form-select" required disabled>
-            <option value="">Selecciona primero una dependencia</option>
-            <% laboratories.forEach(function(laboratory) { %>
-              <option
-                value="<%= laboratory.ual_id %>"
-                data-faculty-id="<%= laboratory.facultad_id %>"
-                data-dependency-id="<%= laboratory.dependencia_id || '' %>"
-                <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : 'hidden disabled' %>
-              >
-                <%= laboratory.nombre %> — <%= [laboratory.facultad, laboratory.dependencia].filter(Boolean).join(' / ') %>
-              </option>
-            <% }) %>
-          </select>
+  <% if (showLaboratoryCardsLayout) { %>
+    <section class="mb-4">
+      <h2 class="app-page-title h2 mb-2">Mis laboratorios</h2>
+      <p class="app-page-subtitle mb-3">Consulta el estado de configuración de tus laboratorios asignados.</p>
+      <% const completedLaboratories = laboratoryCards.filter(function(lab) { return lab.progress >= 100; }).length; %>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <article class="inventory-laboratory-card p-3 h-100">
+            <p class="mb-1 inventory-laboratory-card__meta">Asignados</p>
+            <div class="display-6 fw-bold"><%= laboratoryCards.length %></div>
+          </article>
         </div>
-        <% if (panel) { %>
-          <input type="hidden" name="panel" value="<%= panel %>">
-        <% } %>
-        <div class="col-md-4">
-          <button class="btn btn-perso" type="submit" disabled>Consultar laboratorio</button>
+        <div class="col-md-6">
+          <article class="inventory-laboratory-card p-3 h-100">
+            <p class="mb-1 inventory-laboratory-card__meta">Completos</p>
+            <div class="display-6 fw-bold text-success"><%= completedLaboratories %></div>
+          </article>
         </div>
-      </form>
-      <% if (selectedLaboratory) { %>
+      </div>
+      <% if (laboratoryCards.length) { %>
+        <div class="d-flex flex-column gap-3">
+          <% laboratoryCards.forEach(function(laboratoryCard) { %>
+            <% const semaphoreVisual = getSemaphoreVisual(laboratoryCard.semaphore.color); %>
+            <article class="inventory-laboratory-card p-4">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
+                <div>
+                  <h3 class="h3 mb-1"><%= laboratoryCard.nombre %></h3>
+                  <p class="mb-0 inventory-laboratory-card__meta">
+                    <%= [laboratoryCard.facultad, laboratoryCard.dependencia].filter(Boolean).join(' · ') || 'Sin dependencia registrada' %>
+                  </p>
+                </div>
+                <span class="<%= semaphoreVisual.badge %>"><span class="<%= semaphoreVisual.dot %>"></span><%= laboratoryCard.semaphore.label %></span>
+              </div>
+              <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+                <strong class="display-6 mb-0"><%= laboratoryCard.progress %>%</strong>
+                <span class="inventory-laboratory-card__meta"><%= laboratoryCard.completedComponents %> de <%= laboratoryCard.totalComponents %> componentes</span>
+              </div>
+              <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Progreso <%= laboratoryCard.progress %> por ciento">
+                <span class="inventory-progress-bar--<%= laboratoryCard.semaphore.color %>" style="width: <%= laboratoryCard.progress %>%"></span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span class="inventory-laboratory-card__meta"><%= laboratoryCard.pendingComponents %> pendientes</span>
+                <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratoryCard.ual_id %>">Gestionar laboratorio</a>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      <% } else { %>
         <div class="alert alert-info mt-3 mb-0">
-          <% if (selectedLaboratory.coordinador_encargado_documento) { %>
-            <strong>Coordinador encargado:</strong>
-            <%= selectedLaboratory.coordinador_encargado_nombre %>
-            (<%= selectedLaboratory.coordinador_encargado_documento %>).
-            Las siguientes cargas solo se envían a este coordinador.
-          <% } else { %>
-            El coordinador que apruebe la primera carga quedará registrado como encargado del laboratorio.
-          <% } %>
+          No tienes laboratorios dentro de tu alcance con laboratorista y coordinador activos asignados.
         </div>
       <% } %>
-      <% if (!laboratories.length) { %>
-        <div class="alert alert-info mt-3 mb-0">
-          <%= isGlobalInventoryViewer
-            ? 'No hay laboratorios activos con laboratorista y coordinador asignados disponibles para consulta.'
-            : 'No tienes laboratorios dentro de tu alcance con laboratorista y coordinador activos asignados.' %>
-        </div>
+    </section>
+  <% } else { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body">
+        <form id="inventory-location-filters" method="get" action="/milab/inventarios/gestion_inventario" class="row g-3 align-items-end">
+          <% if (showDependencyFilter) { %>
+            <div class="col-md-4">
+              <label for="inventory-faculty" class="form-label">Facultad</label>
+              <select id="inventory-faculty" class="form-select" required>
+                <option value="">Selecciona una facultad</option>
+                <% inventoryUnits.filter(function(unit) { return unit.facultad_id === null; }).forEach(function(unit) { %>
+                  <option value="<%= unit.id %>" <%= selectedLaboratory && selectedLaboratory.facultad_id === unit.id ? 'selected' : '' %>><%= unit.nombre %></option>
+                <% }) %>
+              </select>
+            </div>
+          <% } %>
+          <% if (showDependencyFilter) { %>
+            <div class="col-md-4">
+              <label for="inventory-dependency" class="form-label">Dependencia</label>
+              <select id="inventory-dependency" class="form-select" required disabled>
+                <option value="">Selecciona primero una facultad</option>
+                <% inventoryUnits.filter(function(unit) { return unit.facultad_id !== null; }).forEach(function(unit) { %>
+                  <option
+                    value="<%= unit.id %>"
+                    data-faculty-id="<%= unit.facultad_id %>"
+                    <%= selectedLaboratory && selectedLaboratory.dependencia_id === unit.id ? 'selected' : 'hidden disabled' %>
+                  ><%= unit.nombre %></option>
+                <% }) %>
+                <% inventoryUnits.filter(function(unit) {
+                  return unit.facultad_id === null && laboratories.some(function(laboratory) {
+                    return laboratory.facultad_id === unit.id && !laboratory.dependencia_id;
+                  });
+                }).forEach(function(unit) { %>
+                  <option
+                    value="direct-<%= unit.id %>"
+                    data-faculty-id="<%= unit.id %>"
+                    data-direct-labs="true"
+                    <%= selectedLaboratory && !selectedLaboratory.dependencia_id && selectedLaboratory.facultad_id === unit.id ? 'selected' : 'hidden disabled' %>
+                  >Sin dependencia (laboratorios directos de la facultad)</option>
+                <% }) %>
+              </select>
+            </div>
+          <% } %>
+          <div class="<%= showDependencyFilter ? 'col-md-4' : 'col-md-8' %>">
+            <label for="ual_id" class="form-label">
+              <%= isGlobalInventoryViewer ? 'Laboratorio' : 'Laboratorio asignado' %>
+            </label>
+            <select id="ual_id" name="ual_id" class="form-select" required disabled>
+              <option value="">Selecciona primero una dependencia</option>
+              <% laboratories.forEach(function(laboratory) { %>
+                <option
+                  value="<%= laboratory.ual_id %>"
+                  data-faculty-id="<%= laboratory.facultad_id %>"
+                  data-dependency-id="<%= laboratory.dependencia_id || '' %>"
+                  <%= selectedLaboratory && selectedLaboratory.ual_id === laboratory.ual_id ? 'selected' : 'hidden disabled' %>
+                >
+                  <%= laboratory.nombre %> — <%= [laboratory.facultad, laboratory.dependencia].filter(Boolean).join(' / ') %>
+                </option>
+              <% }) %>
+            </select>
+          </div>
+          <% if (panel) { %>
+            <input type="hidden" name="panel" value="<%= panel %>">
+          <% } %>
+          <div class="col-md-4">
+            <button class="btn btn-perso" type="submit" disabled>Consultar laboratorio</button>
+          </div>
+        </form>
+        <% if (selectedLaboratory) { %>
+          <div class="alert alert-info mt-3 mb-0">
+            <% if (selectedLaboratory.coordinador_encargado_documento) { %>
+              <strong>Coordinador encargado:</strong>
+              <%= selectedLaboratory.coordinador_encargado_nombre %>
+              (<%= selectedLaboratory.coordinador_encargado_documento %>).
+              Las siguientes cargas solo se envían a este coordinador.
+            <% } else { %>
+              El coordinador que apruebe la primera carga quedará registrado como encargado del laboratorio.
+            <% } %>
+          </div>
+        <% } %>
+        <% if (!laboratories.length) { %>
+          <div class="alert alert-info mt-3 mb-0">
+            <%= isGlobalInventoryViewer
+              ? 'No hay laboratorios activos con laboratorista y coordinador asignados disponibles para consulta.'
+              : 'No tienes laboratorios dentro de tu alcance con laboratorista y coordinador activos asignados.' %>
+          </div>
+        <% } %>
+      </div>
+    </section>
+  <% } %>
+
+  <% if (showLaboratoryCardsLayout && selectedLaboratory) { %>
+    <div class="alert alert-info mb-4">
+      <% if (selectedLaboratory.coordinador_encargado_documento) { %>
+        <strong>Coordinador encargado:</strong>
+        <%= selectedLaboratory.coordinador_encargado_nombre %>
+        (<%= selectedLaboratory.coordinador_encargado_documento %>).
+        Las siguientes cargas solo se envían a este coordinador.
+      <% } else { %>
+        El coordinador que apruebe la primera carga quedará registrado como encargado del laboratorio.
       <% } %>
     </div>
-  </section>
+  <% } %>
 
   <% if (selectedLaboratory && !panel) { %>
     <section class="mb-4" aria-labelledby="inventoryPanelsTitle">
-      <div class="mb-3">
-        <h2 id="inventoryPanelsTitle" class="h4 mb-1">Inventarios de <%= selectedLaboratory.nombre %></h2>
-        <p class="text-muted mb-0">Selecciona una ficha para consultar sus registros y acciones.</p>
+      <div class="inventory-laboratory-card p-3 mb-3">
+        <h2 id="inventoryPanelsTitle" class="h3 mb-1"><%= selectedLaboratory.nombre %></h2>
+        <p class="inventory-laboratory-card__meta mb-0"><%= [selectedLaboratory.facultad, selectedLaboratory.dependencia].filter(Boolean).join(' · ') %></p>
       </div>
       <div class="row g-3">
         <% statuses.forEach(function(status) { %>
           <% const statusVisual = getInventoryStatusVisual(status.estado); %>
-          <div class="col-md-6 col-xl-3">
+          <% const percent = inventoryStatusPercent(status); %>
+          <% const semaphore = getSemaphoreVisual(resolveSemaphoreColor(percent, status.hasRealData || percent > 0)); %>
+          <div class="col-md-6">
             <a
               class="card app-table-panel h-100 inventory-menu-card"
               href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=<%= status.tipo_inventario %>"
             >
-              <div class="card-body d-flex flex-column gap-3">
+              <div class="card-body d-flex flex-column gap-2">
                 <div class="d-flex justify-content-between align-items-start gap-2">
-                  <h3 class="h5 mb-0"><%= status.etiqueta %></h3>
-                  <span class="badge rounded-pill <%= statusVisual.badge %>">
-                    <i class="bi <%= statusVisual.icon %> me-1" aria-hidden="true"></i>
-                    <%= statusVisual.label %>
-                  </span>
+                  <h3 class="h4 mb-0"><%= status.etiqueta %></h3>
+                  <span class="<%= semaphore.badge %>"><span class="<%= semaphore.dot %>"></span><%= statusVisual.label %></span>
                 </div>
-                <% if (status.tipo_inventario === 'reactivo' && status.estado === 'opcional') { %>
-                  <p class="mb-0">Opcional — este laboratorio no ha declarado reactivos.</p>
-                <% } else if (status.sin_inventario && status.estado === 'aprobado') { %>
-                  <p class="mb-0">Declaración de inventario complementario aprobada.</p>
-                <% } else if (status.estado === 'previsualizada') { %>
-                  <p class="mb-0">Hay una carga leída pendiente de envío al coordinador.</p>
-                <% } else if (status.bloqueado && status.estado === 'pendiente_aprobacion') { %>
-                  <p class="mb-0">Carga enviada; pendiente de aprobación.</p>
-                <% } else if (status.estado === 'devuelta') { %>
-                  <p class="mb-0">El coordinador la devolvió para corrección; puedes reemplazar el archivo.</p>
-                <% } else { %>
-                  <p class="mb-0">Estado: <strong><%= status.estado.replaceAll('_', ' ') %></strong></p>
-                <% } %>
-                <div class="mt-auto">
-                  <div class="inventory-menu-card__count"><%= status.elementos_aprobados %></div>
-                  <small>registros aprobados</small>
-                </div>
-                <span class="btn btn-outline-primary align-self-start">Ver inventario</span>
+                <div class="display-6 fw-semibold"><%= percent %>%</div>
+                <p class="mb-0 text-muted"><%= status.elementos_aprobados %> registros aprobados</p>
+                <span class="btn btn-outline-secondary mt-auto">Ver inventario</span>
               </div>
             </a>
           </div>
         <% }) %>
-        <div class="col-md-6 col-xl-3">
-          <% const attentionLoadCount = recentLoads.filter(function(load) {
-            return ['previsualizada', 'devuelta'].includes(load.estado);
-          }).length; %>
+        <div class="col-md-6">
+          <% const recentCount = recentLoads.length; %>
+          <% const recentPercent = recentCount > 0 ? 100 : 0; %>
+          <% const recentSemaphore = getSemaphoreVisual(resolveSemaphoreColor(recentPercent, recentCount > 0)); %>
           <a
             class="card app-table-panel h-100 inventory-menu-card"
             href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=recent"
           >
-            <div class="card-body d-flex flex-column gap-3">
+            <div class="card-body d-flex flex-column gap-2">
               <div class="d-flex justify-content-between align-items-start gap-2">
-                <h3 class="h5 mb-0">Cargas recientes</h3>
-                <span class="badge rounded-pill <%= attentionLoadCount ? 'text-bg-warning' : 'text-bg-info' %>">
-                  <i class="bi <%= attentionLoadCount ? 'bi-exclamation-triangle-fill' : 'bi-clock-history' %> me-1" aria-hidden="true"></i>
-                  <%= attentionLoadCount
-                    ? `${attentionLoadCount} ${attentionLoadCount === 1 ? 'requiere' : 'requieren'} atención`
-                    : 'Historial' %>
-                </span>
+                <h3 class="h4 mb-0">Cargas recientes</h3>
+                <span class="<%= recentSemaphore.badge %>"><span class="<%= recentSemaphore.dot %>"></span><%= recentCount > 0 ? 'Historial' : 'Sin cargas' %></span>
               </div>
-              <p class="mb-0">Consulta los archivos y declaraciones enviados para este laboratorio.</p>
-              <div class="mt-auto">
-                <div class="inventory-menu-card__count"><%= recentLoads.length %></div>
-                <small>cargas recientes</small>
-              </div>
-              <span class="btn btn-outline-primary align-self-start">Ver cargas</span>
+              <div class="display-6 fw-semibold"><%= recentCount %></div>
+              <p class="mb-0 text-muted">Cargas registradas</p>
+              <span class="btn btn-outline-secondary mt-auto">Ver cargas</span>
             </div>
           </a>
         </div>

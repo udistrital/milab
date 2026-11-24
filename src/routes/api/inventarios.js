@@ -1158,6 +1158,122 @@ function getInventoryIdentifiers(inventory) {
   ];
 }
 
+function buildInventoryStatuses(req, statusRows, pendingRows, countRows, latestLoadsByTypeRows) {
+  const statusByType = new Map(statusRows.map((status) => [status.tipo_inventario, status]));
+  const activeLoadsByType = new Map();
+  pendingRows.forEach((load) => {
+    const activeLoads = activeLoadsByType.get(load.tipo_inventario) || {
+      cargasPendientes: 0,
+      cargaPrevisualizada: null,
+      cargaDevuelta: null,
+    };
+    if (load.estado === 'pendiente_aprobacion') {
+      activeLoads.cargasPendientes += 1;
+    } else if (load.estado === 'previsualizada' && !activeLoads.cargaPrevisualizada) {
+      activeLoads.cargaPrevisualizada = load;
+    } else if (load.estado === 'devuelta' && !activeLoads.cargaDevuelta) {
+      activeLoads.cargaDevuelta = load;
+    }
+    activeLoadsByType.set(load.tipo_inventario, activeLoads);
+  });
+  const countByType = new Map(
+    countRows.map((status) => [status.tipo_inventario, status.elementos_aprobados])
+  );
+  const latestLoadByType = new Map(
+    latestLoadsByTypeRows.map((load) => [load.tipo_inventario, load])
+  );
+
+  return INVENTORY_ALL_TYPES.map((type) => {
+    const savedStatus = statusByType.get(type);
+    const activeLoads = activeLoadsByType.get(type) || {};
+    const hasPendingApproval =
+      activeLoads.cargasPendientes > 0 || savedStatus?.estado === 'pendiente_aprobacion';
+    const hasPendingPreview = Boolean(activeLoads.cargaPrevisualizada);
+    const hasReturnedLoad = Boolean(activeLoads.cargaDevuelta) || savedStatus?.estado === 'devuelta';
+    const canReplaceReturnedLoad =
+      isAdmin(req) ||
+      (isLaboratorista(req) &&
+        activeLoads.cargaDevuelta?.creada_por_documento === getUserDocument(req));
+    const estado = hasPendingApproval
+      ? 'pendiente_aprobacion'
+      : hasPendingPreview
+        ? 'previsualizada'
+        : hasReturnedLoad
+          ? 'devuelta'
+          : savedStatus?.estado || 'pendiente';
+    const elementosAprobados = Number(countByType.get(type) || 0);
+    const latestLoad = latestLoadByType.get(type);
+    const totalFilas = Number(latestLoad?.total_filas || 0);
+    const filasExitosas = Number(latestLoad?.filas_exitosas || 0);
+    const progreso = estado === 'aprobado' || estado === 'opcional'
+      ? 100
+      : elementosAprobados > 0
+        ? 100
+        : totalFilas > 0
+          ? Math.max(0, Math.min(99, Math.round((filasExitosas / totalFilas) * 100)))
+          : 0;
+    const hasRealData =
+      Boolean(savedStatus) ||
+      Boolean(latestLoad) ||
+      elementosAprobados > 0 ||
+      Boolean(activeLoads.cargasPendientes) ||
+      Boolean(activeLoads.cargaPrevisualizada) ||
+      Boolean(activeLoads.cargaDevuelta);
+
+    return {
+      tipo_inventario: type,
+      etiqueta: INVENTORY_LABELS[type],
+      estado,
+      sin_inventario: savedStatus?.sin_inventario || false,
+      elementos_aprobados: elementosAprobados,
+      carga_previsualizada_id: activeLoads.cargaPrevisualizada?.id || null,
+      carga_devuelta_id: canReplaceReturnedLoad
+        ? activeLoads.cargaDevuelta?.id ||
+          (savedStatus?.estado === 'devuelta' ? savedStatus.carga_id : null)
+        : null,
+      bloqueado:
+        hasPendingPreview ||
+        hasPendingApproval ||
+        savedStatus?.estado === 'aprobado' ||
+        (hasReturnedLoad && !canReplaceReturnedLoad),
+      progreso,
+      hasRealData,
+    };
+  });
+}
+
+function mapSemaphore(progress, hasData) {
+  if (!hasData) return { color: 'gris', label: 'Sin iniciar' };
+  if (progress >= 100) return { color: 'verde', label: 'Completo' };
+  if (progress >= 50) return { color: 'amarillo', label: 'En proceso' };
+  return { color: 'rojo', label: 'Pendiente' };
+}
+
+function buildLaboratoryCard(laboratory, statuses, recentLoadCount) {
+  const statusByType = new Map(statuses.map((status) => [status.tipo_inventario, status]));
+  const componentProgress = [
+    statusByType.get(INVENTORY_TYPES.ARKA_EQUIPMENT)?.progreso || 0,
+    statusByType.get(INVENTORY_TYPES.COMPLEMENTARY)?.progreso || 0,
+    statusByType.get(INVENTORY_TYPES.REAGENT)?.progreso || 0,
+    recentLoadCount > 0 ? 100 : 0,
+  ];
+  const completedComponents = componentProgress.filter((progress) => progress >= 100).length;
+  const totalComponents = componentProgress.length;
+  const progress = Math.round(
+    componentProgress.reduce((accumulator, value) => accumulator + value, 0) / totalComponents
+  );
+  const hasData =
+    recentLoadCount > 0 || statuses.some((status) => status.hasRealData || status.progreso > 0);
+  return {
+    ...laboratory,
+    progress,
+    completedComponents,
+    totalComponents,
+    pendingComponents: totalComponents - completedComponents,
+    semaphore: mapSemaphore(progress, hasData),
+  };
+}
+
 async function insertInventoryIdentifiers(client, inventoryId, ualId, identifiers) {
   for (const identifier of identifiers) {
     await client.query(
@@ -1188,58 +1304,115 @@ async function getManagementContext(client, req, selectedUalId) {
   let coordinators = [];
   let inventoryItems = [];
   let inventorySummary = null;
-  let statuses = INVENTORY_ALL_TYPES.map((type) => ({
-    tipo_inventario: type,
-    etiqueta: INVENTORY_LABELS[type],
-    estado: type === INVENTORY_TYPES.REAGENT ? 'opcional' : 'pendiente',
-    sin_inventario: false,
-    elementos_aprobados: 0,
-    carga_previsualizada_id: null,
-  }));
+  let statuses = buildInventoryStatuses(req, [], [], [], []);
+  let laboratoryCards = [];
   let recentLoads = [];
+  const laboratoryIds = laboratories.map((laboratory) => Number(laboratory.ual_id)).filter(Boolean);
+  const statusesByLaboratory = new Map();
+  const recentCountByLaboratory = new Map();
+
+  if (laboratoryIds.length) {
+    const [statusResult, pendingResult, countResult, latestLoadByTypeResult, recentCountResult] =
+      await Promise.all([
+        client.query(
+          `
+            SELECT ual_id, tipo_inventario, estado, sin_inventario, carga_id
+            FROM inventario_estado_laboratorio
+            WHERE ual_id = ANY($1::int[])
+          `,
+          [laboratoryIds]
+        ),
+        client.query(
+          `
+            SELECT DISTINCT ON (ual_id, tipo_inventario, estado)
+              id, ual_id, tipo_inventario, estado, creada_por_documento
+            FROM inventario_carga
+            WHERE ual_id = ANY($1::int[])
+              AND estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta')
+            ORDER BY ual_id, tipo_inventario, estado, fecha_creacion DESC, id DESC
+          `,
+          [laboratoryIds]
+        ),
+        client.query(
+          `
+            SELECT laboratorio_ual_id AS ual_id, tipo_inventario, COUNT(*)::int AS elementos_aprobados
+            FROM inventario
+            WHERE laboratorio_ual_id = ANY($1::int[])
+              AND tipo_inventario <> 'legado'
+              AND estado_aprobacion = 'aprobado'
+            GROUP BY laboratorio_ual_id, tipo_inventario
+          `,
+          [laboratoryIds]
+        ),
+        client.query(
+          `
+            SELECT DISTINCT ON (ual_id, tipo_inventario)
+              ual_id,
+              tipo_inventario,
+              estado,
+              total_filas,
+              filas_exitosas
+            FROM inventario_carga
+            WHERE ual_id = ANY($1::int[])
+            ORDER BY ual_id, tipo_inventario, fecha_creacion DESC, id DESC
+          `,
+          [laboratoryIds]
+        ),
+        client.query(
+          `
+            SELECT ual_id, COUNT(*)::int AS total_cargas
+            FROM inventario_carga
+            WHERE ual_id = ANY($1::int[])
+            GROUP BY ual_id
+          `,
+          [laboratoryIds]
+        ),
+      ]);
+
+    const rowsForLaboratory = (rows, ualId) =>
+      rows.filter((row) =>
+        row.ual_id === undefined || row.ual_id === null
+          ? laboratoryIds.length === 1
+          : Number(row.ual_id) === ualId
+      );
+
+    laboratoryIds.forEach((ualId) => {
+      const statusRows = rowsForLaboratory(statusResult.rows, ualId);
+      const pendingRows = rowsForLaboratory(pendingResult.rows, ualId);
+      const countRows = rowsForLaboratory(countResult.rows, ualId);
+      const latestLoadRows = rowsForLaboratory(latestLoadByTypeResult.rows, ualId);
+      const laboratoryStatuses = buildInventoryStatuses(
+        req,
+        statusRows,
+        pendingRows,
+        countRows,
+        latestLoadRows
+      );
+      statusesByLaboratory.set(ualId, laboratoryStatuses);
+    });
+
+    recentCountResult.rows.forEach((row) => {
+      recentCountByLaboratory.set(Number(row.ual_id), Number(row.total_cargas || 0));
+    });
+
+    laboratoryCards = laboratories.map((laboratory) =>
+      buildLaboratoryCard(
+        laboratory,
+        statusesByLaboratory.get(Number(laboratory.ual_id)) || buildInventoryStatuses(req, [], [], [], []),
+        recentCountByLaboratory.get(Number(laboratory.ual_id)) || 0
+      )
+    );
+  }
 
   if (selectedLaboratory) {
     const panel = String(req.query.panel || '');
     const filterType = INVENTORY_ALL_TYPES.includes(panel) ? panel : null;
     coordinators = await getCoordinatorsForLaboratory(client, selectedLaboratory.ual_id);
     const [
-      statusResult,
-      pendingResult,
-      countResult,
       itemResult,
       loadResult,
       inventorySummaryResult,
     ] = await Promise.all([
-      client.query(
-        `
-          SELECT tipo_inventario, estado, sin_inventario, carga_id
-          FROM inventario_estado_laboratorio
-          WHERE ual_id = $1
-        `,
-        [selectedLaboratory.ual_id]
-      ),
-      client.query(
-        `
-          SELECT DISTINCT ON (tipo_inventario, estado)
-            id, tipo_inventario, estado, creada_por_documento
-          FROM inventario_carga
-          WHERE ual_id = $1
-            AND estado IN ('previsualizada', 'pendiente_aprobacion', 'devuelta')
-          ORDER BY tipo_inventario, estado, fecha_creacion DESC, id DESC
-        `,
-        [selectedLaboratory.ual_id]
-      ),
-      client.query(
-        `
-          SELECT tipo_inventario, COUNT(*)::int AS elementos_aprobados
-          FROM inventario
-          WHERE laboratorio_ual_id = $1
-            AND tipo_inventario <> 'legado'
-            AND estado_aprobacion = 'aprobado'
-          GROUP BY tipo_inventario
-        `,
-        [selectedLaboratory.ual_id]
-      ),
       filterType
         ? client.query(
             `
@@ -1355,63 +1528,7 @@ async function getManagementContext(client, req, selectedUalId) {
           )
         : Promise.resolve({ rows: [] }),
     ]);
-    const statusByType = new Map(
-      statusResult.rows.map((status) => [status.tipo_inventario, status])
-    );
-    const activeLoadsByType = new Map();
-    pendingResult.rows.forEach((load) => {
-      const activeLoads = activeLoadsByType.get(load.tipo_inventario) || {
-        cargasPendientes: 0,
-        cargaPrevisualizada: null,
-        cargaDevuelta: null,
-      };
-      if (load.estado === 'pendiente_aprobacion') {
-        activeLoads.cargasPendientes += 1;
-      } else if (load.estado === 'previsualizada' && !activeLoads.cargaPrevisualizada) {
-        activeLoads.cargaPrevisualizada = load;
-      } else if (load.estado === 'devuelta' && !activeLoads.cargaDevuelta) {
-        activeLoads.cargaDevuelta = load;
-      }
-      activeLoadsByType.set(load.tipo_inventario, activeLoads);
-    });
-    const countByType = new Map(
-      countResult.rows.map((status) => [status.tipo_inventario, status.elementos_aprobados])
-    );
-    statuses = statuses.map((status) => {
-      const savedStatus = statusByType.get(status.tipo_inventario);
-      const activeLoads = activeLoadsByType.get(status.tipo_inventario) || {};
-      const hasPendingApproval =
-        activeLoads.cargasPendientes > 0 || savedStatus?.estado === 'pendiente_aprobacion';
-      const hasPendingPreview = Boolean(activeLoads.cargaPrevisualizada);
-      const hasReturnedLoad =
-        Boolean(activeLoads.cargaDevuelta) || savedStatus?.estado === 'devuelta';
-      const canReplaceReturnedLoad =
-        isAdmin(req) ||
-        (isLaboratorista(req) &&
-          activeLoads.cargaDevuelta?.creada_por_documento === getUserDocument(req));
-      return {
-        ...status,
-        estado: hasPendingApproval
-          ? 'pendiente_aprobacion'
-          : hasPendingPreview
-            ? 'previsualizada'
-            : hasReturnedLoad
-              ? 'devuelta'
-              : savedStatus?.estado || status.estado,
-        sin_inventario: savedStatus?.sin_inventario || false,
-        elementos_aprobados: countByType.get(status.tipo_inventario) || 0,
-        carga_previsualizada_id: activeLoads.cargaPrevisualizada?.id || null,
-        carga_devuelta_id: canReplaceReturnedLoad
-          ? activeLoads.cargaDevuelta?.id ||
-            (savedStatus?.estado === 'devuelta' ? savedStatus.carga_id : null)
-          : null,
-        bloqueado:
-          hasPendingPreview ||
-          hasPendingApproval ||
-          savedStatus?.estado === 'aprobado' ||
-          (hasReturnedLoad && !canReplaceReturnedLoad),
-      };
-    });
+    statuses = statusesByLaboratory.get(Number(selectedLaboratory.ual_id)) || statuses;
     inventoryItems = itemResult.rows;
     inventorySummary = inventorySummaryResult.rows[0] || null;
     recentLoads = loadResult.rows.map((load) => {
@@ -1443,6 +1560,7 @@ async function getManagementContext(client, req, selectedUalId) {
     inventoryItems,
     inventorySummary,
     statuses,
+    laboratoryCards,
     recentLoads,
   };
 }
@@ -1465,6 +1583,7 @@ function managementViewData(req, context, messages = {}) {
     isEditor: isAdmin(req) || isLaboratorista(req),
     isInventoryMaintainer: canManageApprovedInventory(req),
     isAdmin: isAdmin(req),
+    isLaboratorista: isLaboratorista(req),
     isGlobalInventoryViewer: isGlobalInventoryViewer(req),
     showDependencyFilter: isGlobalInventoryViewer(req) || isCoordinator(req),
   };
