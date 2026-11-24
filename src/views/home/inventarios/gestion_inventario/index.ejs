@@ -87,6 +87,22 @@
 
   .inventory-laboratory-card--compact {
     box-shadow: 0 4px 12px rgb(15 23 42 / 6%);
+    border-radius: 0.8rem;
+  }
+
+  .inventory-laboratory-card--compact .h4 {
+    font-size: 1.7rem;
+    line-height: 1.15;
+  }
+
+  .inventory-laboratory-card--compact .h1 {
+    font-size: 3rem;
+    line-height: 1;
+  }
+
+  .inventory-laboratory-card--compact .btn {
+    padding: 0.35rem 0.9rem;
+    font-size: 1.05rem;
   }
 
   .inventory-laboratory-card__meta {
@@ -495,13 +511,13 @@
       <% const completedLaboratories = laboratoryCards.filter(function(lab) { return lab.progress >= 100; }).length; %>
       <div class="row g-3 mb-3">
         <div class="col-md-6">
-          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-3 h-100">
+          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-2 h-100">
             <p class="mb-1 inventory-laboratory-card__meta">Asignados</p>
             <div class="h2 fw-bold mb-0"><%= laboratoryCards.length %></div>
           </article>
         </div>
         <div class="col-md-6">
-          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-3 h-100">
+          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-2 h-100">
             <p class="mb-1 inventory-laboratory-card__meta">Completos</p>
             <div class="h2 fw-bold text-success mb-0"><%= completedLaboratories %></div>
           </article>
@@ -512,7 +528,7 @@
           <div class="inventory-lab-carousel__viewport" data-carousel-viewport>
             <% laboratoryCards.forEach(function(laboratoryCard, cardIndex) { %>
               <% const semaphoreVisual = getSemaphoreVisual(laboratoryCard.semaphore.color); %>
-              <article class="inventory-laboratory-card inventory-laboratory-card--compact inventory-lab-carousel__slide p-3" data-carousel-slide data-carousel-index="<%= cardIndex %>">
+              <article class="inventory-laboratory-card inventory-laboratory-card--compact inventory-lab-carousel__slide p-2" data-carousel-slide data-carousel-index="<%= cardIndex %>">
                 <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
                   <div>
                     <h3 class="h4 mb-1"><%= laboratoryCard.nombre %></h3>
@@ -678,9 +694,6 @@
   <% } %>
 
   <% if (selectedLaboratory && !panel) { %>
-    <% const pendingStatuses = statuses.filter(function(status) {
-      return ['previsualizada', 'pendiente_aprobacion', 'devuelta', 'pendiente'].includes(status.estado) || Number(status.progreso || 0) < 100;
-    }); %>
     <% const summaryProgress = statuses.length
       ? Math.round(statuses.reduce(function(acc, status) { return acc + inventoryStatusPercent(status); }, 0) / statuses.length)
       : 0; %>
@@ -696,27 +709,14 @@
       <div class="inventory-detail-tabs">
         <ul class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist">
           <li class="nav-item" role="presentation">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#inventory-tab-summary" type="button" role="tab" aria-controls="inventory-tab-summary" aria-selected="true">Resumen</button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory-tab-components" type="button" role="tab" aria-controls="inventory-tab-components" aria-selected="false">Inventarios</button>
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#inventory-tab-components" type="button" role="tab" aria-controls="inventory-tab-components" aria-selected="true">Inventarios</button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory-tab-history" type="button" role="tab" aria-controls="inventory-tab-history" aria-selected="false">Historial de cargas</button>
           </li>
         </ul>
         <div class="tab-content">
-          <section class="tab-pane fade show active" id="inventory-tab-summary" role="tabpanel" tabindex="0">
-            <div class="inventory-laboratory-card p-3">
-              <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Avance general <%= summaryProgress %> por ciento">
-                <span class="inventory-progress-bar--<%= resolveSemaphoreColor(summaryProgress, true) %>" style="width: <%= summaryProgress %>%"></span>
-              </div>
-              <p class="inventory-laboratory-card__meta mb-0">
-                Componentes pendientes: <strong><%= pendingStatuses.length %></strong> de <strong><%= statuses.length %></strong>.
-              </p>
-            </div>
-          </section>
-          <section class="tab-pane fade" id="inventory-tab-components" role="tabpanel" tabindex="0">
+          <section class="tab-pane fade show active" id="inventory-tab-components" role="tabpanel" tabindex="0">
             <% const equipmentStatus = statuses.find(function(status) { return status.tipo_inventario === 'equipo_arka'; }); %>
             <% const complementaryStatus = statuses.find(function(status) { return status.tipo_inventario === 'complementario'; }); %>
             <% const reagentStatus = statuses.find(function(status) { return status.tipo_inventario === 'reactivo'; }); %>
