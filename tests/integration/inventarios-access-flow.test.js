@@ -209,8 +209,6 @@ test('inventory location selectors match each role and restore the selected UAL 
         assert.equal(unitsQuery, undefined);
         assert.doesNotMatch(html, /id="inventory-faculty"/);
         assert.doesNotMatch(html, /id="inventory-dependency"/);
-        assert.match(html, /Mis laboratorios/);
-        assert.match(html, /Gestionar laboratorio/);
       } else {
         assert.match(html, /id="inventory-faculty"/);
         assert.match(html, /id="inventory-dependency"/);

@@ -85,6 +85,10 @@
     box-shadow: 0 8px 20px rgb(15 23 42 / 6%);
   }
 
+  .inventory-laboratory-card--compact {
+    box-shadow: 0 4px 12px rgb(15 23 42 / 6%);
+  }
+
   .inventory-laboratory-card__meta {
     color: var(--app-text-muted, #6c757d);
   }
@@ -261,6 +265,18 @@
   .inventory-accordion .accordion-button:not(.collapsed) {
     color: inherit;
     background: #fff;
+  }
+
+  .inventory-accordion .accordion-button:disabled {
+    color: #98a2b3;
+    cursor: not-allowed;
+    background: #f8fafc;
+    opacity: 1;
+  }
+
+  .inventory-accordion .accordion-item.is-locked {
+    border-style: dashed;
+    opacity: 0.92;
   }
 
   .inventory-accordion__meta {
@@ -472,22 +488,22 @@
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
-  <% if (showLaboratoryCardsLayout) { %>
+  <% if (showLaboratoryCardsLayout && !selectedLaboratory) { %>
     <section class="mb-4">
       <h2 class="app-page-title h2 mb-2">Mis laboratorios</h2>
       <p class="app-page-subtitle mb-3">Consulta el estado de configuración de tus laboratorios asignados.</p>
       <% const completedLaboratories = laboratoryCards.filter(function(lab) { return lab.progress >= 100; }).length; %>
       <div class="row g-3 mb-3">
         <div class="col-md-6">
-          <article class="inventory-laboratory-card p-3 h-100">
+          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-3 h-100">
             <p class="mb-1 inventory-laboratory-card__meta">Asignados</p>
-            <div class="display-6 fw-bold"><%= laboratoryCards.length %></div>
+            <div class="h2 fw-bold mb-0"><%= laboratoryCards.length %></div>
           </article>
         </div>
         <div class="col-md-6">
-          <article class="inventory-laboratory-card p-3 h-100">
+          <article class="inventory-laboratory-card inventory-laboratory-card--compact p-3 h-100">
             <p class="mb-1 inventory-laboratory-card__meta">Completos</p>
-            <div class="display-6 fw-bold text-success"><%= completedLaboratories %></div>
+            <div class="h2 fw-bold text-success mb-0"><%= completedLaboratories %></div>
           </article>
         </div>
       </div>
@@ -496,18 +512,18 @@
           <div class="inventory-lab-carousel__viewport" data-carousel-viewport>
             <% laboratoryCards.forEach(function(laboratoryCard, cardIndex) { %>
               <% const semaphoreVisual = getSemaphoreVisual(laboratoryCard.semaphore.color); %>
-              <article class="inventory-laboratory-card inventory-lab-carousel__slide p-4" data-carousel-slide data-carousel-index="<%= cardIndex %>">
+              <article class="inventory-laboratory-card inventory-laboratory-card--compact inventory-lab-carousel__slide p-3" data-carousel-slide data-carousel-index="<%= cardIndex %>">
                 <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
                   <div>
-                    <h3 class="h3 mb-1"><%= laboratoryCard.nombre %></h3>
-                    <p class="mb-0 inventory-laboratory-card__meta">
+                    <h3 class="h4 mb-1"><%= laboratoryCard.nombre %></h3>
+                    <p class="mb-1 inventory-laboratory-card__meta">
                       <%= [laboratoryCard.facultad, laboratoryCard.dependencia].filter(Boolean).join(' · ') || 'Sin dependencia registrada' %>
                     </p>
                   </div>
                   <span class="<%= semaphoreVisual.badge %>"><span class="<%= semaphoreVisual.dot %>"></span><%= laboratoryCard.semaphore.label %></span>
                 </div>
                 <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
-                  <strong class="display-6 mb-0"><%= laboratoryCard.progress %>%</strong>
+                  <strong class="h1 mb-0"><%= laboratoryCard.progress %>%</strong>
                   <span class="inventory-laboratory-card__meta"><%= laboratoryCard.completedComponents %> de <%= laboratoryCard.totalComponents %> componentes</span>
                 </div>
                 <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Progreso <%= laboratoryCard.progress %> por ciento">
@@ -547,6 +563,7 @@
           No tienes laboratorios dentro de tu alcance con laboratorista y coordinador activos asignados.
         </div>
       <% } %>
+
     </section>
   <% } else { %>
     <section class="card app-form-panel text-light mb-4">
@@ -639,6 +656,15 @@
   <% } %>
 
   <% if (showLaboratoryCardsLayout && selectedLaboratory) { %>
+    <div class="d-flex justify-content-end mb-3">
+      <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario">
+        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>
+        Volver a Mis laboratorios
+      </a>
+    </div>
+  <% } %>
+
+  <% if (showLaboratoryCardsLayout && selectedLaboratory) { %>
     <div class="alert alert-info mb-4">
       <% if (selectedLaboratory.coordinador_encargado_documento) { %>
         <strong>Coordinador encargado:</strong>
@@ -652,17 +678,21 @@
   <% } %>
 
   <% if (selectedLaboratory && !panel) { %>
+    <% const pendingStatuses = statuses.filter(function(status) {
+      return ['previsualizada', 'pendiente_aprobacion', 'devuelta', 'pendiente'].includes(status.estado) || Number(status.progreso || 0) < 100;
+    }); %>
+    <% const summaryProgress = statuses.length
+      ? Math.round(statuses.reduce(function(acc, status) { return acc + inventoryStatusPercent(status); }, 0) / statuses.length)
+      : 0; %>
+    <% const summarySemaphore = getSemaphoreVisual(resolveSemaphoreColor(summaryProgress, statuses.some(function(status) { return status.hasRealData || status.progreso > 0; }))); %>
     <section class="mb-4" aria-labelledby="inventoryPanelsTitle">
       <div class="inventory-laboratory-card p-3 mb-3">
-        <h2 id="inventoryPanelsTitle" class="h3 mb-1"><%= selectedLaboratory.nombre %></h2>
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-1">
+          <h2 id="inventoryPanelsTitle" class="h3 mb-0"><%= selectedLaboratory.nombre %></h2>
+          <span class="<%= summarySemaphore.badge %>"><span class="<%= summarySemaphore.dot %>"></span><%= summaryProgress %>%</span>
+        </div>
         <p class="inventory-laboratory-card__meta mb-0"><%= [selectedLaboratory.facultad, selectedLaboratory.dependencia].filter(Boolean).join(' · ') %></p>
       </div>
-      <% const pendingStatuses = statuses.filter(function(status) {
-        return ['previsualizada', 'pendiente_aprobacion', 'devuelta', 'pendiente'].includes(status.estado) || Number(status.progreso || 0) < 100;
-      }); %>
-      <% const summaryProgress = statuses.length
-        ? Math.round(statuses.reduce(function(acc, status) { return acc + inventoryStatusPercent(status); }, 0) / statuses.length)
-        : 0; %>
       <div class="inventory-detail-tabs">
         <ul class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist">
           <li class="nav-item" role="presentation">
@@ -677,12 +707,7 @@
         </ul>
         <div class="tab-content">
           <section class="tab-pane fade show active" id="inventory-tab-summary" role="tabpanel" tabindex="0">
-            <div class="inventory-laboratory-card p-4">
-              <% const summarySemaphore = getSemaphoreVisual(resolveSemaphoreColor(summaryProgress, statuses.some(function(status) { return status.hasRealData || status.progreso > 0; }))); %>
-              <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-2">
-                <h3 class="h4 mb-0">Avance general del laboratorio</h3>
-                <span class="<%= summarySemaphore.badge %>"><span class="<%= summarySemaphore.dot %>"></span><%= summaryProgress %>%</span>
-              </div>
+            <div class="inventory-laboratory-card p-3">
               <div class="inventory-laboratory-card__progress mb-2" role="img" aria-label="Avance general <%= summaryProgress %> por ciento">
                 <span class="inventory-progress-bar--<%= resolveSemaphoreColor(summaryProgress, true) %>" style="width: <%= summaryProgress %>%"></span>
               </div>
@@ -692,22 +717,45 @@
             </div>
           </section>
           <section class="tab-pane fade" id="inventory-tab-components" role="tabpanel" tabindex="0">
-            <% const expandedIndex = statuses.findIndex(function(status) { return ['devuelta', 'previsualizada', 'pendiente_aprobacion', 'pendiente'].includes(status.estado); }); %>
+            <% const equipmentStatus = statuses.find(function(status) { return status.tipo_inventario === 'equipo_arka'; }); %>
+            <% const complementaryStatus = statuses.find(function(status) { return status.tipo_inventario === 'complementario'; }); %>
+            <% const reagentStatus = statuses.find(function(status) { return status.tipo_inventario === 'reactivo'; }); %>
+            <% const equipmentCompleted = equipmentStatus
+              ? Number(equipmentStatus.progreso || 0) >= 100 || ['aprobado', 'pendiente_aprobacion'].includes(equipmentStatus.estado)
+              : true; %>
+            <% const complementaryCompleted = complementaryStatus
+              ? Number(complementaryStatus.progreso || 0) >= 100 || ['aprobado', 'pendiente_aprobacion'].includes(complementaryStatus.estado)
+              : true; %>
+            <% const reagentCompleted = reagentStatus
+              ? Number(reagentStatus.progreso || 0) >= 100 || ['aprobado', 'opcional', 'pendiente_aprobacion'].includes(reagentStatus.estado)
+              : true; %>
+            <% function isUnlocked(status) {
+              if (status.tipo_inventario === 'equipo_arka') return true;
+              if (status.tipo_inventario === 'complementario') return equipmentCompleted;
+              if (status.tipo_inventario === 'reactivo') return equipmentCompleted && complementaryCompleted;
+              return equipmentCompleted && complementaryCompleted && reagentCompleted;
+            } %>
+            <% const expandedIndex = statuses.findIndex(function(status) {
+              return isUnlocked(status) && ['devuelta', 'previsualizada', 'pendiente_aprobacion', 'pendiente'].includes(status.estado);
+            }); %>
             <div class="accordion inventory-accordion" id="inventoryComponentsAccordion">
               <% statuses.forEach(function(status, index) { %>
                 <% const statusVisual = getInventoryStatusVisual(status.estado); %>
                 <% const percent = inventoryStatusPercent(status); %>
                 <% const semaphore = getSemaphoreVisual(resolveSemaphoreColor(percent, status.hasRealData || percent > 0)); %>
-                <% const expanded = index === (expandedIndex >= 0 ? expandedIndex : 0); %>
-                <article class="accordion-item mb-3">
+                <% const unlocked = isUnlocked(status); %>
+                <% const fallbackExpanded = statuses.findIndex(function(candidate) { return isUnlocked(candidate); }); %>
+                <% const expanded = unlocked && index === (expandedIndex >= 0 ? expandedIndex : fallbackExpanded); %>
+                <article class="accordion-item mb-3 <%= unlocked ? '' : 'is-locked' %>">
                   <h3 class="accordion-header" id="heading-<%= status.tipo_inventario %>">
                     <button
                       class="accordion-button <%= expanded ? '' : 'collapsed' %>"
                       type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#collapse-<%= status.tipo_inventario %>"
+                      <%= unlocked ? 'data-bs-toggle="collapse"' : '' %>
+                      <%= unlocked ? `data-bs-target="#collapse-${status.tipo_inventario}"` : '' %>
                       aria-expanded="<%= expanded ? 'true' : 'false' %>"
                       aria-controls="collapse-<%= status.tipo_inventario %>"
+                      <%= unlocked ? '' : 'disabled' %>
                     >
                       <span class="d-flex flex-column gap-1 w-100 pe-3">
                         <span class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -715,7 +763,7 @@
                           <span class="<%= semaphore.badge %>"><span class="<%= semaphore.dot %>"></span><%= statusVisual.label %></span>
                         </span>
                         <span class="inventory-accordion__summary">
-                          <span class="inventory-accordion__meta">Activación: <strong><%= status.bloqueado ? 'Restringida' : 'Disponible' %></strong></span>
+                          <span class="inventory-accordion__meta">Activación: <strong><%= unlocked ? (status.bloqueado ? 'Restringida' : 'Disponible') : 'Bloqueada' %></strong></span>
                           <span class="inventory-accordion__meta">Cumplimiento: <strong><%= percent %>%</strong></span>
                           <span class="inventory-accordion__meta">Registros aprobados: <strong><%= status.elementos_aprobados %></strong></span>
                         </span>
@@ -729,6 +777,9 @@
                     data-bs-parent="#inventoryComponentsAccordion"
                   >
                     <div class="accordion-body">
+                      <% if (!unlocked) { %>
+                        <p class="mb-2">Completa el componente anterior para habilitar esta sección.</p>
+                      <% } else { %>
                       <p class="mb-2">
                         <% if (status.tipo_inventario === 'reactivo' && status.estado === 'opcional') { %>
                           Opcional. Este laboratorio no ha declarado reactivos.
@@ -744,9 +795,10 @@
                           Consulta y gestiona este componente de inventario.
                         <% } %>
                       </p>
+                      <% } %>
                       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <span class="inventory-accordion__meta">Estado de declaraciones y registros actualizado con la última carga del laboratorio.</span>
-                        <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=<%= status.tipo_inventario %>">
+                        <span class="inventory-accordion__meta"><%= unlocked ? 'Estado de declaraciones y registros actualizado con la última carga del laboratorio.' : 'Secuencia guiada de diligenciamiento.' %></span>
+                        <a class="btn btn-outline-secondary <%= unlocked ? '' : 'disabled' %>" <%= unlocked ? `href="/milab/inventarios/gestion_inventario?ual_id=${selectedLaboratory.ual_id}&panel=${status.tipo_inventario}"` : 'aria-disabled="true"' %>>
                           Continuar
                         </a>
                       </div>
