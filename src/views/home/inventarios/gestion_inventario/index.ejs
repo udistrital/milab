@@ -307,6 +307,17 @@
     gap: 0.4rem 0.8rem;
   }
 
+  .inventory-inline-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .inventory-inline-actions .btn {
+    width: auto !important;
+    white-space: nowrap;
+  }
+
   @media (min-width: 768px) {
     .inventory-lab-carousel__slide {
       flex-basis: calc((100% - 1rem) / 2);
@@ -644,13 +655,15 @@
           <% if (panel) { %>
             <input type="hidden" name="panel" value="<%= panel %>">
           <% } %>
-          <div class="col-md-4 d-flex flex-wrap gap-2">
+          <div class="col-md-4">
+            <div class="inventory-inline-actions">
             <button class="btn btn-perso" type="submit" disabled>Consultar laboratorio</button>
             <% if (selectedLaboratory) { %>
               <a class="btn btn-danger" href="/milab/inventarios/gestion_inventario">
                 Volver a Mis laboratorios
               </a>
             <% } %>
+            </div>
           </div>
         </form>
         <% if (!laboratories.length) { %>
