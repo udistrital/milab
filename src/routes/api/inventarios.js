@@ -1189,7 +1189,8 @@ function buildInventoryStatuses(req, statusRows, pendingRows, countRows, latestL
     const hasPendingApproval =
       activeLoads.cargasPendientes > 0 || savedStatus?.estado === 'pendiente_aprobacion';
     const hasPendingPreview = Boolean(activeLoads.cargaPrevisualizada);
-    const hasReturnedLoad = Boolean(activeLoads.cargaDevuelta) || savedStatus?.estado === 'devuelta';
+    const hasReturnedLoad =
+      Boolean(activeLoads.cargaDevuelta) || savedStatus?.estado === 'devuelta';
     const canReplaceReturnedLoad =
       isAdmin(req) ||
       (isLaboratorista(req) &&
@@ -1205,13 +1206,14 @@ function buildInventoryStatuses(req, statusRows, pendingRows, countRows, latestL
     const latestLoad = latestLoadByType.get(type);
     const totalFilas = Number(latestLoad?.total_filas || 0);
     const filasExitosas = Number(latestLoad?.filas_exitosas || 0);
-    const progreso = estado === 'aprobado' || estado === 'opcional'
-      ? 100
-      : elementosAprobados > 0
+    const progreso =
+      estado === 'aprobado' || estado === 'opcional'
         ? 100
-        : totalFilas > 0
-          ? Math.max(0, Math.min(99, Math.round((filasExitosas / totalFilas) * 100)))
-          : 0;
+        : elementosAprobados > 0
+          ? 100
+          : totalFilas > 0
+            ? Math.max(0, Math.min(99, Math.round((filasExitosas / totalFilas) * 100)))
+            : 0;
     const hasRealData =
       Boolean(savedStatus) ||
       Boolean(latestLoad) ||
@@ -1398,7 +1400,8 @@ async function getManagementContext(client, req, selectedUalId) {
     laboratoryCards = laboratories.map((laboratory) =>
       buildLaboratoryCard(
         laboratory,
-        statusesByLaboratory.get(Number(laboratory.ual_id)) || buildInventoryStatuses(req, [], [], [], []),
+        statusesByLaboratory.get(Number(laboratory.ual_id)) ||
+          buildInventoryStatuses(req, [], [], [], []),
         recentCountByLaboratory.get(Number(laboratory.ual_id)) || 0
       )
     );
@@ -1408,11 +1411,7 @@ async function getManagementContext(client, req, selectedUalId) {
     const panel = String(req.query.panel || '');
     const filterType = INVENTORY_ALL_TYPES.includes(panel) ? panel : null;
     coordinators = await getCoordinatorsForLaboratory(client, selectedLaboratory.ual_id);
-    const [
-      itemResult,
-      loadResult,
-      inventorySummaryResult,
-    ] = await Promise.all([
+    const [itemResult, loadResult, inventorySummaryResult] = await Promise.all([
       filterType
         ? client.query(
             `
