@@ -382,6 +382,36 @@ test('complementary declaration requires explicit checkbox confirmation', async 
     },
   });
 
+  test('reactive declaration requires explicit checkbox confirmation', async () => {
+    let queryCalls = 0;
+    const loaded = loadInventoryRoute({
+      pool: {
+        async query() {
+          queryCalls += 1;
+          return { rows: [] };
+        },
+        async connect() {
+          throw new Error('A missing declaration checkbox must not reach the database');
+        },
+      },
+    });
+
+    try {
+      const response = await request(loaded.app)
+        .post('/declarar-sin-reactivos')
+        .type('form')
+        .send({ ual_id: '1', coordinador_documento: 'coord-1' });
+
+      assert.equal(response.status, 302);
+      const redirectUrl = new URL(response.headers.location, 'http://localhost');
+      assert.equal(redirectUrl.searchParams.get('panel'), 'reactivo');
+      assert.match(redirectUrl.searchParams.get('error'), /marca la casilla/i);
+      assert.equal(queryCalls, 0);
+    } finally {
+      loaded.restore();
+    }
+  });
+
   try {
     const response = await request(loaded.app)
       .post('/declarar-sin-complementarios')
@@ -445,6 +475,42 @@ test('complementary declaration is sent after the checkbox is confirmed', async 
         return clientHarness.client;
       },
     },
+  });
+
+  test('reactive declaration is sent after the checkbox is confirmed', async () => {
+    const clientHarness = createTransactionClient((sql) => {
+      if (sql.includes('SELECT DISTINCT c.documento, c.nombre')) {
+        return { rows: [{ documento: 'coord-1', nombre: 'Coordinador Uno' }] };
+      }
+      if (sql.includes('INSERT INTO inventario_carga (')) return { rows: [{ id: 78 }] };
+      return { rows: [] };
+    });
+    const loaded = loadInventoryRoute({
+      pool: {
+        async query(sql) {
+          if (sql.includes('SELECT EXISTS')) return { rows: [{ permitido: true }] };
+          throw new Error(`Unexpected query: ${sql}`);
+        },
+        async connect() {
+          return clientHarness.client;
+        },
+      },
+    });
+
+    try {
+      const response = await request(loaded.app).post('/declarar-sin-reactivos').type('form').send({
+        ual_id: '1',
+        coordinador_documento: 'coord-1',
+        confirmacion_sin_inventario: 'confirmo',
+      });
+
+      assert.equal(response.status, 302);
+      const redirectUrl = new URL(response.headers.location, 'http://localhost');
+      assert.match(redirectUrl.searchParams.get('success'), /declaración fue enviada/i);
+      assert.ok(clientHarness.calls.some(({ sql }) => sql.includes('declaracion_sin_inventario')));
+    } finally {
+      loaded.restore();
+    }
   });
 
   try {
@@ -1785,7 +1851,11 @@ test('approval failure rolls back both inventory changes and the first coordinat
 });
 
 test('subsequent inventory confirmations and declarations reject a forged non-owner coordinator', async () => {
-  for (const endpoint of ['/cargas/8/confirmar', '/declarar-sin-complementarios']) {
+  for (const endpoint of [
+    '/cargas/8/confirmar',
+    '/declarar-sin-complementarios',
+    '/declarar-sin-reactivos',
+  ]) {
     const clientHarness = createTransactionClient((sql, params) => {
       if (sql.includes('SELECT * FROM inventario_carga WHERE id')) {
         return {

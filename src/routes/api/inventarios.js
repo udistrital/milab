@@ -4439,6 +4439,109 @@ router.post(
   }
 );
 
+router.post('/declarar-sin-reactivos', requireInventoryEditor, async function (req, res, next) {
+  const ualId = parsePositiveId(req.body.ual_id);
+  const coordinatorDocument = String(req.body.coordinador_documento || '').trim();
+  if (!ualId || !coordinatorDocument) {
+    return res.redirect(
+      getRedirectUrl('/milab/inventarios/gestion_inventario', {
+        ual_id: ualId,
+        panel: INVENTORY_TYPES.REAGENT,
+        error: 'Selecciona un coordinador autorizado para enviar la declaración.',
+      })
+    );
+  }
+  if (req.body.confirmacion_sin_inventario !== 'confirmo') {
+    return res.redirect(
+      getRedirectUrl('/milab/inventarios/gestion_inventario', {
+        ual_id: ualId,
+        panel: INVENTORY_TYPES.REAGENT,
+        error: 'Marca la casilla para confirmar que el laboratorio no tiene reactivos.',
+      })
+    );
+  }
+
+  try {
+    if (!getUserDocument(req)) {
+      throw new InventoryWorkflowError(
+        'Tu sesión no tiene un documento de usuario válido para registrar la declaración.',
+        400
+      );
+    }
+    if (!(await hasLaboratoryAccess(pool, req, ualId, { editorsOnly: true }))) {
+      throw new InventoryWorkflowError('El laboratorio no está asignado a tu usuario.', 403);
+    }
+    await withTransaction(async (client) => {
+      await client.query('SELECT ual_id FROM ual WHERE ual_id = $1 FOR UPDATE', [ualId]);
+      if ((await getInventoryTypeLock(client, ualId, INVENTORY_TYPES.REAGENT)).bloqueado) {
+        throw new InventoryWorkflowError(
+          'El inventario de reactivos ya fue enviado al coordinador o está aprobado.',
+          409,
+          'inventory_type_locked'
+        );
+      }
+      const coordinators = await getCoordinatorsForLaboratory(client, ualId);
+      if (!coordinators.some((coordinator) => coordinator.documento === coordinatorDocument)) {
+        throw new InventoryWorkflowError(
+          'El coordinador seleccionado no está autorizado o no es el encargado de este laboratorio.',
+          400
+        );
+      }
+      const batchResult = await client.query(
+        `
+          INSERT INTO inventario_carga (
+            ual_id,
+            tipo_inventario,
+            archivo_nombre,
+            creada_por_documento,
+            coordinador_documento,
+            estado,
+            declaracion_sin_inventario,
+            fecha_confirmacion
+          )
+          VALUES ($1, $2, 'Declaración sin reactivos', $3, $4,
+                  'pendiente_aprobacion', TRUE, CURRENT_TIMESTAMP)
+          RETURNING id
+        `,
+        [ualId, INVENTORY_TYPES.REAGENT, getUserDocument(req), coordinatorDocument]
+      );
+      const cargaId = batchResult.rows[0].id;
+      await addInventoryAudit(client, req, {
+        cargaId,
+        ualId,
+        action: 'declaracion_sin_reactivos',
+        detail: { coordinadorDocumento: coordinatorDocument },
+      });
+      await addGeneralLog(
+        client,
+        req,
+        'Envió a aprobación la declaración de que el laboratorio no tiene inventario de reactivos.',
+        `Laboratorio ${ualId}`
+      );
+    });
+    return res.redirect(
+      getRedirectUrl('/milab/inventarios/gestion_inventario', {
+        ual_id: ualId,
+        success: 'La declaración fue enviada al coordinador para aprobación.',
+      })
+    );
+  } catch (error) {
+    if (error.code === 'inventory_type_locked') {
+      return res.redirect(
+        getRedirectUrl('/milab/inventarios/gestion_inventario', {
+          ual_id: ualId,
+          panel: INVENTORY_TYPES.REAGENT,
+          error: error.message,
+        })
+      );
+    }
+    const handled = renderWorkflowError(res, error);
+    if (handled) return handled;
+    console.error('Error creando declaración de reactivos:', error);
+    return next(error);
+  }
+});
+
 router.get('/aprobaciones', requireInventoryApprover, async function (req, res, next) {
   try {
     const result = await pool.query(
