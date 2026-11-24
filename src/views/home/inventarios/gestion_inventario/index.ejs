@@ -644,22 +644,15 @@
           <% if (panel) { %>
             <input type="hidden" name="panel" value="<%= panel %>">
           <% } %>
-          <div class="col-md-4">
+          <div class="col-md-4 d-flex flex-wrap gap-2">
             <button class="btn btn-perso" type="submit" disabled>Consultar laboratorio</button>
-          </div>
-        </form>
-        <% if (selectedLaboratory) { %>
-          <div class="alert alert-info mt-3 mb-0">
-            <% if (selectedLaboratory.coordinador_encargado_documento) { %>
-              <strong>Coordinador encargado:</strong>
-              <%= selectedLaboratory.coordinador_encargado_nombre %>
-              (<%= selectedLaboratory.coordinador_encargado_documento %>).
-              Las siguientes cargas solo se envían a este coordinador.
-            <% } else { %>
-              El coordinador que apruebe la primera carga quedará registrado como encargado del laboratorio.
+            <% if (selectedLaboratory) { %>
+              <a class="btn btn-danger" href="/milab/inventarios/gestion_inventario">
+                Volver a Mis laboratorios
+              </a>
             <% } %>
           </div>
-        <% } %>
+        </form>
         <% if (!laboratories.length) { %>
           <div class="alert alert-info mt-3 mb-0">
             <%= isGlobalInventoryViewer
@@ -671,16 +664,7 @@
     </section>
   <% } %>
 
-  <% if (showLaboratoryCardsLayout && selectedLaboratory) { %>
-    <div class="d-flex justify-content-end mb-3">
-      <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario">
-        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>
-        Volver a Mis laboratorios
-      </a>
-    </div>
-  <% } %>
-
-  <% if (showLaboratoryCardsLayout && selectedLaboratory) { %>
+  <% if (selectedLaboratory) { %>
     <div class="alert alert-info mb-4">
       <% if (selectedLaboratory.coordinador_encargado_documento) { %>
         <strong>Coordinador encargado:</strong>
