@@ -748,8 +748,8 @@
                     <button
                       class="accordion-button <%= expanded ? '' : 'collapsed' %>"
                       type="button"
-                      <%= unlocked ? 'data-bs-toggle="collapse"' : '' %>
-                      <%= unlocked ? `data-bs-target="#collapse-${status.tipo_inventario}"` : '' %>
+                      <% if (unlocked) { %>data-bs-toggle="collapse"<% } %>
+                      <% if (unlocked) { %>data-bs-target="#collapse-<%= status.tipo_inventario %>"<% } %>
                       aria-expanded="<%= expanded ? 'true' : 'false' %>"
                       aria-controls="collapse-<%= status.tipo_inventario %>"
                       <%= unlocked ? '' : 'disabled' %>
@@ -795,9 +795,15 @@
                       <% } %>
                       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <span class="inventory-accordion__meta"><%= unlocked ? 'Estado de declaraciones y registros actualizado con la última carga del laboratorio.' : 'Secuencia guiada de diligenciamiento.' %></span>
-                        <a class="btn btn-outline-secondary <%= unlocked ? '' : 'disabled' %>" <%= unlocked ? `href="/milab/inventarios/gestion_inventario?ual_id=${selectedLaboratory.ual_id}&panel=${status.tipo_inventario}"` : 'aria-disabled="true"' %>>
-                          Continuar
-                        </a>
+                        <% if (unlocked) { %>
+                          <a class="btn btn-outline-secondary" href="/milab/inventarios/gestion_inventario?ual_id=<%= selectedLaboratory.ual_id %>&panel=<%= status.tipo_inventario %>">
+                            Continuar
+                          </a>
+                        <% } else { %>
+                          <a class="btn btn-outline-secondary disabled" aria-disabled="true">
+                            Continuar
+                          </a>
+                        <% } %>
                       </div>
                     </div>
                   </div>
