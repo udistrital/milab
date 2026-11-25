@@ -400,8 +400,7 @@ class SgaDebtService {
     }
 
     const response = await this.requestAcademicData(
-      this.buildDebtorsPath(`periodo_academico/${SGA_ACADEMIC_PERIOD_SEGMENT}`),
-      { forceAuth: true }
+      this.buildDebtorsPath(`periodo_academico/${SGA_ACADEMIC_PERIOD_SEGMENT}`)
     );
     const period = findSgaScalarByKeyPattern(response, /(^|_)(per|periodo)(_|$)/i);
     if (!/^\d+$/.test(period)) {
@@ -456,8 +455,7 @@ class SgaDebtService {
     const response = await this.requestPost(
       this.buildDebtorsPath('deudores'),
       { _postdeudores: payload },
-      'application/json',
-      { forceAuth: true }
+      'application/json'
     );
     const deudaId = extractSgaDebtSequence(parseSgaJsonResponse(response));
     if (!deudaId) {
