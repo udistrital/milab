@@ -404,9 +404,9 @@ test('prestamos exige practica y asignatura configuradas para practicas docentes
   }
 });
 
-test('prestamos renders the dashboard for every role at the module root', async () => {
+test('prestamos renders role-aware dashboards at root', async () => {
   const loaded = loadRouteWithAccess({ blocked: false, role: null, allowedFacultyIds: [] });
-  const roles = ['estudiante', 'docente', 'monitor', 'laboratorista', 'coordinador', 'admin'];
+  const roles = ['estudiante', 'docente', 'monitor', 'coordinador', 'admin'];
 
   try {
     for (const role of roles) {
@@ -426,6 +426,18 @@ test('prestamos renders the dashboard for every role at the module root', async 
         `stats es objeto para rol ${role}`
       );
     }
+
+    const laboratoristaApp = buildApp(loaded.route, {
+      tipo: 'laboratorista',
+      roles: ['laboratorista'],
+    });
+    const laboratoristaResponse = await request(laboratoristaApp).get('/');
+    assert.equal(laboratoristaResponse.status, 200);
+    const laboratoristaPayload = JSON.parse(laboratoristaResponse.text);
+    assert.equal(laboratoristaPayload.view, 'home/prestamos/dashboard_laboratorista');
+    assert.ok(Array.isArray(laboratoristaPayload.locals.laboratorios));
+    assert.ok(Array.isArray(laboratoristaPayload.locals.eventsByDay));
+    assert.ok(Array.isArray(laboratoristaPayload.locals.pendingRequests));
   } finally {
     loaded.restore();
   }

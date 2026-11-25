@@ -1319,6 +1319,268 @@ async function fetchRecentActivityForUser(usuarioId) {
   );
 }
 
+function parseIsoDateParts(value) {
+  const text = String(value || '');
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+}
+
+function formatIsoDateFromUtc(date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToIsoDate(value, days) {
+  const parts = parseIsoDateParts(value);
+  if (!parts) return value;
+  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  base.setUTCDate(base.getUTCDate() + Number(days || 0));
+  return formatIsoDateFromUtc(base);
+}
+
+function normalizeTimeText(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.slice(0, 5);
+}
+
+function describePracticeType(tipoPractica, modalidadLibre) {
+  const tipo = String(tipoPractica || '').toLowerCase();
+  if (tipo === 'docente') {
+    return 'Clase docente';
+  }
+  const modalidad = String(modalidadLibre || '').toLowerCase();
+  if (modalidad === 'uno_a_varios') {
+    return 'Práctica libre (uno a varios)';
+  }
+  if (modalidad === 'varios_a_uno') {
+    return 'Práctica libre (varios a uno)';
+  }
+  return 'Práctica libre';
+}
+
+function compareScheduleEvents(a, b) {
+  const left = `${a.date} ${a.startTime}`;
+  const right = `${b.date} ${b.startTime}`;
+  return left.localeCompare(right);
+}
+
+async function fetchLaboratoristaWeekSchedule(req, options = {}) {
+  const rangeStart = String(options.rangeStart || '');
+  const rangeEnd = String(options.rangeEnd || '');
+  const scope = await resolveLoanManagementScope(req);
+  const params = [rangeStart, rangeEnd];
+  const whereParts = ['s.activo = TRUE', 'hs.activo = TRUE'];
+
+  if (!scope.unrestricted) {
+    const facultyClause = buildFacultyNameScopeClause('f.nombre', scope, params);
+    const laboratoryClause = buildLaboratoryNameScopeClause('u.nombre', scope, params);
+    if (facultyClause) whereParts.push(facultyClause.trim().replace(/^AND\s+/i, ''));
+    if (laboratoryClause) whereParts.push(laboratoryClause.trim().replace(/^AND\s+/i, ''));
+  }
+
+  if (!scope.unrestricted && !scope.facultyIds.length && !scope.laboratoryNames.length) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        u.ual_id,
+        u.nombre AS laboratorio,
+        f.nombre AS facultad,
+        s.nombre AS sala,
+        hs.fecha,
+        hs.dia_semana,
+        hs.hora_inicio,
+        hs.hora_fin,
+        hs.tipo_practica,
+        hs.modalidad_libre
+      FROM sala s
+      JOIN ual u ON u.ual_id = s.ual_id
+      JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
+      JOIN horario_sala hs ON hs.sala_id = s.id
+      WHERE ${whereParts.join(' AND ')}
+        AND (
+          (hs.fecha IS NOT NULL AND hs.fecha BETWEEN $1::date AND $2::date)
+          OR hs.fecha IS NULL
+        )
+      ORDER BY u.nombre ASC, hs.fecha ASC NULLS LAST, hs.dia_semana ASC NULLS LAST, hs.hora_inicio ASC
+    `,
+    params
+  );
+
+  return result.rows || [];
+}
+
+async function fetchLaboratoristaDashboardData(req) {
+  const currentTimeResult = await pool.query(
+    `
+      SELECT
+        TO_CHAR(NOW() AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS today_date,
+        TO_CHAR(NOW() AT TIME ZONE 'America/Bogota', 'HH24:MI') AS now_time,
+        EXTRACT(DOW FROM NOW() AT TIME ZONE 'America/Bogota')::int AS today_dow
+    `
+  );
+  const nowRow = currentTimeResult.rows[0] || {};
+  const todayDate = String(nowRow.today_date || '');
+  const nowTime = String(nowRow.now_time || '');
+  const todayDow = Number(nowRow.today_dow || 0);
+  const mondayOffset = (todayDow + 6) % 7;
+  const rangeStart = addDaysToIsoDate(todayDate, -mondayOffset);
+  const rangeEnd = addDaysToIsoDate(rangeStart, 6);
+  const weekDates = Array.from({ length: 7 }, function (_, index) {
+    return addDaysToIsoDate(rangeStart, index);
+  });
+  const weekdayKeys = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+  const dayNameMap = {
+    lunes: 'Lunes',
+    martes: 'Martes',
+    miercoles: 'Miércoles',
+    jueves: 'Jueves',
+    viernes: 'Viernes',
+    sabado: 'Sábado',
+    domingo: 'Domingo',
+  };
+  const dowToDate = {
+    1: weekDates[0],
+    2: weekDates[1],
+    3: weekDates[2],
+    4: weekDates[3],
+    5: weekDates[4],
+    6: weekDates[5],
+    0: weekDates[6],
+  };
+
+  const [laboratorios, scheduleRows, pendingRequests] = await Promise.all([
+    fetchLaboratoryActivationOverview(req),
+    fetchLaboratoristaWeekSchedule(req, { rangeStart, rangeEnd }),
+    fetchPendingRequestsForManagement(req),
+  ]);
+
+  const events = [];
+  for (const row of scheduleRows) {
+    const specificDate = row.fecha
+      ? String(row.fecha).slice(0, 10)
+      : dowToDate[Number(row.dia_semana || 0)] || '';
+    if (!specificDate || specificDate < rangeStart || specificDate > rangeEnd) {
+      continue;
+    }
+    const startTime = normalizeTimeText(row.hora_inicio);
+    const endTime = normalizeTimeText(row.hora_fin);
+    const status =
+      specificDate === todayDate && startTime <= nowTime && endTime > nowTime
+        ? 'current'
+        : specificDate < todayDate || (specificDate === todayDate && endTime <= nowTime)
+          ? 'past'
+          : 'upcoming';
+
+    events.push({
+      ualId: Number(row.ual_id || 0),
+      laboratorio: sanitizeText(row.laboratorio),
+      facultad: sanitizeText(row.facultad),
+      sala: sanitizeText(row.sala),
+      date: specificDate,
+      startTime,
+      endTime,
+      practiceType: describePracticeType(row.tipo_practica, row.modalidad_libre),
+      status,
+      isRecurring: !row.fecha && Number.isInteger(Number(row.dia_semana)),
+    });
+  }
+
+  events.sort(compareScheduleEvents);
+
+  const eventsByDay = weekDates.map(function (date, index) {
+    return {
+      key: weekdayKeys[index],
+      label: dayNameMap[weekdayKeys[index]],
+      date,
+      isToday: date === todayDate,
+      events: events.filter((event) => event.date === date),
+    };
+  });
+
+  const timelineByLab = new Map();
+  for (const event of events) {
+    if (!timelineByLab.has(event.ualId)) {
+      timelineByLab.set(event.ualId, []);
+    }
+    timelineByLab.get(event.ualId).push(event);
+  }
+
+  const laboratoryTimeline = (laboratorios || []).map(function (laboratorio) {
+    const labEvents = (timelineByLab.get(Number(laboratorio.ualId)) || []).sort(
+      compareScheduleEvents
+    );
+    const current = labEvents.find((item) => item.status === 'current') || null;
+    const next = labEvents.find((item) => item.status === 'upcoming') || null;
+    const past = [...labEvents].reverse().find((item) => item.status === 'past') || null;
+    return {
+      ualId: laboratorio.ualId,
+      laboratorio: laboratorio.laboratorio,
+      facultad: laboratorio.facultad,
+      completion: laboratorio.completion,
+      state: laboratorio.state,
+      canActivateLoans: laboratorio.canActivateLoans,
+      currentEvent: current,
+      nextEvent: next,
+      lastEvent: past,
+      eventCountWeek: labEvents.length,
+    };
+  });
+
+  return {
+    laboratorios: laboratorios || [],
+    eventsByDay,
+    laboratoryTimeline,
+    pendingRequests: (pendingRequests || []).slice(0, 8),
+    todayDate,
+    nowTime,
+  };
+}
+
+async function renderLaboratoristaDashboard(req, res) {
+  try {
+    const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+    const data = await fetchLaboratoristaDashboardData(req);
+    return res.render('home/prestamos/dashboard_laboratorista', {
+      title: 'Prestamos',
+      user: req.session?.user || null,
+      tipo: 'laboratorista',
+      roles,
+      laboratorios: data.laboratorios,
+      eventsByDay: data.eventsByDay,
+      laboratoryTimeline: data.laboratoryTimeline,
+      pendingRequests: data.pendingRequests,
+      todayDate: data.todayDate,
+      nowTime: data.nowTime,
+    });
+  } catch (error) {
+    console.error('[Dashboard Prestamos] Error renderizando dashboard laboratorista:', error);
+    const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+    return res.render('home/prestamos/dashboard_laboratorista', {
+      title: 'Prestamos',
+      user: req.session?.user || null,
+      tipo: 'laboratorista',
+      roles,
+      laboratorios: [],
+      eventsByDay: [],
+      laboratoryTimeline: [],
+      pendingRequests: [],
+      todayDate: '',
+      nowTime: '',
+    });
+  }
+}
+
 async function renderPrestamosDashboard(req, res) {
   try {
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
@@ -1326,6 +1588,9 @@ async function renderPrestamosDashboard(req, res) {
       return res.redirect('/milab/auth/login');
     }
     const primaryRole = getPrimaryRole(roles);
+    if (primaryRole === 'laboratorista') {
+      return renderLaboratoristaDashboard(req, res);
+    }
     const isManagementRole = ['admin', 'coordinador', 'laboratorista', 'monitor'].includes(
       primaryRole
     );

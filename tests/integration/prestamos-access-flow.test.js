@@ -74,6 +74,22 @@ test('prestamos root renders the dashboard with cards and quick links for every 
   }
 
   loaded = loadPrestamosApp({
+    user: createUser({ tipo: 'laboratorista', roles: ['laboratorista'] }),
+    access: { blocked: false, role: 'laboratorista' },
+  });
+
+  try {
+    const laboratorista = await request(loaded.app).get('/');
+    assert.equal(laboratorista.status, 200);
+    assert.equal(laboratorista.body.view, 'home/prestamos/dashboard_laboratorista');
+    assert.ok(Array.isArray(laboratorista.body.locals.laboratorios));
+    assert.ok(Array.isArray(laboratorista.body.locals.eventsByDay));
+    assert.ok(Array.isArray(laboratorista.body.locals.pendingRequests));
+  } finally {
+    loaded.restore();
+  }
+
+  loaded = loadPrestamosApp({
     user: createUser({ tipo: 'monitor', roles: ['monitor'] }),
     access: { blocked: false, role: 'monitor' },
   });
