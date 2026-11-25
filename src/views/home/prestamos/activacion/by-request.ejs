@@ -1,33 +1,75 @@
 <%- include('../../../partials/header'); -%>
 
 <style>
-  .by-request-poster {
-    max-width: 900px;
+  .by-request-shell {
+    max-width: 960px;
     margin: 0 auto;
-    border-radius: 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: linear-gradient(135deg, #0b132b 0%, #1c2541 52%, #3a506b 100%);
-    color: #ffffff;
   }
 
-  .by-request-poster__brand {
-    letter-spacing: 0.08em;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    color: #9bd1ff;
-  }
-
-  .by-request-poster__qr {
-    width: 270px;
-    height: 270px;
+  .by-request-card {
     border-radius: 1rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
     background: #ffffff;
-    padding: 0.85rem;
+  }
+
+  .by-request-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px;
+    padding: 0.28rem 0.65rem;
+    background: rgba(244, 163, 0, 0.14);
+    color: #b45309;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .by-request-card__title {
+    margin: 0.5rem 0 0.6rem;
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: #0f172a;
+  }
+
+  .by-request-card__qr-wrap {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    padding: 1rem;
+    display: inline-flex;
+  }
+
+  .by-request-card__qr {
+    width: 320px;
+    height: 320px;
+    display: block;
+  }
+
+  .by-request-card__url {
+    font-size: 0.79rem;
+    word-break: break-all;
+    color: #64748b;
+  }
+
+  @media (max-width: 767.98px) {
+    .by-request-card__qr {
+      width: 260px;
+      height: 260px;
+    }
   }
 </style>
 
 <main class="container app-page-shell">
-  <section class="app-page-header">
+  <section class="app-page-header by-request-shell">
+    <nav aria-label="breadcrumb" class="mb-2">
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="/milab/prestamos">Préstamos</a></li>
+        <li class="breadcrumb-item"><a href="/milab/prestamos/activacion/laboratorios">Mis laboratorios</a></li>
+        <li class="breadcrumb-item"><a href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>">Gestionar laboratorio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Poster QR</li>
+      </ol>
+    </nav>
     <h1 class="app-page-title">Poster QR · Préstamos by Request</h1>
     <p class="app-page-subtitle">
       <strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %>
@@ -41,41 +83,53 @@
     <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
   <% } %>
 
-  <section class="by-request-poster p-4 p-lg-5 shadow-lg">
-    <div class="d-flex flex-column flex-lg-row align-items-center justify-content-between gap-4">
-      <div class="pe-lg-4">
-        <div class="by-request-poster__brand mb-2">
-          <i class="bi bi-qr-code-scan me-1"></i> MiLab · Solicitud de préstamo
+  <section class="by-request-shell">
+    <div class="card by-request-card p-4 p-lg-5">
+      <div class="row g-4 align-items-center">
+        <div class="col-12 col-lg-7">
+          <span class="by-request-card__badge">
+            <i class="bi bi-qr-code-scan"></i> MiLab · Solicitud de préstamo
+          </span>
+          <h2 class="by-request-card__title">Escanea para solicitar préstamos de este laboratorio</h2>
+          <p class="text-muted mb-3">
+            Comparte este código con estudiantes y docentes para abrir la solicitud con laboratorio precargado.
+          </p>
+          <ul class="mb-3 ps-3">
+            <li>Laboratorio: <strong><%= laboratorio.laboratorio %></strong></li>
+            <li>Facultad: <strong><%= laboratorio.facultad %></strong></li>
+          </ul>
+          <p class="mb-0 by-request-card__url"><%= byRequestUrl %></p>
         </div>
-        <h2 class="h3 mb-3">
-          Escanea y solicita equipos para este laboratorio
-        </h2>
-        <p class="mb-3 text-light-emphasis">
-          Acceso directo al flujo de solicitud de equipos con laboratorio precargado.
-        </p>
-        <ul class="mb-0 ps-3">
-          <li>Laboratorio: <strong><%= laboratorio.laboratorio %></strong></li>
-          <li>Facultad: <strong><%= laboratorio.facultad %></strong></li>
-          <li>Ruta: <code class="text-info"><%= byRequestPath %></code></li>
-        </ul>
-      </div>
-      <div class="text-center">
-        <img class="by-request-poster__qr" src="<%= qrDataUrl %>" alt="Código QR de préstamo by request">
-        <div class="small mt-2 text-light-emphasis">Escanéame</div>
+        <div class="col-12 col-lg-5 text-center">
+          <div class="by-request-card__qr-wrap">
+            <img class="by-request-card__qr" src="<%= qrDataUrl %>" alt="Código QR de préstamo by request">
+          </div>
+          <div class="small text-muted mt-2">Escanéame</div>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="d-flex flex-wrap gap-2 justify-content-end mt-4">
-    <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>">
-      Volver al wizard
+  <section class="by-request-shell d-flex flex-wrap gap-2 justify-content-end mt-4">
+    <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>">
+      Volver al laboratorio
     </a>
-    <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/by-request/qr.png">
-      Descargar QR PNG
+    <a
+      class="btn btn-perso btn-sm"
+      href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/by-request/poster.pdf?orientation=portrait"
+      target="_blank"
+      rel="noopener"
+    >
+      PDF póster vertical
     </a>
-    <button class="btn btn-perso btn-sm" type="button" onclick="window.print()">
-      Imprimir / Guardar PDF
-    </button>
+    <a
+      class="btn btn-perso btn-sm"
+      href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/by-request/poster.pdf?orientation=landscape"
+      target="_blank"
+      rel="noopener"
+    >
+      PDF póster horizontal
+    </a>
   </section>
 </main>
 

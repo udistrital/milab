@@ -2141,6 +2141,15 @@ router.get(
           '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
         );
       }
+      if (!laboratorio.canActivateLoans) {
+        return res.redirect(
+          `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(
+            String(ualId)
+          )}?error=${encodeURIComponent(
+            'Debes completar el checklist del laboratorio para habilitar el poster QR by request.'
+          )}`
+        );
+      }
 
       const appUrl = getMilabAppUrlFromRequest(req);
       const byRequestPath = buildByRequestLoanPath(laboratorio);
@@ -2190,6 +2199,11 @@ router.get(
       if (!laboratorio) {
         return res.status(404).send('No tienes acceso al laboratorio seleccionado.');
       }
+      if (!laboratorio.canActivateLoans) {
+        return res
+          .status(403)
+          .send('Debes completar el checklist antes de generar el QR by request.');
+      }
 
       const appUrl = getMilabAppUrlFromRequest(req);
       const byRequestPath = buildByRequestLoanPath(laboratorio);
@@ -2209,6 +2223,226 @@ router.get(
     } catch (error) {
       console.error('Error descargando QR by-request MiLab:', error);
       return res.status(500).send('No fue posible descargar el codigo QR.');
+    }
+  }
+);
+
+function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, options = {}) {
+  const orientation =
+    String(options.orientation || 'portrait').toLowerCase() === 'landscape'
+      ? 'landscape'
+      : 'portrait';
+  const doc = new PDFDocument({ size: 'A4', layout: orientation, margin: 36 });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="Poster_QR_Prestamos_${Number(laboratorio?.ualId || 0)}_${orientation}.pdf"`
+  );
+  doc.pipe(res);
+
+  const leftMargin = doc.page.margins.left;
+  const rightMargin = doc.page.margins.right;
+  const topMargin = doc.page.margins.top;
+  const usableWidth = doc.page.width - leftMargin - rightMargin;
+  const usableHeight = doc.page.height - topMargin - doc.page.margins.bottom;
+  const safeLabName = sanitizeText(laboratorio?.laboratorio || 'Laboratorio');
+  const safeFaculty = sanitizeText(laboratorio?.facultad || '');
+
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+  doc.fillColor('#0f172a');
+
+  const headerHeight = orientation === 'landscape' ? 120 : 130;
+  doc.rect(0, 0, doc.page.width, headerHeight).fill('#0f172a');
+  doc
+    .fillOpacity(0.18)
+    .rect(0, headerHeight - 16, doc.page.width, 16)
+    .fill('#f0aa00')
+    .fillOpacity(1);
+
+  const logoY = 20;
+  if (fs.existsSync(PDF_ESCUDO_PATH)) {
+    doc.image(PDF_ESCUDO_PATH, leftMargin, logoY, { fit: [90, 62] });
+  }
+  if (fs.existsSync(PDF_SIGUD_PATH)) {
+    doc.image(PDF_SIGUD_PATH, leftMargin + usableWidth - 130, logoY, { fit: [128, 62] });
+  }
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(22)
+    .fillColor('#ffffff')
+    .text('MiLab · Préstamos by Request', leftMargin, 78, {
+      width: usableWidth,
+      align: 'center',
+    });
+
+  doc
+    .font('Helvetica')
+    .fontSize(11)
+    .fillColor('#e2e8f0')
+    .text(
+      'Escanea para abrir la solicitud de préstamo con laboratorio precargado',
+      leftMargin,
+      103,
+      {
+        width: usableWidth,
+        align: 'center',
+      }
+    );
+
+  const contentY = headerHeight + 24;
+  const qrSize = orientation === 'landscape' ? 270 : 320;
+  const qrCardWidth = qrSize + 34;
+  const qrCardHeight = qrSize + 34;
+  const qrCardX =
+    orientation === 'landscape' ? leftMargin : leftMargin + (usableWidth - qrCardWidth) / 2;
+  const qrCardY = contentY + (orientation === 'landscape' ? 10 : 92);
+  const textX = orientation === 'landscape' ? qrCardX + qrCardWidth + 30 : leftMargin;
+  const textWidth = orientation === 'landscape' ? usableWidth - qrCardWidth - 30 : usableWidth;
+  const textY = contentY + (orientation === 'landscape' ? 24 : 0);
+
+  doc
+    .roundedRect(
+      orientation === 'landscape' ? leftMargin : leftMargin + 6,
+      contentY - 8,
+      orientation === 'landscape' ? usableWidth : usableWidth - 12,
+      orientation === 'landscape' ? usableHeight - 120 : usableHeight - 132,
+      18
+    )
+    .fill('#f8fafc');
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(19)
+    .fillColor('#0f172a')
+    .text(safeLabName, textX, textY, {
+      width: textWidth,
+      align: orientation === 'landscape' ? 'left' : 'center',
+    });
+  doc
+    .font('Helvetica')
+    .fontSize(13)
+    .fillColor('#334155')
+    .text(safeFaculty, textX, textY + 30, {
+      width: textWidth,
+      align: orientation === 'landscape' ? 'left' : 'center',
+    });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(17)
+    .fillColor('#0f172a')
+    .text('Escanea para solicitar préstamos', textX, textY + 64, {
+      width: textWidth,
+      align: orientation === 'landscape' ? 'left' : 'center',
+    });
+  doc
+    .font('Helvetica')
+    .fontSize(11)
+    .fillColor('#475569')
+    .text(
+      'Comparte este afiche con estudiantes y docentes para que registren su solicitud de préstamo directamente en MiLab.',
+      textX,
+      textY + 90,
+      {
+        width: textWidth,
+        align: orientation === 'landscape' ? 'left' : 'center',
+      }
+    );
+
+  const qrX = qrCardX + 17;
+  const qrY = qrCardY + 17;
+  doc.roundedRect(qrCardX, qrCardY, qrCardWidth, qrCardHeight, 16).fill('#ffffff');
+  doc
+    .roundedRect(qrCardX, qrCardY, qrCardWidth, qrCardHeight, 16)
+    .lineWidth(1)
+    .strokeColor('#e2e8f0')
+    .stroke();
+  doc.image(qrBuffer, qrX, qrY, { fit: [qrSize, qrSize] });
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .fillColor('#64748b')
+    .text(
+      byRequestUrl,
+      orientation === 'landscape' ? textX : leftMargin + 30,
+      qrCardY + qrCardHeight + 16,
+      {
+        width: orientation === 'landscape' ? textWidth : usableWidth - 60,
+        align: orientation === 'landscape' ? 'left' : 'center',
+        lineBreak: true,
+      }
+    );
+
+  const footerY = doc.page.height - 68;
+  doc
+    .lineWidth(1)
+    .strokeColor('#e2e8f0')
+    .moveTo(leftMargin, footerY)
+    .lineTo(leftMargin + usableWidth, footerY)
+    .stroke();
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#111827')
+    .text(
+      'Universidad Distrital Francisco José de Caldas · Coordinación General de Laboratorios',
+      leftMargin,
+      footerY + 14,
+      {
+        width: usableWidth,
+        align: 'center',
+      }
+    );
+  doc
+    .font('Helvetica')
+    .fontSize(9)
+    .fillColor('#64748b')
+    .text('Documento oficial generado por MiLab', leftMargin, footerY + 30, {
+      width: usableWidth,
+      align: 'center',
+    });
+
+  doc.end();
+}
+
+router.get(
+  '/activacion/laboratorios/:ualId/by-request/poster.pdf',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.status(400).send('El laboratorio seleccionado no es valido.');
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+      if (!laboratorio) {
+        return res.status(404).send('No tienes acceso al laboratorio seleccionado.');
+      }
+      if (!laboratorio.canActivateLoans) {
+        return res
+          .status(403)
+          .send('Debes completar el checklist antes de generar el poster QR by request.');
+      }
+
+      const appUrl = getMilabAppUrlFromRequest(req);
+      const byRequestPath = buildByRequestLoanPath(laboratorio);
+      const byRequestUrl = appUrl ? `${appUrl}${byRequestPath}` : byRequestPath;
+      const orientation =
+        String(req.query.orientation || '').toLowerCase() === 'landscape'
+          ? 'landscape'
+          : 'portrait';
+      const qrBuffer = await QRCode.toBuffer(byRequestUrl, {
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        width: 1200,
+      });
+
+      return sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, { orientation });
+    } catch (error) {
+      console.error('Error generando PDF de poster QR by-request MiLab:', error);
+      return res.status(500).send('No fue posible generar el PDF del poster QR.');
     }
   }
 );
@@ -4816,8 +5050,9 @@ function buildLaboratoryActivationModel(row) {
   const checklist = {
     inventarioOficial: inventory.oficial.ready,
     inventarioComplementario: inventory.complementario.ready,
-    salasActivas: Number(row.total_salas_activas || 0) > 0,
-    horariosActivos: Number(row.total_horarios_activos || 0) > 0,
+    inventarioReactivo: inventory.reactivo.ready,
+    cargaHorario:
+      Number(row.total_salas_activas || 0) > 0 && Number(row.total_horarios_activos || 0) > 0,
     equiposListos: Number(row.total_equipos_listos || 0) > 0,
   };
 
@@ -4843,8 +5078,8 @@ function buildLaboratoryActivationModel(row) {
   const canActivateLoans =
     checklist.inventarioOficial &&
     checklist.inventarioComplementario &&
-    checklist.salasActivas &&
-    checklist.horariosActivos &&
+    checklist.inventarioReactivo &&
+    checklist.cargaHorario &&
     checklist.equiposListos;
 
   if (canActivateLoans) {
@@ -4855,7 +5090,7 @@ function buildLaboratoryActivationModel(row) {
   } else if (
     checklist.inventarioOficial &&
     checklist.inventarioComplementario &&
-    (!checklist.salasActivas || !checklist.horariosActivos)
+    !checklist.cargaHorario
   ) {
     nextStep = {
       title: 'Configurar salas y horarios',
@@ -4913,37 +5148,71 @@ function buildLaboratoryActivationModel(row) {
 function buildLoanActivationChecklist(laboratorio) {
   const checks = laboratorio?.checklist || {};
   const counters = laboratorio?.counters || {};
+  const encodedUalId = encodeURIComponent(String(laboratorio?.ualId || ''));
+  const encodedFacultad = encodeURIComponent(sanitizeText(laboratorio?.facultad));
+  const encodedLaboratorio = encodeURIComponent(sanitizeText(laboratorio?.laboratorio));
+  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}`;
 
   return [
     {
       key: 'inventario_oficial',
-      label: 'Inventario oficial aprobado',
+      label: 'Inventario de equipos',
       ready: Boolean(checks.inventarioOficial),
-      detail: laboratorio?.inventory?.oficial?.label || 'Pendiente',
+      detail: `Estado de activación: ${laboratorio?.inventory?.oficial?.label || 'Pendiente'}`,
+      extraDetail: `${Number(counters.aprobadosOficial || 0)} registro(s) aprobado(s)`,
+      pendingDetail: checks.inventarioOficial
+        ? 'Sin tareas pendientes.'
+        : 'Aprobar inventario oficial.',
+      actionHref: `/milab/inventarios/gestion_inventario?ual_id=${encodedUalId}&panel=equipo_arka`,
+      actionLabel: 'Gestionar inventario',
     },
     {
       key: 'inventario_complementario',
-      label: 'Inventario complementario aprobado',
+      label: 'Inventario complementario',
       ready: Boolean(checks.inventarioComplementario),
-      detail: laboratorio?.inventory?.complementario?.label || 'Pendiente',
+      detail: `Estado de activación: ${laboratorio?.inventory?.complementario?.label || 'Pendiente'}`,
+      extraDetail: `${Number(counters.aprobadosComplementario || 0)} registro(s) aprobado(s)`,
+      pendingDetail: checks.inventarioComplementario
+        ? 'Sin tareas pendientes.'
+        : 'Aprobar inventario complementario.',
+      actionHref: `/milab/inventarios/gestion_inventario?ual_id=${encodedUalId}&panel=complementario`,
+      actionLabel: 'Gestionar inventario',
     },
     {
-      key: 'salas_activas',
-      label: 'Salas activas registradas',
-      ready: Boolean(checks.salasActivas),
-      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s)`,
-    },
-    {
-      key: 'horarios_activos',
-      label: 'Horarios activos configurados',
-      ready: Boolean(checks.horariosActivos),
-      detail: `${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
+      key: 'inventario_reactivo',
+      label: 'Inventario de reactivos',
+      ready: Boolean(checks.inventarioReactivo),
+      detail: `Estado de activación: ${laboratorio?.inventory?.reactivo?.label || 'Pendiente'}`,
+      extraDetail: `${Number(counters.aprobadosReactivo || 0)} registro(s) aprobado(s)`,
+      pendingDetail: checks.inventarioReactivo
+        ? 'Sin tareas pendientes.'
+        : 'Revisar inventario de reactivos.',
+      actionHref: `/milab/inventarios/gestion_inventario?ual_id=${encodedUalId}&panel=reactivo`,
+      actionLabel: 'Gestionar reactivos',
     },
     {
       key: 'equipos_listos',
-      label: 'Equipos listos para préstamo',
+      label: 'Equipos para préstamo',
       ready: Boolean(checks.equiposListos),
       detail: `${Number(counters.equiposListos || 0)} equipo(s) disponible(s)`,
+      extraDetail: 'Estado de activación: equipos habilitados para préstamo.',
+      pendingDetail: checks.equiposListos
+        ? 'Sin tareas pendientes.'
+        : 'Habilitar equipos para préstamo.',
+      actionHref: '/milab/prestamos/equipos',
+      actionLabel: 'Gestionar equipos',
+    },
+    {
+      key: 'carga_horario',
+      label: 'Horario de laboratorio',
+      ready: Boolean(checks.cargaHorario),
+      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s) · ${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
+      extraDetail: 'Carga o ajusta los horarios del laboratorio desde Excel.',
+      pendingDetail: checks.cargaHorario
+        ? 'Sin tareas pendientes.'
+        : 'Registrar sala activa y cargar horarios.',
+      actionHref: scheduleHref,
+      actionLabel: 'Gestionar horario',
     },
   ];
 }

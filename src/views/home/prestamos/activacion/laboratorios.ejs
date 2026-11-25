@@ -123,12 +123,11 @@
                 <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>">
                   Ingresar al laboratorio
                 </a>
-                <a class="btn btn-outline-secondary btn-sm" href="/milab/inventarios/gestion_inventario?ual_id=<%= item.ualId %>">
-                  Inventarios
-                </a>
-                <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/by-request">
-                  QR by Request
-                </a>
+                <% if (item.canActivateLoans) { %>
+                  <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/by-request">
+                    QR by Request
+                  </a>
+                <% } %>
               </div>
             </div>
           </div>

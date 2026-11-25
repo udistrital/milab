@@ -761,8 +761,10 @@ test('prestamos arma checklist de activacion y resume pendientes', () => {
     assert.equal(checklist.length, 5);
     assert.equal(checklist[0].ready, true);
     assert.equal(checklist[1].ready, false);
-    assert.match(missing, /Inventario complementario aprobado/);
-    assert.match(missing, /Salas activas registradas/);
+    assert.equal(checklist[0].label, 'Inventario de equipos');
+    assert.equal(checklist[4].label, 'Horario de laboratorio');
+    assert.match(missing, /Inventario complementario/);
+    assert.match(missing, /Horario de laboratorio/);
   } finally {
     loaded.restore();
   }
