@@ -18,11 +18,7 @@ function createLog() {
   };
 }
 
-function loadServiceStatus({
-  oatiImpl = async () => ({}),
-  edxHealthy = true,
-  oatiUsePublic = false,
-} = {}) {
+function loadServiceStatus({ oatiImpl = async () => ({}), edxHealthy = true } = {}) {
   const originals = new Map();
   const oatiCalls = [];
   const edxCalls = [];
@@ -30,9 +26,7 @@ function loadServiceStatus({
     [
       configPath,
       {
-        config: {
-          oatiUsePublic,
-        },
+        config: {},
       },
     ],
     [
@@ -111,20 +105,6 @@ test('checkServiceStatus still validates edX outside production', async () => {
         (service) => service.service.startsWith('edx_') && service.available === false
       )
     );
-  } finally {
-    loaded.restore();
-  }
-});
-
-test('checkServiceStatus uses a non-personal catalog probe for public OATI environments', async () => {
-  const loaded = loadServiceStatus({ oatiUsePublic: true });
-  const log = createLog();
-
-  try {
-    const status = await loaded.checkServiceStatus(log, { checkEdx: false });
-
-    assert.equal(status.servicesAreUp, true);
-    assert.deepEqual(loaded.oatiCalls, ['carrera/0']);
   } finally {
     loaded.restore();
   }

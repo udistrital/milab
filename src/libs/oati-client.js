@@ -201,65 +201,7 @@ async function fetchAccessToken(signal) {
   return cachedToken;
 }
 
-async function requestOatiPublic(pathname, signal) {
-  throwWhenCircuitOpen();
-  const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
-  let response;
-
-  try {
-    response = await withOatiTlsFallback((agent) =>
-      axios.get(url, {
-        httpsAgent: agent,
-        timeout: config.oatiRequestTimeoutMs,
-        signal,
-      })
-    );
-  } catch (error) {
-    markOatiCircuitFailure(error);
-    if (isOatiUnavailableCandidate(error)) {
-      throw wrapAsOatiUnavailable(error);
-    }
-    throw error;
-  }
-
-  clearOatiCircuit();
-  hasWarnedAboutCircuit = false;
-  return response.data;
-}
-
-async function requestOatiPublicPost(pathname, body, contentType) {
-  throwWhenCircuitOpen();
-  const url = new URL(pathname, `${config.oatiPublicBaseUrl}/`).toString();
-  let response;
-
-  try {
-    response = await withOatiTlsFallback((agent) =>
-      axios.post(url, body, {
-        headers: {
-          'Content-Type': contentType,
-        },
-        httpsAgent: agent,
-        timeout: config.oatiRequestTimeoutMs,
-      })
-    );
-  } catch (error) {
-    markOatiCircuitFailure(error);
-    if (isOatiUnavailableCandidate(error)) {
-      throw wrapAsOatiUnavailable(error);
-    }
-    throw error;
-  }
-
-  clearOatiCircuit();
-  hasWarnedAboutCircuit = false;
-  return response.data;
-}
-
-async function requestOati(pathname, { signal, forceAuth = false } = {}) {
-  if (config.oatiUsePublic && !forceAuth) {
-    return requestOatiPublic(pathname, signal);
-  }
-
+async function requestOati(pathname, { signal } = {}) {
   const accessToken = await fetchAccessToken(signal);
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
   let response;
@@ -292,16 +234,7 @@ async function requestOati(pathname, { signal, forceAuth = false } = {}) {
   return response.data;
 }
 
-async function requestOatiPost(
-  pathname,
-  body,
-  contentType = 'application/json',
-  { forceAuth = false } = {}
-) {
-  if (config.oatiUsePublic && !forceAuth) {
-    return requestOatiPublicPost(pathname, body, contentType);
-  }
-
+async function requestOatiPost(pathname, body, contentType = 'application/json') {
   throwWhenCircuitOpen();
   const accessToken = await fetchAccessToken();
   const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();

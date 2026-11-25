@@ -5,6 +5,7 @@ const DEFAULT_TEST_ARKA_API_BASE_URL =
   'https://autenticacion.portaloas.udistrital.edu.co/apioas/arka_mid/v1';
 const DEFAULT_TEST_TERCEROS_API_BASE_URL =
   'https://autenticacion.portaloas.udistrital.edu.co/apioas/terceros_crud/v1';
+const DEFAULT_OATI_PUBLIC_BASE_URL = 'https://autenticacion.portaloas.udistrital.edu.co';
 
 class ArkaIntegrationError extends Error {
   constructor(message, code = 'ARKA_INTEGRATION_ERROR', status = null) {
@@ -37,23 +38,22 @@ function normalizeBaseUrl(value, variableName) {
   return url.href.replace(/\/+$/, '');
 }
 
+function resolveApioasRoot(env = process.env) {
+  const publicBaseUrl = normalizeBaseUrl(
+    String(env.OATI_PUBLIC_BASE_URL || DEFAULT_OATI_PUBLIC_BASE_URL).trim(),
+    'OATI_PUBLIC_BASE_URL'
+  );
+  return publicBaseUrl.endsWith('/apioas') ? publicBaseUrl : `${publicBaseUrl}/apioas`;
+}
+
 function getArkaConfiguration(env = process.env) {
-  const isProduction =
-    String(env.NODE_ENV || '')
-      .trim()
-      .toLowerCase() === 'production';
-  const arkaBaseUrl = String(
-    env.ARKA_API_BASE_URL || (isProduction ? '' : DEFAULT_TEST_ARKA_API_BASE_URL)
-  ).trim();
-  const tercerosBaseUrl = String(
-    env.ARKA_TERCEROS_API_BASE_URL || (isProduction ? '' : DEFAULT_TEST_TERCEROS_API_BASE_URL)
-  ).trim();
+  const apioasRoot = resolveApioasRoot(env);
+  const arkaBaseUrl = `${apioasRoot}/arka_mid/v1`;
+  const tercerosBaseUrl = `${apioasRoot}/terceros_crud/v1`;
 
   return {
-    arkaBaseUrl: arkaBaseUrl ? normalizeBaseUrl(arkaBaseUrl, 'ARKA_API_BASE_URL') : '',
-    tercerosBaseUrl: tercerosBaseUrl
-      ? normalizeBaseUrl(tercerosBaseUrl, 'ARKA_TERCEROS_API_BASE_URL')
-      : '',
+    arkaBaseUrl,
+    tercerosBaseUrl,
     hasOatiCredentials: Boolean(
       String(env.OATI_CLIENT_ID || '').trim() && String(env.OATI_SECRET || '').trim()
     ),
@@ -86,7 +86,7 @@ function assertArkaConfiguration(configuration) {
     configuration.maxResponseBytes <= 0
   ) {
     throw new ArkaIntegrationError(
-      'Configura las URL de ARKA y las credenciales OATI_CLIENT_ID y OATI_SECRET.',
+      'Configura OATI_PUBLIC_BASE_URL y las credenciales OATI_CLIENT_ID y OATI_SECRET.',
       'ARKA_CONFIGURATION_ERROR'
     );
   }
@@ -114,6 +114,17 @@ function toOptionalNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function resolveThirdPartyIdFromRow(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  return (
+    toPositiveInteger(row.tercero_id) ||
+    toPositiveInteger(row.terceroId) ||
+    toPositiveInteger(row.TerceroId) ||
+    toPositiveInteger(row?.TerceroId?.Id) ||
+    null
+  );
+}
+
 function requestError(error) {
   const status = Number(error?.response?.status) || null;
   if (status === 401 || status === 403) {
@@ -123,6 +134,7 @@ function requestError(error) {
       status
     );
   }
+
   if (status) {
     return new ArkaIntegrationError(
       `El API de ARKA respondió con estado HTTP ${status}.`,
@@ -134,6 +146,11 @@ function requestError(error) {
     'No fue posible conectar con los servicios de ARKA.',
     'ARKA_NETWORK_ERROR'
   );
+}
+
+function canFallbackThirdPartyLookup(error) {
+  const status = Number(error?.status) || null;
+  return status === 403 || status === 404 || status === 405;
 }
 
 function tokenProviderError(error) {
@@ -227,9 +244,39 @@ function createArkaClient({
       );
     }
 
-    const data = await get(`${clientConfiguration.tercerosBaseUrl}/tercero/identificacion`, {
-      query,
-    });
+    const lookups = [
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/datos_identificacion/`,
+        params: { query: `Numero:${query}` },
+      },
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/tercero/datos_identificacion`,
+        params: { query },
+      },
+      {
+        url: `${clientConfiguration.tercerosBaseUrl}/tercero/identificacion`,
+        params: { query },
+      },
+    ];
+
+    let data = null;
+    let lastLookupError = null;
+    for (const lookup of lookups) {
+      try {
+        data = await get(lookup.url, lookup.params);
+        break;
+      } catch (error) {
+        if (!canFallbackThirdPartyLookup(error)) {
+          throw error;
+        }
+        lastLookupError = error;
+      }
+    }
+
+    if (!data) {
+      throw lastLookupError || new ArkaIntegrationError('No fue posible consultar Terceros.');
+    }
+
     if (!Array.isArray(data)) {
       throw new ArkaIntegrationError(
         'Terceros devolvió una respuesta con formato no válido.',
@@ -238,7 +285,7 @@ function createArkaClient({
     }
 
     const thirdPartyIds = [
-      ...new Set(data.map((row) => toPositiveInteger(row?.tercero_id)).filter(Boolean)),
+      ...new Set(data.map((row) => resolveThirdPartyIdFromRow(row)).filter(Boolean)),
     ];
     if (thirdPartyIds.length !== 1) {
       throw new ArkaIntegrationError(

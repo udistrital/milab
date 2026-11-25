@@ -45,8 +45,9 @@ Implementación: [política](src/libs/session-policy.js), [control del servidor]
 
 ## Consulta de multas SGA
 
-- `dev`, `development`, `test` y `testing` usan `academica_pruebas` mediante `OATI_PUBLIC_BASE_URL` (por defecto `https://autenticacion.portaloas.udistrital.edu.co`) y no solicitan token OAuth, tanto para GET como para POST. Los demás ambientes usan `servicios_academicos_produccion` en el gateway `OATI_BASE_URL` y se autentican mediante `OATI_TOKEN_URL`. Los nombres de servicio se definen en [src/config/sga-services.js](src/config/sga-services.js); `OATI_DEBT_SERVICE_NAME` no tiene efecto.
-- En dev/test, usa únicamente identificadores de prueba autorizados: el servicio público puede devolver información estudiantil. El endpoint de estado usa `carrera/0` para evitar consultar documentos personales.
+- Todos los ambientes consultan OATI por el gateway `OATI_BASE_URL` y se autentican con OAuth2 contra `OATI_TOKEN_URL`, usando `OATI_CLIENT_ID` y `OATI_SECRET`.
+- La URL pública `OATI_PUBLIC_BASE_URL` permanece disponible para despliegues que la requieran, pero el flujo operativo de consulta usa token como en producción.
+- El nombre del servicio académico se controla desde `.env` con `OATI_SERVICE_NAME` (o `OATI_DEBTORS_SERVICE_NAME` por compatibilidad). Si no se define, se usa `servicios_academicos_produccion`.
 - Solo se consulta: la actualización e inserción de deudas y la consulta de `periodo_academico` no están implementadas.
 - Se consideran deudas activas las de `DEU_ESTADO = 1` o `2` (se aceptan valores numéricos o texto), excepto las de biblioteca: si el detalle reportado (`DEU_MATERIAL`) contiene "biblioteca" (sin distinguir mayúsculas ni tildes), la deuda se omite en todas las pantallas y no bloquea. El estado `3` (saldada) y los demás estados no se incluyen.
 - Los datos de `academica_pruebas` y `servicios_academicos_produccion` son independientes; una respuesta válida sin registros no es un error de conexión.
@@ -311,18 +312,18 @@ Resumen operativo de procesos y responsabilidades por rol:
 La inicialización de base para recreación completa del entorno de pruebas usa estos scripts en secuencia:
 
 1. [sql-scripts/prod/db_structure.sql](sql-scripts/prod/db_structure.sql)
-2. [sql-scripts/prod/db_seed_system.sql](sql-scripts/prod/db_seed_system.sql)
-3. [sql-scripts/prod/db_structure_prestamos.sql](sql-scripts/prod/db_structure_prestamos.sql)
-4. [sql-scripts/prod/db_seed_prestamos.sql](sql-scripts/prod/db_seed_prestamos.sql)
-5. [sql-scripts/preprod/db_structure_inventarios.sql](sql-scripts/preprod/db_structure_inventarios.sql)
-6. [sql-scripts/prod/db_structure_certificacion.sql](sql-scripts/prod/db_structure_certificacion.sql)
-7. [sql-scripts/prod/db_seed_certificacion.sql](sql-scripts/prod/db_seed_certificacion.sql)
-8. [sql-scripts/preprod/db_seed_inventarios.sql](sql-scripts/preprod/db_seed_inventarios.sql)
-9. [sql-scripts/preprod/db_seed_pruebas_ofuscado.sql](sql-scripts/preprod/db_seed_pruebas_ofuscado.sql)
-10. [sql-scripts/preprod/db_structure_hojas_vida.sql](sql-scripts/preprod/db_structure_hojas_vida.sql)
-11. [sql-scripts/preprod/db_seed_hojas_vida.sql](sql-scripts/preprod/db_seed_hojas_vida.sql)
+2. [sql-scripts/prod/db_structure_prestamos.sql](sql-scripts/prod/db_structure_prestamos.sql)
+3. [sql-scripts/prod/db_structure_certificacion.sql](sql-scripts/prod/db_structure_certificacion.sql)
+4. [sql-scripts/prod/db_seed_system.sql](sql-scripts/prod/db_seed_system.sql)
+5. [sql-scripts/prod/db_seed_prestamos.sql](sql-scripts/prod/db_seed_prestamos.sql)
+6. [sql-scripts/prod/db_seed_certificacion.sql](sql-scripts/prod/db_seed_certificacion.sql)
+7. [sql-scripts/preprod/db_structure_inventarios.sql](sql-scripts/preprod/db_structure_inventarios.sql)
+8. [sql-scripts/preprod/db_structure_hojas_vida.sql](sql-scripts/preprod/db_structure_hojas_vida.sql)
+9. [sql-scripts/preprod/db_seed_inventarios.sql](sql-scripts/preprod/db_seed_inventarios.sql)
+10. [sql-scripts/preprod/db_seed_hojas_vida.sql](sql-scripts/preprod/db_seed_hojas_vida.sql)
+11. [sql-scripts/preprod/db_seed_pruebas_ofuscado.sql](sql-scripts/preprod/db_seed_pruebas_ofuscado.sql)
 
-La recreación en CI aplica los once scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia. La estructura de inventarios se instala antes de certificación porque crea la vista `equipo_catalogo`, cuya información descriptiva proviene de `inventario`; el seed de inventarios se aplica después del seed de certificación para crear las relaciones de equipos especializados de los cursos de prueba. El seed ofuscado se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. Las estructuras y seeds de hojas de vida se aplican al final. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
+La recreación en CI aplica los once scripts de forma explícita con `ON_ERROR_STOP=1`, en ese orden, para fallar temprano ante cualquier inconsistencia: primero se instala la base de `prod` (estructuras y seeds) y después lo específico de `preprod` (inventarios, hojas de vida y seed ofuscado de pruebas). El seed ofuscado se ejecuta solo al reconstruir la base del ambiente de pruebas; los despliegues que conservan la base existente no lo ejecutan. En despliegues sin recreación, CI detiene temporalmente la aplicación y aplica idempotentemente el esquema de inventarios antes de desplegar la nueva versión. El despliegue de pruebas en CI se ejecuta únicamente desde `preprod`.
 
 El esquema conserva `equipo.id` y sus campos operativos para préstamos, horarios e incidencias. Los datos descriptivos se almacenan en `inventario`; las lecturas heredadas usan `equipo_catalogo` como vista de compatibilidad.
 
@@ -334,7 +335,7 @@ Puntos operativos aplicados en el flujo actual:
 
 1. El archivo de entorno operativo es [opt/.env](opt/.env) y se enlaza a [opt/milab/Docker/.env](opt/milab/Docker/.env).
 2. Para recrear desde cero se eliminan `milabud`, `dbpostgres`, `dbseed` y el volumen `prod_milab_db_data`.
-3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 9 scripts SQL en secuencia (el seed ofuscado al final) y luego se reconstruye `milabud`.
+3. Se levanta `dbpostgres`, se espera `pg_isready`, se aplican los 11 scripts SQL en secuencia (primero `prod`, luego `preprod`, dejando el seed ofuscado al final) y luego se reconstruye `milabud`.
 4. La validación post-seed comprueba el menú principal de préstamos, las opciones de inventarios y los permisos de solo lectura del coordinador general.
 
 Script de apoyo:

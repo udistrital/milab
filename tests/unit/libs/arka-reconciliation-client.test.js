@@ -32,8 +32,10 @@ test('client resolves the third party with document-only query and maps ArkaMid 
   const httpClient = {
     async get(url, options) {
       calls.push({ url, options });
-      if (url.endsWith('/tercero/identificacion')) {
-        return { data: [{ compuesto: 'CC 1030672', tercero_id: 1165 }] };
+      if (url.endsWith('/datos_identificacion/')) {
+        return {
+          data: [{ compuesto: 'CC 1030672', TerceroId: { Id: 1165 } }],
+        };
       }
       return {
         data: {
@@ -76,7 +78,7 @@ test('client resolves the third party with document-only query and maps ArkaMid 
     },
   ]);
   assert.equal(calls.length, 4);
-  assert.equal(calls[0].options.params.query, '1030672');
+  assert.equal(calls[0].options.params.query, 'Numero:1030672');
   assert.equal(calls[0].options.headers.Authorization, 'Bearer test-token-value');
   assert.match(calls[1].url, /\/traslados\/funcionario\/1165$/);
   assert.equal(calls[1].options.headers.Authorization, 'Bearer test-token-value');
@@ -106,7 +108,7 @@ test('client rejects invalid API response shapes without exposing request creden
     configuration: createConfiguration(),
     httpClient: {
       async get(url) {
-        if (url.endsWith('/tercero/identificacion')) {
+        if (url.endsWith('/datos_identificacion/')) {
           return { data: [{ tercero_id: 1165 }] };
         }
         return { data: { Elementos: [null] } };
@@ -141,28 +143,35 @@ test('client converts HTTP failures into safe integration errors', async () => {
   });
 });
 
-test('production does not silently fall back to the test API URLs', () => {
+test('all environments derive ARKA endpoints from OATI_PUBLIC_BASE_URL', () => {
   const configuration = getArkaConfiguration({
     NODE_ENV: 'production',
+    OATI_PUBLIC_BASE_URL: 'https://api.intranetoas.udistrital.edu.co',
     OATI_CLIENT_ID: 'test-client-id',
     OATI_SECRET: 'test-client-secret',
   });
 
-  assert.equal(configuration.arkaBaseUrl, '');
-  assert.equal(configuration.tercerosBaseUrl, '');
+  assert.equal(
+    configuration.arkaBaseUrl,
+    'https://api.intranetoas.udistrital.edu.co/apioas/arka_mid/v1'
+  );
+  assert.equal(
+    configuration.tercerosBaseUrl,
+    'https://api.intranetoas.udistrital.edu.co/apioas/terceros_crud/v1'
+  );
   assert.equal(
     isArkaConfigured({
       NODE_ENV: 'production',
+      OATI_PUBLIC_BASE_URL: 'https://api.intranetoas.udistrital.edu.co',
       OATI_CLIENT_ID: 'test-client-id',
       OATI_SECRET: 'test-client-secret',
     }),
-    false
+    true
   );
 });
 
-test('test environments use the configured OATI credentials and test API bases', () => {
+test('uses default apioas bases when OATI_PUBLIC_BASE_URL is not provided', () => {
   const environment = {
-    NODE_ENV: 'test',
     OATI_CLIENT_ID: 'test-client-id',
     OATI_SECRET: 'test-client-secret',
   };
@@ -225,4 +234,38 @@ test('client explains OAuth authentication failures without exposing credentials
     assert.doesNotMatch(error.message, /private secret|1030672/);
     return true;
   });
+});
+
+test('client falls back to legacy terceros lookup when datos_identificacion is forbidden', async () => {
+  const calls = [];
+  const httpClient = {
+    async get(url, options) {
+      calls.push({ url, options });
+      if (url.endsWith('/datos_identificacion/')) {
+        const error = new Error('forbidden');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (url.endsWith('/tercero/datos_identificacion')) {
+        const error = new Error('not found');
+        error.response = { status: 404 };
+        throw error;
+      }
+      if (url.endsWith('/tercero/identificacion')) {
+        return { data: [{ tercero_id: 1165 }] };
+      }
+      return { data: { Elementos: [] } };
+    },
+  };
+  const client = createTestClient({
+    configuration: createConfiguration(),
+    httpClient,
+  });
+
+  const terceroId = await client.resolveThirdPartyId('1030672');
+
+  assert.equal(terceroId, 1165);
+  assert.equal(calls[0].options.params.query, 'Numero:1030672');
+  assert.equal(calls[1].options.params.query, '1030672');
+  assert.equal(calls[2].options.params.query, '1030672');
 });

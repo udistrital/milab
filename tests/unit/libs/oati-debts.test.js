@@ -3,11 +3,6 @@ const assert = require('node:assert/strict');
 
 const { config } = require('../../../src/config/config');
 const {
-  isOatiPublicEnvironment,
-  resolveSgaServiceName,
-  SGA_SERVICE_NAMES,
-} = require('../../../src/config/sga-services');
-const {
   SgaDebtService,
   isLaboratoryConceptName,
   sgaDebtService,
@@ -245,26 +240,6 @@ test('SgaDebtService uses an explicit environment service name', () => {
     assert.equal(sgaDebtService.isConfigured(), false);
   } finally {
     config.oatiDebtorsServiceName = originalServiceName;
-  }
-});
-
-test('OATI dev and test use the test service while other environments use production', () => {
-  const originalOverride = process.env.OATI_DEBT_SERVICE_NAME;
-  process.env.OATI_DEBT_SERVICE_NAME = 'otro_servicio';
-
-  try {
-    for (const environmentName of ['dev', 'DEV', 'development', 'test', 'TEST', 'testing']) {
-      assert.equal(resolveSgaServiceName(environmentName), 'academica_pruebas');
-      assert.equal(isOatiPublicEnvironment(environmentName), true);
-    }
-    for (const environmentName of ['production', 'PRODUCTION', '', 'local', 'staging', 'preprod']) {
-      assert.equal(resolveSgaServiceName(environmentName), 'servicios_academicos_produccion');
-      assert.equal(isOatiPublicEnvironment(environmentName), false);
-    }
-    assert.ok(Object.isFrozen(SGA_SERVICE_NAMES));
-  } finally {
-    if (originalOverride === undefined) delete process.env.OATI_DEBT_SERVICE_NAME;
-    else process.env.OATI_DEBT_SERVICE_NAME = originalOverride;
   }
 });
 

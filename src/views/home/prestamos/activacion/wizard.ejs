@@ -1,0 +1,231 @@
+<%- include('../../../partials/header'); -%>
+
+<style>
+  .activation-detail-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  .activation-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    padding: 0.16rem 0.54rem;
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  .activation-status-dot {
+    width: 0.58rem;
+    height: 0.58rem;
+    border-radius: 999px;
+    display: inline-block;
+  }
+
+  .activation-status-dot--green {
+    background: #16a34a;
+  }
+
+  .activation-status-dot--yellow {
+    background: #d97706;
+  }
+
+  .activation-status-dot--red {
+    background: #dc2626;
+  }
+
+  .activation-status-dot--gray {
+    background: #94a3b8;
+  }
+
+  .activation-status-dot--cyan {
+    background: #0891b2;
+  }
+</style>
+
+<main class="container app-page-shell">
+  <section class="app-page-header">
+    <nav aria-label="breadcrumb" class="mb-2">
+      <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="/milab/prestamos">Préstamos</a></li>
+        <li class="breadcrumb-item"><a href="/milab/prestamos/activacion/laboratorios">Mis laboratorios</a></li>
+        <li class="breadcrumb-item active" aria-current="page"><%= laboratorio.laboratorio %></li>
+      </ol>
+    </nav>
+    <h1 class="app-page-title">Detalle de activación</h1>
+    <p class="app-page-subtitle"><strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %></p>
+  </section>
+
+  <% if (successMessage) { %>
+    <div class="alert alert-success" role="status"><%= successMessage %></div>
+  <% } %>
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
+
+  <section class="card app-form-panel text-light mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center small mb-2">
+        <span>Avance general del laboratorio</span>
+        <strong><%= laboratorio.completion.percent %>%</strong>
+      </div>
+      <div class="progress" role="progressbar" aria-valuenow="<%= laboratorio.completion.percent %>" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar <%= laboratorio.canActivateLoans ? 'bg-success' : 'bg-warning' %>" style="width: <%= laboratorio.completion.percent %>%"></div>
+      </div>
+      <p class="small text-light-emphasis mt-2 mb-0">
+        Completados <%= laboratorio.completion.completedCount %> de <%= laboratorio.completion.totalCount %> criterios.
+      </p>
+    </div>
+  </section>
+
+  <section class="mb-4" aria-labelledby="inventoryActivationCardsTitle">
+    <div class="mb-3">
+      <h2 id="inventoryActivationCardsTitle" class="h4 mb-1">Inventarios y cargas</h2>
+      <p class="text-muted mb-0">Completa o revisa cada ficha para habilitar préstamos sin reprocesos.</p>
+    </div>
+
+    <div class="row g-3">
+      <article class="col-md-6 col-xl-3">
+        <% const officialDone = laboratorio.inventory.oficial.ready; %>
+        <div class="card app-table-panel activation-detail-card text-light h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <h3 class="h5 mb-0">Inventario de equipos</h3>
+              <span class="activation-status-pill">
+                <span class="activation-status-dot <%= officialDone ? 'activation-status-dot--green' : 'activation-status-dot--red' %>" aria-hidden="true"></span>
+                <%= officialDone ? 'Completo' : 'Pendiente' %>
+              </span>
+            </div>
+            <div class="small">
+              <div><strong>Estado de activación:</strong> <%= laboratorio.inventory.oficial.label %></div>
+              <div><strong>Registros aprobados:</strong> <%= laboratorio.counters.aprobadosOficial %></div>
+              <div><strong>Tarea pendiente:</strong> <%= officialDone ? 'Ninguna' : 'Aprobar inventario oficial' %></div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm mt-auto" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratorio.ualId %>&panel=equipo_arka">
+              Ir a inventario
+            </a>
+          </div>
+        </div>
+      </article>
+
+      <article class="col-md-6 col-xl-3">
+        <% const complementDone = laboratorio.inventory.complementario.ready; %>
+        <div class="card app-table-panel activation-detail-card text-light h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <h3 class="h5 mb-0">Inventario complementario</h3>
+              <span class="activation-status-pill">
+                <span class="activation-status-dot <%= complementDone ? 'activation-status-dot--green' : 'activation-status-dot--red' %>" aria-hidden="true"></span>
+                <%= complementDone ? 'Completo' : 'Pendiente' %>
+              </span>
+            </div>
+            <div class="small">
+              <div><strong>Estado de activación:</strong> <%= laboratorio.inventory.complementario.label %></div>
+              <div><strong>Registros aprobados:</strong> <%= laboratorio.counters.aprobadosComplementario %></div>
+              <div><strong>Tarea pendiente:</strong> <%= complementDone ? 'Ninguna' : 'Aprobar inventario complementario' %></div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm mt-auto" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratorio.ualId %>&panel=complementario">
+              Ir a inventario
+            </a>
+          </div>
+        </div>
+      </article>
+
+      <article class="col-md-6 col-xl-3">
+        <% const reactivoDone = laboratorio.inventory.reactivo.ready; %>
+        <div class="card app-table-panel activation-detail-card text-light h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <h3 class="h5 mb-0">Reactivos</h3>
+              <span class="activation-status-pill">
+                <span class="activation-status-dot <%= laboratorio.inventory.reactivo.key === 'opcional' ? 'activation-status-dot--gray' : (reactivoDone ? 'activation-status-dot--green' : 'activation-status-dot--yellow') %>" aria-hidden="true"></span>
+                <%= laboratorio.inventory.reactivo.key === 'opcional' ? 'Opcional' : (reactivoDone ? 'Completo' : 'En proceso') %>
+              </span>
+            </div>
+            <div class="small">
+              <div><strong>Estado de activación:</strong> <%= laboratorio.inventory.reactivo.label %></div>
+              <div><strong>Registros aprobados:</strong> <%= laboratorio.counters.aprobadosReactivo %></div>
+              <div><strong>Tarea pendiente:</strong> <%= reactivoDone ? 'Ninguna' : 'Revisar carga de reactivos' %></div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm mt-auto" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratorio.ualId %>&panel=reactivo">
+              Ir a reactivos
+            </a>
+          </div>
+        </div>
+      </article>
+
+      <article class="col-md-6 col-xl-3">
+        <% const loadNeedsAttention = Number(laboratorio.counters.cargasAtencion || 0) > 0; %>
+        <div class="card app-table-panel activation-detail-card text-light h-100">
+          <div class="card-body d-flex flex-column gap-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <h3 class="h5 mb-0">Cargas recientes</h3>
+              <span class="activation-status-pill">
+                <span class="activation-status-dot <%= loadNeedsAttention ? 'activation-status-dot--yellow' : 'activation-status-dot--cyan' %>" aria-hidden="true"></span>
+                <%= loadNeedsAttention ? 'Requiere atención' : 'Historial' %>
+              </span>
+            </div>
+            <div class="small">
+              <div><strong>Estado de activación:</strong> <%= loadNeedsAttention ? 'Hay cargas por corregir o confirmar' : 'Sin pendientes críticos' %></div>
+              <div><strong>Registros aprobados:</strong> <%= laboratorio.counters.totalCargasRecientes %> cargas registradas</div>
+              <div><strong>Tarea pendiente:</strong> <%= loadNeedsAttention ? `${laboratorio.counters.cargasAtencion} carga(s) requieren atención` : 'Ninguna' %></div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm mt-auto" href="/milab/inventarios/gestion_inventario?ual_id=<%= laboratorio.ualId %>&panel=recent">
+              Ver cargas
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card app-table-panel text-light mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h2 class="h5 mb-0">Checklist para activar préstamos</h2>
+      <% if (laboratorio.canActivateLoans) { %>
+        <span class="badge bg-success">Listo para activar</span>
+      <% } else { %>
+        <span class="badge bg-warning text-dark">Pendiente</span>
+      <% } %>
+    </div>
+    <div class="card-body">
+      <div class="list-group list-group-flush">
+        <% checklist.forEach(function(item) { %>
+          <div class="list-group-item d-flex justify-content-between align-items-start gap-3 px-0">
+            <div>
+              <div class="fw-semibold"><%= item.label %></div>
+              <div class="small text-light-emphasis"><%= item.detail %></div>
+            </div>
+            <span class="badge <%= item.ready ? 'bg-success' : 'bg-secondary' %>">
+              <%= item.ready ? 'Cumple' : 'Falta' %>
+            </span>
+          </div>
+        <% }) %>
+      </div>
+      <div class="d-flex justify-content-end mt-3">
+        <% if (laboratorio.canActivateLoans) { %>
+          <a class="btn btn-success btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/activar-prestamos">
+            Activar préstamos
+          </a>
+        <% } else { %>
+          <button class="btn btn-outline-secondary btn-sm" type="button" disabled>
+            Activa criterios pendientes para continuar
+          </button>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/by-request">
+      Generar póster QR by Request
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios">
+      Volver al listado
+    </a>
+  </div>
+</main>
+
