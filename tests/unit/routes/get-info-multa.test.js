@@ -239,6 +239,8 @@ test('get-info-multa reuses searched document when OAS omits documento', async (
     assert.equal(response.body.locals.person.documento, '79520182');
     assert.equal(response.body.locals.person.codigo, '2024100001');
     assert.equal(response.body.locals.activeSanctionCount, 0);
+    assert.equal(Array.isArray(response.body.locals.SANCTION_TYPES), true);
+    assert.equal(response.body.locals.SANCTION_TYPES.length > 0, true);
     assert.equal(typeof response.body.locals.lookupToken, 'string');
     assert.equal(oatiRequestCount, 3);
   } finally {
