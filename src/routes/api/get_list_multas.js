@@ -746,6 +746,7 @@ router.post('/bloquear-recibo-masivo', requireReceiptBlockAccess, async (req, re
       client.release();
       client = null;
       if (error?.code === 'OATI_UNAVAILABLE') {
+        console.error('[OATI] Causa:', error?.cause?.code, error?.cause?.message);
         return respondOatiUnavailable(req, res);
       }
       console.error('Error consultando el período académico en SGA:', error);
@@ -821,6 +822,7 @@ router.post('/bloquear-recibo-masivo', requireReceiptBlockAccess, async (req, re
   } catch (error) {
     if (client) client.release();
     if (error?.code === 'OATI_UNAVAILABLE') {
+      console.error('[OATI] Causa:', error?.cause?.code, error?.cause?.message);
       return respondOatiUnavailable(req, res);
     }
     console.error('Error generando bloqueo de recibo de pago SGA masivo:', error);
@@ -899,6 +901,7 @@ router.post('/:multaId/bloquear-recibo', requireReceiptBlockAccess, async (req, 
   } catch (error) {
     if (client) client.release();
     if (error?.code === 'OATI_UNAVAILABLE') {
+      console.error('[OATI] Causa:', error?.cause?.code, error?.cause?.message);
       return respondOatiUnavailable(req, res);
     }
     console.error('Error generando bloqueo de recibo de pago SGA:', error);
