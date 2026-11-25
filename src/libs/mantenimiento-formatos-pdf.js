@@ -1,6 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const PDFDocument = require('pdfkit');
+const { obtenerFormatoRegistroMantenimiento } = require('./hojas-vida-mantenimientos');
+
+// Código institucional del formato SIGUD impreso en el encabezado del PDF.
+// Se toma de la lista parametrizable de formatos de mantenimiento.
+function codigoInstitucionalFormato(codigo) {
+  const formato = obtenerFormatoRegistroMantenimiento(codigo);
+  return formato && formato.codigoInstitucional ? formato.codigoInstitucional : codigo;
+}
 
 const FONT_REGULAR = path.join(__dirname, '..', 'public', 'fonts', 'NotoSansJP-Regular.otf');
 const FONT_BOLD = path.join(__dirname, '..', 'public', 'fonts', 'NotoSansJP-Bold.otf');
@@ -261,7 +269,7 @@ function sendMantenimientoCorrectivoPdf(res, hojaVida, equipo, mantenimiento) {
   drawHeader(
     doc,
     'REGISTRO DE MANTENIMIENTO CORRECTIVO DE EQUIPOS O MÁQUINAS',
-    'GDTH-PG-003-FR-026',
+    codigoInstitucionalFormato('FR-026'),
     '10/08/2022'
   );
   const left = doc.page.margins.left;
@@ -401,7 +409,12 @@ function sendCronogramaMantenimientoPdf(res, hojaVida, equipo, mantenimiento) {
     `Cronograma_Mantenimiento_${mantenimiento.id || hojaVida.codigo_inventario || hojaVida.id}.pdf`,
     { layout: 'landscape' }
   );
-  drawHeader(doc, 'CRONOGRAMA DE MANTENIMIENTO', 'GDTH-PG-003-FR-028', '10/09/2022');
+  drawHeader(
+    doc,
+    'CRONOGRAMA DE MANTENIMIENTO',
+    codigoInstitucionalFormato('FR-028'),
+    '10/09/2022'
+  );
   const left = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const ctx = commonMaintenanceContext(hojaVida, equipo, mantenimiento);
@@ -542,7 +555,7 @@ function sendMantenimientoPreventivoPdf(res, hojaVida, equipo, mantenimiento) {
   drawHeader(
     doc,
     'FORMATO: MANTENIMIENTO PREVENTIVO DE EQUIPOS O MÁQUINAS',
-    'GDTH-PG-003-FR-029',
+    codigoInstitucionalFormato('FR-029'),
     '10/09/2022'
   );
   const left = doc.page.margins.left;

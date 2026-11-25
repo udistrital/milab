@@ -118,6 +118,17 @@
           </div>
 
           <div class="mb-3">
+            <label for="solicitudTipoPrestamo" class="form-label">Modalidad de prestamo *</label>
+            <select class="form-select" id="solicitudTipoPrestamo" name="tipo_prestamo" required>
+              <option value="libre">Practica libre</option>
+              <option value="clase">Prestamo en clase</option>
+            </select>
+            <div class="form-text">
+              En prestamo en clase podras solicitar hasta 15 minutos despues del inicio y devolver maximo 15 minutos antes de finalizar el bloque.
+            </div>
+          </div>
+
+          <div class="mb-3">
             <label for="solicitudCategoria" class="form-label">Categoria de practica *</label>
             <select class="form-select" id="solicitudCategoria" name="categoria_practica" required>
               <option value="">Selecciona una categoria</option>
@@ -286,6 +297,7 @@
     var horarioError = document.getElementById('solicitudHorarioError');
     var submitButton = document.getElementById('solicitudSubmitBtn');
     var form = document.getElementById('solicitudForm');
+    var tipoPrestamoInput = document.getElementById('solicitudTipoPrestamo');
     var categoriaInput = document.getElementById('solicitudCategoria');
     var justificacionInput = document.getElementById('solicitudJustificacion');
     var aceptarReglamentoInput = document.getElementById('solicitudAceptarReglamento');
@@ -300,6 +312,7 @@
     var resizeSignaturePadSolicitud = null;
     var hasBoundSignaturePadResize = false;
     var selectedScheduleKey = '';
+    var selectedScheduleData = null;
     var capacitacionOk = true;
     var capacitacionPendiente = null;
     var capacitacionErrorTecnico = false;
@@ -608,11 +621,24 @@
 
     function updateSubmitAvailability() {
       var hasSchedule = Boolean(selectedScheduleKey);
+      var modeAllowsSelectedSchedule = !(
+        tipoPrestamoInput &&
+        tipoPrestamoInput.value === 'clase' &&
+        selectedScheduleData &&
+        !selectedScheduleData.permitePrestamoClase
+      );
       var hasCategoria = Boolean(categoriaInput && categoriaInput.value);
       var hasJustificacion = Boolean(justificacionInput && justificacionInput.value.trim().length >= 10);
       var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
       var hasFirma = Boolean(getSignatureDataUrl());
-      var canSubmit = capacitacionOk && hasSchedule && hasCategoria && hasJustificacion && hasReglamento && hasFirma;
+      var canSubmit =
+        capacitacionOk &&
+        hasSchedule &&
+        modeAllowsSelectedSchedule &&
+        hasCategoria &&
+        hasJustificacion &&
+        hasReglamento &&
+        hasFirma;
       submitButton.disabled = !canSubmit;
       if (submitButton) {
         if (!capacitacionOk) {
@@ -627,6 +653,7 @@
 
     function clearScheduleSelection() {
       selectedScheduleKey = '';
+      selectedScheduleData = null;
       if (fechaInicioInput) fechaInicioInput.value = '';
       if (fechaFinInput) fechaFinInput.value = '';
       if (horarioError) horarioError.style.display = 'none';
@@ -634,6 +661,39 @@
         button.classList.remove('active');
       });
       updateSubmitAvailability();
+    }
+
+    function applyScheduleSelection() {
+      if (!selectedScheduleData) return;
+
+      var tipoPrestamo = tipoPrestamoInput ? tipoPrestamoInput.value : 'libre';
+      fechaInicioInput.value = selectedScheduleData.fecha + 'T' + selectedScheduleData.horaInicio;
+      fechaFinInput.value = selectedScheduleData.fecha + 'T' + (
+        tipoPrestamo === 'clase' && selectedScheduleData.permitePrestamoClase
+          ? selectedScheduleData.horaFinClase
+          : selectedScheduleData.horaFin
+      );
+
+      if (!statusElement) return;
+      if (tipoPrestamo === 'clase') {
+        if (!selectedScheduleData.permitePrestamoClase) {
+          statusElement.className = 'alert alert-warning';
+          statusElement.textContent = 'Este bloque no permite prestamo en clase porque no existe una ventana valida de devolucion.';
+          return;
+        }
+        statusElement.className = selectedScheduleData.disponible ? 'alert alert-secondary' : 'alert alert-warning';
+        statusElement.textContent =
+          'Prestamo en clase: la devolucion maxima sera a las ' + selectedScheduleData.horaFinClase + '.';
+        return;
+      }
+
+      if (selectedScheduleData.disponible) {
+        statusElement.className = 'alert alert-secondary';
+        statusElement.textContent = 'Horario disponible seleccionado.';
+      } else {
+        statusElement.className = 'alert alert-warning';
+        statusElement.textContent = 'Horario ocupado seleccionado: la solicitud se registrará en cola de espera.';
+      }
     }
 
     function renderScheduleOptions(horarios) {
@@ -653,23 +713,17 @@
         button.setAttribute('data-fin', slot.horaFin);
         button.innerHTML =
           '<div><strong>' + escapeHtml(slot.fecha) + '</strong></div>' +
-          '<div>' + escapeHtml(slot.horaInicio) + ' - ' + escapeHtml(slot.horaFin) + (slot.disponible ? '' : ' (ocupado: se enviará a cola)') + '</div>';
+          '<div>' + escapeHtml(slot.horaInicio) + ' - ' + escapeHtml(slot.horaFin) + (slot.disponible ? '' : ' (ocupado: se enviará a cola)') + '</div>' +
+          (slot.permitePrestamoClase
+            ? '<div class="small text-muted">Clase: devolucion maxima ' + escapeHtml(slot.horaFinClase || '') + '</div>'
+            : '<div class="small text-muted">Clase: no disponible en este bloque</div>');
 
         button.addEventListener('click', function() {
           clearScheduleSelection();
           button.classList.add('active');
           selectedScheduleKey = [slot.fecha, slot.horaInicio, slot.horaFin].join('|');
-          fechaInicioInput.value = slot.fecha + 'T' + slot.horaInicio;
-          fechaFinInput.value = slot.fecha + 'T' + slot.horaFin;
-          if (statusElement) {
-            if (slot.disponible) {
-              statusElement.className = 'alert alert-secondary';
-              statusElement.textContent = 'Horario disponible seleccionado.';
-            } else {
-              statusElement.className = 'alert alert-warning';
-              statusElement.textContent = 'Horario ocupado seleccionado: la solicitud se registrará en cola de espera.';
-            }
-          }
+          selectedScheduleData = slot;
+          applyScheduleSelection();
           updateSubmitAvailability();
         });
 
@@ -681,6 +735,7 @@
       clearScheduleSelection();
       resetCapacitacionBlock();
       form.classList.remove('was-validated');
+      if (tipoPrestamoInput) tipoPrestamoInput.value = 'libre';
       categoriaInput.value = '';
       justificacionInput.value = '';
       if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
@@ -732,6 +787,12 @@
     });
 
     if (categoriaInput) categoriaInput.addEventListener('change', updateSubmitAvailability);
+    if (tipoPrestamoInput) {
+      tipoPrestamoInput.addEventListener('change', function() {
+        applyScheduleSelection();
+        updateSubmitAvailability();
+      });
+    }
     if (justificacionInput) justificacionInput.addEventListener('input', updateSubmitAvailability);
     if (aceptarReglamentoInput) aceptarReglamentoInput.addEventListener('change', updateSubmitAvailability);
     if (signatureTextInput) signatureTextInput.addEventListener('input', updateTypedSignaturePreview);
@@ -792,6 +853,7 @@
             equipoId: equipoIdInput.value,
             fechaInicio: fechaInicioInput.value,
             fechaFin: fechaFinInput.value,
+            tipo_prestamo: tipoPrestamoInput ? tipoPrestamoInput.value : 'libre',
             categoria_practica: categoriaInput.value,
             justificacion: justificacionInput.value,
             firma_digital: signatureDataUrl,
@@ -817,6 +879,7 @@
       submitButton.disabled = true;
       submitButton.textContent = 'Enviar solicitud';
       clearScheduleSelection();
+      if (tipoPrestamoInput) tipoPrestamoInput.value = 'libre';
       if (aceptarReglamentoInput) aceptarReglamentoInput.checked = false;
       resetSignatureInputs();
       form.classList.remove('was-validated');

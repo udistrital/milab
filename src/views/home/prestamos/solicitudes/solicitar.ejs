@@ -20,6 +20,12 @@
     </div>
   <% } %>
 
+  <% if (autoConsultar) { %>
+    <div class="alert alert-info" role="status">
+      Acceso rapido por código QR: se precargó el laboratorio para consulta directa.
+    </div>
+  <% } %>
+
   <section class="card app-form-panel text-light mx-auto col-lg-8">
     <div class="card-body">
       <form id="solicitudBusquedaForm" action="/milab/prestamos/solicitar/consultar" method="get" class="row g-3" novalidate>
@@ -50,6 +56,9 @@
 
 <script nonce="<%= cspNonce %>">
   (function() {
+    var selectedFacultad = <%- JSON.stringify(selectedFacultad || '') %>;
+    var selectedLaboratorio = <%- JSON.stringify(selectedLaboratorio || '') %>;
+    var autoConsultar = <%- JSON.stringify(Boolean(autoConsultar)) %>;
     var form = document.getElementById('solicitudBusquedaForm');
     var facultadSelect = document.getElementById('facultad');
     var laboratorioSelect = document.getElementById('laboratorio');
@@ -82,6 +91,21 @@
           option.textContent = item.facultad;
           facultadSelect.appendChild(option);
         });
+
+        if (selectedFacultad) {
+          facultadSelect.value = selectedFacultad;
+          if (facultadSelect.value === selectedFacultad) {
+            await loadLaboratorios(selectedFacultad);
+            if (selectedLaboratorio) {
+              laboratorioSelect.value = selectedLaboratorio;
+              if (autoConsultar && laboratorioSelect.value === selectedLaboratorio) {
+                window.requestAnimationFrame(function() {
+                  form.requestSubmit();
+                });
+              }
+            }
+          }
+        }
       } catch (error) {
         facultadSelect.innerHTML = '<option value="">No fue posible cargar facultades</option>';
       }

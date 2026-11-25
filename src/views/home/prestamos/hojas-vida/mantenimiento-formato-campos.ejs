@@ -1,5 +1,14 @@
 <%
   var mantenimientoActual = typeof mantenimiento !== 'undefined' && mantenimiento ? mantenimiento : {};
+  var formatosMantenimiento =
+    typeof formatosMantenimiento !== 'undefined' ? formatosMantenimiento : [];
+  var etiquetaFormato = {};
+  formatosMantenimiento.forEach(function (formato) {
+    if (formato && formato.codigo) etiquetaFormato[formato.codigo] = formato.etiqueta;
+  });
+  var tituloBloqueFormato = function (codigo) {
+    return 'Campos adicionales ' + (etiquetaFormato[codigo] || codigo);
+  };
   var formatoRegistroValor = mantenimientoActual.formato_registro || '';
   var cumpleValor = '';
   if (
@@ -41,7 +50,7 @@
 
 <div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-026">
   <div class="border rounded p-3">
-    <h6 class="mb-3">Campos adicionales FR-026 Correctivo</h6>
+    <h6 class="mb-3"><%= tituloBloqueFormato('FR-026') %></h6>
     <div class="row g-3">
       <div class="col-md-6">
         <label for="hv-mto-descripcion-falla" class="form-label">Descripción de la falla</label>
@@ -83,7 +92,7 @@
 
 <div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-028">
   <div class="border rounded p-3">
-    <h6 class="mb-3">Campos adicionales FR-028 Cronograma</h6>
+    <h6 class="mb-3"><%= tituloBloqueFormato('FR-028') %></h6>
     <div class="row g-3">
       <div class="col-md-6">
         <label for="hv-mto-encargado-elaboracion" class="form-label">Encargado de su elaboración</label>
@@ -146,7 +155,7 @@
 
 <div class="col-12 d-none js-formato-bloque" data-formato-bloque="FR-029">
   <div class="border rounded p-3">
-    <h6 class="mb-3">Campos adicionales FR-029 Preventivo</h6>
+    <h6 class="mb-3"><%= tituloBloqueFormato('FR-029') %></h6>
     <div class="row g-3">
       <div class="col-md-3">
         <label for="hv-mto-diligenciado-por" class="form-label">Diligenciado por</label>

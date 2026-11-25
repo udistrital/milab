@@ -59,6 +59,8 @@ set -eu
 ENV_FILE="$APP_DIR/Docker/.env"
 SQL_DIR="$APP_DIR/sql-scripts"
 SQL_RUN_DIR="$APP_DIR/sql-scripts.apply"
+PROD_SQL_DIR="$SQL_RUN_DIR/prod"
+PREPROD_SQL_DIR="$SQL_RUN_DIR/preprod"
 COMPOSE_OVERRIDE_FILE="$COMPOSE_DIR/docker-compose.override.yml"
 PROJECT_NAME="$(basename "$COMPOSE_DIR")"
 DB_VOLUME="$(sudo docker inspect "$DB_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)"
@@ -73,18 +75,20 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 for required_file in \
-  db_structure.sql \
-  db_seed_system.sql \
-  db_structure_prestamos.sql \
-  db_seed_prestamos.sql \
-  db_structure_inventarios.sql \
-  db_structure_certificacion.sql \
-  db_seed_certificacion.sql \
-  db_seed_inventarios.sql \
-  db_seed_pruebas_ofuscado.sql
+  "$PROD_SQL_DIR/db_structure.sql" \
+  "$PROD_SQL_DIR/db_structure_prestamos.sql" \
+  "$PROD_SQL_DIR/db_structure_certificacion.sql" \
+  "$PROD_SQL_DIR/db_seed_system.sql" \
+  "$PROD_SQL_DIR/db_seed_prestamos.sql" \
+  "$PROD_SQL_DIR/db_seed_certificacion.sql" \
+  "$PREPROD_SQL_DIR/db_structure_inventarios.sql" \
+  "$PREPROD_SQL_DIR/db_structure_hojas_vida.sql" \
+  "$PREPROD_SQL_DIR/db_seed_inventarios.sql" \
+  "$PREPROD_SQL_DIR/db_seed_hojas_vida.sql" \
+  "$PREPROD_SQL_DIR/db_seed_pruebas_ofuscado.sql"
 do
-  if [ ! -f "$SQL_DIR/$required_file" ]; then
-    echo "No se encontró el script requerido para reconstruir pruebas: $SQL_DIR/$required_file" >&2
+  if [ ! -f "$required_file" ]; then
+    echo "No se encontró el script requerido para reconstruir pruebas: $required_file" >&2
     exit 1
   fi
 done
@@ -141,15 +145,17 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_system.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_prestamos.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_prestamos.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_inventarios.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_structure_certificacion.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_certificacion.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_inventarios.sql"
-sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$SQL_RUN_DIR/db_seed_pruebas_ofuscado.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_structure.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_structure_prestamos.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_structure_certificacion.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_seed_system.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_seed_prestamos.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PROD_SQL_DIR/db_seed_certificacion.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PREPROD_SQL_DIR/db_structure_inventarios.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PREPROD_SQL_DIR/db_structure_hojas_vida.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PREPROD_SQL_DIR/db_seed_inventarios.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PREPROD_SQL_DIR/db_seed_hojas_vida.sql"
+sudo docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$PREPROD_SQL_DIR/db_seed_pruebas_ofuscado.sql"
 
 sudo docker compose up -d --build milabud
 

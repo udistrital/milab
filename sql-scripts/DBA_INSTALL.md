@@ -10,15 +10,16 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 
 ## Archivos
 
-- db_structure.sql: estructura completa, ajustes idempotentes, constraints e indices.
-- db_seed_system.sql: catalogos base y bootstrap del modelo RBAC.
-- db_structure_prestamos.sql / db_seed_prestamos.sql: estructura y menus del modulo de prestamos.
-- db_structure_certificacion.sql / db_seed_certificacion.sql: estructura y catalogos de certificacion.
-- db_structure_inventarios.sql / db_seed_inventarios.sql: estructura y menus/permisos del modulo de inventarios.
+- `prod/db_structure.sql`: estructura completa, ajustes idempotentes, constraints e indices.
+- `prod/db_seed_system.sql`: catalogos base y bootstrap del modelo RBAC.
+- `prod/db_structure_prestamos.sql` / `prod/db_seed_prestamos.sql`: estructura y menus del modulo de prestamos.
+- `prod/db_structure_certificacion.sql` / `prod/db_seed_certificacion.sql`: estructura y catalogos de certificacion.
+- `preprod/db_structure_inventarios.sql` / `preprod/db_seed_inventarios.sql`: estructura y menus/permisos del modulo de inventarios.
+- `preprod/db_structure_hojas_vida.sql` / `preprod/db_seed_hojas_vida.sql`: estructura y datos base de hojas de vida.
 - [sql/20261021_gestor_laboratorio.sql](../sql/20261021_gestor_laboratorio.sql): inicializa el rol, su acceso administrativo y la gestión global de encuentros en bases existentes.
 - [sql/20261021_coordinador_ual_encargado.sql](../sql/20261021_coordinador_ual_encargado.sql): crea o recupera la relación entre coordinadores encargados y UAL en bases existentes.
 - [sql/20261023_encuentros_app_permissions.sql](../sql/20261023_encuentros_app_permissions.sql): garantiza permisos de lectura y escritura para el usuario PostgreSQL `milab_app` en las tablas de Encuentros.
-- db_seed_pruebas_ofuscado.sql: datos de prueba derivados del libro ofuscado; se ejecuta solo al reconstruir el ambiente de pruebas, nunca en producción.
+- `preprod/db_seed_pruebas_ofuscado.sql`: datos de prueba derivados del libro ofuscado; se ejecuta solo al reconstruir el ambiente de pruebas, nunca en producción.
 - scripts/generate_ofuscado_seed.py: regenera el seed anterior desde el libro ofuscado y el catalogo del sistema.
 - db_seed_pruebas_local.sql: precarga local de pruebas (NO usar en produccion).
 
@@ -26,15 +27,17 @@ Este documento describe como instalar el esquema y la precarga base de MILab en 
 
 Ejecutar en este orden:
 
-1. db_structure.sql
-2. db_seed_system.sql
-3. db_structure_prestamos.sql
-4. db_seed_prestamos.sql
-5. db_structure_inventarios.sql
-6. db_structure_certificacion.sql
-7. db_seed_certificacion.sql
-8. db_seed_inventarios.sql
-9. db_seed_pruebas_ofuscado.sql (solo al reconstruir el ambiente de pruebas)
+1. `prod/db_structure.sql`
+2. `prod/db_structure_prestamos.sql`
+3. `prod/db_structure_certificacion.sql`
+4. `prod/db_seed_system.sql`
+5. `prod/db_seed_prestamos.sql`
+6. `prod/db_seed_certificacion.sql`
+7. `preprod/db_structure_inventarios.sql`
+8. `preprod/db_structure_hojas_vida.sql`
+9. `preprod/db_seed_inventarios.sql`
+10. `preprod/db_seed_hojas_vida.sql`
+11. `preprod/db_seed_pruebas_ofuscado.sql` (solo al reconstruir el ambiente de pruebas)
 
 ## Comandos recomendados (psql)
 
@@ -42,21 +45,23 @@ Reemplazar variables de conexion segun el ambiente.
 
 1. Estructura base y permisos:
 
-psql -h <host> -p <port> -U <user> -d <db> -f db_structure.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_structure.sql
 
 2. Catalogos y RBAC:
 
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_system.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_seed_system.sql
 
 3. Modulos:
 
-psql -h <host> -p <port> -U <user> -d <db> -f db_structure_prestamos.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_prestamos.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_structure_inventarios.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_structure_certificacion.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_certificacion.sql
-psql -h <host> -p <port> -U <user> -d <db> -f db_seed_inventarios.sql
-psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f db_seed_pruebas_ofuscado.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_structure_prestamos.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_structure_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_seed_prestamos.sql
+psql -h <host> -p <port> -U <user> -d <db> -f prod/db_seed_certificacion.sql
+psql -h <host> -p <port> -U <user> -d <db> -f preprod/db_structure_inventarios.sql
+psql -h <host> -p <port> -U <user> -d <db> -f preprod/db_structure_hojas_vida.sql
+psql -h <host> -p <port> -U <user> -d <db> -f preprod/db_seed_inventarios.sql
+psql -h <host> -p <port> -U <user> -d <db> -f preprod/db_seed_hojas_vida.sql
+psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f preprod/db_seed_pruebas_ofuscado.sql
 ```
 
 Para actualizar una base existente con el rol Gestor de laboratorio y habilitar su gestión

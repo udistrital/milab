@@ -123,4 +123,64 @@ ON CONFLICT (codigo_curso, id_equipo) DO UPDATE
 SET activo = TRUE,
     fecha_modificacion = CURRENT_TIMESTAMP;
 
+CREATE TABLE IF NOT EXISTS prestamo_activacion_laboratorio (
+    id SERIAL PRIMARY KEY,
+    ual_id INT NOT NULL,
+    estado_activacion BOOLEAN NOT NULL DEFAULT FALSE,
+    checklist_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    configuracion_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    activado_por_id BIGINT,
+    activado_por_documento VARCHAR(50),
+    fecha_activacion TIMESTAMPTZ,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_prestamo_activacion_laboratorio_ual UNIQUE (ual_id),
+    CONSTRAINT fk_prestamo_activacion_laboratorio_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+    CONSTRAINT fk_prestamo_activacion_laboratorio_usuario FOREIGN KEY (activado_por_id) REFERENCES usuario(id) ON DELETE SET NULL,
+    CONSTRAINT ck_prestamo_activacion_laboratorio_checklist_json CHECK (jsonb_typeof(checklist_json) = 'array'),
+    CONSTRAINT ck_prestamo_activacion_laboratorio_configuracion_json CHECK (jsonb_typeof(configuracion_json) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS idx_prestamo_activacion_laboratorio_estado
+  ON prestamo_activacion_laboratorio(estado_activacion);
+
+ALTER TABLE horario_sala
+  ADD COLUMN IF NOT EXISTS origen_carga VARCHAR(20) NOT NULL DEFAULT 'manual';
+
+ALTER TABLE horario_sala
+  ADD COLUMN IF NOT EXISTS cargado_por_id BIGINT;
+
+ALTER TABLE horario_sala
+  ADD COLUMN IF NOT EXISTS cargado_por_documento VARCHAR(50);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'ck_horario_sala_origen_carga'
+  ) THEN
+    ALTER TABLE horario_sala
+      ADD CONSTRAINT ck_horario_sala_origen_carga
+      CHECK (origen_carga IN ('manual', 'excel'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_horario_sala_cargado_por'
+  ) THEN
+    ALTER TABLE horario_sala
+      ADD CONSTRAINT fk_horario_sala_cargado_por
+      FOREIGN KEY (cargado_por_id) REFERENCES usuario(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_horario_sala_origen_carga
+  ON horario_sala(origen_carga);
+
 COMMIT;

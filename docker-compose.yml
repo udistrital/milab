@@ -21,7 +21,7 @@ services:
     #- "traefik.http.routers.milabud.rule=Host(`milab.localhost`)"
 
   dbpostgres:
-    image: postgres:latest
+    image: postgres:18
     container_name: dbpostgres
     restart: always
     env_file:

@@ -197,17 +197,18 @@ async function ensureRegisteredSystemRolesForUser(usuario) {
 
 async function ensureOatiRolesForUser(usuario) {
   const currentRoles = normalizeRoles(usuario?.roles || []);
+  const [docente, estudiante] = await Promise.all([
+    usuario?.documento && !currentRoles.includes('docente')
+      ? lookupTeacherByDocumento(usuario.documento)
+      : null,
+    usuario?.documento && !currentRoles.includes('estudiante')
+      ? lookupStudentByDocumento(usuario.documento)
+      : null,
+  ]);
   const rolesToAdd = [];
 
-  if (usuario?.documento && !currentRoles.includes('docente')) {
-    const docente = await lookupTeacherByDocumento(usuario.documento);
-    if (docente) rolesToAdd.push('docente');
-  }
-
-  if (usuario?.documento && !currentRoles.includes('estudiante')) {
-    const estudiante = await lookupStudentByDocumento(usuario.documento);
-    if (estudiante) rolesToAdd.push('estudiante');
-  }
+  if (docente) rolesToAdd.push('docente');
+  if (estudiante) rolesToAdd.push('estudiante');
 
   if (!rolesToAdd.length) return usuario;
 

@@ -38,6 +38,8 @@ const STORAGE_ROOT = path.resolve(
 const MAX_TEMPLATE_BYTES = 8 * 1024 * 1024;
 const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_BYTES = 3 * 1024 * 1024;
+const FALLBACK_CERTIFICATE_MARKER =
+  'Este archivo se reconstruyó desde el respaldo del certificado.';
 
 const MANAGER_ROLES = [
   'admin',
@@ -289,7 +291,7 @@ async function getRegisteredUserMatch(client, normalizedDocument) {
   return result.rows.length === 1 ? result.rows[0].id : null;
 }
 
-async function createCertificate(eventId, participantId, req) {
+async function createCertificate(eventId, participantId, req, { allowFallbackPdf = false } = {}) {
   let createdFilePath;
   try {
     return await withTransaction(async (client) => {
@@ -372,23 +374,27 @@ async function createCertificate(eventId, participantId, req) {
           .filter((key) => key !== 'qr_verificacion')
           .map((key) => [key, values[key] || ''])
       );
-      let templateBuffer;
+      const verificationUrl = buildAppUrl(`/encuentros/verificar/${verificationToken}`);
+      let pdfBuffer;
       try {
-        templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+        const templateBuffer = await fs.readFile(resolveStoredPath(participant.plantilla_pdf_path));
+        pdfBuffer = await generateCertificatePdf({
+          templateBuffer,
+          templateConfig: config,
+          values,
+          verificationUrl,
+        });
       } catch (error) {
-        if (error.code === 'ENOENT') {
+        if (error.code === 'ENOENT' && allowFallbackPdf) {
+          pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
+        } else if (error.code === 'ENOENT') {
           const templateError = new Error('La plantilla PDF configurada no está disponible.');
           templateError.code = 'ENCUENTRO_TEMPLATE_UNAVAILABLE';
           throw templateError;
+        } else {
+          throw error;
         }
-        throw error;
       }
-      const pdfBuffer = await generateCertificatePdf({
-        templateBuffer,
-        templateConfig: config,
-        values,
-        verificationUrl: buildAppUrl(`/encuentros/verificar/${verificationToken}`),
-      });
       createdFilePath = path.join('certificates', String(eventId), `${code}.pdf`);
       const absoluteCertificatePath = resolveStoredPath(createdFilePath);
       await fs.mkdir(path.dirname(absoluteCertificatePath), { recursive: true });
@@ -437,6 +443,183 @@ async function createCertificate(eventId, participantId, req) {
     if (createdFilePath) await removeStoredFile(createdFilePath);
     throw error;
   }
+}
+
+function buildRecoveryCertificateValues(certificate) {
+  const baseValues = {
+    nombre: certificate.participante_nombre || '',
+    documento: certificate.participante_documento || '',
+    correo: certificate.participante_correo || '',
+    facultad: certificate.participante_facultad || '',
+    laboratorio: certificate.participante_laboratorio || '',
+    evento: certificate.evento_nombre || '',
+    fecha_evento: formatDateForDisplay(certificate.evento_fecha),
+    lugar: certificate.evento_lugar || '',
+    organizador: certificate.evento_organizador || '',
+    rol: certificate.participante_rol || '',
+    fecha_emision:
+      certificate.certificado_creado_en &&
+      !Number.isNaN(Date.parse(certificate.certificado_creado_en))
+        ? new Intl.DateTimeFormat('es-CO', {
+            dateStyle: 'long',
+            timeZone: 'America/Bogota',
+          }).format(new Date(certificate.certificado_creado_en))
+        : '',
+    codigo_certificado: certificate.codigo || '',
+  };
+
+  const snapshotValues = certificate.datos_snapshot_snapshot || certificate.datos_snapshot;
+  if (!snapshotValues || typeof snapshotValues !== 'object' || Array.isArray(snapshotValues)) {
+    return baseValues;
+  }
+  return { ...baseValues, ...snapshotValues };
+}
+
+async function buildFallbackCertificatePdf({ values, verificationUrl }) {
+  const document = new PDFDocument({ size: 'A4', margin: 56 });
+  const chunks = [];
+  const completion = new Promise((resolve, reject) => {
+    document.on('data', (chunk) => chunks.push(chunk));
+    document.on('end', () => resolve(Buffer.concat(chunks)));
+    document.on('error', reject);
+  });
+
+  const qrData = verificationUrl
+    ? await QRCode.toDataURL(verificationUrl, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+      })
+    : null;
+  const qrBuffer = qrData ? Buffer.from(qrData.split(',')[1], 'base64') : null;
+
+  document.font('Helvetica-Bold').fontSize(22).text('Certificado de participación', {
+    align: 'center',
+  });
+  document.moveDown(1);
+  document.font('Helvetica').fontSize(12);
+  document.text('Este certificado acredita la participación en el encuentro institucional.');
+  document.moveDown(1);
+  document.text(`Nombre: ${values.nombre || 'No disponible'}`);
+  document.text(`Documento: ${values.documento || 'No disponible'}`);
+  document.text(`Evento: ${values.evento || 'No disponible'}`);
+  document.text(`Fecha del evento: ${values.fecha_evento || 'No disponible'}`);
+  document.text(`Lugar: ${values.lugar || 'No disponible'}`);
+  document.text(`Organizador: ${values.organizador || 'No disponible'}`);
+  document.text(`Código del certificado: ${values.codigo_certificado || 'No disponible'}`);
+  document.text(`Fecha de emisión: ${values.fecha_emision || 'No disponible'}`);
+
+  if (verificationUrl) {
+    document.moveDown(1.5);
+    document
+      .fontSize(10)
+      .text(`${FALLBACK_CERTIFICATE_MARKER} Verifica su validez con el enlace o QR:`);
+    document.fillColor('#0d6efd').text(verificationUrl, { link: verificationUrl, underline: true });
+    document.fillColor('black');
+  }
+
+  if (qrBuffer) {
+    document.image(qrBuffer, document.page.width - 220, document.page.height - 260, {
+      width: 140,
+      height: 140,
+    });
+  }
+  document.end();
+  return completion;
+}
+
+async function ensureCertificateFile(certificate, { allowFallbackPdf = false } = {}) {
+  const resolveCandidatePath = (relativePath) => {
+    if (!relativePath || typeof relativePath !== 'string') return null;
+    try {
+      return resolveStoredPath(relativePath);
+    } catch {
+      return null;
+    }
+  };
+
+  const templateConfig = certificate.plantilla_config_snapshot || certificate.plantilla_config;
+  const values = buildRecoveryCertificateValues(certificate);
+  const verificationUrl = buildAppUrl(`/encuentros/verificar/${certificate.token_verificacion}`);
+  const buildTemplateCertificateBuffer = async () => {
+    if (!templateConfig || typeof templateConfig !== 'object' || Array.isArray(templateConfig)) {
+      const missingSnapshot = new Error(
+        'No existe una configuración de plantilla para reconstruir.'
+      );
+      missingSnapshot.code = 'CERTIFICATE_FILE_MISSING';
+      throw missingSnapshot;
+    }
+    const configErrors = validateTemplateConfig(templateConfig);
+    if (configErrors.length) {
+      const invalidConfig = new Error(configErrors.join(' '));
+      invalidConfig.code = 'CERTIFICATE_FILE_MISSING';
+      throw invalidConfig;
+    }
+    let templateBuffer = null;
+    try {
+      templateBuffer = await fs.readFile(resolveStoredPath(certificate.plantilla_pdf_path));
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        const templateMissing = new Error(
+          'La plantilla PDF para reconstrucción no está disponible.'
+        );
+        templateMissing.code = 'CERTIFICATE_FILE_MISSING';
+        throw templateMissing;
+      }
+      throw error;
+    }
+    return generateCertificatePdf({
+      templateBuffer,
+      templateConfig,
+      values,
+      verificationUrl,
+    });
+  };
+
+  const primaryPath = resolveCandidatePath(certificate.archivo_actual);
+  const versionPath = resolveCandidatePath(certificate.latest_archivo_path);
+  const existingCandidates = [primaryPath, versionPath].filter(Boolean);
+  for (const candidate of existingCandidates) {
+    try {
+      await fs.access(candidate);
+      if (!allowFallbackPdf) return candidate;
+      try {
+        const upgradedBuffer = await buildTemplateCertificateBuffer();
+        await fs.writeFile(candidate, upgradedBuffer, { flag: 'w', mode: 0o600 });
+        return candidate;
+      } catch (error) {
+        if (error.code !== 'CERTIFICATE_FILE_MISSING') throw error;
+      }
+      return candidate;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+
+  const filePath = primaryPath || versionPath;
+  if (!filePath) {
+    const invalidPath = new Error('No existe una ruta válida para reconstruir el certificado.');
+    invalidPath.code = 'CERTIFICATE_FILE_MISSING';
+    throw invalidPath;
+  }
+
+  let pdfBuffer;
+  try {
+    pdfBuffer = await buildTemplateCertificateBuffer();
+  } catch (error) {
+    if (error.code === 'CERTIFICATE_FILE_MISSING' && allowFallbackPdf) {
+      pdfBuffer = await buildFallbackCertificatePdf({ values, verificationUrl });
+    } else {
+      throw error;
+    }
+  }
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  try {
+    await fs.writeFile(filePath, pdfBuffer, { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  return filePath;
 }
 
 async function awardMedal(certificateId, req) {
@@ -717,6 +900,18 @@ async function fetchEventDetail(eventId) {
         c.codigo AS codigo_certificado,
         c.email_estado AS estado_certificado,
         c.estado AS validez_certificado,
+        (
+          p.usuario_id IS NOT NULL
+          OR (
+            SELECT COUNT(*)
+            FROM usuario u
+            WHERE COALESCE(u.activo, TRUE) = TRUE
+              AND regexp_replace(
+                translate(upper(btrim(u.documento)), 'ÁÉÍÓÚÜÑ', 'AEIOUUN'),
+                '[^A-Z0-9]', '', 'g'
+              ) = p.documento_normalizado
+          ) = 1
+        ) AS tiene_usuario_milab,
         EXISTS (
           SELECT 1 FROM encuentro_logro l
           WHERE l.participante_id = p.id AND l.evento_id = p.evento_id
@@ -3291,6 +3486,115 @@ router.post(
   }
 );
 
+router.post(
+  '/api/eventos/:eventId/participantes/:participantId/medalla/asignar',
+  requireManager,
+  async (req, res) => {
+    const eventId = parsePositiveId(req.params.eventId);
+    const participantId = parsePositiveId(req.params.participantId);
+    if (!eventId || !participantId) {
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Identificadores de evento o participante inválidos.' });
+    }
+    try {
+      const eligibleResult = await pool.query(
+        `
+          SELECT
+            c.id AS certificado_id,
+            c.estado AS certificado_estado
+          FROM encuentro_participante p
+          JOIN encuentro_asistencia a
+            ON a.participante_id = p.id
+           AND a.evento_id = p.evento_id
+          LEFT JOIN encuentro_certificado c
+            ON c.participante_id = p.id
+           AND c.evento_id = p.evento_id
+           AND c.activo = TRUE
+          WHERE p.id = $1
+            AND p.evento_id = $2
+            AND p.activo = TRUE
+            AND a.entrada_en IS NOT NULL
+            AND a.salida_en IS NOT NULL
+          LIMIT 1
+        `,
+        [participantId, eventId]
+      );
+      const eligible = eligibleResult.rows[0];
+      if (!eligible) {
+        return res
+          .status(409)
+          .json({ ok: false, message: 'El participante no tiene una participación completada.' });
+      }
+      if (eligible.certificado_id && eligible.certificado_estado !== 'valido') {
+        return res.status(409).json({
+          ok: false,
+          message: 'No se puede asignar medalla con un certificado anulado.',
+        });
+      }
+
+      let certificateId = eligible.certificado_id;
+      let certificateCreated = false;
+      if (!certificateId) {
+        const certificate = await createCertificate(eventId, participantId, req, {
+          allowFallbackPdf: true,
+        });
+        certificateId = certificate.id;
+        certificateCreated = true;
+      }
+
+      const medal = await awardMedal(certificateId, req);
+      if (medal?.motivo === 'usuario_inexistente_o_ambiguo') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message:
+            'No se encontró una cuenta MiLab activa y única para este documento. Verifica el registro del usuario.',
+        });
+      }
+      if (medal?.motivo === 'identidad_participante_inconsistente') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message:
+            'La identidad del participante no pudo vincularse de forma consistente. Revisa el documento y vuelve a intentar.',
+        });
+      }
+      if (medal?.motivo === 'no_cumple_condiciones') {
+        return res.status(409).json({
+          ok: false,
+          certificado_id: certificateId,
+          certificado_generado: certificateCreated,
+          message: 'No se cumplen las condiciones para asignar la medalla.',
+        });
+      }
+
+      return res.json({
+        ok: true,
+        certificado_id: certificateId,
+        certificado_generado: certificateCreated,
+        correo_enviado: false,
+        medalla_otorgada: Boolean(medal?.otorgada),
+        message:
+          medal?.motivo === 'ya_otorgada'
+            ? 'La medalla ya estaba asignada para esta participación.'
+            : 'Medalla asignada sin enviar correo de certificado.',
+      });
+    } catch (error) {
+      if (isTemplateUnavailableError(error)) {
+        return res.status(409).json({
+          ok: false,
+          message:
+            'La plantilla PDF del evento no está disponible. Actualízala y vuelve a intentar.',
+        });
+      }
+      return handleServerError(req, res, error, 'No fue posible asignar la medalla.');
+    }
+  }
+);
+
 router.patch(
   '/api/eventos/:eventId/asistencia/:documento/corregir',
   requireAttendanceCorrection,
@@ -3573,10 +3877,39 @@ router.get(
       const userId = getSessionUserId(req);
       const result = await pool.query(
         `
-        SELECT c.archivo_actual, c.codigo
+        SELECT
+          c.archivo_actual,
+          c.codigo,
+          c.token_verificacion,
+          c.fecha_creacion AS certificado_creado_en,
+          c.datos_snapshot,
+          e.plantilla_pdf_path,
+          e.plantilla_config,
+          e.nombre AS evento_nombre,
+          e.fecha AS evento_fecha,
+          e.lugar AS evento_lugar,
+          e.organizador AS evento_organizador,
+          p.nombre AS participante_nombre,
+          p.documento AS participante_documento,
+          p.correo AS participante_correo,
+          p.rol AS participante_rol,
+          p.facultad AS participante_facultad,
+          p.laboratorio AS participante_laboratorio,
+          COALESCE(p.usuario_id = $3, FALSE) AS es_propietario,
+          latest.archivo_path AS latest_archivo_path,
+          latest.plantilla_config_snapshot,
+          latest.datos_snapshot AS datos_snapshot_snapshot
         FROM encuentro_certificado c
+        JOIN encuentro_evento e ON e.id = c.evento_id
         JOIN encuentro_participante p
           ON p.id = c.participante_id AND p.evento_id = c.evento_id
+        LEFT JOIN LATERAL (
+          SELECT archivo_path, plantilla_config_snapshot, datos_snapshot
+          FROM encuentro_certificado_version
+          WHERE certificado_id = c.id
+          ORDER BY numero_version DESC
+          LIMIT 1
+        ) latest ON TRUE
         WHERE c.id = $1
           AND c.estado = 'valido'
           AND ($2::boolean = TRUE OR p.usuario_id = $3)
@@ -3587,11 +3920,12 @@ router.get(
         return res
           .status(404)
           .json({ ok: false, message: 'El certificado no existe o no tienes acceso.' });
-      const filePath = resolveStoredPath(result.rows[0].archivo_actual);
-      await fs.access(filePath);
+      const filePath = await ensureCertificateFile(result.rows[0], {
+        allowFallbackPdf: !isManager || Boolean(result.rows[0].es_propietario),
+      });
       return res.download(filePath, `certificado-${result.rows[0].codigo}.pdf`);
     } catch (error) {
-      if (error.code === 'ENOENT')
+      if (error.code === 'ENOENT' || error.code === 'CERTIFICATE_FILE_MISSING')
         return res
           .status(404)
           .json({ ok: false, message: 'El archivo del certificado no está disponible.' });

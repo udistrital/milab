@@ -7,10 +7,48 @@ const TIPOS_MANTENIMIENTO = [
   { codigo: 'OTRO', etiqueta: 'Otro' },
 ];
 
+// Lista parametrizable de formatos SIGUD de mantenimiento.
+// Si un formato cambia (código, título institucional, tipo sugerido, PDF o bloque
+// de campos) basta con editar esta entrada; los consumidores leen estos atributos.
+// - codigo: identificador guardado en mantenimiento.formato_registro
+// - etiqueta: texto visible en los desplegables
+// - codigoInstitucional: código impreso en el encabezado del PDF
+// - tipoSugerido: tipo de mantenimiento que se autocompleta al elegirlo
+// - impresion: clave con la que la ruta de impresión elige el PDF a generar
+// - bloqueCampos: identificador del bloque de campos adicionales a mostrar
+// - orden: orden de aparición en el desplegable
+// - activo: permite retirar un formato sin borrarlo de la lista
 const FORMATOS_REGISTRO_MANTENIMIENTO = [
-  { codigo: 'FR-026', etiqueta: 'FR-026 Correctivo' },
-  { codigo: 'FR-028', etiqueta: 'FR-028 Cronograma' },
-  { codigo: 'FR-029', etiqueta: 'FR-029 Preventivo' },
+  {
+    codigo: 'FR-026',
+    etiqueta: 'FR-026 Correctivo',
+    codigoInstitucional: 'GDTH-PG-003-FR-026',
+    tipoSugerido: 'CORRECTIVO',
+    impresion: 'MANTENIMIENTO_CORRECTIVO',
+    bloqueCampos: 'FR-026',
+    orden: 1,
+    activo: true,
+  },
+  {
+    codigo: 'FR-028',
+    etiqueta: 'FR-028 Cronograma',
+    codigoInstitucional: 'GDTH-PG-003-FR-028',
+    tipoSugerido: 'PREVENTIVO',
+    impresion: 'CRONOGRAMA_MANTENIMIENTO',
+    bloqueCampos: 'FR-028',
+    orden: 2,
+    activo: true,
+  },
+  {
+    codigo: 'FR-029',
+    etiqueta: 'FR-029 Preventivo',
+    codigoInstitucional: 'GDTH-PG-003-FR-029',
+    tipoSugerido: 'PREVENTIVO',
+    impresion: 'MANTENIMIENTO_PREVENTIVO',
+    bloqueCampos: 'FR-029',
+    orden: 3,
+    activo: true,
+  },
 ];
 
 const CAMPOS_FORMATO_MANTENIMIENTO = {
@@ -133,8 +171,18 @@ function etiquetaTipoMantenimiento(codigo) {
   return tipo ? tipo.etiqueta : codigo;
 }
 
+function obtenerFormatoRegistroMantenimiento(codigo) {
+  return FORMATOS_REGISTRO_MANTENIMIENTO.find((item) => item.codigo === codigo) || null;
+}
+
+function formatosRegistroMantenimientoActivos() {
+  return FORMATOS_REGISTRO_MANTENIMIENTO.filter((item) => item.activo !== false).sort(
+    (a, b) => (a.orden || 0) - (b.orden || 0)
+  );
+}
+
 function etiquetaFormatoRegistroMantenimiento(codigo) {
-  const formato = FORMATOS_REGISTRO_MANTENIMIENTO.find((item) => item.codigo === codigo);
+  const formato = obtenerFormatoRegistroMantenimiento(codigo);
   return formato ? formato.etiqueta : codigo;
 }
 
@@ -228,6 +276,8 @@ module.exports = {
   esEstadoMantenimientoEditable,
   esEstadoMantenimientoCierre,
   etiquetaTipoMantenimiento,
+  obtenerFormatoRegistroMantenimiento,
+  formatosRegistroMantenimientoActivos,
   etiquetaFormatoRegistroMantenimiento,
   etiquetaEstadoMantenimiento,
   claseEstadoMantenimiento,

@@ -35,7 +35,8 @@ function getSafeError(error) {
   }
   return {
     code: String(error?.code || 'ARKA_RECONCILIATION_ERROR').slice(0, 80),
-    message: 'No fue posible completar la conciliación. Revisa los registros del servidor.',
+    message:
+      'No fue posible completar la actualización de Inventario ARKA. Revisa los registros del servidor.',
   };
 }
 
@@ -82,7 +83,7 @@ function createArkaReconciliationService({
 
     if (!isReconciliationEnabled()) {
       throw new ArkaIntegrationError(
-        'Las conciliaciones ARKA están deshabilitadas en este ambiente.',
+        'Inventario ARKA está deshabilitado en este ambiente.',
         'ARKA_RECONCILIATION_DISABLED'
       );
     }
@@ -446,7 +447,7 @@ function createArkaReconciliationService({
         sourceSystem: 'inventarios',
         templateName: 'inventarios/arka_conciliacion_alerta',
         recipient,
-        subject: `MILab: tienes ${alertCount} elementos de inventario por conciliar en ARKA`,
+        subject: `MILab: tienes ${alertCount} elementos por revisar en Inventario ARKA`,
         variables: {
           coordinadorNombre: coordinator.nombre,
           cantidadAlertas: alertCount,

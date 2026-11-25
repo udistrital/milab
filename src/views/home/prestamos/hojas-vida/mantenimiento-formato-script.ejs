@@ -17,11 +17,13 @@
     );
     var valorInicialMeses = <%- JSON.stringify((mantenimiento && mantenimiento.meses_programados) || []) %>;
     var valorInicialRegistro = <%- JSON.stringify((mantenimiento && mantenimiento.registro_mantenimiento) || {}) %>;
-    var sugerenciasTipo = {
-      'FR-026': 'CORRECTIVO',
-      'FR-028': 'PREVENTIVO',
-      'FR-029': 'PREVENTIVO',
-    };
+    var formatosMantenimiento = <%- JSON.stringify(formatosMantenimiento || []) %>;
+    var sugerenciasTipo = {};
+    formatosMantenimiento.forEach(function (formato) {
+      if (formato && formato.codigo && formato.tipoSugerido) {
+        sugerenciasTipo[formato.codigo] = formato.tipoSugerido;
+      }
+    });
 
     function sincronizarMesesProgramados() {
       if (!hiddenMeses) return;

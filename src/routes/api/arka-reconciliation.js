@@ -14,13 +14,13 @@ const requireReconciliationAccess = requireRoles(
   ['admin', 'administrador', 'coordinador_general', 'coordinador'],
   {
     message: 'Acceso denegado',
-    message2: 'No tienes permisos para consultar conciliaciones ARKA.',
+    message2: 'No tienes permisos para consultar Inventario ARKA.',
     limit: 'loginOnly',
   }
 );
 const requireReconciliationAdmin = requireRoles(['admin', 'administrador'], {
   message: 'Acceso denegado',
-  message2: 'Solo un administrador puede iniciar las corridas de conciliación ARKA.',
+  message2: 'Solo un administrador puede iniciar las corridas de Inventario ARKA.',
   limit: 'loginOnly',
 });
 
@@ -267,7 +267,7 @@ async function loadPageData(req) {
 
 function createWorkbook(report, laboratory) {
   const summaryRows = [
-    ['Conciliación ARKA'],
+    ['Inventario ARKA'],
     ['Laboratorio', laboratory.laboratorio],
     ['Facultad', laboratory.facultad],
     ['Dependencia', laboratory.dependencia || '—'],
@@ -412,9 +412,9 @@ router.post('/corridas', requireReconciliationAdmin, async (req, res) => {
       requestedByDocument: getUserDocument(req) || null,
     });
     const message = result.enqueued
-      ? `Se encolaron ${result.enqueued} conciliaciones para ${result.coordinators} coordinadores.`
+      ? `Se encolaron ${result.enqueued} corridas de Inventario ARKA para ${result.coordinators} coordinadores.`
       : result.coordinators
-        ? 'Ya existen conciliaciones pendientes o en curso para todos los coordinadores.'
+        ? 'Ya existen corridas de Inventario ARKA pendientes o en curso para todos los coordinadores.'
         : 'No hay coordinadores con UAL asignadas para consultar.';
     return res.redirect(`${PAGE_URL}?success=${encodeURIComponent(message)}`);
   } catch (error) {
@@ -423,7 +423,7 @@ router.post('/corridas', requireReconciliationAdmin, async (req, res) => {
     }
     console.error('Error encolando conciliaciones ARKA:', error);
     return res.redirect(
-      `${PAGE_URL}?error=${encodeURIComponent('No fue posible encolar las conciliaciones ARKA.')}`
+      `${PAGE_URL}?error=${encodeURIComponent('No fue posible encolar las corridas de Inventario ARKA.')}`
     );
   }
 });
@@ -434,13 +434,13 @@ router.get('/exportar', requireReconciliationAccess, async (req, res, next) => {
     if (!data.selectedLaboratory || !data.report) {
       return res.status(404).render('home/message_error', {
         message: 'Reporte no disponible',
-        message2: 'No hay una conciliación exitosa para el laboratorio seleccionado.',
+        message2: 'No hay un Inventario ARKA exitoso para el laboratorio seleccionado.',
         limit: 'loginOnly',
       });
     }
 
     const workbook = createWorkbook(data.report, data.selectedLaboratory);
-    const fileName = `conciliacion-arka-${data.selectedLaboratory.ual_id}.xlsx`;
+    const fileName = `inventario-arka-${data.selectedLaboratory.ual_id}.xlsx`;
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

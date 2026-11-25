@@ -12,10 +12,10 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Conciliaciones ARKA</h1>
+    <h1 class="app-page-title">Inventario ARKA</h1>
     <p class="app-page-subtitle">
-      Compara el inventario aprobado de equipos de la UAL con los elementos asignados en ARKA
-      al coordinador encargado.
+      Consulta el inventario aprobado de equipos de la UAL frente a los elementos asignados en ARKA
+      para el coordinador encargado.
     </p>
   </section>
 
@@ -116,7 +116,7 @@
           <%- include('../../partials/csrf_field'); -%>
           <button type="submit" class="btn btn-primary">
             <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
-            Iniciar conciliaciones
+            Actualizar Inventario ARKA
           </button>
         </form>
       </div>
@@ -179,15 +179,15 @@
     <div class="alert alert-info d-flex align-items-center gap-2" role="status">
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
       <% if (activeRun.estado === 'en_cola') { %>
-        La conciliación de este coordinador está en cola y se ejecutará en segundo plano.
+        La actualización de Inventario ARKA para este coordinador está en cola y se ejecutará en segundo plano.
       <% } else { %>
-        La conciliación de este coordinador se está ejecutando.
+        La actualización de Inventario ARKA para este coordinador se está ejecutando.
       <% } %>
     </div>
   <% } %>
   <% if (failedRun) { %>
     <div class="alert alert-warning" role="alert">
-      La última conciliación no terminó correctamente; se conserva el último snapshot exitoso.
+      La última actualización de Inventario ARKA no terminó correctamente; se conserva el último snapshot exitoso.
       <% if (canRunAll && failedRun.mensaje_error) { %>
         <span class="d-block mt-1"><%= failedRun.mensaje_error %></span>
       <% } %>
@@ -195,7 +195,7 @@
   <% } %>
 
   <% if (selectedLaboratory && report) { %>
-    <section class="mb-4" aria-label="Resumen de conciliación">
+    <section class="mb-4" aria-label="Resumen de Inventario ARKA">
       <div class="row g-3">
         <div class="col-6 col-xl-3">
           <article class="card h-100">
@@ -297,7 +297,7 @@
               <% } else { %>
                 <tr>
                   <td colspan="8" class="text-center text-body-secondary py-4">
-                    No hay elementos para mostrar en esta conciliación.
+                    No hay elementos para mostrar en Inventario ARKA.
                   </td>
                 </tr>
               <% } %>
@@ -308,7 +308,7 @@
     </section>
   <% } else if (selectedLaboratory) { %>
     <div class="alert alert-secondary" role="status">
-      Aún no hay una conciliación exitosa para esta UAL. Se mostrará el reporte después de la
+      Aún no hay un Inventario ARKA exitoso para esta UAL. Se mostrará el reporte después de la
       siguiente corrida completada.
     </div>
   <% } %>
