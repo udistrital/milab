@@ -255,8 +255,8 @@ async function requestOatiPublicPost(pathname, body, contentType) {
   return response.data;
 }
 
-async function requestOati(pathname, { signal } = {}) {
-  if (config.oatiUsePublic) {
+async function requestOati(pathname, { signal, forceAuth = false } = {}) {
+  if (config.oatiUsePublic && !forceAuth) {
     return requestOatiPublic(pathname, signal);
   }
 
@@ -292,8 +292,13 @@ async function requestOati(pathname, { signal } = {}) {
   return response.data;
 }
 
-async function requestOatiPost(pathname, body, contentType = 'application/json') {
-  if (config.oatiUsePublic) {
+async function requestOatiPost(
+  pathname,
+  body,
+  contentType = 'application/json',
+  { forceAuth = false } = {}
+) {
+  if (config.oatiUsePublic && !forceAuth) {
     return requestOatiPublicPost(pathname, body, contentType);
   }
 

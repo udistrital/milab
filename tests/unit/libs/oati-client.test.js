@@ -268,6 +268,80 @@ test('requestOatiPost uses the public host without requesting a token in public 
   }
 });
 
+test('requestOati forceAuth requests a token and uses the authenticated host in public environments', async () => {
+  let postCalls = 0;
+  const getCalls = [];
+  const loaded = loadOatiClient({
+    postImpl: async () => {
+      postCalls += 1;
+      return { data: { access_token: 'token-123', expires_in: 300 } };
+    },
+    getImpl: async (...args) => {
+      getCalls.push(args);
+      return { data: { ok: true } };
+    },
+    configOverrides: {
+      oatiUsePublic: true,
+    },
+  });
+
+  try {
+    const response = await loaded.oatiClient.requestOati(
+      'wso2eiserver/services/academica_pruebas/periodo_academico/A',
+      { forceAuth: true }
+    );
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(postCalls, 1);
+    assert.equal(
+      getCalls[0][0],
+      'https://oati.test/wso2eiserver/services/academica_pruebas/periodo_academico/A'
+    );
+    assert.equal(getCalls[0][1].headers.Authorization, 'Bearer token-123');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('requestOatiPost forceAuth requests a token and uses the authenticated host in public environments', async () => {
+  const postCalls = [];
+  const loaded = loadOatiClient({
+    postImpl: async (...args) => {
+      postCalls.push(args);
+      return postCalls.length === 1
+        ? { data: { access_token: 'token-123', expires_in: 300 } }
+        : { data: { ok: true } };
+    },
+    getImpl: async () => {
+      throw new Error('Authenticated POST must not issue a GET');
+    },
+    configOverrides: {
+      oatiUsePublic: true,
+    },
+  });
+
+  try {
+    const response = await loaded.oatiClient.requestOatiPost(
+      'wso2eiserver/services/academica_pruebas/deudores',
+      { _postdeudores: {} },
+      'application/json',
+      { forceAuth: true }
+    );
+
+    assert.deepEqual(response, { ok: true });
+    assert.equal(postCalls.length, 2);
+    assert.equal(postCalls[0][0], 'https://oati.test/oauth2/token');
+    assert.equal(
+      postCalls[1][0],
+      'https://oati.test/wso2eiserver/services/academica_pruebas/deudores'
+    );
+    assert.equal(postCalls[1][2].headers.Authorization, 'Bearer token-123');
+    assert.equal(postCalls[1][2].headers['Content-Type'], 'application/json');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('getAcademicServicePath uses the service namespace configured for the environment', () => {
   const loaded = loadOatiClient({
     postImpl: async () => ({ data: {} }),
