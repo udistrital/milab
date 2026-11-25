@@ -66,7 +66,7 @@ function loadRoute() {
     [
       multaConfigPath,
       {
-        SANCTION_TYPES: {},
+        SANCTION_TYPES: ['Firma de compromiso de buen uso'],
         fetchMultaConfigsForFacultyIds: async () => new Map(),
       },
     ],
@@ -161,6 +161,9 @@ test('get-info-multa-docente reuses the person lookup after the user chooses reg
     assert.equal(searchResponse.status, 200, JSON.stringify(searchResponse.body));
     assert.equal(searchResponse.body.view, 'home/sancion-person-actions');
     assert.equal(searchResponse.body.locals.person.documento, '79520182');
+    assert.deepEqual(searchResponse.body.locals.SANCTION_TYPES, [
+      'Firma de compromiso de buen uso',
+    ]);
     assert.equal(actionResponse.status, 303);
     assert.equal(
       actionResponse.headers.location,

@@ -66,6 +66,7 @@ async function renderTeacherSanctionActions(
     personType: 'docente',
     person,
     activeSanctionCount: Number(activeSanctionsResult.rows[0]?.total || 0),
+    SANCTION_TYPES,
     successFeedback,
   });
 }

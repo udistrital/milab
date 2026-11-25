@@ -148,6 +148,7 @@ async function renderStudentSanctionActions(
     sanctionHistory: panel.history,
     sanctionHistoryError: panel.historyError,
     sanctionCategories,
+    SANCTION_TYPES,
     sga: panel.sga,
     sgaConfigured: panel.sga.configured,
     successFeedback,
