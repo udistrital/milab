@@ -2,8 +2,14 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Salas</h1>
-    <p class="app-page-subtitle">Administra las salas disponibles por facultad y laboratorio para preparar la operacion de practicas.</p>
+    <h1 class="app-page-title"><%= ualInfoMode ? 'Información de la UAL' : 'Salas' %></h1>
+    <p class="app-page-subtitle">
+      <% if (ualInfoMode) { %>
+        Configura la información de la UAL para <strong><%= selectedLaboratorio || 'el laboratorio seleccionado' %></strong>.
+      <% } else { %>
+        Administra las salas disponibles por facultad y laboratorio para preparar la operacion de practicas.
+      <% } %>
+    </p>
   </section>
 
   <div id="salasAlerts">
@@ -15,199 +21,267 @@
     <% } %>
   </div>
 
-  <section class="card app-form-panel text-light mb-4">
-    <div class="card-body">
-      <form id="filtroSalasForm" class="row g-3" method="get" action="/milab/prestamos/salas">
-        <div class="col-md-5">
-          <label for="filtroFacultad" class="form-label">Facultad</label>
-          <select class="form-select" id="filtroFacultad" name="facultad">
-            <option value="">Todas</option>
-          </select>
-        </div>
-        <div class="col-md-5">
-          <label for="filtroLaboratorio" class="form-label">Laboratorio</label>
-          <select class="form-select" id="filtroLaboratorio" name="laboratorio">
-            <option value="">Todos</option>
-          </select>
-        </div>
-        <div class="col-md-2 d-flex align-items-end gap-2">
-          <button type="submit" class="btn btn-outline-light w-100">Filtrar</button>
-        </div>
-      </form>
-    </div>
-  </section>
+  <% if (!ualInfoMode) { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body">
+        <form id="filtroSalasForm" class="row g-3" method="get" action="/milab/prestamos/salas">
+          <div class="col-md-5">
+            <label for="filtroFacultad" class="form-label">Facultad</label>
+            <select class="form-select" id="filtroFacultad" name="facultad">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label for="filtroLaboratorio" class="form-label">Laboratorio</label>
+            <select class="form-select" id="filtroLaboratorio" name="laboratorio">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="col-md-2 d-flex align-items-end gap-2">
+            <button type="submit" class="btn btn-outline-light w-100">Filtrar</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  <% } else { %>
+    <section class="card app-form-panel text-light mb-4">
+      <div class="card-body">
+        <p class="mb-0">
+          <strong>Laboratorio:</strong> <%= selectedLaboratorio || '-' %>
+          <% if (selectedFacultad) { %>
+            · <%= selectedFacultad %>
+          <% } %>
+        </p>
+      </div>
+    </section>
+  <% } %>
 
   <section class="card app-form-panel text-light mb-4">
     <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
-      <h5 class="mb-0">Nueva sala</h5>
-      <span class="small text-light-emphasis">Catalogo minimo de salas</span>
+      <h5 class="mb-0"><%= ualInfoMode ? 'Información de la UAL' : 'Nueva sala' %></h5>
+      <span class="small text-light-emphasis">
+        <%= ualInfoMode ? 'Campos mínimos para habilitar el laboratorio en préstamos' : 'Catalogo minimo de salas' %>
+      </span>
     </div>
     <div class="card-body">
       <form id="crearSalaForm" class="row g-3" novalidate>
-        <div class="col-md-6">
+        <input type="hidden" id="crearSalaId" value="<%= selectedSalaInfo?.id || '' %>">
+        <input type="hidden" id="crearModoUalInfo" value="<%= ualInfoMode ? 'true' : 'false' %>">
+        <div class="<%= ualInfoMode ? 'd-none' : 'col-md-6' %>">
           <label for="crearFacultad" class="form-label">Facultad *</label>
-          <select class="form-select" id="crearFacultad" required>
+          <select class="form-select" id="crearFacultad" <%= ualInfoMode ? '' : 'required' %>>
             <option value="">Cargando facultades...</option>
           </select>
         </div>
-        <div class="col-md-6">
+        <div class="<%= ualInfoMode ? 'd-none' : 'col-md-6' %>">
           <label for="crearLaboratorio" class="form-label">Laboratorio *</label>
-          <select class="form-select" id="crearLaboratorio" required disabled>
+          <select class="form-select" id="crearLaboratorio" <%= ualInfoMode ? '' : 'required' %> disabled>
             <option value="">Selecciona primero una facultad...</option>
           </select>
         </div>
-        <div class="col-md-4">
+        <div class="<%= ualInfoMode ? 'd-none' : 'col-md-4' %>">
           <label for="crearNombre" class="form-label">Nombre *</label>
-          <input type="text" class="form-control" id="crearNombre" required maxlength="150">
+          <input
+            type="text"
+            class="form-control"
+            id="crearNombre"
+            <%= ualInfoMode ? '' : 'required' %>
+            maxlength="150"
+            value="<%= selectedSalaInfo?.nombre || '' %>"
+          >
         </div>
         <div class="col-md-4">
           <label for="crearTipoEspacio" class="form-label">Tipo de espacio *</label>
           <select class="form-select" id="crearTipoEspacio" required>
-            <option value="Sala">Sala</option>
-            <option value="Aula">Aula</option>
-            <option value="Laboratorio">Laboratorio</option>
-            <option value="Otro">Otro</option>
+            <option value="Sala" <%= (selectedSalaInfo?.tipo_espacio || 'Sala') === 'Sala' ? 'selected' : '' %>>Sala</option>
+            <option value="Aula" <%= selectedSalaInfo?.tipo_espacio === 'Aula' ? 'selected' : '' %>>Aula</option>
+            <option value="Laboratorio" <%= selectedSalaInfo?.tipo_espacio === 'Laboratorio' ? 'selected' : '' %>>Laboratorio</option>
+            <option value="Otro" <%= selectedSalaInfo?.tipo_espacio === 'Otro' ? 'selected' : '' %>>Otro</option>
           </select>
         </div>
         <div class="col-md-4">
           <label for="crearCapacidad" class="form-label">Capacidad *</label>
-          <input type="number" class="form-control" id="crearCapacidad" min="1" step="1" value="1" required>
+          <input
+            type="number"
+            class="form-control"
+            id="crearCapacidad"
+            min="1"
+            step="1"
+            value="<%= selectedSalaInfo?.capacidad || 1 %>"
+            required
+          >
         </div>
-        <div class="col-md-6">
-          <label for="crearFormatoLibre" class="form-label">Formato practica libre</label>
-          <input type="text" class="form-control" id="crearFormatoLibre" maxlength="80" value="PL_REGLAMENTO_GENERAL">
-        </div>
-        <div class="col-md-6">
-          <label for="crearFormatoDocente" class="form-label">Formato practica docente</label>
-          <input type="text" class="form-control" id="crearFormatoDocente" maxlength="80" value="DOC_PRACTICA_DOCENTE_SOLICITUD">
-        </div>
+        <input type="hidden" id="crearFormatoLibre" value="PL_REGLAMENTO_GENERAL">
+        <input type="hidden" id="crearFormatoDocente" value="DOC_PRACTICA_DOCENTE_SOLICITUD">
         <div class="col-12">
           <label for="crearDescripcion" class="form-label">Descripcion</label>
-          <textarea class="form-control" id="crearDescripcion" maxlength="2000" rows="3"></textarea>
+          <textarea class="form-control" id="crearDescripcion" maxlength="2000" rows="3"><%= selectedSalaInfo?.descripcion || '' %></textarea>
         </div>
         <div class="col-12">
-          <label for="crearEquiposNombres" class="form-label">Equipos en sala (opcional)</label>
+          <label for="crearEquiposNombres" class="form-label">Equipos en la sala</label>
           <textarea
             class="form-control"
             id="crearEquiposNombres"
             rows="3"
             maxlength="2500"
             placeholder="Escribe los equipos disponibles en esta sala. Uno por linea."
-          ></textarea>
+          ><%= selectedSalaInfo?.equipos_nombres || '' %></textarea>
         </div>
         <div class="col-md-4 form-check ms-2">
-          <input class="form-check-input" type="checkbox" id="crearPermiteLibre" checked>
-          <label class="form-check-label" for="crearPermiteLibre">Permite practica libre</label>
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="crearPermiteLibre"
+            <%= selectedSalaInfo ? (selectedSalaInfo.permite_practica_libre ? 'checked' : '') : 'checked' %>
+          >
+          <label class="form-check-label" for="crearPermiteLibre">Practica Libre</label>
         </div>
         <div class="col-md-4 form-check">
-          <input class="form-check-input" type="checkbox" id="crearPermiteDocente">
-          <label class="form-check-label" for="crearPermiteDocente">Permite practica docente</label>
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="crearPermiteDocente"
+            <%= selectedSalaInfo ? (selectedSalaInfo.permite_practica_docente ? 'checked' : '') : 'checked' %>
+          >
+          <label class="form-check-label" for="crearPermiteDocente">Practica Docente / Magistral</label>
         </div>
-        <div class="col-md-3 form-check">
-          <input class="form-check-input" type="checkbox" id="crearActivo" checked>
-          <label class="form-check-label" for="crearActivo">Activa</label>
+        <div class="col-md-4 form-check">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="crearTieneBancos"
+            <%= selectedUalConfig ? (selectedUalConfig.tiene_bancos ? 'checked' : '') : '' %>
+          >
+          <label class="form-check-label" for="crearTieneBancos">La UAL tiene bancos</label>
+        </div>
+        <div class="col-md-4">
+          <label for="crearCantidadBancos" class="form-label">Cantidad de bancos</label>
+          <input
+            type="number"
+            class="form-control"
+            id="crearCantidadBancos"
+            min="0"
+            step="1"
+            value="<%= selectedUalConfig?.cantidad_bancos || 0 %>"
+            <%= selectedUalConfig?.tiene_bancos ? 'required' : '' %>
+          >
+        </div>
+        <div class="col-md-6 form-check">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="crearActivo"
+            <%= selectedSalaInfo ? (selectedSalaInfo.activo ? 'checked' : '') : 'checked' %>
+          >
+          <label class="form-check-label" for="crearActivo">
+            Activa (si se inactiva quedará no habilitada para prestamo)
+          </label>
         </div>
         <div class="col-12 d-flex justify-content-end">
-          <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn" data-submit-lock="true">Crear sala</button>
+          <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn" data-submit-lock="true">
+            <%= ualInfoMode ? 'Guardar UAL' : 'Crear sala' %>
+          </button>
         </div>
       </form>
     </div>
   </section>
 
-  <section class="card app-table-panel text-light">
-    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
-      <h5 class="mb-0">Salas registradas</h5>
-      <span class="badge text-bg-secondary"><%= Array.isArray(salas) ? salas.length : 0 %> sala(s)</span>
-    </div>
-    <div class="card-body">
-      <% if (salas && salas.length > 0) { %>
-        <div class="table-responsive">
-          <table class="table table-hover table-striped align-middle">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Ubicacion</th>
-                <th>Tipo</th>
-                <th>Capacidad</th>
-                <th>Practicas</th>
-                <th>Horarios</th>
-                <th>Estado</th>
-                <th class="text-end">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% salas.forEach(function(item) { %>
+  <% if (!ualInfoMode) { %>
+    <section class="card app-table-panel text-light">
+      <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <h5 class="mb-0">Salas registradas</h5>
+        <span class="badge text-bg-secondary"><%= Array.isArray(salas) ? salas.length : 0 %> sala(s)</span>
+      </div>
+      <div class="card-body">
+        <% if (salas && salas.length > 0) { %>
+          <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle">
+              <thead>
                 <tr>
-                  <td>
-                    <strong><%= item.nombre || '-' %></strong>
-                    <% if (item.descripcion) { %>
-                      <div class="small text-light-emphasis"><%= item.descripcion %></div>
-                    <% } %>
-                    <% if (item.equipos_nombres) { %>
-                      <div class="small text-light-emphasis">Equipos: <%= item.equipos_nombres %></div>
-                    <% } %>
-                  </td>
-                  <td>
-                    <div><%= item.facultad || '-' %></div>
-                    <div class="small text-light-emphasis"><%= item.laboratorio || '-' %></div>
-                  </td>
-                  <td><%= item.tipo_espacio || '-' %></td>
-                  <td><%= item.capacidad || 0 %></td>
-                  <td>
-                    <div>Libre: <%= item.permite_practica_libre ? 'Si' : 'No' %></div>
-                    <div>Docente: <%= item.permite_practica_docente ? 'Si' : 'No' %></div>
-                  </td>
-                  <td><%= item.total_horarios || 0 %></td>
-                  <td>
-                    <span class="badge <%= item.activo ? 'bg-success' : 'bg-secondary' %>">
-                      <%= item.activo ? 'Activa' : 'Inactiva' %>
-                    </span>
-                  </td>
-                  <td class="text-end">
-                    <div class="d-flex justify-content-end gap-2 flex-wrap">
-                      <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/salas/<%= item.id %>/horarios">
-                        Horarios
-                      </a>
-                      <button
-                        type="button"
-                        class="btn btn-outline-warning btn-sm js-open-edit-sala"
-                        data-sala-id="<%= item.id %>"
-                        data-facultad="<%= item.facultad || '' %>"
-                        data-laboratorio="<%= item.laboratorio || '' %>"
-                        data-nombre="<%= item.nombre || '' %>"
-                        data-tipo-espacio="<%= item.tipo_espacio || 'Sala' %>"
-                        data-capacidad="<%= item.capacidad || 1 %>"
-                        data-descripcion="<%= item.descripcion || '' %>"
-                        data-equipos-nombres="<%= item.equipos_nombres || '' %>"
-                        data-permite-libre="<%= item.permite_practica_libre ? 'true' : 'false' %>"
-                        data-permite-docente="<%= item.permite_practica_docente ? 'true' : 'false' %>"
-                        data-formato-libre="<%= item.formato_practica_libre || 'PL_REGLAMENTO_GENERAL' %>"
-                        data-formato-docente="<%= item.formato_practica_docente || 'DOC_PRACTICA_DOCENTE_SOLICITUD' %>"
-                        data-activo="<%= item.activo ? 'true' : 'false' %>"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        class="btn btn-outline-danger btn-sm js-delete-sala"
-                        data-sala-id="<%= item.id %>"
-                        data-sala-nombre="<%= item.nombre || '' %>"
-                        data-submit-lock="true"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </td>
+                  <th>Nombre</th>
+                  <th>Ubicacion</th>
+                  <th>Tipo</th>
+                  <th>Capacidad</th>
+                  <th>Practicas</th>
+                  <th>Horarios</th>
+                  <th>Estado</th>
+                  <th class="text-end">Acciones</th>
                 </tr>
-              <% }) %>
-            </tbody>
-          </table>
-        </div>
-      <% } else { %>
-        <div class="alert alert-info mb-0">No hay salas registradas para el filtro actual.</div>
-      <% } %>
-    </div>
-  </section>
+              </thead>
+              <tbody>
+                <% salas.forEach(function(item) { %>
+                  <tr>
+                    <td>
+                      <strong><%= item.nombre || '-' %></strong>
+                      <% if (item.descripcion) { %>
+                        <div class="small text-light-emphasis"><%= item.descripcion %></div>
+                      <% } %>
+                      <% if (item.equipos_nombres) { %>
+                        <div class="small text-light-emphasis">Equipos: <%= item.equipos_nombres %></div>
+                      <% } %>
+                    </td>
+                    <td>
+                      <div><%= item.facultad || '-' %></div>
+                      <div class="small text-light-emphasis"><%= item.laboratorio || '-' %></div>
+                    </td>
+                    <td><%= item.tipo_espacio || '-' %></td>
+                    <td><%= item.capacidad || 0 %></td>
+                    <td>
+                      <div>Libre: <%= item.permite_practica_libre ? 'Si' : 'No' %></div>
+                      <div>Docente: <%= item.permite_practica_docente ? 'Si' : 'No' %></div>
+                    </td>
+                    <td><%= item.total_horarios || 0 %></td>
+                    <td>
+                      <span class="badge <%= item.activo ? 'bg-success' : 'bg-secondary' %>">
+                        <%= item.activo ? 'Activa' : 'Inactiva' %>
+                      </span>
+                    </td>
+                    <td class="text-end">
+                      <div class="d-flex justify-content-end gap-2 flex-wrap">
+                        <a class="btn btn-outline-info btn-sm" href="/milab/prestamos/salas/<%= item.id %>/horarios">
+                          Horarios
+                        </a>
+                        <button
+                          type="button"
+                          class="btn btn-outline-warning btn-sm js-open-edit-sala"
+                          data-sala-id="<%= item.id %>"
+                          data-facultad="<%= item.facultad || '' %>"
+                          data-laboratorio="<%= item.laboratorio || '' %>"
+                          data-nombre="<%= item.nombre || '' %>"
+                          data-tipo-espacio="<%= item.tipo_espacio || 'Sala' %>"
+                          data-capacidad="<%= item.capacidad || 1 %>"
+                          data-descripcion="<%= item.descripcion || '' %>"
+                          data-equipos-nombres="<%= item.equipos_nombres || '' %>"
+                          data-permite-libre="<%= item.permite_practica_libre ? 'true' : 'false' %>"
+                          data-permite-docente="<%= item.permite_practica_docente ? 'true' : 'false' %>"
+                          data-formato-libre="<%= item.formato_practica_libre || 'PL_REGLAMENTO_GENERAL' %>"
+                          data-formato-docente="<%= item.formato_practica_docente || 'DOC_PRACTICA_DOCENTE_SOLICITUD' %>"
+                          data-activo="<%= item.activo ? 'true' : 'false' %>"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-outline-danger btn-sm js-delete-sala"
+                          data-sala-id="<%= item.id %>"
+                          data-sala-nombre="<%= item.nombre || '' %>"
+                          data-submit-lock="true"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } else { %>
+          <div class="alert alert-info mb-0">No hay salas registradas para el filtro actual.</div>
+        <% } %>
+      </div>
+    </section>
+  <% } %>
 </main>
 
 <div class="modal fade" id="editarSalaModal" tabindex="-1" aria-labelledby="editarSalaModalLabel" aria-hidden="true">
@@ -293,8 +367,10 @@
 
 <script nonce="<%= cspNonce %>">
   (function() {
+    var ualInfoMode = <%- JSON.stringify(Boolean(ualInfoMode)) %>;
     var selectedFacultad = <%- JSON.stringify(selectedFacultad || '') %>;
     var selectedLaboratorio = <%- JSON.stringify(selectedLaboratorio || '') %>;
+    var selectedSalaInfo = <%- JSON.stringify(selectedSalaInfo || null) %>;
     var availableFacultades = <%- JSON.stringify((availableFacultades || []).map(function(item) { return { facultad: item }; })) %>;
     var availableLaboratoriosByFaculty = <%- JSON.stringify(availableLaboratoriosByFaculty || {}) %>;
     var alertsContainer = document.getElementById('salasAlerts');
@@ -304,13 +380,15 @@
     var crearLaboratorio = document.getElementById('crearLaboratorio');
     var crearSalaForm = document.getElementById('crearSalaForm');
     var crearSalaSubmitBtn = document.getElementById('crearSalaSubmitBtn');
+    var crearTieneBancos = document.getElementById('crearTieneBancos');
+    var crearCantidadBancos = document.getElementById('crearCantidadBancos');
     var editarSalaModalEl = document.getElementById('editarSalaModal');
     var editarSalaForm = document.getElementById('editarSalaForm');
     var editarSalaSubmitBtn = document.getElementById('editarSalaSubmitBtn');
     var editarFacultad = document.getElementById('editarFacultad');
     var editarLaboratorio = document.getElementById('editarLaboratorio');
 
-    if (!alertsContainer || !filtroFacultad || !filtroLaboratorio || !crearFacultad || !crearLaboratorio || !crearSalaForm) return;
+    if (!alertsContainer || !crearFacultad || !crearLaboratorio || !crearSalaForm) return;
 
     var editarSalaModal =
       editarSalaModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
@@ -387,7 +465,9 @@
     }
 
     function loadFacultades() {
-      fillSelect(filtroFacultad, availableFacultades, 'Todas', 'facultad', selectedFacultad);
+      if (filtroFacultad) {
+        fillSelect(filtroFacultad, availableFacultades, 'Todas', 'facultad', selectedFacultad);
+      }
       fillSelect(crearFacultad, availableFacultades, 'Selecciona una facultad...', 'facultad', '');
       if (editarFacultad) {
         fillSelect(editarFacultad, availableFacultades, 'Selecciona una facultad...', 'facultad', '');
@@ -424,21 +504,52 @@
         formato_practica_libre: document.getElementById(prefix + 'FormatoLibre').value,
         formato_practica_docente: document.getElementById(prefix + 'FormatoDocente').value,
         activo: document.getElementById(prefix + 'Activo').checked,
+        tiene_bancos: document.getElementById(prefix + 'TieneBancos')
+          ? document.getElementById(prefix + 'TieneBancos').checked
+          : false,
+        cantidad_bancos: document.getElementById(prefix + 'CantidadBancos')
+          ? document.getElementById(prefix + 'CantidadBancos').value
+          : '0',
+        modo_ual_info: document.getElementById(prefix + 'ModoUalInfo')
+          ? document.getElementById(prefix + 'ModoUalInfo').value
+          : 'false',
       };
     }
 
-    filtroFacultad.addEventListener('change', function() {
-      loadLaboratorios(filtroFacultad.value, filtroLaboratorio, 'Todos', '');
-    });
+    function syncBanksFieldState() {
+      if (!crearTieneBancos || !crearCantidadBancos) return;
+      if (crearTieneBancos.checked) {
+        crearCantidadBancos.required = true;
+        if (!crearCantidadBancos.value || Number(crearCantidadBancos.value) <= 0) {
+          crearCantidadBancos.value = '1';
+        }
+      } else {
+        crearCantidadBancos.required = false;
+        crearCantidadBancos.value = '0';
+      }
+    }
 
-    crearFacultad.addEventListener('change', function() {
-      loadLaboratorios(crearFacultad.value, crearLaboratorio, 'Selecciona un laboratorio...', '');
-    });
+    if (filtroFacultad && filtroLaboratorio) {
+      filtroFacultad.addEventListener('change', function() {
+        loadLaboratorios(filtroFacultad.value, filtroLaboratorio, 'Todos', '');
+      });
+    }
+
+    if (crearFacultad && crearLaboratorio) {
+      crearFacultad.addEventListener('change', function() {
+        loadLaboratorios(crearFacultad.value, crearLaboratorio, 'Selecciona un laboratorio...', '');
+      });
+    }
 
     if (editarFacultad && editarLaboratorio) {
       editarFacultad.addEventListener('change', function() {
       loadLaboratorios(editarFacultad.value, editarLaboratorio, 'Selecciona un laboratorio...', '');
       });
+    }
+
+    if (crearTieneBancos && crearCantidadBancos) {
+      crearTieneBancos.addEventListener('change', syncBanksFieldState);
+      syncBanksFieldState();
     }
 
     crearSalaForm.addEventListener('submit', async function(event) {
@@ -452,13 +563,22 @@
       var btn = crearSalaSubmitBtn;
 
       try {
-        window.MiLabSubmitLock.lock(btn, 'Creando sala...');
-        var result = await postJson('/milab/prestamos/salas', buildSalaPayload('crear'));
-        showAlert('success', result.message || 'Sala creada correctamente.');
-        crearSalaForm.reset();
-        crearSalaForm.classList.remove('was-validated');
-        crearLaboratorio.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
-        crearLaboratorio.disabled = true;
+        var existingSalaId = document.getElementById('crearSalaId')
+          ? document.getElementById('crearSalaId').value
+          : '';
+        var targetUrl =
+          ualInfoMode && existingSalaId
+            ? '/milab/prestamos/salas/' + encodeURIComponent(existingSalaId)
+            : '/milab/prestamos/salas';
+        window.MiLabSubmitLock.lock(btn, ualInfoMode ? 'Guardando información UAL...' : 'Creando sala...');
+        var result = await postJson(targetUrl, buildSalaPayload('crear'));
+        showAlert('success', result.message || 'Información guardada correctamente.');
+        if (!ualInfoMode) {
+          crearSalaForm.reset();
+          crearSalaForm.classList.remove('was-validated');
+          crearLaboratorio.innerHTML = '<option value="">Selecciona primero una facultad...</option>';
+          crearLaboratorio.disabled = true;
+        }
         window.setTimeout(function() {
           window.location.reload();
         }, 700);
@@ -564,6 +684,26 @@
       .then(function(data) {
         var availableFacultades = Array.isArray(data && data.facultades) ? data.facultades : [];
 
+        if (ualInfoMode && selectedFacultad && selectedLaboratorio) {
+          crearFacultad.value = selectedFacultad;
+          loadLaboratorios(
+            selectedFacultad,
+            crearLaboratorio,
+            'Selecciona un laboratorio...',
+            selectedLaboratorio
+          );
+          if (!document.getElementById('crearNombre').value) {
+            document.getElementById('crearNombre').value = selectedLaboratorio;
+          }
+          if (selectedSalaInfo && selectedSalaInfo.id) {
+            var salaIdInput = document.getElementById('crearSalaId');
+            if (salaIdInput) {
+              salaIdInput.value = String(selectedSalaInfo.id);
+            }
+          }
+          return null;
+        }
+
         if (!selectedFacultad && availableFacultades.length === 1) {
           crearFacultad.value = availableFacultades[0].facultad || '';
           if (crearFacultad.value) {
@@ -573,16 +713,22 @@
               'Selecciona un laboratorio...',
               ''
             );
-            fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+            if (filtroLaboratorio) {
+              fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+            }
             return null;
           }
         }
 
         if (selectedFacultad) {
-          loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
+          if (filtroLaboratorio) {
+            loadLaboratorios(selectedFacultad, filtroLaboratorio, 'Todos', selectedLaboratorio);
+          }
           return null;
         }
-        fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+        if (filtroLaboratorio) {
+          fillSelect(filtroLaboratorio, [], 'Todos', 'laboratorio', '');
+        }
         return null;
       })
       .catch(function(error) {

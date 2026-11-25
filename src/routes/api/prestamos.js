@@ -4110,10 +4110,14 @@ function validateAcademicPracticePayload(payload, schema) {
 }
 
 function buildSalaPayload(body = {}) {
+  const modoUalInfo = toBoolean(body.modo_ual_info);
+  const facultad = sanitizeText(body.facultad);
+  const laboratorio = sanitizeText(body.laboratorio);
+  const nombre = sanitizeText(body.nombre) || (modoUalInfo ? laboratorio : '');
   return {
-    facultad: sanitizeText(body.facultad),
-    laboratorio: sanitizeText(body.laboratorio),
-    nombre: sanitizeText(body.nombre),
+    facultad,
+    laboratorio,
+    nombre,
     tipo_espacio: sanitizeText(body.tipo_espacio),
     capacidad: sanitizeText(body.capacidad),
     descripcion: sanitizeText(body.descripcion),
@@ -4123,6 +4127,9 @@ function buildSalaPayload(body = {}) {
     formato_practica_libre: sanitizeText(body.formato_practica_libre),
     formato_practica_docente: sanitizeText(body.formato_practica_docente),
     activo: body.activo === undefined ? true : toBoolean(body.activo),
+    tiene_bancos: toBoolean(body.tiene_bancos),
+    cantidad_bancos: sanitizeText(body.cantidad_bancos),
+    modo_ual_info: modoUalInfo,
   };
 }
 
@@ -4160,7 +4167,70 @@ function validateSalaPayload(payload) {
     return 'La capacidad de la sala debe ser un numero entero mayor que cero.';
   }
 
+  const quantityRaw = String(payload.cantidad_bancos || '').trim();
+  const hasBanks = Boolean(payload.tiene_bancos);
+  if (hasBanks) {
+    const cantidadBancos = Number(quantityRaw);
+    if (!Number.isInteger(cantidadBancos) || cantidadBancos <= 0) {
+      return 'Debes indicar una cantidad de bancos valida cuando la UAL tiene bancos.';
+    }
+  } else if (quantityRaw && Number(quantityRaw) < 0) {
+    return 'La cantidad de bancos no puede ser negativa.';
+  }
+
   return '';
+}
+
+async function fetchUalLoanConfiguration(ualId, executor = pool) {
+  if (!Number.isInteger(Number(ualId)) || Number(ualId) <= 0) {
+    return null;
+  }
+
+  try {
+    const result = await executor.query(
+      `
+        SELECT ual_id, tiene_bancos, cantidad_bancos
+        FROM prestamo_ual_configuracion
+        WHERE ual_id = $1
+        LIMIT 1
+      `,
+      [Number(ualId)]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    if (error?.code === '42P01') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function upsertUalLoanConfiguration(executor, ualId, payload) {
+  if (!Number.isInteger(Number(ualId)) || Number(ualId) <= 0) {
+    return;
+  }
+
+  const hasBanks = Boolean(payload?.tiene_bancos);
+  const quantityRaw = String(payload?.cantidad_bancos || '').trim();
+  const cantidadBancos = hasBanks ? Number(quantityRaw || 0) : 0;
+
+  await executor.query(
+    `
+      INSERT INTO prestamo_ual_configuracion (
+        ual_id,
+        tiene_bancos,
+        cantidad_bancos,
+        fecha_modificacion
+      )
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (ual_id)
+      DO UPDATE SET
+        tiene_bancos = EXCLUDED.tiene_bancos,
+        cantidad_bancos = EXCLUDED.cantidad_bancos,
+        fecha_modificacion = CURRENT_TIMESTAMP
+    `,
+    [Number(ualId), hasBanks, Number.isInteger(cantidadBancos) ? cantidadBancos : 0]
+  );
 }
 
 function buildSalaSchedulePayload(body = {}) {
@@ -4784,6 +4854,14 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
       return 'La tabla sala no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
     }
 
+    if (
+      String(error?.message || '')
+        .toLowerCase()
+        .includes('prestamo_ual_configuracion')
+    ) {
+      return 'La tabla prestamo_ual_configuracion no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
+    }
+
     return 'La tabla solicitud_prestamo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
   }
 
@@ -5029,6 +5107,14 @@ function resolveInventoryActivationStatus(rawState, sinInventario = false, optio
 }
 
 function buildLaboratoryActivationModel(row) {
+  const hasUalConfig =
+    row.ual_tiene_bancos === true ||
+    row.ual_tiene_bancos === false ||
+    Number.isInteger(Number(row.ual_cantidad_bancos));
+  const ualHasBanks = row.ual_tiene_bancos === true;
+  const ualBankCount = Number(row.ual_cantidad_bancos || 0);
+  const hasValidBanksConfig = !ualHasBanks || ualBankCount > 0;
+
   const inventory = {
     oficial: resolveInventoryActivationStatus(
       row.estado_oficial,
@@ -5051,8 +5137,8 @@ function buildLaboratoryActivationModel(row) {
     inventarioOficial: inventory.oficial.ready,
     inventarioComplementario: inventory.complementario.ready,
     inventarioReactivo: inventory.reactivo.ready,
-    cargaHorario:
-      Number(row.total_salas_activas || 0) > 0 && Number(row.total_horarios_activos || 0) > 0,
+    informacionUal: Number(row.total_salas_activas || 0) > 0 && hasUalConfig && hasValidBanksConfig,
+    horarioLaboratorio: Number(row.total_horarios_activos || 0) > 0,
     equiposListos: Number(row.total_equipos_listos || 0) > 0,
   };
 
@@ -5079,8 +5165,9 @@ function buildLaboratoryActivationModel(row) {
     checklist.inventarioOficial &&
     checklist.inventarioComplementario &&
     checklist.inventarioReactivo &&
-    checklist.cargaHorario &&
-    checklist.equiposListos;
+    checklist.equiposListos &&
+    checklist.informacionUal &&
+    checklist.horarioLaboratorio;
 
   if (canActivateLoans) {
     nextStep = {
@@ -5090,11 +5177,21 @@ function buildLaboratoryActivationModel(row) {
   } else if (
     checklist.inventarioOficial &&
     checklist.inventarioComplementario &&
-    !checklist.cargaHorario
+    !checklist.informacionUal
+  ) {
+    nextStep = {
+      title: 'Completar información de la UAL',
+      href: `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info`,
+    };
+  } else if (
+    checklist.inventarioOficial &&
+    checklist.inventarioComplementario &&
+    checklist.informacionUal &&
+    !checklist.horarioLaboratorio
   ) {
     nextStep = {
       title: 'Configurar salas y horarios',
-      href: '/milab/prestamos/salas',
+      href: `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info`,
     };
   }
 
@@ -5129,6 +5226,9 @@ function buildLaboratoryActivationModel(row) {
       totalCargasRecientes: Number(row.total_cargas_recientes || 0),
       cargasAtencion: Number(row.cargas_atencion || 0),
       pendingInventories: pendingInventoryCount,
+      ualTieneBancos: ualHasBanks,
+      ualCantidadBancos: ualBankCount,
+      ualConfigCompleta: hasUalConfig && hasValidBanksConfig,
     },
     completion: {
       completedCount,
@@ -5151,7 +5251,7 @@ function buildLoanActivationChecklist(laboratorio) {
   const encodedUalId = encodeURIComponent(String(laboratorio?.ualId || ''));
   const encodedFacultad = encodeURIComponent(sanitizeText(laboratorio?.facultad));
   const encodedLaboratorio = encodeURIComponent(sanitizeText(laboratorio?.laboratorio));
-  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}`;
+  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}&mode=ual_info`;
 
   return [
     {
@@ -5203,14 +5303,27 @@ function buildLoanActivationChecklist(laboratorio) {
       actionLabel: 'Gestionar equipos',
     },
     {
+      key: 'informacion_ual',
+      label: 'Información de la UAL',
+      ready: Boolean(checks.informacionUal),
+      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s) registrada(s) · Bancos: ${counters.ualTieneBancos ? Number(counters.ualCantidadBancos || 0) : 'No aplica'}`,
+      extraDetail:
+        'Completa la información de la UAL usando el mismo formulario de creación de sala.',
+      pendingDetail: checks.informacionUal
+        ? 'Sin tareas pendientes.'
+        : 'Registrar la información de la UAL, incluyendo configuración de bancos.',
+      actionHref: scheduleHref,
+      actionLabel: 'Gestionar información UAL',
+    },
+    {
       key: 'carga_horario',
       label: 'Horario de laboratorio',
-      ready: Boolean(checks.cargaHorario),
-      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s) · ${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
+      ready: Boolean(checks.horarioLaboratorio),
+      detail: `${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
       extraDetail: 'Carga o ajusta los horarios del laboratorio desde Excel.',
-      pendingDetail: checks.cargaHorario
+      pendingDetail: checks.horarioLaboratorio
         ? 'Sin tareas pendientes.'
-        : 'Registrar sala activa y cargar horarios.',
+        : 'Cargar horarios activos para el laboratorio.',
       actionHref: scheduleHref,
       actionLabel: 'Gestionar horario',
     },
@@ -5344,7 +5457,9 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         COALESCE(inventarios.aprobados_complementario, 0) AS aprobados_complementario,
         COALESCE(inventarios.aprobados_reactivo, 0) AS aprobados_reactivo,
         COALESCE(cargas.total_cargas_recientes, 0) AS total_cargas_recientes,
-        COALESCE(cargas.cargas_atencion, 0) AS cargas_atencion
+        COALESCE(cargas.cargas_atencion, 0) AS cargas_atencion,
+        config_ual.tiene_bancos AS ual_tiene_bancos,
+        config_ual.cantidad_bancos AS ual_cantidad_bancos
       FROM labs
       LEFT JOIN LATERAL (
         SELECT
@@ -5418,6 +5533,14 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         FROM inventario_carga c
         WHERE c.ual_id = labs.ual_id
       ) cargas ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          puc.tiene_bancos,
+          puc.cantidad_bancos
+        FROM prestamo_ual_configuracion puc
+        WHERE puc.ual_id = labs.ual_id
+        LIMIT 1
+      ) config_ual ON TRUE
       ORDER BY labs.facultad ASC, labs.laboratorio ASC
     `,
     params
@@ -17083,6 +17206,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     const formOptions = await fetchEquipmentFormOptions(req);
     const facultad = sanitizeText(req.query.facultad);
     const laboratorio = sanitizeText(req.query.laboratorio);
+    const ualInfoMode = sanitizeText(req.query.mode) === 'ual_info';
     const params = [];
     const whereParts = ['1 = 1'];
     const salasColumns = await fetchTableColumns('sala');
@@ -17133,12 +17257,40 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       params
     );
 
+    const salas = result.rows || [];
+    let selectedSalaInfo = ualInfoMode && facultad && laboratorio ? salas[0] || null : null;
+    let selectedUalConfig = null;
+
+    if (ualInfoMode && facultad && laboratorio) {
+      const managedUal = await resolveManagedUal({ facultad, laboratorio }, scope);
+      if (managedUal?.ual_id) {
+        selectedUalConfig = await fetchUalLoanConfiguration(managedUal.ual_id);
+      }
+      if (!selectedSalaInfo && managedUal?.ual_id) {
+        selectedSalaInfo = {
+          facultad: managedUal.facultad,
+          laboratorio: managedUal.laboratorio,
+          nombre: managedUal.laboratorio,
+          tipo_espacio: 'Sala',
+          capacidad: 1,
+          descripcion: '',
+          equipos_nombres: '',
+          permite_practica_libre: true,
+          permite_practica_docente: true,
+          activo: true,
+        };
+      }
+    }
+
     return res.render('home/prestamos/salas/index', {
-      salas: result.rows || [],
+      salas,
       selectedFacultad: facultad || '',
       selectedLaboratorio: laboratorio || '',
       availableFacultades: formOptions.facultades || [],
       availableLaboratoriosByFaculty: formOptions.laboratoriosByFaculty || {},
+      ualInfoMode,
+      selectedSalaInfo,
+      selectedUalConfig,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -17150,6 +17302,9 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       selectedLaboratorio: '',
       availableFacultades: [],
       availableLaboratoriosByFaculty: {},
+      ualInfoMode: false,
+      selectedSalaInfo: null,
+      selectedUalConfig: null,
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(error, 'No fue posible cargar las salas.'),
     });
@@ -17224,6 +17379,10 @@ router.post('/salas', requireSalasAuthorized, async function (req, res) {
       `,
       insertValues
     );
+
+    if (payload.modo_ual_info || req.query?.mode === 'ual_info') {
+      await upsertUalLoanConfiguration(pool, managedUal.ual_id, payload);
+    }
 
     return res.json({
       success: true,
@@ -17318,6 +17477,10 @@ router.post('/salas/:id', requireSalasAuthorized, async function (req, res) {
         success: false,
         message: 'La sala no existe.',
       });
+    }
+
+    if (payload.modo_ual_info || req.query?.mode === 'ual_info') {
+      await upsertUalLoanConfiguration(pool, managedUal.ual_id, payload);
     }
 
     return res.json({

@@ -698,4 +698,19 @@ CREATE INDEX IF NOT EXISTS idx_arka_conciliacion_alerta_activa
     ON arka_conciliacion_alerta(coordinador_documento, ual_id, ultima_aparicion DESC)
     WHERE estado = 'activa';
 
+CREATE TABLE IF NOT EXISTS prestamo_ual_configuracion (
+    ual_id INT NOT NULL,
+    tiene_bancos BOOLEAN NOT NULL DEFAULT FALSE,
+    cantidad_bancos INT NOT NULL DEFAULT 0,
+    fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_prestamo_ual_configuracion PRIMARY KEY (ual_id),
+    CONSTRAINT fk_prestamo_ual_configuracion_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
+    CONSTRAINT ck_prestamo_ual_cantidad_bancos CHECK (cantidad_bancos >= 0),
+    CONSTRAINT ck_prestamo_ual_bancos_consistencia CHECK (
+        (tiene_bancos = FALSE AND cantidad_bancos = 0) OR
+        (tiene_bancos = TRUE AND cantidad_bancos > 0)
+    )
+);
+
 COMMIT;

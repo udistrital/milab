@@ -697,6 +697,8 @@ test('prestamos modela el progreso de activacion por laboratorio', () => {
       total_salas_activas: 1,
       total_horarios_activos: 2,
       total_equipos_listos: 5,
+      ual_tiene_bancos: false,
+      ual_cantidad_bancos: 0,
     });
 
     assert.equal(model.canActivateLoans, true);
@@ -752,18 +754,20 @@ test('prestamos arma checklist de activacion y resume pendientes', () => {
       estado_reactivo: '',
       reactivo_sin_inventario: false,
       total_salas_activas: 0,
-      total_horarios_activos: 3,
+      total_horarios_activos: 0,
       total_equipos_listos: 2,
     });
     const checklist = loaded.route.__private.buildLoanActivationChecklist(laboratory);
     const missing = loaded.route.__private.summarizeMissingActivationChecks(checklist);
 
-    assert.equal(checklist.length, 5);
+    assert.equal(checklist.length, 6);
     assert.equal(checklist[0].ready, true);
     assert.equal(checklist[1].ready, false);
     assert.equal(checklist[0].label, 'Inventario de equipos');
-    assert.equal(checklist[4].label, 'Horario de laboratorio');
+    assert.equal(checklist[4].label, 'Información de la UAL');
+    assert.equal(checklist[5].label, 'Horario de laboratorio');
     assert.match(missing, /Inventario complementario/);
+    assert.match(missing, /Información de la UAL/);
     assert.match(missing, /Horario de laboratorio/);
   } finally {
     loaded.restore();
