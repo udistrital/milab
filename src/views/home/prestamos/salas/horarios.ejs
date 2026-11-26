@@ -284,6 +284,7 @@
             <button type="button" class="btn btn-outline-secondary" id="calendarioSiguienteBtn" aria-label="Periodo siguiente">
               &rsaquo;
             </button>
+            <button type="button" class="btn btn-outline-primary" id="calendarioHoyBtn">Hoy</button>
           </div>
         </div>
         <div class="table-responsive">
@@ -296,9 +297,19 @@
           <p class="small text-muted mb-0">
             En la vista semanal puedes marcar espacios vacíos de días configurados como práctica libre.
           </p>
-          <button type="button" class="btn btn-perso d-none" id="guardarPracticaLibreBtn" data-submit-lock="true">
-            Guardar espacios como práctica libre
-          </button>
+          <div class="d-flex flex-wrap align-items-end gap-2">
+            <div class="d-none" id="modalidadPracticaLibreGroup">
+              <label for="modalidadPracticaLibre" class="form-label mb-1">Modalidad</label>
+              <select class="form-select" id="modalidadPracticaLibre">
+                <option value="uno_a_uno">Uno a uno</option>
+                <option value="uno_a_varios">Uno a varios</option>
+                <option value="varios_a_uno">Varios a uno</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-perso d-none" id="guardarPracticaLibreBtn" data-submit-lock="true">
+              Guardar espacios como práctica libre
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -401,9 +412,12 @@
     var calendarContainer = calendarModalEl;
     var calendarTable = document.getElementById('horariosRegistradosCalendar');
     var saveFreePracticeButton = document.getElementById('guardarPracticaLibreBtn');
+    var freePracticeModalityGroup = document.getElementById('modalidadPracticaLibreGroup');
+    var freePracticeModality = document.getElementById('modalidadPracticaLibre');
     var calendarPeriodLabel = document.getElementById('calendarioPeriodoLabel');
     var previousPeriodButton = document.getElementById('calendarioAnteriorBtn');
     var nextPeriodButton = document.getElementById('calendarioSiguienteBtn');
+    var todayPeriodButton = document.getElementById('calendarioHoyBtn');
     var calendarModeButtons = document.querySelectorAll('[data-calendar-mode]');
     var calendarModal =
       calendarModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
@@ -426,6 +440,7 @@
         hora_inicio: String(item.hora_inicio || '').slice(0, 5),
         hora_fin: String(item.hora_fin || '').slice(0, 5),
         tipo_practica: item.tipo_practica || 'docente',
+        modalidad_libre: item.modalidad_libre || '',
         activo: Boolean(item.activo),
       };
     })) %>;
@@ -578,6 +593,31 @@
       });
     }
 
+    function scheduleDetails(item) {
+      var isTeacherPractice = item.tipo_practica === 'docente';
+      var typeLabel = isTeacherPractice
+        ? 'Docente / Clase Magistral'
+        : 'Práctica libre';
+      var modalityLabels = {
+        uno_a_uno: 'Uno a uno',
+        uno_a_varios: 'Uno a varios',
+        varios_a_uno: 'Varios a uno',
+      };
+      var modalityLabel = isTeacherPractice
+        ? 'No aplica'
+        : modalityLabels[item.modalidad_libre] || 'Sin definir';
+      return (
+        typeLabel +
+        ' · ' +
+        item.hora_inicio +
+        '-' +
+        item.hora_fin +
+        ' · Modalidad: ' +
+        modalityLabel +
+        ' · Estado: Activo'
+      );
+    }
+
     function formatTime(minute) {
       return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
     }
@@ -586,6 +626,7 @@
       calendarTable.querySelector('thead').innerHTML = '';
       calendarTable.querySelector('tbody').innerHTML = '';
       saveFreePracticeButton.classList.add('d-none');
+      freePracticeModalityGroup.classList.add('d-none');
     }
 
     function renderWeekCalendar() {
@@ -652,12 +693,8 @@
               var badge = document.createElement('span');
               badge.className =
                 'badge d-block mb-1 ' + (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
-              badge.textContent =
-                (item.tipo_practica === 'docente' ? 'Docente / Clase Magistral' : 'Práctica libre') +
-                ' ' +
-                item.hora_inicio +
-                '-' +
-                item.hora_fin;
+              badge.textContent = scheduleDetails(item);
+              badge.title = scheduleDetails(item);
               td.appendChild(badge);
             });
           } else {
@@ -729,14 +766,8 @@
             eventBadge.className =
               'badge d-block text-wrap text-start mb-1 ' +
               (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
-            eventBadge.textContent =
-              item.hora_inicio +
-              '-' +
-              item.hora_fin +
-              ' ' +
-              (item.tipo_practica === 'docente'
-                ? 'Docente / Clase Magistral'
-                : 'Práctica libre');
+            eventBadge.textContent = scheduleDetails(item);
+            eventBadge.title = scheduleDetails(item);
             td.appendChild(eventBadge);
           });
           if (!daySchedules.length) {
@@ -967,10 +998,24 @@
       });
     }
 
+    if (todayPeriodButton) {
+      todayPeriodButton.addEventListener('click', function() {
+        calendarAnchorDate = new Date(currentDateKeyInBogota() + 'T12:00:00');
+        calendarMode = 'week';
+        if (weekInput) weekInput.value = currentDateKeyInBogota();
+        calendarModeButtons.forEach(function(button) {
+          button.classList.toggle('active', button.getAttribute('data-calendar-mode') === 'week');
+        });
+        renderCalendar();
+      });
+    }
+
     if (calendarContainer) {
       calendarContainer.addEventListener('change', function(event) {
         if (event.target && event.target.classList.contains('js-ual-free-slot')) {
-          saveFreePracticeButton.classList.toggle('d-none', selectedFreeSlots().length === 0);
+          var hasSelectedSlots = selectedFreeSlots().length > 0;
+          saveFreePracticeButton.classList.toggle('d-none', !hasSelectedSlots);
+          freePracticeModalityGroup.classList.toggle('d-none', !hasSelectedSlots);
         }
       });
     }
@@ -983,7 +1028,7 @@
           window.MiLabSubmitLock.lock(saveFreePracticeButton, 'Guardando espacios...');
           var result = await postJson(
             '/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios/libres',
-            { slots }
+            { slots, modalidad_libre: freePracticeModality.value }
           );
           showAlert('success', result.message || 'Espacios de práctica libre guardados.');
           window.setTimeout(function() {

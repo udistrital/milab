@@ -760,6 +760,27 @@ test('prestamos detecta solapes de horarios en el mismo contexto', () => {
   }
 });
 
+test('prestamos aplica la modalidad elegida a los espacios libres seleccionados', () => {
+  const loaded = loadRoute();
+
+  try {
+    const rows = loaded.route.__private.buildFreePracticeRowsFromSlotSelection(
+      ['1|14:00|15:00'],
+      {
+        start: new Date(Date.UTC(2026, 10, 2)),
+        end: new Date(Date.UTC(2026, 10, 8)),
+      },
+      'uno_a_varios'
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].modalidad_libre, 'uno_a_varios');
+    assert.equal(rows[0].activo, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos requiere lunes de inicio y domingo de fin en la carga de horarios', () => {
   const loaded = loadRoute();
   const today = '2026-11-02';

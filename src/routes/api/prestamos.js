@@ -4677,7 +4677,11 @@ function parseScheduleSlotKey(value) {
   };
 }
 
-function buildFreePracticeRowsFromSlotSelection(slotKeys, rangeValidation) {
+function buildFreePracticeRowsFromSlotSelection(
+  slotKeys,
+  rangeValidation,
+  modalidadLibre = 'uno_a_uno'
+) {
   const uniqueKeys = new Set(Array.isArray(slotKeys) ? slotKeys : []);
   const rows = [];
   const dedupe = new Set();
@@ -4708,7 +4712,7 @@ function buildFreePracticeRowsFromSlotSelection(slotKeys, rangeValidation) {
         hora_inicio: parsed.hora_inicio,
         hora_fin: parsed.hora_fin,
         tipo_practica: 'libre',
-        modalidad_libre: 'uno_a_uno',
+        modalidad_libre: modalidadLibre,
         activo: true,
         lineNumber: 'Libre',
       });
@@ -18270,6 +18274,13 @@ router.post('/salas/:id/horarios/libres', requireSalasAuthorized, async function
   }
 
   const rawSlots = Array.isArray(req.body?.slots) ? req.body.slots : [];
+  const modalidadLibre = sanitizeText(req.body?.modalidad_libre) || 'uno_a_uno';
+  if (!['uno_a_uno', 'uno_a_varios', 'varios_a_uno'].includes(modalidadLibre)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Selecciona una modalidad valida para la practica libre.',
+    });
+  }
   const slots = [];
   const seen = new Set();
   for (const rawSlot of rawSlots) {
@@ -18288,7 +18299,7 @@ router.post('/salas/:id/horarios/libres', requireSalasAuthorized, async function
       hora_inicio: match[2],
       hora_fin: match[3],
       tipo_practica: 'libre',
-      modalidad_libre: 'uno_a_uno',
+      modalidad_libre: modalidadLibre,
       activo: true,
     });
     const validationError = validateSalaSchedulePayload(payload);
