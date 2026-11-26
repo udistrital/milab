@@ -265,47 +265,6 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
     sgaDebtsImpl: async () => [sgaDebt],
   });
 
-  test('generate_cert_estudiante_lab blocks the certificate for a state-1 SGA debt', async () => {
-    const sgaDebt = {
-      DEU_ID: '111951',
-      DEU_ESTADO: 1,
-      DEU_EST_COD: defaultStudentRecord.codigo,
-      DEU_CPTO_COD: '4',
-      DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
-      DEU_MULTA: 1,
-      DEU_FECHA_PAGO: null,
-    };
-    const service = new SgaDebtService({
-      serviceConfig: { oatiDebtorsServiceName: 'servicios_academicos_produccion' },
-      requestAcademicData: async () => ({
-        datosEstudianteCollection: {
-          datosBasicosEstudiante: [defaultStudentRecord],
-        },
-      }),
-      requestPost: async () => ({ deudas: { estudiantes: sgaDebt } }),
-    });
-    const loaded = loadRoute({
-      studentRecord: defaultStudentRecord,
-      sgaDebtsImpl: (student) => service.getActiveDebts(student),
-    });
-
-    try {
-      const response = await request(buildApp(loaded.route))
-        .post('/')
-        .type('form')
-        .send(validCertificateForm);
-
-      assert.equal(response.status, 200);
-      assert.equal(response.body.view, 'home/alerta-multado');
-      assert.deepEqual(response.body.locals.multaInfo, []);
-      assert.deepEqual(response.body.locals.sgaMultaInfo, [
-        { ...sgaDebt, DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA' },
-      ]);
-    } finally {
-      loaded.restore();
-    }
-  });
-
   try {
     const app = buildApp(loaded.route);
     const response = await request(app).post('/').type('form').send(validCertificateForm);
@@ -320,6 +279,47 @@ test('generate_cert_estudiante_lab blocks the certificate when SGA reports activ
         codigos: ['2024100001'],
         documento: '1000694178',
       },
+    ]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('generate_cert_estudiante_lab blocks the certificate for a state-1 SGA debt', async () => {
+  const sgaDebt = {
+    DEU_ID: '111951',
+    DEU_ESTADO: 1,
+    DEU_EST_COD: defaultStudentRecord.codigo,
+    DEU_CPTO_COD: '4',
+    DEU_MATERIAL: 'Tubo de ensayo omsons 15x150mm',
+    DEU_MULTA: 1,
+    DEU_FECHA_PAGO: null,
+  };
+  const service = new SgaDebtService({
+    serviceConfig: { oatiDebtorsServiceName: 'servicios_academicos_produccion' },
+    requestAcademicData: async () => ({
+      datosEstudianteCollection: {
+        datosBasicosEstudiante: [defaultStudentRecord],
+      },
+    }),
+    requestPost: async () => ({ deudas: { estudiantes: sgaDebt } }),
+  });
+  const loaded = loadRoute({
+    studentRecord: defaultStudentRecord,
+    sgaDebtsImpl: (student) => service.getActiveDebts(student),
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route))
+      .post('/')
+      .type('form')
+      .send(validCertificateForm);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/alerta-multado');
+    assert.deepEqual(response.body.locals.multaInfo, []);
+    assert.deepEqual(response.body.locals.sgaMultaInfo, [
+      { ...sgaDebt, DEU_CPTO_NOMBRE: 'LABORATORIO DE QUIMICA' },
     ]);
   } finally {
     loaded.restore();
