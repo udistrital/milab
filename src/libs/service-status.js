@@ -20,17 +20,28 @@ function shouldCheckEdx(environmentName = process.env.NODE_ENV) {
   return NON_PRODUCTION_ENVIRONMENTS.includes(normalizedEnvironment);
 }
 
-async function checkServiceStatus(log = serviceStatusLogger, { checkEdx = shouldCheckEdx() } = {}) {
-  const services = [
-    {
+async function checkServiceStatus(
+  log = serviceStatusLogger,
+  {
+    checkEdx = shouldCheckEdx(),
+    checkStudentLookup = String(process.env.NODE_ENV || '')
+      .trim()
+      .toLowerCase() !== 'test',
+  } = {}
+) {
+  const services = [];
+
+  if (checkStudentLookup) {
+    services.push({
       name: 'datos_basicos_activos_cedula',
       path: getAcademicServicePath('datos_basicos_activos_cedula/1023968369'),
-    },
-    {
-      name: 'consultar_estado_docente',
-      path: getAcademicServicePath('consultar_estado_docente/1023968369'),
-    },
-  ];
+    });
+  }
+
+  services.push({
+    name: 'consultar_estado_docente',
+    path: getAcademicServicePath('consultar_estado_docente/1023968369'),
+  });
 
   if (checkEdx) {
     services.push({

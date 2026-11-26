@@ -77,7 +77,10 @@ test('checkServiceStatus skips edX in production so it cannot mark the portal do
   const log = createLog();
 
   try {
-    const status = await loaded.checkServiceStatus(log, { checkEdx: false });
+    const status = await loaded.checkServiceStatus(log, {
+      checkEdx: false,
+      checkStudentLookup: true,
+    });
 
     assert.equal(status.servicesAreUp, true);
     assert.equal(loaded.edxCalls.length, 0);
@@ -88,6 +91,34 @@ test('checkServiceStatus skips edX in production so it cannot mark the portal do
     assert.equal(log.warnings.length, 0);
   } finally {
     loaded.restore();
+  }
+});
+
+test('checkServiceStatus skips the student lookup in the test environment', async () => {
+  const previousEnvironment = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  const loaded = loadServiceStatus({
+    oatiImpl: async (value) => {
+      if (value.startsWith('datos_basicos_activos_cedula/')) {
+        const error = new Error('Internal server error');
+        error.response = { status: 500 };
+        throw error;
+      }
+      return {};
+    },
+  });
+  const log = createLog();
+
+  try {
+    const status = await loaded.checkServiceStatus(log, { checkEdx: false });
+
+    assert.equal(status.servicesAreUp, true);
+    assert.deepEqual(loaded.oatiCalls, ['consultar_estado_docente/1023968369']);
+    assert.equal(log.warnings.length, 0);
+  } finally {
+    loaded.restore();
+    if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnvironment;
   }
 });
 
