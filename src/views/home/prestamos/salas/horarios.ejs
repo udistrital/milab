@@ -77,26 +77,12 @@
       <% if (horarios && horarios.length > 0) { %>
         <div class="row g-3 align-items-end justify-content-center mb-4">
           <div class="col-sm-6 col-md-4">
-            <label for="fechaSemanaRegistrada" class="form-label">Semana a visualizar</label>
+            <label for="fechaSemanaRegistrada" class="form-label">Fecha de referencia</label>
             <input type="date" class="form-control" id="fechaSemanaRegistrada">
           </div>
           <div class="col-sm-6 col-md-4 d-flex justify-content-center">
             <button type="button" class="btn btn-warning text-dark" id="previsualizarHorariosRegistradosBtn">
-              Previsualizar semana
-            </button>
-          </div>
-        </div>
-        <div id="calendarioHorariosRegistrados" class="table-responsive d-none mb-4">
-          <table class="table table-sm table-bordered align-middle" id="horariosRegistradosCalendar">
-            <thead></thead>
-            <tbody></tbody>
-          </table>
-          <p class="small text-light-emphasis mb-0">
-            Puedes marcar espacios vacíos como práctica libre; este paso es opcional.
-          </p>
-          <div class="d-flex justify-content-center mt-3">
-            <button type="button" class="btn btn-perso d-none" id="guardarPracticaLibreBtn" data-submit-lock="true">
-              Guardar espacios como práctica libre
+              Previsualizar horario
             </button>
           </div>
         </div>
@@ -238,6 +224,57 @@
   </div>
 </div>
 
+<div
+  class="modal fade"
+  id="calendarioHorariosUALModal"
+  tabindex="-1"
+  aria-labelledby="calendarioHorariosUALTitulo"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl modal-fullscreen-lg-down">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title h5 mb-1" id="calendarioHorariosUALTitulo">Calendario de horarios UAL</h2>
+          <p class="small text-muted mb-0">Los días sin horarios configurados aparecen deshabilitados.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <div class="btn-group" role="group" aria-label="Vista del calendario">
+            <button type="button" class="btn btn-outline-primary active" data-calendar-mode="week">Semana</button>
+            <button type="button" class="btn btn-outline-primary" data-calendar-mode="month">Mes</button>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="calendarioAnteriorBtn" aria-label="Periodo anterior">
+              &lsaquo;
+            </button>
+            <strong id="calendarioPeriodoLabel" class="text-center"></strong>
+            <button type="button" class="btn btn-outline-secondary" id="calendarioSiguienteBtn" aria-label="Periodo siguiente">
+              &rsaquo;
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle" id="horariosRegistradosCalendar">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+          <p class="small text-muted mb-0">
+            En la vista semanal puedes marcar espacios vacíos de días configurados como práctica libre.
+          </p>
+          <button type="button" class="btn btn-perso d-none" id="guardarPracticaLibreBtn" data-submit-lock="true">
+            Guardar espacios como práctica libre
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script nonce="<%= cspNonce %>">
   (function() {
     var salaId = <%- JSON.stringify(sala && sala.id ? String(sala.id) : '') %>;
@@ -249,9 +286,20 @@
     var fechaFinCargaSala = document.getElementById('fechaFinCargaSala');
     var weekInput = document.getElementById('fechaSemanaRegistrada');
     var previewRegisteredButton = document.getElementById('previsualizarHorariosRegistradosBtn');
-    var calendarContainer = document.getElementById('calendarioHorariosRegistrados');
+    var calendarModalEl = document.getElementById('calendarioHorariosUALModal');
+    var calendarContainer = calendarModalEl;
     var calendarTable = document.getElementById('horariosRegistradosCalendar');
     var saveFreePracticeButton = document.getElementById('guardarPracticaLibreBtn');
+    var calendarPeriodLabel = document.getElementById('calendarioPeriodoLabel');
+    var previousPeriodButton = document.getElementById('calendarioAnteriorBtn');
+    var nextPeriodButton = document.getElementById('calendarioSiguienteBtn');
+    var calendarModeButtons = document.querySelectorAll('[data-calendar-mode]');
+    var calendarModal =
+      calendarModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
+        ? new bootstrap.Modal(calendarModalEl)
+        : null;
+    var calendarMode = 'week';
+    var calendarAnchorDate = null;
     var registeredSchedules = <%- JSON.stringify((horarios || []).map(function(item) {
       return {
         id: item.id,
@@ -383,22 +431,45 @@
       });
     }
 
-    function renderRegisteredCalendar() {
-      if (!weekInput || !weekInput.value || !calendarTable || !calendarContainer) return;
+    function getWeekStart(date) {
+      return addDays(date, -((date.getDay() + 6) % 7));
+    }
 
-      var startDate = new Date(weekInput.value + 'T12:00:00');
+    function getDaySchedules(day) {
+      return registeredSchedules.filter(function(item) {
+        if (!item.activo) return false;
+        return item.fecha
+          ? item.fecha === day.date
+          : item.dia_semana !== null && Number(item.dia_semana) === day.dayNumber;
+      });
+    }
+
+    function formatTime(minute) {
+      return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+    }
+
+    function resetCalendar() {
+      calendarTable.querySelector('thead').innerHTML = '';
+      calendarTable.querySelector('tbody').innerHTML = '';
+      saveFreePracticeButton.classList.add('d-none');
+    }
+
+    function renderWeekCalendar() {
+      var weekStart = getWeekStart(calendarAnchorDate);
       var days = Array.from({ length: 7 }, function(_item, index) {
-        var date = addDays(startDate, index);
+        var date = addDays(weekStart, index);
         return {
           date: dateKey(date),
           dayNumber: date.getDay(),
-          label: new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).format(date),
+          label: new Intl.DateTimeFormat('es-CO', {
+            weekday: 'short',
+            day: '2-digit',
+            month: 'short',
+          }).format(date),
         };
       });
-      var dateSet = new Set(days.map(function(day) { return day.date; }));
-      var schedules = registeredSchedules.filter(function(item) {
-        return item.activo && (dateSet.has(item.fecha) || (!item.fecha && item.dia_semana !== null));
-      });
+      var daySchedules = days.map(getDaySchedules);
+      var schedules = daySchedules.flat();
       var timeValues = schedules.flatMap(function(item) {
         return [timeMinutes(item.hora_inicio), timeMinutes(item.hora_fin)].filter(Number.isFinite);
       });
@@ -406,46 +477,55 @@
       var maxMinute = timeValues.length ? Math.ceil(Math.max.apply(null, timeValues) / 60) * 60 : 20 * 60;
       if (maxMinute <= minMinute) maxMinute = minMinute + 60;
 
-      var thead = calendarTable.querySelector('thead');
-      var tbody = calendarTable.querySelector('tbody');
-      thead.innerHTML = '';
-      tbody.innerHTML = '';
+      resetCalendar();
       var header = document.createElement('tr');
       var timeHeader = document.createElement('th');
       timeHeader.textContent = 'Hora';
       header.appendChild(timeHeader);
-      days.forEach(function(day) {
+      days.forEach(function(day, index) {
         var th = document.createElement('th');
         th.textContent = day.label;
+        if (!daySchedules[index].length) th.className = 'table-secondary text-muted';
         header.appendChild(th);
       });
-      thead.appendChild(header);
+      calendarTable.querySelector('thead').appendChild(header);
 
       for (var minute = minMinute; minute < maxMinute; minute += 60) {
         var row = document.createElement('tr');
-        var start = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
         var endMinute = minute + 60;
-        var end = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
+        var start = formatTime(minute);
+        var end = formatTime(endMinute);
         var label = document.createElement('th');
         label.textContent = start + ' - ' + end;
         row.appendChild(label);
 
-        days.forEach(function(day) {
+        days.forEach(function(day, index) {
           var td = document.createElement('td');
-          var matching = schedules.filter(function(item) {
-            var matchesDate = item.fecha
-              ? item.fecha === day.date
-              : Number(item.dia_semana) === day.dayNumber;
+          if (!daySchedules[index].length) {
+            td.className = 'table-secondary text-muted text-center';
+            td.textContent = 'Sin horario';
+            row.appendChild(td);
+            return;
+          }
+
+          var matching = daySchedules[index].filter(function(item) {
             var itemStart = timeMinutes(item.hora_inicio);
             var itemEnd = timeMinutes(item.hora_fin);
-            return matchesDate && itemStart < endMinute && itemEnd > minute;
+            return itemStart < endMinute && itemEnd > minute;
           });
-
           if (matching.length) {
-            var badge = document.createElement('span');
-            badge.className = 'badge ' + (matching.some(function(item) { return item.tipo_practica === 'docente'; }) ? 'bg-primary' : 'bg-success');
-            badge.textContent = matching.some(function(item) { return item.tipo_practica === 'docente'; }) ? 'Docente' : 'Libre';
-            td.appendChild(badge);
+            matching.forEach(function(item) {
+              var badge = document.createElement('span');
+              badge.className =
+                'badge d-block mb-1 ' + (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
+              badge.textContent =
+                (item.tipo_practica === 'docente' ? 'Docente' : 'Libre') +
+                ' ' +
+                item.hora_inicio +
+                '-' +
+                item.hora_fin;
+              td.appendChild(badge);
+            });
           } else {
             var wrapper = document.createElement('label');
             wrapper.className = 'd-flex justify-content-center';
@@ -458,11 +538,94 @@
           }
           row.appendChild(td);
         });
-        tbody.appendChild(row);
+        calendarTable.querySelector('tbody').appendChild(row);
       }
 
-      calendarContainer.classList.remove('d-none');
-      if (saveFreePracticeButton) saveFreePracticeButton.classList.add('d-none');
+      calendarPeriodLabel.textContent =
+        new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }).format(
+          weekStart
+        ) +
+        ' – ' +
+        new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }).format(
+          addDays(weekStart, 6)
+        );
+    }
+
+    function renderMonthCalendar() {
+      var monthStart = new Date(
+        calendarAnchorDate.getFullYear(),
+        calendarAnchorDate.getMonth(),
+        1,
+        12
+      );
+      var gridStart = getWeekStart(monthStart);
+      var weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+      resetCalendar();
+
+      var header = document.createElement('tr');
+      weekdays.forEach(function(label) {
+        var th = document.createElement('th');
+        th.textContent = label;
+        header.appendChild(th);
+      });
+      calendarTable.querySelector('thead').appendChild(header);
+
+      for (var week = 0; week < 6; week += 1) {
+        var row = document.createElement('tr');
+        for (var dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+          var date = addDays(gridStart, week * 7 + dayIndex);
+          var day = {
+            date: dateKey(date),
+            dayNumber: date.getDay(),
+          };
+          var daySchedules = getDaySchedules(day);
+          var td = document.createElement('td');
+          td.className = 'align-top';
+          td.style.minWidth = '125px';
+          if (date.getMonth() !== monthStart.getMonth() || !daySchedules.length) {
+            td.classList.add('table-secondary', 'text-muted');
+          }
+
+          var dateLabel = document.createElement('strong');
+          dateLabel.className = 'd-block mb-1';
+          dateLabel.textContent = String(date.getDate());
+          td.appendChild(dateLabel);
+          daySchedules.forEach(function(item) {
+            var eventBadge = document.createElement('span');
+            eventBadge.className =
+              'badge d-block text-wrap text-start mb-1 ' +
+              (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
+            eventBadge.textContent =
+              item.hora_inicio +
+              '-' +
+              item.hora_fin +
+              ' ' +
+              (item.tipo_practica === 'docente' ? 'Docente' : 'Libre');
+            td.appendChild(eventBadge);
+          });
+          if (!daySchedules.length) {
+            var disabledLabel = document.createElement('small');
+            disabledLabel.textContent = 'Sin horario';
+            td.appendChild(disabledLabel);
+          }
+          row.appendChild(td);
+        }
+        calendarTable.querySelector('tbody').appendChild(row);
+      }
+
+      calendarPeriodLabel.textContent = new Intl.DateTimeFormat('es-CO', {
+        month: 'long',
+        year: 'numeric',
+      }).format(monthStart);
+    }
+
+    function renderCalendar() {
+      if (!calendarAnchorDate || !calendarTable) return;
+      if (calendarMode === 'month') {
+        renderMonthCalendar();
+      } else {
+        renderWeekCalendar();
+      }
     }
 
     if (importForm && importInput && importButton) {
@@ -504,7 +667,60 @@
     }
 
     if (previewRegisteredButton) {
-      previewRegisteredButton.addEventListener('click', renderRegisteredCalendar);
+      previewRegisteredButton.addEventListener('click', function() {
+        if (!weekInput.value || !calendarModal) {
+          showAlert('warning', 'Selecciona una fecha para visualizar el calendario.');
+          return;
+        }
+        calendarAnchorDate = new Date(weekInput.value + 'T12:00:00');
+        calendarMode = 'week';
+        calendarModeButtons.forEach(function(button) {
+          button.classList.toggle('active', button.getAttribute('data-calendar-mode') === calendarMode);
+        });
+        renderCalendar();
+        calendarModal.show();
+      });
+    }
+
+    calendarModeButtons.forEach(function(button) {
+      button.addEventListener('click', function() {
+        calendarMode = button.getAttribute('data-calendar-mode') === 'month' ? 'month' : 'week';
+        calendarModeButtons.forEach(function(modeButton) {
+          modeButton.classList.toggle(
+            'active',
+            modeButton.getAttribute('data-calendar-mode') === calendarMode
+          );
+        });
+        renderCalendar();
+      });
+    });
+
+    function moveCalendarPeriod(direction) {
+      if (!calendarAnchorDate) return;
+      if (calendarMode === 'month') {
+        calendarAnchorDate = new Date(
+          calendarAnchorDate.getFullYear(),
+          calendarAnchorDate.getMonth() + direction,
+          1,
+          12
+        );
+      } else {
+        calendarAnchorDate = addDays(getWeekStart(calendarAnchorDate), direction * 7);
+      }
+      weekInput.value = dateKey(calendarAnchorDate);
+      renderCalendar();
+    }
+
+    if (previousPeriodButton) {
+      previousPeriodButton.addEventListener('click', function() {
+        moveCalendarPeriod(-1);
+      });
+    }
+
+    if (nextPeriodButton) {
+      nextPeriodButton.addEventListener('click', function() {
+        moveCalendarPeriod(1);
+      });
     }
 
     if (calendarContainer) {
