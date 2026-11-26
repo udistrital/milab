@@ -80,6 +80,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     ual_id,
     fecha_multa,
     obs_multa,
+    periodo,
     lookup_token: rawLookupToken,
   } = requestBody;
   const lookupToken = String(rawLookupToken || '').trim();
@@ -118,6 +119,15 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
       return res.render('home/message_error', {
         message: 'La fecha de la sancion no puede ser futura.',
         message2: 'Selecciona una fecha igual o anterior al dia de hoy.',
+        limit: null,
+      });
+    }
+
+    const periodoNumero = Number(periodo);
+    if (![1, 2, 3].includes(periodoNumero)) {
+      return res.render('home/message_error', {
+        message: 'Periodo academico invalido.',
+        message2: 'Selecciona un periodo academico valido (1, 2 o 3).',
         limit: null,
       });
     }
@@ -313,7 +323,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
     }
 
     const inserted = await pool.query(
-      'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+      'INSERT INTO multa (cat_multa, laboratorista_documento_id, usuario_sancionado_id, ual_id, fecha_multa, con_estado_multa, obs_multa, tipo_sancion, periodo) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
       [
         cat_multa,
         laboratorista.documento,
@@ -323,6 +333,7 @@ router.post('/', requireFineSubmissionAccess, async (req, res) => {
         finalEstado,
         obs_multa,
         tipoSancionFinal,
+        periodoNumero,
       ]
     );
     multaIdNueva = inserted.rows && inserted.rows[0] ? inserted.rows[0].id : null;

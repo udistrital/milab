@@ -303,4 +303,10 @@ ALTER TABLE milab.multa
 COMMENT ON COLUMN milab.multa.sga_deuda_id IS
     'Identificador de la deuda creada en SGA (P_RESULTADO_SECUENCIA). NULL = sin bloqueo de recibo de pago.';
 
+ALTER TABLE milab.multa
+    ADD COLUMN IF NOT EXISTS periodo INT;
+
+COMMENT ON COLUMN milab.multa.periodo IS
+    'Período académico de la sanción (1, 2 o 3). Se envía como DEU_PER al crear la deuda en SGA.';
+
 COMMIT;

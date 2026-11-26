@@ -151,37 +151,39 @@ const SGA_OTHER_CONCEPT_TYPES = Object.freeze({
 
 const SGA_MILAB_CONCEPT_CODE = 9;
 const SGA_ACTIVE_DEBT_STATE = '2';
-const SGA_ACADEMIC_PERIOD_SEGMENT = 'A';
+// const SGA_ACADEMIC_PERIOD_SEGMENT = 'A'; // Se usaba en fetchAcademicPeriod (desactivado).
 
-function normalizeSgaScalar(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
-  if (typeof value === 'string') return value.trim();
-  return '';
-}
-
-function findSgaScalarByKeyPattern(node, pattern, depth = 0) {
-  if (depth > 3 || node === null || node === undefined) return '';
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      const found = findSgaScalarByKeyPattern(item, pattern, depth + 1);
-      if (found) return found;
-    }
-    return '';
-  }
-  if (typeof node !== 'object') return '';
-
-  for (const [key, value] of Object.entries(node)) {
-    if (!pattern.test(key)) continue;
-    const scalar = normalizeSgaScalar(value);
-    if (scalar) return scalar;
-  }
-  for (const value of Object.values(node)) {
-    const found = findSgaScalarByKeyPattern(value, pattern, depth + 1);
-    if (found) return found;
-  }
-  return '';
-}
+// Helpers usados por fetchAcademicPeriod (desactivado). Se mantienen comentados
+// por si se vuelve a consultar el período académico directamente a SGA.
+// function normalizeSgaScalar(value) {
+//   if (value === null || value === undefined) return '';
+//   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+//   if (typeof value === 'string') return value.trim();
+//   return '';
+// }
+//
+// function findSgaScalarByKeyPattern(node, pattern, depth = 0) {
+//   if (depth > 3 || node === null || node === undefined) return '';
+//   if (Array.isArray(node)) {
+//     for (const item of node) {
+//       const found = findSgaScalarByKeyPattern(item, pattern, depth + 1);
+//       if (found) return found;
+//     }
+//     return '';
+//   }
+//   if (typeof node !== 'object') return '';
+//
+//   for (const [key, value] of Object.entries(node)) {
+//     if (!pattern.test(key)) continue;
+//     const scalar = normalizeSgaScalar(value);
+//     if (scalar) return scalar;
+//   }
+//   for (const value of Object.values(node)) {
+//     const found = findSgaScalarByKeyPattern(value, pattern, depth + 1);
+//     if (found) return found;
+//   }
+//   return '';
+// }
 
 function parseSgaJsonResponse(response) {
   if (typeof response !== 'string') return response;
@@ -393,22 +395,23 @@ class SgaDebtService {
     return `${this.buildDebtorsPath('deudores')}/${encodeURIComponent(normalizedCode)}`;
   }
 
-  // Consulta el período académico vigente en SGA (previo a crear la deuda).
-  async fetchAcademicPeriod() {
-    if (!this.isConfigured()) {
-      throw new Error('El servicio SGA no está configurado en este ambiente.');
-    }
-
-    const response = await this.requestAcademicData(
-      this.buildDebtorsPath(`periodo_academico/${SGA_ACADEMIC_PERIOD_SEGMENT}`),
-      { forceAuth: true }
-    );
-    const period = findSgaScalarByKeyPattern(response, /(^|_)(per|periodo)(_|$)/i);
-    if (!/^\d+$/.test(period)) {
-      throw new Error('No fue posible determinar el período académico vigente en SGA.');
-    }
-    return period;
-  }
+  // NOTA: la consulta de período académico a SGA quedó desactivada.
+  // El período (1, 2 o 3) ahora se registra al crear la sanción (columna multa.periodo)
+  // y se envía directamente como DEU_PER en el payload de la deuda.
+  // async fetchAcademicPeriod() {
+  //   if (!this.isConfigured()) {
+  //     throw new Error('El servicio SGA no está configurado en este ambiente.');
+  //   }
+  //
+  //   const response = await this.requestAcademicData(
+  //     this.buildDebtorsPath(`periodo_academico/${SGA_ACADEMIC_PERIOD_SEGMENT}`)
+  //   );
+  //   const period = findSgaScalarByKeyPattern(response, /(^|_)(per|periodo)(_|$)/i);
+  //   if (!/^\d+$/.test(period)) {
+  //     throw new Error('No fue posible determinar el período académico vigente en SGA.');
+  //   }
+  //   return period;
+  // }
 
   // Arma el cuerpo _postdeudores a partir de la sanción local.
   buildDebtRegistrationPayload({ codigo, documento, nombre, observacion, fecha, periodo } = {}) {

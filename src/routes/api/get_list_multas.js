@@ -443,7 +443,8 @@ async function queryMultasRows(client, conditions, params) {
         m.con_estado_multa,
         m.obs_multa,
         m.tipo_sancion,
-        m.sga_deuda_id
+        m.sga_deuda_id,
+        m.periodo
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
       LEFT JOIN dependencia_facultad unidad ON unidad.dependencia_facultad_id = u.facultad_id
@@ -482,7 +483,11 @@ function getReceiptBlockIneligibleMessage(row) {
 }
 
 // Crea la deuda en SGA y la vincula a la sanción. Devuelve el identificador.
-async function blockReceiptForSanction(client, row, periodo) {
+async function blockReceiptForSanction(client, row) {
+  const periodo = Number(row?.periodo);
+  if (![1, 2, 3].includes(periodo)) {
+    throw new Error('La sanción no tiene un período académico válido para SGA.');
+  }
   const payload = sgaDebtService.buildDebtRegistrationPayload({
     codigo: row.codigo_sancionado,
     documento: row.documento_sancionado,
@@ -739,22 +744,6 @@ router.post('/bloquear-recibo-masivo', requireReceiptBlockAccess, async (req, re
     );
     const rowsById = new Map(rows.map((row) => [Number(row.id), row]));
 
-    let periodo;
-    try {
-      periodo = await sgaDebtService.fetchAcademicPeriod();
-    } catch (error) {
-      client.release();
-      client = null;
-      if (error?.code === 'OATI_UNAVAILABLE') {
-        console.error('[OATI] Causa:', error?.cause?.code, error?.cause?.message);
-        return respondOatiUnavailable(req, res);
-      }
-      console.error('Error consultando el período académico en SGA:', error);
-      return res
-        .status(502)
-        .json({ ok: false, message: 'No fue posible consultar el período académico en SGA.' });
-    }
-
     const results = [];
     for (const multaId of multaIds) {
       const sanction = rowsById.get(multaId);
@@ -776,7 +765,7 @@ router.post('/bloquear-recibo-masivo', requireReceiptBlockAccess, async (req, re
       }
 
       try {
-        const { deudaId } = await blockReceiptForSanction(client, sanction, periodo);
+        const { deudaId } = await blockReceiptForSanction(client, sanction);
         results.push({ multa_id: multaId, ok: true, sga_deuda_id: deudaId });
       } catch (error) {
         if (error?.code === 'OATI_UNAVAILABLE') {
@@ -881,8 +870,7 @@ router.post('/:multaId/bloquear-recibo', requireReceiptBlockAccess, async (req, 
         .json({ ok: false, message: getReceiptBlockIneligibleMessage(sanction) });
     }
 
-    const periodo = await sgaDebtService.fetchAcademicPeriod();
-    const { deudaId, linked } = await blockReceiptForSanction(client, sanction, periodo);
+    const { deudaId, linked } = await blockReceiptForSanction(client, sanction);
 
     await client.query(
       `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
