@@ -194,7 +194,7 @@ test('get-info-multa exports an Express router with handlers', () => {
   }
 });
 
-test('get-info-multa skips OATI state-detail lookup in test environment', async () => {
+test('get-info-multa normalizes code punctuation and skips state details in tests', async () => {
   const previousEnvironment = process.env.NODE_ENV;
   process.env.NODE_ENV = 'test';
   const oatiCalls = [];
@@ -237,7 +237,7 @@ test('get-info-multa skips OATI state-detail lookup in test environment', async 
     const app = buildApp(loaded.route);
     const lookupResponse = await request(app).post('/').type('form').send({
       tipo_busqueda: 'codigo',
-      valor_busqueda: '2024100001',
+      valor_busqueda: '2024100001,',
     });
     const { response } = await getStudentActionScreen(app, lookupResponse);
 

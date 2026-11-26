@@ -331,6 +331,9 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
   const requestBody = req.body || {};
   const { tipo_busqueda, valor_busqueda } = requestBody;
   const lookupToken = String(requestBody.lookup_token || '').trim();
+  const searchValue = String(valor_busqueda || '')
+    .trim()
+    .replace(/,+$/, '');
   const searchedPerson = lookupToken
     ? resolveSanctionPersonLookup(req, lookupToken, 'estudiante')
     : null;
@@ -345,6 +348,11 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
       `/milab/api/get-info-multa/registrar?lookup_token=${encodeURIComponent(lookupToken)}`
     );
   }
+  if (!/^\d+$/.test(searchValue)) {
+    return res.render('home/error-consulta', {
+      message: 'Ingresa un código institucional o documento válido.',
+    });
+  }
 
   let con_codigo;
   let con_estado;
@@ -358,9 +366,9 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
     if (!searchedPerson) {
       let servicePath;
       if (tipo_busqueda === 'codigo') {
-        servicePath = getAcademicServicePath(`datos_basicos_estudiante/${valor_busqueda}`);
+        servicePath = getAcademicServicePath(`datos_basicos_estudiante/${searchValue}`);
       } else {
-        servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${valor_busqueda}`);
+        servicePath = getAcademicServicePath(`datos_basicos_activos_cedula/${searchValue}`);
       }
 
       const dato1 = await requestOati(servicePath);
@@ -379,7 +387,7 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
         (!con_documento || con_documento === 'undefined' || con_documento === 'null') &&
         tipo_busqueda === 'documento'
       ) {
-        con_documento = String(valor_busqueda || '').trim();
+        con_documento = searchValue;
       }
       con_carrera = studentRecord.carrera;
       con_nombre = studentRecord.nombre;
