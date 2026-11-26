@@ -52,6 +52,18 @@
             · <%= selectedFacultad %>
           <% } %>
         </p>
+        <div class="d-flex justify-content-center mt-3">
+          <div class="d-flex flex-wrap justify-content-center gap-2">
+            <% if (selectedSalaInfo && selectedSalaInfo.id) { %>
+              <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/salas/<%= selectedSalaInfo.id %>/horarios?returnTo=<%= encodeURIComponent(returnTo || '/milab/prestamos/activacion/laboratorios') %>">
+                Carga de horario
+              </a>
+            <% } %>
+            <a class="btn btn-perso btn-sm" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
+              Volver
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   <% } %>

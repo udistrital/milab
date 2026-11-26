@@ -23,7 +23,7 @@
   <section class="card app-form-panel text-light mb-4">
     <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
       <h5 class="mb-0">Nuevo horario</h5>
-      <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/salas">Volver a salas</a>
+      <a class="btn btn-outline-light btn-sm" href="<%= returnTo || '/milab/prestamos/salas' %>">Volver</a>
     </div>
     <div class="card-body">
       <form id="crearHorarioSalaForm" class="row g-3" novalidate>
@@ -86,7 +86,15 @@
     </div>
     <div class="card-body">
       <form id="importarHorarioSalaForm" class="row g-3" novalidate>
-        <div class="col-md-8">
+        <div class="col-md-3">
+          <label for="fechaInicioCargaSala" class="form-label">Fecha inicio *</label>
+          <input type="date" class="form-control" id="fechaInicioCargaSala" required>
+        </div>
+        <div class="col-md-3">
+          <label for="fechaFinCargaSala" class="form-label">Fecha fin *</label>
+          <input type="date" class="form-control" id="fechaFinCargaSala" required>
+        </div>
+        <div class="col-md-6">
           <label for="archivoHorariosSala" class="form-label">Archivo Excel (.xls/.xlsx)</label>
           <input
             type="file"
@@ -97,13 +105,30 @@
           >
         </div>
         <div class="col-md-4 d-flex align-items-end">
+          <button type="button" class="btn btn-outline-light w-100" id="previsualizarHorarioSalaBtn" data-submit-lock="true">
+            Previsualizar semana
+          </button>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
           <button type="submit" class="btn btn-outline-info w-100" id="importarHorarioSalaSubmitBtn" data-submit-lock="true">
-            Importar horarios
+            Confirmar e importar horario
           </button>
         </div>
       </form>
       <div class="form-text mt-3">
-        Se usa la plantilla oficial <code>docs/ejemplo_horarios.xlsx</code>. Solo se importan filas cuyo valor en la columna <strong>Salón</strong> coincide con esta sala.
+        Se usa la plantilla oficial <code>tests/prestamos/carga_salas.xlsx</code>. Debes definir una vigencia mínima de 1 semana y máxima de 6 meses.
+      </div>
+      <div id="previewHorarioContainer" class="mt-4 d-none">
+        <h6 class="mb-2">Previsualización semanal</h6>
+        <p class="small text-light-emphasis mb-3">
+          Selecciona espacios vacíos para habilitar práctica libre (opcional) y luego confirma la importación.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle" id="previewHorarioTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>
@@ -190,6 +215,12 @@
     var importForm = document.getElementById('importarHorarioSalaForm');
     var importInput = document.getElementById('archivoHorariosSala');
     var importButton = document.getElementById('importarHorarioSalaSubmitBtn');
+    var previewButton = document.getElementById('previsualizarHorarioSalaBtn');
+    var fechaInicioCargaSala = document.getElementById('fechaInicioCargaSala');
+    var fechaFinCargaSala = document.getElementById('fechaFinCargaSala');
+    var previewContainer = document.getElementById('previewHorarioContainer');
+    var previewTable = document.getElementById('previewHorarioTable');
+    var selectedFreeSlots = [];
     var tipoPracticaSelect = document.getElementById('tipoPracticaHorario');
     var modalidadLibreSelect = document.getElementById('modalidadLibre');
     var diaSemanaInput = document.getElementById('diaSemana');
@@ -248,6 +279,68 @@
       return data;
     }
 
+    function renderPreviewTable(preview) {
+      if (!previewTable || !preview || !Array.isArray(preview.days) || !Array.isArray(preview.slots)) {
+        return;
+      }
+
+      var thead = previewTable.querySelector('thead');
+      var tbody = previewTable.querySelector('tbody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      var headerRow = document.createElement('tr');
+      var timeHead = document.createElement('th');
+      timeHead.textContent = 'Hora';
+      headerRow.appendChild(timeHead);
+
+      preview.days.forEach(function(day) {
+        var th = document.createElement('th');
+        th.textContent = day.label;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      preview.slots.forEach(function(slot) {
+        var row = document.createElement('tr');
+        var timeCell = document.createElement('th');
+        timeCell.textContent = slot.label;
+        row.appendChild(timeCell);
+
+        (slot.cells || []).forEach(function(cell) {
+          var td = document.createElement('td');
+          if (cell.occupied) {
+            td.innerHTML = '<span class="badge bg-secondary">' + (cell.text || 'Ocupado') + '</span>';
+          } else if (cell.key) {
+            var wrapper = document.createElement('label');
+            wrapper.className = 'd-flex justify-content-center';
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.className = 'form-check-input js-preview-free-slot';
+            input.value = cell.key;
+            input.checked = selectedFreeSlots.indexOf(cell.key) >= 0;
+            wrapper.appendChild(input);
+            td.appendChild(wrapper);
+          }
+          row.appendChild(td);
+        });
+
+        tbody.appendChild(row);
+      });
+
+      previewContainer.classList.remove('d-none');
+    }
+
+    function collectSelectedFreeSlots() {
+      if (!previewContainer || previewContainer.classList.contains('d-none')) {
+        return [];
+      }
+
+      return Array.from(previewContainer.querySelectorAll('.js-preview-free-slot:checked')).map(function(input) {
+        return input.value;
+      });
+    }
+
     diaSemanaInput.addEventListener('change', function() {
       if (diaSemanaInput.value) {
         fechaEspecificaInput.value = '';
@@ -296,6 +389,39 @@
     });
 
     if (importForm && importInput && importButton) {
+      if (previewButton) {
+        previewButton.addEventListener('click', async function() {
+          if (!importInput.files || !importInput.files.length) {
+            showAlert('danger', 'Selecciona un archivo de Excel para previsualizar.');
+            return;
+          }
+          if (!fechaInicioCargaSala.value || !fechaFinCargaSala.value) {
+            showAlert('danger', 'Debes definir la fecha de inicio y fin de la carga.');
+            return;
+          }
+
+          var previewData = new FormData();
+          previewData.append('archivo', importInput.files[0]);
+          previewData.append('fecha_inicio', fechaInicioCargaSala.value);
+          previewData.append('fecha_fin', fechaFinCargaSala.value);
+
+          try {
+            window.MiLabSubmitLock.lock(previewButton, 'Previsualizando...');
+            var previewResult = await postFormData(
+              '/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios/previsualizar',
+              previewData
+            );
+            renderPreviewTable(previewResult.preview || {});
+            selectedFreeSlots = collectSelectedFreeSlots();
+            showAlert('success', 'Previsualización generada correctamente.');
+          } catch (error) {
+            showAlert('danger', error.message || 'No fue posible generar la previsualización.');
+          } finally {
+            window.MiLabSubmitLock.release(previewButton);
+          }
+        });
+      }
+
       importForm.addEventListener('submit', async function(event) {
         event.preventDefault();
 
@@ -303,10 +429,18 @@
           showAlert('danger', 'Selecciona un archivo de Excel para importar.');
           return;
         }
+        if (!fechaInicioCargaSala.value || !fechaFinCargaSala.value) {
+          showAlert('danger', 'Debes definir la fecha de inicio y fin de la carga.');
+          return;
+        }
 
         var file = importInput.files[0];
         var formData = new FormData();
         formData.append('archivo', file);
+        formData.append('fecha_inicio', fechaInicioCargaSala.value);
+        formData.append('fecha_fin', fechaFinCargaSala.value);
+        selectedFreeSlots = collectSelectedFreeSlots();
+        formData.append('slots_libres_json', JSON.stringify(selectedFreeSlots));
 
         try {
           window.MiLabSubmitLock.lock(importButton, 'Importando horarios...');
@@ -316,6 +450,10 @@
           );
           showAlert('success', result.message || 'Horarios importados correctamente.');
           importForm.reset();
+          selectedFreeSlots = [];
+          if (previewContainer) {
+            previewContainer.classList.add('d-none');
+          }
           window.setTimeout(function() {
             window.location.reload();
           }, 900);

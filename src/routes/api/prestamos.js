@@ -4518,6 +4518,251 @@ function hasSalaScheduleOverlap(left, right) {
   return leftStart < rightEnd && leftEnd > rightStart;
 }
 
+function isExactSalaScheduleMatch(left, right) {
+  return (
+    buildSalaScheduleContextKey(left) === buildSalaScheduleContextKey(right) &&
+    String(left?.hora_inicio || '') === String(right?.hora_inicio || '') &&
+    String(left?.hora_fin || '') === String(right?.hora_fin || '')
+  );
+}
+
+function parseDateOnlyUtc(value) {
+  if (!isValidDateOnly(value)) return null;
+  const [yearRaw, monthRaw, dayRaw] = String(value).split('-');
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDateOnlyUtc(date) {
+  return [
+    String(date.getUTCFullYear()),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function resolveSalaScheduleDateRange(body = {}) {
+  return {
+    fecha_inicio: sanitizeDateOnly(body.fecha_inicio || body.fechaInicio),
+    fecha_fin: sanitizeDateOnly(body.fecha_fin || body.fechaFin),
+  };
+}
+
+function validateSalaScheduleDateRange(range) {
+  const start = parseDateOnlyUtc(range?.fecha_inicio);
+  const end = parseDateOnlyUtc(range?.fecha_fin);
+  if (!start || !end) {
+    return {
+      valid: false,
+      message:
+        'Debes indicar la fecha de inicio y fin del horario con formato valido (YYYY-MM-DD).',
+    };
+  }
+
+  const diffDays = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  if (diffDays < 7) {
+    return {
+      valid: false,
+      message: 'La vigencia del horario debe ser de al menos una semana.',
+    };
+  }
+
+  if (diffDays > 183) {
+    return {
+      valid: false,
+      message: 'La vigencia del horario no puede superar seis meses.',
+    };
+  }
+
+  return { valid: true, start, end, diffDays };
+}
+
+function expandSalaScheduleRowsByRange(rows, rangeValidation) {
+  const expanded = [];
+  const start = rangeValidation.start;
+  const end = rangeValidation.end;
+
+  for (const row of rows || []) {
+    if (row.fecha) {
+      const explicitDate = parseDateOnlyUtc(row.fecha);
+      if (!explicitDate) {
+        continue;
+      }
+      if (explicitDate < start || explicitDate > end) {
+        continue;
+      }
+      expanded.push({
+        ...row,
+        dia_semana: '',
+        fecha: formatDateOnlyUtc(explicitDate),
+      });
+      continue;
+    }
+
+    const dayNumber = Number(row.dia_semana);
+    if (!Number.isInteger(dayNumber) || dayNumber < 0 || dayNumber > 6) {
+      continue;
+    }
+
+    for (
+      let cursor = new Date(start.getTime());
+      cursor <= end;
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)
+    ) {
+      if (cursor.getUTCDay() !== dayNumber) {
+        continue;
+      }
+
+      expanded.push({
+        ...row,
+        dia_semana: '',
+        fecha: formatDateOnlyUtc(cursor),
+      });
+    }
+  }
+
+  return expanded;
+}
+
+function buildScheduleSlotKey(dayNumber, startTime, endTime) {
+  return `${dayNumber}|${startTime}|${endTime}`;
+}
+
+function parseScheduleSlotKey(value) {
+  const raw = sanitizeText(value);
+  const match = raw.match(/^([0-6])\|(\d{2}:\d{2})\|(\d{2}:\d{2})$/);
+  if (!match) return null;
+  if (match[2] >= match[3]) return null;
+  return {
+    dia_semana: Number(match[1]),
+    hora_inicio: match[2],
+    hora_fin: match[3],
+  };
+}
+
+function buildFreePracticeRowsFromSlotSelection(slotKeys, rangeValidation) {
+  const uniqueKeys = new Set(Array.isArray(slotKeys) ? slotKeys : []);
+  const rows = [];
+  const dedupe = new Set();
+
+  for (const slotKey of uniqueKeys) {
+    const parsed = parseScheduleSlotKey(slotKey);
+    if (!parsed) {
+      continue;
+    }
+
+    for (
+      let cursor = new Date(rangeValidation.start.getTime());
+      cursor <= rangeValidation.end;
+      cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)
+    ) {
+      if (cursor.getUTCDay() !== parsed.dia_semana) {
+        continue;
+      }
+      const fecha = formatDateOnlyUtc(cursor);
+      const dedupeKey = `${fecha}|${parsed.hora_inicio}|${parsed.hora_fin}`;
+      if (dedupe.has(dedupeKey)) {
+        continue;
+      }
+      dedupe.add(dedupeKey);
+      rows.push({
+        dia_semana: '',
+        fecha,
+        hora_inicio: parsed.hora_inicio,
+        hora_fin: parsed.hora_fin,
+        tipo_practica: 'libre',
+        modalidad_libre: 'uno_a_uno',
+        activo: true,
+        lineNumber: 'Libre',
+      });
+    }
+  }
+
+  return rows;
+}
+
+function buildSalaSchedulePreviewCalendar(rows, rangeValidation) {
+  const weekdayLabel = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const previewDays = [];
+  let cursor = new Date(rangeValidation.start.getTime());
+  while (previewDays.length < 7 && cursor <= rangeValidation.end) {
+    const date = formatDateOnlyUtc(cursor);
+    const dayNumber = cursor.getUTCDay();
+    previewDays.push({
+      date,
+      dayNumber,
+      label: `${weekdayLabel[dayNumber]} ${date}`,
+    });
+    cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  const previewDateSet = new Set(previewDays.map((item) => item.date));
+  const previewRows = (rows || []).filter((row) => previewDateSet.has(row.fecha));
+  const allMinutes = [];
+  previewRows.forEach((row) => {
+    const start = timeKeyToMinutes(row.hora_inicio);
+    const end = timeKeyToMinutes(row.hora_fin);
+    if (start !== null) allMinutes.push(start);
+    if (end !== null) allMinutes.push(end);
+  });
+
+  const defaultStart = 7 * 60;
+  const defaultEnd = 20 * 60;
+  const minMinute = allMinutes.length
+    ? Math.max(0, Math.floor(Math.min(...allMinutes) / 60) * 60)
+    : defaultStart;
+  const maxMinute = allMinutes.length
+    ? Math.min(24 * 60, Math.ceil(Math.max(...allMinutes) / 60) * 60)
+    : defaultEnd;
+  const normalizedEnd = maxMinute > minMinute ? maxMinute : minMinute + 60;
+
+  const slotRows = [];
+  for (let minute = minMinute; minute < normalizedEnd; minute += 60) {
+    const slotStart = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+    const slotEndMinute = minute + 60;
+    const slotEnd = `${String(Math.floor(slotEndMinute / 60)).padStart(2, '0')}:${String(slotEndMinute % 60).padStart(2, '0')}`;
+
+    const cells = previewDays.map((day) => {
+      const overlaps = previewRows.filter(
+        (item) =>
+          item.fecha === day.date &&
+          hasSalaScheduleOverlap(
+            { fecha: day.date, hora_inicio: slotStart, hora_fin: slotEnd },
+            item
+          )
+      );
+
+      if (overlaps.length) {
+        const hasDocente = overlaps.some((item) => item.tipo_practica === 'docente');
+        return {
+          occupied: true,
+          text: hasDocente ? 'Docente' : 'Libre',
+        };
+      }
+
+      return {
+        occupied: false,
+        key: buildScheduleSlotKey(day.dayNumber, slotStart, slotEnd),
+      };
+    });
+
+    slotRows.push({
+      hora_inicio: slotStart,
+      hora_fin: slotEnd,
+      label: `${slotStart} - ${slotEnd}`,
+      cells,
+    });
+  }
+
+  return {
+    days: previewDays,
+    slots: slotRows,
+  };
+}
+
 async function insertSalaSchedule(client, salaId, payload, options = {}) {
   const source = sanitizeText(options.source || 'manual').toLowerCase();
   const actorId = Number(options.actorId || 0) || null;
@@ -4859,7 +5104,7 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
         .toLowerCase()
         .includes('prestamo_ual_configuracion')
     ) {
-      return 'La tabla prestamo_ual_configuracion no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
+      return 'La tabla prestamo_ual_configuracion no existe aun. Actualiza la base con la definicion en sql-scripts/preprod/db_structure_inventarios.sql.';
     }
 
     return 'La tabla solicitud_prestamo no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
@@ -5138,9 +5383,18 @@ function buildLaboratoryActivationModel(row) {
     inventarioComplementario: inventory.complementario.ready,
     inventarioReactivo: inventory.reactivo.ready,
     informacionUal: Number(row.total_salas_activas || 0) > 0 && hasUalConfig && hasValidBanksConfig,
-    horarioLaboratorio: Number(row.total_horarios_activos || 0) > 0,
+    horarioLaboratorio:
+      Number(row.total_horarios_activos || 0) > 0 &&
+      Number(row.total_salas_activas || 0) > 0 &&
+      hasUalConfig &&
+      hasValidBanksConfig,
     equiposListos: Number(row.total_equipos_listos || 0) > 0,
   };
+  const wizardHref = `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(row.ual_id || ''))}`;
+  const infoUalHref = `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
+  const scheduleManagementHref = Number(row.sala_referencia_id || 0)
+    ? `/milab/prestamos/salas/${encodeURIComponent(String(row.sala_referencia_id))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
+    : infoUalHref;
 
   let nextStep = {
     title: 'Completar inventario oficial',
@@ -5181,7 +5435,7 @@ function buildLaboratoryActivationModel(row) {
   ) {
     nextStep = {
       title: 'Completar información de la UAL',
-      href: `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info`,
+      href: infoUalHref,
     };
   } else if (
     checklist.inventarioOficial &&
@@ -5190,8 +5444,8 @@ function buildLaboratoryActivationModel(row) {
     !checklist.horarioLaboratorio
   ) {
     nextStep = {
-      title: 'Configurar salas y horarios',
-      href: `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info`,
+      title: 'Cargar horario del laboratorio',
+      href: scheduleManagementHref,
     };
   }
 
@@ -5225,6 +5479,7 @@ function buildLaboratoryActivationModel(row) {
       aprobadosReactivo: Number(row.aprobados_reactivo || 0),
       totalCargasRecientes: Number(row.total_cargas_recientes || 0),
       cargasAtencion: Number(row.cargas_atencion || 0),
+      salaReferenciaId: Number(row.sala_referencia_id || 0),
       pendingInventories: pendingInventoryCount,
       ualTieneBancos: ualHasBanks,
       ualCantidadBancos: ualBankCount,
@@ -5251,7 +5506,14 @@ function buildLoanActivationChecklist(laboratorio) {
   const encodedUalId = encodeURIComponent(String(laboratorio?.ualId || ''));
   const encodedFacultad = encodeURIComponent(sanitizeText(laboratorio?.facultad));
   const encodedLaboratorio = encodeURIComponent(sanitizeText(laboratorio?.laboratorio));
-  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}&mode=ual_info`;
+  const wizardHref = laboratorio?.ualId
+    ? `/milab/prestamos/activacion/laboratorios/${encodedUalId}`
+    : '/milab/prestamos/activacion/laboratorios';
+  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
+  const scheduleManagementHref = Number(counters.salaReferenciaId || 0)
+    ? `/milab/prestamos/salas/${encodeURIComponent(String(counters.salaReferenciaId))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
+    : scheduleHref;
+  const canManageSchedule = Boolean(checks.informacionUal);
 
   return [
     {
@@ -5318,13 +5580,15 @@ function buildLoanActivationChecklist(laboratorio) {
     {
       key: 'carga_horario',
       label: 'Horario de laboratorio',
-      ready: Boolean(checks.horarioLaboratorio),
+      ready: canManageSchedule && Boolean(checks.horarioLaboratorio),
       detail: `${Number(counters.horariosActivos || 0)} horario(s) activo(s)`,
       extraDetail: 'Carga o ajusta los horarios del laboratorio desde Excel.',
-      pendingDetail: checks.horarioLaboratorio
-        ? 'Sin tareas pendientes.'
-        : 'Cargar horarios activos para el laboratorio.',
-      actionHref: scheduleHref,
+      pendingDetail: !canManageSchedule
+        ? 'Completa primero la Información de la UAL para habilitar este paso.'
+        : checks.horarioLaboratorio
+          ? 'Sin tareas pendientes.'
+          : 'Cargar horarios activos para el laboratorio.',
+      actionHref: canManageSchedule ? scheduleManagementHref : '',
       actionLabel: 'Gestionar horario',
     },
   ];
@@ -5451,6 +5715,7 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         inv.estado_reactivo,
         inv.reactivo_sin_inventario,
         COALESCE(salas.total_salas_activas, 0) AS total_salas_activas,
+        COALESCE(salas.sala_referencia_id, 0) AS sala_referencia_id,
         COALESCE(horarios.total_horarios_activos, 0) AS total_horarios_activos,
         COALESCE(equipos.total_equipos_listos, 0) AS total_equipos_listos,
         COALESCE(inventarios.aprobados_oficial, 0) AS aprobados_oficial,
@@ -5473,10 +5738,11 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         WHERE ual_id = labs.ual_id
       ) inv ON TRUE
       LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS total_salas_activas
+        SELECT
+          COUNT(*) FILTER (WHERE s.activo = TRUE)::int AS total_salas_activas,
+          MIN(s.id) FILTER (WHERE s.activo = TRUE)::int AS sala_referencia_id
         FROM sala s
         WHERE s.ual_id = labs.ual_id
-          AND s.activo = TRUE
       ) salas ON TRUE
       LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS total_horarios_activos
@@ -17207,6 +17473,11 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     const facultad = sanitizeText(req.query.facultad);
     const laboratorio = sanitizeText(req.query.laboratorio);
     const ualInfoMode = sanitizeText(req.query.mode) === 'ual_info';
+    const rawReturnTo = sanitizeText(req.query.returnTo);
+    const returnTo =
+      rawReturnTo && rawReturnTo.startsWith('/milab/')
+        ? rawReturnTo
+        : '/milab/prestamos/activacion/laboratorios';
     const params = [];
     const whereParts = ['1 = 1'];
     const salasColumns = await fetchTableColumns('sala');
@@ -17291,6 +17562,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       ualInfoMode,
       selectedSalaInfo,
       selectedUalConfig,
+      returnTo,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -17305,6 +17577,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       ualInfoMode: false,
       selectedSalaInfo: null,
       selectedUalConfig: null,
+      returnTo: '/milab/prestamos/activacion/laboratorios',
       successMessage: '',
       errorMessage: resolveLoanDbErrorMessage(error, 'No fue posible cargar las salas.'),
     });
@@ -17562,10 +17835,14 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
       `,
       [sala.id]
     );
+    const rawReturnTo = sanitizeText(req.query.returnTo);
+    const returnTo =
+      rawReturnTo && rawReturnTo.startsWith('/milab/') ? rawReturnTo : '/milab/prestamos/salas';
 
     return res.render('home/prestamos/salas/horarios', {
       sala,
       horarios: result.rows || [],
+      returnTo,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -17591,9 +17868,9 @@ router.get('/salas/:id/horarios/plantilla', requireSalasAuthorized, async functi
       return res.status(404).send('La sala no existe o no pertenece a tu alcance de gestion.');
     }
 
-    const templatePath = path.resolve(__dirname, '../../../docs/ejemplo_horarios.xlsx');
+    const templatePath = path.resolve(__dirname, '../../../tests/prestamos/carga_salas.xlsx');
     const buffer = fs.readFileSync(templatePath);
-    const safeName = 'ejemplo_horarios.xlsx';
+    const safeName = 'carga_salas.xlsx';
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -17607,6 +17884,82 @@ router.get('/salas/:id/horarios/plantilla', requireSalasAuthorized, async functi
       .send('No fue posible generar la plantilla de carga de horarios para la sala.');
   }
 });
+
+router.post(
+  '/salas/:id/horarios/previsualizar',
+  requireSalasAuthorized,
+  parseScheduleSpreadsheetUpload,
+  async function (req, res) {
+    if (!isValidSalaId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La sala seleccionada no es valida.',
+      });
+    }
+
+    try {
+      const scope = await resolveLoanManagementScope(req);
+      const sala = await fetchManagedSala(req.params.id, scope);
+      if (!sala) {
+        return res.status(404).json({
+          success: false,
+          message: 'La sala no existe o no pertenece a tu alcance de gestion.',
+        });
+      }
+
+      const scheduleRange = resolveSalaScheduleDateRange(req.body || {});
+      const rangeValidation = validateSalaScheduleDateRange(scheduleRange);
+      if (!rangeValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: rangeValidation.message,
+        });
+      }
+
+      const parsed = parseSalaScheduleSpreadsheet(req.file.buffer, {
+        expectedSalaName: sala.nombre,
+      });
+
+      if (parsed.errors.length) {
+        return res.status(400).json({
+          success: false,
+          message: parsed.errors[0],
+          errors: parsed.errors,
+        });
+      }
+
+      const expandedRows = expandSalaScheduleRowsByRange(parsed.rows, rangeValidation);
+      if (!expandedRows.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'El archivo no generó horarios dentro del rango seleccionado.',
+        });
+      }
+
+      const preview = buildSalaSchedulePreviewCalendar(expandedRows, rangeValidation);
+      return res.json({
+        success: true,
+        message: 'Previsualización generada.',
+        preview,
+        meta: {
+          fecha_inicio: scheduleRange.fecha_inicio,
+          fecha_fin: scheduleRange.fecha_fin,
+          filas_base: parsed.rows.length,
+          filas_expandidas: expandedRows.length,
+        },
+      });
+    } catch (error) {
+      console.error('Error previsualizando horarios de sala MiLab:', error);
+      return res.status(500).json({
+        success: false,
+        message: resolveLoanDbErrorMessage(
+          error,
+          'No fue posible generar la previsualización del horario.'
+        ),
+      });
+    }
+  }
+);
 
 router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, res) {
   if (!isValidSalaId(req.params.id)) {
@@ -17662,7 +18015,7 @@ router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, 
     if (overlapResult.rows.length) {
       return res.status(409).json({
         success: false,
-        message: 'El horario se solapa con otro ya registrado.',
+        message: 'El horario se solapa o ya existe en la sala.',
       });
     }
 
@@ -17709,6 +18062,15 @@ router.post(
         });
       }
 
+      const scheduleRange = resolveSalaScheduleDateRange(req.body || {});
+      const rangeValidation = validateSalaScheduleDateRange(scheduleRange);
+      if (!rangeValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: rangeValidation.message,
+        });
+      }
+
       const parsed = parseSalaScheduleSpreadsheet(req.file.buffer, {
         expectedSalaName: sala.nombre,
       });
@@ -17726,6 +18088,29 @@ router.post(
           message: 'No se encontraron filas validas para importar.',
         });
       }
+
+      let selectedFreeSlots = [];
+      if (req.body?.slots_libres_json) {
+        try {
+          const parsedSlots = JSON.parse(String(req.body.slots_libres_json || '[]'));
+          selectedFreeSlots = Array.isArray(parsedSlots) ? parsedSlots : [];
+        } catch (_error) {
+          selectedFreeSlots = [];
+        }
+      }
+
+      const expandedRows = expandSalaScheduleRowsByRange(parsed.rows, rangeValidation);
+      if (!expandedRows.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'El archivo no generó horarios dentro del rango seleccionado.',
+        });
+      }
+      const freePracticeRows = buildFreePracticeRowsFromSlotSelection(
+        selectedFreeSlots,
+        rangeValidation
+      );
+      const rowsToInsert = expandedRows.concat(freePracticeRows);
 
       const existingResult = await pool.query(
         `
@@ -17745,7 +18130,17 @@ router.post(
         hora_fin: String(item.hora_fin || '').slice(0, 5),
       }));
 
-      for (const row of parsed.rows) {
+      for (const row of rowsToInsert) {
+        const duplicated = scheduleBuffer.find((existing) =>
+          isExactSalaScheduleMatch(existing, row)
+        );
+        if (duplicated) {
+          return res.status(409).json({
+            success: false,
+            message: `Fila ${row.lineNumber || 'N/A'}: el horario repetido ya existe (${duplicated.hora_inicio}-${duplicated.hora_fin}).`,
+          });
+        }
+
         const colliding = scheduleBuffer.find((existing) => hasSalaScheduleOverlap(existing, row));
         if (colliding) {
           return res.status(409).json({
@@ -17760,7 +18155,7 @@ router.post(
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        for (const row of parsed.rows) {
+        for (const row of rowsToInsert) {
           await insertSalaSchedule(client, sala.id, row, {
             source: 'excel',
             actorId: sessionUser?.id || null,
@@ -17778,12 +18173,12 @@ router.post(
       await registerPrestamosAuditEntry({
         req,
         accion: 'Carga horario sala Excel',
-        persona: `Sala ${sala.id} - ${parsed.rows.length} horario(s) importado(s)`,
+        persona: `Sala ${sala.id} - ${rowsToInsert.length} horario(s) importado(s)`,
       });
 
       return res.json({
         success: true,
-        message: `Se importaron ${parsed.rows.length} horario(s) en la sala ${sala.nombre}.`,
+        message: `Se importaron ${rowsToInsert.length} horario(s) en la sala ${sala.nombre}.`,
       });
     } catch (error) {
       console.error('Error importando horarios de sala MiLab:', error);
@@ -18395,6 +18790,10 @@ router.__private = {
   normalizeScheduleTimeValue,
   parseSalaScheduleSpreadsheet,
   hasSalaScheduleOverlap,
+  validateSalaScheduleDateRange,
+  expandSalaScheduleRowsByRange,
+  buildFreePracticeRowsFromSlotSelection,
+  buildSalaSchedulePreviewCalendar,
 };
 
 module.exports = router;

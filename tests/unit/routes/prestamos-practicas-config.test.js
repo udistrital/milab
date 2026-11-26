@@ -658,6 +658,65 @@ test('prestamos detecta solapes de horarios en el mismo contexto', () => {
   }
 });
 
+test('prestamos valida el rango de vigencia de la carga de horarios', () => {
+  const loaded = loadRoute();
+
+  try {
+    const tooShort = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-01',
+      fecha_fin: '2026-11-06',
+    });
+    const valid = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-01',
+      fecha_fin: '2026-11-30',
+    });
+    const tooLong = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-01-01',
+      fecha_fin: '2026-08-15',
+    });
+
+    assert.equal(tooShort.valid, false);
+    assert.match(tooShort.message, /al menos una semana/i);
+    assert.equal(valid.valid, true);
+    assert.equal(tooLong.valid, false);
+    assert.match(tooLong.message, /seis meses/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos exige informacion UAL antes de habilitar carga de horario', () => {
+  const loaded = loadRoute();
+
+  try {
+    const laboratory = loaded.route.__private.buildLaboratoryActivationModel({
+      ual_id: 21,
+      laboratorio: 'Lab sin UAL',
+      facultad: 'Ingenieria',
+      estado_oficial: 'aprobado',
+      oficial_sin_inventario: false,
+      estado_complementario: 'aprobado',
+      complementario_sin_inventario: false,
+      estado_reactivo: '',
+      reactivo_sin_inventario: false,
+      total_salas_activas: 0,
+      total_horarios_activos: 8,
+      total_equipos_listos: 3,
+      ual_tiene_bancos: false,
+      ual_cantidad_bancos: 0,
+    });
+    const checklist = loaded.route.__private.buildLoanActivationChecklist(laboratory);
+    const horarioItem = checklist.find((item) => item.key === 'carga_horario');
+
+    assert.equal(laboratory.checklist.horarioLaboratorio, false);
+    assert.equal(Boolean(horarioItem?.ready), false);
+    assert.equal(horarioItem?.actionHref || '', '');
+    assert.match(horarioItem?.pendingDetail || '', /información de la UAL/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos clasifica estado de activacion de inventario', () => {
   const loaded = loadRoute();
 
