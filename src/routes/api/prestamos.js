@@ -4533,7 +4533,8 @@ function parseDateOnlyUtc(value) {
   const month = Number(monthRaw);
   const day = Number(dayRaw);
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
-  return new Date(Date.UTC(year, month - 1, day));
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return formatDateOnlyUtc(parsed) === value ? parsed : null;
 }
 
 function formatDateOnlyUtc(date) {
@@ -18192,6 +18193,124 @@ router.post(
     }
   }
 );
+
+router.post('/salas/:id/horarios/libres', requireSalasAuthorized, async function (req, res) {
+  if (!isValidSalaId(req.params.id)) {
+    return res.status(400).json({
+      success: false,
+      message: 'La sala seleccionada no es valida.',
+    });
+  }
+
+  const rawSlots = Array.isArray(req.body?.slots) ? req.body.slots : [];
+  const slots = [];
+  const seen = new Set();
+  for (const rawSlot of rawSlots) {
+    const match = String(rawSlot || '').match(
+      /^(\d{4}-\d{2}-\d{2})\|(\d{2}:\d{2})\|(\d{2}:\d{2})$/
+    );
+    if (!match || !parseDateOnlyUtc(match[1]) || seen.has(rawSlot)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Uno de los espacios seleccionados no tiene un formato valido.',
+      });
+    }
+
+    const payload = buildSalaSchedulePayload({
+      fecha: match[1],
+      hora_inicio: match[2],
+      hora_fin: match[3],
+      tipo_practica: 'libre',
+      modalidad_libre: 'uno_a_uno',
+      activo: true,
+    });
+    const validationError = validateSalaSchedulePayload(payload);
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
+    seen.add(rawSlot);
+    slots.push(payload);
+  }
+
+  if (!slots.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Selecciona al menos un espacio vacío para práctica libre.',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    const scope = await resolveLoanManagementScope(req);
+    const sala = await fetchManagedSala(req.params.id, scope);
+    if (!sala) {
+      return res.status(404).json({
+        success: false,
+        message: 'La sala no existe o no pertenece a tu alcance de gestion.',
+      });
+    }
+
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM sala WHERE id = $1 FOR UPDATE', [sala.id]);
+    const existingResult = await client.query(
+      `
+        SELECT fecha, dia_semana, hora_inicio, hora_fin
+        FROM horario_sala
+        WHERE sala_id = $1
+        FOR UPDATE
+      `,
+      [sala.id]
+    );
+    const existingSchedules = (existingResult.rows || []).map((item) => ({
+      dia_semana: item.fecha ? null : item.dia_semana,
+      fecha:
+        typeof item.fecha === 'string'
+          ? item.fecha
+          : item.fecha?.toISOString?.().slice(0, 10) || '',
+      hora_inicio: String(item.hora_inicio || '').slice(0, 5),
+      hora_fin: String(item.hora_fin || '').slice(0, 5),
+    }));
+
+    for (const slot of slots) {
+      const collision = existingSchedules.find((existing) =>
+        hasSalaScheduleOverlap(existing, slot)
+      );
+      if (collision) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: `El espacio ${slot.fecha} ${slot.hora_inicio}-${slot.hora_fin} ya está ocupado.`,
+        });
+      }
+
+      const sessionUser = req.session?.user || null;
+      await insertSalaSchedule(client, sala.id, slot, {
+        source: 'manual',
+        actorId: sessionUser?.id || null,
+        actorDocument: sessionUser?.documento || null,
+      });
+      existingSchedules.push(slot);
+    }
+    await client.query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: `Se guardaron ${slots.length} espacio(s) de práctica libre.`,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error guardando espacios de practica libre MiLab:', error);
+    return res.status(500).json({
+      success: false,
+      message: resolveLoanDbErrorMessage(
+        error,
+        'No fue posible guardar los espacios seleccionados.'
+      ),
+    });
+  } finally {
+    client.release();
+  }
+});
 
 router.post('/salas/horarios/:id/eliminar', requireSalasAuthorized, async function (req, res) {
   if (!isValidSalaId(req.params.id)) {

@@ -2,7 +2,7 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Horarios de sala</h1>
+    <h1 class="app-page-title">Horarios UAL</h1>
     <p class="app-page-subtitle">
       <strong><%= sala && sala.nombre ? sala.nombre : 'Sala' %></strong>
       <% if (sala && sala.facultad && sala.laboratorio) { %>
@@ -21,68 +21,8 @@
   </div>
 
   <section class="card app-form-panel text-light mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
-      <h5 class="mb-0">Nuevo horario</h5>
-      <a class="btn btn-outline-light btn-sm" href="<%= returnTo || '/milab/prestamos/salas' %>">Volver</a>
-    </div>
-    <div class="card-body">
-      <form id="crearHorarioSalaForm" class="row g-3" novalidate>
-        <div class="col-md-4">
-          <label for="diaSemana" class="form-label">Dia de la semana</label>
-          <select class="form-select" id="diaSemana">
-            <option value="">No aplica</option>
-            <option value="1">Lunes</option>
-            <option value="2">Martes</option>
-            <option value="3">Miercoles</option>
-            <option value="4">Jueves</option>
-            <option value="5">Viernes</option>
-            <option value="6">Sabado</option>
-            <option value="0">Domingo</option>
-          </select>
-        </div>
-        <div class="col-md-4">
-          <label for="fechaEspecifica" class="form-label">Fecha especifica</label>
-          <input type="date" class="form-control" id="fechaEspecifica">
-        </div>
-        <div class="col-md-2">
-          <label for="horaInicioSala" class="form-label">Hora inicio *</label>
-          <input type="time" class="form-control" id="horaInicioSala" required>
-        </div>
-        <div class="col-md-2">
-          <label for="horaFinSala" class="form-label">Hora fin *</label>
-          <input type="time" class="form-control" id="horaFinSala" required>
-        </div>
-        <div class="col-md-4">
-          <label for="tipoPracticaHorario" class="form-label">Tipo de practica *</label>
-          <select class="form-select" id="tipoPracticaHorario" required>
-            <option value="libre">Libre</option>
-            <option value="docente">Docente</option>
-          </select>
-        </div>
-        <div class="col-md-4">
-          <label for="modalidadLibre" class="form-label">Modalidad libre</label>
-          <select class="form-select" id="modalidadLibre">
-            <option value="uno_a_uno">Uno a uno</option>
-            <option value="uno_a_varios">Uno a varios</option>
-            <option value="varios_a_uno">Varios a uno</option>
-          </select>
-        </div>
-        <div class="col-md-4 d-flex align-items-end">
-          <button type="submit" class="btn btn-perso w-100" id="crearHorarioSalaSubmitBtn" data-submit-lock="true">Agregar horario</button>
-        </div>
-      </form>
-      <div class="form-text mt-3">
-        Debes indicar una fecha especifica o un dia recurrente de la semana, pero no ambos al mismo tiempo.
-      </div>
-    </div>
-  </section>
-
-  <section class="card app-form-panel text-light mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+    <div class="card-header d-flex justify-content-center align-items-center gap-3 flex-wrap">
       <h5 class="mb-0">Carga masiva de horarios</h5>
-      <a class="btn btn-outline-light btn-sm" href="/milab/prestamos/salas/<%= sala.id %>/horarios/plantilla">
-        Descargar plantilla
-      </a>
     </div>
     <div class="card-body">
       <form id="importarHorarioSalaForm" class="row g-3" novalidate>
@@ -104,32 +44,26 @@
             required
           >
         </div>
-        <div class="col-md-4 d-flex align-items-end">
-          <button type="button" class="btn btn-outline-light w-100" id="previsualizarHorarioSalaBtn" data-submit-lock="true">
-            Previsualizar semana
+        <div class="col-12 d-flex justify-content-center align-items-center flex-wrap gap-2">
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#ayudaCargaHorariosModal"
+          >
+            Ayuda para preparar el Excel
           </button>
-        </div>
-        <div class="col-md-4 d-flex align-items-end">
-          <button type="submit" class="btn btn-outline-info w-100" id="importarHorarioSalaSubmitBtn" data-submit-lock="true">
+          <a class="btn btn-outline-primary" href="/milab/prestamos/salas/<%= sala.id %>/horarios/plantilla">
+            Descargar Excel guía
+          </a>
+          <button type="submit" class="btn btn-perso" id="importarHorarioSalaSubmitBtn" data-submit-lock="true">
             Confirmar e importar horario
           </button>
         </div>
       </form>
-      <div class="form-text mt-3">
-        Se usa la plantilla oficial <code>tests/prestamos/carga_salas.xlsx</code>. Debes definir una vigencia mínima de 1 semana y máxima de 6 meses.
-      </div>
-      <div id="previewHorarioContainer" class="mt-4 d-none">
-        <h6 class="mb-2">Previsualización semanal</h6>
-        <p class="small text-light-emphasis mb-3">
-          Selecciona espacios vacíos para habilitar práctica libre (opcional) y luego confirma la importación.
-        </p>
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered align-middle" id="previewHorarioTable">
-            <thead></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
+      <p class="form-text mt-3 mb-0 text-center">
+        Define una vigencia entre una semana y seis meses para los horarios del Excel.
+      </p>
     </div>
   </section>
 
@@ -140,6 +74,31 @@
     </div>
     <div class="card-body">
       <% if (horarios && horarios.length > 0) { %>
+        <div class="row g-3 align-items-end justify-content-center mb-4">
+          <div class="col-sm-6 col-md-4">
+            <label for="fechaSemanaRegistrada" class="form-label">Semana a visualizar</label>
+            <input type="date" class="form-control" id="fechaSemanaRegistrada">
+          </div>
+          <div class="col-sm-6 col-md-4 d-flex justify-content-center">
+            <button type="button" class="btn btn-warning text-dark" id="previsualizarHorariosRegistradosBtn">
+              Previsualizar semana
+            </button>
+          </div>
+        </div>
+        <div id="calendarioHorariosRegistrados" class="table-responsive d-none mb-4">
+          <table class="table table-sm table-bordered align-middle" id="horariosRegistradosCalendar">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+          <p class="small text-light-emphasis mb-0">
+            Puedes marcar espacios vacíos como práctica libre; este paso es opcional.
+          </p>
+          <div class="d-flex justify-content-center mt-3">
+            <button type="button" class="btn btn-perso d-none" id="guardarPracticaLibreBtn" data-submit-lock="true">
+              Guardar espacios como práctica libre
+            </button>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-striped table-hover align-middle">
             <thead>
@@ -204,29 +163,107 @@
       <% } %>
     </div>
   </section>
+  <div class="d-flex justify-content-center mt-4">
+    <a class="btn btn-perso" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
+      Volver al checklist
+    </a>
+  </div>
 </main>
+
+<div
+  class="modal fade"
+  id="ayudaCargaHorariosModal"
+  tabindex="-1"
+  aria-labelledby="ayudaCargaHorariosTitulo"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <span class="badge rounded-pill text-bg-light mb-2">Guía de carga</span>
+          <h2 class="modal-title h5" id="ayudaCargaHorariosTitulo">Cómo preparar el Excel</h2>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p>
+          Usa una fila por cada bloque de clase y conserva los encabezados del ejemplo. El sistema
+          utiliza el día y la hora para registrar los bloques como práctica docente/magistral.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead>
+              <tr>
+                <th>Periodo</th>
+                <th>Día</th>
+                <th>Hora</th>
+                <th>Asignatura</th>
+                <th>Grupo</th>
+                <th>Proyecto</th>
+                <th>Inscritos</th>
+                <th>Docente</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>2026-3</td>
+                <td>LUNES</td>
+                <td>6PM-7PM</td>
+                <td>24908 - ROBÓTICA</td>
+                <td>583-241</td>
+                <td>583 - INGENIERÍA EN CONTROL</td>
+                <td>23</td>
+                <td>Nombre del docente</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="alert alert-info mb-0">
+          El día debe ser de lunes a domingo y la hora debe indicar inicio y fin, por ejemplo
+          <strong>6PM-7PM</strong>. La vigencia seleccionada aplica a cada bloque semanal. El
+          sistema rechaza horarios duplicados o que se traslapen. Asignatura, grupo, proyecto,
+          inscritos y docente son columnas de referencia del archivo; los horarios se guardan en la
+          estructura existente de la UAL.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-outline-primary me-auto" href="/milab/prestamos/salas/<%= sala.id %>/horarios/plantilla">
+          Descargar Excel guía
+        </a>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script nonce="<%= cspNonce %>">
   (function() {
     var salaId = <%- JSON.stringify(sala && sala.id ? String(sala.id) : '') %>;
     var alertsContainer = document.getElementById('horariosSalaAlerts');
-    var form = document.getElementById('crearHorarioSalaForm');
-    var submitButton = document.getElementById('crearHorarioSalaSubmitBtn');
     var importForm = document.getElementById('importarHorarioSalaForm');
     var importInput = document.getElementById('archivoHorariosSala');
     var importButton = document.getElementById('importarHorarioSalaSubmitBtn');
-    var previewButton = document.getElementById('previsualizarHorarioSalaBtn');
     var fechaInicioCargaSala = document.getElementById('fechaInicioCargaSala');
     var fechaFinCargaSala = document.getElementById('fechaFinCargaSala');
-    var previewContainer = document.getElementById('previewHorarioContainer');
-    var previewTable = document.getElementById('previewHorarioTable');
-    var selectedFreeSlots = [];
-    var tipoPracticaSelect = document.getElementById('tipoPracticaHorario');
-    var modalidadLibreSelect = document.getElementById('modalidadLibre');
-    var diaSemanaInput = document.getElementById('diaSemana');
-    var fechaEspecificaInput = document.getElementById('fechaEspecifica');
+    var weekInput = document.getElementById('fechaSemanaRegistrada');
+    var previewRegisteredButton = document.getElementById('previsualizarHorariosRegistradosBtn');
+    var calendarContainer = document.getElementById('calendarioHorariosRegistrados');
+    var calendarTable = document.getElementById('horariosRegistradosCalendar');
+    var saveFreePracticeButton = document.getElementById('guardarPracticaLibreBtn');
+    var registeredSchedules = <%- JSON.stringify((horarios || []).map(function(item) {
+      return {
+        id: item.id,
+        fecha: item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha || '').slice(0, 10),
+        dia_semana: item.dia_semana,
+        hora_inicio: String(item.hora_inicio || '').slice(0, 5),
+        hora_fin: String(item.hora_fin || '').slice(0, 5),
+        tipo_practica: item.tipo_practica || 'docente',
+        activo: Boolean(item.activo),
+      };
+    })) %>;
 
-    if (!salaId || !alertsContainer || !form || !submitButton) return;
+    if (!salaId || !alertsContainer) return;
 
     function showAlert(type, message) {
       var alert = document.createElement('div');
@@ -237,10 +274,6 @@
         '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>';
       alertsContainer.prepend(alert);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function syncModalidadState() {
-      modalidadLibreSelect.disabled = tipoPracticaSelect.value !== 'libre';
     }
 
     async function postJson(url, payload) {
@@ -279,149 +312,123 @@
       return data;
     }
 
-    function renderPreviewTable(preview) {
-      if (!previewTable || !preview || !Array.isArray(preview.days) || !Array.isArray(preview.slots)) {
-        return;
-      }
-
-      var thead = previewTable.querySelector('thead');
-      var tbody = previewTable.querySelector('tbody');
-      thead.innerHTML = '';
-      tbody.innerHTML = '';
-
-      var headerRow = document.createElement('tr');
-      var timeHead = document.createElement('th');
-      timeHead.textContent = 'Hora';
-      headerRow.appendChild(timeHead);
-
-      preview.days.forEach(function(day) {
-        var th = document.createElement('th');
-        th.textContent = day.label;
-        headerRow.appendChild(th);
-      });
-      thead.appendChild(headerRow);
-
-      preview.slots.forEach(function(slot) {
-        var row = document.createElement('tr');
-        var timeCell = document.createElement('th');
-        timeCell.textContent = slot.label;
-        row.appendChild(timeCell);
-
-        (slot.cells || []).forEach(function(cell) {
-          var td = document.createElement('td');
-          if (cell.occupied) {
-            td.innerHTML = '<span class="badge bg-secondary">' + (cell.text || 'Ocupado') + '</span>';
-          } else if (cell.key) {
-            var wrapper = document.createElement('label');
-            wrapper.className = 'd-flex justify-content-center';
-            var input = document.createElement('input');
-            input.type = 'checkbox';
-            input.className = 'form-check-input js-preview-free-slot';
-            input.value = cell.key;
-            input.checked = selectedFreeSlots.indexOf(cell.key) >= 0;
-            wrapper.appendChild(input);
-            td.appendChild(wrapper);
-          }
-          row.appendChild(td);
-        });
-
-        tbody.appendChild(row);
-      });
-
-      previewContainer.classList.remove('d-none');
+    function addDays(date, days) {
+      var result = new Date(date.getTime());
+      result.setDate(result.getDate() + days);
+      return result;
     }
 
-    function collectSelectedFreeSlots() {
-      if (!previewContainer || previewContainer.classList.contains('d-none')) {
-        return [];
-      }
+    function dateKey(date) {
+      return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+      ].join('-');
+    }
 
-      return Array.from(previewContainer.querySelectorAll('.js-preview-free-slot:checked')).map(function(input) {
+    if (weekInput && !weekInput.value) {
+      var firstScheduleDate = registeredSchedules
+        .filter(function(item) { return item.activo && /^\d{4}-\d{2}-\d{2}$/.test(item.fecha); })
+        .map(function(item) { return item.fecha; })
+        .sort()[0];
+      weekInput.value = firstScheduleDate || dateKey(new Date());
+    }
+
+    function timeMinutes(value) {
+      var parts = String(value || '').split(':').map(Number);
+      return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] * 60 + parts[1] : null;
+    }
+
+    function selectedFreeSlots() {
+      if (!calendarContainer) return [];
+      return Array.from(calendarContainer.querySelectorAll('.js-ual-free-slot:checked')).map(function(input) {
         return input.value;
       });
     }
 
-    diaSemanaInput.addEventListener('change', function() {
-      if (diaSemanaInput.value) {
-        fechaEspecificaInput.value = '';
-      }
-    });
+    function renderRegisteredCalendar() {
+      if (!weekInput || !weekInput.value || !calendarTable || !calendarContainer) return;
 
-    fechaEspecificaInput.addEventListener('change', function() {
-      if (fechaEspecificaInput.value) {
-        diaSemanaInput.value = '';
-      }
-    });
+      var startDate = new Date(weekInput.value + 'T12:00:00');
+      var days = Array.from({ length: 7 }, function(_item, index) {
+        var date = addDays(startDate, index);
+        return {
+          date: dateKey(date),
+          dayNumber: date.getDay(),
+          label: new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).format(date),
+        };
+      });
+      var dateSet = new Set(days.map(function(day) { return day.date; }));
+      var schedules = registeredSchedules.filter(function(item) {
+        return item.activo && (dateSet.has(item.fecha) || (!item.fecha && item.dia_semana !== null));
+      });
+      var timeValues = schedules.flatMap(function(item) {
+        return [timeMinutes(item.hora_inicio), timeMinutes(item.hora_fin)].filter(Number.isFinite);
+      });
+      var minMinute = timeValues.length ? Math.floor(Math.min.apply(null, timeValues) / 60) * 60 : 7 * 60;
+      var maxMinute = timeValues.length ? Math.ceil(Math.max.apply(null, timeValues) / 60) * 60 : 20 * 60;
+      if (maxMinute <= minMinute) maxMinute = minMinute + 60;
 
-    tipoPracticaSelect.addEventListener('change', syncModalidadState);
+      var thead = calendarTable.querySelector('thead');
+      var tbody = calendarTable.querySelector('tbody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+      var header = document.createElement('tr');
+      var timeHeader = document.createElement('th');
+      timeHeader.textContent = 'Hora';
+      header.appendChild(timeHeader);
+      days.forEach(function(day) {
+        var th = document.createElement('th');
+        th.textContent = day.label;
+        header.appendChild(th);
+      });
+      thead.appendChild(header);
 
-    form.addEventListener('submit', async function(event) {
-      event.preventDefault();
+      for (var minute = minMinute; minute < maxMinute; minute += 60) {
+        var row = document.createElement('tr');
+        var start = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+        var endMinute = minute + 60;
+        var end = String(Math.floor(endMinute / 60)).padStart(2, '0') + ':' + String(endMinute % 60).padStart(2, '0');
+        var label = document.createElement('th');
+        label.textContent = start + ' - ' + end;
+        row.appendChild(label);
 
-      if (!form.checkValidity()) {
-        event.stopPropagation();
-        form.classList.add('was-validated');
-        return;
-      }
+        days.forEach(function(day) {
+          var td = document.createElement('td');
+          var matching = schedules.filter(function(item) {
+            var matchesDate = item.fecha
+              ? item.fecha === day.date
+              : Number(item.dia_semana) === day.dayNumber;
+            var itemStart = timeMinutes(item.hora_inicio);
+            var itemEnd = timeMinutes(item.hora_fin);
+            return matchesDate && itemStart < endMinute && itemEnd > minute;
+          });
 
-      var btn = submitButton;
-
-      try {
-        window.MiLabSubmitLock.lock(btn, 'Agregando horario...');
-        var result = await postJson('/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios', {
-          dia_semana: diaSemanaInput.value,
-          fecha: fechaEspecificaInput.value,
-          hora_inicio: document.getElementById('horaInicioSala').value,
-          hora_fin: document.getElementById('horaFinSala').value,
-          tipo_practica: tipoPracticaSelect.value,
-          modalidad_libre: modalidadLibreSelect.value,
+          if (matching.length) {
+            var badge = document.createElement('span');
+            badge.className = 'badge ' + (matching.some(function(item) { return item.tipo_practica === 'docente'; }) ? 'bg-primary' : 'bg-success');
+            badge.textContent = matching.some(function(item) { return item.tipo_practica === 'docente'; }) ? 'Docente' : 'Libre';
+            td.appendChild(badge);
+          } else {
+            var wrapper = document.createElement('label');
+            wrapper.className = 'd-flex justify-content-center';
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'form-check-input js-ual-free-slot';
+            checkbox.value = day.date + '|' + start + '|' + end;
+            wrapper.appendChild(checkbox);
+            td.appendChild(wrapper);
+          }
+          row.appendChild(td);
         });
-
-        showAlert('success', result.message || 'Horario agregado correctamente.');
-        window.setTimeout(function() {
-          window.location.reload();
-        }, 700);
-      } catch (error) {
-        showAlert('danger', error.message || 'No fue posible guardar el horario.');
-      } finally {
-        window.MiLabSubmitLock.release(btn);
+        tbody.appendChild(row);
       }
-    });
+
+      calendarContainer.classList.remove('d-none');
+      if (saveFreePracticeButton) saveFreePracticeButton.classList.add('d-none');
+    }
 
     if (importForm && importInput && importButton) {
-      if (previewButton) {
-        previewButton.addEventListener('click', async function() {
-          if (!importInput.files || !importInput.files.length) {
-            showAlert('danger', 'Selecciona un archivo de Excel para previsualizar.');
-            return;
-          }
-          if (!fechaInicioCargaSala.value || !fechaFinCargaSala.value) {
-            showAlert('danger', 'Debes definir la fecha de inicio y fin de la carga.');
-            return;
-          }
-
-          var previewData = new FormData();
-          previewData.append('archivo', importInput.files[0]);
-          previewData.append('fecha_inicio', fechaInicioCargaSala.value);
-          previewData.append('fecha_fin', fechaFinCargaSala.value);
-
-          try {
-            window.MiLabSubmitLock.lock(previewButton, 'Previsualizando...');
-            var previewResult = await postFormData(
-              '/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios/previsualizar',
-              previewData
-            );
-            renderPreviewTable(previewResult.preview || {});
-            selectedFreeSlots = collectSelectedFreeSlots();
-            showAlert('success', 'Previsualización generada correctamente.');
-          } catch (error) {
-            showAlert('danger', error.message || 'No fue posible generar la previsualización.');
-          } finally {
-            window.MiLabSubmitLock.release(previewButton);
-          }
-        });
-      }
-
       importForm.addEventListener('submit', async function(event) {
         event.preventDefault();
 
@@ -439,8 +446,6 @@
         formData.append('archivo', file);
         formData.append('fecha_inicio', fechaInicioCargaSala.value);
         formData.append('fecha_fin', fechaFinCargaSala.value);
-        selectedFreeSlots = collectSelectedFreeSlots();
-        formData.append('slots_libres_json', JSON.stringify(selectedFreeSlots));
 
         try {
           window.MiLabSubmitLock.lock(importButton, 'Importando horarios...');
@@ -450,10 +455,6 @@
           );
           showAlert('success', result.message || 'Horarios importados correctamente.');
           importForm.reset();
-          selectedFreeSlots = [];
-          if (previewContainer) {
-            previewContainer.classList.add('d-none');
-          }
           window.setTimeout(function() {
             window.location.reload();
           }, 900);
@@ -461,6 +462,40 @@
           showAlert('danger', error.message || 'No fue posible importar el archivo de horarios.');
         } finally {
           window.MiLabSubmitLock.release(importButton);
+        }
+      });
+    }
+
+    if (previewRegisteredButton) {
+      previewRegisteredButton.addEventListener('click', renderRegisteredCalendar);
+    }
+
+    if (calendarContainer) {
+      calendarContainer.addEventListener('change', function(event) {
+        if (event.target && event.target.classList.contains('js-ual-free-slot')) {
+          saveFreePracticeButton.classList.toggle('d-none', selectedFreeSlots().length === 0);
+        }
+      });
+    }
+
+    if (saveFreePracticeButton) {
+      saveFreePracticeButton.addEventListener('click', async function() {
+        var slots = selectedFreeSlots();
+        if (!slots.length) return;
+        try {
+          window.MiLabSubmitLock.lock(saveFreePracticeButton, 'Guardando espacios...');
+          var result = await postJson(
+            '/milab/prestamos/salas/' + encodeURIComponent(salaId) + '/horarios/libres',
+            { slots }
+          );
+          showAlert('success', result.message || 'Espacios de práctica libre guardados.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 700);
+        } catch (error) {
+          showAlert('danger', error.message || 'No fue posible guardar los espacios seleccionados.');
+        } finally {
+          window.MiLabSubmitLock.release(saveFreePracticeButton);
         }
       });
     }
@@ -503,7 +538,6 @@
       });
     });
 
-    syncModalidadState();
   })();
 </script>
 
