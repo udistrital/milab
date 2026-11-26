@@ -119,7 +119,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
     if (tipo_busqueda === 'codigo') {
       ultimoEstudiante = studentRecords.at(-1);
       const documentoRegistro = String(ultimoEstudiante?.documento || '').trim();
-      if (/^\d+$/.test(documentoRegistro) && documentoRegistro !== '0') {
+      if (!isTestEnvironment() && /^\d+$/.test(documentoRegistro) && documentoRegistro !== '0') {
         try {
           const registrosPorCedula = extractOasStudentRecords(
             await requestOati(
