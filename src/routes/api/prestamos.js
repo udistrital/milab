@@ -9,6 +9,11 @@ const PDFDocument = require('pdfkit');
 const { PDFDocument: PdfLibDocument, StandardFonts } = require('pdf-lib');
 
 const { canonicalizeFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
+const {
+  fetchColombianHolidaysBetween,
+  filterColombianHolidaySchedules,
+  findColombianHoliday,
+} = require('../../libs/colombian-holidays');
 const pool = require('../../libs/db');
 const { sendEmailNotification } = require('../../libs/email-notifications');
 const { fetchOperationalRoleScopeByUser } = require('../../libs/operational-role-assignments');
@@ -11127,6 +11132,14 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
   }
 
   try {
+    const holiday = await findColombianHoliday(payload.fecha_inicio.slice(0, 10));
+    if (holiday) {
+      return res.status(400).json({
+        success: false,
+        message: `No se admiten solicitudes en el festivo nacional ${holiday.nombre}.`,
+      });
+    }
+
     const usuario = await fetchSessionUsuario(req);
 
     if (!usuario) {
@@ -14341,6 +14354,15 @@ router.get(
           });
         }
 
+        const holiday = await findColombianHoliday(payloadByDate.fecha);
+        if (holiday) {
+          return res.json({
+            success: true,
+            salas: [],
+            message: `No hay disponibilidad en el festivo nacional ${holiday.nombre}.`,
+          });
+        }
+
         if (payloadByDate.tipo_practica === 'docente' && !isDocente) {
           return res.status(403).json({
             success: false,
@@ -14384,6 +14406,15 @@ router.get(
         });
       }
 
+      const holiday = await findColombianHoliday(payload.fecha_inicio.slice(0, 10));
+      if (holiday) {
+        return res.json({
+          success: true,
+          salas: [],
+          message: `No hay disponibilidad en el festivo nacional ${holiday.nombre}.`,
+        });
+      }
+
       const salas = await fetchPracticeRoomAvailability(payload, {
         unrestricted: true,
         facultyIds: [],
@@ -14419,6 +14450,14 @@ router.post('/practicas/reservar', requirePracticasAuthorized, async function (r
   }
 
   try {
+    const holiday = await findColombianHoliday(payload.fecha_inicio.slice(0, 10));
+    if (holiday) {
+      return res.status(400).json({
+        success: false,
+        message: `No se admiten solicitudes en el festivo nacional ${holiday.nombre}.`,
+      });
+    }
+
     await ensurePracticeReservationAcademicFields();
     const usuario = await fetchSessionUsuario(req);
 
@@ -14858,6 +14897,14 @@ router.post('/practicas/:id/reenviar', requirePracticasAuthorized, async functio
       return res.status(400).json({
         success: false,
         message: validationError,
+      });
+    }
+
+    const holiday = await findColombianHoliday(merged.fecha_inicio.slice(0, 10));
+    if (holiday) {
+      return res.status(400).json({
+        success: false,
+        message: `No se admiten solicitudes en el festivo nacional ${holiday.nombre}.`,
       });
     }
 
@@ -18038,23 +18085,33 @@ router.post(
       }
 
       const expandedRows = expandSalaScheduleRowsByRange(parsed.rows, rangeValidation);
-      if (!expandedRows.length) {
+      const holidayRows = await fetchColombianHolidaysBetween(
+        formatDateOnlyUtc(rangeValidation.start),
+        formatDateOnlyUtc(rangeValidation.end)
+      );
+      const filteredRows = filterColombianHolidaySchedules(expandedRows, holidayRows);
+      if (!filteredRows.length) {
         return res.status(400).json({
           success: false,
-          message: 'El archivo no generó horarios dentro del rango seleccionado.',
+          message: holidayRows.length
+            ? 'Las fechas del archivo corresponden a festivos configurados.'
+            : 'El archivo no generó horarios dentro del rango seleccionado.',
         });
       }
 
-      const preview = buildSalaSchedulePreviewCalendar(expandedRows, rangeValidation);
+      const preview = buildSalaSchedulePreviewCalendar(filteredRows, rangeValidation);
       return res.json({
         success: true,
-        message: 'Previsualización generada.',
+        message: holidayRows.length
+          ? 'Previsualización generada. Se excluyeron los festivos configurados.'
+          : 'Previsualización generada.',
         preview,
         meta: {
           fecha_inicio: scheduleRange.fecha_inicio,
           fecha_fin: scheduleRange.fecha_fin,
           filas_base: parsed.rows.length,
-          filas_expandidas: expandedRows.length,
+          filas_expandidas: filteredRows.length,
+          festivos_omitidos: holidayRows,
         },
       });
     } catch (error) {
@@ -18097,6 +18154,16 @@ router.post('/salas/:id/horarios', requireSalasAuthorized, async function (req, 
         success: false,
         message: 'La sala no existe o no pertenece a tu alcance de gestion.',
       });
+    }
+
+    if (payload.fecha) {
+      const holiday = await findColombianHoliday(payload.fecha);
+      if (holiday) {
+        return res.status(400).json({
+          success: false,
+          message: `No se pueden programar horarios en el festivo nacional ${holiday.nombre}.`,
+        });
+      }
     }
 
     const overlapResult = await pool.query(
@@ -18211,17 +18278,28 @@ router.post(
       }
 
       const expandedRows = expandSalaScheduleRowsByRange(parsed.rows, rangeValidation);
-      if (!expandedRows.length) {
+      const holidayRows = await fetchColombianHolidaysBetween(
+        formatDateOnlyUtc(rangeValidation.start),
+        formatDateOnlyUtc(rangeValidation.end)
+      );
+      const nonHolidayRows = filterColombianHolidaySchedules(expandedRows, holidayRows);
+      if (!nonHolidayRows.length) {
         return res.status(400).json({
           success: false,
-          message: 'El archivo no generó horarios dentro del rango seleccionado.',
+          message: holidayRows.length
+            ? 'Las fechas del archivo corresponden a festivos configurados.'
+            : 'El archivo no generó horarios dentro del rango seleccionado.',
         });
       }
       const freePracticeRows = buildFreePracticeRowsFromSlotSelection(
         selectedFreeSlots,
         rangeValidation
       );
-      const rowsToInsert = expandedRows.concat(freePracticeRows);
+      const nonHolidayFreePracticeRows = filterColombianHolidaySchedules(
+        freePracticeRows,
+        holidayRows
+      );
+      const rowsToInsert = nonHolidayRows.concat(nonHolidayFreePracticeRows);
 
       importStage = 'consultar horarios existentes';
       const existingResult = await pool.query(
@@ -18375,6 +18453,22 @@ router.post('/salas/:id/horarios/libres', requireSalasAuthorized, async function
       });
     }
 
+    const firstSlotDate = slots.map((slot) => slot.fecha).sort()[0];
+    const lastSlotDate = slots
+      .map((slot) => slot.fecha)
+      .sort()
+      .at(-1);
+    const holidayRows = await fetchColombianHolidaysBetween(firstSlotDate, lastSlotDate, client);
+    const selectedHolidays = holidayRows.filter((holiday) =>
+      slots.some((slot) => slot.fecha === holiday.fecha)
+    );
+    if (selectedHolidays.length) {
+      return res.status(400).json({
+        success: false,
+        message: `No se pueden programar horarios en festivos: ${selectedHolidays.map((holiday) => `${holiday.fecha} (${holiday.nombre})`).join(', ')}.`,
+      });
+    }
+
     await client.query('BEGIN');
     await client.query('SELECT id FROM sala WHERE id = $1 FOR UPDATE', [sala.id]);
     const existingResult = await client.query(
@@ -18481,6 +18575,16 @@ router.put('/salas/:id/horarios/:horarioId', requireSalasAuthorized, async funct
         success: false,
         message: 'La sala no existe o no pertenece a tu alcance de gestion.',
       });
+    }
+
+    if (payload.fecha) {
+      const holiday = await findColombianHoliday(payload.fecha);
+      if (holiday) {
+        return res.status(400).json({
+          success: false,
+          message: `No se pueden programar horarios en el festivo nacional ${holiday.nombre}.`,
+        });
+      }
     }
 
     const affected = await fetchAffectedPracticeReservationsBySchedule(req.params.horarioId, scope);

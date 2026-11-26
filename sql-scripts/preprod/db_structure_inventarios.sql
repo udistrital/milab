@@ -8,6 +8,15 @@ ALTER TABLE horario_sala
 ALTER TABLE horario_sala
     ADD COLUMN IF NOT EXISTS docente VARCHAR(255);
 
+CREATE TABLE IF NOT EXISTS festivo_colombia (
+    fecha DATE PRIMARY KEY,
+    nombre VARCHAR(150) NOT NULL,
+    fuente VARCHAR(20) NOT NULL DEFAULT 'manual'
+        CHECK (fuente IN ('manual', 'Nager.Date')),
+    fecha_creacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS inventario_carga (
     id BIGSERIAL PRIMARY KEY,
     ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE RESTRICT,

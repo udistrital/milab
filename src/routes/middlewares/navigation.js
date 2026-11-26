@@ -274,6 +274,7 @@ function buildStaticNavigation(user) {
         createLink('Roles', '/milab/api/admin/roles', 'bi-people'),
         createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
         createLink('Esquema de base de datos', '/milab/api/admin/esquema-bd', 'bi-database'),
+        createLink('Festivos colombianos', '/milab/api/admin/festivos', 'bi-calendar2-week'),
       ])
     );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));

@@ -2,6 +2,56 @@ SET search_path TO milab;
 
 BEGIN;
 
+INSERT INTO menu_item (section, label, icon, order_index, activo)
+SELECT 'secondary', 'Configuración', 'bi-gear', 5, TRUE
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM menu_item
+    WHERE section = 'secondary'
+      AND parent_id IS NULL
+      AND label = 'Configuración'
+);
+
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
+SELECT 'secondary', parent.id, 'Festivos colombianos',
+       '/milab/api/admin/festivos', 'bi-calendar2-week', 4, TRUE
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+  AND parent.parent_id IS NULL
+  AND parent.label = 'Configuración'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM menu_item existing
+      WHERE existing.route = '/milab/api/admin/festivos'
+  )
+ON CONFLICT DO NOTHING;
+
+UPDATE menu_item
+SET activo = TRUE
+WHERE route = '/milab/api/admin/festivos';
+
+UPDATE rol_permiso rp
+SET activo = FALSE,
+    fecha_modificacion = CURRENT_TIMESTAMP
+FROM rol r, menu_item mi
+WHERE rp.rol_id = r.id
+  AND rp.menu_item_id = mi.id
+  AND mi.route = '/milab/api/admin/festivos'
+  AND r.nombre <> 'admin'
+  AND rp.activo = TRUE;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE r.nombre = 'admin'
+  AND mi.route = '/milab/api/admin/festivos'
+ON CONFLICT (rol_id, menu_item_id)
+DO UPDATE SET can_view = TRUE,
+              can_use = TRUE,
+              activo = TRUE,
+              fecha_modificacion = CURRENT_TIMESTAMP;
+
 UPDATE menu_item
 SET activo = FALSE
 WHERE route IN ('/milab/prestamos/inventario', '/milab/prestamos/equipos');

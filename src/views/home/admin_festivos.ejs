@@ -1,0 +1,101 @@
+<%- include('../partials/header'); -%>
+<main class="container-fluid app-page-shell">
+  <section class="app-page-header">
+    <h1 class="app-page-title">Festivos colombianos</h1>
+    <p class="app-page-subtitle">
+      Administra los festivos nacionales. Las fechas configuradas no estarán disponibles para
+      programar horarios ni crear solicitudes de préstamo o prácticas.
+    </p>
+  </section>
+
+  <% if (error) { %>
+    <div class="alert alert-danger" role="alert"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success" role="status"><%= success %></div>
+  <% } %>
+
+  <section class="card app-table-panel mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">Precargar festivos nacionales</h2>
+          <p class="text-muted mb-0">
+            La importación obtiene los festivos de Colombia desde
+            <a href="https://date.nager.at/" target="_blank" rel="noopener noreferrer">Nager.Date</a>.
+            Los festivos manuales se conservan al sincronizar.
+          </p>
+        </div>
+        <form method="GET" action="/milab/api/admin/festivos" class="d-flex gap-2 align-items-end">
+          <div>
+            <label for="holidayYear" class="form-label">Año</label>
+            <input id="holidayYear" name="year" type="number" class="form-control" min="<%= minYear %>" max="<%= maxYear %>" value="<%= year %>" required>
+          </div>
+          <button type="submit" class="btn btn-outline-secondary">Consultar</button>
+        </form>
+      </div>
+      <form method="POST" action="/milab/api/admin/festivos/importar" class="d-flex flex-wrap gap-2 align-items-end">
+        <%- include('../partials/csrf_field') %>
+        <input type="hidden" name="year" value="<%= year %>">
+        <button type="submit" class="btn btn-primary" data-submit-lock="true">
+          <i class="bi bi-cloud-download me-1" aria-hidden="true"></i>Importar / actualizar <%= year %>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-table-panel mb-4">
+    <div class="card-body">
+      <h2 class="h5">Agregar o ajustar un festivo</h2>
+      <p class="text-muted">Si la fecha ya existe, el nombre se actualizará y quedará marcado como ajuste manual.</p>
+      <form method="POST" action="/milab/api/admin/festivos/crear" class="row g-3">
+        <%- include('../partials/csrf_field') %>
+        <div class="col-sm-4 col-lg-3">
+          <label for="holidayDate" class="form-label">Fecha</label>
+          <input id="holidayDate" name="fecha" type="date" class="form-control" min="<%= year %>-01-01" max="<%= year %>-12-31" value="<%= year %>-01-01" required>
+        </div>
+        <div class="col-sm-6 col-lg-7">
+          <label for="holidayName" class="form-label">Nombre del festivo</label>
+          <input id="holidayName" name="nombre" type="text" class="form-control" maxlength="150" required>
+        </div>
+        <div class="col-sm-2 d-flex align-items-end">
+          <button type="submit" class="btn btn-outline-primary" data-submit-lock="true">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="card app-table-panel">
+    <div class="card-body">
+      <h2 class="h5">Festivos configurados para <%= year %></h2>
+      <% if (holidays.length) { %>
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead>
+              <tr><th>Fecha</th><th>Festivo</th><th>Fuente</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              <% holidays.forEach((holiday) => { %>
+                <tr>
+                  <td><time datetime="<%= holiday.fecha %>"><%= holiday.fecha %></time></td>
+                  <td><%= holiday.nombre %></td>
+                  <td><span class="badge text-bg-secondary"><%= holiday.fuente === 'manual' ? 'Manual' : 'Nager.Date' %></span></td>
+                  <td>
+                    <form method="POST" action="/milab/api/admin/festivos/eliminar" data-confirm-submit="¿Eliminar el festivo <%= holiday.nombre %> del <%= holiday.fecha %>?">
+                      <%- include('../partials/csrf_field') %>
+                      <input type="hidden" name="fecha" value="<%= holiday.fecha %>">
+                      <button type="submit" class="btn btn-sm btn-outline-danger" data-submit-lock="true">Eliminar</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } else { %>
+        <p class="text-muted mb-0">No hay festivos cargados para este año. Puedes importarlos desde Nager.Date o agregarlos manualmente.</p>
+      <% } %>
+    </div>
+  </section>
+</main>
+<%- include('../partials/footer'); -%>

@@ -96,10 +96,16 @@ psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261023_en
 ```
 
 La estructura de `horario_sala` usada por Horarios UAL incluye las columnas `asignatura` y
-`docente`, declaradas en `preprod/db_structure_inventarios.sql` junto con los demás cambios de
-esquema de inventarios. En bases existentes, volver a aplicar ese archivo después de
+`docente`, y la configuración de festivos utiliza la tabla `festivo_colombia`. Ambos cambios se
+declaran en `preprod/db_structure_inventarios.sql` junto con los demás cambios de esquema de
+inventarios. En bases existentes, volver a aplicar ese archivo después de
 `prod/db_structure_prestamos.sql`; los horarios previamente importados deben cargarse de nuevo
 para registrar esos datos.
+
+El submenú de Festivos colombianos y su permiso exclusivo para el rol `admin` se declaran en
+`preprod/db_seed_inventarios.sql`. La configuración permite importar festivos nacionales de
+Colombia desde Nager.Date (`https://date.nager.at/api/v3/PublicHolidays/{año}/CO`) y agregar o
+eliminar fechas manualmente.
 
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
 del ambiente de pruebas. El pipeline no lo ejecuta en despliegues que conservan la base
