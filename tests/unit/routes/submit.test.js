@@ -111,6 +111,7 @@ test('submit rejects inactive or removed catalog categories before inserting san
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
       tipo_sancion: 'Firma de compromiso de buen uso',
     });
@@ -170,6 +171,7 @@ test('submit rejects unauthorized UAL', async () => {
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
     });
 
@@ -193,6 +195,7 @@ test('submit rejects when sanctioned user is not found', async () => {
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
     });
 
@@ -217,6 +220,7 @@ test('submit inserts once and redirects to the person information screen when lo
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
       obs_multa: 'Observacion de prueba',
       tipo_sancion: 'Firma de compromiso de buen uso',
@@ -260,6 +264,7 @@ test('submit rejects coordinador without selecting a delegate laboratorista', as
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
     });
 
@@ -306,6 +311,7 @@ test('submit allows coordinador to register on behalf of an assigned laboratoris
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
       actuar_como_laboratorista: 'lab-99',
       tipo_sancion: 'Firma de compromiso de buen uso',
@@ -361,6 +367,7 @@ test('submit blocks coordinador delegating outside their faculty scope', async (
       tipo_busqueda: 'codigo',
       ual_id: '21',
       fecha_multa: '2026-01-01',
+      periodo: '1',
       con_estado_multa: 'Pendiente',
       actuar_como_laboratorista: 'lab-99',
     });

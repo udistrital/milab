@@ -194,6 +194,56 @@ test('get-info-multa exports an Express router with handlers', () => {
   }
 });
 
+test('get-info-multa skips OATI state-detail lookup in test environment', async () => {
+  const previousEnvironment = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  const oatiCalls = [];
+  const loaded = loadRoute({
+    requestOatiImpl: async (servicePath) => {
+      oatiCalls.push(servicePath);
+      if (servicePath === 'datos_basicos_estudiante/2024100001') {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                codigo: '2024100001',
+                nombre: 'Estudiante Prueba',
+                carrera: '1',
+                estado: 'A',
+                documento: '79520182',
+              },
+            ],
+          },
+        };
+      }
+
+      if (servicePath === 'carrera/1') {
+        return { carrerasCollection: { carrera: [{ nombre: 'Ingenieria' }] } };
+      }
+
+      throw new Error(`Unexpected OATI request: ${servicePath}`);
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const lookupResponse = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'codigo',
+      valor_busqueda: '2024100001',
+    });
+    const { response } = await getStudentActionScreen(app, lookupResponse);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.view, 'home/sancion-person-actions');
+    assert.equal(response.body.locals.person.estado, 'A');
+    assert.deepEqual(oatiCalls, ['datos_basicos_estudiante/2024100001', 'carrera/1']);
+  } finally {
+    loaded.restore();
+    if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnvironment;
+  }
+});
+
 test('get-info-multa reuses searched document when OAS omits documento', async () => {
   let oatiRequestCount = 0;
   const loaded = loadRoute({
