@@ -4563,6 +4563,27 @@ function validateSalaScheduleDateRange(range) {
     };
   }
 
+  if (end < start) {
+    return {
+      valid: false,
+      message: 'La fecha fin no puede ser anterior a la fecha inicio.',
+    };
+  }
+
+  if (start.getUTCDay() !== 1) {
+    return {
+      valid: false,
+      message: 'La fecha de inicio del horario debe ser un lunes.',
+    };
+  }
+
+  if (end.getUTCDay() !== 0) {
+    return {
+      valid: false,
+      message: 'La fecha de fin del horario debe ser un domingo.',
+    };
+  }
+
   const diffDays = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
   if (diffDays < 7) {
     return {
@@ -17857,6 +17878,31 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
   }
 });
 
+function buildSalaScheduleTemplateBuffer(
+  templatePath = path.resolve(__dirname, '../../../tests/prestamos/carga_salas.xlsx')
+) {
+  if (fs.existsSync(templatePath)) {
+    return fs.readFileSync(templatePath);
+  }
+
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ['Periodo', 'Día', 'Hora', 'Asignatura', 'Grupo', 'Proyecto', 'Inscritos', 'Docente'],
+    [
+      '2026-3',
+      'LUNES',
+      '6PM-7PM',
+      '24908 - ROBÓTICA',
+      '583-241',
+      '583 - INGENIERÍA EN CONTROL Y AUTOMATIZACIÓN',
+      23,
+      'Nombre del docente',
+    ],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Carga_Salas');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+}
+
 router.get('/salas/:id/horarios/plantilla', requireSalasAuthorized, async function (req, res) {
   if (!isValidSalaId(req.params.id)) {
     return res.status(400).send('La sala seleccionada no es valida.');
@@ -17869,8 +17915,7 @@ router.get('/salas/:id/horarios/plantilla', requireSalasAuthorized, async functi
       return res.status(404).send('La sala no existe o no pertenece a tu alcance de gestion.');
     }
 
-    const templatePath = path.resolve(__dirname, '../../../tests/prestamos/carga_salas.xlsx');
-    const buffer = fs.readFileSync(templatePath);
+    const buffer = buildSalaScheduleTemplateBuffer();
     const safeName = 'carga_salas.xlsx';
     res.setHeader(
       'Content-Type',
@@ -18913,6 +18958,7 @@ router.__private = {
   expandSalaScheduleRowsByRange,
   buildFreePracticeRowsFromSlotSelection,
   buildSalaSchedulePreviewCalendar,
+  buildSalaScheduleTemplateBuffer,
 };
 
 module.exports = router;

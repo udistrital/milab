@@ -32,7 +32,7 @@
         </div>
         <div class="col-md-3">
           <label for="fechaFinCargaSala" class="form-label">Fecha fin *</label>
-          <input type="date" class="form-control" id="fechaFinCargaSala" required>
+          <input type="date" class="form-control" id="fechaFinCargaSala" required disabled>
         </div>
         <div class="col-md-6">
           <label for="archivoHorariosSala" class="form-label">Archivo Excel (.xls/.xlsx)</label>
@@ -62,7 +62,8 @@
         </div>
       </form>
       <p class="form-text mt-3 mb-0 text-center">
-        Define una vigencia entre una semana y seis meses para los horarios del Excel.
+        La fecha de inicio debe ser lunes y la fecha fin domingo. La vigencia debe ser de una semana
+        como mínimo y seis meses como máximo.
       </p>
     </div>
   </section>
@@ -325,6 +326,42 @@
         String(date.getDate()).padStart(2, '0'),
       ].join('-');
     }
+
+    fechaInicioCargaSala.addEventListener('change', function() {
+      fechaFinCargaSala.value = '';
+      fechaFinCargaSala.disabled = true;
+      fechaFinCargaSala.removeAttribute('min');
+      fechaFinCargaSala.removeAttribute('max');
+
+      if (!fechaInicioCargaSala.value) return;
+
+      var selectedStart = new Date(fechaInicioCargaSala.value + 'T12:00:00');
+      if (selectedStart.getDay() !== 1) {
+        fechaInicioCargaSala.value = '';
+        showAlert('warning', 'La fecha de inicio debe ser un lunes.');
+        return;
+      }
+
+      fechaFinCargaSala.min = dateKey(addDays(selectedStart, 6));
+      fechaFinCargaSala.max = dateKey(addDays(selectedStart, 181));
+      fechaFinCargaSala.disabled = false;
+    });
+
+    fechaFinCargaSala.addEventListener('change', function() {
+      if (!fechaFinCargaSala.value) return;
+
+      var selectedStart = new Date(fechaInicioCargaSala.value + 'T12:00:00');
+      var selectedEnd = new Date(fechaFinCargaSala.value + 'T12:00:00');
+      if (selectedEnd < selectedStart) {
+        fechaFinCargaSala.value = '';
+        showAlert('warning', 'La fecha fin no puede ser anterior a la fecha inicio.');
+        return;
+      }
+      if (selectedEnd.getDay() !== 0) {
+        fechaFinCargaSala.value = '';
+        showAlert('warning', 'La fecha de fin debe ser un domingo.');
+      }
+    });
 
     if (weekInput && !weekInput.value) {
       var firstScheduleDate = registeredSchedules

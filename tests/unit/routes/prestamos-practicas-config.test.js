@@ -618,6 +618,20 @@ test('prestamos normaliza valores de horario para carga desde excel', () => {
   }
 });
 
+test('prestamos genera una plantilla de horarios si el archivo de pruebas no esta desplegado', () => {
+  const loaded = loadRoute();
+
+  try {
+    const template = loaded.route.__private.buildSalaScheduleTemplateBuffer(
+      path.join(__dirname, 'plantilla-horarios-inexistente.xlsx')
+    );
+
+    assert.equal(Buffer.isBuffer(template), true);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos detecta solapes de horarios en el mismo contexto', () => {
   const loaded = loadRoute();
 
@@ -658,26 +672,38 @@ test('prestamos detecta solapes de horarios en el mismo contexto', () => {
   }
 });
 
-test('prestamos valida el rango de vigencia de la carga de horarios', () => {
+test('prestamos requiere lunes de inicio y domingo de fin en la carga de horarios', () => {
   const loaded = loadRoute();
 
   try {
-    const tooShort = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-01',
-      fecha_fin: '2026-11-06',
+    const invalidStart = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-03',
+      fecha_fin: '2026-11-08',
     });
-    const valid = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-01',
-      fecha_fin: '2026-11-30',
+    const invalidEnd = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-02',
+      fecha_fin: '2026-11-07',
+    });
+    const reversed = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-02',
+      fecha_fin: '2026-10-25',
+    });
+    const validWeek = loaded.route.__private.validateSalaScheduleDateRange({
+      fecha_inicio: '2026-11-02',
+      fecha_fin: '2026-11-08',
     });
     const tooLong = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-01-01',
-      fecha_fin: '2026-08-15',
+      fecha_inicio: '2026-01-05',
+      fecha_fin: '2026-08-02',
     });
 
-    assert.equal(tooShort.valid, false);
-    assert.match(tooShort.message, /al menos una semana/i);
-    assert.equal(valid.valid, true);
+    assert.equal(invalidStart.valid, false);
+    assert.match(invalidStart.message, /lunes/i);
+    assert.equal(invalidEnd.valid, false);
+    assert.match(invalidEnd.message, /domingo/i);
+    assert.equal(reversed.valid, false);
+    assert.match(reversed.message, /anterior/i);
+    assert.equal(validWeek.valid, true);
     assert.equal(tooLong.valid, false);
     assert.match(tooLong.message, /seis meses/i);
   } finally {
