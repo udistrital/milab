@@ -6,6 +6,7 @@ const {
 } = require('../../libs/prestamos-module-access');
 const { formatRoleLabel, getPrimaryRole, normalizeRoles } = require('../../libs/roles');
 const { getMenuForRoles } = require('../../libs/menu');
+const { normalizeRoleListForMatch } = require('./auth');
 
 function createLink(label, href, icon) {
   return { label, href, icon };
@@ -275,6 +276,7 @@ function buildStaticNavigation(user) {
         createLink('Catálogo de sanciones', '/milab/api/admin/sanciones', 'bi-shield-exclamation'),
         createLink('Esquema de base de datos', '/milab/api/admin/esquema-bd', 'bi-database'),
         createLink('Festivos colombianos', '/milab/api/admin/festivos', 'bi-calendar2-week'),
+        createLink('Período académico', '/milab/api/admin/periodo', 'bi-calendar3'),
       ])
     );
     primaryLinks.push(createLink('Monitoreo', '/milab/api/dashboard', 'bi-activity'));
@@ -743,6 +745,9 @@ async function navigationMiddleware(req, res, next) {
     // const pendingSanctionsCount = await getPendingSanctionsCount(sessionUser, primaryRole);
     const pendingInventoryApprovalsCount = await getPendingInventoryApprovalsCount(sessionUser);
     const hojasVidaAlertsCount = await getHojasVidaAlertsCount(sessionUser);
+    const periodChangeAlert = normalizeRoleListForMatch(roles).includes('laboratorista')
+      ? await getPeriodChangeAlert()
+      : null;
     const studentUsageSummary = await getStudentMonthlyUsageSummary(sessionUser);
     const activeSanctionsSummary = await getActiveSanctionsSummary(sessionUser, primaryRole);
     // Un contador del menú no debe impedir cargar la página.
@@ -768,6 +773,7 @@ async function navigationMiddleware(req, res, next) {
     // res.locals.pendingSanctionsCount = pendingSanctionsCount;
     res.locals.pendingInventoryApprovalsCount = pendingInventoryApprovalsCount;
     res.locals.hojasVidaAlertsCount = hojasVidaAlertsCount;
+    res.locals.periodChangeAlert = periodChangeAlert;
     res.locals.studentUsageSummary = studentUsageSummary;
     res.locals.activeSanctionsSummary = activeSanctionsSummary;
     res.locals.claimNotifications = claimNotifications;
@@ -816,6 +822,28 @@ async function navigationMiddleware(req, res, next) {
           ? '/milab/api/sanciones/mis-sanciones'
           : '/milab/api/sanciones/reclamaciones',
     };
+  }
+
+  async function getPeriodChangeAlert() {
+    try {
+      const result = await pool.query(
+        `
+          SELECT periodo_anterior, codigo_periodo,
+                 TO_CHAR(fecha_activacion AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI') AS fecha_activacion
+          FROM periodo_academico_historial
+          WHERE activo = TRUE
+            AND periodo_anterior IS NOT NULL
+          LIMIT 1
+        `
+      );
+      return result.rows[0] || null;
+    } catch (error) {
+      console.warn(
+        'Navegación: no fue posible consultar la alerta de cambio de período:',
+        error.message
+      );
+      return null;
+    }
   }
 }
 

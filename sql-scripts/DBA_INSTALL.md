@@ -107,6 +107,12 @@ El submenú de Festivos colombianos y su permiso exclusivo para el rol `admin` s
 Colombia desde Nager.Date (`https://date.nager.at/api/v3/PublicHolidays/{año}/CO`) y agregar o
 eliminar fechas manualmente.
 
+El módulo **Configuración → Período académico** consulta `periodo_academico/A` en el servicio
+OATI definido por `OATI_SERVICE_NAME` (por ejemplo, `academica_pruebas` en pruebas). El historial
+y la alerta persistente para laboratoristas se derivan de `periodo_academico_historial`; no se
+crea una tabla de notificaciones duplicada. La estructura y el permiso exclusivo para `admin`
+se agregan mediante `preprod/db_structure_inventarios.sql` y `preprod/db_seed_inventarios.sql`.
+
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
 del ambiente de pruebas. El pipeline no lo ejecuta en despliegues que conservan la base
 existente; no debe aplicarse en producción.

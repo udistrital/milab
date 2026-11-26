@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  fetchColombianHolidays,
   findColombianHoliday,
   filterColombianHolidaySchedules,
   isValidDateOnly,
@@ -41,4 +42,18 @@ test('holiday lookup queries the existing holiday table only for valid dates', a
   });
   assert.match(calls[0].sql, /FROM festivo_colombia/);
   assert.deepEqual(calls[0].params, ['2026-01-01']);
+});
+
+test('calendar holiday query returns labels for the existing national holiday records', async () => {
+  const calls = [];
+  const client = {
+    query: async (sql) => {
+      calls.push(sql);
+      return { rows: [{ fecha: '2026-12-25', nombre: 'Navidad' }] };
+    },
+  };
+  assert.deepEqual(await fetchColombianHolidays(client), [
+    { fecha: '2026-12-25', nombre: 'Navidad' },
+  ]);
+  assert.match(calls[0], /FROM festivo_colombia/);
 });

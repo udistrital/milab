@@ -48,12 +48,25 @@ async function fetchColombianHolidaysBetween(startDate, endDate, client = pool) 
   return result.rows || [];
 }
 
+async function fetchColombianHolidays(client = pool) {
+  const result = await client.query(
+    `
+      SELECT TO_CHAR(fecha, 'YYYY-MM-DD') AS fecha, nombre
+      FROM festivo_colombia
+      ORDER BY fecha
+    `
+  );
+
+  return result.rows || [];
+}
+
 function filterColombianHolidaySchedules(rows, holidays) {
   const holidayDates = new Set((holidays || []).map((holiday) => holiday.fecha));
   return (rows || []).filter((row) => !holidayDates.has(row.fecha));
 }
 
 module.exports = {
+  fetchColombianHolidays,
   fetchColombianHolidaysBetween,
   filterColombianHolidaySchedules,
   findColombianHoliday,

@@ -104,6 +104,25 @@
     margin: 0;
   }
 
+  #horariosRegistradosCalendar th.ual-calendar-holiday,
+  #horariosRegistradosCalendar td.ual-calendar-holiday {
+    background-color: #fff3cd !important;
+    color: #664d03 !important;
+  }
+
+  .ual-calendar-holiday-indicator {
+    display: block;
+    width: fit-content;
+    margin: 0.1rem auto 0;
+    font-size: 0.65rem;
+  }
+
+  #horariosRegistradosCalendar.ual-calendar-month .ual-calendar-holiday-indicator {
+    display: inline-block;
+    margin: 0;
+    vertical-align: middle;
+  }
+
   #horariosRegistradosCalendar.ual-calendar-month .ual-schedule-badge {
     margin-top: 0.1rem;
     padding: 0.05rem 0.25rem;
@@ -463,7 +482,7 @@
       <div class="modal-header">
         <div>
           <h2 class="modal-title h5 mb-1" id="calendarioHorariosUALTitulo">Calendario de horarios UAL</h2>
-          <p class="small text-muted mb-0">Los días sin horarios configurados aparecen deshabilitados.</p>
+          <p class="small text-muted mb-0">Los días sin horarios aparecen deshabilitados; los festivos están resaltados.</p>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
@@ -493,6 +512,7 @@
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2 ual-calendar-footer">
           <p class="small text-muted mb-0">
             En la vista semanal puedes marcar espacios vacíos de días configurados como práctica libre.
+            <span class="badge text-bg-warning ms-1">Festivo</span>
           </p>
           <div class="d-flex flex-wrap align-items-end gap-2">
             <div class="d-none" id="modalidadPracticaLibreGroup">
@@ -644,6 +664,15 @@
         activo: Boolean(item.activo),
       };
     })).replace(/</g, '\\u003c') %>;
+    var registeredHolidays = <%- JSON.stringify((festivos || []).map(function(item) {
+      return {
+        fecha: String(item.fecha || '').slice(0, 10),
+        nombre: String(item.nombre || '').trim(),
+      };
+    })).replace(/</g, '\\u003c') %>;
+    var holidayByDate = new Map(registeredHolidays.map(function(item) {
+      return [item.fecha, item];
+    }));
 
     if (!salaId || !alertsContainer) return;
 
@@ -784,6 +813,10 @@
       return addDays(date, -((date.getDay() + 6) % 7));
     }
 
+    function getHoliday(date) {
+      return holidayByDate.get(date) || null;
+    }
+
     function getDaySchedules(day) {
       return registeredSchedules.filter(function(item) {
         if (!item.activo) return false;
@@ -911,6 +944,16 @@
         var th = document.createElement('th');
         th.textContent = day.label;
         if (!daySchedules[index].length) th.className = 'table-secondary text-muted';
+        var holiday = getHoliday(day.date);
+        if (holiday) {
+          th.classList.add('ual-calendar-holiday');
+          var holidayIndicator = document.createElement('span');
+          holidayIndicator.className = 'badge text-bg-warning ual-calendar-holiday-indicator';
+          holidayIndicator.textContent = 'Festivo';
+          holidayIndicator.setAttribute('aria-label', 'Festivo: ' + holiday.nombre);
+          th.appendChild(holidayIndicator);
+          attachScheduleTooltip(holidayIndicator, holiday.nombre);
+        }
         header.appendChild(th);
       });
       calendarTable.querySelector('thead').appendChild(header);
@@ -927,8 +970,13 @@
 
         days.forEach(function(day, index) {
           var td = document.createElement('td');
+          var holiday = getHoliday(day.date);
+          if (holiday) {
+            td.classList.add('ual-calendar-holiday');
+            td.setAttribute('aria-label', 'Festivo: ' + holiday.nombre);
+          }
           if (!daySchedules[index].length) {
-            td.className = 'table-secondary text-muted text-center';
+            td.classList.add('table-secondary', 'text-muted', 'text-center');
             td.textContent = 'Sin horario';
             row.appendChild(td);
             return;
@@ -1006,16 +1054,29 @@
             dayNumber: date.getDay(),
           };
           var daySchedules = getDaySchedules(day);
+          var holiday = getHoliday(day.date);
           var td = document.createElement('td');
           td.className = 'align-top';
           if (date.getMonth() !== monthStart.getMonth() || !daySchedules.length) {
             td.classList.add('table-secondary', 'text-muted');
           }
+          if (holiday) {
+            td.classList.add('ual-calendar-holiday');
+            td.setAttribute('aria-label', 'Festivo: ' + holiday.nombre);
+          }
 
           var dateLabel = document.createElement('strong');
-          dateLabel.className = 'd-block mb-1';
+          dateLabel.className = holiday ? 'd-inline-block me-1 mb-0' : 'd-block mb-1';
           dateLabel.textContent = String(date.getDate());
           td.appendChild(dateLabel);
+          if (holiday) {
+            var holidayIndicator = document.createElement('span');
+            holidayIndicator.className = 'badge text-bg-warning ual-calendar-holiday-indicator';
+            holidayIndicator.textContent = 'Festivo';
+            holidayIndicator.setAttribute('aria-label', 'Festivo: ' + holiday.nombre);
+            td.appendChild(holidayIndicator);
+            attachScheduleTooltip(holidayIndicator, holiday.nombre);
+          }
           daySchedules.slice(0, 2).forEach(function(item) {
             td.appendChild(buildScheduleBadge(item, { startPrefix: true, hideMeta: true }));
           });
@@ -1036,6 +1097,7 @@
           }
           if (!daySchedules.length) {
             var disabledLabel = document.createElement('small');
+            disabledLabel.className = 'd-block';
             disabledLabel.textContent = 'Sin horario';
             td.appendChild(disabledLabel);
           }

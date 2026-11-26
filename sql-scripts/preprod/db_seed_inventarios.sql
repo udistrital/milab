@@ -151,6 +151,41 @@ DO UPDATE SET can_view = EXCLUDED.can_view,
               activo = EXCLUDED.activo,
               fecha_modificacion = CURRENT_TIMESTAMP;
 
+INSERT INTO menu_item (section, parent_id, label, route, icon, order_index, activo)
+SELECT 'secondary', parent.id, 'Período académico',
+       '/milab/api/admin/periodo', 'bi-calendar3', 5, TRUE
+FROM menu_item parent
+WHERE parent.section = 'secondary'
+  AND parent.parent_id IS NULL
+  AND parent.label = 'Configuración'
+ON CONFLICT DO NOTHING;
+
+UPDATE menu_item
+SET activo = TRUE
+WHERE route = '/milab/api/admin/periodo';
+
+UPDATE rol_permiso rp
+SET activo = FALSE,
+    fecha_modificacion = CURRENT_TIMESTAMP
+FROM rol r, menu_item mi
+WHERE rp.rol_id = r.id
+  AND rp.menu_item_id = mi.id
+  AND mi.route = '/milab/api/admin/periodo'
+  AND r.nombre <> 'admin'
+  AND rp.activo = TRUE;
+
+INSERT INTO rol_permiso (rol_id, menu_item_id, can_view, can_use, activo)
+SELECT r.id, mi.id, TRUE, TRUE, TRUE
+FROM rol r
+CROSS JOIN menu_item mi
+WHERE r.nombre = 'admin'
+  AND mi.route = '/milab/api/admin/periodo'
+ON CONFLICT (rol_id, menu_item_id)
+DO UPDATE SET can_view = TRUE,
+              can_use = TRUE,
+              activo = TRUE,
+              fecha_modificacion = CURRENT_TIMESTAMP;
+
 INSERT INTO equipo_especializado (
     codigo_curso,
     id_equipo,

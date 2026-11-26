@@ -51,6 +51,7 @@ router.use('/admin/roles', require('./admin/roles'));
 router.use('/admin/sanciones', require('./admin/sanciones'));
 router.use('/admin/esquema-bd', require('./admin/esquema-bd'));
 router.use('/admin/festivos', require('./admin/festivos'));
+router.use('/admin/periodo', require('./admin/periodo'));
 
 // Módulo Capacitación y Certificación EDX
 router.use('/certificacion-edx', require('./certificacion-edx'));

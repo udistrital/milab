@@ -17,6 +17,23 @@ CREATE TABLE IF NOT EXISTS festivo_colombia (
     fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS periodo_academico_historial (
+    id BIGSERIAL PRIMARY KEY,
+    codigo_periodo VARCHAR(100) NOT NULL,
+    periodo_anterior VARCHAR(100),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    fecha_activacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_desactivacion TIMESTAMPTZ,
+    consultado_por_documento VARCHAR(50),
+    CONSTRAINT ck_periodo_academico_historial_fechas
+        CHECK ((activo AND fecha_desactivacion IS NULL)
+            OR (NOT activo AND fecha_desactivacion IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_periodo_academico_historial_activo
+    ON periodo_academico_historial (activo)
+    WHERE activo = TRUE;
+
 CREATE TABLE IF NOT EXISTS inventario_carga (
     id BIGSERIAL PRIMARY KEY,
     ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE RESTRICT,

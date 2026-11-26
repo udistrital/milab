@@ -122,6 +122,40 @@ test('navigationMiddleware builds dynamic menu by role when DB menu is available
   }
 });
 
+test('navigationMiddleware exposes the active period change alert to laboratoristas', async () => {
+  const alert = {
+    periodo_anterior: '2025-3',
+    codigo_periodo: '2026-1',
+    fecha_activacion: '2026-01-02 00:00',
+  };
+  const loaded = loadNavigationModule({
+    queryImpl: async (sql) =>
+      sql.includes('periodo_academico_historial') ? { rows: [alert] } : { rows: [{ total: 0 }] },
+  });
+
+  try {
+    const req = {
+      path: '/milab/prestamos/',
+      session: {
+        user: {
+          tipo: 'laboratorista_ud',
+          documento: '123',
+        },
+      },
+    };
+    const res = { locals: {} };
+
+    await loaded.navigationMiddleware(req, res, () => {});
+
+    assert.deepEqual(res.locals.periodChangeAlert, alert);
+    assert.ok(
+      loaded.getQueryCalls().some((call) => call.sql.includes('periodo_academico_historial'))
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('buildNavigation falls back to static menu when dynamic menu lookup fails', async () => {
   const loaded = loadNavigationModule({
     menuImpl: async () => {

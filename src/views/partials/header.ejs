@@ -264,6 +264,17 @@
   <script src="/milab/public/js/session-control.js"></script>
   <header class="app-header">
     <%- include('./environment-banner', { environmentBannerAttached: true }) %>
+    <% if (locals.periodChangeAlert) { %>
+      <div class="alert alert-warning rounded-0 border-0 mb-0 py-2" role="alert" data-testid="period-change-alert">
+        <div class="container">
+          El período académico cambió de
+          <strong><%= locals.periodChangeAlert.periodo_anterior %></strong> a
+          <strong><%= locals.periodChangeAlert.codigo_periodo %></strong>
+          el <%= locals.periodChangeAlert.fecha_activacion %>.
+          Reconfigura los préstamos para el nuevo período en curso.
+        </div>
+      </div>
+    <% } %>
     <% if (isImpersonatingSession) { %>
       <div class="alert alert-warning rounded-0 border-0 mb-0 py-2" role="status">
         <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">

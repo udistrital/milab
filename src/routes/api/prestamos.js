@@ -10,6 +10,7 @@ const { PDFDocument: PdfLibDocument, StandardFonts } = require('pdf-lib');
 
 const { canonicalizeFacultyName, resolveCoordinatorScope } = require('../../libs/faculty-scope');
 const {
+  fetchColombianHolidays,
   fetchColombianHolidaysBetween,
   filterColombianHolidaySchedules,
   findColombianHoliday,
@@ -17967,6 +17968,7 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
       `,
       [sala.id]
     );
+    const festivos = await fetchColombianHolidays();
     const rawReturnTo = sanitizeText(req.query.returnTo);
     const returnTo =
       rawReturnTo && rawReturnTo.startsWith('/milab/') ? rawReturnTo : '/milab/prestamos/salas';
@@ -17974,6 +17976,7 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
     return res.render('home/prestamos/salas/horarios', {
       sala,
       horarios: result.rows || [],
+      festivos,
       returnTo,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
