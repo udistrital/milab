@@ -104,6 +104,17 @@
     </div>
 
     <div class="col-md-6">
+      <label for="periodo" class="form-label">Período académico</label>
+      <select class="form-select" id="periodo" name="periodo" required>
+        <option value="" selected disabled>Selecciona el período</option>
+        <option value="1">1 - Primer período</option>
+        <option value="2">2 - Intersemestral</option>
+        <option value="3">3 - Segundo período</option>
+      </select>
+      <div class="form-text text-muted">Período académico que se envía a SGA como DEU_PER al generar el bloqueo de recibo de pago.</div>
+    </div>
+
+    <div class="col-md-6">
       <label for="fecha_multa" class="form-label">Fecha de la Sanción:</label>
       <input type="date" class="form-control" id="fecha_multa" name="fecha_multa" required>
     </div>

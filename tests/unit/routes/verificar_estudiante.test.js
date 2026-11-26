@@ -196,6 +196,56 @@ test('verificar_estudiante parses form submissions and reaches the success flow'
   }
 });
 
+test('code lookup in test environment skips OATI document and state-detail lookups', async () => {
+  const previousEnvironment = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  const oatiCalls = [];
+  const loaded = loadRoute({
+    oatiImpl: async (servicePath) => {
+      oatiCalls.push(servicePath);
+      if (servicePath === 'datos_basicos_estudiante/2024100001') {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                codigo: '2024100001',
+                nombre: 'Estudiante Prueba',
+                carrera: '1',
+                estado: 'A',
+                documento: '79520182',
+              },
+            ],
+          },
+        };
+      }
+      if (servicePath === 'carrera/1') {
+        return { carrerasCollection: { carrera: [{ nombre: 'Ingeniería de Prueba' }] } };
+      }
+      throw new Error(`Unexpected OATI request: ${servicePath}`);
+    },
+  });
+
+  try {
+    const app = buildApp(loaded.route);
+    const response = await request(app).post('/').type('form').send({
+      tipo_busqueda: 'codigo',
+      valor_busqueda: '2024100001',
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(oatiCalls, ['datos_basicos_estudiante/2024100001', 'carrera/1']);
+    assert.deepEqual(loaded.getSgaRequest(), {
+      codigo: '2024100001',
+      codigos: ['2024100001'],
+      documento: '79520182',
+    });
+  } finally {
+    loaded.restore();
+    if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnvironment;
+  }
+});
+
 test('verificar_estudiante blocks paz y salvo and shows local then active SGA sanctions', async () => {
   const localFine = { id: 9, cat_multa: 'Daño de equipo' };
   const sgaFine = {
