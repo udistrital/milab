@@ -649,8 +649,68 @@ test('prestamos importa filas del excel guia sin columnas opcionales', () => {
     assert.equal(parsed.rows[0].hora_inicio, '18:00');
     assert.equal(parsed.rows[0].hora_fin, '19:00');
     assert.equal(parsed.rows[0].activo, true);
+    assert.equal(parsed.rows[0].asignatura, '00000 - ASIGNATURA DE EJEMPLO');
+    assert.equal(parsed.rows[0].docente, 'DOCENTE DE EJEMPLO');
   } finally {
     loaded.restore();
+  }
+});
+
+test('prestamos guarda asignatura y docente del horario solo cuando la tabla los soporta', async () => {
+  function buildClient(detailColumnCount) {
+    const inserts = [];
+    return {
+      inserts,
+      query: async (query, parameters) => {
+        if (query.includes("column_name IN ('asignatura', 'docente')")) {
+          return { rows: [{ total: detailColumnCount }] };
+        }
+        if (query.includes('INSERT INTO horario_sala')) {
+          inserts.push({ query, parameters });
+        }
+        return { rows: [] };
+      },
+    };
+  }
+
+  const teacherRow = {
+    fecha: '2026-11-30',
+    hora_inicio: '18:00',
+    hora_fin: '19:00',
+    tipo_practica: 'docente',
+    asignatura: '  24908 - ROBOTICA  ',
+    docente: `DOCENTE ${'X'.repeat(300)}`,
+  };
+
+  const legacy = loadRoute();
+  try {
+    const client = buildClient(0);
+    await legacy.route.__private.insertSalaSchedule(client, 10, teacherRow);
+
+    assert.equal(client.inserts.length, 1);
+    assert.doesNotMatch(client.inserts[0].query, /asignatura|docente/);
+    assert.equal(client.inserts[0].parameters.length, 9);
+  } finally {
+    legacy.restore();
+  }
+
+  const migrated = loadRoute();
+  try {
+    const client = buildClient(2);
+    await migrated.route.__private.insertSalaSchedule(client, 10, teacherRow);
+    await migrated.route.__private.insertSalaSchedule(client, 10, {
+      ...teacherRow,
+      hora_inicio: '19:00',
+      hora_fin: '20:00',
+      tipo_practica: 'libre',
+    });
+
+    assert.match(client.inserts[0].query, /asignatura, docente/);
+    assert.equal(client.inserts[0].parameters.at(-2), '24908 - ROBOTICA');
+    assert.equal(client.inserts[0].parameters.at(-1).length, 255);
+    assert.deepEqual(client.inserts[1].parameters.slice(-2), [null, null]);
+  } finally {
+    migrated.restore();
   }
 });
 

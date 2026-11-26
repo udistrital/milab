@@ -95,6 +95,12 @@ el diagnóstico de producción:
 psql -v ON_ERROR_STOP=1 -h <host> -p <port> -U <user> -d <db> -f sql/20261023_encuentros_app_permissions.sql
 ```
 
+La estructura de `horario_sala` usada por Horarios UAL incluye las columnas `asignatura` y
+`docente`, declaradas en `preprod/db_structure_inventarios.sql` junto con los demás cambios de
+esquema de inventarios. En bases existentes, volver a aplicar ese archivo después de
+`prod/db_structure_prestamos.sql`; los horarios previamente importados deben cargarse de nuevo
+para registrar esos datos.
+
 El seed ofuscado se aplica como último paso únicamente durante la reconstrucción completa
 del ambiente de pruebas. El pipeline no lo ejecuta en despliegues que conservan la base
 existente; no debe aplicarse en producción.

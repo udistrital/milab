@@ -4421,6 +4421,7 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
     hora_rango: ['hora'],
     sala: ['sala', 'salon'],
     asignatura: ['asignatura'],
+    docente: ['docente', 'profesor'],
     laboratorio: ['laboratorio', 'proyecto'],
   };
 
@@ -4478,6 +4479,7 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
       ...payload,
       sala: scheduleSalaName,
       asignatura: templateAsig,
+      docente: sanitizeText(pick('docente')),
       laboratorio: templateLab,
       lineNumber: index + 2,
     });
@@ -4801,11 +4803,44 @@ function buildSalaSchedulePreviewCalendar(rows, rangeValidation) {
   };
 }
 
+const SALA_SCHEDULE_DETAIL_MAX_LENGTH = 255;
+const SALA_SCHEDULE_DETAIL_RECHECK_MS = 60 * 1000;
+let salaScheduleDetailColumnsAvailable = false;
+let salaScheduleDetailColumnsCheckedAt = 0;
+
+// La ausencia de columnas se vuelve a consultar periodicamente para detectar la migracion sin reiniciar.
+async function hasSalaScheduleDetailColumns(client = pool) {
+  if (
+    salaScheduleDetailColumnsAvailable ||
+    Date.now() - salaScheduleDetailColumnsCheckedAt < SALA_SCHEDULE_DETAIL_RECHECK_MS
+  ) {
+    return salaScheduleDetailColumnsAvailable;
+  }
+
+  const result = await client.query(
+    `
+      SELECT COUNT(DISTINCT column_name)::int AS total
+      FROM information_schema.columns
+      WHERE table_schema = ANY (current_schemas(false))
+        AND table_name = 'horario_sala'
+        AND column_name IN ('asignatura', 'docente')
+    `
+  );
+  salaScheduleDetailColumnsAvailable = Number(result.rows?.[0]?.total || 0) === 2;
+  salaScheduleDetailColumnsCheckedAt = Date.now();
+  return salaScheduleDetailColumnsAvailable;
+}
+
+function normalizeSalaScheduleDetail(value) {
+  return (sanitizeText(value) || '').slice(0, SALA_SCHEDULE_DETAIL_MAX_LENGTH).trim() || null;
+}
+
 async function insertSalaSchedule(client, salaId, payload, options = {}) {
   const source = sanitizeText(options.source || 'manual').toLowerCase();
   const actorId = Number(options.actorId || 0) || null;
   const actorDocument = sanitizeText(options.actorDocument);
   const tableColumns = await fetchTableColumns('horario_sala', client);
+  const includeDetailColumns = await hasSalaScheduleDetailColumns(client);
   const insertColumns = [
     'sala_id',
     'dia_semana',
@@ -4840,6 +4875,14 @@ async function insertSalaSchedule(client, salaId, payload, options = {}) {
   if (tableColumns.has('cargado_por_documento')) {
     insertColumns.push('cargado_por_documento');
     insertValues.push(actorDocument || null);
+  }
+  if (includeDetailColumns) {
+    const isTeacherPractice = payload.tipo_practica === 'docente';
+    insertColumns.push('asignatura', 'docente');
+    insertValues.push(
+      isTeacherPractice ? normalizeSalaScheduleDetail(payload.asignatura) : null,
+      isTeacherPractice ? normalizeSalaScheduleDetail(payload.docente) : null
+    );
   }
 
   const placeholders = insertValues.map(function (_, index) {
@@ -17856,6 +17899,9 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
       );
     }
 
+    const detailSelect = (await hasSalaScheduleDetailColumns())
+      ? 'asignatura, docente'
+      : 'NULL::text AS asignatura, NULL::text AS docente';
     const result = await pool.query(
       `
         SELECT
@@ -17866,7 +17912,8 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
           fecha,
           activo,
           tipo_practica,
-          modalidad_libre
+          modalidad_libre,
+          ${detailSelect}
         FROM horario_sala
         WHERE sala_id = $1
         ORDER BY fecha ASC NULLS LAST, dia_semana ASC NULLS LAST, hora_inicio ASC
@@ -19136,6 +19183,7 @@ router.__private = {
   buildFreePracticeRowsFromSlotSelection,
   buildSalaSchedulePreviewCalendar,
   buildSalaScheduleTemplateBuffer,
+  insertSalaSchedule,
 };
 
 module.exports = router;

@@ -2,6 +2,12 @@ SET search_path TO milab;
 
 BEGIN;
 
+ALTER TABLE horario_sala
+    ADD COLUMN IF NOT EXISTS asignatura VARCHAR(255);
+
+ALTER TABLE horario_sala
+    ADD COLUMN IF NOT EXISTS docente VARCHAR(255);
+
 CREATE TABLE IF NOT EXISTS inventario_carga (
     id BIGSERIAL PRIMARY KEY,
     ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE RESTRICT,

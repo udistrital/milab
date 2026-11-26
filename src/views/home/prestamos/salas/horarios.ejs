@@ -1,5 +1,200 @@
 <%- include('../../../partials/header'); -%>
 
+<style>
+  #horariosRegistradosCalendar {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    margin-bottom: 0;
+  }
+
+  #horariosRegistradosCalendar thead {
+    display: block;
+    min-width: 0;
+  }
+
+  #horariosRegistradosCalendar tbody {
+    display: grid;
+    grid-template-rows: repeat(var(--calendar-week-rows, 6), minmax(0, 1fr));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #horariosRegistradosCalendar thead tr,
+  #horariosRegistradosCalendar tbody tr {
+    display: grid;
+    grid-template-columns: 6rem repeat(7, minmax(0, 1fr));
+    min-width: 0;
+    min-height: 0;
+  }
+
+  #horariosRegistradosCalendar.ual-calendar-month thead tr,
+  #horariosRegistradosCalendar.ual-calendar-month tbody tr {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  #horariosRegistradosCalendar th,
+  #horariosRegistradosCalendar td {
+    display: block;
+    min-width: 0;
+  }
+
+  #horariosRegistradosCalendar th,
+  #horariosRegistradosCalendar td {
+    padding: 0.2rem 0.35rem;
+    overflow: hidden;
+  }
+
+  #horariosRegistradosCalendar .ual-calendar-time {
+    width: 6rem;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .ual-calendar-dialog {
+    width: min(96vw, 1400px);
+    max-width: none;
+    height: 94vh;
+    margin: 3vh auto;
+  }
+
+  .ual-calendar-dialog .modal-content {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .ual-calendar-dialog .modal-header {
+    flex: 0 0 auto;
+    padding: 0.65rem 1rem 0.35rem;
+  }
+
+  .ual-calendar-dialog .modal-body {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.4rem 1rem 0.6rem;
+  }
+
+  .ual-calendar-controls,
+  .ual-calendar-footer {
+    flex: 0 0 auto;
+  }
+
+  .ual-calendar-controls {
+    margin-bottom: 0.35rem !important;
+  }
+
+  .ual-calendar-table-wrap {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  #horariosRegistradosCalendar.ual-calendar-month tbody td {
+    vertical-align: top;
+  }
+
+  #horariosRegistradosCalendar.ual-calendar-week--dense .form-check-input {
+    width: 0.85rem;
+    height: 0.85rem;
+    margin: 0;
+  }
+
+  #horariosRegistradosCalendar.ual-calendar-month .ual-schedule-badge {
+    margin-top: 0.1rem;
+    padding: 0.05rem 0.25rem;
+    font-size: 0.65rem;
+    line-height: 1.15;
+  }
+
+  .ual-calendar-month-more {
+    display: block;
+    overflow: hidden;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .horario-actions-column {
+    width: 10rem;
+  }
+
+  .horario-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .ual-schedule-badge {
+    display: block;
+    padding: 0.15rem 0.3rem;
+    line-height: 1.1;
+    text-align: left;
+    cursor: default;
+  }
+
+  .ual-schedule-badge + .ual-schedule-badge {
+    margin-top: 0.1rem;
+  }
+
+  .ual-schedule-badge__title,
+  .ual-schedule-badge__meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ual-schedule-badge__meta {
+    font-weight: 500;
+    opacity: 0.9;
+  }
+
+  .ual-schedule-tooltip {
+    --bs-tooltip-opacity: 1;
+  }
+
+  .ual-schedule-tooltip .tooltip-inner {
+    max-width: 20rem;
+    text-align: left;
+    white-space: pre-line;
+  }
+
+  @media (max-width: 767.98px) {
+    .ual-calendar-dialog {
+      width: 100vw;
+      height: 100dvh;
+      margin: 0;
+    }
+
+    .ual-calendar-dialog .modal-body {
+      padding-right: 0.4rem;
+      padding-left: 0.4rem;
+    }
+
+    #horariosRegistradosCalendar .ual-calendar-time {
+      width: 4.5rem;
+      font-size: 0.65rem;
+    }
+
+    #horariosRegistradosCalendar th,
+    #horariosRegistradosCalendar td {
+      padding: 0.12rem 0.15rem;
+      font-size: 0.7rem;
+    }
+
+    .ual-calendar-controls .btn {
+      padding: 0.25rem 0.4rem;
+      font-size: 0.75rem;
+    }
+  }
+</style>
+
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Horarios UAL</h1>
@@ -95,7 +290,7 @@
                 <th>Tipo de Práctica</th>
                 <th>Modalidad</th>
                 <th>Estado</th>
-                <th class="text-end">Acciones</th>
+                <th class="text-end horario-actions-column">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -146,29 +341,31 @@
                       <%= item.activo ? 'Activo' : 'Inactivo' %>
                     </span>
                   </td>
-                  <td class="d-flex justify-content-end gap-2">
-                    <button
-                      type="button"
-                      class="btn btn-outline-primary btn-sm js-edit-horario-sala"
-                      data-horario-id="<%= item.id %>"
-                      data-fecha="<%= item.fecha ? (item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha).slice(0, 10)) : '' %>"
-                      data-dia-semana="<%= item.dia_semana !== null && item.dia_semana !== undefined ? item.dia_semana : '' %>"
-                      data-hora-inicio="<%= String(item.hora_inicio || '').slice(0, 5) %>"
-                      data-hora-fin="<%= String(item.hora_fin || '').slice(0, 5) %>"
-                      data-tipo-practica="<%= item.tipo_practica || 'docente' %>"
-                      data-modalidad-libre="<%= item.modalidad_libre || '' %>"
-                      data-activo="<%= item.activo ? 'true' : 'false' %>"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-outline-danger btn-sm js-delete-horario-sala"
-                      data-horario-id="<%= item.id %>"
-                      data-submit-lock="true"
-                    >
-                      Eliminar
-                    </button>
+                  <td class="horario-actions-column">
+                    <div class="horario-actions">
+                      <button
+                        type="button"
+                        class="btn btn-outline-primary btn-sm js-edit-horario-sala"
+                        data-horario-id="<%= item.id %>"
+                        data-fecha="<%= item.fecha ? (item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha).slice(0, 10)) : '' %>"
+                        data-dia-semana="<%= item.dia_semana !== null && item.dia_semana !== undefined ? item.dia_semana : '' %>"
+                        data-hora-inicio="<%= String(item.hora_inicio || '').slice(0, 5) %>"
+                        data-hora-fin="<%= String(item.hora_fin || '').slice(0, 5) %>"
+                        data-tipo-practica="<%= item.tipo_practica || 'docente' %>"
+                        data-modalidad-libre="<%= item.modalidad_libre || '' %>"
+                        data-activo="<%= item.activo ? 'true' : 'false' %>"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-outline-danger btn-sm js-delete-horario-sala"
+                        data-horario-id="<%= item.id %>"
+                        data-submit-lock="true"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               <% }) %>
@@ -239,9 +436,9 @@
         <div class="alert alert-info mb-0">
           El día debe ser de lunes a domingo y la hora debe indicar inicio y fin, por ejemplo
           <strong>6PM-7PM</strong>. La vigencia seleccionada aplica a cada bloque semanal. El
-          sistema rechaza horarios duplicados o que se traslapen. Asignatura, grupo, proyecto,
-          inscritos y docente son columnas de referencia del archivo; los horarios se guardan en la
-          estructura existente de la UAL.
+          sistema rechaza horarios duplicados o que se traslapen. La asignatura y el docente se
+          guardan con cada bloque y se muestran en el calendario; grupo, proyecto e inscritos son
+          columnas de referencia del archivo.
         </div>
       </div>
       <div class="modal-footer">
@@ -261,7 +458,7 @@
   aria-labelledby="calendarioHorariosUALTitulo"
   aria-hidden="true"
 >
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl modal-fullscreen-lg-down">
+  <div class="modal-dialog modal-dialog-centered modal-xl ual-calendar-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <div>
@@ -271,7 +468,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
       <div class="modal-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 ual-calendar-controls">
           <div class="btn-group" role="group" aria-label="Vista del calendario">
             <button type="button" class="btn btn-outline-primary active" data-calendar-mode="week">Semana</button>
             <button type="button" class="btn btn-outline-primary" data-calendar-mode="month">Mes</button>
@@ -287,13 +484,13 @@
             <button type="button" class="btn btn-outline-primary" id="calendarioHoyBtn">Hoy</button>
           </div>
         </div>
-        <div class="table-responsive">
+        <div class="table-responsive ual-calendar-table-wrap">
           <table class="table table-sm table-bordered align-middle" id="horariosRegistradosCalendar">
             <thead></thead>
             <tbody></tbody>
           </table>
         </div>
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2 ual-calendar-footer">
           <p class="small text-muted mb-0">
             En la vista semanal puedes marcar espacios vacíos de días configurados como práctica libre.
           </p>
@@ -432,6 +629,7 @@
     var editScheduleSaveButton = document.getElementById('guardarEdicionHorarioBtn');
     var calendarMode = 'week';
     var calendarAnchorDate = null;
+    var calendarTooltips = [];
     var registeredSchedules = <%- JSON.stringify((horarios || []).map(function(item) {
       return {
         id: item.id,
@@ -441,9 +639,11 @@
         hora_fin: String(item.hora_fin || '').slice(0, 5),
         tipo_practica: item.tipo_practica || 'docente',
         modalidad_libre: item.modalidad_libre || '',
+        asignatura: String(item.asignatura || '').trim(),
+        docente: String(item.docente || '').trim(),
         activo: Boolean(item.activo),
       };
-    })) %>;
+    })).replace(/</g, '\\u003c') %>;
 
     if (!salaId || !alertsContainer) return;
 
@@ -593,28 +793,66 @@
       });
     }
 
-    function scheduleDetails(item) {
+    var modalityLabels = {
+      uno_a_uno: 'Uno a uno',
+      uno_a_varios: 'Uno a varios',
+      varios_a_uno: 'Varios a uno',
+    };
+
+    function scheduleTooltipText(item) {
+      var range = 'Horario: ' + item.hora_inicio + ' - ' + item.hora_fin;
+      if (item.tipo_practica === 'docente') {
+        return [
+          'Asignatura: ' + (item.asignatura || 'Sin registrar'),
+          'Docente: ' + (item.docente || 'Sin registrar'),
+          'Tipo: Docente / Clase Magistral',
+          range,
+        ].join('\n');
+      }
+      return [
+        'Tipo: Práctica libre',
+        'Modalidad: ' + (modalityLabels[item.modalidad_libre] || 'Sin definir'),
+        range,
+      ].join('\n');
+    }
+
+    function buildScheduleBadge(item, options) {
       var isTeacherPractice = item.tipo_practica === 'docente';
-      var typeLabel = isTeacherPractice
-        ? 'Docente / Clase Magistral'
-        : 'Práctica libre';
-      var modalityLabels = {
-        uno_a_uno: 'Uno a uno',
-        uno_a_varios: 'Uno a varios',
-        varios_a_uno: 'Varios a uno',
-      };
-      var modalityLabel = isTeacherPractice
-        ? 'No aplica'
-        : modalityLabels[item.modalidad_libre] || 'Sin definir';
-      return (
-        typeLabel +
-        ' · ' +
-        item.hora_inicio +
-        '-' +
-        item.hora_fin +
-        ' · Modalidad: ' +
-        modalityLabel +
-        ' · Estado: Activo'
+      var title = isTeacherPractice ? item.asignatura || 'Clase magistral' : 'Práctica libre';
+      var meta = isTeacherPractice ? item.docente : modalityLabels[item.modalidad_libre] || '';
+      var tooltipText = scheduleTooltipText(item);
+      var badge = document.createElement('span');
+      badge.className =
+        'badge ual-schedule-badge ' + (isTeacherPractice ? 'bg-primary' : 'bg-success');
+      badge.tabIndex = 0;
+      badge.title = tooltipText;
+
+      var titleEl = document.createElement('span');
+      titleEl.className = 'ual-schedule-badge__title';
+      titleEl.textContent = (options.startPrefix ? item.hora_inicio + ' ' : '') + title;
+      badge.appendChild(titleEl);
+
+      var metaText = [options.range, options.hideMeta ? '' : meta].filter(Boolean).join(' · ');
+      if (metaText) {
+        var metaEl = document.createElement('span');
+        metaEl.className = 'ual-schedule-badge__meta';
+        metaEl.textContent = metaText;
+        badge.appendChild(metaEl);
+      }
+
+      attachScheduleTooltip(badge);
+      return badge;
+    }
+
+    function attachScheduleTooltip(element, title) {
+      if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+      if (title) element.title = title;
+      calendarTooltips.push(
+        new bootstrap.Tooltip(element, {
+          animation: false,
+          container: calendarModalEl,
+          customClass: 'ual-schedule-tooltip',
+        })
       );
     }
 
@@ -623,6 +861,10 @@
     }
 
     function resetCalendar() {
+      calendarTooltips.forEach(function(tooltip) {
+        tooltip.dispose();
+      });
+      calendarTooltips = [];
       calendarTable.querySelector('thead').innerHTML = '';
       calendarTable.querySelector('tbody').innerHTML = '';
       saveFreePracticeButton.classList.add('d-none');
@@ -631,16 +873,18 @@
 
     function renderWeekCalendar() {
       var weekStart = getWeekStart(calendarAnchorDate);
+      var weekdayFormatter = new Intl.DateTimeFormat('es-CO', { weekday: 'short' });
+      var monthFormatter = new Intl.DateTimeFormat('es-CO', { month: 'short' });
       var days = Array.from({ length: 7 }, function(_item, index) {
         var date = addDays(weekStart, index);
         return {
           date: dateKey(date),
           dayNumber: date.getDay(),
-          label: new Intl.DateTimeFormat('es-CO', {
-            weekday: 'short',
-            day: '2-digit',
-            month: 'short',
-          }).format(date),
+          label: [
+            weekdayFormatter.format(date).replace('.', ''),
+            String(date.getDate()).padStart(2, '0'),
+            monthFormatter.format(date).replace('.', ''),
+          ].join(' '),
         };
       });
       var daySchedules = days.map(getDaySchedules);
@@ -651,10 +895,16 @@
       var minMinute = timeValues.length ? Math.floor(Math.min.apply(null, timeValues) / 60) * 60 : 7 * 60;
       var maxMinute = timeValues.length ? Math.ceil(Math.max.apply(null, timeValues) / 60) * 60 : 20 * 60;
       if (maxMinute <= minMinute) maxMinute = minMinute + 60;
+      var slotCount = (maxMinute - minMinute) / 60;
 
       resetCalendar();
+      calendarTable.classList.remove('ual-calendar-month');
+      calendarTable.classList.add('ual-calendar-week');
+      calendarTable.classList.toggle('ual-calendar-week--dense', slotCount >= 12);
+      calendarTable.style.setProperty('--calendar-week-rows', String(slotCount));
       var header = document.createElement('tr');
       var timeHeader = document.createElement('th');
+      timeHeader.className = 'ual-calendar-time';
       timeHeader.textContent = 'Hora';
       header.appendChild(timeHeader);
       days.forEach(function(day, index) {
@@ -671,6 +921,7 @@
         var start = formatTime(minute);
         var end = formatTime(endMinute);
         var label = document.createElement('th');
+        label.className = 'ual-calendar-time';
         label.textContent = start + ' - ' + end;
         row.appendChild(label);
 
@@ -690,12 +941,13 @@
           });
           if (matching.length) {
             matching.forEach(function(item) {
-              var badge = document.createElement('span');
-              badge.className =
-                'badge d-block mb-1 ' + (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
-              badge.textContent = scheduleDetails(item);
-              badge.title = scheduleDetails(item);
-              td.appendChild(badge);
+              var matchesSlot = item.hora_inicio === start && item.hora_fin === end;
+              td.appendChild(
+                buildScheduleBadge(item, {
+                  range: matchesSlot ? '' : item.hora_inicio + '-' + item.hora_fin,
+                  hideMeta: slotCount >= 12,
+                })
+              );
             });
           } else {
             var wrapper = document.createElement('label');
@@ -732,6 +984,10 @@
       var gridStart = getWeekStart(monthStart);
       var weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
       resetCalendar();
+      calendarTable.classList.remove('ual-calendar-week');
+      calendarTable.classList.remove('ual-calendar-week--dense');
+      calendarTable.classList.add('ual-calendar-month');
+      calendarTable.style.removeProperty('--calendar-week-rows');
 
       var header = document.createElement('tr');
       weekdays.forEach(function(label) {
@@ -752,7 +1008,6 @@
           var daySchedules = getDaySchedules(day);
           var td = document.createElement('td');
           td.className = 'align-top';
-          td.style.minWidth = '125px';
           if (date.getMonth() !== monthStart.getMonth() || !daySchedules.length) {
             td.classList.add('table-secondary', 'text-muted');
           }
@@ -761,15 +1016,24 @@
           dateLabel.className = 'd-block mb-1';
           dateLabel.textContent = String(date.getDate());
           td.appendChild(dateLabel);
-          daySchedules.forEach(function(item) {
-            var eventBadge = document.createElement('span');
-            eventBadge.className =
-              'badge d-block text-wrap text-start mb-1 ' +
-              (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
-            eventBadge.textContent = scheduleDetails(item);
-            eventBadge.title = scheduleDetails(item);
-            td.appendChild(eventBadge);
+          daySchedules.slice(0, 2).forEach(function(item) {
+            td.appendChild(buildScheduleBadge(item, { startPrefix: true, hideMeta: true }));
           });
+          if (daySchedules.length > 2) {
+            var moreLabel = document.createElement('small');
+            moreLabel.className = 'ual-calendar-month-more';
+            moreLabel.textContent = '+' + (daySchedules.length - 2) + ' más';
+            attachScheduleTooltip(
+              moreLabel,
+              daySchedules
+                .slice(2)
+                .map(function(item) {
+                  return scheduleTooltipText(item);
+                })
+                .join('\n\n')
+            );
+            td.appendChild(moreLabel);
+          }
           if (!daySchedules.length) {
             var disabledLabel = document.createElement('small');
             disabledLabel.textContent = 'Sin horario';
