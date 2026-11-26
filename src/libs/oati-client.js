@@ -111,7 +111,6 @@ function wrapAsOatiUnavailable(error) {
   return new OatiUnavailableError('No fue posible conectar con los servicios OATI.', error);
 }
 
-
 function logOatiFailure(stage, url, error) {
   const status = error?.response?.status;
   const reason = status ? `HTTP ${status}` : error?.code || error?.message;
