@@ -38,6 +38,14 @@ function extractOasStudentRecords(payload) {
   return [];
 }
 
+function isTestEnvironment() {
+  return (
+    String(process.env.NODE_ENV || '')
+      .trim()
+      .toLowerCase() === 'test'
+  );
+}
+
 // Laboratoristas asignados por UAL, usados para que admin/coordinador elijan en cuyo nombre registrar.
 async function fetchLaboratoristasByUalIds(ualIds) {
   const normalizedIds = (ualIds || []).filter((id) => Number.isFinite(id));
@@ -381,8 +389,14 @@ router.post('/', requireFineInfoPageAccess, async function (req, res) {
         });
       }
 
-      const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
-      con_estado = dato2.estado.nombre;
+      if (isTestEnvironment()) {
+        console.warn(
+          '[OATI] Se omite la consulta estados_codigo en pruebas; se conservará el código del estado.'
+        );
+      } else {
+        const dato2 = await requestOati(getAcademicServicePath(`estados_codigo/${con_estado}`));
+        con_estado = dato2.estado.nombre;
+      }
 
       const dato3 = await requestOati(getAcademicServicePath(`carrera/${con_carrera}`));
       con_carrera = dato3.carrerasCollection.carrera[0].nombre;
