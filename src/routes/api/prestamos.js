@@ -18094,7 +18094,7 @@ router.post(
         try {
           const parsedSlots = JSON.parse(String(req.body.slots_libres_json || '[]'));
           selectedFreeSlots = Array.isArray(parsedSlots) ? parsedSlots : [];
-        } catch (_error) {
+        } catch {
           selectedFreeSlots = [];
         }
       }
