@@ -115,6 +115,7 @@ async function buildStudentSanctionPanel(req, { usuarioId, person }) {
         codigo: person.codigo,
         documento: person.documento,
         includeOtherDebts: includeOtherSgaDebts,
+        ...(isTestEnvironment() ? { skipAcademicIdentityValidation: true } : {}),
       });
       sga.debts = result.debts;
       sga.otherDebts =

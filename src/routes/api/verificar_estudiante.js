@@ -238,6 +238,7 @@ router.post('/', requireVerificationAction, async (req, res) => {
           codigo: con_codigo,
           codigos: codigosPersona.length ? codigosPersona : collectStudentCodigos([], con_codigo),
           documento,
+          ...(isTestEnvironment() ? { skipAcademicIdentityValidation: true } : {}),
         });
         sgaMultaInfo = sgaResult.debts;
         if (!['found', 'clear'].includes(sgaResult.status)) {

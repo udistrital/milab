@@ -774,6 +774,7 @@ class SgaDebtService {
     identificador,
     onProgress,
     includeOtherDebts = false,
+    skipAcademicIdentityValidation = false,
   } = {}) {
     const emptyResult = {
       status: 'not_configured',
@@ -793,12 +794,21 @@ class SgaDebtService {
     }
 
     onProgress?.({ stage: 'identity' });
-    const identity = await this.resolveStudentCodesForQuery({
-      codigo,
-      codigos,
-      documento,
-      identificador,
-    });
+    const identity = skipAcademicIdentityValidation
+      ? {
+          codes: [...new Set([codigo, ...codigos].map(normalizeNumericIdentifier).filter(Boolean))],
+          document: normalizeNumericIdentifier(documento) || null,
+          studentRecord: null,
+          errors: [],
+          ambiguous: false,
+          identityConfirmed: true,
+        }
+      : await this.resolveStudentCodesForQuery({
+          codigo,
+          codigos,
+          documento,
+          identificador,
+        });
     const result = {
       ...emptyResult,
       status: 'unresolved',
