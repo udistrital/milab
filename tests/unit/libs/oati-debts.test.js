@@ -599,6 +599,25 @@ test('queryStudent does not query SGA when identity lookup is unavailable', asyn
   assert.equal(debtRequests, 0);
 });
 
+test('queryStudent can query supplied codes without academic identity lookups', async () => {
+  const { service, calls } = createService({ debtResponse: '<deudas/>' });
+
+  const result = await service.queryStudent({
+    codigo: '20152007849',
+    documento: '79520182',
+    skipAcademicIdentityValidation: true,
+  });
+
+  assert.equal(result.status, 'clear');
+  assert.deepEqual(result.codes, ['20152007849']);
+  assert.equal(result.document, '79520182');
+  assert.deepEqual(calls.academic, []);
+  assert.deepEqual(
+    calls.post.map(([path]) => path),
+    [service.buildServicePath('20152007849')]
+  );
+});
+
 test('queryStudent does not query SGA when an identifier cannot be resolved to a student', async () => {
   const { service, calls } = createService({
     studentResponse: { datosEstudianteCollection: { datosBasicosEstudiante: [] } },

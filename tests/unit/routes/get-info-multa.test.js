@@ -198,7 +198,15 @@ test('get-info-multa skips OATI state-detail lookup in test environment', async 
   const previousEnvironment = process.env.NODE_ENV;
   process.env.NODE_ENV = 'test';
   const oatiCalls = [];
+  let sgaQuery;
   const loaded = loadRoute({
+    sgaService: {
+      isConfigured: () => true,
+      queryStudent: async (student) => {
+        sgaQuery = student;
+        return { status: 'clear', debts: [], otherDebts: [], message: '' };
+      },
+    },
     requestOatiImpl: async (servicePath) => {
       oatiCalls.push(servicePath);
       if (servicePath === 'datos_basicos_estudiante/2024100001') {
@@ -237,6 +245,7 @@ test('get-info-multa skips OATI state-detail lookup in test environment', async 
     assert.equal(response.body.view, 'home/sancion-person-actions');
     assert.equal(response.body.locals.person.estado, 'A');
     assert.deepEqual(oatiCalls, ['datos_basicos_estudiante/2024100001', 'carrera/1']);
+    assert.equal(sgaQuery.skipAcademicIdentityValidation, true);
   } finally {
     loaded.restore();
     if (previousEnvironment === undefined) delete process.env.NODE_ENV;

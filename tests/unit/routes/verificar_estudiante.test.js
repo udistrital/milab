@@ -238,6 +238,7 @@ test('code lookup in test environment skips OATI document and state-detail looku
       codigo: '2024100001',
       codigos: ['2024100001'],
       documento: '79520182',
+      skipAcademicIdentityValidation: true,
     });
   } finally {
     loaded.restore();
