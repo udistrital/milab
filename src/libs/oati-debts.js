@@ -150,7 +150,7 @@ const SGA_OTHER_CONCEPT_TYPES = Object.freeze({
 // Código de concepto usado al crear deudas de bloqueo desde MILab.
 
 const SGA_MILAB_CONCEPT_CODE = 9;
-const SGA_ACTIVE_DEBT_STATE = '2';
+const SGA_ACTIVE_DEBT_STATE = '1';
 // const SGA_ACADEMIC_PERIOD_SEGMENT = 'A'; // Se usaba en fetchAcademicPeriod (desactivado).
 
 // Helpers usados por fetchAcademicPeriod (desactivado). Se mantienen comentados

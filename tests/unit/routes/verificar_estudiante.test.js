@@ -196,7 +196,7 @@ test('verificar_estudiante parses form submissions and reaches the success flow'
   }
 });
 
-test('code lookup in test environment skips OATI document and state-detail lookups', async () => {
+test('code lookup in test environment uses OATI document lookup but skips state details', async () => {
   const previousEnvironment = process.env.NODE_ENV;
   process.env.NODE_ENV = 'test';
   const oatiCalls = [];
@@ -221,6 +221,21 @@ test('code lookup in test environment skips OATI document and state-detail looku
       if (servicePath === 'carrera/1') {
         return { carrerasCollection: { carrera: [{ nombre: 'Ingeniería de Prueba' }] } };
       }
+      if (servicePath === 'datos_basicos_activos_cedula/79520182') {
+        return {
+          datosEstudianteCollection: {
+            datosBasicosEstudiante: [
+              {
+                codigo: '2024100001',
+                nombre: 'Estudiante Prueba',
+                carrera: '1',
+                estado: 'A',
+                documento: '79520182',
+              },
+            ],
+          },
+        };
+      }
       throw new Error(`Unexpected OATI request: ${servicePath}`);
     },
   });
@@ -233,7 +248,11 @@ test('code lookup in test environment skips OATI document and state-detail looku
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(oatiCalls, ['datos_basicos_estudiante/2024100001', 'carrera/1']);
+    assert.deepEqual(oatiCalls, [
+      'datos_basicos_estudiante/2024100001',
+      'datos_basicos_activos_cedula/79520182',
+      'carrera/1',
+    ]);
     assert.deepEqual(loaded.getSgaRequest(), {
       codigo: '2024100001',
       codigos: ['2024100001'],
