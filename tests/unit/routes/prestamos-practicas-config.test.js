@@ -15,7 +15,7 @@ const prestamosModuleAccessPath = path.resolve(
 );
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 
-function loadRoute() {
+function loadRoute({ spreadsheetRows = [] } = {}) {
   const originals = new Map();
   const originalLoad = Module._load;
   const stubs = [
@@ -91,10 +91,13 @@ function loadRoute() {
       toBuffer: async () => Buffer.from('stub'),
     },
     xlsx: {
-      read: () => ({ SheetNames: [], Sheets: {} }),
+      read: () =>
+        spreadsheetRows.length
+          ? { SheetNames: ['Guide'], Sheets: { Guide: {} } }
+          : { SheetNames: [], Sheets: {} },
       write: () => Buffer.from(''),
       utils: {
-        sheet_to_json: () => [],
+        sheet_to_json: () => spreadsheetRows,
         aoa_to_sheet: () => ({}),
         book_new: () => ({}),
         book_append_sheet: () => {},
@@ -613,6 +616,38 @@ test('prestamos normaliza valores de horario para carga desde excel', () => {
     assert.equal(loaded.route.__private.normalizeScheduleDayValue('Miércoles'), '3');
     assert.equal(loaded.route.__private.normalizeScheduleDateValue('24/11/2026'), '2026-11-24');
     assert.equal(loaded.route.__private.normalizeScheduleTimeValue('8:05'), '08:05');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos importa filas del excel guia sin columnas opcionales', () => {
+  const loaded = loadRoute({
+    spreadsheetRows: [
+      {
+        Periodo: 'PERIODO DE EJEMPLO',
+        Día: 'LUNES',
+        Hora: '6PM-7PM',
+        Asignatura: '00000 - ASIGNATURA DE EJEMPLO',
+        Grupo: '000-000',
+        Proyecto: '000 - PROGRAMA ACADEMICO DE EJEMPLO',
+        Inscritos: 10,
+        Docente: 'DOCENTE DE EJEMPLO',
+      },
+    ],
+  });
+
+  try {
+    const parsed = loaded.route.__private.parseSalaScheduleSpreadsheet(Buffer.from('xlsx'), {
+      expectedSalaName: 'LABORATORIO DE EJEMPLO',
+    });
+
+    assert.deepEqual(parsed.errors, []);
+    assert.equal(parsed.rows.length, 1);
+    assert.equal(parsed.rows[0].tipo_practica, 'docente');
+    assert.equal(parsed.rows[0].sala, '');
+    assert.equal(parsed.rows[0].hora_inicio, '18:00');
+    assert.equal(parsed.rows[0].hora_fin, '19:00');
   } finally {
     loaded.restore();
   }

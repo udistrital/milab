@@ -4300,7 +4300,7 @@ function normalizeSpreadsheetHeader(value) {
 }
 
 function normalizeScheduleDayValue(value) {
-  const raw = sanitizeText(value)
+  const raw = (sanitizeText(value) || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
@@ -4384,7 +4384,7 @@ function normalizeHourTokenTo24h(token, meridiem) {
 }
 
 function parseTemplateHourRange(value) {
-  const raw = sanitizeText(value).toUpperCase().replace(/\s+/g, '');
+  const raw = (sanitizeText(value) || '').toUpperCase().replace(/\s+/g, '');
   const match = raw.match(/^(\d{1,2})(AM|PM)-(\d{1,2})(AM|PM)$/);
   if (!match) {
     return { hora_inicio: '', hora_fin: '' };
@@ -4397,7 +4397,7 @@ function parseTemplateHourRange(value) {
 }
 
 function parseSalaScheduleSpreadsheet(buffer, options = {}) {
-  const expectedSalaName = sanitizeText(options.expectedSalaName).toLowerCase();
+  const expectedSalaName = (sanitizeText(options.expectedSalaName) || '').toLowerCase();
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: false });
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
@@ -4444,10 +4444,10 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
     }
 
     const hourRange = parseTemplateHourRange(pick('hora_rango'));
-    const scheduleSalaName = sanitizeText(pick('sala'));
+    const scheduleSalaName = sanitizeText(pick('sala')) || '';
     const templateAsig = sanitizeText(pick('asignatura'));
     const templateLab = sanitizeText(pick('laboratorio'));
-    const rawTipoPractica = sanitizeText(pick('tipo_practica')).toLowerCase();
+    const rawTipoPractica = (sanitizeText(pick('tipo_practica')) || '').toLowerCase();
     const inferredTipo = rawTipoPractica || (templateAsig ? 'docente' : 'libre');
     const normalizedScheduleSala = scheduleSalaName.toLowerCase();
     if (expectedSalaName && normalizedScheduleSala && normalizedScheduleSala !== expectedSalaName) {
@@ -4460,7 +4460,7 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
       hora_inicio: normalizeScheduleTimeValue(pick('hora_inicio')) || hourRange.hora_inicio,
       hora_fin: normalizeScheduleTimeValue(pick('hora_fin')) || hourRange.hora_fin,
       tipo_practica: inferredTipo || 'libre',
-      modalidad_libre: sanitizeText(pick('modalidad_libre')).toLowerCase(),
+      modalidad_libre: (sanitizeText(pick('modalidad_libre')) || '').toLowerCase(),
       activo: pick('activo'),
     });
 
@@ -17888,14 +17888,14 @@ function buildSalaScheduleTemplateBuffer(
   const worksheet = XLSX.utils.aoa_to_sheet([
     ['Periodo', 'Día', 'Hora', 'Asignatura', 'Grupo', 'Proyecto', 'Inscritos', 'Docente'],
     [
-      '2026-3',
+      'PERIODO DE EJEMPLO',
       'LUNES',
-      '6PM-7PM',
-      '24908 - ROBÓTICA',
-      '583-241',
-      '583 - INGENIERÍA EN CONTROL Y AUTOMATIZACIÓN',
-      23,
-      'Nombre del docente',
+      '8AM-9AM',
+      '00000 - ASIGNATURA DE EJEMPLO',
+      '000-000',
+      '000 - PROGRAMA ACADEMICO DE EJEMPLO',
+      10,
+      'DOCENTE DE EJEMPLO',
     ],
   ]);
   const workbook = XLSX.utils.book_new();
@@ -18097,6 +18097,7 @@ router.post(
       });
     }
 
+    let importStage = 'validar alcance de la sala';
     try {
       const scope = await resolveLoanManagementScope(req);
       const sala = await fetchManagedSala(req.params.id, scope);
@@ -18117,6 +18118,7 @@ router.post(
         });
       }
 
+      importStage = 'leer archivo Excel';
       const parsed = parseSalaScheduleSpreadsheet(req.file.buffer, {
         expectedSalaName: sala.nombre,
       });
@@ -18158,6 +18160,7 @@ router.post(
       );
       const rowsToInsert = expandedRows.concat(freePracticeRows);
 
+      importStage = 'consultar horarios existentes';
       const existingResult = await pool.query(
         `
           SELECT dia_semana, fecha, hora_inicio, hora_fin
@@ -18200,6 +18203,7 @@ router.post(
       const sessionUser = req.session?.user || null;
       const client = await pool.connect();
       try {
+        importStage = 'guardar horarios en la base de datos';
         await client.query('BEGIN');
         for (const row of rowsToInsert) {
           await insertSalaSchedule(client, sala.id, row, {
@@ -18210,12 +18214,17 @@ router.post(
         }
         await client.query('COMMIT');
       } catch (error) {
-        await client.query('ROLLBACK');
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('Error revirtiendo la carga de horarios MiLab:', rollbackError);
+        }
         throw error;
       } finally {
         client.release();
       }
 
+      importStage = 'registrar auditoria';
       await registerPrestamosAuditEntry({
         req,
         accion: 'Carga horario sala Excel',
@@ -18227,13 +18236,14 @@ router.post(
         message: `Se importaron ${rowsToInsert.length} horario(s) en la sala ${sala.nombre}.`,
       });
     } catch (error) {
-      console.error('Error importando horarios de sala MiLab:', error);
+      console.error(`Error importando horarios de sala MiLab (etapa: ${importStage}):`, error);
       return res.status(500).json({
         success: false,
         message: resolveLoanDbErrorMessage(
           error,
-          'No fue posible importar los horarios de la sala.'
+          `No fue posible importar los horarios de la sala durante la etapa: ${importStage}.`
         ),
+        stage: importStage,
       });
     }
   }
