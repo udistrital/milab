@@ -111,6 +111,12 @@ function wrapAsOatiUnavailable(error) {
   return new OatiUnavailableError('No fue posible conectar con los servicios OATI.', error);
 }
 
+function logOatiFailure(stage, url, error) {
+  const status = error?.response?.status;
+  const reason = status ? `HTTP ${status}` : error?.code || error?.message;
+  console.error(`[OATI] Etapa "${stage}" falló en ${url} -> ${reason}`);
+}
+
 async function withOatiTlsFallback(operation) {
   try {
     return await operation(httpsAgent);
@@ -185,6 +191,7 @@ async function fetchAccessToken(signal) {
       signal
     );
   } catch (error) {
+    logOatiFailure('token (POST oauth2)', config.oatiTokenUrl, error);
     markOatiCircuitFailure(error);
     if (isOatiUnavailableCandidate(error)) {
       throw wrapAsOatiUnavailable(error);
@@ -222,6 +229,7 @@ async function requestOati(pathname, { signal } = {}) {
       signal
     );
   } catch (error) {
+    logOatiFailure('GET académico', url, error);
     markOatiCircuitFailure(error);
     if (isOatiUnavailableCandidate(error)) {
       throw wrapAsOatiUnavailable(error);
@@ -254,6 +262,7 @@ async function requestOatiPost(pathname, body, contentType = 'application/json')
       )
     );
   } catch (error) {
+    logOatiFailure('POST académico', url, error);
     markOatiCircuitFailure(error);
     if (isOatiUnavailableCandidate(error)) {
       throw wrapAsOatiUnavailable(error);
