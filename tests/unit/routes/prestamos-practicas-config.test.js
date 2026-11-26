@@ -15,14 +15,14 @@ const prestamosModuleAccessPath = path.resolve(
 );
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 
-function loadRoute({ spreadsheetRows = [] } = {}) {
+function loadRoute({ spreadsheetRows = [], dbQuery = async () => ({ rows: [] }) } = {}) {
   const originals = new Map();
   const originalLoad = Module._load;
   const stubs = [
     [
       dbPath,
       {
-        query: async () => ({ rows: [] }),
+        query: dbQuery,
         connect: async () => ({
           query: async () => ({ rows: [] }),
           release() {},
@@ -648,6 +648,59 @@ test('prestamos importa filas del excel guia sin columnas opcionales', () => {
     assert.equal(parsed.rows[0].sala, '');
     assert.equal(parsed.rows[0].hora_inicio, '18:00');
     assert.equal(parsed.rows[0].hora_fin, '19:00');
+    assert.equal(parsed.rows[0].activo, true);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos permite editar un horario desde la sala y limpia modalidad docente', async () => {
+  let updateParameters = null;
+  const loaded = loadRoute({
+    dbQuery: async (query, parameters) => {
+      if (query.includes('FROM sala s')) {
+        return { rows: [{ id: 10, nombre: 'Sala de ejemplo' }] };
+      }
+      if (query.includes('FROM horario_sala h')) {
+        return {
+          rows: [
+            {
+              id: 50,
+              sala_id: 10,
+              fecha: '2026-11-30',
+              dia_semana: null,
+              hora_inicio: '08:00',
+              hora_fin: '09:00',
+            },
+          ],
+        };
+      }
+      if (query.includes('FROM reserva_practica rp')) {
+        return { rows: [] };
+      }
+      if (query.includes('UPDATE horario_sala')) {
+        updateParameters = parameters;
+        return { rows: [{ id: 50 }] };
+      }
+      return { rows: [] };
+    },
+  });
+
+  try {
+    const response = await request(buildApp(loaded.route, { roles: ['admin'] }))
+      .put('/salas/10/horarios/50')
+      .send({
+        fecha: '2026-11-30',
+        hora_inicio: '09:00',
+        hora_fin: '10:00',
+        tipo_practica: 'docente',
+        modalidad_libre: 'uno_a_uno',
+        activo: 'true',
+      });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.success, true);
+    assert.equal(updateParameters[8], null);
   } finally {
     loaded.restore();
   }
@@ -709,28 +762,51 @@ test('prestamos detecta solapes de horarios en el mismo contexto', () => {
 
 test('prestamos requiere lunes de inicio y domingo de fin en la carga de horarios', () => {
   const loaded = loadRoute();
+  const today = '2026-11-02';
 
   try {
-    const invalidStart = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-03',
-      fecha_fin: '2026-11-08',
-    });
-    const invalidEnd = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-02',
-      fecha_fin: '2026-11-07',
-    });
-    const reversed = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-02',
-      fecha_fin: '2026-10-25',
-    });
-    const validWeek = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-11-02',
-      fecha_fin: '2026-11-08',
-    });
-    const tooLong = loaded.route.__private.validateSalaScheduleDateRange({
-      fecha_inicio: '2026-01-05',
-      fecha_fin: '2026-08-02',
-    });
+    const invalidStart = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-11-03',
+        fecha_fin: '2026-11-08',
+      },
+      today
+    );
+    const invalidEnd = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-11-02',
+        fecha_fin: '2026-11-07',
+      },
+      today
+    );
+    const reversed = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-11-02',
+        fecha_fin: '2026-10-25',
+      },
+      today
+    );
+    const validWeek = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-11-02',
+        fecha_fin: '2026-11-08',
+      },
+      today
+    );
+    const pastStart = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-10-26',
+        fecha_fin: '2026-11-01',
+      },
+      today
+    );
+    const tooLong = loaded.route.__private.validateSalaScheduleDateRange(
+      {
+        fecha_inicio: '2026-11-02',
+        fecha_fin: '2027-05-09',
+      },
+      today
+    );
 
     assert.equal(invalidStart.valid, false);
     assert.match(invalidStart.message, /lunes/i);
@@ -738,6 +814,8 @@ test('prestamos requiere lunes de inicio y domingo de fin en la carga de horario
     assert.match(invalidEnd.message, /domingo/i);
     assert.equal(reversed.valid, false);
     assert.match(reversed.message, /anterior/i);
+    assert.equal(pastStart.valid, false);
+    assert.match(pastStart.message, /fecha actual/i);
     assert.equal(validWeek.valid, true);
     assert.equal(tooLong.valid, false);
     assert.match(tooLong.message, /seis meses/i);

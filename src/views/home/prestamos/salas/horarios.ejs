@@ -62,8 +62,8 @@
         </div>
       </form>
       <p class="form-text mt-3 mb-0 text-center">
-        La fecha de inicio debe ser lunes y la fecha fin domingo. La vigencia debe ser de una semana
-        como mínimo y seis meses como máximo.
+        La fecha de inicio no puede ser anterior a hoy, debe ser lunes y la fecha fin domingo. La
+        vigencia debe ser de una semana como mínimo y seis meses como máximo.
       </p>
     </div>
   </section>
@@ -92,7 +92,7 @@
               <tr>
                 <th>Contexto</th>
                 <th>Franja</th>
-                <th>Tipo</th>
+                <th>Tipo de Práctica</th>
                 <th>Modalidad</th>
                 <th>Estado</th>
                 <th class="text-end">Acciones</th>
@@ -123,14 +123,44 @@
                     -
                     <%= String(item.hora_fin || '').slice(0, 5) %>
                   </td>
-                  <td class="text-capitalize"><%= item.tipo_practica || '-' %></td>
-                  <td class="text-capitalize"><%= item.modalidad_libre || '-' %></td>
+                  <td>
+                    <%= item.tipo_practica === 'docente'
+                      ? 'Docente / Clase Magistral'
+                      : item.tipo_practica === 'libre'
+                        ? 'Práctica libre'
+                        : item.tipo_practica || '-' %>
+                  </td>
+                  <td>
+                    <% if (item.tipo_practica === 'docente') { %>
+                      No aplica
+                    <% } else { %>
+                      <%= ({
+                        uno_a_uno: 'Uno a uno',
+                        uno_a_varios: 'Uno a varios',
+                        varios_a_uno: 'Varios a uno'
+                      })[item.modalidad_libre] || item.modalidad_libre || '-' %>
+                    <% } %>
+                  </td>
                   <td>
                     <span class="badge <%= item.activo ? 'bg-success' : 'bg-secondary' %>">
                       <%= item.activo ? 'Activo' : 'Inactivo' %>
                     </span>
                   </td>
-                  <td class="text-end">
+                  <td class="d-flex justify-content-end gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-outline-primary btn-sm js-edit-horario-sala"
+                      data-horario-id="<%= item.id %>"
+                      data-fecha="<%= item.fecha ? (item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha).slice(0, 10)) : '' %>"
+                      data-dia-semana="<%= item.dia_semana !== null && item.dia_semana !== undefined ? item.dia_semana : '' %>"
+                      data-hora-inicio="<%= String(item.hora_inicio || '').slice(0, 5) %>"
+                      data-hora-fin="<%= String(item.hora_fin || '').slice(0, 5) %>"
+                      data-tipo-practica="<%= item.tipo_practica || 'docente' %>"
+                      data-modalidad-libre="<%= item.modalidad_libre || '' %>"
+                      data-activo="<%= item.activo ? 'true' : 'false' %>"
+                    >
+                      Editar
+                    </button>
                     <button
                       type="button"
                       class="btn btn-outline-danger btn-sm js-delete-horario-sala"
@@ -275,6 +305,87 @@
   </div>
 </div>
 
+<div
+  class="modal fade"
+  id="editarHorarioSalaModal"
+  tabindex="-1"
+  aria-labelledby="editarHorarioSalaTitulo"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editarHorarioSalaForm">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="editarHorarioSalaTitulo">Editar horario</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger d-none" id="editarHorarioError" role="alert"></div>
+          <input type="hidden" id="editarHorarioSalaId">
+          <div class="mb-3" id="editarHorarioFechaGroup">
+            <label for="editarHorarioFecha" class="form-label">Fecha *</label>
+            <input type="date" class="form-control" id="editarHorarioFecha" required>
+          </div>
+          <div class="mb-3 d-none" id="editarHorarioDiaGroup">
+            <label for="editarHorarioDia" class="form-label">Día *</label>
+            <select class="form-select" id="editarHorarioDia" required>
+              <option value="1">Lunes</option>
+              <option value="2">Martes</option>
+              <option value="3">Miércoles</option>
+              <option value="4">Jueves</option>
+              <option value="5">Viernes</option>
+              <option value="6">Sábado</option>
+              <option value="0">Domingo</option>
+            </select>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label for="editarHorarioInicio" class="form-label">Hora inicio *</label>
+              <input type="time" class="form-control" id="editarHorarioInicio" required>
+            </div>
+            <div class="col-6">
+              <label for="editarHorarioFin" class="form-label">Hora fin *</label>
+              <input type="time" class="form-control" id="editarHorarioFin" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="editarHorarioTipo" class="form-label">Tipo de Práctica *</label>
+            <select class="form-select" id="editarHorarioTipo" required>
+              <option value="docente">Docente / Clase Magistral</option>
+              <option value="libre">Práctica libre</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="editarHorarioModalidad" class="form-label">Modalidad</label>
+            <select class="form-select" id="editarHorarioModalidad">
+              <option value="">No aplica</option>
+              <option value="uno_a_uno">Uno a uno</option>
+              <option value="uno_a_varios">Uno a varios</option>
+              <option value="varios_a_uno">Varios a uno</option>
+            </select>
+            <div class="form-text" id="editarHorarioModalidadAyuda">
+              La modalidad solo aplica para prácticas libres.
+            </div>
+          </div>
+          <div>
+            <label for="editarHorarioEstado" class="form-label">Estado *</label>
+            <select class="form-select" id="editarHorarioEstado" required>
+              <option value="true">Activo</option>
+              <option value="false">Inactivo</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-perso" id="guardarEdicionHorarioBtn" data-submit-lock="true">
+            Guardar cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script nonce="<%= cspNonce %>">
   (function() {
     var salaId = <%- JSON.stringify(sala && sala.id ? String(sala.id) : '') %>;
@@ -298,6 +409,13 @@
       calendarModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
         ? new bootstrap.Modal(calendarModalEl)
         : null;
+    var editScheduleModalEl = document.getElementById('editarHorarioSalaModal');
+    var editScheduleModal =
+      editScheduleModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
+        ? new bootstrap.Modal(editScheduleModalEl)
+        : null;
+    var editScheduleForm = document.getElementById('editarHorarioSalaForm');
+    var editScheduleSaveButton = document.getElementById('guardarEdicionHorarioBtn');
     var calendarMode = 'week';
     var calendarAnchorDate = null;
     var registeredSchedules = <%- JSON.stringify((horarios || []).map(function(item) {
@@ -325,9 +443,9 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    async function postJson(url, payload) {
+    async function postJson(url, payload, method) {
       var response = await fetch(url, {
-        method: 'POST',
+        method: method || 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <%- JSON.stringify(csrfToken || '') %> },
         body: JSON.stringify(payload || {}),
       });
@@ -375,6 +493,17 @@
       ].join('-');
     }
 
+    function currentDateKeyInBogota() {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    }
+
+    fechaInicioCargaSala.min = currentDateKeyInBogota();
+
     fechaInicioCargaSala.addEventListener('change', function() {
       fechaFinCargaSala.value = '';
       fechaFinCargaSala.disabled = true;
@@ -382,6 +511,11 @@
       fechaFinCargaSala.removeAttribute('max');
 
       if (!fechaInicioCargaSala.value) return;
+      if (fechaInicioCargaSala.value < currentDateKeyInBogota()) {
+        fechaInicioCargaSala.value = '';
+        showAlert('warning', 'La fecha de inicio no puede ser anterior a la fecha actual.');
+        return;
+      }
 
       var selectedStart = new Date(fechaInicioCargaSala.value + 'T12:00:00');
       if (selectedStart.getDay() !== 1) {
@@ -519,7 +653,7 @@
               badge.className =
                 'badge d-block mb-1 ' + (item.tipo_practica === 'docente' ? 'bg-primary' : 'bg-success');
               badge.textContent =
-                (item.tipo_practica === 'docente' ? 'Docente' : 'Libre') +
+                (item.tipo_practica === 'docente' ? 'Docente / Clase Magistral' : 'Práctica libre') +
                 ' ' +
                 item.hora_inicio +
                 '-' +
@@ -600,7 +734,9 @@
               '-' +
               item.hora_fin +
               ' ' +
-              (item.tipo_practica === 'docente' ? 'Docente' : 'Libre');
+              (item.tipo_practica === 'docente'
+                ? 'Docente / Clase Magistral'
+                : 'Práctica libre');
             td.appendChild(eventBadge);
           });
           if (!daySchedules.length) {
@@ -640,6 +776,10 @@
           showAlert('danger', 'Debes definir la fecha de inicio y fin de la carga.');
           return;
         }
+        if (fechaInicioCargaSala.value < currentDateKeyInBogota()) {
+          showAlert('danger', 'La fecha de inicio no puede ser anterior a la fecha actual.');
+          return;
+        }
 
         var file = importInput.files[0];
         var formData = new FormData();
@@ -662,6 +802,110 @@
           showAlert('danger', error.message || 'No fue posible importar el archivo de horarios.');
         } finally {
           window.MiLabSubmitLock.release(importButton);
+        }
+      });
+    }
+
+    var editScheduleDateGroup = document.getElementById('editarHorarioFechaGroup');
+    var editScheduleDayGroup = document.getElementById('editarHorarioDiaGroup');
+    var editScheduleDate = document.getElementById('editarHorarioFecha');
+    var editScheduleDay = document.getElementById('editarHorarioDia');
+    var editScheduleStart = document.getElementById('editarHorarioInicio');
+    var editScheduleEnd = document.getElementById('editarHorarioFin');
+    var editScheduleType = document.getElementById('editarHorarioTipo');
+    var editScheduleModality = document.getElementById('editarHorarioModalidad');
+    var editScheduleModalityHelp = document.getElementById('editarHorarioModalidadAyuda');
+    var editScheduleActive = document.getElementById('editarHorarioEstado');
+    var editScheduleId = document.getElementById('editarHorarioSalaId');
+    var editScheduleError = document.getElementById('editarHorarioError');
+
+    function syncEditScheduleModality() {
+      var isTeacherPractice = editScheduleType.value === 'docente';
+      editScheduleModality.disabled = isTeacherPractice;
+      editScheduleModalityHelp.textContent = isTeacherPractice
+        ? 'No aplica para Docente / Clase Magistral.'
+        : 'Selecciona la modalidad para la práctica libre.';
+      if (isTeacherPractice) {
+        editScheduleModality.value = '';
+      } else if (!editScheduleModality.value) {
+        editScheduleModality.value = 'uno_a_uno';
+      }
+    }
+
+    editScheduleType.addEventListener('change', syncEditScheduleModality);
+
+    document.querySelectorAll('.js-edit-horario-sala').forEach(function(button) {
+      button.addEventListener('click', function() {
+        if (!editScheduleModal) {
+          showAlert('danger', 'No fue posible abrir el formulario de edición.');
+          return;
+        }
+
+        var fecha = button.getAttribute('data-fecha') || '';
+        var isDateSpecific = Boolean(fecha);
+        editScheduleId.value = button.getAttribute('data-horario-id') || '';
+        editScheduleDate.value = fecha;
+        editScheduleDate.min = currentDateKeyInBogota();
+        editScheduleDay.value = button.getAttribute('data-dia-semana') || '1';
+        editScheduleDateGroup.classList.toggle('d-none', !isDateSpecific);
+        editScheduleDayGroup.classList.toggle('d-none', isDateSpecific);
+        editScheduleDate.required = isDateSpecific;
+        editScheduleDay.required = !isDateSpecific;
+        editScheduleStart.value = button.getAttribute('data-hora-inicio') || '';
+        editScheduleEnd.value = button.getAttribute('data-hora-fin') || '';
+        editScheduleType.value = button.getAttribute('data-tipo-practica') || 'docente';
+        editScheduleModality.value = button.getAttribute('data-modalidad-libre') || '';
+        editScheduleActive.value = button.getAttribute('data-activo') || 'true';
+        editScheduleError.classList.add('d-none');
+        editScheduleError.textContent = '';
+        syncEditScheduleModality();
+        editScheduleModal.show();
+      });
+    });
+
+    if (editScheduleForm && editScheduleSaveButton) {
+      editScheduleForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!editScheduleForm.reportValidity()) return;
+
+        var isDateSpecific = !editScheduleDateGroup.classList.contains('d-none');
+        if (isDateSpecific && editScheduleDate.value < currentDateKeyInBogota()) {
+          showAlert('warning', 'La fecha del horario no puede ser anterior a la fecha actual.');
+          return;
+        }
+
+        var payload = {
+          fecha: isDateSpecific ? editScheduleDate.value : '',
+          dia_semana: isDateSpecific ? '' : editScheduleDay.value,
+          hora_inicio: editScheduleStart.value,
+          hora_fin: editScheduleEnd.value,
+          tipo_practica: editScheduleType.value,
+          modalidad_libre:
+            editScheduleType.value === 'docente' ? '' : editScheduleModality.value,
+          activo: editScheduleActive.value,
+        };
+
+        try {
+          window.MiLabSubmitLock.lock(editScheduleSaveButton, 'Guardando cambios...');
+          var result = await postJson(
+            '/milab/prestamos/salas/' +
+              encodeURIComponent(salaId) +
+              '/horarios/' +
+              encodeURIComponent(editScheduleId.value),
+            payload,
+            'PUT'
+          );
+          editScheduleModal.hide();
+          showAlert('success', result.message || 'Horario actualizado correctamente.');
+          window.setTimeout(function() {
+            window.location.reload();
+          }, 700);
+        } catch (error) {
+          editScheduleError.textContent =
+            error.message || 'No fue posible actualizar el horario.';
+          editScheduleError.classList.remove('d-none');
+        } finally {
+          window.MiLabSubmitLock.release(editScheduleSaveButton);
         }
       });
     }

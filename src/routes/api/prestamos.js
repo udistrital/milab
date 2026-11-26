@@ -4448,6 +4448,7 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
     const templateAsig = sanitizeText(pick('asignatura'));
     const templateLab = sanitizeText(pick('laboratorio'));
     const rawTipoPractica = (sanitizeText(pick('tipo_practica')) || '').toLowerCase();
+    const activeValue = pick('activo');
     const inferredTipo = rawTipoPractica || (templateAsig ? 'docente' : 'libre');
     const normalizedScheduleSala = scheduleSalaName.toLowerCase();
     if (expectedSalaName && normalizedScheduleSala && normalizedScheduleSala !== expectedSalaName) {
@@ -4461,7 +4462,10 @@ function parseSalaScheduleSpreadsheet(buffer, options = {}) {
       hora_fin: normalizeScheduleTimeValue(pick('hora_fin')) || hourRange.hora_fin,
       tipo_practica: inferredTipo || 'libre',
       modalidad_libre: (sanitizeText(pick('modalidad_libre')) || '').toLowerCase(),
-      activo: pick('activo'),
+      activo:
+        activeValue === '' || activeValue === null || activeValue === undefined
+          ? true
+          : activeValue,
     });
 
     const validation = validateSalaSchedulePayload(payload);
@@ -4552,7 +4556,7 @@ function resolveSalaScheduleDateRange(body = {}) {
   };
 }
 
-function validateSalaScheduleDateRange(range) {
+function validateSalaScheduleDateRange(range, todayDate = formatInstitutionalDate(new Date())) {
   const start = parseDateOnlyUtc(range?.fecha_inicio);
   const end = parseDateOnlyUtc(range?.fecha_fin);
   if (!start || !end) {
@@ -4560,6 +4564,14 @@ function validateSalaScheduleDateRange(range) {
       valid: false,
       message:
         'Debes indicar la fecha de inicio y fin del horario con formato valido (YYYY-MM-DD).',
+    };
+  }
+
+  const today = parseDateOnlyUtc(todayDate);
+  if (today && start < today) {
+    return {
+      valid: false,
+      message: 'La fecha de inicio no puede ser anterior a la fecha actual.',
     };
   }
 
@@ -18364,6 +18376,150 @@ router.post('/salas/:id/horarios/libres', requireSalasAuthorized, async function
     });
   } finally {
     client.release();
+  }
+});
+
+router.put('/salas/:id/horarios/:horarioId', requireSalasAuthorized, async function (req, res) {
+  if (!isValidSalaId(req.params.id) || !isValidSalaId(req.params.horarioId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'La sala o el horario seleccionado no es valido.',
+    });
+  }
+
+  const body = req.body || {};
+  const tipoPractica = (sanitizeText(body.tipo_practica) || '').toLowerCase();
+  const payload = buildSalaSchedulePayload({
+    ...body,
+    modalidad_libre: tipoPractica === 'docente' ? '' : body.modalidad_libre || 'uno_a_uno',
+  });
+  const validationError = validateSalaSchedulePayload(payload);
+  if (validationError) {
+    return res.status(400).json({ success: false, message: validationError });
+  }
+
+  if (payload.fecha) {
+    const scheduleDate = parseDateOnlyUtc(payload.fecha);
+    if (!scheduleDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fecha del horario no tiene un formato valido.',
+      });
+    }
+    const today = parseDateOnlyUtc(formatInstitutionalDate(new Date()));
+    if (today && scheduleDate < today) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fecha del horario no puede ser anterior a la fecha actual.',
+      });
+    }
+  }
+
+  try {
+    const scope = await resolveLoanManagementScope(req);
+    const sala = await fetchManagedSala(req.params.id, scope);
+    if (!sala) {
+      return res.status(404).json({
+        success: false,
+        message: 'La sala no existe o no pertenece a tu alcance de gestion.',
+      });
+    }
+
+    const affected = await fetchAffectedPracticeReservationsBySchedule(req.params.horarioId, scope);
+    const horario = affected.horario;
+    if (!horario || Number(horario.sala_id) !== Number(sala.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'El horario no existe o no pertenece a la sala seleccionada.',
+      });
+    }
+    if (affected.reservas.length) {
+      return res.status(409).json({
+        success: false,
+        message:
+          'No se puede editar este horario mientras tenga practicas asociadas. Gestiona primero las reservas.',
+      });
+    }
+
+    const overlapResult = await pool.query(
+      `
+          SELECT 1
+          FROM horario_sala
+          WHERE sala_id = $1
+            AND id <> $2
+            AND (
+              (fecha = $3 AND $3 IS NOT NULL) OR
+              (fecha IS NULL AND dia_semana = $4 AND $3 IS NULL)
+            )
+            AND hora_inicio < $6
+            AND hora_fin > $5
+          LIMIT 1
+        `,
+      [
+        sala.id,
+        horario.id,
+        payload.fecha || null,
+        payload.fecha ? null : Number(payload.dia_semana),
+        payload.hora_inicio,
+        payload.hora_fin,
+      ]
+    );
+    if (overlapResult.rows.length) {
+      return res.status(409).json({
+        success: false,
+        message: 'El horario se solapa con otro horario registrado.',
+      });
+    }
+
+    const updatedResult = await pool.query(
+      `
+          UPDATE horario_sala
+          SET dia_semana = $3,
+              hora_inicio = $4,
+              hora_fin = $5,
+              fecha = $6,
+              activo = $7,
+              tipo_practica = $8,
+              modalidad_libre = $9,
+              fecha_modificacion = CURRENT_TIMESTAMP
+          WHERE id = $1 AND sala_id = $2
+          RETURNING id
+        `,
+      [
+        horario.id,
+        sala.id,
+        payload.fecha ? null : Number(payload.dia_semana),
+        payload.hora_inicio,
+        payload.hora_fin,
+        payload.fecha || null,
+        payload.activo,
+        payload.tipo_practica || 'libre',
+        payload.tipo_practica === 'libre' ? payload.modalidad_libre || 'uno_a_uno' : null,
+      ]
+    );
+    if (!updatedResult.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'El horario ya no se encuentra disponible para editar.',
+      });
+    }
+
+    await registerPrestamosAuditEntry({
+      req,
+      accion: 'Edición horario sala',
+      persona: `Sala ${sala.id} - horario ${horario.id}`,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Horario actualizado correctamente.',
+    });
+  } catch (error) {
+    console.error('Error editando horario de sala MiLab:', error);
+    return res.status(500).json({
+      success: false,
+      message: resolveLoanDbErrorMessage(error, 'No fue posible actualizar el horario.'),
+    });
   }
 });
 
