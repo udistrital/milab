@@ -304,6 +304,12 @@ COMMENT ON COLUMN milab.multa.sga_deuda_id IS
     'Identificador de la deuda creada en SGA (P_RESULTADO_SECUENCIA). NULL = sin bloqueo de recibo de pago.';
 
 ALTER TABLE milab.multa
+    ADD COLUMN IF NOT EXISTS sga_deuda_estado VARCHAR(1);
+
+COMMENT ON COLUMN milab.multa.sga_deuda_estado IS
+    'Estado de la deuda en SGA: 1 = activa (bloqueo vigente), 3 = saldada (bloqueo retirado). NULL = sin bloqueo.';
+
+ALTER TABLE milab.multa
     ADD COLUMN IF NOT EXISTS periodo INT;
 
 COMMENT ON COLUMN milab.multa.periodo IS

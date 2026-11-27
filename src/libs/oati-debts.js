@@ -1,7 +1,12 @@
 const { XMLParser } = require('fast-xml-parser');
 
 const { config } = require('../config/config');
-const { getAcademicServicePath, requestOati, requestOatiPost } = require('./oati-client');
+const {
+  getAcademicServicePath,
+  requestOati,
+  requestOatiPost,
+  requestOatiPut,
+} = require('./oati-client');
 
 // Full SGA concept catalog. Only the codes classified as LABORATORIO count as lab sanctions.
 const SGA_DEBT_CONCEPT_NAMES = Object.freeze({
@@ -151,6 +156,7 @@ const SGA_OTHER_CONCEPT_TYPES = Object.freeze({
 
 const SGA_MILAB_CONCEPT_CODE = 9;
 const SGA_ACTIVE_DEBT_STATE = '1';
+const SGA_SETTLED_DEBT_STATE = '3';
 // const SGA_ACADEMIC_PERIOD_SEGMENT = 'A'; // Se usaba en fetchAcademicPeriod (desactivado).
 
 // Helpers usados por fetchAcademicPeriod (desactivado). Se mantienen comentados
@@ -334,11 +340,13 @@ class SgaDebtService {
     academicServicePath = getAcademicServicePath,
     requestAcademicData = requestOati,
     requestPost = requestOatiPost,
+    requestPut = requestOatiPut,
   } = {}) {
     this.config = serviceConfig;
     this.academicServicePath = academicServicePath;
     this.requestAcademicData = requestAcademicData;
     this.requestPost = requestPost;
+    this.requestPut = requestPut;
     this.xmlParser = new XMLParser({
       ignoreAttributes: true,
       parseTagValue: false,
@@ -467,6 +475,67 @@ class SgaDebtService {
       throw new Error('El servicio SGA no devolvió el identificador de la deuda creada.');
     }
     return deudaId;
+  }
+
+  // Arma el cuerpo _putputdeudores_id para saldar (desbloquear) la deuda en SGA.
+  buildDebtSettlePayload({ deudaId, codigo, fechaSancion, periodo, fechaPago } = {}) {
+    const idDeuda = Number(deudaId);
+    if (!Number.isInteger(idDeuda) || idDeuda <= 0) {
+      throw new Error('La sanción no tiene un identificador de deuda válido para SGA.');
+    }
+
+    const codigoEstudiante = normalizeNumericIdentifier(codigo);
+    if (!codigoEstudiante) {
+      throw new Error('La sanción no tiene un código de estudiante válido para SGA.');
+    }
+
+    const anioSancion = Number(String(fechaSancion || '').slice(0, 4));
+    if (!Number.isInteger(anioSancion) || anioSancion <= 0) {
+      throw new Error('La sanción no tiene un año válido para SGA.');
+    }
+
+    const periodoAcademico = Number(periodo);
+    if (!Number.isInteger(periodoAcademico) || periodoAcademico <= 0) {
+      throw new Error('El período académico no es válido para SGA.');
+    }
+
+    const fechaDePago = String(fechaPago || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaDePago)) {
+      throw new Error('La fecha de pago no es válida para SGA.');
+    }
+
+    return {
+      estado: SGA_SETTLED_DEBT_STATE,
+      fecha_pago: fechaDePago,
+      id: idDeuda,
+      codigo_estudiante: Number(codigoEstudiante),
+      anio: anioSancion,
+      periodo: periodoAcademico,
+    };
+  }
+
+  // Salda (desbloquea) la deuda de la sanción en SGA. Devuelve el identificador saldado.
+  async settleStudentDebt({ deudaId, codigo, fechaSancion, periodo, fechaPago } = {}) {
+    if (!this.isConfigured()) {
+      throw new Error('El servicio SGA no está configurado en este ambiente.');
+    }
+
+    const idDeuda = Number(deudaId);
+    const payload = this.buildDebtSettlePayload({
+      deudaId,
+      codigo,
+      fechaSancion,
+      periodo,
+      fechaPago,
+    });
+
+    await this.requestPut(
+      `${this.buildDebtorsPath('deudores')}/${idDeuda}`,
+      { _putputdeudores_id: payload },
+      'application/json'
+    );
+
+    return idDeuda;
   }
 
   parseResponse(response) {
