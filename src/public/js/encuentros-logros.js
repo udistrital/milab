@@ -24,15 +24,22 @@
       if (!response.ok || !data.ok)
         throw new Error(data.message || 'No fue posible consultar tus logros.');
       list.replaceChildren();
-      if (!data.logros.length) {
+      const achievements = [
+        ...(data.logros || []).map((achievement) => ({ ...achievement, tipo: 'encuentro' })),
+        ...(data.medallas_laboratorios || []),
+      ].sort(
+        (left, right) =>
+          new Date(right.fecha_obtencion).getTime() - new Date(left.fecha_obtencion).getTime()
+      );
+      if (!achievements.length) {
         const empty = document.createElement('p');
         empty.className = 'col-12 text-muted text-center py-4';
         empty.textContent =
-          'Aún no tienes medallas. Al completar un encuentro y recibir el certificado, aparecerá aquí.';
+          'Aún no tienes medallas. Al activar un laboratorio o completar un encuentro, aparecerán aquí.';
         list.appendChild(empty);
         return;
       }
-      data.logros.forEach((achievement) => {
+      achievements.forEach((achievement) => {
         const col = document.createElement('div');
         col.className = 'col-12 col-md-6 col-lg-4';
         const card = document.createElement('article');
@@ -44,22 +51,37 @@
         icon.setAttribute('aria-hidden', 'true');
         const heading = document.createElement('h3');
         heading.className = 'h5 mt-2';
-        heading.textContent = achievement.evento;
-        const eventDate = document.createElement('p');
-        eventDate.className = 'mb-1';
-        eventDate.textContent = `Participación: ${formatDate(achievement.fecha_evento)}`;
+        heading.textContent =
+          achievement.tipo === 'laboratorio' ? achievement.titulo : achievement.evento;
+        if (achievement.tipo === 'laboratorio') {
+          const description = document.createElement('p');
+          description.className = 'mb-1';
+          description.textContent = achievement.descripcion;
+          body.append(icon, heading, description);
+          const level = document.createElement('span');
+          level.className = 'badge text-bg-warning';
+          level.textContent = `Nivel ${achievement.nivel}`;
+          body.appendChild(level);
+        } else {
+          const eventDate = document.createElement('p');
+          eventDate.className = 'mb-1';
+          eventDate.textContent = `Participación: ${formatDate(achievement.fecha_evento)}`;
+          body.append(icon, heading, eventDate);
+        }
         const received = document.createElement('p');
         received.className = 'small text-muted';
         received.textContent = `Medalla obtenida: ${new Intl.DateTimeFormat('es-CO', {
           dateStyle: 'medium',
           timeZone: 'America/Bogota',
         }).format(new Date(achievement.fecha_obtencion))}`;
-        body.append(icon, heading, eventDate, received);
-        const download = document.createElement('a');
-        download.className = 'btn btn-sm btn-outline-primary';
-        download.href = `/milab/encuentros/api/certificados/${achievement.certificado_id}/descargar`;
-        download.textContent = `Descargar certificado ${achievement.codigo_certificado}`;
-        body.appendChild(download);
+        body.appendChild(received);
+        if (achievement.tipo !== 'laboratorio') {
+          const download = document.createElement('a');
+          download.className = 'btn btn-sm btn-outline-primary';
+          download.href = `/milab/encuentros/api/certificados/${achievement.certificado_id}/descargar`;
+          download.textContent = `Descargar certificado ${achievement.codigo_certificado}`;
+          body.appendChild(download);
+        }
         card.appendChild(body);
         col.appendChild(card);
         list.appendChild(col);

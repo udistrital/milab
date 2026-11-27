@@ -79,6 +79,17 @@
       <form id="crearSalaForm" class="row g-3" novalidate>
         <input type="hidden" id="crearSalaId" value="<%= selectedSalaInfo?.id || '' %>">
         <input type="hidden" id="crearModoUalInfo" value="<%= ualInfoMode ? 'true' : 'false' %>">
+        <% if (ualInfoMode) { %>
+          <div class="col-12">
+            <div class="alert alert-info mb-0">
+              <strong>Condiciones para préstamos de prácticas libres y docentes</strong>
+              <ul class="mb-0 mt-1">
+                <li>La solicitud se puede realizar hasta 15 minutos después del inicio de la práctica.</li>
+                <li>La devolución debe finalizar al menos 15 minutos antes de que termine el segundo bloque programado.</li>
+              </ul>
+            </div>
+          </div>
+        <% } %>
         <div class="<%= ualInfoMode ? 'd-none' : 'col-md-6' %>">
           <label for="crearFacultad" class="form-label">Facultad *</label>
           <select class="form-select" id="crearFacultad" <%= ualInfoMode ? '' : 'required' %>>
@@ -157,27 +168,42 @@
           >
           <label class="form-check-label" for="crearPermiteDocente">Practica Docente / Magistral</label>
         </div>
-        <div class="col-md-4 form-check">
-          <input
-            class="form-check-input"
-            type="checkbox"
-            id="crearTieneBancos"
-            <%= selectedUalConfig ? (selectedUalConfig.tiene_bancos ? 'checked' : '') : '' %>
-          >
-          <label class="form-check-label" for="crearTieneBancos">La UAL tiene bancos</label>
-        </div>
-        <div class="col-md-4">
-          <label for="crearCantidadBancos" class="form-label">Cantidad de bancos</label>
-          <input
-            type="number"
-            class="form-control"
-            id="crearCantidadBancos"
-            min="0"
-            step="1"
-            value="<%= selectedUalConfig?.cantidad_bancos || 0 %>"
-            <%= selectedUalConfig?.tiene_bancos ? 'required' : '' %>
-          >
-        </div>
+        <% if (ualInfoMode) { %>
+          <div class="col-md-4 form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="crearTieneBancos"
+              <%= selectedUalConfig ? (selectedUalConfig.tiene_bancos ? 'checked' : '') : '' %>
+            >
+            <label class="form-check-label" for="crearTieneBancos">La UAL tiene bancos</label>
+          </div>
+          <div class="col-md-4">
+            <label for="crearCantidadBancos" class="form-label">Cantidad de bancos</label>
+            <input
+              type="number"
+              class="form-control"
+              id="crearCantidadBancos"
+              min="0"
+              step="1"
+              value="<%= selectedUalConfig?.cantidad_bancos || 0 %>"
+              <%= selectedUalConfig?.tiene_bancos ? 'required' : '' %>
+            >
+          </div>
+          <div class="col-md-4">
+            <label for="crearCapacidadPorBanco" class="form-label">Capacidad de cada banco (personas)</label>
+            <input
+              type="number"
+              class="form-control"
+              id="crearCapacidadPorBanco"
+              min="1"
+              step="1"
+              value="<%= selectedUalConfig?.capacidad_por_banco > 0 ? selectedUalConfig.capacidad_por_banco : '' %>"
+              <%= selectedUalConfig?.tiene_bancos ? 'required' : '' %>
+            >
+            <div class="form-text text-light-emphasis">Se usa la misma capacidad para todos los bancos.</div>
+          </div>
+        <% } %>
         <div class="col-md-6 form-check">
           <input
             class="form-check-input"
@@ -394,6 +420,7 @@
     var crearSalaSubmitBtn = document.getElementById('crearSalaSubmitBtn');
     var crearTieneBancos = document.getElementById('crearTieneBancos');
     var crearCantidadBancos = document.getElementById('crearCantidadBancos');
+    var crearCapacidadPorBanco = document.getElementById('crearCapacidadPorBanco');
     var editarSalaModalEl = document.getElementById('editarSalaModal');
     var editarSalaForm = document.getElementById('editarSalaForm');
     var editarSalaSubmitBtn = document.getElementById('editarSalaSubmitBtn');
@@ -522,6 +549,9 @@
         cantidad_bancos: document.getElementById(prefix + 'CantidadBancos')
           ? document.getElementById(prefix + 'CantidadBancos').value
           : '0',
+        capacidad_por_banco: document.getElementById(prefix + 'CapacidadPorBanco')
+          ? document.getElementById(prefix + 'CapacidadPorBanco').value
+          : '0',
         modo_ual_info: document.getElementById(prefix + 'ModoUalInfo')
           ? document.getElementById(prefix + 'ModoUalInfo').value
           : 'false',
@@ -529,15 +559,18 @@
     }
 
     function syncBanksFieldState() {
-      if (!crearTieneBancos || !crearCantidadBancos) return;
+      if (!crearTieneBancos || !crearCantidadBancos || !crearCapacidadPorBanco) return;
       if (crearTieneBancos.checked) {
         crearCantidadBancos.required = true;
+        crearCapacidadPorBanco.required = true;
         if (!crearCantidadBancos.value || Number(crearCantidadBancos.value) <= 0) {
           crearCantidadBancos.value = '1';
         }
       } else {
         crearCantidadBancos.required = false;
+        crearCapacidadPorBanco.required = false;
         crearCantidadBancos.value = '0';
+        crearCapacidadPorBanco.value = '0';
       }
     }
 
@@ -559,7 +592,7 @@
       });
     }
 
-    if (crearTieneBancos && crearCantidadBancos) {
+    if (crearTieneBancos && crearCantidadBancos && crearCapacidadPorBanco) {
       crearTieneBancos.addEventListener('change', syncBanksFieldState);
       syncBanksFieldState();
     }

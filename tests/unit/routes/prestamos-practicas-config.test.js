@@ -375,6 +375,14 @@ test('prestamos conserva el submódulo al deslizar entre laboratorios activados'
       ),
       '/milab/prestamos/activacion/laboratorios/83'
     );
+    assert.equal(
+      loaded.route.__private.buildLaboratoryCarouselHref(
+        { ualId: 84, loanActivated: true },
+        new Set(['/milab/prestamos/gestion-solicitudes']),
+        null
+      ),
+      '/milab/prestamos/gestion-solicitudes?laboratorio=84'
+    );
   } finally {
     loaded.restore();
   }
@@ -646,23 +654,31 @@ test('prestamos rejects a loan request without an equipment selection', async ()
   }
 });
 
-test('prestamos valida reglas de tiempo para solicitud de practica libre', () => {
+test('prestamos limita a 15 minutos la solicitud de práctica libre después de iniciar', () => {
   const loaded = loadRoute();
 
   try {
-    const message = loaded.route.__private.validateLoanRequestPayload({
+    const payload = {
       equipo_id: '15',
-      fecha_inicio: '2020-01-01T08:00',
-      fecha_fin: '2020-01-01T10:00',
+      fecha_inicio: '2025-01-10T09:00',
+      fecha_fin: '2025-01-10T09:45',
       tipo_prestamo: 'libre',
       justificacion_academica: 'Solicitud de practica libre para pruebas.',
       categoria_practica: 'academica',
       firma_digital: 'firma-ok',
-    });
+    };
 
     assert.equal(
-      message,
-      'La fecha de inicio debe ser posterior a la fecha actual para prestamos de practica libre.'
+      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:14:00Z')),
+      ''
+    );
+    assert.equal(
+      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:15:00Z')),
+      ''
+    );
+    assert.equal(
+      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:16:00Z')),
+      'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.'
     );
   } finally {
     loaded.restore();
@@ -698,9 +714,37 @@ test('prestamos valida reglas de ventana para modalidad clase', () => {
       },
       now: new Date('2025-01-10T13:55:00.000Z'),
     });
+    const allowedReturnMessage = loaded.route.__private.evaluateLoanModeConstraints({
+      payload: {
+        tipo_prestamo: 'libre',
+        fecha_fin: '2025-01-10T09:45',
+      },
+      selectedSlot: {
+        fecha: '2025-01-10',
+        horaInicio: '09:00',
+        horaFin: '10:00',
+      },
+      now: new Date('2025-01-10T13:55:00.000Z'),
+    });
 
-    assert.match(lateMessage, /hasta 15 minutos despues de iniciada la clase/);
-    assert.match(returnMessage, /devolucion maxima es 15 minutos antes/);
+    assert.match(lateMessage, /hasta 15 minutos despues de iniciada la practica/);
+    assert.match(returnMessage, /debe finalizar al menos 15 minutos antes/);
+    assert.equal(allowedReturnMessage, '');
+
+    const freePracticeMessage = loaded.route.__private.evaluateLoanModeConstraints({
+      payload: {
+        tipo_prestamo: 'libre',
+        fecha_fin: '2025-01-10T09:40',
+      },
+      selectedSlot: {
+        fecha: '2025-01-10',
+        horaInicio: '09:00',
+        horaFin: '10:00',
+      },
+      now: new Date('2025-01-10T14:20:00.000Z'),
+    });
+
+    assert.match(freePracticeMessage, /hasta 15 minutos despues de iniciada la practica/);
   } finally {
     loaded.restore();
   }
@@ -1158,6 +1202,31 @@ test('prestamos modela el progreso de activacion por laboratorio', () => {
   }
 });
 
+test('prestamos no considera configurada la UAL si aun no existe su registro', () => {
+  const loaded = loadRoute();
+
+  try {
+    const model = loaded.route.__private.buildLaboratoryActivationModel({
+      ual_id: 8,
+      laboratorio: 'Lab sin información UAL',
+      estado_oficial: 'aprobado',
+      estado_complementario: 'aprobado',
+      total_salas_activas: 1,
+      total_horarios_activos: 1,
+      total_equipos_listos: 1,
+      ual_tiene_bancos: null,
+      ual_cantidad_bancos: null,
+      ual_capacidad_por_banco: null,
+      activacion_configuracion_json: { tiene_practicas: false },
+    });
+
+    assert.equal(model.checklist.informacionUal, false);
+    assert.equal(model.canActivateLoans, false);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos requiere una practica activa solo cuando el laboratorio eligio ofrecerlas', () => {
   const loaded = loadRoute();
 
@@ -1257,6 +1326,68 @@ test('prestamos arma checklist de activacion y resume pendientes', () => {
     assert.match(missing, /Información de la UAL/);
     assert.match(missing, /Horario de laboratorio/);
     assert.match(missing, /Prácticas del laboratorio/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos registra medallas de laboratorio una sola vez por laboratorista y UAL', async () => {
+  const loaded = loadRoute();
+
+  try {
+    const queries = [];
+    const client = {
+      async query(sql, params) {
+        queries.push({ sql, params });
+        return { rowCount: 0, rows: [] };
+      },
+    };
+
+    const skipped = await loaded.route.__private.recordLaboratoryConfigurationMedal(
+      { session: { user: { id: 8, roles: ['monitor'] } } },
+      42,
+      client
+    );
+    const recorded = await loaded.route.__private.recordLaboratoryConfigurationMedal(
+      { session: { user: { id: 8, roles: ['laboratorista'] } } },
+      42,
+      client
+    );
+
+    assert.equal(skipped, false);
+    assert.equal(recorded, true);
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /ON CONFLICT \(usuario_id, ual_id\) DO NOTHING/);
+    assert.deepEqual(queries[0].params, [8, 42]);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos exige capacidad de los bancos en la informacion de la UAL', () => {
+  const loaded = loadRoute();
+
+  try {
+    const basePayload = {
+      modo_ual_info: 'true',
+      facultad: 'Facultad de Ingeniería',
+      laboratorio: 'Laboratorio de pruebas',
+      tipo_espacio: 'Laboratorio',
+      capacidad: '20',
+      tiene_bancos: 'true',
+      cantidad_bancos: '4',
+    };
+    const missingCapacity = loaded.route.__private.buildSalaPayload(basePayload);
+    const configured = loaded.route.__private.buildSalaPayload({
+      ...basePayload,
+      capacidad_por_banco: '3',
+    });
+
+    assert.equal(
+      loaded.route.__private.validateSalaPayload(missingCapacity),
+      'Debes indicar la capacidad en personas de cada banco.'
+    );
+    assert.equal(loaded.route.__private.validateSalaPayload(configured), '');
   } finally {
     loaded.restore();
   }

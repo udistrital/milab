@@ -622,10 +622,8 @@
     function updateSubmitAvailability() {
       var hasSchedule = Boolean(selectedScheduleKey);
       var modeAllowsSelectedSchedule = !(
-        tipoPrestamoInput &&
-        tipoPrestamoInput.value === 'clase' &&
         selectedScheduleData &&
-        !selectedScheduleData.permitePrestamoClase
+        !selectedScheduleData.permitePrestamo
       );
       var hasCategoria = Boolean(categoriaInput && categoriaInput.value);
       var hasJustificacion = Boolean(justificacionInput && justificacionInput.value.trim().length >= 10);
@@ -669,31 +667,27 @@
       var tipoPrestamo = tipoPrestamoInput ? tipoPrestamoInput.value : 'libre';
       fechaInicioInput.value = selectedScheduleData.fecha + 'T' + selectedScheduleData.horaInicio;
       fechaFinInput.value = selectedScheduleData.fecha + 'T' + (
-        tipoPrestamo === 'clase' && selectedScheduleData.permitePrestamoClase
-          ? selectedScheduleData.horaFinClase
+        selectedScheduleData.permitePrestamo
+          ? selectedScheduleData.horaFinPrestamo
           : selectedScheduleData.horaFin
       );
 
       if (!statusElement) return;
-      if (tipoPrestamo === 'clase') {
-        if (!selectedScheduleData.permitePrestamoClase) {
-          statusElement.className = 'alert alert-warning';
-          statusElement.textContent = 'Este bloque no permite prestamo en clase porque no existe una ventana valida de devolucion.';
-          return;
-        }
-        statusElement.className = selectedScheduleData.disponible ? 'alert alert-secondary' : 'alert alert-warning';
+      if (!selectedScheduleData.permitePrestamo) {
+        statusElement.className = 'alert alert-warning';
         statusElement.textContent =
-          'Prestamo en clase: la devolucion maxima sera a las ' + selectedScheduleData.horaFinClase + '.';
+          'Este bloque no permite el préstamo porque no existe una ventana válida de devolución.';
         return;
       }
 
-      if (selectedScheduleData.disponible) {
-        statusElement.className = 'alert alert-secondary';
-        statusElement.textContent = 'Horario disponible seleccionado.';
-      } else {
-        statusElement.className = 'alert alert-warning';
-        statusElement.textContent = 'Horario ocupado seleccionado: la solicitud se registrará en cola de espera.';
-      }
+      statusElement.className = selectedScheduleData.disponible ? 'alert alert-secondary' : 'alert alert-warning';
+      statusElement.textContent =
+        (tipoPrestamo === 'clase' ? 'Préstamo en clase' : 'Práctica libre') +
+        ': la devolución máxima será a las ' + selectedScheduleData.horaFinPrestamo +
+        ' (15 minutos antes de terminar el bloque).' +
+        (selectedScheduleData.disponible
+          ? ''
+          : ' El horario está ocupado; la solicitud se registrará en cola de espera.');
     }
 
     function renderScheduleOptions(horarios) {
@@ -714,9 +708,9 @@
         button.innerHTML =
           '<div><strong>' + escapeHtml(slot.fecha) + '</strong></div>' +
           '<div>' + escapeHtml(slot.horaInicio) + ' - ' + escapeHtml(slot.horaFin) + (slot.disponible ? '' : ' (ocupado: se enviará a cola)') + '</div>' +
-          (slot.permitePrestamoClase
-            ? '<div class="small text-muted">Clase: devolucion maxima ' + escapeHtml(slot.horaFinClase || '') + '</div>'
-            : '<div class="small text-muted">Clase: no disponible en este bloque</div>');
+          (slot.permitePrestamo
+            ? '<div class="small text-muted">Devolución máxima: ' + escapeHtml(slot.horaFinPrestamo || '') + ' (15 min antes de terminar)</div>'
+            : '<div class="small text-muted">No hay una ventana válida para devolver en este bloque</div>');
 
         button.addEventListener('click', function() {
           clearScheduleSelection();

@@ -35,6 +35,11 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
+  #horariosRegistradosCalendar.ual-calendar-day thead tr,
+  #horariosRegistradosCalendar.ual-calendar-day tbody tr {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+
   #horariosRegistradosCalendar th,
   #horariosRegistradosCalendar td {
     display: block;
@@ -492,8 +497,9 @@
       <div class="modal-body">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 ual-calendar-controls">
           <div class="btn-group" role="group" aria-label="Vista del calendario">
-            <button type="button" class="btn btn-outline-primary active" data-calendar-mode="week">Semana</button>
             <button type="button" class="btn btn-outline-primary" data-calendar-mode="month">Mes</button>
+            <button type="button" class="btn btn-outline-primary active" data-calendar-mode="week">Semana</button>
+            <button type="button" class="btn btn-outline-primary" data-calendar-mode="day">Día</button>
           </div>
           <div class="d-flex align-items-center gap-2">
             <button type="button" class="btn btn-outline-secondary" id="calendarioAnteriorBtn" aria-label="Periodo anterior">
@@ -514,7 +520,7 @@
         </div>
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2 ual-calendar-footer">
           <p class="small text-muted mb-0">
-            En la vista semanal puedes marcar espacios vacíos de días configurados como práctica libre.
+            En las vistas semanal y diaria puedes marcar espacios vacíos de días configurados como práctica libre.
             <span class="badge text-bg-warning ms-1">Festivo</span>
           </p>
           <div class="d-flex flex-wrap align-items-end gap-2">
@@ -909,10 +915,11 @@
     }
 
     function renderWeekCalendar() {
-      var weekStart = getWeekStart(calendarAnchorDate);
+      var isDayView = calendarMode === 'day';
+      var weekStart = isDayView ? calendarAnchorDate : getWeekStart(calendarAnchorDate);
       var weekdayFormatter = new Intl.DateTimeFormat('es-CO', { weekday: 'short' });
       var monthFormatter = new Intl.DateTimeFormat('es-CO', { month: 'short' });
-      var days = Array.from({ length: 7 }, function(_item, index) {
+      var days = Array.from({ length: isDayView ? 1 : 7 }, function(_item, index) {
         var date = addDays(weekStart, index);
         return {
           date: dateKey(date),
@@ -937,6 +944,7 @@
       resetCalendar();
       calendarTable.classList.remove('ual-calendar-month');
       calendarTable.classList.add('ual-calendar-week');
+      calendarTable.classList.toggle('ual-calendar-day', isDayView);
       calendarTable.classList.toggle('ual-calendar-week--dense', slotCount >= 12);
       calendarTable.style.setProperty('--calendar-week-rows', String(slotCount));
       var header = document.createElement('tr');
@@ -1016,14 +1024,14 @@
         calendarTable.querySelector('tbody').appendChild(row);
       }
 
-      calendarPeriodLabel.textContent =
-        new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }).format(
-          weekStart
-        ) +
-        ' – ' +
-        new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }).format(
-          addDays(weekStart, 6)
-        );
+      var dateFormatter = new Intl.DateTimeFormat('es-CO', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+      calendarPeriodLabel.textContent = isDayView
+        ? dateFormatter.format(weekStart)
+        : dateFormatter.format(weekStart) + ' – ' + dateFormatter.format(addDays(weekStart, 6));
     }
 
     function renderMonthCalendar() {
@@ -1038,6 +1046,7 @@
       resetCalendar();
       calendarTable.classList.remove('ual-calendar-week');
       calendarTable.classList.remove('ual-calendar-week--dense');
+      calendarTable.classList.remove('ual-calendar-day');
       calendarTable.classList.add('ual-calendar-month');
       calendarTable.style.removeProperty('--calendar-week-rows');
 
@@ -1301,7 +1310,7 @@
 
     calendarModeButtons.forEach(function(button) {
       button.addEventListener('click', function() {
-        calendarMode = button.getAttribute('data-calendar-mode') === 'month' ? 'month' : 'week';
+        calendarMode = button.getAttribute('data-calendar-mode') || 'week';
         calendarModeButtons.forEach(function(modeButton) {
           modeButton.classList.toggle(
             'active',
@@ -1321,6 +1330,8 @@
           1,
           12
         );
+      } else if (calendarMode === 'day') {
+        calendarAnchorDate = addDays(calendarAnchorDate, direction);
       } else {
         calendarAnchorDate = addDays(getWeekStart(calendarAnchorDate), direction * 7);
       }
@@ -1343,10 +1354,13 @@
     if (todayPeriodButton) {
       todayPeriodButton.addEventListener('click', function() {
         calendarAnchorDate = new Date(currentDateKeyInBogota() + 'T12:00:00');
-        calendarMode = 'week';
+        if (calendarMode !== 'day') calendarMode = 'week';
         if (weekInput) weekInput.value = currentDateKeyInBogota();
         calendarModeButtons.forEach(function(button) {
-          button.classList.toggle('active', button.getAttribute('data-calendar-mode') === 'week');
+          button.classList.toggle(
+            'active',
+            button.getAttribute('data-calendar-mode') === calendarMode
+          );
         });
         renderCalendar();
       });

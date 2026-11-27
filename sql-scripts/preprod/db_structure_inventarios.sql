@@ -734,15 +734,41 @@ CREATE TABLE IF NOT EXISTS prestamo_ual_configuracion (
     ual_id INT NOT NULL,
     tiene_bancos BOOLEAN NOT NULL DEFAULT FALSE,
     cantidad_bancos INT NOT NULL DEFAULT 0,
+    capacidad_por_banco INT NOT NULL DEFAULT 0,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_prestamo_ual_configuracion PRIMARY KEY (ual_id),
     CONSTRAINT fk_prestamo_ual_configuracion_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
     CONSTRAINT ck_prestamo_ual_cantidad_bancos CHECK (cantidad_bancos >= 0),
+    CONSTRAINT ck_prestamo_ual_capacidad_por_banco CHECK (capacidad_por_banco >= 0),
     CONSTRAINT ck_prestamo_ual_bancos_consistencia CHECK (
         (tiene_bancos = FALSE AND cantidad_bancos = 0) OR
         (tiene_bancos = TRUE AND cantidad_bancos > 0)
     )
+);
+
+ALTER TABLE prestamo_ual_configuracion
+    ADD COLUMN IF NOT EXISTS capacidad_por_banco INT NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_prestamo_ual_capacidad_por_banco'
+          AND conrelid = 'prestamo_ual_configuracion'::regclass
+    ) THEN
+        ALTER TABLE prestamo_ual_configuracion
+            ADD CONSTRAINT ck_prestamo_ual_capacidad_por_banco
+            CHECK (capacidad_por_banco >= 0);
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS prestamo_laboratorista_medalla (
+    usuario_id BIGINT NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+    ual_id INT NOT NULL REFERENCES ual(ual_id) ON DELETE CASCADE,
+    fecha_obtencion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_prestamo_laboratorista_medalla PRIMARY KEY (usuario_id, ual_id)
 );
 
 COMMIT;

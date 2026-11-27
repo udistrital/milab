@@ -66,13 +66,97 @@
     background-color: #4858a1;
     box-shadow: 0 0 0 0.2rem rgba(23, 42, 71, 0.2);
   }
+
+  .activation-lab-carousel {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 1rem;
+  }
+
+  .activation-lab-carousel__arrow {
+    display: inline-flex;
+    width: 2.5rem;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e7e5e4;
+    border-radius: 50%;
+    background: #fff;
+    color: #9a5b00;
+    font-size: 1.15rem;
+    text-decoration: none;
+    box-shadow: 0 3px 10px rgba(120, 87, 30, 0.08);
+  }
+
+  .activation-lab-carousel__arrow:hover,
+  .activation-lab-carousel__arrow:focus-visible {
+    border-color: #e8b84a;
+    background: #fff3d4;
+    color: #9a5b00;
+  }
+
+  .activation-lab-carousel__current {
+    min-width: 0;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid #e7e5e4;
+    border-radius: 0.8rem;
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(120, 87, 30, 0.06);
+  }
+
+  @media (max-width: 575.98px) {
+    .activation-lab-carousel {
+      grid-template-columns: 2.25rem minmax(0, 1fr) 2.25rem;
+      gap: 0.4rem;
+    }
+
+    .activation-lab-carousel__arrow {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
+  }
 </style>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
     <h1 class="app-page-title">Gestionar laboratorio</h1>
-    <p class="app-page-subtitle"><strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %></p>
+    <% if (!laboratoryCarousel || laboratoryCarousel.laboratorios.length <= 1) { %>
+      <p class="app-page-subtitle"><strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %></p>
+    <% } %>
   </section>
+
+  <% if (laboratoryCarousel && laboratoryCarousel.laboratorios.length > 1) { %>
+    <section class="activation-lab-carousel" aria-label="Navegar por los laboratorios">
+      <a
+        class="activation-lab-carousel__arrow"
+        href="<%= laboratoryCarousel.previousHref %>"
+        aria-label="Laboratorio anterior"
+      ><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+      <article class="activation-lab-carousel__current">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+          <div class="min-w-0">
+            <div class="fw-bold text-uppercase"><%= laboratorio.laboratorio %></div>
+            <div class="small text-muted"><%= laboratorio.facultad %><% if (laboratorio.dependencia) { %> · <%= laboratorio.dependencia %><% } %></div>
+          </div>
+          <% if (laboratorio.loanActivated) { %>
+            <span class="badge text-bg-success">Activado</span>
+          <% } else { %>
+            <span class="badge text-bg-warning"><%= laboratorio.completion.percent %>% configurado</span>
+          <% } %>
+        </div>
+        <div class="small text-muted mt-1" aria-live="polite">
+          Laboratorio <%= laboratoryCarousel.selectedIndex + 1 %> de <%= laboratoryCarousel.laboratorios.length %>
+        </div>
+      </article>
+      <a
+        class="activation-lab-carousel__arrow"
+        href="<%= laboratoryCarousel.nextHref %>"
+        aria-label="Siguiente laboratorio"
+      ><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+    </section>
+  <% } %>
 
   <% if (successMessage) { %>
     <div class="alert alert-success" role="status"><%= successMessage %></div>

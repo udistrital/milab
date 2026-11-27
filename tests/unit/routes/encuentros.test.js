@@ -1889,12 +1889,22 @@ test('public certificate verification exposes only required certificate data', a
 });
 
 test('personal achievements are scoped to the authenticated MiLab user', async () => {
-  let queryValues;
+  const queryCalls = [];
   const setup = buildTestApp(async (sql, values) => {
-    assert.match(sql, /WHERE l\.usuario_id = \$1/);
-    queryValues = values;
+    queryCalls.push({ sql, values });
+    if (sql.includes('FROM encuentro_logro')) {
+      assert.match(sql, /WHERE l\.usuario_id = \$1/);
+      return {
+        rows: [{ id: 4, evento: 'Encuentro institucional', codigo_certificado: 'CERT-123' }],
+      };
+    }
+
+    assert.match(sql, /FROM prestamo_laboratorista_medalla/);
+    assert.match(sql, /WHERE medalla\.usuario_id = \$1/);
     return {
-      rows: [{ id: 4, evento: 'Encuentro institucional', codigo_certificado: 'CERT-123' }],
+      rows: [
+        { nivel: 2, laboratorios: 'Laboratorio A, Laboratorio B', fecha_obtencion: '2025-01-10' },
+      ],
     };
   });
 
@@ -1904,7 +1914,17 @@ test('personal achievements are scoped to the authenticated MiLab user', async (
       .set('x-test-role', 'estudiante');
     assert.equal(response.status, 200);
     assert.equal(response.body.logros[0].codigo_certificado, 'CERT-123');
-    assert.deepEqual(queryValues, [12]);
+    assert.deepEqual(
+      queryCalls.map((call) => call.values),
+      [[12], [12]]
+    );
+    assert.deepEqual(response.body.medallas_laboratorios[0], {
+      tipo: 'laboratorio',
+      nivel: 2,
+      titulo: 'Laboratorista MiLab · Nivel 2',
+      descripcion: 'Configuraste y activaste 2 laboratorios: Laboratorio A, Laboratorio B.',
+      fecha_obtencion: '2025-01-10',
+    });
   } finally {
     setup.restore();
   }

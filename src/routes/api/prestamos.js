@@ -2329,8 +2329,9 @@ router.get(
     }
 
     try {
-      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
-      const laboratorio = laboratorios[0] || null;
+      const laboratorios = await fetchLaboratoryActivationOverview(req);
+      const selectedIndex = laboratorios.findIndex((item) => Number(item.ualId) === ualId);
+      const laboratorio = selectedIndex >= 0 ? laboratorios[selectedIndex] : null;
 
       if (!laboratorio) {
         return res.redirect(
@@ -2338,8 +2339,27 @@ router.get(
         );
       }
 
+      const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+      const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, { viewOnly: true });
+      const previousLaboratorio =
+        laboratorios.length > 1
+          ? laboratorios[(selectedIndex - 1 + laboratorios.length) % laboratorios.length]
+          : null;
+      const nextLaboratorio =
+        laboratorios.length > 1 ? laboratorios[(selectedIndex + 1) % laboratorios.length] : null;
+
       return res.render('home/prestamos/activacion/wizard', {
         laboratorio,
+        laboratoryCarousel: {
+          laboratorios,
+          selectedIndex,
+          previousHref: previousLaboratorio
+            ? buildLaboratoryCarouselHref(previousLaboratorio, allowedRoutes, null)
+            : null,
+          nextHref: nextLaboratorio
+            ? buildLaboratoryCarouselHref(nextLaboratorio, allowedRoutes, null)
+            : null,
+        },
         steps: buildActivationWizardSteps(laboratorio),
         checklist: buildLoanActivationChecklist(laboratorio),
         successMessage: sanitizeText(req.query.success),
@@ -2461,12 +2481,30 @@ router.post(
         );
       }
 
-      const activationSaved = await persistLaboratoryLoanActivation({
-        req,
-        ualId,
-        laboratorio,
-        checklist,
-      });
+      const client = await pool.connect();
+      let activationSaved;
+      try {
+        await client.query('BEGIN');
+        activationSaved = await persistLaboratoryLoanActivation({
+          req,
+          ualId,
+          laboratorio,
+          checklist,
+          client,
+        });
+        if (activationSaved) {
+          await recordLaboratoryConfigurationMedal(req, ualId, client);
+          await client.query('COMMIT');
+        } else {
+          await client.query('ROLLBACK');
+        }
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
       if (!activationSaved) {
         return res.redirect(
           `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent(
@@ -3088,6 +3126,29 @@ async function persistLaboratoryLoanActivation({
   return true;
 }
 
+async function recordLaboratoryConfigurationMedal(req, ualId, client = pool) {
+  const user = req?.session?.user || {};
+  const roles = normalizeRoles(user.roles || user.tipo);
+  if (!roles.includes('laboratorista')) {
+    return false;
+  }
+
+  const userId = Number(user.id);
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    throw new Error('No fue posible identificar al laboratorista que activa el laboratorio.');
+  }
+
+  await client.query(
+    `
+      INSERT INTO prestamo_laboratorista_medalla (usuario_id, ual_id)
+      VALUES ($1, $2)
+      ON CONFLICT (usuario_id, ual_id) DO NOTHING
+    `,
+    [userId, Number(ualId)]
+  );
+  return true;
+}
+
 async function ensurePracticeIncidenceSchema(client = pool) {
   if (practiceIncidenceSchemaEnsured) {
     return;
@@ -3648,7 +3709,7 @@ function buildLoanRequestPayload(body = {}) {
   };
 }
 
-function validateLoanRequestPayload(payload) {
+function validateLoanRequestPayload(payload, now = new Date()) {
   if (!/^\d+$/.test(String(payload.equipo_id || ''))) {
     return 'El equipo seleccionado no es valido.';
   }
@@ -3677,8 +3738,11 @@ function validateLoanRequestPayload(payload) {
     return 'El tipo de prestamo no es valido.';
   }
 
-  if (String(payload.tipo_prestamo || '').toLowerCase() !== 'clase' && fechaInicio <= new Date()) {
-    return 'La fecha de inicio debe ser posterior a la fecha actual para prestamos de practica libre.';
+  const requestDeadline = new Date(
+    fechaInicio.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+  );
+  if (now.getTime() > requestDeadline.getTime()) {
+    return 'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.';
   }
 
   if (fechaFin <= fechaInicio) {
@@ -3708,8 +3772,8 @@ function validateLoanRequestPayload(payload) {
   return '';
 }
 
-const CLASS_REQUEST_MAX_DELAY_MINUTES = 15;
-const CLASS_RETURN_CUTOFF_MINUTES = 15;
+const PRACTICE_REQUEST_MAX_DELAY_MINUTES = 15;
+const PRACTICE_RETURN_CUTOFF_MINUTES = 15;
 const LOAN_MODE_MARKER_REGEX = /^\[modo:(clase|libre)\]\s*/i;
 
 function subtractMinutesFromTimeKey(timeKey, minutes) {
@@ -3761,7 +3825,7 @@ function normalizeLoanRecordForDisplay(record = {}, fieldName = 'justificacion_a
 
 function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }) {
   const mode = String(payload?.tipo_prestamo || '').toLowerCase();
-  if (!selectedSlot || mode !== 'clase') {
+  if (!selectedSlot || !['clase', 'libre'].includes(mode)) {
     return '';
   }
 
@@ -3776,23 +3840,23 @@ function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }
     Number.isNaN(slotEnd.getTime()) ||
     Number.isNaN(selectedEnd.getTime())
   ) {
-    return 'No fue posible validar las reglas del prestamo en clase.';
+    return 'No fue posible validar las reglas de tiempo del prestamo.';
   }
 
   const requestDeadline = new Date(
-    slotStart.getTime() + CLASS_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+    slotStart.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
   );
   if (now.getTime() > requestDeadline.getTime()) {
-    return 'Para prestamos en clase solo puedes solicitar hasta 15 minutos despues de iniciada la clase.';
+    return 'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.';
   }
 
-  const returnDeadline = new Date(slotEnd.getTime() - CLASS_RETURN_CUTOFF_MINUTES * 60 * 1000);
+  const returnDeadline = new Date(slotEnd.getTime() - PRACTICE_RETURN_CUTOFF_MINUTES * 60 * 1000);
   if (returnDeadline.getTime() <= slotStart.getTime()) {
-    return 'El horario configurado para clase no permite aplicar la ventana de devolucion.';
+    return 'El horario configurado no permite aplicar la ventana de devolucion.';
   }
 
   if (selectedEnd.getTime() > returnDeadline.getTime()) {
-    return 'Para prestamos en clase la devolucion maxima es 15 minutos antes de finalizar el bloque.';
+    return 'La devolucion debe finalizar al menos 15 minutos antes de terminar el bloque programado.';
   }
 
   return '';
@@ -4549,6 +4613,7 @@ function buildSalaPayload(body = {}) {
     activo: body.activo === undefined ? true : toBoolean(body.activo),
     tiene_bancos: toBoolean(body.tiene_bancos),
     cantidad_bancos: sanitizeText(body.cantidad_bancos),
+    capacidad_por_banco: sanitizeText(body.capacidad_por_banco),
     modo_ual_info: modoUalInfo,
   };
 }
@@ -4594,6 +4659,10 @@ function validateSalaPayload(payload) {
     if (!Number.isInteger(cantidadBancos) || cantidadBancos <= 0) {
       return 'Debes indicar una cantidad de bancos valida cuando la UAL tiene bancos.';
     }
+    const capacidadPorBanco = Number(payload.capacidad_por_banco);
+    if (!Number.isInteger(capacidadPorBanco) || capacidadPorBanco <= 0) {
+      return 'Debes indicar la capacidad en personas de cada banco.';
+    }
   } else if (quantityRaw && Number(quantityRaw) < 0) {
     return 'La cantidad de bancos no puede ser negativa.';
   }
@@ -4609,7 +4678,7 @@ async function fetchUalLoanConfiguration(ualId, executor = pool) {
   try {
     const result = await executor.query(
       `
-        SELECT ual_id, tiene_bancos, cantidad_bancos
+        SELECT ual_id, tiene_bancos, cantidad_bancos, capacidad_por_banco
         FROM prestamo_ual_configuracion
         WHERE ual_id = $1
         LIMIT 1
@@ -4633,6 +4702,7 @@ async function upsertUalLoanConfiguration(executor, ualId, payload) {
   const hasBanks = Boolean(payload?.tiene_bancos);
   const quantityRaw = String(payload?.cantidad_bancos || '').trim();
   const cantidadBancos = hasBanks ? Number(quantityRaw || 0) : 0;
+  const capacidadPorBanco = hasBanks ? Number(payload?.capacidad_por_banco || 0) : 0;
 
   await executor.query(
     `
@@ -4640,16 +4710,23 @@ async function upsertUalLoanConfiguration(executor, ualId, payload) {
         ual_id,
         tiene_bancos,
         cantidad_bancos,
+        capacidad_por_banco,
         fecha_modificacion
       )
-      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
       ON CONFLICT (ual_id)
       DO UPDATE SET
         tiene_bancos = EXCLUDED.tiene_bancos,
         cantidad_bancos = EXCLUDED.cantidad_bancos,
+        capacidad_por_banco = EXCLUDED.capacidad_por_banco,
         fecha_modificacion = CURRENT_TIMESTAMP
     `,
-    [Number(ualId), hasBanks, Number.isInteger(cantidadBancos) ? cantidadBancos : 0]
+    [
+      Number(ualId),
+      hasBanks,
+      Number.isInteger(cantidadBancos) ? cantidadBancos : 0,
+      Number.isInteger(capacidadPorBanco) ? capacidadPorBanco : 0,
+    ]
   );
 }
 
@@ -5531,6 +5608,14 @@ function resolveLoanDbErrorMessage(error, fallbackMessage) {
     if (
       String(error?.message || '')
         .toLowerCase()
+        .includes('prestamo_laboratorista_medalla')
+    ) {
+      return 'La tabla de medallas de laboratorios no existe. Actualiza la base con sql-scripts/preprod/db_structure_inventarios.sql.';
+    }
+
+    if (
+      String(error?.message || '')
+        .toLowerCase()
         .includes('parametrizacion')
     ) {
       return 'La tabla parametrizacion no existe aun. Actualiza la base con la definicion de prestamos en sql-scripts/prod/db_structure_prestamos.sql.';
@@ -5860,10 +5945,13 @@ function buildLaboratoryActivationModel(row) {
   const hasUalConfig =
     row.ual_tiene_bancos === true ||
     row.ual_tiene_bancos === false ||
-    Number.isInteger(Number(row.ual_cantidad_bancos));
+    (row.ual_cantidad_bancos !== null &&
+      row.ual_cantidad_bancos !== undefined &&
+      Number.isInteger(Number(row.ual_cantidad_bancos)));
   const ualHasBanks = row.ual_tiene_bancos === true;
   const ualBankCount = Number(row.ual_cantidad_bancos || 0);
-  const hasValidBanksConfig = !ualHasBanks || ualBankCount > 0;
+  const ualBankCapacity = Number(row.ual_capacidad_por_banco || 0);
+  const hasValidBanksConfig = !ualHasBanks || (ualBankCount > 0 && ualBankCapacity > 0);
 
   const inventory = {
     oficial: resolveInventoryActivationStatus(
@@ -6010,6 +6098,7 @@ function buildLaboratoryActivationModel(row) {
       pendingInventories: pendingInventoryCount,
       ualTieneBancos: ualHasBanks,
       ualCantidadBancos: ualBankCount,
+      ualCapacidadPorBanco: ualBankCapacity,
       ualConfigCompleta: hasUalConfig && hasValidBanksConfig,
       tienePracticas: hasPracticeChoice ? activationConfig.tiene_practicas : null,
       practicasActivas: activePracticeCount,
@@ -6106,12 +6195,12 @@ function buildLoanActivationChecklist(laboratorio) {
       key: 'informacion_ual',
       label: 'Información de la UAL',
       ready: Boolean(checks.informacionUal),
-      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s) registrada(s) · Bancos: ${counters.ualTieneBancos ? Number(counters.ualCantidadBancos || 0) : 'No aplica'}`,
+      detail: `${Number(counters.salasActivas || 0)} sala(s) activa(s) registrada(s) · Bancos: ${counters.ualTieneBancos ? `${Number(counters.ualCantidadBancos || 0)} de ${Number(counters.ualCapacidadPorBanco || 0)} personas por banco` : 'No aplica'}`,
       extraDetail:
         'Completa la información de la UAL usando el mismo formulario de creación de sala.',
       pendingDetail: checks.informacionUal
         ? 'Sin tareas pendientes.'
-        : 'Registrar la información de la UAL, incluyendo configuración de bancos.',
+        : 'Registrar la información de la UAL, incluyendo cantidad de bancos y capacidad por banco.',
       actionHref: scheduleHref,
       actionLabel: 'Gestionar información UAL',
     },
@@ -6299,6 +6388,7 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         COALESCE(cargas.cargas_atencion, 0) AS cargas_atencion,
         config_ual.tiene_bancos AS ual_tiene_bancos,
         config_ual.cantidad_bancos AS ual_cantidad_bancos,
+        config_ual.capacidad_por_banco AS ual_capacidad_por_banco,
         activation.estado_activacion,
         activation.configuracion_json AS activacion_configuracion_json,
         COALESCE(practicas.total_practicas_activas, 0) AS total_practicas_activas
@@ -6379,7 +6469,8 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
       LEFT JOIN LATERAL (
         SELECT
           puc.tiene_bancos,
-          puc.cantidad_bancos
+          puc.cantidad_bancos,
+          puc.capacidad_por_banco
         FROM prestamo_ual_configuracion puc
         WHERE puc.ual_id = labs.ual_id
         LIMIT 1
@@ -10517,7 +10608,6 @@ async function buildEquipmentLoanAvailability(equipmentId) {
 
   const now = new Date();
   const todayKey = formatLocalDateKey(now);
-  const nowTimeKey = formatLocalTimeKey(now);
   const upcomingSchedules = schedules.filter((schedule) => {
     if (!schedule.fecha) {
       return false;
@@ -10531,7 +10621,11 @@ async function buildEquipmentLoanAvailability(equipmentId) {
       return false;
     }
 
-    return String(schedule.hora_inicio || '') > nowTimeKey;
+    const scheduleStart = parseBogotaDateTime(`${schedule.fecha}T${schedule.hora_inicio}`);
+    return (
+      scheduleStart &&
+      now.getTime() <= scheduleStart.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+    );
   });
 
   const requestsResult = await pool.query(
@@ -10572,18 +10666,21 @@ async function buildEquipmentLoanAvailability(equipmentId) {
         (interval) =>
           schedule.hora_inicio < interval.hora_fin && schedule.hora_fin > interval.hora_inicio
       );
-      const horaFinClase = subtractMinutesFromTimeKey(
+      const horaFinPrestamo = subtractMinutesFromTimeKey(
         schedule.hora_fin,
-        CLASS_RETURN_CUTOFF_MINUTES
+        PRACTICE_RETURN_CUTOFF_MINUTES
       );
 
       return {
         fecha: schedule.fecha,
         horaInicio: schedule.hora_inicio,
         horaFin: schedule.hora_fin,
-        horaFinClase,
+        horaFinPrestamo,
+        permitePrestamo:
+          Boolean(horaFinPrestamo) && String(horaFinPrestamo) > String(schedule.hora_inicio),
+        horaFinClase: horaFinPrestamo,
         permitePrestamoClase:
-          Boolean(horaFinClase) && String(horaFinClase) > String(schedule.hora_inicio),
+          Boolean(horaFinPrestamo) && String(horaFinPrestamo) > String(schedule.hora_inicio),
         disponible: !hasConflict,
       };
     });
@@ -11738,7 +11835,7 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
         slot.horaFin === selectedEndTime
     );
 
-    if (!selectedSlot && payload.tipo_prestamo === 'clase') {
+    if (!selectedSlot) {
       selectedSlot = disponibilidad.horariosDisponibles.find(
         (slot) =>
           slot.fecha === selectedDate &&
@@ -19750,6 +19847,7 @@ router.__private = {
   fetchTableColumns,
   sendByRequestPosterPdf,
   summarizeMissingActivationChecks,
+  recordLaboratoryConfigurationMedal,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,
   evaluateLoanModeConstraints,
@@ -19771,6 +19869,8 @@ router.__private = {
   buildSalaScheduleTemplateBuffer,
   buildLaboratoryManagementModules,
   buildLaboratoryCarouselHref,
+  buildSalaPayload,
+  validateSalaPayload,
   fetchDashboardStatsForLaboratory,
   insertSalaSchedule,
 };

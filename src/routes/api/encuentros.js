@@ -3958,8 +3958,47 @@ router.get('/api/mis-logros', requireAuthenticatedJson, async (req, res) => {
       `,
       [userId]
     );
-    return res.json({ ok: true, logros: result.rows });
+    const medalResult = await pool.query(
+      `
+        SELECT
+          COUNT(*)::int AS nivel,
+          STRING_AGG(ual.nombre, ', ' ORDER BY ual.nombre) AS laboratorios,
+          MAX(medalla.fecha_obtencion) AS fecha_obtencion
+        FROM prestamo_laboratorista_medalla medalla
+        JOIN ual ON ual.ual_id = medalla.ual_id
+        WHERE medalla.usuario_id = $1
+        HAVING COUNT(*) > 0
+      `,
+      [userId]
+    );
+    const medallasLaboratorios = (medalResult.rows || []).map((medal) => {
+      const nivel = Number(medal.nivel) || 0;
+      return {
+        tipo: 'laboratorio',
+        nivel,
+        titulo: `Laboratorista MiLab · Nivel ${nivel}`,
+        descripcion:
+          nivel === 1
+            ? `Configuraste y activaste tu primer laboratorio: ${medal.laboratorios}.`
+            : `Configuraste y activaste ${nivel} laboratorios: ${medal.laboratorios}.`,
+        fecha_obtencion: medal.fecha_obtencion,
+      };
+    });
+    return res.json({ ok: true, logros: result.rows, medallas_laboratorios: medallasLaboratorios });
   } catch (error) {
+    if (
+      error.code === '42P01' &&
+      String(error.message || '').includes('prestamo_laboratorista_medalla')
+    ) {
+      logFailure(req, error, 'laboratory_medals_schema');
+      return res.status(503).json({
+        ok: false,
+        migration_faltante: true,
+        message:
+          'Falta aplicar la estructura de Inventarios requerida para las medallas de laboratorios.',
+        script_requerido: 'sql-scripts/preprod/db_structure_inventarios.sql',
+      });
+    }
     return handleServerError(req, res, error, 'No fue posible consultar tus logros.');
   }
 });
