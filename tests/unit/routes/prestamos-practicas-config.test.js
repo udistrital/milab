@@ -329,6 +329,26 @@ test('prestamos calcula estadisticas del dashboard limitadas al laboratorio', as
   }
 });
 
+test('prestamos prioriza gestión de solicitudes en el panel de laboratorio', () => {
+  const loaded = loadRoute();
+
+  try {
+    const modules = loaded.route.__private.buildLaboratoryManagementModules(
+      new Set(['/milab/prestamos/gestion-solicitudes', '/milab/prestamos/salas']),
+      {
+        ualId: 71,
+        counters: { salaReferenciaId: 12 },
+      }
+    );
+
+    assert.equal(modules[0].title, 'Gestión de Solicitudes');
+    assert.equal(modules[0].href, '/milab/prestamos/gestion-solicitudes?laboratorio=71');
+    assert.match(modules[1].href, /dashboard=1&laboratorio=71/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos normaliza el esquema dinamico y genera llaves limpias', () => {
   const loaded = loadRoute();
 

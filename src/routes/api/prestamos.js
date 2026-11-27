@@ -1463,6 +1463,18 @@ async function fetchLaboratoristaWeekSchedule(req, options = {}) {
 }
 
 async function fetchLaboratoristaDashboardData(req) {
+  const laboratorios = await fetchLaboratoryActivationOverview(req);
+  if (!laboratorios.some((laboratorio) => laboratorio.loanActivated)) {
+    return {
+      laboratorios,
+      eventsByDay: [],
+      laboratoryTimeline: [],
+      pendingRequests: [],
+      todayDate: '',
+      nowTime: '',
+    };
+  }
+
   const currentTimeResult = await pool.query(
     `
       SELECT
@@ -1501,8 +1513,7 @@ async function fetchLaboratoristaDashboardData(req) {
     0: weekDates[6],
   };
 
-  const [laboratorios, scheduleRows, pendingRequests] = await Promise.all([
-    fetchLaboratoryActivationOverview(req),
+  const [scheduleRows, pendingRequests] = await Promise.all([
     fetchLaboratoristaWeekSchedule(req, { rangeStart, rangeEnd }),
     fetchPendingRequestsForManagement(req),
   ]);
@@ -1754,6 +1765,36 @@ const LABORATORY_MANAGEMENT_MODULES = [
   },
   { route: SALAS_MENU_ROUTE, title: 'Horarios', icon: 'bi-calendar-week' },
 ];
+
+function buildLaboratoryManagementModules(allowedRoutes, laboratorio) {
+  const ualId = Number(laboratorio?.ualId || 0);
+  if (!(allowedRoutes instanceof Set) || !ualId) {
+    return [];
+  }
+
+  const dashboardUrl = `/milab/prestamos/activacion/laboratorios/${ualId}/gestion`;
+  return LABORATORY_MANAGEMENT_MODULES.filter(
+    (module) =>
+      allowedRoutes.has(module.route) &&
+      (module.route !== SALAS_MENU_ROUTE || Number(laboratorio.counters?.salaReferenciaId) > 0)
+  ).map((module) => {
+    const href =
+      module.route === SALAS_MENU_ROUTE
+        ? `/milab/prestamos/salas/${Number(laboratorio.counters.salaReferenciaId)}/horarios?dashboard=1&laboratorio=${ualId}&returnTo=${encodeURIComponent(dashboardUrl)}`
+        : `${module.route}?laboratorio=${ualId}`;
+    return { ...module, href };
+  });
+}
+
+function isLaboratoryManagementModulePath(pathname) {
+  return LABORATORY_MANAGEMENT_MODULES.some((module) => {
+    if (module.route === SALAS_MENU_ROUTE) {
+      return /^\/salas\/\d+\/horarios(?:\/|$)/.test(pathname);
+    }
+    const localPath = module.route.replace('/milab/prestamos', '');
+    return pathname === localPath || pathname.startsWith(`${localPath}/`);
+  });
+}
 
 const ROLES_RESERVATION_RULES_EDITORS = new Set(['admin', 'coordinador']);
 const ROLES_SCHEMA_CATALOG_EDITORS = new Set(['admin', 'laboratorista']);
@@ -2066,6 +2107,53 @@ const requireCoordinatorSignatureAccess = requirePermissions(
 
 const requireCoordinatorSignatureAuthorized = [requireCoordinatorSignatureAccess];
 
+router.use(async function attachLaboratoryManagementContext(req, res, next) {
+  if (!isLaboratoryManagementModulePath(req.path)) {
+    return next();
+  }
+
+  const queryUalId = Number.parseInt(String(req.query.laboratorio || ''), 10);
+  if (Number.isInteger(queryUalId) && queryUalId > 0 && req.session) {
+    req.session.loanLabDashboardUalId = queryUalId;
+  }
+
+  if (!['GET', 'HEAD'].includes(String(req.method || '').toUpperCase())) {
+    return next();
+  }
+
+  const ualId =
+    Number.isInteger(queryUalId) && queryUalId > 0
+      ? queryUalId
+      : Number.parseInt(String(req.session?.loanLabDashboardUalId || ''), 10);
+  if (!Number.isInteger(ualId) || ualId <= 0) {
+    return next();
+  }
+
+  try {
+    const laboratorios = await fetchLaboratoryActivationOverview(req);
+    const laboratorio = laboratorios.find((item) => Number(item.ualId) === ualId) || null;
+    if (!laboratorio?.loanActivated) {
+      return next();
+    }
+
+    const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+    const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, { viewOnly: true });
+    const modules = buildLaboratoryManagementModules(allowedRoutes, laboratorio);
+    const stats = await fetchDashboardStatsForLaboratory(laboratorio);
+    res.locals.laboratoryDashboard = {
+      laboratorios,
+      laboratorio,
+      stats,
+      modules,
+      activePath: req.path,
+    };
+    return next();
+  } catch (error) {
+    console.error('Error preparando el contexto de gestion del laboratorio MiLab:', error);
+    return next(error);
+  }
+});
+
 router.get(
   '/activacion/laboratorios',
   requireActivacionLaboratoriosAuthorized,
@@ -2120,28 +2208,17 @@ router.get(
 
       const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
       const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, { viewOnly: true });
-      const dashboardUrl = `/milab/prestamos/activacion/laboratorios/${ualId}/gestion`;
-      const modules = LABORATORY_MANAGEMENT_MODULES.filter(
-        (module) =>
-          allowedRoutes instanceof Set &&
-          allowedRoutes.has(module.route) &&
-          (module.route !== SALAS_MENU_ROUTE || Number(laboratorio.counters?.salaReferenciaId) > 0)
-      ).map((module) => {
-        const href =
-          module.route === SALAS_MENU_ROUTE
-            ? `/milab/prestamos/salas/${Number(laboratorio.counters.salaReferenciaId)}/horarios?dashboard=1&returnTo=${encodeURIComponent(dashboardUrl)}`
-            : module.route;
-        return { ...module, href };
-      });
+      const modules = buildLaboratoryManagementModules(allowedRoutes, laboratorio);
+      if (modules.length) {
+        return res.redirect(modules[0].href);
+      }
+
       const stats = await fetchDashboardStatsForLaboratory(laboratorio);
-      const calendarModule = modules.find((module) => module.route === SALAS_MENU_ROUTE);
-      const activeModule = calendarModule || modules[0] || null;
 
       return res.render('home/prestamos/activacion/gestion', {
         laboratorio,
         stats,
         modules,
-        activeModule,
       });
     } catch (error) {
       console.error('Error cargando la gestion del laboratorio MiLab:', error);
@@ -19634,6 +19711,7 @@ router.__private = {
   buildFreePracticeRowsFromSlotSelection,
   buildSalaSchedulePreviewCalendar,
   buildSalaScheduleTemplateBuffer,
+  buildLaboratoryManagementModules,
   fetchDashboardStatsForLaboratory,
   insertSalaSchedule,
 };

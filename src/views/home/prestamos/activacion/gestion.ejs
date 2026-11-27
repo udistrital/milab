@@ -1,216 +1,24 @@
 <%- include('../../../partials/header'); -%>
 
-<style>
-  .lab-management-stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.65rem;
-  }
-
-  .lab-management-stat {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-    padding: 0.7rem 0.85rem;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 0.8rem;
-    background: rgba(15, 23, 42, 0.24);
-  }
-
-  .lab-management-stat i {
-    font-size: 1.15rem;
-    color: #ffbf00;
-  }
-
-  .lab-management-stat-label {
-    margin: 0;
-    color: #cbd5e1;
-    font-size: 0.72rem;
-    line-height: 1.15;
-  }
-
-  .lab-management-stat-value {
-    display: block;
-    font-size: 1rem;
-    line-height: 1.2;
-  }
-
-  .lab-management-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 17rem;
-    gap: 1rem;
-    align-items: start;
-  }
-
-  .lab-management-frame-wrap,
-  .lab-management-menu {
-    overflow: hidden;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 0.9rem;
-    background: #111827;
-  }
-
-  .lab-management-frame {
-    display: block;
-    width: 100%;
-    height: min(78vh, 880px);
-    min-height: 620px;
-    border: 0;
-    background: #fff;
-  }
-
-  .lab-management-menu {
-    position: sticky;
-    top: 1rem;
-    padding: 0.8rem;
-  }
-
-  .lab-management-link {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    width: 100%;
-    padding: 0.7rem 0.75rem;
-    border: 0;
-    border-radius: 0.6rem;
-    background: transparent;
-    color: #e2e8f0;
-    text-align: left;
-    text-decoration: none;
-  }
-
-  .lab-management-link:hover,
-  .lab-management-link:focus-visible,
-  .lab-management-link.is-active {
-    background: rgba(255, 191, 0, 0.14);
-    color: #ffbf00;
-  }
-
-  .lab-management-link i {
-    width: 1.2rem;
-    text-align: center;
-  }
-
-  @media (max-width: 991.98px) {
-    .lab-management-layout {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .lab-management-menu {
-      position: static;
-      grid-row: 1;
-    }
-
-    .lab-management-menu nav {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.25rem;
-    }
-
-    .lab-management-frame {
-      min-height: 70vh;
-    }
-  }
-
-  @media (max-width: 575.98px) {
-    .lab-management-stats {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .lab-management-menu nav {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .lab-management-frame {
-      min-height: 65vh;
-    }
-  }
-</style>
-
-<main class="container-fluid app-page-shell">
+<main class="container app-page-shell">
   <section class="app-page-header">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-      <div>
-        <h1 class="app-page-title">Gestión laboratorio</h1>
-        <p class="app-page-subtitle mb-0">
-          <strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %>
-          <% if (laboratorio.dependencia) { %> · <%= laboratorio.dependencia %><% } %>
-        </p>
-      </div>
-      <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios">
-        Volver a laboratorios
-      </a>
-    </div>
+    <h1 class="app-page-title">Gestión laboratorio</h1>
+    <p class="app-page-subtitle">
+      <strong><%= laboratorio.laboratorio %></strong> · <%= laboratorio.facultad %>
+      <% if (laboratorio.dependencia) { %> · <%= laboratorio.dependencia %><% } %>
+    </p>
   </section>
 
-  <section class="lab-management-stats mb-3" aria-label="Estadísticas del laboratorio">
-    <article class="lab-management-stat">
-      <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
-      <p class="lab-management-stat-label">Préstamos activos<strong class="lab-management-stat-value"><%= stats.activos %></strong></p>
-    </article>
-    <article class="lab-management-stat">
-      <i class="bi bi-hourglass-split" aria-hidden="true"></i>
-      <p class="lab-management-stat-label">Solicitudes pendientes<strong class="lab-management-stat-value"><%= stats.pendientes %></strong></p>
-    </article>
-    <article class="lab-management-stat">
-      <i class="bi bi-check2-circle" aria-hidden="true"></i>
-      <p class="lab-management-stat-label">Préstamos finalizados<strong class="lab-management-stat-value"><%= stats.finalizados %></strong></p>
-    </article>
-    <article class="lab-management-stat">
-      <i class="bi bi-box-seam" aria-hidden="true"></i>
-      <p class="lab-management-stat-label">Equipos disponibles<strong class="lab-management-stat-value"><%= stats.disponibles %></strong></p>
-    </article>
+  <section class="row g-2 mb-3" aria-label="Estadísticas del laboratorio">
+    <div class="col-6 col-xl-3"><div class="card app-table-panel text-light p-3">Préstamos activos: <strong><%= stats.activos %></strong></div></div>
+    <div class="col-6 col-xl-3"><div class="card app-table-panel text-light p-3">Solicitudes pendientes: <strong><%= stats.pendientes %></strong></div></div>
+    <div class="col-6 col-xl-3"><div class="card app-table-panel text-light p-3">Préstamos finalizados: <strong><%= stats.finalizados %></strong></div></div>
+    <div class="col-6 col-xl-3"><div class="card app-table-panel text-light p-3">Equipos disponibles: <strong><%= stats.disponibles %></strong></div></div>
   </section>
 
-  <section class="lab-management-layout">
-    <div class="lab-management-frame-wrap">
-      <% if (activeModule) { %>
-        <iframe
-          class="lab-management-frame"
-          id="laboratoryManagementFrame"
-          name="laboratoryManagementFrame"
-          src="<%= activeModule.href %>"
-          title="<%= activeModule.title %> del laboratorio <%= laboratorio.laboratorio %>"
-        ></iframe>
-      <% } else { %>
-        <div class="alert alert-info m-3" role="status">
-          No tienes submódulos de gestión disponibles según los permisos asignados.
-        </div>
-      <% } %>
-    </div>
-
-    <aside class="lab-management-menu">
-      <h2 class="h6 px-2 mb-2">Submódulos</h2>
-      <nav aria-label="Submódulos de gestión del laboratorio">
-        <% modules.forEach(function(module) { %>
-          <a
-            class="lab-management-link <%= module === activeModule ? 'is-active' : '' %>"
-            href="<%= module.href %>"
-            target="laboratoryManagementFrame"
-            <%= module === activeModule ? 'aria-current="page"' : '' %>
-          >
-            <i class="bi <%= module.icon %>" aria-hidden="true"></i>
-            <span><%= module.title %></span>
-          </a>
-        <% }) %>
-      </nav>
-    </aside>
-  </section>
+  <div class="alert alert-info" role="status">
+    No tienes submódulos disponibles para este laboratorio según los permisos asignados.
+  </div>
 </main>
 
-<script nonce="<%= cspNonce %>">
-  document.addEventListener('DOMContentLoaded', function () {
-    var moduleLinks = document.querySelectorAll('.lab-management-link');
-    moduleLinks.forEach(function (link) {
-      link.addEventListener('click', function () {
-        moduleLinks.forEach(function (item) {
-          item.classList.remove('is-active');
-          item.removeAttribute('aria-current');
-        });
-        link.classList.add('is-active');
-        link.setAttribute('aria-current', 'page');
-      });
-    });
-  });
-</script>
+<%- include('../../../partials/footer'); -%>

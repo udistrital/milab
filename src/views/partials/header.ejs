@@ -250,11 +250,196 @@
     return parsed.toLocaleDateString('es-CO');
   }
 %>
+<% if (locals.laboratoryDashboard) { %>
+  <style>
+    body.app-shell--laboratory-management .app-main-content {
+      padding-right: 19rem;
+    }
+
+    .laboratory-management-context {
+      margin: 0.4rem 1rem 1rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid #e7e5e4;
+      border-radius: 0.9rem;
+      background: linear-gradient(110deg, #fffdf7, #ffffff 68%);
+      box-shadow: 0 5px 16px rgba(120, 87, 30, 0.07);
+    }
+
+    .laboratory-management-labs {
+      margin: 0.4rem 1rem 0.75rem;
+    }
+
+    .laboratory-management-labs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 0.6rem;
+    }
+
+    .laboratory-management-lab-card {
+      min-width: 0;
+      padding: 0.75rem 0.85rem;
+      border: 1px solid #e7e5e4;
+      border-radius: 0.8rem;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(120, 87, 30, 0.06);
+    }
+
+    .laboratory-management-lab-card.is-selected {
+      border-color: #e8b84a;
+      box-shadow: 0 0 0 2px rgba(232, 184, 74, 0.14);
+    }
+
+    .laboratory-management-lab-card-title {
+      overflow: hidden;
+      color: #172a47;
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .laboratory-management-lab-card-meta {
+      overflow: hidden;
+      color: #64748b;
+      font-size: 0.7rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .laboratory-management-lab-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+    }
+
+    .laboratory-management-context-title {
+      margin: 0;
+      color: #172a47;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+
+    .laboratory-management-context-subtitle {
+      margin: 0.15rem 0 0;
+      color: #64748b;
+      font-size: 0.8rem;
+    }
+
+    .laboratory-management-context-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.55rem;
+      margin-top: 0.75rem;
+    }
+
+    .laboratory-management-context-stat {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-width: 0;
+      padding: 0.5rem 0.7rem;
+      border: 1px solid #eee9dc;
+      border-radius: 0.65rem;
+      background: #fffaf0;
+      color: #334155;
+      font-size: 0.75rem;
+    }
+
+    .laboratory-management-context-stat i {
+      color: #d97706;
+      font-size: 1rem;
+    }
+
+    .laboratory-management-context-stat strong {
+      display: block;
+      color: #172a47;
+      font-size: 0.9rem;
+    }
+
+    .laboratory-management-context-menu {
+      position: fixed;
+      z-index: 1020;
+      top: 8.5rem;
+      right: 1.2rem;
+      width: 17rem;
+      max-height: calc(100vh - 9.5rem);
+      overflow-y: auto;
+      padding: 0.8rem;
+      border: 1px solid #e7e5e4;
+      border-radius: 0.9rem;
+      background: #fffdf8;
+      box-shadow: 0 8px 24px rgba(120, 87, 30, 0.12);
+    }
+
+    .laboratory-management-context-menu h2 {
+      padding: 0.3rem 0.55rem 0.6rem;
+      color: #64748b;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .laboratory-management-context-link {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.65rem 0.7rem;
+      border-radius: 0.6rem;
+      color: #475569;
+      font-size: 0.85rem;
+      text-decoration: none;
+    }
+
+    .laboratory-management-context-link:hover,
+    .laboratory-management-context-link:focus-visible,
+    .laboratory-management-context-link.is-active {
+      background: #fff3d4;
+      color: #9a5b00;
+    }
+
+    .laboratory-management-context-link i {
+      width: 1.1rem;
+      color: #d97706;
+      text-align: center;
+    }
+
+    @media (max-width: 1199.98px) {
+      body.app-shell--laboratory-management .app-main-content {
+        padding-right: 0;
+      }
+
+      .laboratory-management-context-menu {
+        position: static;
+        width: auto;
+        max-height: none;
+        margin: 0 1rem 1rem;
+      }
+
+      .laboratory-management-context-menu nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.2rem;
+      }
+    }
+
+    @media (max-width: 767.98px) {
+      .laboratory-management-context-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .laboratory-management-context-menu nav {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+<% } %>
 
 </head>
 
 <body
-  class="app-shell"
+  class="app-shell <%= locals.laboratoryDashboard ? 'app-shell--laboratory-management' : '' %>"
   data-is-authenticated="<%= isAuthenticated ? 'true' : 'false' %>"
   data-non-production="<%= isNonProductionEnvironment ? 'true' : 'false' %>"
   data-show-oati-login-warning="<%= locals.showOatiLoginWarning ? 'true' : 'false' %>"
@@ -957,6 +1142,111 @@
               <% }) %>
             </ol>
           </nav>
+        <% } %>
+        <% if (locals.laboratoryDashboard) { const dashboard = locals.laboratoryDashboard; %>
+          <section class="laboratory-management-labs" aria-label="Laboratorios asignados">
+            <h2 class="h6 mb-2">Mis laboratorios</h2>
+            <div class="laboratory-management-labs-grid">
+              <% dashboard.laboratorios.forEach(function(lab) { const selected = Number(lab.ualId) === Number(dashboard.laboratorio.ualId); %>
+                <article class="laboratory-management-lab-card <%= selected ? 'is-selected' : '' %>">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="min-w-0">
+                      <div class="laboratory-management-lab-card-title"><%= lab.laboratorio %></div>
+                      <div class="laboratory-management-lab-card-meta"><%= lab.facultad %><% if (lab.dependencia) { %> · <%= lab.dependencia %><% } %></div>
+                    </div>
+                    <span class="badge <%= lab.loanActivated ? 'text-bg-success' : 'text-bg-warning' %>">
+                      <%= lab.loanActivated ? 'Activado' : `${lab.completion.percent}%` %>
+                    </span>
+                  </div>
+                  <div class="laboratory-management-lab-card-actions">
+                    <a
+                      class="btn btn-perso btn-sm"
+                      href="<%= lab.loanActivated ? `/milab/prestamos/activacion/laboratorios/${lab.ualId}/gestion` : `/milab/prestamos/activacion/laboratorios/${lab.ualId}` %>"
+                    ><%= lab.loanActivated ? 'Gestión laboratorio' : 'Configurar laboratorio' %></a>
+                    <% if (lab.loanActivated) { %>
+                      <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= lab.ualId %>/by-request">Plantilla QR</a>
+                    <% } %>
+                  </div>
+                </article>
+              <% }) %>
+            </div>
+          </section>
+
+          <section class="laboratory-management-context" aria-label="Resumen del laboratorio">
+            <h1 class="laboratory-management-context-title">Gestión laboratorio</h1>
+            <p class="laboratory-management-context-subtitle">
+              <strong><%= dashboard.laboratorio.laboratorio %></strong> · <%= dashboard.laboratorio.facultad %>
+              <% if (dashboard.laboratorio.dependencia) { %> · <%= dashboard.laboratorio.dependencia %><% } %>
+            </p>
+            <div class="laboratory-management-context-stats">
+              <div class="laboratory-management-context-stat">
+                <i class="bi bi-arrow-left-right" aria-hidden="true"></i>
+                <span>Préstamos activos<strong><%= dashboard.stats.activos %></strong></span>
+              </div>
+              <div class="laboratory-management-context-stat">
+                <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+                <span>Solicitudes pendientes<strong><%= dashboard.stats.pendientes %></strong></span>
+              </div>
+              <div class="laboratory-management-context-stat">
+                <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                <span>Préstamos finalizados<strong><%= dashboard.stats.finalizados %></strong></span>
+              </div>
+              <div class="laboratory-management-context-stat">
+                <i class="bi bi-box-seam" aria-hidden="true"></i>
+                <span>Equipos disponibles<strong><%= dashboard.stats.disponibles %></strong></span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="laboratory-management-context-menu">
+            <h2 class="mb-1">Submódulos</h2>
+            <nav aria-label="Submódulos de gestión del laboratorio">
+              <% dashboard.modules.forEach(function(module) { const modulePath = module.route.replace('/milab/prestamos', ''); const active = dashboard.activePath === modulePath || dashboard.activePath.startsWith(modulePath + '/'); %>
+                <a
+                  class="laboratory-management-context-link <%= active ? 'is-active' : '' %>"
+                  href="<%= module.href %>"
+                  <%- active ? 'aria-current="page"' : '' %>
+                >
+                  <i class="bi <%= module.icon %>" aria-hidden="true"></i>
+                  <span><%= module.title %></span>
+                </a>
+              <% }) %>
+            </nav>
+          </aside>
+
+          <script nonce="<%= cspNonce %>">
+            (function () {
+              var laboratoryId = <%- JSON.stringify(String(dashboard.laboratorio.ualId)) %>;
+              var moduleRoots = <%- JSON.stringify(dashboard.modules.map(function(module) { return module.route; })) %>;
+
+              function carryLaboratoryContext(value) {
+                var target;
+                try {
+                  target = new URL(value, window.location.origin);
+                } catch (_error) {
+                  return value;
+                }
+                if (target.origin !== window.location.origin) return value;
+                var belongsToModule = moduleRoots.some(function (root) {
+                  return target.pathname === root || target.pathname.indexOf(root + '/') === 0;
+                });
+                if (belongsToModule && !target.searchParams.has('laboratorio')) {
+                  target.searchParams.set('laboratorio', laboratoryId);
+                }
+                return target.href;
+              }
+
+              document.addEventListener('click', function (event) {
+                var link = event.target.closest('a[href]');
+                if (!link || link.target === '_blank') return;
+                link.href = carryLaboratoryContext(link.href);
+              });
+              document.addEventListener('submit', function (event) {
+                var form = event.target;
+                if (form && form.action) form.action = carryLaboratoryContext(form.action);
+              }, true);
+            })();
+          </script>
         <% } %>
 
   <script nonce="<%= cspNonce %>">
