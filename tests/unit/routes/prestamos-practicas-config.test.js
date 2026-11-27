@@ -2,8 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const Module = require('node:module');
+const { Writable } = require('node:stream');
+const { pathToFileURL } = require('node:url');
 const express = require('express');
 const request = require('supertest');
+const PDFDocument = require('pdfkit');
+const QRCode = require('qrcode');
 
 const routePath = path.resolve(__dirname, '../../../src/routes/api/prestamos.js');
 const dbPath = path.resolve(__dirname, '../../../src/libs/db.js');
@@ -15,7 +19,11 @@ const prestamosModuleAccessPath = path.resolve(
 );
 const authPath = path.resolve(__dirname, '../../../src/routes/middlewares/auth.js');
 
-function loadRoute({ spreadsheetRows = [], dbQuery = async () => ({ rows: [] }) } = {}) {
+function loadRoute({
+  spreadsheetRows = [],
+  dbQuery = async () => ({ rows: [] }),
+  pdfDocument = function PDFDocument() {},
+} = {}) {
   const originals = new Map();
   const originalLoad = Module._load;
   const stubs = [
@@ -81,7 +89,7 @@ function loadRoute({ spreadsheetRows = [], dbQuery = async () => ({ rows: [] }) 
         },
       }
     ),
-    pdfkit: function PDFDocument() {},
+    pdfkit: pdfDocument,
     'pdf-lib': {
       PDFDocument: class {},
       StandardFonts: {},
@@ -1179,6 +1187,86 @@ test('prestamos valida el laboratorio al abrir poster by request', async () => {
 
     assert.equal(response.status, 302);
     assert.match(response.headers.location, /activacion\/laboratorios\?error=/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos genera PDFs QR A4 en ambas orientaciones sin imprimir la URL', async () => {
+  const loaded = loadRoute({ pdfDocument: PDFDocument });
+
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const standardFontDataUrl = pathToFileURL(
+      `${path.resolve(__dirname, '../../../node_modules/pdfjs-dist/standard_fonts')}${path.sep}`
+    ).href;
+    const qrUrl = 'https://labs.udistrital.edu.co/milab/prestamos/practicas/solicitar?ual_id=71';
+    const qrBuffer = await QRCode.toBuffer(qrUrl, {
+      errorCorrectionLevel: 'H',
+      margin: 1,
+      width: 1200,
+    });
+    const laboratory = {
+      ualId: 71,
+      laboratorio: 'Laboratorio Nacional de Ensayos de Materiales y Productos de Ingeniería',
+      dependencia: 'Facultad Tecnológica',
+      facultad: 'Universidad Distrital Francisco José de Caldas',
+    };
+
+    for (const orientation of ['portrait', 'landscape']) {
+      const chunks = [];
+      const response = new Writable({
+        write(chunk, _encoding, callback) {
+          chunks.push(Buffer.from(chunk));
+          callback();
+        },
+      });
+      response.setHeader = () => {};
+      const pdfFinished = new Promise((resolve, reject) => {
+        response.once('finish', resolve);
+        response.once('error', reject);
+      });
+
+      loaded.route.__private.sendByRequestPosterPdf(response, laboratory, qrBuffer, {
+        orientation,
+      });
+      await pdfFinished;
+
+      const pdfBuffer = Buffer.concat(chunks);
+      const pdf = await pdfjs.getDocument({
+        data: new Uint8Array(pdfBuffer),
+        standardFontDataUrl,
+      }).promise;
+      const page = await pdf.getPage(1);
+      const { width, height } = page.getViewport({ scale: 1 });
+      const textContent = await page.getTextContent();
+      const visibleText = textContent.items
+        .map((item) => item.str)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const operatorList = await page.getOperatorList();
+
+      assert.equal(pdf.numPages, 1);
+      assert.equal(orientation === 'landscape', width > height);
+      assert.ok(Math.abs(width - (orientation === 'landscape' ? 841.89 : 595.28)) < 0.1);
+      assert.ok(Math.abs(height - (orientation === 'landscape' ? 595.28 : 841.89)) < 0.1);
+      assert.match(visibleText, /Laboratorio Nacional de Ensayos/);
+      assert.match(visibleText, /Facultad Tecnológica/);
+      assert.match(visibleText, /Facultad: Universidad Distrital/);
+      assert.match(visibleText, /Escanea para solicitar préstamos/);
+      assert.doesNotMatch(visibleText, /Plantilla QR · Préstamos/);
+      assert.doesNotMatch(visibleText, /Comparte este afiche/);
+      assert.doesNotMatch(visibleText, /https?:\/\//);
+      assert.ok(
+        operatorList.fnArray.filter((operator) => operator === pdfjs.OPS.paintImageXObject)
+          .length >= 3
+      );
+      assert.ok(
+        textContent.items.every((item) => item.transform[5] > 0 && item.transform[5] < height)
+      );
+      await pdf.destroy();
+    }
   } finally {
     loaded.restore();
   }

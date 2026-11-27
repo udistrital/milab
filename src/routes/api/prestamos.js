@@ -2319,12 +2319,13 @@ router.get(
   }
 );
 
-function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, options = {}) {
+function sendByRequestPosterPdf(res, laboratorio, qrBuffer, options = {}) {
   const orientation =
     String(options.orientation || 'portrait').toLowerCase() === 'landscape'
       ? 'landscape'
       : 'portrait';
-  const doc = new PDFDocument({ size: 'A4', layout: orientation, margin: 36 });
+  const margin = 30;
+  const doc = new PDFDocument({ size: 'A4', layout: orientation, margin });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
@@ -2336,118 +2337,195 @@ function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, option
   const rightMargin = doc.page.margins.right;
   const usableWidth = doc.page.width - leftMargin - rightMargin;
   const safeLabName = sanitizeText(laboratorio?.laboratorio || 'Laboratorio');
+  const safeDependency = sanitizeText(laboratorio?.dependencia || '');
   const safeFaculty = sanitizeText(laboratorio?.facultad || '');
+  const locationLines = [
+    safeDependency ? `Dependencia: ${safeDependency}` : '',
+    safeFaculty ? `Facultad: ${safeFaculty}` : '',
+  ].filter(Boolean);
+  const locationText = locationLines.join('\n');
+  const isLandscape = orientation === 'landscape';
 
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
-  doc.fillColor('#0f172a');
-
-  const headerHeight = 155;
-  doc.rect(0, 0, doc.page.width, headerHeight).fill('#ffffff');
+  const headerLogoWidth = isLandscape
+    ? Math.min(usableWidth * 0.68, 510)
+    : Math.min(usableWidth * 0.92, 480);
+  const headerLogoHeight = (headerLogoWidth * 260) / 1200;
+  const headerLogoY = 8;
   if (fs.existsSync(PDF_MILAB_HEADER_PATH)) {
-    const headerLogoWidth = orientation === 'landscape' ? Math.min(usableWidth, 510) : usableWidth;
-    doc.image(PDF_MILAB_HEADER_PATH, (doc.page.width - headerLogoWidth) / 2, 8, {
+    doc.image(PDF_MILAB_HEADER_PATH, (doc.page.width - headerLogoWidth) / 2, headerLogoY, {
       width: headerLogoWidth,
     });
   }
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(15)
-    .fillColor('#0f172a')
-    .text('Plantilla QR · Préstamos', leftMargin, headerHeight - 30, {
-      width: usableWidth,
-      align: 'center',
-    });
-  doc.rect(0, headerHeight - 5, doc.page.width, 5).fill('#b3261e');
+  const dividerY = headerLogoY + headerLogoHeight + 12;
+  doc.rect(leftMargin, dividerY, usableWidth, 3).fill('#b3261e');
 
-  const footerHeight = 64;
+  const footerHeight = 58;
   const footerY = doc.page.height - footerHeight;
-  const contentY = headerHeight + 24;
-  const qrSize = orientation === 'landscape' ? 245 : 320;
-  const qrCardWidth = qrSize + 34;
-  const qrCardHeight = qrSize + 34;
-  const qrCardX =
-    orientation === 'landscape' ? leftMargin : leftMargin + (usableWidth - qrCardWidth) / 2;
-  const qrCardY = contentY + (orientation === 'landscape' ? 10 : 92);
-  const textX = orientation === 'landscape' ? qrCardX + qrCardWidth + 30 : leftMargin;
-  const textWidth = orientation === 'landscape' ? usableWidth - qrCardWidth - 30 : usableWidth;
-  const textY = contentY + (orientation === 'landscape' ? 24 : 0);
+  const contentTop = dividerY + 18;
+  const contentBottom = footerY - 18;
+  const contentHeight = contentBottom - contentTop;
+  const cardX = leftMargin;
+  const cardY = contentTop;
+  const cardWidth = usableWidth;
+  const cardHeight = contentHeight;
 
+  doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 18).fill('#f8fafc');
   doc
-    .roundedRect(
-      orientation === 'landscape' ? leftMargin : leftMargin + 6,
-      contentY - 8,
-      orientation === 'landscape' ? usableWidth : usableWidth - 12,
-      footerY - contentY - 8,
-      18
-    )
-    .fill('#f8fafc');
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(19)
-    .fillColor('#0f172a')
-    .text(safeLabName, textX, textY, {
-      width: textWidth,
-      align: orientation === 'landscape' ? 'left' : 'center',
-    });
-  doc
-    .font('Helvetica')
-    .fontSize(13)
-    .fillColor('#334155')
-    .text(safeFaculty, textX, textY + 30, {
-      width: textWidth,
-      align: orientation === 'landscape' ? 'left' : 'center',
-    });
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(17)
-    .fillColor('#0f172a')
-    .text('Escanea para solicitar préstamos', textX, textY + 64, {
-      width: textWidth,
-      align: orientation === 'landscape' ? 'left' : 'center',
-    });
-  doc
-    .font('Helvetica')
-    .fontSize(11)
-    .fillColor('#475569')
-    .text(
-      'Comparte este afiche con estudiantes y docentes para que registren su solicitud de préstamo directamente en MiLab.',
-      textX,
-      textY + 90,
-      {
-        width: textWidth,
-        align: orientation === 'landscape' ? 'left' : 'center',
-      }
-    );
-
-  const qrX = qrCardX + 17;
-  const qrY = qrCardY + 17;
-  doc.roundedRect(qrCardX, qrCardY, qrCardWidth, qrCardHeight, 16).fill('#ffffff');
-  doc
-    .roundedRect(qrCardX, qrCardY, qrCardWidth, qrCardHeight, 16)
-    .lineWidth(1)
+    .roundedRect(cardX, cardY, cardWidth, cardHeight, 18)
+    .lineWidth(0.8)
     .strokeColor('#e2e8f0')
     .stroke();
-  doc.image(qrBuffer, qrX, qrY, { fit: [qrSize, qrSize] });
-  doc
-    .font('Helvetica')
-    .fontSize(10)
-    .fillColor('#64748b')
-    .text(
-      byRequestUrl,
-      orientation === 'landscape' ? textX : leftMargin + 30,
-      qrCardY + qrCardHeight + 16,
-      {
-        width: orientation === 'landscape' ? textWidth : usableWidth - 60,
-        align: orientation === 'landscape' ? 'left' : 'center',
-        lineBreak: true,
-      }
+
+  function fitText(text, font, width, maxSize, minSize, maxHeight) {
+    let fontSize = maxSize;
+    let height = 0;
+    while (fontSize > minSize) {
+      doc.font(font).fontSize(fontSize);
+      height = doc.heightOfString(text, { width, lineGap: 2 });
+      if (height <= maxHeight) break;
+      fontSize -= 1;
+    }
+    doc.font(font).fontSize(fontSize);
+    height = doc.heightOfString(text, { width, lineGap: 2 });
+    return { fontSize, height };
+  }
+
+  function drawText(text, font, fontSize, color, x, y, width, align) {
+    doc.font(font).fontSize(fontSize).fillColor(color).text(text, x, y, {
+      width,
+      align,
+      lineGap: 2,
+    });
+  }
+
+  function drawQrCard(x, y, size) {
+    const padding = 18;
+    const qrSize = size - padding * 2;
+    doc.roundedRect(x, y, size, size, 14).fill('#ffffff');
+    doc.roundedRect(x, y, size, size, 14).lineWidth(0.9).strokeColor('#d9dee7').stroke();
+    doc.image(qrBuffer, x + padding, y + padding, { fit: [qrSize, qrSize] });
+  }
+
+  if (isLandscape) {
+    const innerX = cardX + 24;
+    const innerWidth = cardWidth - 48;
+    const columnGap = 28;
+    const qrColumnWidth = innerWidth * 0.45;
+    const textX = innerX + qrColumnWidth + columnGap;
+    const textWidth = innerWidth - qrColumnWidth - columnGap;
+    const qrCardSize = Math.min(qrColumnWidth - 8, cardHeight - 32);
+    const qrCardX = innerX + (qrColumnWidth - qrCardSize) / 2;
+    const qrCardY = cardY + (cardHeight - qrCardSize) / 2;
+    const nameLayout = fitText(safeLabName, 'Helvetica-Bold', textWidth, 26, 15, 110);
+    const locationLayout = locationText
+      ? fitText(locationText, 'Helvetica', textWidth, 13, 10, 78)
+      : { height: 0 };
+    const message = 'Escanea para solicitar préstamos';
+    const messageLayout = fitText(message, 'Helvetica-Bold', textWidth, 19, 16, 54);
+    const gapAfterName = locationText ? 12 : 18;
+    const gapBeforeMessage = 20;
+    const textBlockHeight =
+      nameLayout.height +
+      gapAfterName +
+      locationLayout.height +
+      gapBeforeMessage +
+      messageLayout.height;
+    const textY = cardY + (cardHeight - textBlockHeight) / 2;
+    const textAlign = 'left';
+
+    drawText(
+      safeLabName,
+      'Helvetica-Bold',
+      nameLayout.fontSize,
+      '#172a47',
+      textX,
+      textY,
+      textWidth,
+      textAlign
     );
+    let nextTextY = textY + nameLayout.height + gapAfterName;
+    if (locationText) {
+      drawText(
+        locationText,
+        'Helvetica',
+        locationLayout.fontSize,
+        '#475569',
+        textX,
+        nextTextY,
+        textWidth,
+        textAlign
+      );
+      nextTextY += locationLayout.height;
+    }
+    drawText(
+      message,
+      'Helvetica-Bold',
+      messageLayout.fontSize,
+      '#172a47',
+      textX,
+      nextTextY + gapBeforeMessage,
+      textWidth,
+      textAlign
+    );
+    drawQrCard(qrCardX, qrCardY, qrCardSize);
+  } else {
+    const textX = cardX + 26;
+    const textWidth = cardWidth - 52;
+    const nameLayout = fitText(safeLabName, 'Helvetica-Bold', textWidth, 28, 15, 125);
+    const locationLayout = locationText
+      ? fitText(locationText, 'Helvetica', textWidth, 14, 10, 80)
+      : { height: 0 };
+    const message = 'Escanea para solicitar préstamos';
+    const messageLayout = fitText(message, 'Helvetica-Bold', textWidth, 20, 16, 52);
+    const textY = cardY + 24;
+    drawText(
+      safeLabName,
+      'Helvetica-Bold',
+      nameLayout.fontSize,
+      '#172a47',
+      textX,
+      textY,
+      textWidth,
+      'center'
+    );
+    let nextTextY = textY + nameLayout.height + (locationText ? 10 : 16);
+    if (locationText) {
+      drawText(
+        locationText,
+        'Helvetica',
+        locationLayout.fontSize,
+        '#475569',
+        textX,
+        nextTextY,
+        textWidth,
+        'center'
+      );
+      nextTextY += locationLayout.height + 16;
+    }
+    drawText(
+      message,
+      'Helvetica-Bold',
+      messageLayout.fontSize,
+      '#172a47',
+      textX,
+      nextTextY,
+      textWidth,
+      'center'
+    );
+
+    const qrAreaTop = nextTextY + messageLayout.height + 20;
+    const qrAreaHeight = cardY + cardHeight - qrAreaTop - 22;
+    const qrCardSize = Math.min(370, textWidth - 32, qrAreaHeight);
+    const qrCardX = cardX + (cardWidth - qrCardSize) / 2;
+    const qrCardY = qrAreaTop + (qrAreaHeight - qrCardSize) / 2;
+    drawQrCard(qrCardX, qrCardY, qrCardSize);
+  }
 
   doc.rect(0, footerY, doc.page.width, footerHeight).fill('#b3261e');
   if (fs.existsSync(PDF_UD_FOOTER_PATH)) {
-    doc.image(PDF_UD_FOOTER_PATH, (doc.page.width - 170) / 2, footerY + 5, {
-      fit: [170, 54],
+    doc.image(PDF_UD_FOOTER_PATH, (doc.page.width - 210) / 2, footerY + 3, {
+      fit: [210, 52],
     });
   }
 
@@ -2488,7 +2566,7 @@ router.get(
         width: 1200,
       });
 
-      return sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, { orientation });
+      return sendByRequestPosterPdf(res, laboratorio, qrBuffer, { orientation });
     } catch (error) {
       console.error('Error generando PDF de poster QR by-request MiLab:', error);
       return res.status(500).send('No fue posible generar el PDF del poster QR.');
@@ -5900,14 +5978,19 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         SELECT
           u.ual_id,
           u.nombre AS laboratorio,
-          f.nombre AS facultad
+          CASE WHEN unidad.padre_id IS NULL THEN NULL ELSE unidad.nombre END AS dependencia,
+          COALESCE(facultad.nombre, unidad.nombre) AS facultad
         FROM ual u
-        JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
+        JOIN dependencia_facultad unidad
+          ON unidad.dependencia_facultad_id = u.facultad_id
+        LEFT JOIN dependencia_facultad facultad
+          ON facultad.dependencia_facultad_id = unidad.padre_id
         WHERE ${whereParts.join(' AND ')}
       )
       SELECT
         labs.ual_id,
         labs.laboratorio,
+        labs.dependencia,
         labs.facultad,
         inv.estado_oficial,
         inv.oficial_sin_inventario,
@@ -19401,6 +19484,7 @@ router.__private = {
   buildLaboratoryActivationModel,
   buildLoanActivationChecklist,
   fetchTableColumns,
+  sendByRequestPosterPdf,
   summarizeMissingActivationChecks,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,
