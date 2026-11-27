@@ -299,6 +299,7 @@ test('prestamos calcula estadisticas del dashboard limitadas al laboratorio', as
 
   try {
     const stats = await loaded.route.__private.fetchDashboardStatsForLaboratory({
+      ualId: 71,
       laboratorio: 'Laboratorio Central',
       facultad: 'Facultad Tecnológica',
     });
@@ -310,20 +311,22 @@ test('prestamos calcula estadisticas del dashboard limitadas al laboratorio', as
       disponibles: 7,
     });
     assert.equal(queries.length, 4);
+    assert.ok(queries.every(({ params }) => params[0] === 71 && params.length === 1));
     assert.ok(
-      queries.every(
-        ({ params }) => params[0] === 'Laboratorio Central' && params[1] === 'Facultad Tecnológica'
-      )
+      queries.slice(0, 3).every(({ sql }) => {
+        return (
+          sql.includes('i.laboratorio_ual_id = $1') &&
+          sql.includes('JOIN equipo e ON e.id = s.equipo_id') &&
+          sql.includes('JOIN inventario i ON i.id = e.inventario_id')
+        );
+      })
     );
-    assert.ok(
-      queries.every(
-        ({ sql }) =>
-          sql.includes('e.laboratorio = $1') &&
-          sql.includes('e.facultad = $2') &&
-          !sql.includes('s.laboratorio') &&
-          !sql.includes('s.facultad')
-      )
-    );
+    assert.match(queries[0].sql, /s\.estado = 'activo'/);
+    assert.match(queries[1].sql, /s\.estado IN \('pendiente', 'en_cola', 'aprobado'\)/);
+    assert.match(queries[2].sql, /s\.estado = 'finalizado'/);
+    assert.match(queries[3].sql, /i\.disponible_prestamo = TRUE/);
+    assert.match(queries[3].sql, /i\.estado_aprobacion = 'aprobado'/);
+    assert.match(queries[3].sql, /m\.estado = 'EN_EJECUCION'/);
   } finally {
     loaded.restore();
   }
@@ -371,6 +374,36 @@ test('prestamos conserva el submódulo al deslizar entre laboratorios activados'
         null
       ),
       '/milab/prestamos/activacion/laboratorios/83'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos incluye auditoría, incidencias y parametrizaciones cuando hay permiso', () => {
+  const loaded = loadRoute();
+
+  try {
+    const modules = loaded.route.__private.buildLaboratoryManagementModules(
+      new Set([
+        '/milab/prestamos/auditoria',
+        '/milab/prestamos/incidencias',
+        '/milab/prestamos/admin/parametrizaciones',
+      ]),
+      { ualId: 71 }
+    );
+
+    assert.deepEqual(
+      modules.map((module) => module.title),
+      ['Incidencias', 'Auditoría', 'Parametrizaciones']
+    );
+    assert.deepEqual(
+      modules.map((module) => module.href),
+      [
+        '/milab/prestamos/incidencias?laboratorio=71',
+        '/milab/prestamos/auditoria?laboratorio=71',
+        '/milab/prestamos/admin/parametrizaciones?laboratorio=71',
+      ]
     );
   } finally {
     loaded.restore();

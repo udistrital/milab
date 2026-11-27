@@ -1,10 +1,5 @@
 <%- include('../../../partials/header'); -%>
 
-<%
-  const facultadActual = selectedFacultyName || 'Sin facultad asignada';
-  const laboratorioActual = selectedLaboratoryName || 'Sin laboratorio seleccionado';
-%>
-
 <style>
   .practice-config-card {
     color: #212529;
@@ -53,74 +48,28 @@
     <% } %>
   </div>
 
-  <% if ((typeof canEditReservationRules !== 'undefined' && canEditReservationRules) || (typeof canEditSchemaAndCatalog !== 'undefined' && canEditSchemaAndCatalog)) { %>
-  <section class="card app-form-panel text-light mb-4 practice-config-card">
-    <div class="card-header">
-      <h5 class="mb-0">Contexto De Trabajo</h5>
-    </div>
-    <div class="card-body">
-      <form class="row g-3" method="get" action="/milab/prestamos/coordinador/practicas/config">
-        <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
-        <div class="col-md-5">
-          <label for="facultad_id_filtro" class="form-label">Facultad</label>
-          <select class="form-select" id="facultad_id_filtro" name="facultad_id" <%= facultades && facultades.length ? '' : 'disabled' %>>
-            <% if (facultades && facultades.length) { %>
+  <div class="row g-4">
+    <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
+    <div class="col-xl-5">
+      <section class="card app-form-panel text-light h-100 practice-config-card">
+        <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
+          <h5 class="mb-0">Reglas De Reserva</h5>
+          <% if (facultades && facultades.length) { %>
+          <form class="d-flex align-items-center gap-2" method="get" action="/milab/prestamos/coordinador/practicas/config">
+            <% if (selectedUalId) { %>
+            <input type="hidden" name="laboratorio" value="<%= selectedUalId %>">
+            <% } %>
+            <label for="facultad_id_filtro" class="visually-hidden">Facultad para reglas de reserva</label>
+            <select class="form-select form-select-sm" id="facultad_id_filtro" name="facultad_id">
               <% facultades.forEach(function(item) { %>
                 <option value="<%= item.facultad_id %>" <%= Number(selectedFacultyId) === Number(item.facultad_id) ? 'selected' : '' %>>
                   <%= item.nombre %>
                 </option>
               <% }) %>
-            <% } else { %>
-              <option value="">No hay facultades disponibles</option>
-            <% } %>
-          </select>
-        </div>
-        <% } %>
-        <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
-        <div class="col-md-5">
-          <label for="ual_id_filtro" class="form-label">Laboratorio</label>
-          <select class="form-select" id="ual_id_filtro" name="ual_id" <%= laboratorios && laboratorios.length ? '' : 'disabled' %>>
-            <% if (laboratorios && laboratorios.length) { %>
-              <% laboratorios.forEach(function(item) { %>
-                <option value="<%= item.ual_id %>" <%= Number(selectedUalId) === Number(item.ual_id) ? 'selected' : '' %>>
-                  <%= item.nombre %>
-                </option>
-              <% }) %>
-            <% } else { %>
-              <option value="">No hay laboratorios disponibles</option>
-            <% } %>
-          </select>
-        </div>
-        <% } %>
-        <div class="col-md-2 d-flex align-items-end">
-          <button class="btn btn-outline-primary w-100" type="submit" data-read-only-lock="true" <%= ((typeof canEditReservationRules === 'undefined' || canEditReservationRules) && facultades && facultades.length) || ((typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) && laboratorios && laboratorios.length) ? '' : 'disabled' %>>Cargar</button>
-        </div>
-      </form>
-
-      <div class="row g-3 mt-1">
-        <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
-        <div class="col-md-6">
-          <div class="small text-light-emphasis">Facultad activa</div>
-          <div class="fw-semibold"><%= facultadActual %></div>
-        </div>
-        <% } %>
-        <% if (typeof canEditSchemaAndCatalog === 'undefined' || canEditSchemaAndCatalog) { %>
-        <div class="col-md-6">
-          <div class="small text-light-emphasis">Laboratorio activo</div>
-          <div class="fw-semibold"><%= laboratorioActual %></div>
-        </div>
-        <% } %>
-      </div>
-    </div>
-  </section>
-  <% } %>
-
-  <div class="row g-4">
-    <% if (typeof canEditReservationRules === 'undefined' || canEditReservationRules) { %>
-    <div class="col-xl-5">
-      <section class="card app-form-panel text-light h-100 practice-config-card">
-        <div class="card-header">
-          <h5 class="mb-0">Reglas De Reserva</h5>
+            </select>
+            <button class="btn btn-outline-primary btn-sm flex-shrink-0" type="submit" data-read-only-lock="true">Cargar</button>
+          </form>
+          <% } %>
         </div>
         <div class="card-body">
           <form class="row g-3" method="post" action="/milab/prestamos/coordinador/practicas/config">

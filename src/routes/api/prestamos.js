@@ -1100,28 +1100,44 @@ async function fetchDashboardStatsForManagement(req) {
 }
 
 async function fetchDashboardStatsForLaboratory(laboratorio) {
-  const labName = String(laboratorio?.laboratorio || '').trim();
-  const facultyName = String(laboratorio?.facultad || '').trim();
-  if (!labName || !facultyName) {
+  const ualId = Number(laboratorio?.ualId);
+  if (!Number.isInteger(ualId) || ualId <= 0) {
     return { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
   }
 
   const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('aprobado', 'activo') AND e.laboratorio = $1 AND e.facultad = $2`,
-      [labName, facultyName]
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo e ON e.id = s.equipo_id JOIN inventario i ON i.id = e.inventario_id WHERE s.activo = TRUE AND s.estado = 'activo' AND i.laboratorio_ual_id = $1`,
+      [ualId]
     ),
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('pendiente', 'en_cola') AND e.laboratorio = $1 AND e.facultad = $2`,
-      [labName, facultyName]
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo e ON e.id = s.equipo_id JOIN inventario i ON i.id = e.inventario_id WHERE s.activo = TRUE AND s.estado IN ('pendiente', 'en_cola', 'aprobado') AND i.laboratorio_ual_id = $1`,
+      [ualId]
     ),
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('finalizado', 'cancelado', 'rechazado') AND e.laboratorio = $1 AND e.facultad = $2`,
-      [labName, facultyName]
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo e ON e.id = s.equipo_id JOIN inventario i ON i.id = e.inventario_id WHERE s.activo = TRUE AND s.estado = 'finalizado' AND i.laboratorio_ual_id = $1`,
+      [ualId]
     ),
     pool.query(
-      `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible' AND e.laboratorio = $1 AND e.facultad = $2`,
-      [labName, facultyName]
+      `
+        SELECT COUNT(*) AS total
+        FROM inventario i
+        JOIN equipo e ON e.inventario_id = i.id
+        WHERE i.laboratorio_ual_id = $1
+          AND i.tipo_inventario = 'equipo_arka'
+          AND i.estado_aprobacion = 'aprobado'
+          AND i.activo = TRUE
+          AND i.disponible_prestamo = TRUE
+          AND e.estado = 'disponible'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mantenimiento m
+            WHERE m.equipo_id = e.id
+              AND m.activo = TRUE
+              AND m.estado = 'EN_EJECUCION'
+          )
+      `,
+      [ualId]
     ),
   ]);
   return {
@@ -1781,7 +1797,9 @@ const LABORATORY_MANAGEMENT_MODULES = [
     title: 'Entrega y devolución',
     icon: 'bi-arrow-left-right',
   },
+  { route: INCIDENCIAS_MENU_ROUTE, title: 'Incidencias', icon: 'bi-exclamation-triangle' },
   { route: REPORTES_MENU_ROUTE, title: 'Reportes', icon: 'bi-bar-chart' },
+  { route: AUDITORIA_MENU_ROUTE, title: 'Auditoría', icon: 'bi-journal-check' },
   {
     route: PRACTICAS_CONFIG_MENU_ROUTE,
     title: 'Configuración de prácticas',
@@ -9921,8 +9939,13 @@ async function fetchScopedPracticeConfigurationFaculties(req) {
 
 async function fetchScopedPracticeConfigurationLaboratories(req, facultyId) {
   const scope = await resolveLoanManagementScope(req);
-  const params = [facultyId];
-  const whereParts = ['u.activo = TRUE', 'u.facultad_id = $1'];
+  const params = [];
+  const whereParts = ['u.activo = TRUE'];
+
+  if (facultyId) {
+    params.push(facultyId);
+    whereParts.push(`u.facultad_id = $${params.length}`);
+  }
 
   if (!scope.unrestricted) {
     if (!scope.facultyIds.length) {
@@ -17616,60 +17639,27 @@ router.get(
       const facultades = canEditReservationRules
         ? await fetchScopedPracticeConfigurationFaculties(req)
         : [];
-      let selectedId = Number(req.query?.facultad_id || facultades[0]?.facultad_id || 0);
-      if (selectedId && !facultades.some((f) => Number(f.dependencia_facultad_id) === selectedId)) {
+      const requestedUalId = Number(req.query?.laboratorio || req.query?.ual_id || 0);
+      let laboratorios = [];
+      if (canEditSchemaAndCatalog) {
+        laboratorios = await fetchScopedPracticeConfigurationLaboratories(req, null);
+      }
+
+      const requestedLaboratory = laboratorios.find(
+        (item) => Number(item.ual_id) === requestedUalId
+      );
+      let selectedId = Number(
+        req.query?.facultad_id ||
+          requestedLaboratory?.facultad_id ||
+          facultades[0]?.facultad_id ||
+          0
+      );
+      if (selectedId && !facultades.some((f) => Number(f.facultad_id) === selectedId)) {
         selectedId = Number(facultades[0]?.facultad_id || 0);
       }
       const selectedFaculty = facultades.find((item) => Number(item.facultad_id) === selectedId);
-
-      let laboratorios = [];
-      if (canEditSchemaAndCatalog) {
-        if (selectedFaculty) {
-          laboratorios = await fetchScopedPracticeConfigurationLaboratories(
-            req,
-            selectedFaculty.facultad_id
-          );
-        }
-        if (!laboratorios.length) {
-          const scope = await resolveLoanManagementScope(req);
-          if (
-            scope.unrestricted ||
-            Array.isArray(scope.laboratoryNames) ||
-            scope.facultyIds.length
-          ) {
-            const unrestrictedLabs = scope.unrestricted
-              ? null
-              : {
-                  facultyIds: scope.facultyIds,
-                  laboratoryNames: scope.laboratoryNames,
-                };
-            const params = [];
-            const whereParts = ['u.activo = TRUE'];
-            if (unrestrictedLabs?.facultyIds?.length) {
-              params.push(unrestrictedLabs.facultyIds);
-              whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
-            }
-            if (unrestrictedLabs?.laboratoryNames?.length) {
-              params.push(unrestrictedLabs.laboratoryNames);
-              whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
-            }
-            const labsQ = await pool.query(
-              `
-                SELECT u.ual_id, u.nombre, f.nombre AS facultad, f.dependencia_facultad_id AS facultad_id
-                FROM ual u
-                JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
-                WHERE ${whereParts.join(' AND ') || 'TRUE'}
-                ORDER BY f.nombre ASC, u.nombre ASC
-              `,
-              params
-            );
-            laboratorios = labsQ.rows || [];
-          }
-        }
-      }
-
-      const selectedUalId = Number(req.query?.ual_id || laboratorios[0]?.ual_id || 0);
-      const selectedLaboratory = laboratorios.find((item) => Number(item.ual_id) === selectedUalId);
+      const selectedLaboratory = requestedLaboratory || laboratorios[0];
+      const selectedUalId = selectedLaboratory?.ual_id || null;
 
       const dynamicPracticeSchema = selectedLaboratory
         ? await fetchDynamicPracticeSchemaByUalId(selectedLaboratory.ual_id)
@@ -17686,7 +17676,7 @@ router.get(
         selectedFacultyId: selectedFaculty?.facultad_id || null,
         selectedFacultyName: selectedFaculty?.nombre || '',
         laboratorios,
-        selectedUalId: selectedLaboratory?.ual_id || null,
+        selectedUalId,
         selectedLaboratoryName: selectedLaboratory?.nombre || '',
         config:
           canEditReservationRules && selectedFaculty

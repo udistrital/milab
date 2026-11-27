@@ -216,13 +216,8 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Horarios UAL</h1>
-    <p class="app-page-subtitle">
-      <strong><%= sala && sala.nombre ? sala.nombre : 'Sala' %></strong>
-      <% if (sala && sala.facultad && sala.laboratorio) { %>
-        - <%= sala.facultad %> / <%= sala.laboratorio %>
-      <% } %>
-    </p>
+    <h1 class="app-page-title">Horarios</h1>
+    <p class="app-page-subtitle">Administra la carga, consulta y edición de los horarios del laboratorio.</p>
   </section>
 
   <div id="horariosSalaAlerts">
