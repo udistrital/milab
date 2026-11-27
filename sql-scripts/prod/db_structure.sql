@@ -316,6 +316,7 @@ CREATE TABLE multa (
     obs_multa CHARACTER VARYING(500),
     tipo_sancion CHARACTER VARYING(100),
     sga_deuda_id CHARACTER VARYING(50),
+    sga_deuda_estado CHARACTER VARYING(1),
     periodo INT,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
