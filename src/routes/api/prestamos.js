@@ -2348,8 +2348,8 @@ function sendByRequestPosterPdf(res, laboratorio, qrBuffer, options = {}) {
 
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   const headerLogoWidth = isLandscape
-    ? Math.min(usableWidth * 0.68, 510)
-    : Math.min(usableWidth * 0.92, 480);
+    ? Math.min(usableWidth * 0.8, 600)
+    : Math.min(usableWidth * 0.98, 520);
   const headerLogoHeight = (headerLogoWidth * 260) / 1200;
   const headerLogoY = 8;
   if (fs.existsSync(PDF_MILAB_HEADER_PATH)) {
