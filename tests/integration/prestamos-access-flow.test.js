@@ -83,8 +83,11 @@ test('prestamos root renders the dashboard with cards and quick links for every 
     assert.equal(laboratorista.status, 200);
     assert.equal(laboratorista.body.view, 'home/prestamos/dashboard_laboratorista');
     assert.ok(Array.isArray(laboratorista.body.locals.laboratorios));
-    assert.ok(Array.isArray(laboratorista.body.locals.eventsByDay));
-    assert.ok(Array.isArray(laboratorista.body.locals.pendingRequests));
+    assert.equal(laboratorista.body.locals.selectedIndex, 0);
+    assert.equal(laboratorista.body.locals.previousLaboratorio, null);
+    assert.equal(laboratorista.body.locals.nextLaboratorio, null);
+    assert.equal(laboratorista.body.locals.eventsByDay, undefined);
+    assert.equal(laboratorista.body.locals.pendingRequests, undefined);
   } finally {
     loaded.restore();
   }
