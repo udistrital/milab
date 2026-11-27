@@ -2178,7 +2178,11 @@ router.post(
         checklist,
       });
       if (!activationSaved) {
-        throw new Error('No fue posible persistir la activación del laboratorio.');
+        return res.redirect(
+          `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent(
+            'No está disponible la tabla de activación en el esquema configurado de la base de datos.'
+          )}`
+        );
       }
 
       await registerPrestamosAuditEntry({
@@ -2643,14 +2647,16 @@ async function fetchTableColumns(tableName, client = pool) {
     `
       SELECT column_name
       FROM information_schema.columns
-      WHERE table_schema = 'public'
+      WHERE table_schema = current_schema()
         AND table_name = $1
     `,
     [normalizedTableName]
   );
 
   const columns = new Set(result.rows.map((row) => String(row.column_name || '')));
-  tableColumnCache.set(normalizedTableName, columns);
+  if (columns.size) {
+    tableColumnCache.set(normalizedTableName, columns);
+  }
   return columns;
 }
 
@@ -19394,6 +19400,7 @@ router.__private = {
   resolveInventoryActivationStatus,
   buildLaboratoryActivationModel,
   buildLoanActivationChecklist,
+  fetchTableColumns,
   summarizeMissingActivationChecks,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,

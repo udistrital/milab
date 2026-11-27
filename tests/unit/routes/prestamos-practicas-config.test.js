@@ -959,6 +959,42 @@ test('prestamos clasifica estado de activacion de inventario', () => {
   }
 });
 
+test('prestamos busca columnas en el esquema activo de la conexion', async () => {
+  const loaded = loadRoute();
+
+  try {
+    let queries = 0;
+    const client = {
+      query: async (sql, params) => {
+        queries += 1;
+        assert.match(sql, /table_schema = current_schema\(\)/);
+        assert.deepEqual(params, ['prestamo_activacion_laboratorio']);
+        return {
+          rows:
+            queries === 1
+              ? []
+              : [{ column_name: 'estado_activacion' }, { column_name: 'configuracion_json' }],
+        };
+      },
+    };
+
+    const missingColumns = await loaded.route.__private.fetchTableColumns(
+      'prestamo_activacion_laboratorio',
+      client
+    );
+    const availableColumns = await loaded.route.__private.fetchTableColumns(
+      'prestamo_activacion_laboratorio',
+      client
+    );
+
+    assert.equal(missingColumns.size, 0);
+    assert.equal(availableColumns.has('estado_activacion'), true);
+    assert.equal(queries, 2);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos modela el progreso de activacion por laboratorio', () => {
   const loaded = loadRoute();
 

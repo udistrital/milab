@@ -57,8 +57,14 @@
   .activation-practice-choice {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 1rem;
     margin-top: 0.75rem;
+  }
+
+  .activation-practice-choice .btn-check:checked + .activation-practice-option {
+    background-color: #4858a1;
+    box-shadow: 0 0 0 0.2rem rgba(23, 42, 71, 0.2);
   }
 </style>
 
@@ -122,15 +128,35 @@
               <% if (item.showPracticeChoice) { %>
                 <form action="<%= item.practiceChoiceAction %>" method="post" class="activation-practice-choice">
                   <%- include('../../../partials/csrf_field') %>
-                  <label class="form-check">
-                    <input class="form-check-input" type="radio" name="tiene_practicas" value="true" required <%= item.practiceChoice === 'true' ? 'checked' : '' %>>
-                    <span class="form-check-label">Sí, tendrá prácticas</span>
+                  <input
+                    class="btn-check"
+                    type="radio"
+                    id="laboratorioPracticasSi<%= laboratorio.ualId %>"
+                    name="tiene_practicas"
+                    value="true"
+                    autocomplete="off"
+                    required
+                    <%= item.practiceChoice === 'true' ? 'checked' : '' %>
+                  >
+                  <label class="btn btn-perso btn-sm activation-practice-option" for="laboratorioPracticasSi<%= laboratorio.ualId %>">
+                    Sí, tendrá prácticas
                   </label>
-                  <label class="form-check">
-                    <input class="form-check-input" type="radio" name="tiene_practicas" value="false" required <%= item.practiceChoice === 'false' ? 'checked' : '' %>>
-                    <span class="form-check-label">No tendrá prácticas</span>
+                  <input
+                    class="btn-check"
+                    type="radio"
+                    id="laboratorioPracticasNo<%= laboratorio.ualId %>"
+                    name="tiene_practicas"
+                    value="false"
+                    autocomplete="off"
+                    required
+                    <%= item.practiceChoice === 'false' ? 'checked' : '' %>
+                  >
+                  <label class="btn btn-perso btn-sm activation-practice-option" for="laboratorioPracticasNo<%= laboratorio.ualId %>">
+                    No tendrá prácticas
                   </label>
-                  <button class="btn btn-outline-primary btn-sm" type="submit">Guardar decisión</button>
+                  <button class="btn btn-perso btn-sm" type="submit">
+                    <i class="bi bi-check2-circle me-1" aria-hidden="true"></i>Guardar decisión
+                  </button>
                 </form>
               <% } %>
             </div>
