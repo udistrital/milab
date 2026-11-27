@@ -1296,6 +1296,14 @@
       });
     }
 
+    if (<%- JSON.stringify(Boolean(showCalendar)) %> && weekInput && previewRegisteredButton) {
+      var today = new Date();
+      var todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+      var todayDay = String(today.getDate()).padStart(2, '0');
+      weekInput.value = today.getFullYear() + '-' + todayMonth + '-' + todayDay;
+      previewRegisteredButton.click();
+    }
+
     calendarModeButtons.forEach(function(button) {
       button.addEventListener('click', function() {
         calendarMode = button.getAttribute('data-calendar-mode') === 'month' ? 'month' : 'week';

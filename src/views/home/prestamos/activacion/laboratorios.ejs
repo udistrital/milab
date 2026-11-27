@@ -154,12 +154,16 @@
               </div>
 
               <div class="mt-auto d-flex flex-wrap gap-2">
-                <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>">
-                  Configurar laboratorio
-                </a>
                 <% if (item.loanActivated) { %>
+                  <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/gestion">
+                    Gestión laboratorio
+                  </a>
                   <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/by-request">
                     Plantilla QR
+                  </a>
+                <% } else { %>
+                  <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>">
+                    Configurar laboratorio
                   </a>
                 <% } %>
               </div>

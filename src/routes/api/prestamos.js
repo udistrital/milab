@@ -394,12 +394,15 @@ const PRESTAMOS_QUICK_LINK_PRIORITY = new Map([
   ['/milab/prestamos/activacion/laboratorios', 11],
 ]);
 
-async function fetchPrestamosAllowedMenuRoutes(roles, client = pool) {
+async function fetchPrestamosAllowedMenuRoutes(roles, client = pool, options = {}) {
   const normalizedRoles = normalizeRoles(roles);
   if (!normalizedRoles.length) {
     return new Set();
   }
   try {
+    const permissionCondition = options.viewOnly
+      ? 'rp.can_view = TRUE'
+      : '(rp.can_use = TRUE OR rp.can_view = TRUE)';
     const result = await client.query(
       `
         SELECT DISTINCT mi.route
@@ -407,7 +410,7 @@ async function fetchPrestamosAllowedMenuRoutes(roles, client = pool) {
         JOIN rol_permiso rp
           ON rp.menu_item_id = mi.id
          AND rp.activo = TRUE
-         AND (rp.can_use = TRUE OR rp.can_view = TRUE)
+         AND ${permissionCondition}
         JOIN rol r
           ON r.id = rp.rol_id
         WHERE r.nombre = ANY($1)
@@ -1096,6 +1099,39 @@ async function fetchDashboardStatsForManagement(req) {
   );
 }
 
+async function fetchDashboardStatsForLaboratory(laboratorio) {
+  const labName = String(laboratorio?.laboratorio || '').trim();
+  const facultyName = String(laboratorio?.facultad || '').trim();
+  if (!labName || !facultyName) {
+    return { activos: 0, pendientes: 0, finalizados: 0, disponibles: 0 };
+  }
+
+  const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobado', 'activo') AND s.laboratorio = $1 AND s.facultad = $2`,
+      [labName, facultyName]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'en_cola') AND s.laboratorio = $1 AND s.facultad = $2`,
+      [labName, facultyName]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizado', 'cancelado', 'rechazado') AND s.laboratorio = $1 AND s.facultad = $2`,
+      [labName, facultyName]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total FROM equipo_catalogo e WHERE e.activo = TRUE AND e.estado = 'disponible' AND e.laboratorio = $1 AND e.facultad = $2`,
+      [labName, facultyName]
+    ),
+  ]);
+  return {
+    activos: Number(activosRow.rows[0]?.total || 0),
+    pendientes: Number(pendientesRow.rows[0]?.total || 0),
+    finalizados: Number(finalizadosRow.rows[0]?.total || 0),
+    disponibles: Number(disponiblesRow.rows[0]?.total || 0),
+  };
+}
+
 async function fetchDashboardStatsForUser(usuarioId) {
   return safeFetch(
     async () => {
@@ -1689,6 +1725,36 @@ const PRACTICAS_CONFIG_MENU_ROUTE = '/milab/prestamos/coordinador/practicas/conf
 const ACTIVACION_LABS_MENU_ROUTE = '/milab/prestamos/activacion/laboratorios';
 const COORDINADOR_FIRMA_ROUTE = '/milab/prestamos/coordinador/firma';
 
+const LABORATORY_MANAGEMENT_MODULES = [
+  {
+    route: GESTION_SOLICITUDES_MENU_ROUTE,
+    title: 'Gestión de Solicitudes',
+    icon: 'bi-inbox',
+  },
+  {
+    route: ENTREGA_EQUIPOS_MENU_ROUTE,
+    title: 'Entrega y devolución',
+    icon: 'bi-arrow-left-right',
+  },
+  { route: REPORTES_MENU_ROUTE, title: 'Reportes', icon: 'bi-bar-chart' },
+  {
+    route: PRACTICAS_CONFIG_MENU_ROUTE,
+    title: 'Configuración de prácticas',
+    icon: 'bi-sliders',
+  },
+  {
+    route: PRACTICAS_GESTION_MENU_ROUTE,
+    title: 'Gestión de prácticas',
+    icon: 'bi-mortarboard',
+  },
+  {
+    route: PARAMETRIZACIONES_MENU_ROUTE,
+    title: 'Parametrizaciones',
+    icon: 'bi-gear',
+  },
+  { route: SALAS_MENU_ROUTE, title: 'Horarios', icon: 'bi-calendar-week' },
+];
+
 const ROLES_RESERVATION_RULES_EDITORS = new Set(['admin', 'coordinador']);
 const ROLES_SCHEMA_CATALOG_EDITORS = new Set(['admin', 'laboratorista']);
 
@@ -2023,6 +2089,67 @@ router.get(
           'No fue posible cargar la activacion de laboratorios.'
         ),
       });
+    }
+  }
+);
+
+router.get(
+  '/activacion/laboratorios/:ualId/gestion',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.redirect(
+        '/milab/prestamos/activacion/laboratorios?error=El laboratorio seleccionado no es valido.'
+      );
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+      if (!laboratorio) {
+        return res.redirect(
+          '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
+        );
+      }
+      if (!laboratorio.loanActivated) {
+        return res.redirect(
+          `/milab/prestamos/activacion/laboratorios/${ualId}?error=${encodeURIComponent('Activa los préstamos antes de abrir la gestión del laboratorio.')}`
+        );
+      }
+
+      const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
+      const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, { viewOnly: true });
+      const dashboardUrl = `/milab/prestamos/activacion/laboratorios/${ualId}/gestion`;
+      const modules = LABORATORY_MANAGEMENT_MODULES.filter(
+        (module) =>
+          allowedRoutes instanceof Set &&
+          allowedRoutes.has(module.route) &&
+          (module.route !== SALAS_MENU_ROUTE || Number(laboratorio.counters?.salaReferenciaId) > 0)
+      ).map((module) => {
+        const href =
+          module.route === SALAS_MENU_ROUTE
+            ? `/milab/prestamos/salas/${Number(laboratorio.counters.salaReferenciaId)}/horarios?dashboard=1&returnTo=${encodeURIComponent(dashboardUrl)}`
+            : module.route;
+        return { ...module, href };
+      });
+      const stats = await fetchDashboardStatsForLaboratory(laboratorio);
+      const calendarModule = modules.find((module) => module.route === SALAS_MENU_ROUTE);
+      const activeModule = calendarModule || modules[0] || null;
+
+      return res.render('home/prestamos/activacion/gestion', {
+        laboratorio,
+        stats,
+        modules,
+        activeModule,
+      });
+    } catch (error) {
+      console.error('Error cargando la gestion del laboratorio MiLab:', error);
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios?error=${encodeURIComponent(
+          resolveLoanDbErrorMessage(error, 'No fue posible cargar la gestión del laboratorio.')
+        )}`
+      );
     }
   }
 );
@@ -18185,12 +18312,14 @@ router.get('/salas/:id/horarios', requireSalasAuthorized, async function (req, r
     const rawReturnTo = sanitizeText(req.query.returnTo);
     const returnTo =
       rawReturnTo && rawReturnTo.startsWith('/milab/') ? rawReturnTo : '/milab/prestamos/salas';
+    const showCalendar = String(req.query.dashboard || '') === '1';
 
     return res.render('home/prestamos/salas/horarios', {
       sala,
       horarios: result.rows || [],
       festivos,
       returnTo,
+      showCalendar,
       successMessage: sanitizeText(req.query.success),
       errorMessage: sanitizeText(req.query.error),
     });
@@ -19505,6 +19634,7 @@ router.__private = {
   buildFreePracticeRowsFromSlotSelection,
   buildSalaSchedulePreviewCalendar,
   buildSalaScheduleTemplateBuffer,
+  fetchDashboardStatsForLaboratory,
   insertSalaSchedule,
 };
 

@@ -287,6 +287,44 @@ test('prestamos expone helpers privados para configuracion dinamica de practicas
   }
 });
 
+test('prestamos calcula estadisticas del dashboard limitadas al laboratorio', async () => {
+  const queries = [];
+  const totals = [2, 3, 5, 7];
+  const loaded = loadRoute({
+    dbQuery: async (sql, params) => {
+      queries.push({ sql, params });
+      return { rows: [{ total: totals[queries.length - 1] }] };
+    },
+  });
+
+  try {
+    const stats = await loaded.route.__private.fetchDashboardStatsForLaboratory({
+      laboratorio: 'Laboratorio Central',
+      facultad: 'Facultad Tecnológica',
+    });
+
+    assert.deepEqual(stats, {
+      activos: 2,
+      pendientes: 3,
+      finalizados: 5,
+      disponibles: 7,
+    });
+    assert.equal(queries.length, 4);
+    assert.ok(
+      queries.every(
+        ({ params }) => params[0] === 'Laboratorio Central' && params[1] === 'Facultad Tecnológica'
+      )
+    );
+    assert.ok(
+      queries.every(
+        ({ sql }) => sql.includes('s.laboratorio = $1') || sql.includes('e.laboratorio = $1')
+      )
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos normaliza el esquema dinamico y genera llaves limpias', () => {
   const loaded = loadRoute();
 
