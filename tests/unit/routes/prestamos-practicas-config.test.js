@@ -349,6 +349,34 @@ test('prestamos prioriza gestión de solicitudes en el panel de laboratorio', ()
   }
 });
 
+test('prestamos conserva el submódulo al deslizar entre laboratorios activados', () => {
+  const loaded = loadRoute();
+
+  try {
+    const href = loaded.route.__private.buildLaboratoryCarouselHref(
+      {
+        ualId: 82,
+        loanActivated: true,
+        counters: { salaReferenciaId: 12 },
+      },
+      new Set(['/milab/prestamos/gestion-solicitudes', '/milab/prestamos/reportes']),
+      { route: '/milab/prestamos/reportes' }
+    );
+
+    assert.equal(href, '/milab/prestamos/reportes?laboratorio=82');
+    assert.equal(
+      loaded.route.__private.buildLaboratoryCarouselHref(
+        { ualId: 83, loanActivated: false },
+        new Set(),
+        null
+      ),
+      '/milab/prestamos/activacion/laboratorios/83'
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos normaliza el esquema dinamico y genera llaves limpias', () => {
   const loaded = loadRoute();
 
@@ -509,8 +537,9 @@ test('prestamos renders role-aware dashboards at root', async () => {
     const laboratoristaPayload = JSON.parse(laboratoristaResponse.text);
     assert.equal(laboratoristaPayload.view, 'home/prestamos/dashboard_laboratorista');
     assert.ok(Array.isArray(laboratoristaPayload.locals.laboratorios));
-    assert.ok(Array.isArray(laboratoristaPayload.locals.eventsByDay));
-    assert.ok(Array.isArray(laboratoristaPayload.locals.pendingRequests));
+    assert.equal(laboratoristaPayload.locals.selectedIndex, 0);
+    assert.equal(laboratoristaPayload.locals.previousLaboratorio, null);
+    assert.equal(laboratoristaPayload.locals.nextLaboratorio, null);
   } finally {
     loaded.restore();
   }

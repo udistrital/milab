@@ -1,297 +1,126 @@
 <%- include('../../partials/header'); -%>
 
 <style>
-  .loan-labs-grid {
+  .loan-laboratory-card {
+    border: 1px solid #e7e5e4;
+    border-radius: 0.9rem;
+    background: #fff;
+    box-shadow: 0 5px 16px rgba(120, 87, 30, 0.07);
+  }
+
+  .loan-laboratory-carousel {
     display: grid;
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-    gap: 0.9rem;
+    grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+    align-items: center;
+    gap: 0.75rem;
   }
-  @media (min-width: 992px) {
-    .loan-labs-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+
+  .loan-laboratory-carousel.is-single {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .loan-lab-card {
-    border-radius: 1rem;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  }
-  .loan-lab-state {
+
+  .loan-laboratory-arrow {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    border-radius: 999px;
-    border: 1px solid rgba(15, 23, 42, 0.15);
-    padding: 0.15rem 0.55rem;
-    font-size: 0.74rem;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 1px solid #e7e5e4;
+    border-radius: 50%;
+    background: #fff;
+    color: #9a5b00;
+    font-size: 1.2rem;
+    text-decoration: none;
   }
-  .loan-lab-dot {
-    width: 0.56rem;
-    height: 0.56rem;
-    border-radius: 999px;
-    display: inline-block;
+
+  .loan-laboratory-arrow:hover,
+  .loan-laboratory-arrow:focus-visible {
+    border-color: #e8b84a;
+    background: #fff3d4;
+    color: #9a5b00;
   }
-  .loan-lab-dot--ok {
-    background: #16a34a;
-  }
-  .loan-lab-dot--warn {
-    background: #d97706;
-  }
-  .loan-lab-dot--pending {
-    background: #dc2626;
-  }
-  .loan-week-strip {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(220px, 1fr));
-    gap: 0.85rem;
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
-  }
-  .loan-week-day {
-    border: 1px solid rgba(15, 23, 42, 0.1);
-    border-radius: 0.95rem;
-    background: rgba(255, 255, 255, 0.94);
-    min-height: 220px;
-    padding: 0.85rem;
-  }
-  .loan-week-day--today {
-    border-color: rgba(245, 158, 11, 0.7);
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.14) inset;
-  }
-  .loan-week-day-head {
-    margin-bottom: 0.7rem;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-    padding-bottom: 0.5rem;
-  }
-  .loan-week-day-name {
-    margin: 0;
-    font-size: 0.88rem;
-    font-weight: 700;
-  }
-  .loan-week-day-date {
-    margin: 0;
-    font-size: 0.74rem;
-    color: #64748b;
-  }
-  .loan-event {
-    border-radius: 0.72rem;
-    border: 1px solid rgba(15, 23, 42, 0.1);
-    padding: 0.55rem 0.62rem;
-    margin-bottom: 0.55rem;
-    background: #f8fafc;
-  }
-  .loan-event--current {
-    border-color: rgba(5, 150, 105, 0.45);
-    background: rgba(16, 185, 129, 0.08);
-  }
-  .loan-event--upcoming {
-    border-color: rgba(217, 119, 6, 0.35);
-    background: rgba(245, 158, 11, 0.09);
-  }
-  .loan-event--past {
-    border-color: rgba(100, 116, 139, 0.24);
-    background: rgba(148, 163, 184, 0.09);
-  }
-  .loan-event-time {
-    margin: 0 0 0.2rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-  }
-  .loan-event-title {
-    margin: 0;
-    font-size: 0.79rem;
-    font-weight: 700;
-  }
-  .loan-event-meta {
-    margin: 0.12rem 0 0;
-    font-size: 0.72rem;
-    color: #475569;
+
+  @media (max-width: 575.98px) {
+    .loan-laboratory-carousel {
+      grid-template-columns: 2.25rem minmax(0, 1fr) 2.25rem;
+      gap: 0.4rem;
+    }
+
+    .loan-laboratory-arrow {
+      width: 2.25rem;
+      height: 2.25rem;
+    }
   }
 </style>
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <h1 class="app-page-title">Dashboard de préstamos</h1>
+    <h1 class="app-page-title">Mis laboratorios</h1>
     <p class="app-page-subtitle">
-      Vista operativa de tus laboratorios, semana en curso y solicitudes pendientes.
+      Configura cada laboratorio para habilitar la gestión de préstamos.
     </p>
   </section>
 
-  <% const labs = Array.isArray(laboratorios) ? laboratorios : []; const week = Array.isArray(eventsByDay) ? eventsByDay : []; const timeline = Array.isArray(laboratoryTimeline) ? laboratoryTimeline : []; const requests = Array.isArray(pendingRequests) ? pendingRequests : []; function formatDate(value) { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); return date.toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: '2-digit' }); } function requestDate(value) { if (!value) return ''; const date = new Date(value); if (Number.isNaN(date.getTime())) return ''; return date.toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'short', timeStyle: 'short' }); } function statusLabel(estado) { const value = String(estado || '').toLowerCase(); if (value === 'por_aprobar') return 'Por aprobar'; if (value === 'pendiente') return 'Pendiente'; return value || 'Pendiente'; } %>
+  <% if (errorMessage) { %>
+    <div class="alert alert-danger" role="alert"><%= errorMessage %></div>
+  <% } %>
 
-  <section class="card app-table-panel text-light mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
-      <h2 class="h5 mb-0">Mis laboratorios</h2>
-    </div>
-    <div class="card-body">
-      <% if (!labs.length) { %>
-        <div class="alert alert-info mb-0">No hay laboratorios asignados en tu alcance actual.</div>
-      <% } else { %>
-        <div class="loan-labs-grid">
-          <% labs.forEach(function(lab) { %>
-            <% const dotClass = lab.state?.key === 'completo' ? 'loan-lab-dot--ok' : (lab.state?.key === 'proceso' ? 'loan-lab-dot--warn' : 'loan-lab-dot--pending'); %>
-            <article class="card app-form-panel text-light loan-lab-card">
-              <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
-                  <div>
-                    <h3 class="h6 mb-1"><%= lab.laboratorio %></h3>
-                    <p class="small text-light-emphasis mb-0"><%= lab.facultad %></p>
-                  </div>
-                  <span class="loan-lab-state">
-                    <span class="loan-lab-dot <%= dotClass %>" aria-hidden="true"></span>
-                    <%= lab.state?.label || 'Pendiente' %>
-                  </span>
-                </div>
-                <div class="small mb-2">Avance general: <strong><%= lab.completion?.percent || 0 %>%</strong></div>
-                <div class="progress mb-3" role="progressbar" aria-valuenow="<%= lab.completion?.percent || 0 %>" aria-valuemin="0" aria-valuemax="100">
-                  <div class="progress-bar <%= lab.canActivateLoans ? 'bg-success' : 'bg-warning' %>" style="width: <%= lab.completion?.percent || 0 %>%"></div>
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                  <% if (lab.loanActivated) { %>
-                    <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= lab.ualId %>/gestion">
-                      Gestión laboratorio
-                    </a>
-                    <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= lab.ualId %>/by-request">
-                      Plantilla QR
-                    </a>
-                  <% } else { %>
-                    <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= lab.ualId %>">
-                      Configurar laboratorio
-                    </a>
-                  <% } %>
-                </div>
-              </div>
-            </article>
-          <% }) %>
-        </div>
+  <% const labs = Array.isArray(laboratorios) ? laboratorios : []; const selected = labs[selectedIndex] || null; %>
+  <% if (!selected) { %>
+    <div class="alert alert-info" role="status">No hay laboratorios asignados en tu alcance actual.</div>
+  <% } else { %>
+    <section
+      class="loan-laboratory-carousel <%= labs.length > 1 ? '' : 'is-single' %>"
+      aria-label="Laboratorios asignados"
+    >
+      <% if (previousLaboratorio) { %>
+        <a
+          class="loan-laboratory-arrow"
+          href="/milab/prestamos/?laboratorio=<%= previousLaboratorio.ualId %>"
+          aria-label="Laboratorio anterior"
+        ><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
       <% } %>
-    </div>
-  </section>
 
-  <% if (labs.some(function(lab) { return lab.loanActivated; })) { %>
-  <section class="card app-table-panel text-light mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
-      <h2 class="h5 mb-0">Semana en curso</h2>
-      <span class="small text-light-emphasis">Hoy: <strong><%= formatDate(todayDate) %></strong> · <%= nowTime || '--:--' %></span>
-    </div>
-    <div class="card-body">
-      <% if (!week.length) { %>
-        <div class="alert alert-info mb-0">No hay horarios activos para la semana actual.</div>
-      <% } else { %>
-        <div class="loan-week-strip">
-          <% week.forEach(function(day) { %>
-            <article class="loan-week-day <%= day.isToday ? 'loan-week-day--today' : '' %>">
-              <header class="loan-week-day-head">
-                <h3 class="loan-week-day-name"><%= day.label %></h3>
-                <p class="loan-week-day-date"><%= formatDate(day.date) %></p>
-              </header>
-              <% if (!Array.isArray(day.events) || !day.events.length) { %>
-                <p class="small text-light-emphasis mb-0">Sin programación.</p>
-              <% } else { %>
-                <% day.events.forEach(function(event) { %>
-                  <div class="loan-event loan-event--<%= event.status %>">
-                    <p class="loan-event-time"><%= event.startTime %> - <%= event.endTime %></p>
-                    <p class="loan-event-title"><%= event.laboratorio %> · <%= event.sala %></p>
-                    <p class="loan-event-meta"><%= event.practiceType %></p>
-                  </div>
-                <% }) %>
-              <% } %>
-            </article>
-          <% }) %>
+      <article class="loan-laboratory-card p-3 p-md-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+          <div class="min-w-0">
+            <h2 class="h5 mb-1 text-uppercase"><%= selected.laboratorio %></h2>
+            <p class="small text-muted mb-0">
+              <%= selected.facultad %><% if (selected.dependencia) { %> · <%= selected.dependencia %><% } %>
+            </p>
+          </div>
+          <span class="badge text-bg-warning"><%= selected.completion?.percent || 0 %>% configurado</span>
         </div>
+
+        <div class="progress mt-3 mb-3" role="progressbar" aria-valuenow="<%= selected.completion?.percent || 0 %>" aria-valuemin="0" aria-valuemax="100">
+          <div
+            class="progress-bar <%= selected.canActivateLoans ? 'bg-success' : 'bg-warning' %>"
+            style="width: <%= selected.completion?.percent || 0 %>%"
+          ></div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= selected.ualId %>">
+            Configurar laboratorio
+          </a>
+        </div>
+      </article>
+
+      <% if (nextLaboratorio) { %>
+        <a
+          class="loan-laboratory-arrow"
+          href="/milab/prestamos/?laboratorio=<%= nextLaboratorio.ualId %>"
+          aria-label="Siguiente laboratorio"
+        ><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
       <% } %>
-    </div>
-  </section>
+    </section>
 
-  <section class="row g-3">
-    <article class="col-12 col-xl-7">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header">
-          <h2 class="h5 mb-0">Estado por laboratorio (ahora / sigue / última)</h2>
-        </div>
-        <div class="card-body">
-          <% if (!timeline.length) { %>
-            <div class="alert alert-info mb-0">No hay eventos para mostrar en tus laboratorios.</div>
-          <% } else { %>
-            <div class="table-responsive">
-              <table class="table table-striped align-middle">
-                <thead>
-                  <tr>
-                    <th>Laboratorio</th>
-                    <th>Ahora</th>
-                    <th>Sigue</th>
-                    <th>Última clase</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <% timeline.forEach(function(item) { %>
-                    <tr>
-                      <td>
-                        <div class="fw-semibold"><%= item.laboratorio %></div>
-                        <div class="small text-light-emphasis"><%= item.facultad %></div>
-                      </td>
-                      <td class="small">
-                        <% if (item.currentEvent) { %>
-                          <div><strong><%= item.currentEvent.startTime %>-<%= item.currentEvent.endTime %></strong></div>
-                          <div><%= item.currentEvent.sala %></div>
-                        <% } else { %>
-                          <span class="text-light-emphasis">Sin clase en curso</span>
-                        <% } %>
-                      </td>
-                      <td class="small">
-                        <% if (item.nextEvent) { %>
-                          <div><strong><%= formatDate(item.nextEvent.date) %></strong> · <%= item.nextEvent.startTime %></div>
-                          <div><%= item.nextEvent.sala %></div>
-                        <% } else { %>
-                          <span class="text-light-emphasis">Sin próximos eventos</span>
-                        <% } %>
-                      </td>
-                      <td class="small">
-                        <% if (item.lastEvent) { %>
-                          <div><strong><%= formatDate(item.lastEvent.date) %></strong> · <%= item.lastEvent.endTime %></div>
-                          <div><%= item.lastEvent.sala %></div>
-                        <% } else { %>
-                          <span class="text-light-emphasis">Sin historial en semana</span>
-                        <% } %>
-                      </td>
-                    </tr>
-                  <% }) %>
-                </tbody>
-              </table>
-            </div>
-          <% } %>
-        </div>
+    <% if (labs.length > 1) { %>
+      <div class="small text-muted text-center mt-2" aria-live="polite">
+        Laboratorio <%= selectedIndex + 1 %> de <%= labs.length %>
       </div>
-    </article>
-
-    <article class="col-12 col-xl-5">
-      <div class="card app-table-panel text-light h-100">
-        <div class="card-header d-flex justify-content-between align-items-center gap-2">
-          <h2 class="h5 mb-0">Solicitudes pendientes</h2>
-          <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/gestion-solicitudes">Ver todas</a>
-        </div>
-        <div class="card-body">
-          <% if (!requests.length) { %>
-            <div class="alert alert-info mb-0">No hay solicitudes pendientes para tu alcance.</div>
-          <% } else { %>
-            <div class="list-group list-group-flush">
-              <% requests.forEach(function(request) { %>
-                <div class="list-group-item px-0">
-                  <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                      <div class="fw-semibold">Solicitud #<%= request.id %> · <%= request.nombre_solicitante || 'Solicitante' %></div>
-                      <div class="small text-light-emphasis"><%= request.laboratorio || '-' %> · <%= request.facultad || '-' %></div>
-                      <div class="small text-light-emphasis"><%= requestDate(request.fecha_solicitud || request.fecha_creacion) %></div>
-                    </div>
-                    <span class="badge bg-warning text-dark"><%= statusLabel(request.estado) %></span>
-                  </div>
-                </div>
-              <% }) %>
-            </div>
-          <% } %>
-        </div>
-      </div>
-    </article>
-  </section>
+    <% } %>
   <% } %>
 </main>
+
+<%- include('../../partials/footer'); -%>

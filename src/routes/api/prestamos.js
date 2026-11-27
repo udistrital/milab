@@ -1462,9 +1462,12 @@ async function fetchLaboratoristaWeekSchedule(req, options = {}) {
   return result.rows || [];
 }
 
-async function fetchLaboratoristaDashboardData(req) {
+async function fetchLaboratoristaDashboardData(req, options = {}) {
   const laboratorios = await fetchLaboratoryActivationOverview(req);
-  if (!laboratorios.some((laboratorio) => laboratorio.loanActivated)) {
+  if (
+    !options.includeOperations ||
+    !laboratorios.some((laboratorio) => laboratorio.loanActivated)
+  ) {
     return {
       laboratorios,
       eventsByDay: [],
@@ -1604,17 +1607,49 @@ async function renderLaboratoristaDashboard(req, res) {
   try {
     const roles = normalizeRoles(req.session?.user?.roles || req.session?.user?.tipo);
     const data = await fetchLaboratoristaDashboardData(req);
+    const activatedLaboratories = data.laboratorios.filter(
+      (laboratorio) => laboratorio.loanActivated
+    );
+    if (activatedLaboratories.length) {
+      const requestedUalId = Number.parseInt(String(req.query.laboratorio || ''), 10);
+      const sessionUalId = Number.parseInt(String(req.session?.loanLabDashboardUalId || ''), 10);
+      const selectedLaboratorio =
+        activatedLaboratories.find((laboratorio) => Number(laboratorio.ualId) === requestedUalId) ||
+        activatedLaboratories.find((laboratorio) => Number(laboratorio.ualId) === sessionUalId) ||
+        activatedLaboratories[0];
+      const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, {
+        viewOnly: true,
+      });
+      const modules = buildLaboratoryManagementModules(allowedRoutes, selectedLaboratorio);
+      return res.redirect(
+        modules[0]?.href ||
+          `/milab/prestamos/activacion/laboratorios/${selectedLaboratorio.ualId}/gestion`
+      );
+    }
+
+    const requestedUalId = Number.parseInt(String(req.query.laboratorio || ''), 10);
+    const selectedIndex = Math.max(
+      0,
+      data.laboratorios.findIndex((laboratorio) => Number(laboratorio.ualId) === requestedUalId)
+    );
     return res.render('home/prestamos/dashboard_laboratorista', {
       title: 'Prestamos',
       user: req.session?.user || null,
       tipo: 'laboratorista',
       roles,
+      errorMessage: '',
       laboratorios: data.laboratorios,
-      eventsByDay: data.eventsByDay,
-      laboratoryTimeline: data.laboratoryTimeline,
-      pendingRequests: data.pendingRequests,
-      todayDate: data.todayDate,
-      nowTime: data.nowTime,
+      selectedIndex,
+      previousLaboratorio:
+        data.laboratorios.length > 1
+          ? data.laboratorios[
+              (selectedIndex - 1 + data.laboratorios.length) % data.laboratorios.length
+            ]
+          : null,
+      nextLaboratorio:
+        data.laboratorios.length > 1
+          ? data.laboratorios[(selectedIndex + 1) % data.laboratorios.length]
+          : null,
     });
   } catch (error) {
     console.error('[Dashboard Prestamos] Error renderizando dashboard laboratorista:', error);
@@ -1625,11 +1660,10 @@ async function renderLaboratoristaDashboard(req, res) {
       tipo: 'laboratorista',
       roles,
       laboratorios: [],
-      eventsByDay: [],
-      laboratoryTimeline: [],
-      pendingRequests: [],
-      todayDate: '',
-      nowTime: '',
+      selectedIndex: 0,
+      previousLaboratorio: null,
+      nextLaboratorio: null,
+      errorMessage: 'No fue posible cargar tus laboratorios. Intenta nuevamente más tarde.',
     });
   }
 }
@@ -1787,13 +1821,30 @@ function buildLaboratoryManagementModules(allowedRoutes, laboratorio) {
 }
 
 function isLaboratoryManagementModulePath(pathname) {
-  return LABORATORY_MANAGEMENT_MODULES.some((module) => {
-    if (module.route === SALAS_MENU_ROUTE) {
-      return /^\/salas\/\d+\/horarios(?:\/|$)/.test(pathname);
-    }
-    const localPath = module.route.replace('/milab/prestamos', '');
-    return pathname === localPath || pathname.startsWith(`${localPath}/`);
-  });
+  return Boolean(findLaboratoryManagementModule(pathname));
+}
+
+function findLaboratoryManagementModule(pathname) {
+  return (
+    LABORATORY_MANAGEMENT_MODULES.find((module) => {
+      if (module.route === SALAS_MENU_ROUTE) {
+        return /^\/salas\/\d+\/horarios(?:\/|$)/.test(pathname);
+      }
+      const localPath = module.route.replace('/milab/prestamos', '');
+      return pathname === localPath || pathname.startsWith(`${localPath}/`);
+    }) || null
+  );
+}
+
+function buildLaboratoryCarouselHref(laboratorio, allowedRoutes, currentModule) {
+  if (!laboratorio.loanActivated) {
+    return `/milab/prestamos/activacion/laboratorios/${laboratorio.ualId}`;
+  }
+
+  const modules = buildLaboratoryManagementModules(allowedRoutes, laboratorio);
+  const module =
+    modules.find((candidate) => candidate.route === currentModule?.route) || modules[0];
+  return module?.href || `/milab/prestamos/activacion/laboratorios/${laboratorio.ualId}/gestion`;
 }
 
 const ROLES_RESERVATION_RULES_EDITORS = new Set(['admin', 'coordinador']);
@@ -2140,12 +2191,29 @@ router.use(async function attachLaboratoryManagementContext(req, res, next) {
     const allowedRoutes = await fetchPrestamosAllowedMenuRoutes(roles, pool, { viewOnly: true });
     const modules = buildLaboratoryManagementModules(allowedRoutes, laboratorio);
     const stats = await fetchDashboardStatsForLaboratory(laboratorio);
+    const selectedIndex = laboratorios.findIndex(
+      (item) => Number(item.ualId) === Number(laboratorio.ualId)
+    );
+    const currentModule = findLaboratoryManagementModule(req.path);
+    const previousLaboratorio =
+      laboratorios.length > 1
+        ? laboratorios[(selectedIndex - 1 + laboratorios.length) % laboratorios.length]
+        : null;
+    const nextLaboratorio =
+      laboratorios.length > 1 ? laboratorios[(selectedIndex + 1) % laboratorios.length] : null;
     res.locals.laboratoryDashboard = {
       laboratorios,
       laboratorio,
       stats,
       modules,
       activePath: req.path,
+      selectedIndex,
+      previousHref: previousLaboratorio
+        ? buildLaboratoryCarouselHref(previousLaboratorio, allowedRoutes, currentModule)
+        : null,
+      nextHref: nextLaboratorio
+        ? buildLaboratoryCarouselHref(nextLaboratorio, allowedRoutes, currentModule)
+        : null,
     };
     return next();
   } catch (error) {
@@ -19712,6 +19780,7 @@ router.__private = {
   buildSalaSchedulePreviewCalendar,
   buildSalaScheduleTemplateBuffer,
   buildLaboratoryManagementModules,
+  buildLaboratoryCarouselHref,
   fetchDashboardStatsForLaboratory,
   insertSalaSchedule,
 };

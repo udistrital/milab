@@ -271,22 +271,44 @@
 
     .laboratory-management-labs-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-      gap: 0.6rem;
+      grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+      align-items: center;
+      gap: 0.65rem;
+    }
+
+    .laboratory-management-labs-grid.is-single {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .laboratory-management-lab-card {
       min-width: 0;
-      padding: 0.75rem 0.85rem;
+      padding: 0.8rem 0.9rem;
       border: 1px solid #e7e5e4;
       border-radius: 0.8rem;
       background: #fff;
       box-shadow: 0 4px 12px rgba(120, 87, 30, 0.06);
     }
 
-    .laboratory-management-lab-card.is-selected {
+    .laboratory-management-carousel-arrow {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border: 1px solid #e7e5e4;
+      border-radius: 50%;
+      background: #fff;
+      color: #9a5b00;
+      font-size: 1.15rem;
+      text-decoration: none;
+      box-shadow: 0 3px 10px rgba(120, 87, 30, 0.08);
+    }
+
+    .laboratory-management-carousel-arrow:hover,
+    .laboratory-management-carousel-arrow:focus-visible {
       border-color: #e8b84a;
-      box-shadow: 0 0 0 2px rgba(232, 184, 74, 0.14);
+      background: #fff3d4;
+      color: #9a5b00;
     }
 
     .laboratory-management-lab-card-title {
@@ -1146,30 +1168,43 @@
         <% if (locals.laboratoryDashboard) { const dashboard = locals.laboratoryDashboard; %>
           <section class="laboratory-management-labs" aria-label="Laboratorios asignados">
             <h2 class="h6 mb-2">Mis laboratorios</h2>
-            <div class="laboratory-management-labs-grid">
-              <% dashboard.laboratorios.forEach(function(lab) { const selected = Number(lab.ualId) === Number(dashboard.laboratorio.ualId); %>
-                <article class="laboratory-management-lab-card <%= selected ? 'is-selected' : '' %>">
-                  <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div class="min-w-0">
-                      <div class="laboratory-management-lab-card-title"><%= lab.laboratorio %></div>
-                      <div class="laboratory-management-lab-card-meta"><%= lab.facultad %><% if (lab.dependencia) { %> · <%= lab.dependencia %><% } %></div>
-                    </div>
-                    <span class="badge <%= lab.loanActivated ? 'text-bg-success' : 'text-bg-warning' %>">
-                      <%= lab.loanActivated ? 'Activado' : `${lab.completion.percent}%` %>
-                    </span>
+            <div class="laboratory-management-labs-grid <%= dashboard.laboratorios.length > 1 ? '' : 'is-single' %>">
+              <% if (dashboard.laboratorios.length > 1) { %>
+                <a
+                  class="laboratory-management-carousel-arrow"
+                  href="<%= dashboard.previousHref %>"
+                  aria-label="Laboratorio anterior"
+                ><i class="bi bi-chevron-left" aria-hidden="true"></i></a>
+              <% } %>
+              <article class="laboratory-management-lab-card">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div class="min-w-0">
+                    <div class="laboratory-management-lab-card-title"><%= dashboard.laboratorio.laboratorio %></div>
+                    <div class="laboratory-management-lab-card-meta"><%= dashboard.laboratorio.facultad %><% if (dashboard.laboratorio.dependencia) { %> · <%= dashboard.laboratorio.dependencia %><% } %></div>
                   </div>
-                  <div class="laboratory-management-lab-card-actions">
-                    <a
-                      class="btn btn-perso btn-sm"
-                      href="<%= lab.loanActivated ? `/milab/prestamos/activacion/laboratorios/${lab.ualId}/gestion` : `/milab/prestamos/activacion/laboratorios/${lab.ualId}` %>"
-                    ><%= lab.loanActivated ? 'Gestión laboratorio' : 'Configurar laboratorio' %></a>
-                    <% if (lab.loanActivated) { %>
-                      <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= lab.ualId %>/by-request">Plantilla QR</a>
-                    <% } %>
-                  </div>
-                </article>
-              <% }) %>
+                  <span class="badge text-bg-success">Activado</span>
+                </div>
+                <div class="laboratory-management-lab-card-actions">
+                  <a
+                    class="btn btn-perso btn-sm"
+                    href="/milab/prestamos/activacion/laboratorios/<%= dashboard.laboratorio.ualId %>/gestion"
+                  >Gestión laboratorio</a>
+                  <a class="btn btn-outline-secondary btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= dashboard.laboratorio.ualId %>/by-request">Plantilla QR</a>
+                </div>
+              </article>
+              <% if (dashboard.laboratorios.length > 1) { %>
+                <a
+                  class="laboratory-management-carousel-arrow"
+                  href="<%= dashboard.nextHref %>"
+                  aria-label="Siguiente laboratorio"
+                ><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
+              <% } %>
             </div>
+            <% if (dashboard.laboratorios.length > 1) { %>
+              <div class="small text-muted text-center mt-2" aria-live="polite">
+                Laboratorio <%= dashboard.selectedIndex + 1 %> de <%= dashboard.laboratorios.length %>
+              </div>
+            <% } %>
           </section>
 
           <section class="laboratory-management-context" aria-label="Resumen del laboratorio">
