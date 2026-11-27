@@ -317,7 +317,11 @@ test('prestamos calcula estadisticas del dashboard limitadas al laboratorio', as
     );
     assert.ok(
       queries.every(
-        ({ sql }) => sql.includes('s.laboratorio = $1') || sql.includes('e.laboratorio = $1')
+        ({ sql }) =>
+          sql.includes('e.laboratorio = $1') &&
+          sql.includes('e.facultad = $2') &&
+          !sql.includes('s.laboratorio') &&
+          !sql.includes('s.facultad')
       )
     );
   } finally {

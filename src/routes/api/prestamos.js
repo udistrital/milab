@@ -339,10 +339,10 @@ const PRESTAMOS_MODULE_CARD_META = {
     icon: 'bi-diagram-3',
     tone: 'emerald',
     descriptions: {
-      admin: 'Revisa el estado de activacion operativa por laboratorio.',
-      coordinador: 'Supervisa el avance de activacion de laboratorios en su alcance.',
-      laboratorista: 'Configura paso a paso tus laboratorios para habilitar prestamos.',
-      monitor: 'Consulta el avance de activacion de laboratorios asignados.',
+      admin: 'Administra la activacion y gestion operativa de los laboratorios.',
+      coordinador: 'Supervisa la activacion y gestion de laboratorios en su alcance.',
+      laboratorista: 'Configura laboratorios y gestiona sus prestamos desde un panel integrado.',
+      monitor: 'Consulta la activacion y gestion de laboratorios asignados.',
       fallback: 'Consulta el estado de activacion de laboratorios.',
     },
   },
@@ -372,7 +372,7 @@ const PRESTAMOS_QUICK_LINK_ALIASES = {
   '/milab/prestamos/practicas/solicitar': 'Solicitar practica',
   '/milab/prestamos/practicas/mis-reservas': 'Mis practicas',
   '/milab/prestamos/salas': 'Salas disponibles',
-  '/milab/prestamos/activacion/laboratorios': 'Activacion laboratorios',
+  '/milab/prestamos/activacion/laboratorios': 'Gestion de laboratorios',
   '/milab/prestamos/inventario': 'Inventario',
   '/milab/prestamos/equipos': 'Equipos',
   '/milab/prestamos/gestion-solicitudes': 'Gestion de solicitudes',
@@ -472,7 +472,7 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
       ['/milab/prestamos/practicas/mis-reservas', 'Mis practicas'],
       ['/milab/prestamos/admin/parametrizaciones', 'Parametrizaciones'],
       ['/milab/prestamos/coordinador/practicas/config', 'Configuracion de practicas'],
-      ['/milab/prestamos/activacion/laboratorios', 'Activacion laboratorios'],
+      ['/milab/prestamos/activacion/laboratorios', 'Gestion de laboratorios'],
     ])
   );
   const cards = [];
@@ -496,7 +496,7 @@ function buildDashboardModuleCardsFromRoutes(allowedRoutes, primaryRole, labelOv
       primaryRole
     );
     cards.push({
-      label: 'Activacion laboratorios',
+      label: 'Gestion de laboratorios',
       href: '/milab/prestamos/activacion/laboratorios',
       icon: activationMeta?.icon || 'bi-diagram-3',
       tone: activationMeta?.tone || 'emerald',
@@ -1108,15 +1108,15 @@ async function fetchDashboardStatsForLaboratory(laboratorio) {
 
   const [activosRow, pendientesRow, finalizadosRow, disponiblesRow] = await Promise.all([
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('aprobado', 'activo') AND s.laboratorio = $1 AND s.facultad = $2`,
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('aprobado', 'activo') AND e.laboratorio = $1 AND e.facultad = $2`,
       [labName, facultyName]
     ),
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('pendiente', 'en_cola') AND s.laboratorio = $1 AND s.facultad = $2`,
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('pendiente', 'en_cola') AND e.laboratorio = $1 AND e.facultad = $2`,
       [labName, facultyName]
     ),
     pool.query(
-      `SELECT COUNT(*) AS total FROM solicitud_prestamo s WHERE s.estado IN ('finalizado', 'cancelado', 'rechazado') AND s.laboratorio = $1 AND s.facultad = $2`,
+      `SELECT COUNT(*) AS total FROM solicitud_prestamo s JOIN equipo_catalogo e ON e.id = s.equipo_id WHERE s.estado IN ('finalizado', 'cancelado', 'rechazado') AND e.laboratorio = $1 AND e.facultad = $2`,
       [labName, facultyName]
     ),
     pool.query(
