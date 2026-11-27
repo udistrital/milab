@@ -49,6 +49,10 @@ const requireReceiptBlockAccess = requireJsonRoles(['admin', 'laboratorista', 'c
 
 const MAX_BULK_RECEIPT_BLOCK = 100;
 
+// Estados de la deuda en SGA: 1 = activa (bloqueo vigente), 3 = saldada (bloqueo retirado).
+const SGA_DEBT_ACTIVE_STATE = '1';
+const SGA_DEBT_SETTLED_STATE = '3';
+
 function getSessionDocument(req) {
   return req.session?.user?.documento_real || req.session?.user?.documento || null;
 }
@@ -444,6 +448,7 @@ async function queryMultasRows(client, conditions, params) {
         m.obs_multa,
         m.tipo_sancion,
         m.sga_deuda_id,
+        m.sga_deuda_estado,
         m.periodo
       FROM multa m
       INNER JOIN ual u ON u.ual_id = m.ual_id
@@ -482,6 +487,30 @@ function getReceiptBlockIneligibleMessage(row) {
   return 'La sanción ya tiene un bloqueo de recibo de pago generado.';
 }
 
+// Una deuda solo puede activarse y saldarse una vez: una vez saldada queda cerrada.
+function isReceiptSettled(row) {
+  return (
+    Boolean(row?.sga_deuda_id) && String(row?.sga_deuda_estado || '') === SGA_DEBT_SETTLED_STATE
+  );
+}
+
+// Se puede desbloquear (saldar en SGA) mientras la deuda esté activa.
+function isReceiptUnblockEligible(row) {
+  return (
+    Boolean(row?.sga_deuda_id) && !isReceiptSettled(row) && row?.tipo_sancionado === 'estudiante'
+  );
+}
+
+function getReceiptUnblockIneligibleMessage(row) {
+  if (!row?.sga_deuda_id) {
+    return 'La sanción no tiene un bloqueo de recibo de pago generado.';
+  }
+  if (isReceiptSettled(row)) {
+    return 'La deuda ya fue saldada en SGA; no se puede volver a desbloquear.';
+  }
+  return 'Solo las sanciones de estudiantes pueden desbloquear el recibo de pago en SGA.';
+}
+
 // Crea la deuda en SGA y la vincula a la sanción. Devuelve el identificador.
 async function blockReceiptForSanction(client, row) {
   const periodo = Number(row?.periodo);
@@ -501,14 +530,43 @@ async function blockReceiptForSanction(client, row) {
     `
       UPDATE multa
          SET sga_deuda_id = $1,
+             sga_deuda_estado = $2,
              fecha_modificacion = CURRENT_TIMESTAMP
-       WHERE id = $2
+       WHERE id = $3
          AND sga_deuda_id IS NULL
     `,
-    [deudaId, row.id]
+    [deudaId, SGA_DEBT_ACTIVE_STATE, row.id]
   );
 
   return { deudaId, linked: updateResult.rowCount > 0 };
+}
+
+// Salda (desbloquea) la deuda de la sanción en SGA y marca el retiro en la tabla local.
+async function settleReceiptForSanction(client, row) {
+  const periodo = Number(row?.periodo);
+  if (![1, 2, 3].includes(periodo)) {
+    throw new Error('La sanción no tiene un período académico válido para SGA.');
+  }
+  await sgaDebtService.settleStudentDebt({
+    deudaId: row.sga_deuda_id,
+    codigo: row.codigo_sancionado,
+    fechaSancion: row.fecha_multa_formateada,
+    periodo,
+    fechaPago: todayInBogota(),
+  });
+  const updateResult = await client.query(
+    `
+      UPDATE multa
+         SET sga_deuda_estado = $1,
+             fecha_modificacion = CURRENT_TIMESTAMP
+       WHERE id = $2
+         AND sga_deuda_id = $3
+         AND sga_deuda_estado IS DISTINCT FROM $1
+    `,
+    [SGA_DEBT_SETTLED_STATE, row.id, row.sga_deuda_id]
+  );
+
+  return { deudaId: row.sga_deuda_id, updated: updateResult.rowCount > 0 };
 }
 
 async function addLaboratoristaActions(client, rows, req) {
@@ -519,6 +577,7 @@ async function addLaboratoristaActions(client, rows, req) {
       ...row,
       canEdit: !readOnly && String(row.con_estado_multa || '').toUpperCase() === 'ACTIVA',
       canBloquearRecibo: !readOnly && isReceiptBlockEligible(row),
+      canDesbloquearRecibo: !readOnly && isReceiptUnblockEligible(row),
     }));
   }
 
@@ -526,7 +585,11 @@ async function addLaboratoristaActions(client, rows, req) {
     ...new Set(rows.map((row) => Number(row.facultad_id)).filter((id) => Number.isFinite(id))),
   ];
   if (facultyIds.length === 0) {
-    return rows.map((row) => ({ ...row, canBloquearRecibo: isReceiptBlockEligible(row) }));
+    return rows.map((row) => ({
+      ...row,
+      canBloquearRecibo: isReceiptBlockEligible(row),
+      canDesbloquearRecibo: isReceiptUnblockEligible(row),
+    }));
   }
 
   const configResult = await client.query(
@@ -566,6 +629,7 @@ async function addLaboratoristaActions(client, rows, req) {
       canRemove: state === 'ACTIVA',
       canEdit: state === 'ACTIVA',
       canBloquearRecibo: isReceiptBlockEligible(row),
+      canDesbloquearRecibo: isReceiptUnblockEligible(row),
     };
   });
 }
@@ -896,6 +960,205 @@ router.post('/:multaId/bloquear-recibo', requireReceiptBlockAccess, async (req, 
     return res.status(502).json({
       ok: false,
       message: 'No fue posible generar el bloqueo de recibo de pago en SGA.',
+    });
+  }
+});
+
+// POST: salda (desbloquea) en SGA la deuda de las sanciones seleccionadas.
+router.post('/desbloquear-recibo-masivo', requireReceiptBlockAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const rawIds = Array.isArray(req.body?.multa_ids) ? req.body.multa_ids : [];
+  const multaIds = [
+    ...new Set(
+      rawIds.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)
+    ),
+  ];
+
+  if (!multaIds.length) {
+    return res.status(400).json({ ok: false, message: 'Selecciona al menos una sanción.' });
+  }
+  if (multaIds.length > MAX_BULK_RECEIPT_BLOCK) {
+    return res.status(400).json({
+      ok: false,
+      message: `Puedes desbloquear hasta ${MAX_BULK_RECEIPT_BLOCK} sanciones a la vez.`,
+    });
+  }
+  if (!sgaDebtService.isConfigured()) {
+    return res
+      .status(503)
+      .json({ ok: false, message: 'El servicio SGA no está configurado en este ambiente.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const queryContext = await buildMultasQueryContext(req, client);
+    if (queryContext.error) {
+      client.release();
+      return res.status(403).json({
+        ok: false,
+        message: queryContext.error.message2 || queryContext.error.message,
+      });
+    }
+
+    const idsParameter = `$${queryContext.params.length + 1}`;
+    const rows = await queryMultasRows(
+      client,
+      [...queryContext.conditions, `m.id = ANY(${idsParameter}::int[])`],
+      [...queryContext.params, multaIds]
+    );
+    const rowsById = new Map(rows.map((row) => [Number(row.id), row]));
+
+    const results = [];
+    for (const multaId of multaIds) {
+      const sanction = rowsById.get(multaId);
+      if (!sanction) {
+        results.push({
+          multa_id: multaId,
+          ok: false,
+          message: 'La sanción no existe o está fuera de tu alcance.',
+        });
+        continue;
+      }
+      if (!isReceiptUnblockEligible(sanction)) {
+        results.push({
+          multa_id: multaId,
+          ok: false,
+          message: getReceiptUnblockIneligibleMessage(sanction),
+        });
+        continue;
+      }
+
+      try {
+        await settleReceiptForSanction(client, sanction);
+        results.push({ multa_id: multaId, ok: true, sga_deuda_id: sanction.sga_deuda_id });
+      } catch (error) {
+        if (error?.code === 'OATI_UNAVAILABLE') {
+          results.push({
+            multa_id: multaId,
+            ok: false,
+            message: 'Los servicios SGA no están disponibles temporalmente.',
+          });
+        } else {
+          console.error(`Error saldando deuda SGA para la sanción ${multaId}:`, error);
+          results.push({
+            multa_id: multaId,
+            ok: false,
+            message: 'No fue posible desbloquear el recibo de pago en SGA.',
+          });
+        }
+      }
+    }
+
+    const applied = results.filter((result) => result.ok);
+    if (applied.length) {
+      await client.query(
+        `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
+        [
+          req.session?.user?.tipo || '',
+          toNumericOrNull(getSessionDocument(req)),
+          'Desbloqueo de recibo de pago SGA masivo',
+          `${applied.length} sanciones`,
+        ]
+      );
+    }
+
+    client.release();
+    client = null;
+
+    return res.json({
+      ok: true,
+      total: multaIds.length,
+      applied: applied.length,
+      failed: results.length - applied.length,
+      results,
+    });
+  } catch (error) {
+    if (client) client.release();
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
+    console.error('Error desbloqueando el recibo de pago SGA masivo:', error);
+    return res.status(502).json({
+      ok: false,
+      message: 'No fue posible desbloquear los recibos de pago en SGA.',
+    });
+  }
+});
+
+// POST: salda (desbloquea) en SGA la deuda de una sanción.
+router.post('/:multaId/desbloquear-recibo', requireReceiptBlockAccess, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const multaId = Number(req.params.multaId);
+  if (!Number.isInteger(multaId) || multaId <= 0) {
+    return res.status(400).json({ ok: false, message: 'El ID de la sanción no es válido.' });
+  }
+  if (!sgaDebtService.isConfigured()) {
+    return res
+      .status(503)
+      .json({ ok: false, message: 'El servicio SGA no está configurado en este ambiente.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    const queryContext = await buildMultasQueryContext(req, client);
+    if (queryContext.error) {
+      client.release();
+      return res.status(403).json({
+        ok: false,
+        message: queryContext.error.message2 || queryContext.error.message,
+      });
+    }
+
+    const idParameter = `$${queryContext.params.length + 1}`;
+    const rows = await queryMultasRows(
+      client,
+      [...queryContext.conditions, `m.id = ${idParameter}`],
+      [...queryContext.params, multaId]
+    );
+    const sanction = rows[0];
+
+    if (!sanction) {
+      client.release();
+      client = null;
+      return res
+        .status(404)
+        .json({ ok: false, message: 'La sanción no existe o está fuera de tu alcance.' });
+    }
+    if (!isReceiptUnblockEligible(sanction)) {
+      client.release();
+      client = null;
+      return res
+        .status(409)
+        .json({ ok: false, message: getReceiptUnblockIneligibleMessage(sanction) });
+    }
+
+    const { deudaId, updated } = await settleReceiptForSanction(client, sanction);
+
+    await client.query(
+      `INSERT INTO log (nombre, documento, accion, persona) VALUES ($1, $2, $3, $4)`,
+      [
+        req.session?.user?.tipo || '',
+        toNumericOrNull(getSessionDocument(req)),
+        'Desbloqueo de recibo de pago SGA',
+        sanction.documento_sancionado || String(multaId),
+      ]
+    );
+
+    client.release();
+    client = null;
+
+    return res.json({ ok: true, multa_id: multaId, sga_deuda_id: deudaId, updated });
+  } catch (error) {
+    if (client) client.release();
+    if (error?.code === 'OATI_UNAVAILABLE') {
+      return respondOatiUnavailable(req, res);
+    }
+    console.error('Error desbloqueando el recibo de pago SGA:', error);
+    return res.status(502).json({
+      ok: false,
+      message: 'No fue posible desbloquear el recibo de pago en SGA.',
     });
   }
 });

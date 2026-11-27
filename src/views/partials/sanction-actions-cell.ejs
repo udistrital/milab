@@ -66,11 +66,12 @@
             <i class="bi bi-pause-circle" aria-hidden="true"></i>
         </button>
     <% } else if (sanction.sga_deuda_id) { %>
-        <span class="d-inline-flex" title="No se puede aplazar una sanción con bloqueo de recibo de pago">
+        <% const actionTitle = String(sanction.sga_deuda_estado || '') === '3' ? 'No se puede aplazar una sanción con deuda saldada en SGA' : 'No se puede aplazar una sanción con bloqueo de recibo de pago'; %>
+        <span class="d-inline-flex" title="<%= actionTitle %>">
             <button
                 type="button"
                 class="app-sanction-icon-action app-sanction-action-button text-muted"
-                aria-label="No se puede aplazar una sanción con bloqueo de recibo de pago"
+                aria-label="<%= actionTitle %>"
                 disabled
             >
                 <i class="bi bi-pause-circle" aria-hidden="true"></i>

@@ -1,20 +1,32 @@
 <%
-  const bloqueado = Boolean(sanction.sga_deuda_id);
+  const estado = sanction.sga_deuda_estado ? String(sanction.sga_deuda_estado) : '';
+  const bloqueado = Boolean(sanction.sga_deuda_id) && estado !== '3';
+  const saldado = Boolean(sanction.sga_deuda_id) && estado === '3';
   const puedeBloquear = Boolean(sanction.canBloquearRecibo);
+  const puedeDesbloquear = Boolean(sanction.canDesbloquearRecibo);
+  const seleccionable = puedeBloquear || puedeDesbloquear;
+  const toggleDisabled = saldado || (bloqueado ? !puedeDesbloquear : !puedeBloquear);
+  const toggleTitle = saldado
+    ? 'Deuda saldada en SGA; la sanción quedó cerrada'
+    : bloqueado
+      ? 'Bloqueo de recibo de pago en SGA (apágalo para saldar la deuda)'
+      : 'Bloqueo de recibo de pago en SGA';
 %>
 <td class="app-sanction-receipt-block-cell text-center">
-  <% if (puedeBloquear) { %>
-    <div class="form-check d-inline-flex align-items-center me-2" title="Seleccionar para bloqueo masivo">
+  <% if (seleccionable) { %>
+    <div class="form-check d-inline-flex align-items-center me-2" title="Seleccionar para acciones masivas">
       <input
         class="form-check-input app-sga-block-select"
         type="checkbox"
         value="<%= sanction.id %>"
         id="sga-block-select-<%= sanction.id %>"
-        aria-label="Seleccionar la sanción <%= sanction.id %> para bloqueo masivo"
+        data-sga-block-eligible="<%= puedeBloquear ? 'true' : 'false' %>"
+        data-sga-unblock-eligible="<%= puedeDesbloquear ? 'true' : 'false' %>"
+        aria-label="Seleccionar la sanción <%= sanction.id %> para acciones masivas"
       >
     </div>
   <% } %>
-  <div class="form-check form-switch d-inline-flex align-items-center" title="Bloqueo de recibo de pago en SGA">
+  <div class="form-check form-switch d-inline-flex align-items-center" title="<%= toggleTitle %>">
     <input
       class="form-check-input app-sga-block-toggle"
       type="checkbox"
@@ -22,7 +34,7 @@
       id="sga-block-toggle-<%= sanction.id %>"
       value="<%= sanction.id %>"
       <%= bloqueado ? 'checked' : '' %>
-      <%= (bloqueado || !puedeBloquear) ? 'disabled' : '' %>
+      <%= toggleDisabled ? 'disabled' : '' %>
       aria-label="Bloqueo de recibo de pago de la sanción <%= sanction.id %>"
     >
   </div>

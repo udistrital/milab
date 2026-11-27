@@ -275,6 +275,39 @@ async function requestOatiPost(pathname, body, contentType = 'application/json')
   return response.data;
 }
 
+async function requestOatiPut(pathname, body, contentType = 'application/json') {
+  throwWhenCircuitOpen();
+  const accessToken = await fetchAccessToken();
+  const url = new URL(pathname, `${config.oatiBaseUrl}/`).toString();
+  let response;
+
+  try {
+    response = await withOatiRetry(() =>
+      withOatiTlsFallback((agent) =>
+        axios.put(url, body, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': contentType,
+          },
+          httpsAgent: agent,
+          timeout: config.oatiRequestTimeoutMs,
+        })
+      )
+    );
+  } catch (error) {
+    logOatiFailure('PUT académico', url, error);
+    markOatiCircuitFailure(error);
+    if (isOatiUnavailableCandidate(error)) {
+      throw wrapAsOatiUnavailable(error);
+    }
+    throw error;
+  }
+
+  clearOatiCircuit();
+  hasWarnedAboutCircuit = false;
+  return response.data;
+}
+
 function getAcademicServicePath(servicePath) {
   return `wso2eiserver/services/${config.oatiServiceName}/${servicePath}`;
 }
@@ -282,6 +315,7 @@ function getAcademicServicePath(servicePath) {
 module.exports = {
   requestOati,
   requestOatiPost,
+  requestOatiPut,
   getAcademicServicePath,
   getOatiAccessToken: fetchAccessToken,
   OatiUnavailableError,
