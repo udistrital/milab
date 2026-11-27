@@ -978,12 +978,51 @@ test('prestamos modela el progreso de activacion por laboratorio', () => {
       total_equipos_listos: 5,
       ual_tiene_bancos: false,
       ual_cantidad_bancos: 0,
+      activacion_configuracion_json: { tiene_practicas: false },
     });
 
     assert.equal(model.canActivateLoans, true);
     assert.equal(model.completion.percent, 100);
-    assert.equal(model.nextStep.href, '/milab/prestamos/coordinador/practicas/config');
+    assert.equal(model.nextStep.href, '/milab/prestamos/activacion/laboratorios/7');
     assert.equal(model.inventory.reactivo.key, 'opcional');
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos requiere una practica activa solo cuando el laboratorio eligio ofrecerlas', () => {
+  const loaded = loadRoute();
+
+  try {
+    const row = {
+      ual_id: 12,
+      estado_oficial: 'aprobado',
+      estado_complementario: 'aprobado',
+      total_salas_activas: 1,
+      total_horarios_activos: 1,
+      total_equipos_listos: 1,
+      ual_tiene_bancos: false,
+      ual_cantidad_bancos: 0,
+    };
+    const needsChoice = loaded.route.__private.buildLaboratoryActivationModel(row);
+    const optedOut = loaded.route.__private.buildLaboratoryActivationModel({
+      ...row,
+      activacion_configuracion_json: { tiene_practicas: false },
+    });
+    const missingPractice = loaded.route.__private.buildLaboratoryActivationModel({
+      ...row,
+      activacion_configuracion_json: { tiene_practicas: true },
+    });
+    const configuredPractice = loaded.route.__private.buildLaboratoryActivationModel({
+      ...row,
+      activacion_configuracion_json: { tiene_practicas: true },
+      total_practicas_activas: 1,
+    });
+
+    assert.equal(needsChoice.canActivateLoans, false);
+    assert.equal(optedOut.canActivateLoans, true);
+    assert.equal(missingPractice.canActivateLoans, false);
+    assert.equal(configuredPractice.canActivateLoans, true);
   } finally {
     loaded.restore();
   }
@@ -1039,15 +1078,17 @@ test('prestamos arma checklist de activacion y resume pendientes', () => {
     const checklist = loaded.route.__private.buildLoanActivationChecklist(laboratory);
     const missing = loaded.route.__private.summarizeMissingActivationChecks(checklist);
 
-    assert.equal(checklist.length, 6);
+    assert.equal(checklist.length, 7);
     assert.equal(checklist[0].ready, true);
     assert.equal(checklist[1].ready, false);
     assert.equal(checklist[0].label, 'Inventario de equipos');
     assert.equal(checklist[4].label, 'Información de la UAL');
     assert.equal(checklist[5].label, 'Horario de laboratorio');
+    assert.equal(checklist[6].label, 'Prácticas del laboratorio');
     assert.match(missing, /Inventario complementario/);
     assert.match(missing, /Información de la UAL/);
     assert.match(missing, /Horario de laboratorio/);
+    assert.match(missing, /Prácticas del laboratorio/);
   } finally {
     loaded.restore();
   }
@@ -1080,7 +1121,7 @@ test('prestamos valida el laboratorio al intentar activar prestamos', async () =
 
   try {
     const app = buildApp(loaded.route, { tipo: 'laboratorista', documento: '900' });
-    const response = await request(app).get('/activacion/laboratorios/0/activar-prestamos');
+    const response = await request(app).post('/activacion/laboratorios/0/activar-prestamos');
 
     assert.equal(response.status, 302);
     assert.match(response.headers.location, /activacion\/laboratorios\?error=/);

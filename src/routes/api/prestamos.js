@@ -1733,6 +1733,22 @@ const PDF_ESCUDO_PATH = path.join(
   'Logo_Escudo_Verticall.jpg'
 );
 const PDF_SIGUD_PATH = path.join(__dirname, '..', '..', 'public', 'img', 'logo_sigud.jpg');
+const PDF_MILAB_HEADER_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'public',
+  'img',
+  'email_header_milab.png'
+);
+const PDF_UD_FOOTER_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'public',
+  'img',
+  'Logo_Escudo_Acreditacion_Horizontal_Blanco.png'
+);
 
 const requireInventarioAccess = requirePermissions(APP_PERMISSIONS.PRESTAMOS_INVENTORY_ADMIN, {
   message: 'Acceso denegado',
@@ -1992,6 +2008,7 @@ router.get(
       const laboratorios = await fetchLaboratoryActivationOverview(req);
       return res.render('home/prestamos/activacion/laboratorios', {
         laboratorios,
+        activationComplete: sanitizeText(req.query.activacion) === 'exitosa',
         successMessage: sanitizeText(req.query.success),
         errorMessage: sanitizeText(req.query.error),
       });
@@ -1999,6 +2016,7 @@ router.get(
       console.error('Error cargando activacion de laboratorios MiLab:', error);
       return res.render('home/prestamos/activacion/laboratorios', {
         laboratorios: [],
+        activationComplete: false,
         successMessage: '',
         errorMessage: resolveLoanDbErrorMessage(
           error,
@@ -2051,7 +2069,76 @@ router.get(
   }
 );
 
-router.get(
+router.post(
+  '/activacion/laboratorios/:ualId/practicas',
+  requireActivacionLaboratoriosAuthorized,
+  async function (req, res) {
+    const ualId = Number.parseInt(String(req.params.ualId || ''), 10);
+    const choice = sanitizeText(req.body?.tiene_practicas);
+    if (!Number.isInteger(ualId) || ualId <= 0) {
+      return res.redirect(
+        '/milab/prestamos/activacion/laboratorios?error=El laboratorio seleccionado no es valido.'
+      );
+    }
+    if (!['true', 'false'].includes(choice)) {
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent('Indica si el laboratorio ofrecerá prácticas.')}`
+      );
+    }
+
+    try {
+      const laboratorios = await fetchLaboratoryActivationOverview(req, { ualId });
+      const laboratorio = laboratorios[0] || null;
+      if (!laboratorio) {
+        return res.redirect(
+          '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
+        );
+      }
+      if (!laboratorio.checklist.horarioLaboratorio) {
+        return res.redirect(
+          `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent('Completa primero el horario del laboratorio.')}`
+        );
+      }
+
+      const tienePracticas = choice === 'true';
+      await pool.query(
+        `
+          INSERT INTO prestamo_activacion_laboratorio (
+            ual_id, configuracion_json, fecha_modificacion
+          )
+          VALUES ($1, jsonb_build_object('tiene_practicas', $2::boolean), CURRENT_TIMESTAMP)
+          ON CONFLICT (ual_id)
+          DO UPDATE
+          SET configuracion_json =
+                COALESCE(prestamo_activacion_laboratorio.configuracion_json, '{}'::jsonb)
+                || EXCLUDED.configuracion_json,
+              fecha_modificacion = CURRENT_TIMESTAMP
+        `,
+        [ualId, tienePracticas]
+      );
+      await registerPrestamosAuditEntry({
+        req,
+        accion: 'Configurar prácticas del laboratorio',
+        persona: `ual=${ualId} tiene_practicas=${tienePracticas}`,
+      });
+
+      const successMessage = tienePracticas
+        ? 'Se indicó que el laboratorio tendrá prácticas. Configura al menos una práctica activa para completar este paso.'
+        : 'El laboratorio quedó configurado sin prácticas.';
+      return res.redirect(
+        303,
+        `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?success=${encodeURIComponent(successMessage)}`
+      );
+    } catch (error) {
+      console.error('Error guardando la configuración de prácticas del laboratorio:', error);
+      return res.redirect(
+        `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}?error=${encodeURIComponent(resolveLoanDbErrorMessage(error, 'No fue posible guardar la decisión de prácticas.'))}`
+      );
+    }
+  }
+);
+
+router.post(
   '/activacion/laboratorios/:ualId/activar-prestamos',
   requireActivacionLaboratoriosAuthorized,
   async function (req, res) {
@@ -2084,18 +2171,14 @@ router.get(
         );
       }
 
-      try {
-        await persistLaboratoryLoanActivation({
-          req,
-          ualId,
-          laboratorio,
-          checklist,
-        });
-      } catch (persistError) {
-        console.error(
-          'Error persistiendo estado de activacion de prestamos por laboratorio:',
-          persistError
-        );
+      const activationSaved = await persistLaboratoryLoanActivation({
+        req,
+        ualId,
+        laboratorio,
+        checklist,
+      });
+      if (!activationSaved) {
+        throw new Error('No fue posible persistir la activación del laboratorio.');
       }
 
       await registerPrestamosAuditEntry({
@@ -2105,10 +2188,9 @@ router.get(
       });
 
       return res.redirect(
-        `/milab/prestamos/coordinador/practicas/config?ual_id=${encodeURIComponent(
-          String(ualId)
-        )}&success=${encodeURIComponent(
-          `Laboratorio ${laboratorio.laboratorio} listo para activar prestamos.`
+        303,
+        `/milab/prestamos/activacion/laboratorios?activacion=exitosa&success=${encodeURIComponent(
+          `El laboratorio ${laboratorio.laboratorio} quedó configurado y activado.`
         )}`
       );
     } catch (error) {
@@ -2147,12 +2229,12 @@ router.get(
           '/milab/prestamos/activacion/laboratorios?error=No tienes acceso al laboratorio seleccionado.'
         );
       }
-      if (!laboratorio.canActivateLoans) {
+      if (!laboratorio.loanActivated) {
         return res.redirect(
           `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(
             String(ualId)
           )}?error=${encodeURIComponent(
-            'Debes completar el checklist del laboratorio para habilitar el poster QR by request.'
+            'Activa los préstamos del laboratorio para habilitar la Plantilla QR.'
           )}`
         );
       }
@@ -2205,10 +2287,10 @@ router.get(
       if (!laboratorio) {
         return res.status(404).send('No tienes acceso al laboratorio seleccionado.');
       }
-      if (!laboratorio.canActivateLoans) {
+      if (!laboratorio.loanActivated) {
         return res
           .status(403)
-          .send('Debes completar el checklist antes de generar el QR by request.');
+          .send('Debes activar los préstamos antes de generar la Plantilla QR.');
       }
 
       const appUrl = getMilabAppUrlFromRequest(req);
@@ -2242,62 +2324,41 @@ function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, option
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
-    `inline; filename="Poster_QR_Prestamos_${Number(laboratorio?.ualId || 0)}_${orientation}.pdf"`
+    `inline; filename="Plantilla_QR_Prestamos_${Number(laboratorio?.ualId || 0)}_${orientation}.pdf"`
   );
   doc.pipe(res);
 
   const leftMargin = doc.page.margins.left;
   const rightMargin = doc.page.margins.right;
-  const topMargin = doc.page.margins.top;
   const usableWidth = doc.page.width - leftMargin - rightMargin;
-  const usableHeight = doc.page.height - topMargin - doc.page.margins.bottom;
   const safeLabName = sanitizeText(laboratorio?.laboratorio || 'Laboratorio');
   const safeFaculty = sanitizeText(laboratorio?.facultad || '');
 
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#0f172a');
 
-  const headerHeight = orientation === 'landscape' ? 120 : 130;
-  doc.rect(0, 0, doc.page.width, headerHeight).fill('#0f172a');
-  doc
-    .fillOpacity(0.18)
-    .rect(0, headerHeight - 16, doc.page.width, 16)
-    .fill('#f0aa00')
-    .fillOpacity(1);
-
-  const logoY = 20;
-  if (fs.existsSync(PDF_ESCUDO_PATH)) {
-    doc.image(PDF_ESCUDO_PATH, leftMargin, logoY, { fit: [90, 62] });
+  const headerHeight = 155;
+  doc.rect(0, 0, doc.page.width, headerHeight).fill('#ffffff');
+  if (fs.existsSync(PDF_MILAB_HEADER_PATH)) {
+    const headerLogoWidth = orientation === 'landscape' ? Math.min(usableWidth, 510) : usableWidth;
+    doc.image(PDF_MILAB_HEADER_PATH, (doc.page.width - headerLogoWidth) / 2, 8, {
+      width: headerLogoWidth,
+    });
   }
-  if (fs.existsSync(PDF_SIGUD_PATH)) {
-    doc.image(PDF_SIGUD_PATH, leftMargin + usableWidth - 130, logoY, { fit: [128, 62] });
-  }
-
   doc
     .font('Helvetica-Bold')
-    .fontSize(22)
-    .fillColor('#ffffff')
-    .text('MiLab · Préstamos by Request', leftMargin, 78, {
+    .fontSize(15)
+    .fillColor('#0f172a')
+    .text('Plantilla QR · Préstamos', leftMargin, headerHeight - 30, {
       width: usableWidth,
       align: 'center',
     });
+  doc.rect(0, headerHeight - 5, doc.page.width, 5).fill('#b3261e');
 
-  doc
-    .font('Helvetica')
-    .fontSize(11)
-    .fillColor('#e2e8f0')
-    .text(
-      'Escanea para abrir la solicitud de préstamo con laboratorio precargado',
-      leftMargin,
-      103,
-      {
-        width: usableWidth,
-        align: 'center',
-      }
-    );
-
+  const footerHeight = 64;
+  const footerY = doc.page.height - footerHeight;
   const contentY = headerHeight + 24;
-  const qrSize = orientation === 'landscape' ? 270 : 320;
+  const qrSize = orientation === 'landscape' ? 245 : 320;
   const qrCardWidth = qrSize + 34;
   const qrCardHeight = qrSize + 34;
   const qrCardX =
@@ -2312,7 +2373,7 @@ function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, option
       orientation === 'landscape' ? leftMargin : leftMargin + 6,
       contentY - 8,
       orientation === 'landscape' ? usableWidth : usableWidth - 12,
-      orientation === 'landscape' ? usableHeight - 120 : usableHeight - 132,
+      footerY - contentY - 8,
       18
     )
     .fill('#f8fafc');
@@ -2379,34 +2440,12 @@ function sendByRequestPosterPdf(res, laboratorio, byRequestUrl, qrBuffer, option
       }
     );
 
-  const footerY = doc.page.height - 68;
-  doc
-    .lineWidth(1)
-    .strokeColor('#e2e8f0')
-    .moveTo(leftMargin, footerY)
-    .lineTo(leftMargin + usableWidth, footerY)
-    .stroke();
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(10)
-    .fillColor('#111827')
-    .text(
-      'Universidad Distrital Francisco José de Caldas · Coordinación General de Laboratorios',
-      leftMargin,
-      footerY + 14,
-      {
-        width: usableWidth,
-        align: 'center',
-      }
-    );
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#64748b')
-    .text('Documento oficial generado por MiLab', leftMargin, footerY + 30, {
-      width: usableWidth,
-      align: 'center',
+  doc.rect(0, footerY, doc.page.width, footerHeight).fill('#b3261e');
+  if (fs.existsSync(PDF_UD_FOOTER_PATH)) {
+    doc.image(PDF_UD_FOOTER_PATH, (doc.page.width - 170) / 2, footerY + 5, {
+      fit: [170, 54],
     });
+  }
 
   doc.end();
 }
@@ -2426,10 +2465,10 @@ router.get(
       if (!laboratorio) {
         return res.status(404).send('No tienes acceso al laboratorio seleccionado.');
       }
-      if (!laboratorio.canActivateLoans) {
+      if (!laboratorio.loanActivated) {
         return res
           .status(403)
-          .send('Debes completar el checklist antes de generar el poster QR by request.');
+          .send('Debes activar los préstamos antes de generar la Plantilla QR.');
       }
 
       const appUrl = getMilabAppUrlFromRequest(req);
@@ -2636,6 +2675,7 @@ async function persistLaboratoryLoanActivation({
   const payload = {
     checklist,
     counters: laboratorio?.counters || {},
+    tiene_practicas: laboratorio?.counters?.tienePracticas ?? null,
     completion: laboratorio?.completion || {},
     source: 'wizard_hu05',
   };
@@ -5439,6 +5479,10 @@ function resolveInventoryActivationStatus(rawState, sinInventario = false, optio
 }
 
 function buildLaboratoryActivationModel(row) {
+  const activationConfig = sanitizeJsonObject(row.activacion_configuracion_json) || {};
+  const hasPracticeChoice = typeof activationConfig.tiene_practicas === 'boolean';
+  const activePracticeCount = Number(row.total_practicas_activas || 0);
+  const loanActivated = row.estado_activacion === true;
   const hasUalConfig =
     row.ual_tiene_bancos === true ||
     row.ual_tiene_bancos === false ||
@@ -5475,6 +5519,10 @@ function buildLaboratoryActivationModel(row) {
       Number(row.total_salas_activas || 0) > 0 &&
       hasUalConfig &&
       hasValidBanksConfig,
+    practicasLaboratorio:
+      Number(row.total_horarios_activos || 0) > 0 &&
+      hasPracticeChoice &&
+      (activationConfig.tiene_practicas === false || activePracticeCount > 0),
     equiposListos: Number(row.total_equipos_listos || 0) > 0,
   };
   const wizardHref = `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(row.ual_id || ''))}`;
@@ -5482,6 +5530,7 @@ function buildLaboratoryActivationModel(row) {
   const scheduleManagementHref = Number(row.sala_referencia_id || 0)
     ? `/milab/prestamos/salas/${encodeURIComponent(String(row.sala_referencia_id))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
     : infoUalHref;
+  const practicesHref = `/milab/prestamos/coordinador/practicas/config?ual_id=${encodeURIComponent(String(row.ual_id || ''))}`;
 
   let nextStep = {
     title: 'Completar inventario oficial',
@@ -5508,12 +5557,27 @@ function buildLaboratoryActivationModel(row) {
     checklist.inventarioReactivo &&
     checklist.equiposListos &&
     checklist.informacionUal &&
-    checklist.horarioLaboratorio;
+    checklist.horarioLaboratorio &&
+    checklist.practicasLaboratorio;
 
   if (canActivateLoans) {
     nextStep = {
-      title: 'Activar y parametrizar prestamos',
-      href: '/milab/prestamos/coordinador/practicas/config',
+      title: 'Activar préstamos',
+      href: wizardHref,
+    };
+  } else if (checklist.horarioLaboratorio && !hasPracticeChoice) {
+    nextStep = {
+      title: 'Indicar si el laboratorio tendrá prácticas',
+      href: wizardHref,
+    };
+  } else if (
+    checklist.horarioLaboratorio &&
+    activationConfig.tiene_practicas === true &&
+    activePracticeCount === 0
+  ) {
+    nextStep = {
+      title: 'Configurar prácticas del laboratorio',
+      href: practicesHref,
     };
   } else if (
     checklist.inventarioOficial &&
@@ -5544,11 +5608,13 @@ function buildLaboratoryActivationModel(row) {
     inventory.reactivo.ready,
   ].filter((value) => !value).length;
 
-  const stateKey = canActivateLoans
+  const stateKey = loanActivated
     ? 'completo'
-    : checklist.inventarioOficial || checklist.inventarioComplementario
-      ? 'proceso'
-      : 'pendiente';
+    : canActivateLoans
+      ? 'listo'
+      : checklist.inventarioOficial || checklist.inventarioComplementario
+        ? 'proceso'
+        : 'pendiente';
 
   return {
     ualId: Number(row.ual_id),
@@ -5571,6 +5637,8 @@ function buildLaboratoryActivationModel(row) {
       ualTieneBancos: ualHasBanks,
       ualCantidadBancos: ualBankCount,
       ualConfigCompleta: hasUalConfig && hasValidBanksConfig,
+      tienePracticas: hasPracticeChoice ? activationConfig.tiene_practicas : null,
+      practicasActivas: activePracticeCount,
     },
     completion: {
       completedCount,
@@ -5580,9 +5648,16 @@ function buildLaboratoryActivationModel(row) {
     state: {
       key: stateKey,
       label:
-        stateKey === 'completo' ? 'Completo' : stateKey === 'proceso' ? 'En proceso' : 'Pendiente',
+        stateKey === 'completo'
+          ? 'Activado'
+          : stateKey === 'listo'
+            ? 'Listo para activar'
+            : stateKey === 'proceso'
+              ? 'En proceso'
+              : 'Pendiente',
     },
     canActivateLoans,
+    loanActivated,
     nextStep,
   };
 }
@@ -5601,6 +5676,8 @@ function buildLoanActivationChecklist(laboratorio) {
     ? `/milab/prestamos/salas/${encodeURIComponent(String(counters.salaReferenciaId))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
     : scheduleHref;
   const canManageSchedule = Boolean(checks.informacionUal);
+  const hasPracticeChoice = typeof counters.tienePracticas === 'boolean';
+  const practicesHref = `/milab/prestamos/coordinador/practicas/config?ual_id=${encodedUalId}`;
 
   return [
     {
@@ -5678,6 +5755,32 @@ function buildLoanActivationChecklist(laboratorio) {
       actionHref: canManageSchedule ? scheduleManagementHref : '',
       actionLabel: 'Gestionar horario',
     },
+    {
+      key: 'practicas_laboratorio',
+      label: 'Prácticas del laboratorio',
+      ready: Boolean(checks.practicasLaboratorio),
+      detail: !hasPracticeChoice
+        ? 'Indica si este laboratorio ofrecerá prácticas.'
+        : counters.tienePracticas
+          ? `${Number(counters.practicasActivas || 0)} práctica(s) activa(s) configurada(s).`
+          : 'El laboratorio se configuró sin prácticas.',
+      extraDetail: 'Este paso cuenta para completar la activación del laboratorio.',
+      pendingDetail: !checks.horarioLaboratorio
+        ? 'Completa primero el horario para habilitar esta decisión.'
+        : !hasPracticeChoice
+          ? 'Seleccionar si el laboratorio tendrá prácticas.'
+          : counters.tienePracticas && !checks.practicasLaboratorio
+            ? 'Configurar al menos una práctica activa.'
+            : 'Sin tareas pendientes.',
+      actionHref:
+        checks.horarioLaboratorio && counters.tienePracticas && !checks.practicasLaboratorio
+          ? practicesHref
+          : '',
+      actionLabel: 'Configurar prácticas',
+      showPracticeChoice: Boolean(checks.horarioLaboratorio) && !laboratorio?.loanActivated,
+      practiceChoice: hasPracticeChoice ? String(counters.tienePracticas) : '',
+      practiceChoiceAction: `/milab/prestamos/activacion/laboratorios/${encodedUalId}/practicas`,
+    },
   ];
 }
 
@@ -5743,11 +5846,15 @@ function buildActivationWizardSteps(laboratorio) {
       title: 'Activar y parametrizar préstamos',
       description:
         'Con inventario oficial y complementario aprobados, configura salas, horarios y reglas para iniciar préstamos.',
-      statusLabel: laboratorio?.canActivateLoans ? 'Listo para activar' : 'Pendiente',
-      done: laboratorio?.canActivateLoans || false,
+      statusLabel: laboratorio?.loanActivated
+        ? 'Activado'
+        : laboratorio?.canActivateLoans
+          ? 'Listo para activar'
+          : 'Pendiente',
+      done: laboratorio?.loanActivated || false,
       blocked: !canProceedToLoans,
       actionHref: laboratorio?.canActivateLoans
-        ? `/milab/prestamos/coordinador/practicas/config?ual_id=${encodeURIComponent(String(ualId))}`
+        ? `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(ualId))}`
         : salasBaseHref,
       actionLabel: laboratorio?.nextStep?.title || 'Continuar configuración',
     },
@@ -5755,6 +5862,7 @@ function buildActivationWizardSteps(laboratorio) {
 }
 
 async function fetchLaboratoryActivationOverview(req, options = {}) {
+  await ensureAcademicPracticeSchema();
   const selectedUalId = Number.parseInt(String(options.ualId || ''), 10);
   const scope = await resolveLoanManagementScope(req);
   const params = [];
@@ -5811,7 +5919,10 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         COALESCE(cargas.total_cargas_recientes, 0) AS total_cargas_recientes,
         COALESCE(cargas.cargas_atencion, 0) AS cargas_atencion,
         config_ual.tiene_bancos AS ual_tiene_bancos,
-        config_ual.cantidad_bancos AS ual_cantidad_bancos
+        config_ual.cantidad_bancos AS ual_cantidad_bancos,
+        activation.estado_activacion,
+        activation.configuracion_json AS activacion_configuracion_json,
+        COALESCE(practicas.total_practicas_activas, 0) AS total_practicas_activas
       FROM labs
       LEFT JOIN LATERAL (
         SELECT
@@ -5894,6 +6005,19 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
         WHERE puc.ual_id = labs.ual_id
         LIMIT 1
       ) config_ual ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT estado_activacion, configuracion_json
+        FROM prestamo_activacion_laboratorio
+        WHERE ual_id = labs.ual_id
+        LIMIT 1
+      ) activation ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS total_practicas_activas
+        FROM practica p
+        WHERE p.ual_id = labs.ual_id
+          AND p.activo = TRUE
+          AND p.estado = 'activa'
+      ) practicas ON TRUE
       ORDER BY labs.facultad ASC, labs.laboratorio ASC
     `,
     params

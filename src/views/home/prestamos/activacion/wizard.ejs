@@ -53,6 +53,13 @@
     font-size: 0.86rem;
     color: #475569;
   }
+
+  .activation-practice-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.75rem;
+  }
 </style>
 
 <main class="container app-page-shell">
@@ -86,7 +93,9 @@
   <section class="card app-table-panel text-light mb-4">
     <div class="card-header d-flex justify-content-between align-items-center gap-3 flex-wrap">
       <h2 class="h5 mb-0">Checklist para activar préstamos</h2>
-      <% if (laboratorio.canActivateLoans) { %>
+      <% if (laboratorio.loanActivated) { %>
+        <span class="badge bg-success">Activado</span>
+      <% } else if (laboratorio.canActivateLoans) { %>
         <span class="badge bg-success">Listo para activar</span>
       <% } else { %>
         <span class="badge bg-warning text-dark">Pendiente</span>
@@ -110,6 +119,20 @@
               <% if (item.pendingDetail) { %>
                 <p class="activation-check-detail mb-0"><strong>Tarea pendiente:</strong> <%= item.pendingDetail %></p>
               <% } %>
+              <% if (item.showPracticeChoice) { %>
+                <form action="<%= item.practiceChoiceAction %>" method="post" class="activation-practice-choice">
+                  <%- include('../../../partials/csrf_field') %>
+                  <label class="form-check">
+                    <input class="form-check-input" type="radio" name="tiene_practicas" value="true" required <%= item.practiceChoice === 'true' ? 'checked' : '' %>>
+                    <span class="form-check-label">Sí, tendrá prácticas</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="radio" name="tiene_practicas" value="false" required <%= item.practiceChoice === 'false' ? 'checked' : '' %>>
+                    <span class="form-check-label">No tendrá prácticas</span>
+                  </label>
+                  <button class="btn btn-outline-primary btn-sm" type="submit">Guardar decisión</button>
+                </form>
+              <% } %>
             </div>
             <% if (item.actionHref) { %>
               <a class="btn btn-outline-secondary btn-sm" href="<%= item.actionHref %>">
@@ -120,19 +143,20 @@
         <% }) %>
       </div>
       <div class="d-flex justify-content-end mt-3">
-        <% if (laboratorio.canActivateLoans) { %>
-          <a class="btn btn-success btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/activar-prestamos">
-            Activar préstamos
-          </a>
+        <% if (laboratorio.canActivateLoans && !laboratorio.loanActivated) { %>
+          <form action="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/activar-prestamos" method="post">
+            <%- include('../../../partials/csrf_field') %>
+            <button class="btn btn-success btn-sm" type="submit">Activar préstamos</button>
+          </form>
         <% } %>
       </div>
     </div>
   </section>
 
   <div class="d-flex flex-wrap justify-content-center gap-2">
-    <% if (laboratorio.canActivateLoans) { %>
+    <% if (laboratorio.loanActivated) { %>
       <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= laboratorio.ualId %>/by-request">
-        Generar póster QR by Request
+        Generar Plantilla QR
       </a>
     <% } %>
     <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios">
@@ -140,4 +164,6 @@
     </a>
   </div>
 </main>
+
+<%- include('../../../partials/footer'); -%>
 

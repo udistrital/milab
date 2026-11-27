@@ -313,7 +313,14 @@
               </tr>
             </thead>
             <tbody>
-              <% horarios.forEach(function(item) { %>
+              <% horarios.forEach(function(item) {
+                const itemFechaKey = item.fecha
+                  ? (item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha).slice(0, 10))
+                  : '';
+                const itemEsFestivo = itemFechaKey && (festivos || []).some(function(festivo) {
+                  return String(festivo.fecha || '').slice(0, 10) === itemFechaKey;
+                });
+              %>
                 <tr>
                   <td>
                     <% if (item.fecha) { %>
@@ -365,8 +372,9 @@
                       <button
                         type="button"
                         class="btn btn-outline-primary btn-sm js-edit-horario-sala"
+                        <%= itemEsFestivo ? 'disabled title="No se puede modificar un horario en un día festivo"' : '' %>
                         data-horario-id="<%= item.id %>"
-                        data-fecha="<%= item.fecha ? (item.fecha instanceof Date ? item.fecha.toISOString().slice(0, 10) : String(item.fecha).slice(0, 10)) : '' %>"
+                        data-fecha="<%= itemFechaKey %>"
                         data-dia-semana="<%= item.dia_semana !== null && item.dia_semana !== undefined ? item.dia_semana : '' %>"
                         data-hora-inicio="<%= String(item.hora_inicio || '').slice(0, 5) %>"
                         data-hora-fin="<%= String(item.hora_fin || '').slice(0, 5) %>"
@@ -818,6 +826,7 @@
     }
 
     function getDaySchedules(day) {
+      if (getHoliday(day.date)) return [];
       return registeredSchedules.filter(function(item) {
         if (!item.activo) return false;
         return item.fecha
@@ -1228,6 +1237,10 @@
         var isDateSpecific = !editScheduleDateGroup.classList.contains('d-none');
         if (isDateSpecific && editScheduleDate.value < currentDateKeyInBogota()) {
           showAlert('warning', 'La fecha del horario no puede ser anterior a la fecha actual.');
+          return;
+        }
+        if (isDateSpecific && getHoliday(editScheduleDate.value)) {
+          showAlert('warning', 'No se pueden agregar ni modificar horarios en un día festivo.');
           return;
         }
 

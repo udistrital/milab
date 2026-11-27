@@ -42,6 +42,46 @@
     background: #16a34a;
   }
 
+  .activation-celebration {
+    overflow: hidden;
+    text-align: center;
+  }
+
+  .activation-celebration__icon {
+    font-size: 4rem;
+    color: #16a34a;
+  }
+
+  .activation-confetti {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .activation-confetti span {
+    position: absolute;
+    top: -1rem;
+    left: calc(var(--confetti-index) * 6.25%);
+    width: 0.55rem;
+    height: 0.9rem;
+    background: hsl(calc(var(--confetti-index) * 37), 80%, 55%);
+    animation: activation-confetti-fall 1.8s ease-in forwards;
+    animation-delay: calc(var(--confetti-index) * 45ms);
+  }
+
+  @keyframes activation-confetti-fall {
+    to {
+      transform: translateY(18rem) rotate(540deg);
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .activation-confetti span {
+      animation: none;
+    }
+  }
+
   .activation-state__dot--yellow {
     background: #d97706;
   }
@@ -53,17 +93,11 @@
 
 <main class="container app-page-shell">
   <section class="app-page-header">
-    <nav aria-label="breadcrumb" class="mb-2">
-      <ol class="breadcrumb mb-0">
-        <li class="breadcrumb-item"><a href="/milab/prestamos">Préstamos</a></li>
-        <li class="breadcrumb-item active" aria-current="page">Mis laboratorios</li>
-      </ol>
-    </nav>
     <h1 class="app-page-title">Mis laboratorios</h1>
     <p class="app-page-subtitle">Configura inventario y activa préstamos con seguimiento por laboratorio.</p>
   </section>
 
-  <% if (successMessage) { %>
+  <% if (successMessage && !activationComplete) { %>
     <div class="alert alert-success" role="status"><%= successMessage %></div>
   <% } %>
   <% if (errorMessage) { %>
@@ -75,7 +109,7 @@
   <% } else { %>
     <section class="row g-3">
       <% laboratorios.forEach(function(item) { %>
-        <% const stateDot = item.state?.key === 'completo'
+        <% const stateDot = item.state?.key === 'completo' || item.state?.key === 'listo'
           ? 'activation-state__dot--green'
           : item.state?.key === 'proceso'
             ? 'activation-state__dot--yellow'
@@ -121,11 +155,11 @@
 
               <div class="mt-auto d-flex flex-wrap gap-2">
                 <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>">
-                  Ingresar al laboratorio
+                  Configurar laboratorio
                 </a>
-                <% if (item.canActivateLoans) { %>
+                <% if (item.loanActivated) { %>
                   <a class="btn btn-perso btn-sm" href="/milab/prestamos/activacion/laboratorios/<%= item.ualId %>/by-request">
-                    QR by Request
+                    Plantilla QR
                   </a>
                 <% } %>
               </div>
@@ -136,4 +170,34 @@
     </section>
   <% } %>
 </main>
+
+<% if (activationComplete) { %>
+  <div class="modal fade" id="laboratoryActivationCelebration" tabindex="-1" aria-labelledby="laboratoryActivationCelebrationTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content position-relative activation-celebration">
+        <div class="activation-confetti" aria-hidden="true">
+          <% for (let confettiIndex = 0; confettiIndex < 16; confettiIndex += 1) { %>
+            <span style="--confetti-index: <%= confettiIndex %>"></span>
+          <% } %>
+        </div>
+        <div class="modal-body py-5">
+          <div class="activation-celebration__icon" aria-hidden="true"><i class="bi bi-check-circle-fill"></i></div>
+          <h2 class="h4 mt-3" id="laboratoryActivationCelebrationTitle">¡Laboratorio configurado!</h2>
+          <p class="mb-4"><%= successMessage || 'La configuración del laboratorio se completó correctamente.' %></p>
+          <button type="button" class="btn btn-success" data-bs-dismiss="modal">Continuar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script nonce="<%= cspNonce %>">
+    document.addEventListener('DOMContentLoaded', function() {
+      var celebration = document.getElementById('laboratoryActivationCelebration');
+      if (celebration && window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(celebration).show();
+      }
+    });
+  </script>
+<% } %>
+
+<%- include('../../../partials/footer'); -%>
 
