@@ -368,7 +368,7 @@ test('prestamos creates an available equipment reservation transactionally', asy
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -398,7 +398,7 @@ test('prestamos rolls back a reservation when its database insert fails', async 
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -426,7 +426,7 @@ test('prestamos queues a reservation when the selected equipment slot is occupie
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -499,7 +499,7 @@ test('prestamos denies a reservation request when the student has active sanctio
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -535,7 +535,7 @@ test('prestamos blocks a reservation when required training certifications are p
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -563,7 +563,7 @@ test('prestamos rejects a reservation that exceeds the monthly loan-hour limit',
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
@@ -589,7 +589,7 @@ test('prestamos rejects a valid date that does not match an available equipment 
     const response = await request(loaded.app).post('/solicitudes/crear').send({
       equipo_id: '5',
       fecha_inicio: '2999-12-31T10:00',
-      fecha_fin: '2999-12-31T11:00',
+      fecha_fin: '2999-12-31T10:45',
       justificacion_academica: 'Practica de laboratorio de ciencias',
       categoria_practica: 'academica',
       firma_digital: 'Acepto el reglamento',
