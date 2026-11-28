@@ -79,25 +79,6 @@
       <form id="crearSalaForm" class="row g-3" novalidate>
         <input type="hidden" id="crearSalaId" value="<%= selectedSalaInfo?.id || '' %>">
         <input type="hidden" id="crearModoUalInfo" value="<%= ualInfoMode ? 'true' : 'false' %>">
-        <% if (ualInfoMode) { %>
-          <div class="col-12">
-            <div class="alert alert-info mb-0">
-              <strong>Ventanas para préstamos de equipos en prácticas magistrales o docentes</strong>
-              <ul class="mb-0 mt-1">
-                <li>
-                  Solicitud: hasta
-                  <strong><%= selectedUalConfig?.max_minutos_solicitud_despues_inicio || 15 %> minutos</strong>
-                  después del inicio de la práctica.
-                </li>
-                <li>
-                  Devolución: finalizar al menos
-                  <strong><%= selectedUalConfig?.minutos_antes_fin_segundo_bloque || 15 %> minutos</strong>
-                  antes del fin del segundo bloque programado.
-                </li>
-              </ul>
-            </div>
-          </div>
-        <% } %>
         <div class="<%= ualInfoMode ? 'd-none' : 'col-md-6' %>">
           <label for="crearFacultad" class="form-label">Facultad *</label>
           <select class="form-select" id="crearFacultad" <%= ualInfoMode ? '' : 'required' %>>
@@ -213,7 +194,7 @@
           </div>
           <div class="col-md-6">
             <label for="crearMaxMinutosSolicitud" class="form-label">
-              Máximo para solicitar después del inicio (minutos)
+              Tiempo máximo para solicitar equipos después del inicio de la práctica o clase (minutos)
             </label>
             <input
               type="number"
@@ -228,7 +209,7 @@
           </div>
           <div class="col-md-6">
             <label for="crearMinutosAntesFinSegundoBloque" class="form-label">
-              Anticipación mínima para devolver antes del fin del segundo bloque (minutos)
+              Tiempo máximo para devolver equipos antes de la hora de fin de la práctica o clase (minutos)
             </label>
             <input
               type="number"
@@ -569,8 +550,12 @@
 
     function buildSalaPayload(prefix) {
       return {
-        facultad: document.getElementById(prefix + 'Facultad').value,
-        laboratorio: document.getElementById(prefix + 'Laboratorio').value,
+        facultad: ualInfoMode
+          ? selectedFacultad
+          : document.getElementById(prefix + 'Facultad').value,
+        laboratorio: ualInfoMode
+          ? selectedLaboratorio
+          : document.getElementById(prefix + 'Laboratorio').value,
         nombre: document.getElementById(prefix + 'Nombre').value,
         tipo_espacio: document.getElementById(prefix + 'TipoEspacio').value,
         capacidad: document.getElementById(prefix + 'Capacidad').value,
