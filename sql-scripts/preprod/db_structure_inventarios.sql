@@ -735,12 +735,18 @@ CREATE TABLE IF NOT EXISTS prestamo_ual_configuracion (
     tiene_bancos BOOLEAN NOT NULL DEFAULT FALSE,
     cantidad_bancos INT NOT NULL DEFAULT 0,
     capacidad_por_banco INT NOT NULL DEFAULT 0,
+    max_minutos_solicitud_despues_inicio INT NOT NULL DEFAULT 15,
+    minutos_antes_fin_segundo_bloque INT NOT NULL DEFAULT 15,
     fecha_creacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     fecha_modificacion TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_prestamo_ual_configuracion PRIMARY KEY (ual_id),
     CONSTRAINT fk_prestamo_ual_configuracion_ual FOREIGN KEY (ual_id) REFERENCES ual(ual_id) ON DELETE CASCADE,
     CONSTRAINT ck_prestamo_ual_cantidad_bancos CHECK (cantidad_bancos >= 0),
     CONSTRAINT ck_prestamo_ual_capacidad_por_banco CHECK (capacidad_por_banco >= 0),
+    CONSTRAINT ck_prestamo_ual_solicitud_despues_inicio_minutos
+        CHECK (max_minutos_solicitud_despues_inicio BETWEEN 1 AND 60),
+    CONSTRAINT ck_prestamo_ual_anticipacion_devolucion_minutos
+        CHECK (minutos_antes_fin_segundo_bloque BETWEEN 1 AND 60),
     CONSTRAINT ck_prestamo_ual_bancos_consistencia CHECK (
         (tiene_bancos = FALSE AND cantidad_bancos = 0) OR
         (tiene_bancos = TRUE AND cantidad_bancos > 0)
@@ -748,7 +754,9 @@ CREATE TABLE IF NOT EXISTS prestamo_ual_configuracion (
 );
 
 ALTER TABLE prestamo_ual_configuracion
-    ADD COLUMN IF NOT EXISTS capacidad_por_banco INT NOT NULL DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS capacidad_por_banco INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS max_minutos_solicitud_despues_inicio INT NOT NULL DEFAULT 15,
+    ADD COLUMN IF NOT EXISTS minutos_antes_fin_segundo_bloque INT NOT NULL DEFAULT 15;
 
 DO $$
 BEGIN
@@ -761,6 +769,31 @@ BEGIN
         ALTER TABLE prestamo_ual_configuracion
             ADD CONSTRAINT ck_prestamo_ual_capacidad_por_banco
             CHECK (capacidad_por_banco >= 0);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_prestamo_ual_solicitud_despues_inicio_minutos'
+          AND conrelid = 'prestamo_ual_configuracion'::regclass
+    ) THEN
+        ALTER TABLE prestamo_ual_configuracion
+            ADD CONSTRAINT ck_prestamo_ual_solicitud_despues_inicio_minutos
+            CHECK (max_minutos_solicitud_despues_inicio BETWEEN 1 AND 60);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'ck_prestamo_ual_anticipacion_devolucion_minutos'
+          AND conrelid = 'prestamo_ual_configuracion'::regclass
+    ) THEN
+        ALTER TABLE prestamo_ual_configuracion
+            ADD CONSTRAINT ck_prestamo_ual_anticipacion_devolucion_minutos
+            CHECK (minutos_antes_fin_segundo_bloque BETWEEN 1 AND 60);
     END IF;
 END $$;
 

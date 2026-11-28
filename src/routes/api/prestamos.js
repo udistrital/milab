@@ -3734,15 +3734,13 @@ function validateLoanRequestPayload(payload, now = new Date()) {
     return 'Las fechas de la solicitud no tienen un formato valido.';
   }
 
-  if (!['clase', 'libre'].includes(String(payload.tipo_prestamo || '').toLowerCase())) {
+  const tipoPrestamo = String(payload.tipo_prestamo || '').toLowerCase();
+  if (!['clase', 'libre'].includes(tipoPrestamo)) {
     return 'El tipo de prestamo no es valido.';
   }
 
-  const requestDeadline = new Date(
-    fechaInicio.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
-  );
-  if (now.getTime() > requestDeadline.getTime()) {
-    return 'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.';
+  if (tipoPrestamo === 'libre' && fechaInicio.getTime() <= now.getTime()) {
+    return 'La fecha de inicio debe ser posterior a la fecha actual para prestamos de practica libre.';
   }
 
   if (fechaFin <= fechaInicio) {
@@ -3772,9 +3770,35 @@ function validateLoanRequestPayload(payload, now = new Date()) {
   return '';
 }
 
-const PRACTICE_REQUEST_MAX_DELAY_MINUTES = 15;
-const PRACTICE_RETURN_CUTOFF_MINUTES = 15;
+const DEFAULT_PRACTICE_REQUEST_DELAY_MINUTES = 15;
+const DEFAULT_PRACTICE_RETURN_BUFFER_MINUTES = 15;
 const LOAN_MODE_MARKER_REGEX = /^\[modo:(clase|libre)\]\s*/i;
+
+function getUalPracticeLoanWindows(configuration = null) {
+  const requestDelayValue =
+    configuration?.max_minutos_solicitud_despues_inicio ??
+    configuration?.maxMinutosSolicitudDespuesInicio;
+  const returnBufferValue =
+    configuration?.minutos_antes_fin_segundo_bloque ?? configuration?.minutosAntesFinSegundoBloque;
+  const requestDelay =
+    requestDelayValue == null ? DEFAULT_PRACTICE_REQUEST_DELAY_MINUTES : Number(requestDelayValue);
+  const returnBuffer =
+    returnBufferValue == null ? DEFAULT_PRACTICE_RETURN_BUFFER_MINUTES : Number(returnBufferValue);
+
+  if (!Number.isInteger(requestDelay) || requestDelay < 1 || requestDelay > 60) {
+    throw new Error('La ventana de solicitud de la UAL debe ser un entero entre 1 y 60 minutos.');
+  }
+  if (!Number.isInteger(returnBuffer) || returnBuffer < 1 || returnBuffer > 60) {
+    throw new Error(
+      'La anticipacion de devolucion de la UAL debe ser un entero entre 1 y 60 minutos.'
+    );
+  }
+
+  return {
+    maxMinutosSolicitudDespuesInicio: requestDelay,
+    minutosAntesFinSegundoBloque: returnBuffer,
+  };
+}
 
 function subtractMinutesFromTimeKey(timeKey, minutes) {
   const parts = String(timeKey || '').split(':');
@@ -3823,12 +3847,18 @@ function normalizeLoanRecordForDisplay(record = {}, fieldName = 'justificacion_a
   };
 }
 
-function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }) {
+function evaluateLoanModeConstraints({
+  payload,
+  selectedSlot,
+  reglasPrestamo = null,
+  now = new Date(),
+}) {
   const mode = String(payload?.tipo_prestamo || '').toLowerCase();
-  if (!selectedSlot || !['clase', 'libre'].includes(mode)) {
+  if (!selectedSlot || mode !== 'clase') {
     return '';
   }
 
+  const windows = getUalPracticeLoanWindows(reglasPrestamo);
   const slotStart = parseBogotaDateTime(`${selectedSlot.fecha}T${selectedSlot.horaInicio}`);
   const slotEnd = parseBogotaDateTime(`${selectedSlot.fecha}T${selectedSlot.horaFin}`);
   const selectedEnd = parseBogotaDateTime(payload.fecha_fin);
@@ -3844,19 +3874,21 @@ function evaluateLoanModeConstraints({ payload, selectedSlot, now = new Date() }
   }
 
   const requestDeadline = new Date(
-    slotStart.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+    slotStart.getTime() + windows.maxMinutosSolicitudDespuesInicio * 60 * 1000
   );
   if (now.getTime() > requestDeadline.getTime()) {
-    return 'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.';
+    return `Solo puedes solicitar el prestamo hasta ${windows.maxMinutosSolicitudDespuesInicio} minutos despues de iniciada la practica docente o magistral.`;
   }
 
-  const returnDeadline = new Date(slotEnd.getTime() - PRACTICE_RETURN_CUTOFF_MINUTES * 60 * 1000);
+  const returnDeadline = new Date(
+    slotEnd.getTime() - windows.minutosAntesFinSegundoBloque * 60 * 1000
+  );
   if (returnDeadline.getTime() <= slotStart.getTime()) {
     return 'El horario configurado no permite aplicar la ventana de devolucion.';
   }
 
   if (selectedEnd.getTime() > returnDeadline.getTime()) {
-    return 'La devolucion debe finalizar al menos 15 minutos antes de terminar el bloque programado.';
+    return `La devolucion debe finalizar al menos ${windows.minutosAntesFinSegundoBloque} minutos antes de terminar el segundo bloque programado.`;
   }
 
   return '';
@@ -4614,6 +4646,14 @@ function buildSalaPayload(body = {}) {
     tiene_bancos: toBoolean(body.tiene_bancos),
     cantidad_bancos: sanitizeText(body.cantidad_bancos),
     capacidad_por_banco: sanitizeText(body.capacidad_por_banco),
+    max_minutos_solicitud_despues_inicio:
+      body.max_minutos_solicitud_despues_inicio === undefined
+        ? String(DEFAULT_PRACTICE_REQUEST_DELAY_MINUTES)
+        : sanitizeText(body.max_minutos_solicitud_despues_inicio),
+    minutos_antes_fin_segundo_bloque:
+      body.minutos_antes_fin_segundo_bloque === undefined
+        ? String(DEFAULT_PRACTICE_RETURN_BUFFER_MINUTES)
+        : sanitizeText(body.minutos_antes_fin_segundo_bloque),
     modo_ual_info: modoUalInfo,
   };
 }
@@ -4667,6 +4707,18 @@ function validateSalaPayload(payload) {
     return 'La cantidad de bancos no puede ser negativa.';
   }
 
+  if (payload.modo_ual_info) {
+    const requestDelay = Number(payload.max_minutos_solicitud_despues_inicio);
+    if (!Number.isInteger(requestDelay) || requestDelay < 1 || requestDelay > 60) {
+      return 'El maximo para solicitar despues del inicio debe ser un numero entero entre 1 y 60.';
+    }
+
+    const returnBuffer = Number(payload.minutos_antes_fin_segundo_bloque);
+    if (!Number.isInteger(returnBuffer) || returnBuffer < 1 || returnBuffer > 60) {
+      return 'La anticipacion de devolucion debe ser un numero entero entre 1 y 60.';
+    }
+  }
+
   return '';
 }
 
@@ -4678,7 +4730,13 @@ async function fetchUalLoanConfiguration(ualId, executor = pool) {
   try {
     const result = await executor.query(
       `
-        SELECT ual_id, tiene_bancos, cantidad_bancos, capacidad_por_banco
+        SELECT
+          ual_id,
+          tiene_bancos,
+          cantidad_bancos,
+          capacidad_por_banco,
+          max_minutos_solicitud_despues_inicio,
+          minutos_antes_fin_segundo_bloque
         FROM prestamo_ual_configuracion
         WHERE ual_id = $1
         LIMIT 1
@@ -4703,6 +4761,7 @@ async function upsertUalLoanConfiguration(executor, ualId, payload) {
   const quantityRaw = String(payload?.cantidad_bancos || '').trim();
   const cantidadBancos = hasBanks ? Number(quantityRaw || 0) : 0;
   const capacidadPorBanco = hasBanks ? Number(payload?.capacidad_por_banco || 0) : 0;
+  const windows = getUalPracticeLoanWindows(payload);
 
   await executor.query(
     `
@@ -4711,14 +4770,18 @@ async function upsertUalLoanConfiguration(executor, ualId, payload) {
         tiene_bancos,
         cantidad_bancos,
         capacidad_por_banco,
+        max_minutos_solicitud_despues_inicio,
+        minutos_antes_fin_segundo_bloque,
         fecha_modificacion
       )
-      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
       ON CONFLICT (ual_id)
       DO UPDATE SET
         tiene_bancos = EXCLUDED.tiene_bancos,
         cantidad_bancos = EXCLUDED.cantidad_bancos,
         capacidad_por_banco = EXCLUDED.capacidad_por_banco,
+        max_minutos_solicitud_despues_inicio = EXCLUDED.max_minutos_solicitud_despues_inicio,
+        minutos_antes_fin_segundo_bloque = EXCLUDED.minutos_antes_fin_segundo_bloque,
         fecha_modificacion = CURRENT_TIMESTAMP
     `,
     [
@@ -4726,6 +4789,8 @@ async function upsertUalLoanConfiguration(executor, ualId, payload) {
       hasBanks,
       Number.isInteger(cantidadBancos) ? cantidadBancos : 0,
       Number.isInteger(capacidadPorBanco) ? capacidadPorBanco : 0,
+      windows.maxMinutosSolicitudDespuesInicio,
+      windows.minutosAntesFinSegundoBloque,
     ]
   );
 }
@@ -10593,6 +10658,10 @@ async function buildEquipmentLoanAvailability(equipmentId) {
     return null;
   }
 
+  const ualConfiguration = equipment.ual_id
+    ? await fetchUalLoanConfiguration(equipment.ual_id)
+    : null;
+  const reglasPrestamo = getUalPracticeLoanWindows(ualConfiguration);
   const configuredSchedules = await fetchEquipmentSchedules(equipmentId);
   const schedules = configuredSchedules.length
     ? configuredSchedules.map((schedule) => ({
@@ -10624,7 +10693,8 @@ async function buildEquipmentLoanAvailability(equipmentId) {
     const scheduleStart = parseBogotaDateTime(`${schedule.fecha}T${schedule.hora_inicio}`);
     return (
       scheduleStart &&
-      now.getTime() <= scheduleStart.getTime() + PRACTICE_REQUEST_MAX_DELAY_MINUTES * 60 * 1000
+      now.getTime() <=
+        scheduleStart.getTime() + reglasPrestamo.maxMinutosSolicitudDespuesInicio * 60 * 1000
     );
   });
 
@@ -10668,19 +10738,25 @@ async function buildEquipmentLoanAvailability(equipmentId) {
       );
       const horaFinPrestamo = subtractMinutesFromTimeKey(
         schedule.hora_fin,
-        PRACTICE_RETURN_CUTOFF_MINUTES
+        reglasPrestamo.minutosAntesFinSegundoBloque
       );
+      const scheduleStart = parseBogotaDateTime(`${schedule.fecha}T${schedule.hora_inicio}`);
+      const permiteSolicitudLibre = scheduleStart && scheduleStart.getTime() > now.getTime();
+      const permiteSolicitudClase =
+        scheduleStart &&
+        now.getTime() <=
+          scheduleStart.getTime() + reglasPrestamo.maxMinutosSolicitudDespuesInicio * 60 * 1000;
 
       return {
         fecha: schedule.fecha,
         horaInicio: schedule.hora_inicio,
         horaFin: schedule.hora_fin,
         horaFinPrestamo,
-        permitePrestamo:
-          Boolean(horaFinPrestamo) && String(horaFinPrestamo) > String(schedule.hora_inicio),
-        horaFinClase: horaFinPrestamo,
+        permiteSolicitudLibre: Boolean(permiteSolicitudLibre),
+        permiteSolicitudClase: Boolean(permiteSolicitudClase),
         permitePrestamoClase:
           Boolean(horaFinPrestamo) && String(horaFinPrestamo) > String(schedule.hora_inicio),
+        horaFinClase: horaFinPrestamo,
         disponible: !hasConflict,
       };
     });
@@ -10688,6 +10764,7 @@ async function buildEquipmentLoanAvailability(equipmentId) {
   return {
     equipo: normalizeEquipmentForView(equipment),
     horariosDisponibles,
+    reglasPrestamo,
     usaHorariosConfigurados: configuredSchedules.length > 0,
   };
 }
@@ -10738,7 +10815,12 @@ async function fetchEquipmentItem(id) {
         ubicacion,
         ubicacion_prestamo,
         fecha_creacion,
-        fecha_modificacion
+        fecha_modificacion,
+        (
+          SELECT inventario.laboratorio_ual_id
+          FROM inventario
+          WHERE inventario.id = equipo_catalogo.inventario_id
+        ) AS ual_id
       FROM equipo_catalogo
       WHERE id = $1
       LIMIT 1
@@ -11690,6 +11772,7 @@ router.get(
         disponibilidad: {
           equipo: disponibilidad.equipo,
           horariosDisponibles: disponibilidad.horariosDisponibles,
+          reglasPrestamo: disponibilidad.reglasPrestamo,
           mensaje: disponibilidad.usaHorariosConfigurados
             ? 'Se encontraron horarios configurados para este equipo.'
             : 'El equipo no tiene horarios configurados, se muestran franjas sugeridas por defecto.',
@@ -11852,7 +11935,11 @@ router.post('/solicitudes/crear', requireSolicitudesAuthorized, async function (
       });
     }
 
-    const modeValidationError = evaluateLoanModeConstraints({ payload, selectedSlot });
+    const modeValidationError = evaluateLoanModeConstraints({
+      payload,
+      selectedSlot,
+      reglasPrestamo: disponibilidad.reglasPrestamo,
+    });
     if (modeValidationError) {
       return res.status(400).json({
         success: false,
@@ -19848,6 +19935,8 @@ router.__private = {
   sendByRequestPosterPdf,
   summarizeMissingActivationChecks,
   recordLaboratoryConfigurationMedal,
+  getUalPracticeLoanWindows,
+  upsertUalLoanConfiguration,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,
   evaluateLoanModeConstraints,

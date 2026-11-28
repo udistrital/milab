@@ -654,7 +654,7 @@ test('prestamos rejects a loan request without an equipment selection', async ()
   }
 });
 
-test('prestamos limita a 15 minutos la solicitud de práctica libre después de iniciar', () => {
+test('prestamos exige que la práctica libre se solicite antes de iniciar', () => {
   const loaded = loadRoute();
 
   try {
@@ -669,16 +669,12 @@ test('prestamos limita a 15 minutos la solicitud de práctica libre después de 
     };
 
     assert.equal(
-      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:14:00Z')),
+      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T13:59:00Z')),
       ''
     );
     assert.equal(
-      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:15:00Z')),
-      ''
-    );
-    assert.equal(
-      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:16:00Z')),
-      'Solo puedes solicitar el prestamo hasta 15 minutos despues de iniciada la practica.'
+      loaded.route.__private.validateLoanRequestPayload(payload, new Date('2025-01-10T14:00:00Z')),
+      'La fecha de inicio debe ser posterior a la fecha actual para prestamos de practica libre.'
     );
   } finally {
     loaded.restore();
@@ -726,25 +722,44 @@ test('prestamos valida reglas de ventana para modalidad clase', () => {
       },
       now: new Date('2025-01-10T13:55:00.000Z'),
     });
-
-    assert.match(lateMessage, /hasta 15 minutos despues de iniciada la practica/);
-    assert.match(returnMessage, /debe finalizar al menos 15 minutos antes/);
-    assert.equal(allowedReturnMessage, '');
-
-    const freePracticeMessage = loaded.route.__private.evaluateLoanModeConstraints({
+    const configuredWindowMessage = loaded.route.__private.evaluateLoanModeConstraints({
       payload: {
-        tipo_prestamo: 'libre',
-        fecha_fin: '2025-01-10T09:40',
+        tipo_prestamo: 'clase',
+        fecha_fin: '2025-01-10T09:45',
       },
       selectedSlot: {
         fecha: '2025-01-10',
         horaInicio: '09:00',
         horaFin: '10:00',
       },
-      now: new Date('2025-01-10T14:20:00.000Z'),
+      reglasPrestamo: {
+        maxMinutosSolicitudDespuesInicio: 30,
+        minutosAntesFinSegundoBloque: 20,
+      },
+      now: new Date('2025-01-10T14:15:00.000Z'),
+    });
+    const configuredRequestMessage = loaded.route.__private.evaluateLoanModeConstraints({
+      payload: {
+        tipo_prestamo: 'clase',
+        fecha_fin: '2025-01-10T09:30',
+      },
+      selectedSlot: {
+        fecha: '2025-01-10',
+        horaInicio: '09:00',
+        horaFin: '10:00',
+      },
+      reglasPrestamo: {
+        maxMinutosSolicitudDespuesInicio: 30,
+        minutosAntesFinSegundoBloque: 20,
+      },
+      now: new Date('2025-01-10T14:31:00.000Z'),
     });
 
-    assert.match(freePracticeMessage, /hasta 15 minutos despues de iniciada la practica/);
+    assert.match(lateMessage, /hasta 15 minutos despues de iniciada la practica/);
+    assert.match(returnMessage, /debe finalizar al menos 15 minutos antes/);
+    assert.equal(allowedReturnMessage, '');
+    assert.match(configuredWindowMessage, /debe finalizar al menos 20 minutos antes/);
+    assert.match(configuredRequestMessage, /hasta 30 minutos despues de iniciada/);
   } finally {
     loaded.restore();
   }
@@ -1387,12 +1402,71 @@ test('prestamos exige capacidad de los bancos en la informacion de la UAL', () =
       loaded.route.__private.validateSalaPayload(missingCapacity),
       'Debes indicar la capacidad en personas de cada banco.'
     );
+    assert.equal(missingCapacity.max_minutos_solicitud_despues_inicio, '15');
+    assert.equal(missingCapacity.minutos_antes_fin_segundo_bloque, '15');
     assert.equal(loaded.route.__private.validateSalaPayload(configured), '');
+    assert.equal(
+      loaded.route.__private.validateSalaPayload({
+        ...configured,
+        max_minutos_solicitud_despues_inicio: '61',
+      }),
+      'El maximo para solicitar despues del inicio debe ser un numero entero entre 1 y 60.'
+    );
+    assert.equal(
+      loaded.route.__private.validateSalaPayload({
+        ...configured,
+        minutos_antes_fin_segundo_bloque: '1.5',
+      }),
+      'La anticipacion de devolucion debe ser un numero entero entre 1 y 60.'
+    );
   } finally {
     loaded.restore();
   }
 });
 
+test('prestamos guarda las ventanas configurables de solicitud y devolucion por UAL', async () => {
+  const loaded = loadRoute();
+
+  try {
+    let queryCall;
+    await loaded.route.__private.upsertUalLoanConfiguration(
+      {
+        async query(sql, params) {
+          queryCall = { sql, params };
+          return { rows: [] };
+        },
+      },
+      42,
+      {
+        tiene_bancos: false,
+        cantidad_bancos: '0',
+        capacidad_por_banco: '0',
+        max_minutos_solicitud_despues_inicio: '35',
+        minutos_antes_fin_segundo_bloque: '25',
+      }
+    );
+
+    assert.match(queryCall.sql, /max_minutos_solicitud_despues_inicio/);
+    assert.match(queryCall.sql, /minutos_antes_fin_segundo_bloque/);
+    assert.deepEqual(queryCall.params, [42, false, 0, 0, 35, 25]);
+    assert.deepEqual(loaded.route.__private.getUalPracticeLoanWindows(null), {
+      maxMinutosSolicitudDespuesInicio: 15,
+      minutosAntesFinSegundoBloque: 15,
+    });
+    assert.deepEqual(
+      loaded.route.__private.getUalPracticeLoanWindows({
+        maxMinutosSolicitudDespuesInicio: 35,
+        minutosAntesFinSegundoBloque: 25,
+      }),
+      {
+        maxMinutosSolicitudDespuesInicio: 35,
+        minutosAntesFinSegundoBloque: 25,
+      }
+    );
+  } finally {
+    loaded.restore();
+  }
+});
 test('prestamos valida el laboratorio del wizard de activacion', async () => {
   const loaded = loadRouteWithAccess({
     blocked: false,

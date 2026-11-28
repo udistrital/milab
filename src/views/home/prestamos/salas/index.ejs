@@ -82,10 +82,18 @@
         <% if (ualInfoMode) { %>
           <div class="col-12">
             <div class="alert alert-info mb-0">
-              <strong>Condiciones para préstamos de prácticas libres y docentes</strong>
+              <strong>Ventanas para préstamos de equipos en prácticas magistrales o docentes</strong>
               <ul class="mb-0 mt-1">
-                <li>La solicitud se puede realizar hasta 15 minutos después del inicio de la práctica.</li>
-                <li>La devolución debe finalizar al menos 15 minutos antes de que termine el segundo bloque programado.</li>
+                <li>
+                  Solicitud: hasta
+                  <strong><%= selectedUalConfig?.max_minutos_solicitud_despues_inicio || 15 %> minutos</strong>
+                  después del inicio de la práctica.
+                </li>
+                <li>
+                  Devolución: finalizar al menos
+                  <strong><%= selectedUalConfig?.minutos_antes_fin_segundo_bloque || 15 %> minutos</strong>
+                  antes del fin del segundo bloque programado.
+                </li>
               </ul>
             </div>
           </div>
@@ -202,6 +210,36 @@
               <%= selectedUalConfig?.tiene_bancos ? 'required' : '' %>
             >
             <div class="form-text text-light-emphasis">Se usa la misma capacidad para todos los bancos.</div>
+          </div>
+          <div class="col-md-6">
+            <label for="crearMaxMinutosSolicitud" class="form-label">
+              Máximo para solicitar después del inicio (minutos)
+            </label>
+            <input
+              type="number"
+              class="form-control"
+              id="crearMaxMinutosSolicitud"
+              min="1"
+              max="60"
+              step="1"
+              value="<%= selectedUalConfig?.max_minutos_solicitud_despues_inicio || 15 %>"
+              required
+            >
+          </div>
+          <div class="col-md-6">
+            <label for="crearMinutosAntesFinSegundoBloque" class="form-label">
+              Anticipación mínima para devolver antes del fin del segundo bloque (minutos)
+            </label>
+            <input
+              type="number"
+              class="form-control"
+              id="crearMinutosAntesFinSegundoBloque"
+              min="1"
+              max="60"
+              step="1"
+              value="<%= selectedUalConfig?.minutos_antes_fin_segundo_bloque || 15 %>"
+              required
+            >
           </div>
         <% } %>
         <div class="col-md-6 form-check">
@@ -552,6 +590,12 @@
         capacidad_por_banco: document.getElementById(prefix + 'CapacidadPorBanco')
           ? document.getElementById(prefix + 'CapacidadPorBanco').value
           : '0',
+        max_minutos_solicitud_despues_inicio: document.getElementById(prefix + 'MaxMinutosSolicitud')
+          ? document.getElementById(prefix + 'MaxMinutosSolicitud').value
+          : '15',
+        minutos_antes_fin_segundo_bloque: document.getElementById(prefix + 'MinutosAntesFinSegundoBloque')
+          ? document.getElementById(prefix + 'MinutosAntesFinSegundoBloque').value
+          : '15',
         modo_ual_info: document.getElementById(prefix + 'ModoUalInfo')
           ? document.getElementById(prefix + 'ModoUalInfo').value
           : 'false',

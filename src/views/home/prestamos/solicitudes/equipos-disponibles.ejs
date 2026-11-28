@@ -121,10 +121,10 @@
             <label for="solicitudTipoPrestamo" class="form-label">Modalidad de prestamo *</label>
             <select class="form-select" id="solicitudTipoPrestamo" name="tipo_prestamo" required>
               <option value="libre">Practica libre</option>
-              <option value="clase">Prestamo en clase</option>
+              <option value="clase">Préstamo en clase magistral o docente</option>
             </select>
             <div class="form-text">
-              En prestamo en clase podras solicitar hasta 15 minutos despues del inicio y devolver maximo 15 minutos antes de finalizar el bloque.
+              Las ventanas configuradas para solicitud y devolución aplican a préstamos en clases magistrales o docentes.
             </div>
           </div>
 
@@ -313,6 +313,10 @@
     var hasBoundSignaturePadResize = false;
     var selectedScheduleKey = '';
     var selectedScheduleData = null;
+    var loanWindows = {
+      maxMinutosSolicitudDespuesInicio: 15,
+      minutosAntesFinSegundoBloque: 15,
+    };
     var capacitacionOk = true;
     var capacitacionPendiente = null;
     var capacitacionErrorTecnico = false;
@@ -621,10 +625,12 @@
 
     function updateSubmitAvailability() {
       var hasSchedule = Boolean(selectedScheduleKey);
-      var modeAllowsSelectedSchedule = !(
-        selectedScheduleData &&
-        !selectedScheduleData.permitePrestamo
-      );
+      var isClassLoan = tipoPrestamoInput && tipoPrestamoInput.value === 'clase';
+      var modeAllowsSelectedSchedule =
+        !selectedScheduleData ||
+        (isClassLoan
+          ? selectedScheduleData.permiteSolicitudClase && selectedScheduleData.permitePrestamoClase
+          : selectedScheduleData.permiteSolicitudLibre);
       var hasCategoria = Boolean(categoriaInput && categoriaInput.value);
       var hasJustificacion = Boolean(justificacionInput && justificacionInput.value.trim().length >= 10);
       var hasReglamento = Boolean(aceptarReglamentoInput && aceptarReglamentoInput.checked);
@@ -665,29 +671,50 @@
       if (!selectedScheduleData) return;
 
       var tipoPrestamo = tipoPrestamoInput ? tipoPrestamoInput.value : 'libre';
+      var isClassLoan = tipoPrestamo === 'clase';
       fechaInicioInput.value = selectedScheduleData.fecha + 'T' + selectedScheduleData.horaInicio;
-      fechaFinInput.value = selectedScheduleData.fecha + 'T' + (
-        selectedScheduleData.permitePrestamo
-          ? selectedScheduleData.horaFinPrestamo
-          : selectedScheduleData.horaFin
-      );
+      fechaFinInput.value =
+        selectedScheduleData.fecha +
+        'T' +
+        (isClassLoan && selectedScheduleData.permitePrestamoClase
+          ? selectedScheduleData.horaFinClase
+          : selectedScheduleData.horaFin);
 
       if (!statusElement) return;
-      if (!selectedScheduleData.permitePrestamo) {
+      if (isClassLoan && !selectedScheduleData.permiteSolicitudClase) {
         statusElement.className = 'alert alert-warning';
         statusElement.textContent =
-          'Este bloque no permite el préstamo porque no existe una ventana válida de devolución.';
+          'La solicitud magistral/docente solo puede hacerse hasta ' +
+          loanWindows.maxMinutosSolicitudDespuesInicio +
+          ' minutos después del inicio del bloque.';
+        return;
+      }
+      if (isClassLoan && !selectedScheduleData.permitePrestamoClase) {
+        statusElement.className = 'alert alert-warning';
+        statusElement.textContent =
+          'Este bloque no permite el préstamo magistral/docente con la anticipación de devolución configurada.';
+        return;
+      }
+      if (!isClassLoan && !selectedScheduleData.permiteSolicitudLibre) {
+        statusElement.className = 'alert alert-warning';
+        statusElement.textContent = 'La práctica libre debe solicitarse antes de que inicie el horario.';
         return;
       }
 
       statusElement.className = selectedScheduleData.disponible ? 'alert alert-secondary' : 'alert alert-warning';
-      statusElement.textContent =
-        (tipoPrestamo === 'clase' ? 'Préstamo en clase' : 'Práctica libre') +
-        ': la devolución máxima será a las ' + selectedScheduleData.horaFinPrestamo +
-        ' (15 minutos antes de terminar el bloque).' +
-        (selectedScheduleData.disponible
-          ? ''
-          : ' El horario está ocupado; la solicitud se registrará en cola de espera.');
+      statusElement.textContent = isClassLoan
+        ? 'Préstamo magistral/docente: solicita hasta ' +
+          loanWindows.maxMinutosSolicitudDespuesInicio +
+          ' minutos después del inicio y devuelve máximo a las ' +
+          selectedScheduleData.horaFinClase +
+          ' (' +
+          loanWindows.minutosAntesFinSegundoBloque +
+          ' minutos antes del fin del segundo bloque).'
+        : 'Horario de práctica libre seleccionado.';
+      if (!selectedScheduleData.disponible) {
+        statusElement.textContent +=
+          ' El horario está ocupado; la solicitud se registrará en cola de espera.';
+      }
     }
 
     function renderScheduleOptions(horarios) {
@@ -708,9 +735,15 @@
         button.innerHTML =
           '<div><strong>' + escapeHtml(slot.fecha) + '</strong></div>' +
           '<div>' + escapeHtml(slot.horaInicio) + ' - ' + escapeHtml(slot.horaFin) + (slot.disponible ? '' : ' (ocupado: se enviará a cola)') + '</div>' +
-          (slot.permitePrestamo
-            ? '<div class="small text-muted">Devolución máxima: ' + escapeHtml(slot.horaFinPrestamo || '') + ' (15 min antes de terminar)</div>'
-            : '<div class="small text-muted">No hay una ventana válida para devolver en este bloque</div>');
+          '<div class="small text-muted">Magistral/docente: hasta ' +
+          loanWindows.maxMinutosSolicitudDespuesInicio +
+          ' min después del inicio; devolución ' +
+          loanWindows.minutosAntesFinSegundoBloque +
+          ' min antes del fin del segundo bloque' +
+          (slot.permitePrestamoClase
+            ? ' (máximo ' + escapeHtml(slot.horaFinClase || '') + ')'
+            : ' (bloque sin ventana válida)') +
+          '</div>';
 
         button.addEventListener('click', function() {
           clearScheduleSelection();
@@ -752,6 +785,10 @@
           throw new Error(data.message || 'No fue posible consultar la disponibilidad.');
         }
 
+        loanWindows =
+          data.disponibilidad && data.disponibilidad.reglasPrestamo
+            ? data.disponibilidad.reglasPrestamo
+            : loanWindows;
         statusElement.className = capacitacionOk ? 'alert alert-secondary' : statusElement.className;
         if (capacitacionOk) {
           statusElement.textContent = data.disponibilidad && data.disponibilidad.mensaje
