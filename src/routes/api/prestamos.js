@@ -4659,6 +4659,18 @@ function buildSalaPayload(body = {}) {
   };
 }
 
+function buildSalaPayloadFromRequest(req) {
+  const body = req.body || {};
+  const query = req.query || {};
+  return buildSalaPayload({
+    ...body,
+    ual_id: body.ual_id || query.ual_id,
+    facultad: body.facultad || query.facultad,
+    laboratorio: body.laboratorio || query.laboratorio,
+    modo_ual_info: toBoolean(body.modo_ual_info) || query.mode === 'ual_info',
+  });
+}
+
 function validateSalaPayload(payload) {
   const textLimits = [
     ['nombre', payload.nombre, 150],
@@ -6064,7 +6076,7 @@ function buildLaboratoryActivationModel(row) {
     equiposListos: Number(row.total_equipos_listos || 0) > 0,
   };
   const wizardHref = `/milab/prestamos/activacion/laboratorios/${encodeURIComponent(String(row.ual_id || ''))}`;
-  const infoUalHref = `/milab/prestamos/salas?facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
+  const infoUalHref = `/milab/prestamos/salas?ual_id=${encodeURIComponent(String(row.ual_id || ''))}&facultad=${encodeURIComponent(sanitizeText(row.facultad))}&laboratorio=${encodeURIComponent(sanitizeText(row.laboratorio))}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
   const scheduleManagementHref = Number(row.sala_referencia_id || 0)
     ? `/milab/prestamos/salas/${encodeURIComponent(String(row.sala_referencia_id))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
     : infoUalHref;
@@ -6210,7 +6222,7 @@ function buildLoanActivationChecklist(laboratorio) {
   const wizardHref = laboratorio?.ualId
     ? `/milab/prestamos/activacion/laboratorios/${encodedUalId}`
     : '/milab/prestamos/activacion/laboratorios';
-  const scheduleHref = `/milab/prestamos/salas?facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
+  const scheduleHref = `/milab/prestamos/salas?ual_id=${encodedUalId}&facultad=${encodedFacultad}&laboratorio=${encodedLaboratorio}&mode=ual_info&returnTo=${encodeURIComponent(wizardHref)}`;
   const scheduleManagementHref = Number(counters.salaReferenciaId || 0)
     ? `/milab/prestamos/salas/${encodeURIComponent(String(counters.salaReferenciaId))}/horarios?returnTo=${encodeURIComponent(wizardHref)}`
     : scheduleHref;
@@ -9355,17 +9367,35 @@ async function fetchManagedPracticeReservation(id, scope) {
 }
 
 async function resolveManagedUal(payload, scope) {
-  if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
+  const facultyIds = Array.isArray(scope?.facultyIds) ? scope.facultyIds : [];
+  const ualIds = Array.isArray(scope?.ualIds) ? scope.ualIds : [];
+
+  if (
+    !scope?.unrestricted &&
+    !facultyIds.length &&
+    !(scope?.restrictToLaboratories && ualIds.length)
+  ) {
     return null;
   }
 
   const params = [payload.facultad, payload.laboratorio];
-  const facultyCondition = scope?.unrestricted
-    ? ''
-    : 'AND f.dependencia_facultad_id = ANY($3::int[])';
+  const scopeConditions = [];
 
-  if (!scope?.unrestricted) {
-    params.push(scope.facultyIds);
+  if (!scope?.unrestricted && facultyIds.length) {
+    params.push(facultyIds);
+    scopeConditions.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
+  }
+
+  if (!scope?.unrestricted && scope?.restrictToLaboratories) {
+    if (ualIds.length) {
+      params.push(ualIds);
+      scopeConditions.push(`u.ual_id = ANY($${params.length}::int[])`);
+    } else if (Array.isArray(scope.laboratoryNames) && scope.laboratoryNames.length) {
+      params.push(scope.laboratoryNames);
+      scopeConditions.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+    } else {
+      return null;
+    }
   }
 
   const result = await pool.query(
@@ -9375,7 +9405,7 @@ async function resolveManagedUal(payload, scope) {
       JOIN dependencia_facultad f ON f.dependencia_facultad_id = u.facultad_id
       WHERE UPPER(f.nombre) = UPPER($1::text)
         AND UPPER(u.nombre) = UPPER($2::text)
-        ${facultyCondition}
+        ${scopeConditions.map((condition) => `AND ${condition}`).join('\n        ')}
       LIMIT 1
     `,
     params
@@ -9389,21 +9419,28 @@ async function fetchManagedUalById(ualId, scope) {
     return null;
   }
 
-  if (!scope?.unrestricted && (!scope?.facultyIds || !scope.facultyIds.length)) {
+  const facultyIds = Array.isArray(scope?.facultyIds) ? scope.facultyIds : [];
+  const ualIds = Array.isArray(scope?.ualIds) ? scope.ualIds : [];
+
+  if (
+    !scope?.unrestricted &&
+    !facultyIds.length &&
+    !(scope?.restrictToLaboratories && ualIds.length)
+  ) {
     return null;
   }
 
   const params = [Number(ualId)];
   const whereParts = ['u.ual_id = $1'];
 
-  if (!scope.unrestricted) {
-    params.push(scope.facultyIds);
+  if (!scope.unrestricted && facultyIds.length) {
+    params.push(facultyIds);
     whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
   if (scope.restrictToLaboratories) {
-    if (Array.isArray(scope.ualIds) && scope.ualIds.length) {
-      params.push(scope.ualIds);
+    if (ualIds.length) {
+      params.push(ualIds);
       whereParts.push(`u.ual_id = ANY($${params.length}::int[])`);
     } else if (Array.isArray(scope.laboratoryNames) && scope.laboratoryNames.length) {
       params.push(scope.laboratoryNames);
@@ -18275,9 +18312,14 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
   try {
     const scope = await resolveLoanManagementScope(req);
     const formOptions = await fetchEquipmentFormOptions(req);
-    const facultad = sanitizeText(req.query.facultad);
-    const laboratorio = sanitizeText(req.query.laboratorio);
     const ualInfoMode = sanitizeText(req.query.mode) === 'ual_info';
+    const requestedUalId = Number(req.query.ual_id);
+    const requestedManagedUal =
+      ualInfoMode && Number.isInteger(requestedUalId) && requestedUalId > 0
+        ? await fetchManagedUalById(requestedUalId, scope)
+        : null;
+    const facultad = requestedManagedUal?.facultad || sanitizeText(req.query.facultad);
+    const laboratorio = requestedManagedUal?.laboratorio || sanitizeText(req.query.laboratorio);
     const rawReturnTo = sanitizeText(req.query.returnTo);
     const returnTo =
       rawReturnTo && rawReturnTo.startsWith('/milab/')
@@ -18288,7 +18330,10 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     const salasColumns = await fetchTableColumns('sala');
     const equiposSelect = salasColumns.has('equipos_nombres') ? 's.equipos_nombres' : 'NULL::text';
 
-    if (!scope.unrestricted) {
+    if (requestedManagedUal) {
+      params.push(requestedManagedUal.ual_id);
+      whereParts.push(`u.ual_id = $${params.length}`);
+    } else if (!scope.unrestricted) {
       params.push(scope.facultyIds);
       whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
     }
@@ -18336,10 +18381,12 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     const salas = result.rows || [];
     let selectedSalaInfo = ualInfoMode && facultad && laboratorio ? salas[0] || null : null;
     let selectedUalConfig = null;
-    let selectedUalId = null;
+    let selectedUalId = requestedManagedUal?.ual_id ? Number(requestedManagedUal.ual_id) : null;
 
     if (ualInfoMode && facultad && laboratorio) {
-      const managedUal = await resolveManagedUal({ facultad, laboratorio }, scope);
+      const managedUal =
+        requestedManagedUal ||
+        (req.query.ual_id ? null : await resolveManagedUal({ facultad, laboratorio }, scope));
       if (managedUal?.ual_id) {
         selectedUalId = Number(managedUal.ual_id);
         selectedUalConfig = await fetchUalLoanConfiguration(managedUal.ual_id);
@@ -18393,7 +18440,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
 });
 
 router.post('/salas', requireSalasAuthorized, async function (req, res) {
-  const payload = buildSalaPayload(req.body);
+  const payload = buildSalaPayloadFromRequest(req);
   const validationError = validateSalaPayload(payload);
 
   if (validationError) {
@@ -18490,7 +18537,7 @@ router.post('/salas/:id', requireSalasAuthorized, async function (req, res) {
     });
   }
 
-  const payload = buildSalaPayload(req.body);
+  const payload = buildSalaPayloadFromRequest(req);
   const validationError = validateSalaPayload(payload);
 
   if (validationError) {
@@ -18502,8 +18549,10 @@ router.post('/salas/:id', requireSalasAuthorized, async function (req, res) {
 
   try {
     const scope = await resolveLoanManagementScope(req);
-    const managedUal = await resolveManagedUal(payload, scope);
     const sala = await fetchManagedSala(req.params.id, scope);
+    const managedUal = payload.modo_ual_info
+      ? await fetchManagedUalById(payload.ual_id || sala?.ual_id, scope)
+      : await resolveManagedUal(payload, scope);
 
     if (!managedUal?.ual_id || !sala) {
       return res.status(404).json({
@@ -19960,6 +20009,7 @@ router.__private = {
   recordLaboratoryConfigurationMedal,
   getUalPracticeLoanWindows,
   upsertUalLoanConfiguration,
+  resolveManagedUal,
   fetchManagedUalById,
   resolveLoanManagementScope,
   buildActivationWizardSteps,
@@ -19984,6 +20034,7 @@ router.__private = {
   buildLaboratoryManagementModules,
   buildLaboratoryCarouselHref,
   buildSalaPayload,
+  buildSalaPayloadFromRequest,
   validateSalaPayload,
   fetchDashboardStatsForLaboratory,
   insertSalaSchedule,

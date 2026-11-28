@@ -1335,6 +1335,7 @@ test('prestamos arma checklist de activacion y resume pendientes', () => {
     assert.equal(checklist[1].ready, false);
     assert.equal(checklist[0].label, 'Inventario de equipos');
     assert.equal(checklist[4].label, 'Información de la UAL');
+    assert.match(checklist[4].actionHref, /ual_id=11/);
     assert.equal(checklist[5].label, 'Horario de laboratorio');
     assert.equal(checklist[6].label, 'Prácticas del laboratorio');
     assert.match(missing, /Inventario complementario/);
@@ -1424,6 +1425,29 @@ test('prestamos exige capacidad de los bancos en la informacion de la UAL', () =
   }
 });
 
+test('prestamos recupera el contexto UAL desde la URL cuando no llega en el cuerpo', () => {
+  const loaded = loadRoute();
+
+  try {
+    const payload = loaded.route.__private.buildSalaPayloadFromRequest({
+      body: {},
+      query: {
+        mode: 'ual_info',
+        ual_id: '743',
+        facultad: 'Facultad de Ingeniería',
+        laboratorio: 'Laboratorio de pruebas',
+      },
+    });
+
+    assert.equal(payload.modo_ual_info, true);
+    assert.equal(payload.ual_id, '743');
+    assert.equal(payload.facultad, 'Facultad de Ingeniería');
+    assert.equal(payload.laboratorio, 'Laboratorio de pruebas');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos guarda las ventanas configurables de solicitud y devolucion por UAL', async () => {
   const loaded = loadRoute();
 
@@ -1492,6 +1516,40 @@ test('prestamos resuelve la UAL por identificador de asignacion del laboratorist
     assert.deepEqual(queryCall.params, [743, [32], [743]]);
     assert.match(queryCall.sql, /u\.ual_id = \$1/);
     assert.match(queryCall.sql, /f\.dependencia_facultad_id = ANY/);
+    assert.match(queryCall.sql, /u\.ual_id = ANY/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos resuelve la UAL asignada aunque el alcance no tenga facultades', async () => {
+  let queryCall;
+  const loaded = loadRoute({
+    dbQuery: async (sql, params) => {
+      queryCall = { sql, params };
+      return {
+        rows: [{ ual_id: 743, laboratorio: 'Laboratorio de pruebas' }],
+      };
+    },
+  });
+
+  try {
+    const managedUal = await loaded.route.__private.resolveManagedUal(
+      {
+        facultad: 'Facultad de pruebas',
+        laboratorio: 'Laboratorio de pruebas',
+      },
+      {
+        unrestricted: false,
+        facultyIds: [],
+        restrictToLaboratories: true,
+        laboratoryNames: ['LABORATORIO DE PRUEBAS'],
+        ualIds: [743],
+      }
+    );
+
+    assert.equal(managedUal.ual_id, 743);
+    assert.deepEqual(queryCall.params, ['Facultad de pruebas', 'Laboratorio de pruebas', [743]]);
     assert.match(queryCall.sql, /u\.ual_id = ANY/);
   } finally {
     loaded.restore();

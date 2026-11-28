@@ -243,7 +243,7 @@
         </div>
         <div class="col-12 d-flex justify-content-end gap-2">
           <% if (ualInfoMode) { %>
-            <a class="btn btn-outline-light" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
+            <a class="btn btn-outline-secondary" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
               Volver
             </a>
           <% } %>
@@ -654,10 +654,20 @@
         var existingSalaId = document.getElementById('crearSalaId')
           ? document.getElementById('crearSalaId').value
           : '';
+        var ualInfoQuery = ualInfoMode
+          ? '?' +
+            new URLSearchParams({
+              mode: 'ual_info',
+              ual_id: String(selectedUalId || ''),
+              facultad: selectedFacultad,
+              laboratorio: selectedLaboratorio,
+            }).toString()
+          : '';
         var targetUrl =
           ualInfoMode && existingSalaId
             ? '/milab/prestamos/salas/' + encodeURIComponent(existingSalaId)
             : '/milab/prestamos/salas';
+        targetUrl += ualInfoQuery;
         window.MiLabSubmitLock.lock(btn, ualInfoMode ? 'Guardando información UAL...' : 'Creando sala...');
         var result = await postJson(targetUrl, buildSalaPayload('crear'));
         showAlert('success', result.message || 'Información guardada correctamente.');
