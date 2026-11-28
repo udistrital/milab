@@ -59,9 +59,6 @@
                 Carga de horario
               </a>
             <% } %>
-            <a class="btn btn-perso btn-sm" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
-              Volver
-            </a>
           </div>
         </div>
       </div>
@@ -112,7 +109,7 @@
           </select>
         </div>
         <div class="col-md-4">
-          <label for="crearCapacidad" class="form-label">Capacidad *</label>
+          <label for="crearCapacidad" class="form-label">Capacidad (personas) *</label>
           <input
             type="number"
             class="form-control"
@@ -130,15 +127,25 @@
           <textarea class="form-control" id="crearDescripcion" maxlength="2000" rows="3"><%= selectedSalaInfo?.descripcion || '' %></textarea>
         </div>
         <div class="col-12">
-          <label for="crearEquiposNombres" class="form-label">Equipos en la sala</label>
+          <label for="crearEquiposNombres" class="form-label">
+            <%= ualInfoMode ? 'Equipos en la UAL' : 'Equipos en la sala' %>
+          </label>
           <textarea
             class="form-control"
             id="crearEquiposNombres"
             rows="3"
             maxlength="2500"
-            placeholder="Escribe los equipos disponibles en esta sala. Uno por linea."
+            placeholder="<%= ualInfoMode ? 'Describe brevemente los equipos que encontrarás en este laboratorio.' : 'Escribe los equipos disponibles en esta sala. Uno por linea.' %>"
           ><%= selectedSalaInfo?.equipos_nombres || '' %></textarea>
+          <% if (ualInfoMode) { %>
+            <div class="form-text text-light-emphasis">
+              Describe brevemente los equipos que encontrarás en este laboratorio.
+            </div>
+          <% } %>
         </div>
+        <% if (ualInfoMode) { %>
+          <div class="col-12"><strong>Tipos de Práctica en la UAL</strong></div>
+        <% } %>
         <div class="col-md-4 form-check ms-2">
           <input
             class="form-check-input"
@@ -234,7 +241,12 @@
             Activa (si se inactiva quedará no habilitada para prestamo)
           </label>
         </div>
-        <div class="col-12 d-flex justify-content-end">
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <% if (ualInfoMode) { %>
+            <a class="btn btn-outline-light" href="<%= returnTo || '/milab/prestamos/activacion/laboratorios' %>">
+              Volver
+            </a>
+          <% } %>
           <button type="submit" class="btn btn-perso" id="crearSalaSubmitBtn" data-submit-lock="true">
             <%= ualInfoMode ? 'Guardar UAL' : 'Crear sala' %>
           </button>
@@ -425,6 +437,7 @@
 <script nonce="<%= cspNonce %>">
   (function() {
     var ualInfoMode = <%- JSON.stringify(Boolean(ualInfoMode)) %>;
+    var selectedUalId = <%- JSON.stringify(selectedUalId || '') %>;
     var selectedFacultad = <%- JSON.stringify(selectedFacultad || '') %>;
     var selectedLaboratorio = <%- JSON.stringify(selectedLaboratorio || '') %>;
     var selectedSalaInfo = <%- JSON.stringify(selectedSalaInfo || null) %>;
@@ -550,6 +563,7 @@
 
     function buildSalaPayload(prefix) {
       return {
+        ual_id: ualInfoMode ? selectedUalId : '',
         facultad: ualInfoMode
           ? selectedFacultad
           : document.getElementById(prefix + 'Facultad').value,

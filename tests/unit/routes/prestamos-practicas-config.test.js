@@ -1467,6 +1467,36 @@ test('prestamos guarda las ventanas configurables de solicitud y devolucion por 
     loaded.restore();
   }
 });
+
+test('prestamos resuelve la UAL por identificador respetando el alcance de laboratorio', async () => {
+  let queryCall;
+  const loaded = loadRoute({
+    dbQuery: async (sql, params) => {
+      queryCall = { sql, params };
+      return {
+        rows: [{ ual_id: 743, laboratorio: 'Laboratorio de pruebas' }],
+      };
+    },
+  });
+
+  try {
+    const managedUal = await loaded.route.__private.fetchManagedUalById(743, {
+      unrestricted: false,
+      facultyIds: [32],
+      restrictToLaboratories: true,
+      laboratoryNames: ['LABORATORIO DE PRUEBAS'],
+    });
+
+    assert.equal(managedUal.ual_id, 743);
+    assert.deepEqual(queryCall.params, [743, [32], ['LABORATORIO DE PRUEBAS']]);
+    assert.match(queryCall.sql, /u\.ual_id = \$1/);
+    assert.match(queryCall.sql, /f\.dependencia_facultad_id = ANY/);
+    assert.match(queryCall.sql, /UPPER\(u\.nombre\) = ANY/);
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('prestamos valida el laboratorio del wizard de activacion', async () => {
   const loaded = loadRouteWithAccess({
     blocked: false,

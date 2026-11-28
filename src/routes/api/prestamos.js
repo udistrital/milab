@@ -4631,6 +4631,7 @@ function buildSalaPayload(body = {}) {
   const laboratorio = sanitizeText(body.laboratorio);
   const nombre = sanitizeText(body.nombre) || (modoUalInfo ? laboratorio : '');
   return {
+    ual_id: sanitizeText(body.ual_id),
     facultad,
     laboratorio,
     nombre,
@@ -18319,10 +18320,12 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
     const salas = result.rows || [];
     let selectedSalaInfo = ualInfoMode && facultad && laboratorio ? salas[0] || null : null;
     let selectedUalConfig = null;
+    let selectedUalId = null;
 
     if (ualInfoMode && facultad && laboratorio) {
       const managedUal = await resolveManagedUal({ facultad, laboratorio }, scope);
       if (managedUal?.ual_id) {
+        selectedUalId = Number(managedUal.ual_id);
         selectedUalConfig = await fetchUalLoanConfiguration(managedUal.ual_id);
       }
       if (!selectedSalaInfo && managedUal?.ual_id) {
@@ -18349,6 +18352,7 @@ router.get('/salas', requireSalasAuthorized, async function (req, res) {
       availableLaboratoriosByFaculty: formOptions.laboratoriosByFaculty || {},
       ualInfoMode,
       selectedSalaInfo,
+      selectedUalId,
       selectedUalConfig,
       returnTo,
       successMessage: sanitizeText(req.query.success),
@@ -18385,7 +18389,10 @@ router.post('/salas', requireSalasAuthorized, async function (req, res) {
 
   try {
     const scope = await resolveLoanManagementScope(req);
-    const managedUal = await resolveManagedUal(payload, scope);
+    const managedUal =
+      payload.modo_ual_info && payload.ual_id
+        ? await fetchManagedUalById(payload.ual_id, scope)
+        : await resolveManagedUal(payload, scope);
 
     if (!managedUal?.ual_id) {
       return res.status(403).json({
@@ -19937,6 +19944,7 @@ router.__private = {
   recordLaboratoryConfigurationMedal,
   getUalPracticeLoanWindows,
   upsertUalLoanConfiguration,
+  fetchManagedUalById,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,
   evaluateLoanModeConstraints,
