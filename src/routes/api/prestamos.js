@@ -5867,6 +5867,7 @@ async function resolveLoanManagementScope(req) {
       unrestricted: true,
       facultyIds: [],
       laboratoryNames: [],
+      ualIds: [],
       restrictToLaboratories: false,
     };
   }
@@ -5876,6 +5877,7 @@ async function resolveLoanManagementScope(req) {
       unrestricted: false,
       facultyIds: [],
       laboratoryNames: [],
+      ualIds: [],
       restrictToLaboratories: false,
     };
   }
@@ -5894,6 +5896,7 @@ async function resolveLoanManagementScope(req) {
       unrestricted: false,
       facultyIds: scopedFacultyIds,
       laboratoryNames: [],
+      ualIds: [],
       restrictToLaboratories: false,
     };
   }
@@ -5903,7 +5906,8 @@ async function resolveLoanManagementScope(req) {
       `
         SELECT
           ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.facultad_id), NULL) AS facultades,
-          ARRAY_REMOVE(ARRAY_AGG(DISTINCT UPPER(u.nombre)), NULL) AS laboratorios
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT UPPER(u.nombre)), NULL) AS laboratorios,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT u.ual_id), NULL) AS ual_ids
         FROM (
           SELECT documento
           FROM laboratorista
@@ -5929,6 +5933,9 @@ async function resolveLoanManagementScope(req) {
     const laboratoryNames = Array.isArray(result.rows[0]?.laboratorios)
       ? result.rows[0].laboratorios.map((item) => sanitizeText(item)).filter(Boolean)
       : [];
+    const ualIds = Array.isArray(result.rows[0]?.ual_ids)
+      ? result.rows[0].ual_ids.map(Number).filter((item) => Number.isInteger(item) && item > 0)
+      : [];
 
     return {
       unrestricted: false,
@@ -5936,6 +5943,7 @@ async function resolveLoanManagementScope(req) {
         (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
       ),
       laboratoryNames,
+      ualIds,
       restrictToLaboratories: true,
     };
   }
@@ -5952,6 +5960,7 @@ async function resolveLoanManagementScope(req) {
         (facultyId) => !allowedFacultyIds.length || allowedFacultyIds.includes(facultyId)
       ),
       laboratoryNames: scope.laboratoryNames || [],
+      ualIds: scope.ualIds || [],
       restrictToLaboratories: true,
     };
   }
@@ -5960,6 +5969,7 @@ async function resolveLoanManagementScope(req) {
     unrestricted: false,
     facultyIds: [],
     laboratoryNames: [],
+    ualIds: [],
     restrictToLaboratories: false,
   };
 }
@@ -6402,7 +6412,10 @@ async function fetchLaboratoryActivationOverview(req, options = {}) {
       params.push(scope.facultyIds);
       whereParts.push(`u.facultad_id = ANY($${params.length}::int[])`);
     }
-    if (scope.restrictToLaboratories && scope.laboratoryNames.length) {
+    if (scope.restrictToLaboratories && scope.ualIds?.length) {
+      params.push(scope.ualIds);
+      whereParts.push(`u.ual_id = ANY($${params.length}::int[])`);
+    } else if (scope.restrictToLaboratories && scope.laboratoryNames.length) {
       params.push(scope.laboratoryNames.map((name) => String(name || '').toUpperCase()));
       whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
     }
@@ -9388,13 +9401,16 @@ async function fetchManagedUalById(ualId, scope) {
     whereParts.push(`f.dependencia_facultad_id = ANY($${params.length}::int[])`);
   }
 
-  if (
-    scope.restrictToLaboratories &&
-    Array.isArray(scope.laboratoryNames) &&
-    scope.laboratoryNames.length
-  ) {
-    params.push(scope.laboratoryNames);
-    whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+  if (scope.restrictToLaboratories) {
+    if (Array.isArray(scope.ualIds) && scope.ualIds.length) {
+      params.push(scope.ualIds);
+      whereParts.push(`u.ual_id = ANY($${params.length}::int[])`);
+    } else if (Array.isArray(scope.laboratoryNames) && scope.laboratoryNames.length) {
+      params.push(scope.laboratoryNames);
+      whereParts.push(`UPPER(u.nombre) = ANY($${params.length}::text[])`);
+    } else {
+      return null;
+    }
   }
 
   const result = await pool.query(
@@ -19945,6 +19961,7 @@ router.__private = {
   getUalPracticeLoanWindows,
   upsertUalLoanConfiguration,
   fetchManagedUalById,
+  resolveLoanManagementScope,
   buildActivationWizardSteps,
   subtractMinutesFromTimeKey,
   evaluateLoanModeConstraints,

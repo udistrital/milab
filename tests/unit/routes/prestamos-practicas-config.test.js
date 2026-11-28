@@ -1468,7 +1468,7 @@ test('prestamos guarda las ventanas configurables de solicitud y devolucion por 
   }
 });
 
-test('prestamos resuelve la UAL por identificador respetando el alcance de laboratorio', async () => {
+test('prestamos resuelve la UAL por identificador de asignacion del laboratorista', async () => {
   let queryCall;
   const loaded = loadRoute({
     dbQuery: async (sql, params) => {
@@ -1485,13 +1485,48 @@ test('prestamos resuelve la UAL por identificador respetando el alcance de labor
       facultyIds: [32],
       restrictToLaboratories: true,
       laboratoryNames: ['LABORATORIO DE PRUEBAS'],
+      ualIds: [743],
     });
 
     assert.equal(managedUal.ual_id, 743);
-    assert.deepEqual(queryCall.params, [743, [32], ['LABORATORIO DE PRUEBAS']]);
+    assert.deepEqual(queryCall.params, [743, [32], [743]]);
     assert.match(queryCall.sql, /u\.ual_id = \$1/);
     assert.match(queryCall.sql, /f\.dependencia_facultad_id = ANY/);
-    assert.match(queryCall.sql, /UPPER\(u\.nombre\) = ANY/);
+    assert.match(queryCall.sql, /u\.ual_id = ANY/);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('prestamos incluye las UAL asignadas al laboratorista en su alcance', async () => {
+  let queryCall;
+  const loaded = loadRoute({
+    dbQuery: async (sql, params) => {
+      queryCall = { sql, params };
+      return {
+        rows: [
+          {
+            facultades: [32],
+            laboratorios: ['LABORATORIO DE PRUEBAS'],
+            ual_ids: [743],
+          },
+        ],
+      };
+    },
+  });
+
+  try {
+    const scope = await loaded.route.__private.resolveLoanManagementScope({
+      session: {
+        user: {
+          roles: ['laboratorista'],
+          documento: '123456',
+        },
+      },
+    });
+
+    assert.deepEqual(queryCall.params, ['123456']);
+    assert.deepEqual(scope.ualIds, [743]);
   } finally {
     loaded.restore();
   }
